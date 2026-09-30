@@ -250,7 +250,7 @@ step cannot reclaim its code owner before return. Native candidate authors must
 preserve baseline semantics and guard their own body assumptions.
 
 Production Codegen uses ordinary resumable entries; automatic per-PC candidates
-were removed in the [optimizer reassessment](../../docs/design/90-optimizer-reassessment.md).
+were removed in the [optimizer reassessment](../../docs/archive/design/90-optimizer-reassessment.md).
 Explicit native candidates still use this guarded contract. Their guards protect
 entries that can bypass Machine operations, and entered Methods retain their code.
 The 64-visit threshold is a retained local policy, not a language requirement or a

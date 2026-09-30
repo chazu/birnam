@@ -65,11 +65,11 @@
 > - [60i — Stackless artifact byte grammar](60i-stackless-artifact-byte-grammar.md)
 > - [60j — Runtime identity and history compaction](60j-runtime-identity-and-history-compaction.md)
 > - [60k — Reified portable CodeObjects](60k-portable-codeobjects.md)
-> - [60ka — Portable CodeObjects adversarial review](60ka-portable-codeobjects-adversarial-review.md)
+> - [60ka — Portable CodeObjects adversarial review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60ka-portable-codeobjects-adversarial-review.md)
 > - [60l — PortableProgram v1 and image-v7 byte grammar](60l-portable-program-and-image-v7-byte-grammar.md)
-> - [60la — PortableProgram/image-v7 adversarial review](60la-portable-program-and-image-v7-adversarial-review.md)
+> - [60la — PortableProgram/image-v7 adversarial review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60la-portable-program-and-image-v7-adversarial-review.md)
 > - [60o — Image-v8 identity preservation](60o-image-v8-identity-preservation.md)
-> - [60oa — Image-v8 adversarial review](60oa-image-v8-adversarial-review.md)
+> - [60oa — Image-v8 adversarial review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60oa-image-v8-adversarial-review.md)
 >
 > 60H owns the release acceptance matrix and rollout policy.
 
@@ -373,10 +373,10 @@ making a Block's portable executable meaning an ordinary immutable object and
 making native materializations disposable process state. It preserves
 dictionary dispatch and Store-arbitrated mutation, moves Block payloads to
 `[CodeObject, captures...]`, and requires image-v7 for source-independent Block
-and CodeBinding recovery. [60KA](60ka-portable-codeobjects-adversarial-review.md)
+and CodeBinding recovery. [60KA](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60ka-portable-codeobjects-adversarial-review.md)
 records the incorporated adversarial corrections. The semantic design was
 accepted 2026-08-25. [60L](60l-portable-program-and-image-v7-byte-grammar.md)
-and its [60LA adversarial review](60la-portable-program-and-image-v7-adversarial-review.md)
+and its [60LA adversarial review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60la-portable-program-and-image-v7-adversarial-review.md)
 freeze the physical grammar. Their stored goldens, generated boundaries,
 malformed matrix, and independent reader closed K0 on 2026-08-25. K1-K6
 completed 2026-08-27.

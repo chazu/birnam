@@ -117,7 +117,7 @@ counter or a faster isolated arithmetic kernel is insufficient.
 
 ## Evidence and limits
 
-The [old loop report](74w-loop-invariant-numeric-work.md#exploratory-unchanged-input-fast-path-comparison)
+The [old loop report](../archive/design/74w-loop-invariant-numeric-work.md#exploratory-unchanged-input-fast-path-comparison)
 ends without a repeatable net gain. Its completed exploratory measurements have
 mixed signs and explicitly unqualified host conditions. They concern the retired
 implementation and are not current performance evidence or thresholds to inherit.

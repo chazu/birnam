@@ -1,7 +1,7 @@
 # Design 90 — First discarded-clone consumer
 
 Implemented 2026-09-24, following the
-[optimizer reassessment](90-optimizer-reassessment.md) and the
+[optimizer reassessment](../archive/design/90-optimizer-reassessment.md) and the
 [Self-derived contract](90-self-optimization-review.md). This is one narrow
 allocation-saving producer and consumer, not completion of batch 2.
 

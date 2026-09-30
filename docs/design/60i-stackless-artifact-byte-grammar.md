@@ -42,8 +42,8 @@ The surrounding records retain separate authority:
 
 | Record | Authority |
 |---|---|
-| [40](40-the-image.md) | General image ownership, persistence, mapping, and recovery policy. |
-| [49](49-live-module-evolution.md) | SourceRevision and logical DispatchGeneration identity and publication. |
+| [40](../archive/design/40-the-image.md) | General image ownership, persistence, mapping, and recovery policy. |
+| [49](../archive/design/49-live-module-evolution.md) | SourceRevision and logical DispatchGeneration identity and publication. |
 | [60B](60b-stackless-machine-and-frames.md) | Frame semantics, root safety, slot interpretation, and physical-code pins. |
 | [60E](60e-resumable-registration-and-entry.md) | Entry recognition, registration lifetime, implementation anchors, binding ownership, and recovery ordering. |
 | [60F](60f-resumable-compiler-lowering.md) | Eligibility, lowering, liveness, coloring, semantic descriptor contents, selection materialization, and cross-format agreement. |

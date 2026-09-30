@@ -6,10 +6,10 @@
 > revision. It proposes a concrete transition; it does not claim an implemented
 > mechanism or completed invariant proof. The user subsequently accepted the
 > compatibility constraints below and requested another adversarial review.
-> The user subsequently accepted the four findings in [80S](80s-cleanup-control-review-synthesis.md)
+> The user subsequently accepted the four findings in [80S](../archive/design/80s-cleanup-control-review-synthesis.md)
 > and authorized implementation to begin. ABI/format breaks remain outside scope.
 > Sections 9–10 record the accepted follow-up and supersede the earlier open
-> encoding choices. Implementation evidence is tracked separately in [80T](80t-cleanup-control-implementation-evidence.md).
+> encoding choices. Implementation evidence is tracked separately in [80T](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/80t-cleanup-control-implementation-evidence.md).
 
 ## 1. Result of the exercise
 

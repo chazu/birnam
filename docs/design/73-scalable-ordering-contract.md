@@ -38,7 +38,7 @@ Once unequal bytes decide the answer, subsequent iterations still execute
 accumulator/control checks. It stops byte reads, but does not stop traversal.
 The proposed change is therefore broader than adding a missing byte-read guard.
 
-[Design 69](69-sorting-and-string-comparison.md) retains the investigation and
+[Design 69](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/69-sorting-and-string-comparison.md) retains the investigation and
 its diagnostic provenance. Reverse-sorted numeric inputs at 32/128/512 elements
 require exactly 496/8,128/130,816 insertion comparisons. Its String fixtures
 show why early differences and long common prefixes need separate measurements.

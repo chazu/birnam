@@ -9,7 +9,7 @@
 > language annotations.
 >
 > The explicit one-release v0.14 performance decision is recorded separately
-> in [60HB](60hb-v0.14-performance-tradeoffs.md). Later releases do not inherit
+> in [60HB](../archive/design/60hb-v0.14-performance-tradeoffs.md). Later releases do not inherit
 > that exception.
 
 ## 1. Decision

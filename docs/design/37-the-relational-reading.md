@@ -3,7 +3,7 @@
 > **Status:** Shipped (2026-06-30). The full datalog surface on the libid refounding,
 > in `src/id/relational.zig` (a standard module) over the rung-2 store
 > ([Rung 2 — cells](../archive/work-breakdowns/33-rung-2-cells.md)). Realizes the North Star —
-> [The Destination](30-the-destination.md) §D5.2 — "the object model and the
+> [The Destination](../archive/design/30-the-destination.md) §D5.2 — "the object model and the
 > relational model are one store read two ways." The old fact-store kernel's
 > equivalent is [Datalog](../archive/legacy-kernel/29-datalog.md); this is the re-port onto the id stack,
 > built send-by-send through the object model.

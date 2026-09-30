@@ -6,7 +6,7 @@
 > normalized source-semantic program layer, ordinary-object surface, closure
 > layout, materialization lifetime, image-v7 direction, compatibility boundary,
 > and bounded-churn obligations are specified below. The accompanying
-> [60KA adversarial review](60ka-portable-codeobjects-adversarial-review.md)
+> [60KA adversarial review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60ka-portable-codeobjects-adversarial-review.md)
 > records the corrections incorporated before discussion. Acceptance authorizes
 > [Design 60L's physical-format work](60l-portable-program-and-image-v7-byte-grammar.md),
 > which was accepted and frozen 2026-08-25. The K1 public surface is sharpened

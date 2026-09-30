@@ -98,7 +98,7 @@ There is no replacement background compiler or candidate service.
 
 Explicit candidates and guarded recovery remain available in Execution for actual
 optimizations. Broader region fusion, numeric reuse and allocation-elision need
-concrete producers and evidence under [Design 90's reassessment](../../docs/design/90-optimizer-reassessment.md).
+concrete producers and evidence under [Design 90's reassessment](../../docs/archive/design/90-optimizer-reassessment.md).
 
 The production tests cover literals, sends, threaded messages, conditional and
 nested capturing Blocks, named installation/replacement, failed compilation and

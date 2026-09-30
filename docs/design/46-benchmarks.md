@@ -2,7 +2,7 @@
 
 > **Status:** SHIPPED (2026-07-12; released in v0.9.0). This document remains the
 > plan of record and operating rationale. Motivated by
-> [44 — Toward Self-Hosting](44-toward-self-hosting.md), which gates every
+> [44 — Toward Self-Hosting](../archive/design/44-toward-self-hosting.md), which gates every
 > migration on a measured send constant. Builds
 > on the harness patterns already proven here: the `Test` module +
 > `run-tests.birnam` for birnam-level suites, and `scripts/repl-golden.sh`

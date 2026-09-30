@@ -129,7 +129,7 @@ The governing ownership rule remains:
 
 Relevant prior records are:
 
-- [30 — The destination](30-the-destination.md);
+- [30 — The destination](../archive/design/30-the-destination.md);
 - [42 — Object canonical, relational
   derived](42-object-canonical-relational-derived.md);
 - [60A — Execution semantics](60a-stackless-execution-semantics.md);

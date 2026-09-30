@@ -183,7 +183,7 @@ regenerated for this candidate; its producing source commit remains unknown.
 directory record the baseline and current source/artifact hashes. The full
 workspace tests and all three adapter tests in a release build also pass.
 
-The earlier [80T](80t-cleanup-control-implementation-evidence.md) exhaustive
+The earlier [80T](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/80t-cleanup-control-implementation-evidence.md) exhaustive
 result qualifies the boundary-only revision. Validation of this additional
 implementation is recorded below; no earlier pass is treated as a pass for
 changed sources.

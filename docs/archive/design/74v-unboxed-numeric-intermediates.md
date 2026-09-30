@@ -1,0 +1,651 @@
+# 74V — Virtual numeric intermediates with original Frame recovery
+
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](../../design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](../../design/90-self-optimization-review.md).
+
+Status: the default-off runtime consumer is production-verified and integrated
+on main. The subsequent captured-input and recovered-Frame control tests pass
+in both profiles; their extended production gate and all performance/resource
+acceptance remain pending.
+This continues the unboxed-arithmetic requirement in
+[74T](74t-representation-and-allocation-optimizations.md), whose enabled numeric
+fusion still allocates every original result box.
+
+## Required behavior
+
+Carry successful numeric intermediate results as raw bits until an observation
+requires their original object identities. Derive operations from current
+admitted native implementations, preserving exact overflow/error behavior and
+ordinary Id malleability. Keep public ABI, canonical descriptors, V2 transitions
+and image encoding unchanged. Equal numeric values from distinct allocations
+remain distinct identities; repeated aliases of one result recover one object.
+
+The initial supported bodies are those of the existing numeric Template:
+bounded straight-line integer chains with entry values, local binds, literals,
+Call/Continue edges and a final Return or TailCall. Unsupported operands,
+errors, mutation, native declarations, storage or allocation budgets must take
+the established path. Selector names do not confer numeric authority.
+
+## Compiler maps
+
+`numeric_chain::RecoveryMaps` is derived separately from the existing Template,
+so the boxed consumer does not pay its preparation or metadata cost. Derivation
+requires the numeric Template and exact canonical coloring. Every PC records
+all physical aliases of prior numeric results at original action publication,
+including the send operand window, and after its original continuation.
+
+An alias names the numeric operation's result identity, never its numeric bits.
+Absent aliases leave ordinary Oops in place, including input values and distinct
+literal boxes. Local binds propagate result identities. V2 parallel copies read
+their sources before destinations change; clears and call-result initialization
+produce the successor map. The current pending operation has no result identity
+at publication. A final TailCall creates a returned result but no local successor.
+
+Initial tests cover shared local/send aliases, equal computations producing
+distinct identities, final Return and TailCall, two-/three-/16-/32-operation
+chains, slot reuse/dead-value clearing, and rejection of changed layouts and
+observing operations. These are compiler checks, not runtime allocation savings.
+
+The compiler checkpoint passes all 85 `birnam-codegen` debug tests and all five
+recovery-map release tests. The added Continue case propagates one result
+identity through 110 aliases across a canonical split without inventing another
+numeric result. Verification commands, with an explicit isolated Cargo target:
+
+```sh
+cargo test --locked --offline -p birnam-codegen
+cargo test --locked --offline --release -p birnam-codegen numeric_chain::recovery_maps
+```
+
+The compiler and runtime changes have not been integrated into the main
+checkout; the full source/production gates below remain required.
+
+## Runtime integration contract
+
+1. Extend private allocation-journal preparation to exact raw numeric payloads.
+   Establish current representation and native constructor authority explicitly;
+   do not disguise raw numeric bits as Oop payloads. Keep the original allocation
+   charge, fresh identity and collector/finalizer behavior. Preparation is not an
+   Id allocation; materialization must not charge again.
+2. Use the existing raw numeric ticket and current binding/context guards to
+   admit a bounded interval before any effect. Include all baseline allocation
+   charges and journal capacity in admission. No observing callback, collection
+   or native retirement may intervene while a live result remains virtual.
+3. Execute original canonical PC entries and V2 transitions with private
+   placeholders for admitted virtual results. Those entries only move/stage
+   values in the supported Template; the raw ticket supplies numeric results.
+   Existing literal/index/PC-token boxes remain ordinary allocations initially.
+4. At every supported forced exit, materialize all published aliases of already
+   charged results before ordinary dispatch or observation. Restore pending
+   receiver/argument identities as well as local Frame aliases. Future
+   predictions are not executed results and must not allocate or materialize.
+5. Materialize results required at the final observation boundary, preserving
+   return identity and any still-observable Frame aliases. Prove dead values
+   before leaving them journaled. Do not assume that returning a value by itself
+   proves the Frame is already retired.
+
+## Completion evidence
+
+Require real-source baseline/enabled/forced comparisons at every supported exit,
+with actual physical allocation savings and unchanged logical allocation charges.
+Exercise equal/distinct results, repeated aliases, captured inputs, original
+numeric literals, extremal arithmetic, zero division, mixed/error refusal,
+changed operators/API/layout, collecting observation, V2 capture/suspension,
+native eviction/retirement and journal/automatic-collection limits.
+
+Run debug/release correctness and the production source/install/image/archive/
+relocation gates. Commit correctness before paired execution and collection
+timings. Record preparation, metadata, native code and retained resources, plus
+refusal and cold/application costs. Keep qualification gates unchanged. This
+work does not complete the loop, aggregate or closure families, nor establish
+the full arithmetic family until runtime behavior and its acceptance are proved.
+
+## Experimental runtime checkpoint
+
+The isolated consumer is selected by `BIRNAM_DEV_UNBOXED_NUMERIC=1` before native
+candidate preparation. Its optional recovery maps belong to the candidate and
+are absent when disabled. `BIRNAM_DEV_UNBOXED_NUMERIC_FORCE_AT` selects an
+original source PC for recovery; this includes Continue and Return boundaries.
+There are no public ABI or image-format additions.
+
+Exact signed-integer payload snapshots live in the existing untraced host
+journal. Preparing a snapshot has no logical allocation effect. Executing a
+numeric Call charges its original allocation and assigns a fresh deferred
+identity. Original PC code and V2 transitions use private placeholders until an
+observation boundary. Recovery materializes each required identity once and
+patches all mapped local and send-window aliases before ordinary dispatch.
+Equal intermediate bits still denote separate allocations.
+
+Normal completion materializes only the returned identity. The driver's
+existing `finish_stackless_return` pops the private Frame and commits the caller
+transition without allocation or foreign/generated calls. This retirement
+boundary makes the other private results dead before an observer can run. They
+retain original journal accounting and collector handling. Final TailCall
+results use the ordinary numeric constructor at the original allocation point.
+Literal, index and PC-token allocations remain unchanged.
+
+Admission includes the current native numeric declaration and constructor
+context, current Machine/lookup controls, all original allocation charges,
+journal capacity and the automatic-collection threshold. The unit-test bootstrap Integer vtables have no declared layout; their
+existing conservative payload tracing is supported without changing that
+layout. The public floor installs the ordinary raw layout, which is also
+supported. The current native constructor
+establishes the eight-byte representation. An explicitly incompatible layout or
+an inherited trace hook refuses admission.
+
+Focused tests now exercise 73 fresh runtime cases across three-operation
+Return/TailCall chains, equal intermediate results, a Continue split with 110
+aliases, and 16-/32-operation chains, with forced recovery at every source PC.
+They check numeric results, original logical byte charges, actual physical box
+savings, materialization counts, Frame retirement and released registration
+pins. Normal 3-/16-/32-operation chains save 2/15/31 intermediate result boxes.
+These are allocation observations, not timing claims.
+
+A shared differential harness additionally exercises 52 fresh runtime cases
+covering changed Machine controls, lookup, mutation epoch, operators, ErrorVt,
+native declarations, incompatible layouts, trace hooks and a full 4,096-entry
+journal. Ten collection-budget cases include an actual root-provider mutation
+of an input at collection. Twelve arithmetic-fault cases preserve overflow and
+zero-divisor effects at the original ordinary calls. The raw-journal unit test
+checks signed extremal bits, distinct identities and exact once-only charges.
+
+Installed-source observation, capture/suspension, native retirement, mixed-type
+and resource/performance acceptance remain required; these targeted checks do
+not complete the full arithmetic family or any of the other three families.
+
+The runtime checkpoint passes all 538 debug workspace tests (19 ignored), and
+all 281 runtime/codegen release tests (15 ignored). Both profiles execute the
+raw-journal check and all four unboxed runtime tests. The
+[checkpoint receipt](../../measurements/74v-unboxed-runtime-correctness.json)
+records commands, counts, log hashes and source hashes. Production gates and
+qualified timings remain pending.
+
+## Installed-source consumer and release-context repair
+
+A feature-gated `UnboxedNumericProbe` measures actual source-created registered
+Blocks through installed Codegen and the real Prelude. It holds explicit roots
+for its native arguments while requesting collections without native stack
+scanning. Its counters check eight measured invocations after warmup, logical
+allocation charges, physical box savings and materialization at each forced PC.
+A final rooted result also survives collection. The production floor does not
+publish this probe, even when its activation environment variable is present.
+
+The first full debug source matrix passed, but release returned ordinary results
+with zero optimization hits. The retained
+[release refusal receipt](../../measurements/74v-unboxed-source-release-refusal.json)
+and [preceding debug matrix](../../measurements/74v-unboxed-source-debug-before-context-fix.json)
+record the difference. Diagnostics found that the numeric declaration received
+a different address for the private small-integer reader than the address
+published in IdApi. The other five context pointers agreed. Admission correctly
+refused the mismatching context; unit native fixtures did not expose it because
+they do not compare the real Prelude API context.
+
+Canonical numeric function pointers now have one immutable typed owner,
+initialized once and shared by IdApi publication and declaration checks. This
+avoids independently taking a private function address in separate release
+codegen units. The Block-constructor and codegen guards use that same owner for
+shared operations. The IdApi layout and callable signatures are unchanged.
+Declarations still inspect each module's actual API pointers on every use;
+replaced or copied API tables gain no new authority.
+
+The corrected [release source matrix](../../measurements/74v-unboxed-source-release.json)
+passes 146 fresh processes across both GC modes and every supported PC for
+three-operation Return/TailCall chains, equal results, a Continue split, and
+16-/32-operation chains. Each case uses the installed compiler and actual
+Prelude implementations. The source, floor and installed-artifact hashes match
+before and after execution. The copied-API native fixture also passes for both
+floor profiles: overriding boxing refuses, restoration readmits, and altering
+each of the six context operands refuses. The existing numeric source fixture
+passes its arithmetic, mixed-value, error, identity and eviction/retirement
+assertions with the consumer enabled.
+
+Full production control/capture/suspension and performance acceptance remain
+pending. Source allocation savings do not imply an execution-time gain.
+
+`python3 scripts/recovery-graphs.py --unboxed --verify` now includes the unboxed
+runtime tests in both profiles and requires both installed-source matrices
+alongside all existing closure/source, native, image, archive and relocation
+gates. Each unboxed matrix must contain 146 rows, prove the probe absent from
+the production floor, and match the floor used by the independent closure
+control checks. The gate hashes the new script and runtime sources. Adding this
+verification path does not itself establish a passing production receipt.
+
+The corrected [debug matrix](../../measurements/74v-unboxed-source-debug.json) also
+passes all 146 rows, bringing the installed-source total to 292 fresh processes.
+After the function-identity repair, the complete debug workspace again passes
+538 tests with 19 ignored. Full production verification is the next gate.
+
+## Production checkpoint at 63becebf
+
+The [production receipt](../../measurements/74v-unboxed-production-correctness.json)
+passes all 63 commands, the 538-test workspace (19 ignored), and the production
+native-prefix, image, cold-archive and relocation gates. Its 250 source hashes
+match the tested checkout. Ten existing closure matrices retain 1,248 source
+rows; the two numeric matrices add 292 rows, for 1,540 in total. All twelve
+matrices use the matching per-profile feature floor also verified by the
+independent control checks. Debug and release floor hashes are respectively
+`89c51cf5d535d9b8ba06dbfffc391352bc68193ecc024c3ce38c4f49d593c6a0` and
+`1c38516839896f30729aee1d8f637aabdcfa3a2cf4bb994d63d2294d4f7d2d7a`.
+
+This verifies the default-off runtime consumer and canonical numeric-function
+identity repair for integration. The later control/captured-input extension is
+being verified separately. Arithmetic timing, preparation/metadata/resource and
+application acceptance remain open; no full optimization family is complete.
+
+## Recovered numeric Frames through V2 control
+
+A separate test-floor observation hook stops at an original pending Call only
+after generated code and all unboxed optimizer scratch have unwound. The normal
+production floor has no hook. The baseline for this comparison also exposes
+the original action boundary by declining the older boxed fusion while that
+specific test Machine is under observation. Enabled cases force unboxed recovery
+at the requested source PC. This is an explicit test/debugger stop, not a new
+language-visible poll or a claim that opaque observation is allowed inside an
+admitted raw region.
+
+The hook distinguishes the source PC governing the current root state from the
+already-published successor PC. It checks every live numeric slot and its alias
+identity before and after collection, then publishes ordinary capture or
+suspension using the pending Call's existing result slot and successor PC.
+After control returns, the bridge checks Frame/Continuation pin transfer,
+evicts installed Codegen materializations, collects again, and confirms the
+published numeric identities remain alive. Supplying a fresh numeric result
+resumes the original continuation. The source checks its value and identity,
+requires pins to return to their starting counts, and rejects repeated restore
+or resume as already consumed/not suspended.
+
+The focused debug cases pass for the last Call of three-operation chains,
+equal-valued distinct results, and a chain crossing a Continue split. The full
+[release control matrix](../../measurements/74v-unboxed-control-release.json)
+passes 448 fresh processes: baseline and forced unboxed recovery, capture and
+suspension, both GC modes, and every Call in three-/16-/32-operation chains plus
+the equal-result and Continue cases. The equal-result case explicitly requires
+two different recovered identities with the same bits. The [debug control matrix](../../measurements/74v-unboxed-control-debug.json) also
+passes all 448 rows. Both profiles retain matching source/floor/installed hashes.
+
+Source verification also has a `--captured-inputs` mode. It materializes each
+numeric Block with an actual captured Integer and uses that value in the raw
+chain; ordinary arguments retain their separate identities. The full production
+gate now requires separate ordinary-input, captured-input and control matrices
+for each floor profile, with matching floor hashes. Full control/captured-input
+verification and performance acceptance remain separate gates.
+
+The captured-input matrices pass all 146 cases in
+[debug](../../measurements/74v-unboxed-captured-debug.json) and
+[release](../../measurements/74v-unboxed-captured-release.json), with actual raw
+completion, materialization and box-savings counters. Together with the control
+matrices, this checkpoint adds 1,188 fresh source-process comparisons. The
+feature-enabled runtime test suite also passes 195 tests, with 15 ignored. Full
+production verification of this extended checkpoint remains required before
+integration or a performance/promotion claim.
+
+### Extended production recovery verification
+
+The [extended production receipt](../../measurements/74v-unboxed-control-production-correctness.json)
+passes all 63 commands with all 252 recorded source hashes matching the tested
+checkout. It retains 1,248 closure cases and 1,480 numeric cases: ordinary and
+captured-input matrices each contribute 146 processes per profile, and actual
+V2 capture/suspension contributes 448 per profile. All matrices for each profile
+match the independently tested control floor. Native-prefix, image, cold-archive
+and relocation verification also pass. This completes the extended recovery
+checkpoint, not numeric cost acceptance or the full four-family objective.
+
+### Cost measurement protocol
+
+The numeric cost probe now measures real source Blocks with three, sixteen and
+32 arithmetic operations. Each size has five paired baseline/enabled cases:
+a tail result, a warmed operator replaced with subtraction, a mixed Float input,
+a compiler-refused Cell result, and an early intermediate returned after the
+remaining arithmetic. The mutation case restores the original method and requires
+immediate readmission. Every invocation checks the expected answer; the paired
+checks require equal logical allocation charges and exact completed-operation,
+materialization and saved-box counts.
+
+Preparation is timed separately from the first 128 calls and from steady batches
+of 128 calls. Each batch ends with separately timed collection. This keeps the
+cost of preserving original collector observations visible alongside execution.
+The probe checks that steady execution adds no recovery maps or native owners.
+Map storage includes owned vector capacity and the Rc header, excluding allocator
+bookkeeping and other native-tier structures. Journal storage includes retained
+capacity. Native-unit counts measure owners, not executable bytes. Darwin
+`time -l` additionally records whole-process peak RSS in bytes, including startup
+and collection, without attributing that entire footprint to recovery metadata.
+
+`scripts/unboxed-numeric-measurement-smoke.py` verifies all 30 source processes
+per profile before timing. Full `recovery-graphs.py --unboxed --verify` retains
+both matrices beside the ordinary, captured-input and V2 control matrices and
+requires their runtime hashes to match. The timing runner,
+`scripts/unboxed-numeric-timing.py`, requires that complete production receipt,
+matching source and floor hashes, and the requested fixture's counter evidence.
+It then builds a fresh release installation and runs four alternating pairs by
+default, with 500 batches per process. Preparation, cold execution, steady
+execution, execution including collection, process wall time and peak RSS are
+reported separately. Existing AC/load admission and interval gates remain intact;
+`--exploratory` retains explicitly unqualified results when those gates fail.
+
+These measurements cover bounded source fixtures. A passed counter matrix does
+not establish profitability, application acceptance, or promotion of the
+experimental consumer. Full arithmetic, loop, aggregate and closure acceptance
+remain open.
+
+The initial [debug](../../measurements/74v-unboxed-measurement-debug.json) and
+[release](../../measurements/74v-unboxed-measurement-release.json) matrices each pass
+all 30 processes with matching source/floor hashes and positive RSS readings.
+For the two measured 32-operation successful cases, the release probe retains
+5,112/5,792 bytes of recovery maps and 98,304 bytes of journal capacity after
+collection. Native-unit counts equal the baseline. These short counter checks
+supply no qualified timing claim; the extended production gate and paired cost
+measurements follow this checkpoint.
+
+### Production cost-harness verification
+
+The [cost-harness production receipt](../../measurements/74v-unboxed-cost-production-correctness.json)
+passes all 63 commands with all 256 source hashes matching. It retains 1,248
+closure cases and 1,540 numeric cases, including all 60 new measurement checks.
+Every matrix matches the independently verified floor for its profile; the
+retained release floor also matches the timing runner's selected binary. Native,
+image, cold-archive and relocation checks pass. Paired cost measurements can now
+use this checkpoint. This establishes measurement correctness, not profitability
+or promotion of the default-off arithmetic consumer.
+
+### Retained exploratory numeric timings
+
+The [complete exploratory matrix](../../measurements/74v-unboxed-exploratory-timing.json)
+retains 120 processes: three operation counts, five shapes, four alternating
+pairs and both modes, each with 64,000 steady invocations. All 60 counter pairs,
+coordinates and correctness/source/install/fixture hashes pass the audit.
+Both host gates fail, so the receipt is explicitly `not_qualified`.
+
+For the ordinary final-result shape, median execution improvement is -32.89%,
++3.97% and -16.57% at 3, 16 and 32 operations; including GC it is -24.53%,
+-4.77% and -18.33%. For an earlier result returned through recovery, execution
+improvement is -35.91%, -29.28% and +2.68%; including GC it is -21.92%,
+-33.81% and +9.01%. Positive numbers mean less time. Refusal controls also
+vary substantially, so these noisy differences do not establish causality or
+justify promotion. The full receipt retains preparation, cold execution, RSS,
+allocation savings and every individual pair, including negative observations.
+
+The next performance step is a separate profile of the admitted numeric path
+and its refusal controls, followed by focused fixes supported by that profile
+and a quiet comparison. The unboxed consumer remains disabled by default;
+physical allocation savings alone have not demonstrated a net speed benefit.
+
+### Bound the historied-Store refusal control
+
+The compact-snapshot repeat exposed a measurement-scope problem in shape three:
+`[answer asCell]` creates a fresh anonymous Store entity and records a value on
+every invocation (`src/id/stdlib.birnam`). This is a growing-history workload,
+not a steady-state refusal control. One retained three-operation baseline
+process took 116.20 seconds for 64,000 measured calls, compared with 3.06 ms for
+its first 128 cold calls; collection added 16.27 seconds. It recorded no unboxed
+completion or metadata. Those costs must not be attributed to unboxed execution.
+
+The [partial long run](../../measurements/74v-compact-growing-store-partial.json)
+retains 45 completed rows and its explicit cancellation reason. Only the owned
+measurement process tree and its sequencing wrappers were stopped; production
+verification continued. This receipt is incomplete and unqualified, not a
+passing matrix or a speedup claim.
+
+`scripts/unboxed-bounded-timing.py` retains the existing verified bodies, floor
+and counter rules, but uses ten 128-call batches for shape three by default;
+the other four shapes retain 500 batches. Both configurations in each pair use
+the same count, which is recorded in each row and checked against invocation,
+allocation and recovery counters. The control still creates Store history; the
+smaller bound limits that growth rather than claiming to remove it. Every
+installed artifact, source, fixture and driver digest remains checked.
+Exploratory mode stays unqualified. A short complete driver check precedes the
+new matrix, then normal-floor closure measurements can continue without waiting
+for another 64,000-cell control at every coordinate.
+
+The [short driver check](../../measurements/74v-bounded-driver-smoke.json) passes
+all 30 coordinates with two batches. The
+[full bounded matrix](../../measurements/74v-compact-bounded-exploratory-timing.json)
+now passes all 120 process/counter checks, using 500 batches for arithmetic and
+ten for the Store control. Source, driver, floor, fixture and installation
+digests match. Both host gates fail, and the result remains unqualified.
+
+For ordinary final results, execution/including-GC median reductions are
+-46.91%/-38.21%, -23.60%/-25.20% and -10.71%/-7.90% at three, sixteen and 32
+operations. Earlier-result recovery gives -33.88%/-33.15%, -22.42%/-17.26% and
+-17.32%/-13.84%. Controls vary in both directions. These observations do not
+establish causality under the concurrent load, but provide no reason to promote
+the unboxed consumer. It stays disabled while per-invocation snapshot and
+scratch-allocation costs are examined. Physical box savings remain correct;
+they have not translated into a supported net gain for these workloads.
+
+### Diagnostic native profiles
+
+The [paired diagnostic profiles](../../measurements/74v-unboxed-numeric-diagnostic-profile.json)
+use the exact retained cost floor and installed prefix, running the 32-operation
+final-result fixture twelve times per mode. Sampling begins after the first
+64,000-call measurement, on an explicitly verified child PID. Both processes
+finish normally and all twelve counter pairs pass. The receipt retains the
+fixture, driver, process identity, binary hashes, full sample trees and output.
+No timing qualification or speed comparison is inferred from these sampled runs.
+
+Allocation and collection dominate both samples. Collection appears in 1,115
+baseline samples and 1,070 enabled samples; these are inclusive observations,
+not independent time measurements. The enabled snapshot-preparation routine
+appears in 24 samples. Source inspection confirms that each numeric snapshot
+currently allocates an Rc and a separate payload Vec. Compact raw payloads are a
+concrete candidate for reducing that overhead, but this component is small in
+these samples and cannot explain the whole noisy timing difference.
+
+The existing native Frame regions also retain their original housekeeping index
+boxes. Their allocation and subsequent collection remain substantial shared
+work. Any later attempt to eliminate those physical allocations must preserve
+original charges, collector/finalizer observations and late-bound publication;
+it needs its own admission and differential evidence. Arithmetic kernel work
+alone is not the dominant cost shown here.
+
+### Compact recovery snapshot storage
+
+The snapshot representation now keeps payloads up to eight bytes inside the
+existing untraced Rc allocation. Larger payloads retain their Vec. The snapshot
+header does not grow on the tested target. Potentially pointer-shaped bytes are
+copied into the allocated Rc after its zeroed inline storage exists; no populated
+native-stack array carries the new payload. This removes the separate payload
+allocation for numeric intermediates and small clone/closure snapshots.
+
+The original payload padding, vtable, logical allocation charge, identity token,
+materialization order and collector settlement/reclamation protocol remain the
+same. Boundary tests compare exact bytes from zero through 1,024-byte payloads,
+including the inline boundary, and verify distinct materializations and stable
+charges. The observing-finalizer/untraced-journal test now covers both one-word
+inline and two-word vector payloads; dead references retain no former child in
+either representation, and observing sweeps still settle allocations first.
+
+The [focused correctness and resource receipt](../../measurements/74v-compact-snapshots-correctness.json)
+retains 545 passing workspace tests, 201 passing release runtime tests, the
+expanded GC test in both profiles, and 84 installed source cases: 60 numeric
+counter/resource cases and 24 literal-closure identity/recovery cases. Their
+source/floor/install hashes match. All logical counters and post-collection
+journal capacity match the prior numeric matrices. For each 128-call batch:
+
+| Operations | Prior peak journal bytes (final result) | Compact peak | Bytes saved |
+| --- | --- | --- | --- |
+| 3 | 22,528 | 20,480 | 2,048 |
+| 16 | 172,032 | 156,672 | 15,360 |
+| 32 | 352,256 | 320,512 | 31,744 |
+
+The early-result recovery cases have the same absolute savings. Each difference
+is exactly eight bytes per still-private numeric snapshot. These measurements
+establish lower owned journal storage, not a net speedup or promotion.
+
+The [combined production receipt](../../measurements/74w-loop-cost-production-correctness.json)
+now passes all 71 commands and 3,164 source cases with matching source and floor
+hashes. Compact snapshots are integrated on main at `9eed9f0a`, together with
+the verified loop cost harness. The 271 production source hashes still match
+after integration. Paired numeric performance acceptance is queued behind loop
+and closure-threshold timing; application and process-resource acceptance follow.
+
+### Reuse bounded invocation scratch and omit an unused tail snapshot
+
+The compact-snapshot exploratory comparison still shows overhead for admitted
+unboxed chains. Execution currently allocates three host vectors per invocation:
+snapshots, deferred identities and materialized-result slots. It also prepares
+a snapshot for a final numeric tail send, although that path directly creates
+its ordinary Integer result and never records the snapshot.
+
+The next change keeps at most four cleared scratch buffers in a lazily created
+runtime-local pool. A lease owns the pool through early refusal, forced recovery
+and return; release clears all identities, materialized Oops and snapshot owners
+before reuse. Populated words remain in untraced host vectors, never native-stack
+arrays. The pool owns no Frame, descriptor or native-code lifetime authority.
+It is unused when unboxed execution is disabled, and every vector is bounded by
+the compiler's existing 32-result limit. Report retained pool capacity separately
+from recovery metadata and the already charged allocation journal.
+
+Only snapshots for numeric Calls are prepared. A final send whose recovery step
+has no continuation is a TailCall; its result has no caller slot and is still
+boxed at the original tail boundary. Keep the existing conservative journal
+admission count and original byte/GC budget unchanged. Earlier-result Return
+paths still prepare every required snapshot, and forced exits still reconstruct
+all prior live identities. Use explicit vector capacity rather than fallible
+iterator collection growth.
+
+Verification must cover pool cleanup, capacity bounds and untraced payloads,
+then existing source matrices for final and earlier results, mutation, errors,
+forced exits, allocation charges, precise/conservative GC and V2 control. Source
+measurement must assert stable scratch ownership/capacity after each collection.
+Full production verification and a repeated bounded cost matrix remain required;
+no promotion or speedup follows merely from reducing host allocations.
+
+The initial [focused proof](../../measurements/74v-scratch-focused-correctness.json)
+passes 547 workspace tests (19 ignored), 203 release runtime tests (15 ignored)
+and all 30 release measurement cases. Retained scratch storage is stable after
+each measured collection: 416, 832 and 1,344 bytes for 3, 16 and 32 results,
+excluding Rc/allocator bookkeeping. Disabled and refused paths allocate no pool.
+These are resource and correctness observations, not speedup measurements.
+Full production and forced source/V2 verification remain pending.
+
+The release [ordinary-input](../../measurements/74v-scratch-source-release.json),
+[captured-input](../../measurements/74v-scratch-captured-release.json) and
+[V2 control](../../measurements/74v-scratch-control-release.json) source matrices
+also pass with matching current source, installed-module and test-floor hashes.
+They cover both tracing modes, final and earlier results, equal distinct values,
+long Continue paths, every supported forced recovery point, and capture/suspend
+with post-recovery collection and supplied result identity. The full production
+gate is running against this committed implementation.
+
+The [full scratch production gate](../../measurements/74v-scratch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases, with 272 current source
+hashes matching. It covers both floor profiles, forced source/V2 recovery,
+mutation, allocation observations, GC, native ownership, installed-prefix,
+image and cold-archive checks. The committed scratch implementation is ready
+for integration and its repeated bounded exploratory cost matrix. It remains
+default-off; reduced host allocation does not establish a net speedup.
+
+### Complete bounded comparison after scratch reuse
+
+The [scratch comparison](../../measurements/74v-scratch-bounded-exploratory-timing.json)
+completes all 120 processes and 60 paired counter/result checks, with matching
+production-proof, source, floor, installation and fixture hashes. Preflight
+passes and interval qualification fails; the receipt stays explicitly
+unqualified under the user's waiver.
+
+| Operations | Final result: execution / including GC | Earlier result: execution / including GC |
+| --- | --- | --- |
+| 3 | -19.08% / -14.78% | -29.13% / -22.33% |
+| 16 | -8.76% / -8.03% | -12.72% / -8.60% |
+| 32 | -6.72% / -11.89% | -51.97% / -35.68% |
+
+All four final-result pairs regress including collection at each size. Earlier-
+result pairs also regress consistently at 3/16 operations; 32 operations have
+one positive pair and large variation. Controls vary, particularly mixed Float
+inputs at 32 operations. Scratch reuse does not establish profitable unboxed
+execution, and the consumer remains default-off.
+
+### Next cost reduction: batch private numeric snapshot storage
+
+Each admitted invocation still prepares a separate `Rc<DeadAllocation>` for
+every virtual result. Thus removing physical Integer boxes substitutes many
+host allocations rather than eliminating that cost. Share one immutable raw
+snapshot buffer across the invocation's results, while assigning a fresh
+`DeferredAllocation` identity and original byte charge at every original Call.
+Equal raw values must still have distinct identities; aliases to one result must
+still materialize once. This applies to changing inputs as well as repeated ones.
+
+Use a separate lazy numeric journal so ordinary aggregate/closure snapshot
+entries retain their current representation and allocation path. Numeric entries
+refer to one batch plus an element index, and use the existing monotonically
+allocated deferred-ID namespace. Count both journals against the existing
+4,096-live-entry admission limit. Preserve logical allocation totals, bytes,
+stale-ID rejection, callback-free materialization, observing-sweep settlement and
+non-observing reclamation across both journals. Retained capacities and unique
+batch payloads must be reported, including mixed-consumer workloads.
+
+Populate raw words only in untraced host vectors, never native-stack arrays.
+Prepare a batch before executing its first affected Call; unused future elements
+carry no logical allocation charge. Early recovery materializes only charged
+live identities, while the journal keeps batch ownership for any other charged
+entries. Omit the directly boxed final TailCall element as in the current path.
+Keep all existing constructor, vtable, layout, method, Frame, native-ownership and
+original GC-budget checks. No IdApi, Method ABI, descriptor or image change is
+needed for this private storage representation.
+
+Before timing, test interleaved numeric/aggregate identities, equal distinct
+values, partial and out-of-order materialization, stale capabilities after GC,
+combined journal exhaustion and release, untraced pointer-shaped words, and
+allocation/finalizer observations. Retain the full numeric source, recovery,
+mutation and V2 matrix; then compare actual costs and total retained storage.
+
+The batched-storage experiment is implemented on `codex/74v-numeric-batches`.
+Each numeric entry stores its fresh capability, shared batch owner and element
+index. The existing clone journal retains its representation; the numeric vector
+has zero initial capacity (its empty header adds three words to `Heap`). Both
+journals share admission, logical counts/bytes and the deferred-ID namespace.
+Materialization borrows the raw bytes directly from the host vector and uses the
+existing callback-free realization path. GC settles both journals before an
+observing sweep, or reclaims both without publishing physical garbage.
+
+The runtime prepares one host values vector and one Rc header per admitted
+invocation with virtual results, replacing one Rc snapshot per result. Scratch
+leases now retain only identity and materialization vectors. Batch storage,
+including unused future elements retained by charged entries, is included once
+in journal resource reports; retained capacities of both journals are included.
+The consumer remains default-off. The [focused proof](../../measurements/74v-batch-focused-correctness.json) passes 556 workspace tests (19 ignored) and 212 release runtime tests (15 ignored), including mixed journal identity/admission, partial ownership, stale IDs, exact bytes, and pointer-shaped payload/finalizer differential checks. Installed source and full production verification remain pending; the cost hypothesis has not yet been measured.
+
+The [30-case release measurement check](../../measurements/74v-batch-measure-release.json)
+passes with matching source, floor and installed-prefix hashes. It checks the
+unchanged result/allocation/recovery counters for final and earlier results and
+refused inputs, plus stable scratch and journal capacity after collection. This
+is measurement correctness, not a speedup result. Full production/source
+verification is running against this committed implementation.
+
+### Batched snapshot production verification
+
+The [complete production proof](../../measurements/74v-batch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases. All 278 prerequisite
+source hashes match the committed implementation. This includes V2 recovery,
+mutation, identity, allocation/finalizer, image and native ownership gates.
+The implementation remains default-off. Its next step is the same bounded
+120-process exploratory comparison against this exact verified test floor;
+quiet-host admission is waived, and no speedup is claimed from correctness.
+
+### Complete batched snapshot exploratory comparison
+
+The [batched comparison](../../measurements/74v-batch-bounded-exploratory-timing.json)
+completes all 120 processes and 60 paired result/counter checks with matching
+production proof, source, floor, installation and fixture hashes. Both host
+admission checks fail; all results remain unqualified under the quiet-window
+waiver. These are within-run disabled/enabled comparisons, not a controlled
+before/after estimate of the batch representation change.
+
+| Operations | Final result: execution / including GC | Earlier result: execution / including GC |
+| --- | --- | --- |
+| 3 | -24.80% / -13.41% | -21.96% / -10.47% |
+| 16 | -3.80% / -3.47% | -9.33% / -4.46% |
+| 32 | +1.31% / +7.38% | -26.34% / -31.66% |
+
+The 32-operation final-result case has three positive pairs and one negative
+pair including collection. Every earlier-result pair still regresses at every
+size; the final two 32-operation pairs also have substantial cold/process
+variation. Short final-result chains regress, and RSS changes are inconsistent.
+Batching therefore does not justify default promotion. The long final-result
+case merits further diagnosis, while earlier-result recovery and end-to-end
+guard/journal costs remain profitability gaps.

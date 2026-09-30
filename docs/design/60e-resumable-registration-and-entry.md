@@ -1159,7 +1159,7 @@ it ignored because stack exhaustion is isolated through child processes.
 
 Two anchors are recorded so a reader can sanity-check scale, both from the
 Rust-floor snapshot `bench/results/v0.11.0-rust-2fe44d2-…json` that
-[61A](61a-r6-performance-tradeoffs.md) accepts as evidence, run 1 of 3:
+[61A](../archive/design/61a-r6-performance-tradeoffs.md) accepts as evidence, run 1 of 3:
 `blocks.value` 96 ns/op and `loops.to-do` 214 ns/op. Neither is `S`.
 `bench/results/v0.11.0.json` must not be used: it predates the Rust floor.
 

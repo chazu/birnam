@@ -144,7 +144,7 @@ IdApi is unchanged: one shared Rust helper builds this family through its
 ordinary `proto`, `alloc`, layout, ancestry, and export operations.
 
 These additions defined Runtime ABI v4 with exact hash
-`0xcdb641f978540d45`. [Design 83](83-production-id-construction-and-lifetimes.md)
+`0xcdb641f978540d45`. [Design 83](../archive/design/83-production-id-construction-and-lifetimes.md)
 subsequently advances the runtime ABI to v5 (`0xb587f81ecfb08b15`) for exact-entry
 resumable adapters, then v6 (`0x5582a42725e647a6`) for the smaller behavior
 payload. Current image-v8 headers carry the v6 hash; the image format remains 8.

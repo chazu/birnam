@@ -236,12 +236,12 @@ in the seed archive. Logs and receipts are uploaded on success and failure.
 Local compilation products belong under `.cargo-target`.
 
 Optimization implementation and default decisions are recorded in
-[74AK](design/74ak-bounded-qualification-and-defaults.md). The validation cleanup
+[74AK](archive/design/74ak-bounded-qualification-and-defaults.md). The validation cleanup
 changes no language semantics or optimization defaults. Old experimental tools
 remain explicitly opt-in; their continued existence is not an acceptance gate.
 
 The Design 81 preparatory extraction phase is closed at 81CA. Its
-[closeout recipe and evidence](design/81-production-extraction-status.md#validation-and-evidence)
+[closeout recipe and evidence](archive/design/81-production-extraction-status.md#validation-and-evidence)
 cover the unchanged production boundary with core debug tests, independent native
 admission and loaded startup/compiled-image checks. Release validation was waived
 for this work. The per-contract tasks below remain regression tools, not a queue

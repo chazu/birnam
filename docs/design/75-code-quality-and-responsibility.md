@@ -4,9 +4,9 @@
 > 1–6 from the code-quality review requested by the user. It records proposed
 > implementation choices; no code is changed or acceptance gate closed by
 > writing it. Timing acceptance remains pending. Documentation disposition is
-> specified separately in [Design 76](76-documentation-cleanup-and-archives.md).
+> specified separately in [Design 76](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/76-documentation-cleanup-and-archives.md).
 
-> **Follow-up review (2026-09-15):** [Design 78](78-invariant-preserving-refactoring-review.md)
+> **Follow-up review (2026-09-15):** [Design 78](../archive/design/78-invariant-preserving-refactoring-review.md)
 > rechecks these findings against current source under an invariant-preserving
 > refactor scope. It excludes the worker-arity correction from that batch and
 > adds per-candidate semantic and lifetime gates. This document remains the
@@ -20,7 +20,7 @@ The first changes should be small enough to review independently. The larger
 changes should reduce how much a maintainer must understand before editing the
 compiler or host.
 
-This continues [Design 72](72-rust-mechanical-consolidation.md), which already
+This continues [Design 72](../archive/design/72-rust-mechanical-consolidation.md), which already
 shared digest/scalar mechanics, C output escaping, private ABI carriers, and
 receipt checks. Those completed changes are the starting point.
 
@@ -37,7 +37,7 @@ The six work areas are:
 
 The LSP extraction mentioned as a later opportunity in the review is outside
 these six items. Compiler optimization experiments and concurrency architecture
-remain in [Design 74](74-malleable-multicore-execution-and-optimization.md).
+remain in [Design 74](../archive/design/74-malleable-multicore-execution-and-optimization.md).
 
 ## 2. Contracts that carry through every change
 

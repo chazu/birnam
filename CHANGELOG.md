@@ -1302,7 +1302,7 @@ loader ports are complete.
 - IdApi v3 removes native owner/parent accessors; consumers use replaceable
   Vtable messages. The existing owner GC edge and parent mutation behavior are
   preserved. Native consumers must rebuild against the 49-field table. See
-  [Design 81K](docs/design/81k-owner-and-parent-protocols.md).
+  [Design 81K](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81k-owner-and-parent-protocols.md).
 
 - Validation now has explicit routine, exhaustive, release and performance plans,
   resumable per-step evidence and configuration-specific development build reuse.

@@ -6,7 +6,7 @@
 > physical program model frozen by
 > [60L — PortableProgram v1 and Image-v7 Byte Grammar](60l-portable-program-and-image-v7-byte-grammar.md).
 > Acceptance authorizes K1 implementation. The accompanying
-> [60MA adversarial review](60ma-portable-code-object-protocol-adversarial-review.md)
+> [60MA adversarial review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/60ma-portable-code-object-protocol-adversarial-review.md)
 > records the rejected alternatives and the corrections incorporated here.
 
 ## 1. Decision in one paragraph

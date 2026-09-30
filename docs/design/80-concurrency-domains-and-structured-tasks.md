@@ -24,12 +24,12 @@
 > [80H](80h-concurrency-review-edge-cases.md) supplies four edge-case traces and
 > explicitly marked draft details for the second adversarial review.
 > Selectors and detailed mechanisms remain design work.
-> [80F](80f-concurrency-review-synthesis.md) records this disposition and links
+> [80F](../archive/design/80f-concurrency-review-synthesis.md) records this disposition and links
 > the exact archived review inputs.
 > **Implementation update, 2026-09-16:** the user accepted the third cleanup-control
 > review's four follow-ups and authorized implementation to begin. [80N, sections
 > 9–10](80n-cancellation-to-cleanup-transition.md#9-accepted-third-review-resolutions-and-first-implementation)
-> records the concrete protocol and compatibility evidence plan. [80T](80t-cleanup-control-implementation-evidence.md)
+> records the concrete protocol and compatibility evidence plan. [80T](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/80t-cleanup-control-implementation-evidence.md)
 > tracks the first implemented control slice. [80U](80u-birnam-task-cleanup-slice.md)
 > implements source-authored cancellation, cleanup, child ownership/joining,
 > and outcome waits. [80V](80v-bounded-machine-drives.md) adds bounded Machine
@@ -104,14 +104,14 @@ without expanding this work into policy certification or compatibility policing.
 
 ## 2. Relationship to existing designs
 
-- [48](48-concurrency-reactors-and-isolates.md) supplies the retained blocking
+- [48](../archive/design/48-concurrency-reactors-and-isolates.md) supplies the retained blocking
   process-isolate contract and earlier reactor exploration. Its pre-stackless
   implementation constraints are historical. This proposal does not revive the
   withdrawn worker-replacement or rollout policy.
 - [60A](60a-stackless-execution-semantics.md) and
   [60D](60d-stackless-concurrency-fit.md) supply owner-affine Machines, rooted
   resumable Frames, native barriers, and candidate scheduling boundaries.
-- [74](74-malleable-multicore-execution-and-optimization.md) compares parallel
+- [74](../archive/design/74-malleable-multicore-execution-and-optimization.md) compares parallel
   owners, shared mutable execution, and transactional sessions. This document
   develops the parallel-owner candidate; it does not change optimization rules.
 - [The isolate guide](../guide/06-isolates.md) remains the shipped public API.
@@ -699,7 +699,7 @@ elimination of platform dependencies or the independent source bootstrap. The
 [Machine object boundary](60b-stackless-machine-and-frames.md) permits primitive
 implementations to move from Rust to Birnam without changing their object
 interfaces. Such migrations must preserve the
-[independent bootstrap](44-toward-self-hosting.md) and existing execution contracts.
+[independent bootstrap](../archive/design/44-toward-self-hosting.md) and existing execution contracts.
 
 ## 11. Evidence needed to choose and refine the design
 
@@ -744,7 +744,7 @@ races, and API selectors remain design work. The user subsequently authorized
 starting with the reviewed cleanup-control mechanism. [80G](80g-concurrency-task-lifecycle-exercise.md) records
 the lifecycle exercise; [80N — From a cancelled wait to Birnam cleanup](80n-cancellation-to-cleanup-transition.md)
 works through the wait-adapter and delimited-exit mechanism, the accepted third-review
-fixes, and the bounded compatibility evidence plan. [80T](80t-cleanup-control-implementation-evidence.md)
+fixes, and the bounded compatibility evidence plan. [80T](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/80t-cleanup-control-implementation-evidence.md)
 records the first implemented control slice. [80U](80u-birnam-task-cleanup-slice.md)
 records the cooperative task executor, automatic joining, cancellation, and
 cleanup library. [80V](80v-bounded-machine-drives.md) adds bounded Machine

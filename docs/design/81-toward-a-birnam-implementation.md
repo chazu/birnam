@@ -2,20 +2,20 @@
 
 > **Status:** Long-term roadmap. The preparatory Rust extraction phase through
 > 81CA is closed as of 2026-09-20; 81CB is deferred. See the
-> [current status and stopping point](81-production-extraction-status.md).
+> [current status and stopping point](../archive/design/81-production-extraction-status.md).
 > The Birnam runtime/compiler replacement and platform-only Siphon are still
 > future work. The proposals below do not authorize another automatic sequence
 > of per-field extractions.
-> [Design 82](82-minimal-production-id.md) now specifies the production correction:
+> [Design 82](../archive/design/82-minimal-production-id.md) now specifies the production correction:
 > make Id independent of the extracted services before starting another Birnam
 > replacement. It records the failed approach and the required acceptance tests.
 >
-> [81A](81a-current-bootstrap-and-runtime-layers.md) records current construction;
-> [81C](81c-thin-id-runtime-layers.md) describes the target runtime layers.
-> Related contracts: [44](44-toward-self-hosting.md),
+> [81A](../archive/design/81a-current-bootstrap-and-runtime-layers.md) records current construction;
+> [81C](../archive/design/81c-thin-id-runtime-layers.md) describes the target runtime layers.
+> Related contracts: [44](../archive/design/44-toward-self-hosting.md),
 > [60B](60b-stackless-machine-and-frames.md),
 > [80](80-concurrency-domains-and-structured-tasks.md), and
-> [79C](79c-materialization-ownership.md).
+> [79C](../archive/design/79c-materialization-ownership.md).
 
 ## 1. Objective
 
@@ -74,13 +74,13 @@ Platform memory services are allowed, but no hidden Rust allocator, registry or
 runtime sits below Id. Symbol and interning belong to this seed. Values, the
 environment, GC, executable ownership, Frames, Machine
 execution, control and optimization are thinner subsequent layers; see
-[81C](81c-thin-id-runtime-layers.md). The collector mounts through Id's explicit
+[81C](../archive/design/81c-thin-id-runtime-layers.md). The collector mounts through Id's explicit
 storage/root interfaces rather than being bundled into the first component.
 
 Extract the Rust layers from Id upward. Backward compatibility is not a
 constraint: minimize IdApi, remove higher-layer services from it, and update
 consumers without retaining an aggregate compatibility facade. See the complete
-field partition in [81D](81d-id-api-partition.md).
+field partition in [81D](../archive/design/81d-id-api-partition.md).
 
 81D proposes these boundaries against Piumarta and Warth's object model. Exact
 interfaces still require field/caller review, including the semantic difference
@@ -159,7 +159,7 @@ frame storage, Machine transitions, and code-lifetime management. Existing objec
 interfaces permit mechanisms to migrate without requiring every caller to change.
 
 Decompose these responsibilities first according to
-[81C](81c-thin-id-runtime-layers.md). Id owns initial object storage, but GC is
+[81C](../archive/design/81c-thin-id-runtime-layers.md). Id owns initial object storage, but GC is
 a later layer; Frames, execution, control and optimization are also separate.
 Each layer owns its state and uses explicit cross-layer interfaces rather than
 continuing to mutate a single shared RuntimeState.
@@ -225,15 +225,15 @@ minimum executable support needed to restore an image as part of this contract.
 Deliverable: a proposed dependency graph and permitted entry/import surface,
 with unresolved low-level capabilities identified rather than assumed.
 
-[81B — Siphon handoff and construction graph](81b-siphon-handoff-and-construction-graph.md)
+[81B — Siphon handoff and construction graph](../archive/design/81b-siphon-handoff-and-construction-graph.md)
 provides the first proposal: a platform-only boot entry, Birnam-owned primordial
 Id construction, thin subsequent layers and explicit image/source support closure.
 Its Step-2 findings identify what today's compiler has not yet demonstrated.
-[81C](81c-thin-id-runtime-layers.md) supplies the eight-layer libid decomposition
+[81C](../archive/design/81c-thin-id-runtime-layers.md) supplies the eight-layer libid decomposition
 and its state/ownership boundaries.
 
 Prepare those boundaries in the existing implementation from Id upward. Begin
-with [81D's IdApi partition](81d-id-api-partition.md), remove unrelated services
+with [81D's IdApi partition](../archive/design/81d-id-api-partition.md), remove unrelated services
 from the contract, and extract independently operable Id state and dispatch.
 Then extract object-model libraries, values/environment, collection, ownership,
 Frames, execution/control and optimization against the lower boundaries. This
@@ -316,14 +316,14 @@ inventories and exercised execution paths to establish that no statically linked
 Rust system implementation supplies startup, runtime, compilation or recovery.
 
 Step 1 now has the handoff proposal in 81B, decomposition in 81C and IdApi
-partition in 81D. [81E](81e-seed-sufficiency-audit.md) audits the integration
-requirements, and [81F](81f-isolated-id-seed-proof.md) executes the first isolated
-Rust seed/private-behavior witness. [81G](81g-integer-module-proof.md) adds an
-Integer module without changing that seed or ABI. [81H](81h-storage-observation-and-tracing.md)
+partition in 81D. [81E](../archive/design/81e-seed-sufficiency-audit.md) audits the integration
+requirements, and [81F](../archive/design/81f-isolated-id-seed-proof.md) executes the first isolated
+Rust seed/private-behavior witness. [81G](../archive/design/81g-integer-module-proof.md) adds an
+Integer module without changing that seed or ABI. [81H](../archive/design/81h-storage-observation-and-tracing.md)
 adds storage observation and a separate tracer while keeping the native API
-carrier unchanged. [81I](81i-ordinary-storage-reclamation.md) adds ordinary storage
+carrier unchanged. [81I](../archive/design/81i-ordinary-storage-reclamation.md) adds ordinary storage
 reclamation and transactional metadata retirement with forced address reuse.
-[81J](81j-private-behavior-extraction.md) begins production extraction with the
+[81J](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81j-private-behavior-extraction.md) begins production extraction with the
 existing private-behavior operation. Substantial new ownership/unloading designs
 are outside this refactor; preserve existing semantics and lifetime machinery.
 These guide bottom-up extraction
@@ -345,7 +345,7 @@ exploration does not change current optimization defaults or validation gates.
 ## 5. Questions for the next design pass
 
 - What are the actual stage 0, stage 1, and runtime layers? What replaces what?
-  [81A](81a-current-bootstrap-and-runtime-layers.md) records the current answer.
+  [81A](../archive/design/81a-current-bootstrap-and-runtime-layers.md) records the current answer.
 - Which compiler operations can be authored immediately with today's objects,
   and which require new low-level facilities?
 - What is the smallest complete runtime kernel that would meaningfully test
@@ -355,107 +355,107 @@ exploration does not change current optimization defaults or validation gates.
 - What exact loading/platform operations belong to the siphon, and which
   external-library dependencies remain in the loaded system?
 
-[81K](81k-owner-and-parent-protocols.md) continues the production refactor by
+[81K](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81k-owner-and-parent-protocols.md) continues the production refactor by
 removing the four owner/parent fields and migrating ordinary consumers to
 default-vtable messages. IdApi v3 has 49 fields / 392 bytes.
 
-[81L](81l-production-integer-extraction.md) extracts the production Integer
+[81L](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81l-production-integer-extraction.md) extracts the production Integer
 family, primitive operations and methods. Its explicit native dependency reduces
 IdApi v4 to 45 fields / 360 bytes. The remaining Machine and optimizer components
 consume that dependency; the host and those runtime components are still Rust.
 Focused validation passes; release validation was explicitly waived.
 
-[81M](81m-production-storage-observation.md) adds protected production storage
+[81M](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81m-production-storage-observation.md) adds protected production storage
 facts and a separately loaded description validator. GC policy, native-root
 capture and legacy tracing remain in the current runtime; their coverage gaps
-are explicit. [81N](81n-production-storage-tracer.md) promotes the scoped graph
+are explicit. [81N](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81n-production-storage-tracer.md) promotes the scoped graph
 tracer over those facts into a loaded production module. Automatic GC's mark
 path still awaits its root/provider and collection migration.
 
-[81O](81o-production-live-gc-traversal.md) moves the actual production worklist
+[81O](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81o-production-live-gc-traversal.md) moves the actual production worklist
 into the tracer using ordered live root/admission/edge callbacks. Every collection
 path uses it; native-root and payload policy adapters, retirement and physical
 reclamation remain in Id. Observation gaps are not used to authorize collection.
 
-[81P](81p-production-collection-coordinator.md) moves collection coordination into
+[81P](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81p-production-collection-coordinator.md) moves collection coordination into
 `birnam-collect`: phase transitions, settlement ordering, metadata retirement
 before detachment, live finalizer invocation and completion. Owner-specific
 metadata operations and physical allocation/reclamation remain in Id.
 
-[81Q](81q-production-float-methods.md) begins the remaining primitive families
+[81Q](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81q-production-float-methods.md) begins the remaining primitive families
 with Float's seventeen methods, loaded independently of Prelude. Float storage,
 canonical objects, constructors and native consumers still await their own
 checkpoint; the current IdApi stays unchanged.
 
-[81R](81r-production-float-storage.md) moves Float representation and its actual
-consumers onto an explicit dependency. [81S](81s-production-word-methods.md)
-and [81T](81t-production-word-storage.md) do the same in two checkpoints for
+[81R](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81r-production-float-storage.md) moves Float representation and its actual
+consumers onto an explicit dependency. [81S](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81s-production-word-methods.md)
+and [81T](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81t-production-word-storage.md) do the same in two checkpoints for
 Word. IdApi v6 now has 37 fields / 296 bytes. The installed modules and host
 remain Rust; these are extraction boundaries for the later Birnam rewrite.
 
-[81U](81u-production-boolean-methods.md) extracts Boolean's existing methods from
+[81U](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81u-production-boolean-methods.md) extracts Boolean's existing methods from
 Prelude. The singleton representation and shared IdApi fields remain in Id for
 a separate caller/startup audit; this checkpoint adds no native interface.
 
-[81V](81v-production-nil-methods.md) moves the five existing Object/nil methods
+[81V](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81v-production-nil-methods.md) moves the five existing Object/nil methods
 out of Collection. Nil's identity and roots still await their separate audit.
 
-[81W](81w-production-string-methods.md) extracts fourteen String methods with
+[81W](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81w-production-string-methods.md) extracts fourteen String methods with
 explicit numeric dependencies and selector roots. Array splitting stays with
 Collection, and String's byte ownership/cleanup remains in Id for later review.
 
-[81X](81x-production-string-storage.md) moves String's canonical objects, owned
+[81X](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81x-production-string-storage.md) moves String's canonical objects, owned
 byte buffers, primitive operations and cleanup into its loaded module. The floor
 supplies generic native construction with the existing collection/copy/finalizer
 schedule; retirement uses String's exact ownership proof. IdApi v7 has 34 fields /
 272 bytes. Array splitting and StringBuilder remain in Collection.
 
-[81Y](81y-production-string-builder.md) moves StringBuilder's native buffer,
+[81Y](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81y-production-string-builder.md) moves StringBuilder's native buffer,
 cleanup and seven selectors from Collection into its own module. It loads after
 String, preserves the existing Vector publication guard and live allocation
 callbacks, and leaves IdApi/image encoding unchanged.
 
-[81Z](81z-production-range-methods.md) extracts six Range methods. Collection
+[81Z](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81z-production-range-methods.md) extracts six Range methods. Collection
 uses its construction dependency at the original registration point, preserving
 publication and reload semantics. Range storage and its two Vector-backed methods
 remain for later construction and storage checkpoints.
 
-[81AA](81aa-production-range-storage.md) moves Range representation, canonical
+[81AA](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81aa-production-range-storage.md) moves Range representation, canonical
 objects and Integer `to:` into the Range module. Explicit construction stages
 retain the existing interleaving with Vector/Map; the two remaining Vector-backed
 methods read bounds through the immutable Range dependency. IdApi v7 and Image
 encoding remain unchanged.
 
-[81AW](81aw-production-namespace-state.md) moves ordered raw export bindings
-into Namespace. [81AX](81ax-production-namespace-names.md) moves reverse-name
+[81AW](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81aw-production-namespace-state.md) moves ordered raw export bindings
+into Namespace. [81AX](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81ax-production-namespace-names.md) moves reverse-name
 lookup and its Image, Alien, Reflect and Portable Code consumers onto a live
 Namespace capability. IdApi v8 has 33 fields / 264 bytes. Import, export, presence
 and enumeration remain in Id for subsequent extractions.
 
-[81AY](81ay-production-namespace-enumeration.md) moves raw enumeration operations
+[81AY](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81ay-production-namespace-enumeration.md) moves raw enumeration operations
 into Namespace-owned descriptors and migrates Reflect while retaining its live
 selected-floor discovery. The two Id operation exports are removed; import,
 export and presence are still later work.
 
-[81AZ](81az-production-namespace-lookup.md) moves canonical intern-then-find
+[81AZ](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81az-production-namespace-lookup.md) moves canonical intern-then-find
 policy into Namespace, using Id's existing Symbol interner and the selected raw
 find. The factory becomes v4; public import/presence capability transport remains
 a separate extraction, preserving each caller's live API selection.
 
-[81BA](81ba-production-error-presence-handoff.md) moves the shared Error Value
+[81BA](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81ba-production-error-presence-handoff.md) moves the shared Error Value
 presence consumer onto an explicit per-call capability. Callers lend their live
 slots without early function snapshots; native initialization transport and
 removing the remaining IdApi namespace fields remain separate work.
 
-[81BB](81bb-production-namespace-presence.md) moves canonical presence into
+[81BB](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81bb-production-namespace-presence.md) moves canonical presence into
 Namespace and migrates native initializers and actual consumers to an explicit
 live capability. IdApi v9 has 32 fields / 256 bytes.
 
-[81BC](81bc-production-namespace-publication.md) moves intern/bind/weak-mirror
+[81BC](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81bc-production-namespace-publication.md) moves intern/bind/weak-mirror
 publication policy into Namespace factory v6. The remaining public import/export
 capability handoff and field removal remain separate work.
 
-[81BD](81bd-production-error-import-handoff.md) moves Error Value's import
+[81BD](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81bd-production-error-import-handoff.md) moves Error Value's import
 consumers onto an explicit borrowed capability, preserving the selected caller's
 live import slot pending native handoff migration. Error Value becomes v3;
 IdApi v9 remains unchanged.

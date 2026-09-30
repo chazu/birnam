@@ -29,8 +29,8 @@ L1a established one current dispatch generation and coherent image recovery. I1a
 provides clean process boot and bounded, blocking copied-value IPC. The planned
 file-backed source workflow, worker replacement, and cross-worker rollout were
 withdrawn as unnecessary policy surface. See
-[design 49](../design/49-live-module-evolution.md) and
-[design 48](../design/48-concurrency-reactors-and-isolates.md) for the retained
+[design 49](../archive/design/49-live-module-evolution.md) and
+[design 48](../archive/design/48-concurrency-reactors-and-isolates.md) for the retained
 boundaries and historical rationale.
 
 The next architecture choice is deliberately open. Initialization, image-native
@@ -50,7 +50,7 @@ fixtures, and independent checker closed the S2 pre-implementation design gate
 on 2026-08-22. The S1 shared-resolution substrate is aligned, so S2 is ready to
 implement.
 
-[Design 61](../design/61-rust-libid-rewrite-plan.md) specifies a separate,
+[Design 61](../archive/design/61-rust-libid-rewrite-plan.md) specifies a separate,
 behavior-preserving rewrite of `libbirnam_id.dylib` in Rust. It keeps the current
 synchronous ABI and higher Zig/Birnam rungs fixed, proves both floors through a
 dual-backend verification window, and deliberately precedes any Design 60
@@ -98,7 +98,7 @@ See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
 
 ## Proposed Interactive Programming Environment
 
-[Design 58](../design/58-terminal-repl-and-programming-environment.md) preserves
+[Design 58](../archive/design/58-terminal-repl-and-programming-environment.md) preserves
 the retired Digla terminal-client experiment. Its useful lessons remain in the
 project-aware LSP and the generic Alien-backed Termbox adapter; the application
 and runtime-session protocol are no longer shipped.
@@ -115,7 +115,7 @@ small applications as acceptance tests
 → select the next failure model from evidence
 ~~~
 
-[Designs 55, 58, and 59](../design/59-digla-adversarial-architecture-review.md)
+[Designs 55, 58, and 59](../archive/design/59-digla-adversarial-architecture-review.md)
 remain as historical records of the retired Digla experiment.
 
 ## Abstractly

@@ -4,8 +4,8 @@
 > artifacts and reconciled 2026-07-23 with the implemented image v4
 > single-generation authority. This document records the authority model
 > implemented by image format v4 and the live-reload boundary. It
-> refines [40 — The Image](40-the-image.md), [42 — Object Canonical](42-object-canonical-relational-derived.md),
-> and [43 — Modules](43-modules-and-config.md).
+> refines [40 — The Image](../archive/design/40-the-image.md), [42 — Object Canonical](42-object-canonical-relational-derived.md),
+> and [43 — Modules](../archive/design/43-modules-and-config.md).
 
 > **Image-format amendment (2026-08-25):** The v4 sections below describe the
 > former single-generation authority contract. Current runtimes admit v5 and
@@ -163,8 +163,8 @@ L1a — generation authority and image coherence
 → I1a — blocking single-worker isolate substrate
 ```
 
-[Design 49](49-live-module-evolution.md) records the generation authority and
-candidate boundary; [design 48](48-concurrency-reactors-and-isolates.md) records
+[Design 49](../archive/design/49-live-module-evolution.md) records the generation authority and
+candidate boundary; [design 48](../archive/design/48-concurrency-reactors-and-isolates.md) records
 I1a's clean worker boot, bounded copied-value wire protocol, single blocking
 request, and owned termination. The later file-backed, replacement, and
 cross-worker rollout slices were withdrawn as unnecessary policy surface.
@@ -173,4 +173,4 @@ Initialization, image-native source patching, migration, structured operations,
 and pool-wide live-evolution policy remain later evidence-driven slices.
 
 The retired executable work breakdown is preserved in
-[50 — Five-Phase Implementation Plan](50-five-phase-live-modules-and-isolates-implementation-plan.md).
+[50 — Five-Phase Implementation Plan](../archive/design/50-five-phase-live-modules-and-isolates-implementation-plan.md).

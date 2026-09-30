@@ -8,49 +8,18 @@ images.
 It is an active pre-alpha system. The architecture and its bootstrap are the
 product; compatibility and language surface can and will still change.
 
-**Current development status:** [Design 90](docs/design/90-functional-modules.md)
-has restored the production Id, memory-management, value and collection prefix
-through messages. [Execution batch 1](rust/birnam-execution/README.md) is complete:
-Methods, Blocks, Machines, native recovery and guarded hot selection run over that
-prefix. [PEG/Lang, source Codegen and TCC](rust/birnam-codegen-runtime/README.md)
-now compile and execute source through that same path, with real compiled-code
-retention and reclamation. A narrow discarded-clone optimization now removes real
-allocations through current owner checks. A [numeric predicate](docs/design/90-numeric-predicate.md)
-also removes its intermediate Integer; broader allocation-elision remains pending.
-[Store and Cells](rust/birnam-store/README.md) now run through Id messages too,
-including history, retention, collecting snapshot callbacks and source consumers.
-Globals retains Store-backed facts, and compiled top-level bindings now use its
-read/write messages. Reflect installs Methods through Store's MOP messages. GC enumeration
-and allocation release now use receiver messages too. Further optimization and
-deoptimization work is on hold while the remaining modules are reconnected.
-[Relational](rust/birnam-relational/README.md) now extends Store through Id sends,
-preserving its query, rule, aggregate and pull API.
-[System construction and printing/output](rust/birnam-system-output/README.md)
-also load through Bootstrap using Id sends, including collecting conversions and
-live method replacement.
-[System input and environment](rust/birnam-system-input/README.md) are also
-connected through Id sends, preserving binary stdin and environment/error behavior.
-[File I/O](rust/birnam-file-io/README.md) now uses the same message path and copies
-filenames before reading write contents.
-[System GC controls](rust/birnam-system-gc/README.md) also use messages, including
-automatic collection and owner-side conservative/precise payload scanning.
-[Native Loader](rust/birnam-native-loader/README.md) now connects System module
-loading through the same messages, preserving its existing API and error mapping.
-[Source Loader](rust/birnam-source-loader/README.md) and Codegen source registration
-also use Id messages, with real file loading through the authored Module manager.
-[Embedded files](docs/design/56-embedded-files.md) now produce ordinary Bytes
-objects through compile-time sends. [Block Loop](rust/birnam-block-loop/README.md)
-also runs through Id, with the existing authored replacement path preserved.
-[Artifact inspection](rust/birnam-artifact/README.md) also uses Id sends and
-ObjectModel descriptor storage. [PortableCode](rust/birnam-portable-code/README.md),
-[Image](rust/birnam-image/README.md), [Alien](rust/birnam-alien/README.md),
-[Isolate workers](rust/birnam-isolate/README.md), and installed
-[Host/CLI source and image execution](rust/birnam-host/README.md) now use Id messages.
-Project commands, console/socket REPLs, LSP, documentation tools and executable
-baking now use the same path. [Storage](rust/birnam-storage/README.md) and
-[Trace](rust/birnam-trace/README.md) diagnostics also use Id messages. Broader
-generation replacement remains deferred.
-The usage documentation below describes the language being preserved.
+**Current development status:** the production runtime, installed CLI and tools
+use Id messages between functional owners, following
+[Design 90](docs/design/90-functional-modules.md). Source compilation, project
+commands, images, REPLs, LSP, process workers and generation activation/rollback
+are integrated. The native execution model supports resumable Methods, Blocks,
+Machines and continuations.
+
+Structured tasks and process workers are available today. Thread-hosted domains,
+channels and general asynchronous timer/I/O integration remain future work.
+Narrow [discarded-clone](docs/design/90-discarded-clone.md) and
+[numeric-predicate](docs/design/90-numeric-predicate.md) optimizations are implemented;
+broader optimizer work and a Birnam-authored runtime/compiler remain unfinished.
 
 ## Contents
 
@@ -98,20 +67,32 @@ and acceptance criteria.
 
 ## Install
 
-From a checkout:
+From a checkout with [`mise`](https://mise.jdx.dev):
 
 ```sh
-scripts/rust-install.sh install --root . --prefix ~/.local --profile debug
+mise install
+mise run install
 export PATH="$HOME/.local/bin:$PATH"
 birnam
 ```
 
-The installed executable finds its runtime dylibs in the sibling `lib/`
-directory. `mise run build` uses the same Rust installer for a debug prefix.
+The default prefix is `$HOME/.local/opt/birnam`. `mise run install` creates the
+command link at `$HOME/.local/bin/birnam` when `BIRNAM_PREFIX` is unset. Setting
+`BIRNAM_PREFIX` selects another prefix; add its `bin/` directory to `PATH`.
+The installed executable finds its runtime dylibs in the sibling `lib/` directory.
 
-[`mise`](https://mise.jdx.dev) is optional; [mise.toml](mise.toml) pins the Rust
-toolchain and exposes the Rust tasks for `mise run build`, `mise run install`,
-`mise run verify`, `mise run dist`, and `mise run release`.
+Without mise, use the pinned Rust toolchain and run the installer directly:
+
+```sh
+BIRNAM_PREFIX="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"
+scripts/rust-install.sh install --root . --prefix "$BIRNAM_PREFIX" --profile debug
+export PATH="$BIRNAM_PREFIX/bin:$PATH"
+birnam
+```
+
+`mise run build` builds a debug prefix at the same default location without
+creating the command link. [mise.toml](mise.toml) pins the toolchain and exposes
+build, install, verification, distribution and release tasks.
 
 ## Quick Start
 
@@ -251,7 +232,7 @@ files = ["src/json/parser.birnam", "src/json/render.birnam"]
 Projects may also declare `[[wrapped]]` native libraries and embed
 project-relative files at compile time with
 `[System embedFile: "assets/schema.json"]`, which returns a clonable Bytes object.
-See [embedding and current migration scope](docs/design/56-embedded-files.md), and
+See [embedded files](docs/design/56-embedded-files.md), and
 [Project check, build, and run](docs/design/52-project-check-build-and-run.md)
 for the complete manifest and publication contract.
 
@@ -270,7 +251,7 @@ The same executable selects its mode from the first argument:
 | `birnam run [directory]` | Run a project's published entry source; no REPL by default. |
 | `birnam artifact.dylib` | Inspect a self-described compiled root and activate its sibling closure. |
 | `birnam file.image` | Validate and boot an image, mapping its compatible compiled generation. |
-| `birnam --rebuild file.image` | Boot the same image by recompiling its recorded source and selection. |
+| `birnam --rebuild file.image` | Boot the image by recompiling its saved canonical programs. |
 | `birnam --listen PORT [file.birnam]` | Optionally run a script, then serve the socket REPL. |
 | `birnam --lsp` | Serve the project-aware language server over stdio. |
 | `birnam --bake IMAGE EXECUTABLE` | Append an image to a runtime executable. |
@@ -287,8 +268,12 @@ birnam /path/to/libbirnam_app.dylib
 ```
 
 Before activation, the artifact inspector validates its identity, ABI, target,
-native requirements, and complete sibling dependency closure. See
-[Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md).
+native requirements, and complete sibling dependency closure. Generated module
+and application artifacts retain the `.dylib` suffix for resolution, but contain
+relocatable TCC objects with the `id-object-v1` contract. The runtime loads these
+through TCC; native runtime and Alien libraries are ordinary OS dynamic libraries.
+See [Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md) and the
+[current artifact contract](rust/birnam-codegen-runtime/README.md#durable-module-artifacts).
 
 ### Terminal REPL
 
@@ -365,10 +350,12 @@ as the working directory.
 
 ## Images and Executables
 
-An image makes a live system durable. Its Store, globals, accepted dispatch
-generation, source, and selected compiled units travel together. Compatible
-boot maps the recorded native generation; `--rebuild` deliberately reconstructs
-the same accepted generation from its recorded source and selection.
+An image makes a live system durable. The current image-v8 format preserves the
+Store and its history, globals, object identity, accepted method bindings,
+canonical programs, Block captures and source provenance. Compatible boot loads
+the saved relocatable native objects through TCC. `--rebuild` compiles the saved
+canonical programs to restore the same accepted generation. Neither path
+evaluates the saved source or reruns its initializers.
 
 ### Save an image
 
@@ -385,9 +372,12 @@ or `nil` on failure. After a rejected save, inspect:
 [[System imageSaveReport] detail]
 ```
 
-Persistence does not imply that every process value is serializable. Durable
-values need either a portable encoding or a registered source/compiled recovery
-path; process capabilities such as isolate handles are rejected.
+Shared and cyclic references, boxed values, Bytes, persistent collections and
+synchronous/resumable Blocks retain their identity and captures. Live Machines
+and process capabilities such as isolate and task handles are rejected. Saved
+Alien wrapper recipes are replayed by Host to resolve native addresses in the new
+process. See the [current Image contract](rust/birnam-image/README.md) for supported
+values, validation and recovery compensation.
 
 [`examples/image.birnam`](examples/image.birnam) creates an image containing
 data and a user-defined method:
@@ -398,8 +388,8 @@ birnam examples/image.birnam
 
 ### Boot an image
 
-Boot the compatible compiled generation, or deliberately rebuild it from the
-recorded source:
+Boot the compatible saved native code, or explicitly rebuild it from canonical
+programs:
 
 ```sh
 birnam /tmp/birnam-demo.image
@@ -433,13 +423,13 @@ Bake an existing image into a copy of the Birnam runtime, then run it directly:
 
 ```sh
 birnam --bake /tmp/app.image ./myapp
-BIRNAM_LIB_DIR="$HOME/.local/lib" ./myapp
+BIRNAM_LIB_DIR="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/lib" ./myapp
 ```
 
 From inside a running system, `[System bakeExe: "./myapp"]` saves and bakes the
 current image in one operation. A baked executable is self-booting but not a
 single-file static binary: it still resolves the runtime dylib closure from
-`<executable>/../lib` or `$BIRNAM_LIB_DIR`.
+`../lib` relative to its executable directory, or from `$BIRNAM_LIB_DIR`.
 
 See [Images: save, boot, bake](docs/guide/04-images.md) for the full durability,
 recovery, and executable-layout contract.
@@ -483,6 +473,9 @@ processes run concurrently on multiple CPU cores, with separate heaps and copied
 messages. `Concurrency load:` prepares a batch of named source modules;
 `program worker:` creates a serial service with an ordinary `handle:` method.
 Requests return owned tasks, with explicit outcomes, cancellation, and cleanup.
+Worker hosting currently uses processes; thread-hosted domains, channels and
+general asynchronous timer/I/O integration remain future work. Native calls are
+not forcibly preempted, so a blocking native call can block local tasks.
 
 Start with the [concurrency guide](docs/guide/07-concurrency.md) for a complete
 program, the API reference, and the rules for waiting and shutdown. The
@@ -660,10 +653,11 @@ and the first-party adapter in
 The compiled CLI, REPL, LSP, and documentation modules are included by
 the Rust installer and in release bundles. Their source is embedded in the
 installed compiled units. In a development checkout, run `mise run build` and
-use the installed prefix (by default `$HOME/.local/bin/birnam`).
+use the prefix executable (by default `$HOME/.local/opt/birnam/bin/birnam`).
+`mise run install` also creates the default `$HOME/.local/bin/birnam` command link.
 
 ```sh
-BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
+BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/bin/birnam"
 "$BIRNAM_BIN" doc time nowMillis
 "$BIRNAM_BIN" docgen /tmp/birnam-docs.html
 ```
@@ -700,13 +694,15 @@ evidence reuse and performance checks.
 Performance is tracked per tagged release. The suite measures the send
 constant and the native-vs-derived boundaries that gate self-hosting
 migrations, the datalog read/write path, GC, images, boot paths, and
-whole-process workloads — always against a ReleaseSafe build.
+whole-process workloads. `mise run bench` builds an isolated prefix with Rust's
+`release` profile. Benchmark JSON retains the historical `ReleaseSafe` optimize
+label for continuity with earlier receipts.
 
 ```sh
-BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
-BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam        # tight dev loop (~5s)
-mise run bench                                          # isolated Rust-system run
-mise run bench-compare <old-floor.json> <new-floor.json>
+BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/bin/birnam"
+BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam  # quick checks with the selected prefix
+mise run bench                               # isolated Rust release-profile run
+mise run bench-compare old-floor.json new-floor.json
 ```
 
 When to run: the affected suite before and after any perf-relevant change
@@ -720,88 +716,69 @@ commit and a quiet machine, run the Rust-system snapshot:
 
 ```sh
 mise run bench-release
-git add bench/results/v<X.Y.Z>-rust-*.json && git commit
+BIRNAM_VERSION="$(cat VERSION)"
+git add "bench/results/v${BIRNAM_VERSION}"-rust-*.json && git commit
 ```
 
 The committed Rust-system snapshots are the baselines future runs compare
 against; filenames and JSON stamps include the commit and selected dylib digest.
-`docs/misc/BENCHMARKS.md` is the full operational guide;
-[docs/design/46-benchmarks.md](docs/design/46-benchmarks.md) records the
-methodology and the measured constants.
+[The benchmark guide](docs/misc/BENCHMARKS.md) covers operation and thresholds;
+[Design 46](docs/design/46-benchmarks.md) records methodology. Measurements describe
+their recorded release, machine and workload; historical constants are not current
+runtime guarantees. Release-specific acceptance records remain in
+[the archive](docs/archive/).
 
 ## Architecture
 
-The native integration is being rebuilt under
-[Design 90](docs/design/90-functional-modules.md): functional owners, minimal
-dependencies and Id messages between modules. Siphon loads only Id
-and returns its actual message protocol. A subsequent Id loading message loads
-Bootstrap, which builds the currently converted production prefix:
+[Design 90](docs/design/90-functional-modules.md) defines functional ownership,
+minimal dependencies and Id messages between native modules. Host starts the
+runtime by asking Siphon to load Id, then sends Id a request to load Bootstrap:
 
 ```text
-Siphon -> Id -> Bootstrap
-                  -> Roots
-                  -> Namespace(Roots)
-                  -> Boolean(Namespace)
-                  -> Nil(Namespace)
-                  -> GC(Roots), then activate
-                  -> ObjectModel(Namespace)
-                  -> String(Namespace), including StringBuilder
-                  -> Error(Namespace)
-                  -> Integer(Namespace)
-                  -> Float(Namespace)
-                  -> Boolean/Nil printing with String
-                  -> Integer mixed arithmetic and String numeric extensions
-                  -> Collection parent behavior
-                  -> Word(Namespace)
-                  -> Vector(Namespace)
-                  -> Map(Namespace)
-                  -> Range(Namespace), including Integer to:
-                  -> String split: with Vector
-                  -> Execution(Namespace), Methods/Blocks/Machines/Continuations
+CLI / Host
+  -> Siphon -> Id message protocol
+  -> Id loads Bootstrap -> native owners and Namespace
+  -> source startup: authored Module manager, stdlib and lifecycle policy
+  -> source, artifact, project or image entry
 ```
 
-Every completed module returns an opaque Object or Unit. Namespace publishes
-completed objects; consumers send messages to them. Bootstrap retains initializer
-arguments and results through Roots messages. It contains the load order;
-Siphon and the shared ABI contain no upper-module catalog. Run
-`mise run native-messages` to build and exercise this production prefix, including
-live method replacement, nested loading, collection and finalization.
-[Roots](rust/birnam-root-registry/README.md) documents retention and root enumeration.
-[GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
-rooting, native construction and checked allocation accounting.
-[Object Model](rust/birnam-object-model/README.md)
-adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.
-[String](rust/birnam-string/README.md) owns text and builder buffers;
-[Error](rust/birnam-error/README.md) uses ordinary reference slots.
-[Integer](rust/birnam-integer/README.md) and [Float](rust/birnam-float/README.md)
-restore arithmetic, conversions and numeric text through messages.
-[Word](rust/birnam-word/README.md), [Vector](rust/birnam-vector/README.md),
-[Map](rust/birnam-map/README.md) and [Range](rust/birnam-range/README.md) restore
-remaining values and persistent collections. Equality/hashing lives with value
-owners; String owns splitting. Collection is a shared parent, with no installer
-crate. These collection callbacks need only callable objects, not an Execution table.
-[Execution](rust/birnam-execution/README.md) now supplies owned Methods, exact
-invocation, lookup adaptation, frames, Blocks, bounded Machines and continuations.
-[Codegen](rust/birnam-codegen-runtime/README.md) connects PEG/Lang source compilation
-and TCC-owned native code to that Execution. Generated entries use live messages;
-eager candidate construction and speculative APIs are reassessed in
-[the optimizer review](docs/design/90-optimizer-reassessment.md). The first
-[discarded-clone consumer](docs/design/90-discarded-clone.md) and
-[numeric predicate](docs/design/90-numeric-predicate.md) are implemented.
-Production checks cover native control, compiled recovery boundaries,
-replacement and actual native-code reclamation.
-
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
-loading. Collection now works over this prefix through Id and Roots messages.
-Full Artifact/PortableCode adapters, images, workers and other upper integrations
-still refer to deleted APIs: **the complete workspace and installed CLI are not
-yet buildable**.
-The working prefix is not evidence that the entire language has been restored.
+loading. [Bootstrap](rust/birnam-bootstrap/src/lib.rs) owns the native load order;
+Siphon and the shared ABI contain no catalog of upper modules. Bootstrap retains
+initializer arguments and results through
+[Roots](rust/birnam-root-registry/README.md), and Namespace publishes completed
+objects. Modules loaded by Bootstrap return an opaque Object or Unit; consumers
+use their messages without decoding another owner's payload.
 
-The standard library and most application-facing modules are Birnam source.
-Birnam retains a cold source bootstrap through declared non-Birnam toolchains,
-with no prebuilt Birnam artifact required. The Rust host remains the installed
-application and build driver.
+[GC](rust/birnam-collect/README.md) owns tracing and reclamation;
+[ObjectModel](rust/birnam-object-model/README.md) owns ordinary slots, cloning and
+private behaviors. Value and collection owners implement their own representation,
+equality and hashing. [Store](rust/birnam-store/README.md) owns facts, history,
+Cells and method-publication rules, while
+[Relational](rust/birnam-relational/README.md) supplies queries, rules and aggregates.
+
+[Execution](rust/birnam-execution/README.md) owns Methods, Blocks, frames, bounded
+Machines and continuations. [Codegen](rust/birnam-codegen-runtime/README.md) connects
+PEG/Lang compilation and TCC code ownership to Execution. Generated calls use Id
+messages. Blocks, Methods and suspended frames retain their executable owners;
+code is reclaimed after the final executable reference is released and an idle
+checkpoint is reached.
+[Image](rust/birnam-image/README.md) restores durable state through those same
+owners. [Host](rust/birnam-host/README.md) connects source, artifact, project,
+image and worker entry to the installed CLI and tooling.
+
+The standard library, task scheduling/lifecycle policy and most application-facing
+modules are Birnam source. The native runtime/compiler implementation remains
+Rust with C/libtcc support. The installed runtime stays on its creating thread;
+parallel workers use independent processes. A Birnam-authored runtime/compiler
+is the longer-term [self-hosting goal](docs/design/81-toward-a-birnam-implementation.md).
+Birnam retains an independent cold source bootstrap through declared non-Birnam
+toolchains, without requiring a prebuilt Birnam artifact.
+
+`mise run native-messages` checks the native owner boundaries, including live
+method replacement, nested loading, collection and finalization. Installed Host,
+image and generation lifecycle checks are part of the
+[validation workflow](docs/validation.md).
 
 ## Repository Guide
 
@@ -817,13 +794,15 @@ application and build driver.
   and the stateless OS loader shared by Siphon and Id.
 - `rust/birnam-id/` — native Id allocation, Symbols, dictionaries, message
   dispatch and module loading; depends only on the ABI crate.
+- `rust/birnam-bootstrap/` — native load order and initializer retention;
+  returns the completed Namespace to Host.
 - `rust/birnam-collect/` — instance-owned collection, tracing, finalization and
   native root capture above Id and Roots. No foreign payload decoding.
 - `rust/birnam-object-model/` — ordinary object storage and cloning, private
   behaviors and exact slot metadata; reflection uses existing Id messages.
 - Other `rust/birnam-*/` crates — native values, compiler/runtime,
-  storage, images, workers and language services. Their algorithms are retained;
-  integration still needs migration under [Design 90](docs/design/90-functional-modules.md).
+  storage, images, workers and language services. Owner READMEs describe their
+  message protocols and lifetime rules.
 - `modules/` — all modules written in Birnam: core language and startup policy,
   libraries, CLI/LSP tools, documentation and tests. Core sources are embedded
   for bootstrap; the installer lists modules explicitly for compilation.
@@ -832,99 +811,53 @@ application and build driver.
   each native crate keeps its exported-symbol inventory in `exports.json`.
 - `wrapped/` — native libraries used by optional applications.
 - `examples/` — programs, including images and AOT artifacts.
-- `docs/design/` — designs and implementation status; `docs/archive/` holds
-  superseded material.
+- `docs/guide/` — language and user workflow guides.
+- `docs/design/` — current contracts and unfinished designs;
+  `docs/archive/` holds historical decisions, experiments and completed plans.
+- `docs/measurements/` — benchmark evidence and payload-loading instructions.
 
 ## Design Notes
 
-- [The destination](docs/design/30-the-destination.md) defines the architectural
-  invariants and layering.
-- [Throughput recovery](docs/design/66-stackless-throughput-recovery.md) records
-  current profiles and the proposed optimization sequence.
-- [The image](docs/design/40-the-image.md) defines persistence and mapped-code
-  behavior.
-- [Functional modules, minimal dependencies](docs/design/90-functional-modules.md)
-  governs the remaining refactor: ownership by function, irreducible dependencies,
-  consolidation of helpers, bounded implementation work and completion criteria.
-- [Message-only native modules](docs/design/84-message-only-native-modules.md)
-  records removal of the parallel native APIs and the initial migration checkpoints;
-  Design 90 now governs organization of the remaining work.
-- [Minimal production Id](docs/design/82-minimal-production-id.md) records why
-  the Rust extractions failed to decouple Id, the required Siphon/Id boundary,
-  and the production migration and acceptance criteria. Design 90 carries these
-  constraints into the remaining functional reorganization.
-- [Production construction and lifetimes](docs/design/83-production-id-construction-and-lifetimes.md)
-  records the earlier construction design and lifetime obligations. Design 84
-  supersedes its descriptor/factory integration. The current
-  [Siphon](rust/birnam-siphon/src/lib.rs) uses only the
-  [Id protocol](rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md).
-- [Production extraction status](docs/design/81-production-extraction-status.md)
-  summarizes the completed Rust modularization through 81CA, current ownership,
-  validation, and the remaining Birnam implementation work. This phase is closed;
-  further extraction requires a subsystem-sized objective.
-- [Current bootstrap and runtime layers](docs/design/81a-current-bootstrap-and-runtime-layers.md)
-  explains the installed Rust host, 56 native libraries and 28 compiled Birnam
-  modules, including startup preparation and image recovery.
-- [Self-hosting roadmap](docs/design/81-toward-a-birnam-implementation.md) defines
-  the eventual Birnam implementation and retained independent bootstrap.
-  The [common Id protocol](rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md) is the current
-  native boundary; Design 84 supersedes the former module API tables.
-- [Compiled units](docs/design/45-compiled-units.md) defines executable
-  authority, image integrity, recovery, and the next live-reload boundary.
-- [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and
-  [live module evolution](docs/design/49-live-module-evolution.md) document
-  withdrawn live-reload policy experiments; only the blocking single-worker
-  isolate substrate is currently shipped.
-- [Blocking process isolates](docs/guide/06-isolates.md) documents the shipped
-  trusted-worker API, copied-value boundary, structured failures, and deadlines.
-- [Concurrency domains and structured tasks](docs/design/80-concurrency-domains-and-structured-tasks.md)
-  proposes the long-term model: parallel owned Runtimes, local task scheduling,
-  explicit messages, and restart-based worker code updates. Detailed semantics
-  remain under discussion; the [cleanup-control compatibility review](docs/design/80s-cleanup-control-review-synthesis.md)
-  records the latest mechanism findings under the unchanged ABI/image constraints.
-  [Cleanup-control evidence](docs/design/80t-cleanup-control-implementation-evidence.md)
-  and [structured task implementation](docs/design/80u-birnam-task-cleanup-slice.md)
-  track the implemented mechanisms, validation, and remaining concurrency work.
-  [Bounded Machine drives](docs/design/80v-bounded-machine-drives.md) add the
-  runtime support for budget stops and owner-side cleanup entry.
-- [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
-  explains source, artifacts, and loading.
-- [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the
-  migration boundary: retain an independent cold source bootstrap and move only
-  appropriate library surface into Birnam.
-- [Project manifests and dependency resolution](docs/design/51-project-manifests-and-dependency-resolution.md)
-  and the [project workflow](docs/design/52-project-check-build-and-run.md)
-  document the implemented project workflow. The project-aware LSP has shipped
-  its workspace/coordinate, safe static-diagnostics, and first source-navigation
-  slices in [design 53](docs/design/53-project-aware-language-tools.md);
-  dependency-wide indexing and richer semantic assistance are implemented.
-  [Relocatable bundles](docs/design/54-relocatable-bundles.md) now ship a fixed
-  executable-relative runtime closure with relocated project, image, and isolate
-  acceptance plus self-describing, source-free project/application roots.
-- [Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md) explains the
-  source manifest, self-describing local publication, installed descriptor, and
-  direct dylib-root workflow.
-- [Embedded files](docs/design/56-embedded-files.md) documents the
-  message-based compile-time `System embedFile:` form, Bytes prototype and remaining
-  project/Image migration boundaries.
-- [Designs 55, 58, and 59](docs/design/59-digla-adversarial-architecture-review.md)
-  preserve the retired Digla application experiment and its architectural
-  lessons. Digla is not part of the current runtime, verification graph, or
-  product roadmap.
-- [Stackless native execution](docs/design/60-stackless-native-execution.md)
-  implements the S1 substrate and the S2 selected named, method-owned-block,
-  and projected nonmethod-owned-block lowering, registration, candidate AOT
-  delivery, and nonempty image-recovery path for explicit
-  per-fiber frames and resumable native methods. Its private Runtime substrate
-  uses one protected target resolver shared by ordinary sends and Machine calls
-  without growing the public IdApi. Its
-  [artifact byte grammar](docs/design/60i-stackless-artifact-byte-grammar.md)
-  freezes the implemented descriptor, manifest, selection, registration, and
-  image-v5 formats. Arbitrary effectful initializers, suspension, and durable
-  continuations remain later stages.
-- [The Rust libid rewrite plan](docs/design/61-rust-libid-rewrite-plan.md)
-  records the floor boundary, unsafe/reentrancy discipline, and performance
-  gates for the completed Rust implementation.
-- [The Rust native-rung migration plan](docs/design/62-rust-native-rungs-migration-plan.md)
-  records the completed migration of the higher dynamic rungs, compiler, host,
-  project workflow, and image execution path to Rust.
+The active design documents describe contracts and remaining work:
+
+- The [module design](docs/design/90-functional-modules.md) defines ownership,
+  opaque native messages, minimal dependencies and safety rules. The Id-message
+  migration is complete; its checkpoint history is not a current work queue.
+- [Object authority](docs/design/42-object-canonical-relational-derived.md) and
+  [relational semantics](docs/design/37-the-relational-reading.md) define the
+  relationship between objects, Store facts and queries.
+- [Compiled units](docs/design/45-compiled-units.md) and
+  [their lifecycle](docs/design/47-compiled-unit-lifecycle.md) define executable
+  authority, staged activation, rollback and active-code lifetimes.
+- [Stackless execution](docs/design/60-stackless-native-execution.md) and
+  [V2 control](docs/design/60p-v2-control-completion.md) define resumable execution,
+  suspension and completion. [Artifact framing](docs/design/60i-stackless-artifact-byte-grammar.md)
+  and [PortableProgram grammar](docs/design/60l-portable-program-and-image-v7-byte-grammar.md)
+  remain format references; [image-v8](docs/design/60o-image-v8-identity-preservation.md)
+  and the [Image owner](rust/birnam-image/README.md) describe current persistence.
+  Live Machines and task capabilities are not durable image values.
+- [Project manifests](docs/design/51-project-manifests-and-dependency-resolution.md),
+  [command workflows](docs/design/52-project-check-build-and-run.md) and
+  [self-describing publications](docs/design/65-self-describing-project-publications.md)
+  define dependency resolution, build/run/install and execution without source.
+  [Language tooling](docs/design/53-project-aware-language-tools.md),
+  [relocatable bundles](docs/design/54-relocatable-bundles.md) and
+  [embedded files](docs/design/56-embedded-files.md) cover shipped integration.
+- [Concurrency domains](docs/design/80-concurrency-domains-and-structured-tasks.md)
+  and [cleanup transitions](docs/design/80n-cancellation-to-cleanup-transition.md)
+  define task and worker lifecycle. Structured tasks and process workers are
+  shipped; thread hosting, channels and general asynchronous timer/I/O remain
+  unfinished. Start with the [user guide](docs/guide/07-concurrency.md).
+- [Discarded-clone](docs/design/90-discarded-clone.md) and
+  [numeric-predicate](docs/design/90-numeric-predicate.md) optimizations are current
+  bounded allocation-elision contracts. Broader optimization remains separate.
+- [Map deletion](docs/design/70-persistent-map-deletion.md) remains a proposal;
+  [scalable ordering](docs/design/73-scalable-ordering-contract.md) has accepted
+  semantics with implementation work still open.
+- [The self-hosting roadmap](docs/design/81-toward-a-birnam-implementation.md)
+  retains the Birnam-authored runtime/compiler objective and independent bootstrap.
+
+Earlier architectures, retired Digla experiments, completed extraction plans and
+dated performance acceptance are in [docs/archive](docs/archive/). Those documents
+preserve rationale and evidence; the current owners and contracts above describe
+the implementation.

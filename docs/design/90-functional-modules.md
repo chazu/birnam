@@ -770,12 +770,12 @@ of those, it is outside this refactor.
 
 The remaining interface work must implement established semantics, not reopen
 them. In particular, **GC preserves the established collection contract while
-replacing its integration**. Designs [82](82-minimal-production-id.md) and
-[83](83-production-id-construction-and-lifetimes.md#5-collector-activation-is-an-explicit-transition)
+replacing its integration**. Designs [82](../archive/design/82-minimal-production-id.md) and
+[83](../archive/design/83-production-id-construction-and-lifetimes.md#5-collector-activation-is-an-explicit-transition)
 already require one allocation universe, complete roots before activation,
 non-collecting failure of activation, and retirement before address reuse.
-[81O](81o-production-live-gc-traversal.md) and
-[81P](81p-production-collection-coordinator.md) specify observable tracing and
+[81O](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81o-production-live-gc-traversal.md) and
+[81P](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/81p-production-collection-coordinator.md) specify observable tracing and
 finalization behavior: live hook selection, no allocation during collection,
 suppressed nested collection, no internal borrows across callbacks, and no sweep
 after a failed trace. Their frozen native service tables do not survive.
@@ -1094,7 +1094,7 @@ Actual elision and generated recovery remain work under that revised contract.
 
 ### Batch 2 optimizer reassessment (2026-09-24)
 
-The [code audit and next consumer](90-optimizer-reassessment.md) replace automatic
+The [code audit and next consumer](../archive/design/90-optimizer-reassessment.md) replace automatic
 restoration of retained optimizers with decisions based on actual language needs.
 Codegen no longer emits eager per-PC candidates or constructs their Methods and
 Vectors. One resumable entry uses an ordinary switch; the intermediate dispatch
