@@ -23,7 +23,6 @@ members = [
     "rust/birnam-namespace",
     "rust/birnam-integer",
     "rust/birnam-object-model",
-    "rust/birnam-method-observation",
     "rust/birnam-root-registry",
     "rust/birnam-dispatch-cache",
     "rust/birnam-image",

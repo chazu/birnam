@@ -190,13 +190,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-method-observation"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-namespace"
 version = "0.0.0"
 dependencies = [
@@ -291,7 +284,6 @@ dependencies = [
  "birnam-codegen",
  "birnam-collect",
  "birnam-dispatch-cache",
- "birnam-method-observation",
  "birnam-namespace",
  "birnam-native-compiler",
  "birnam-object-model",
