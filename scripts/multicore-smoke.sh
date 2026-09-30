@@ -47,7 +47,7 @@ grep -Fxq '#saved' "$work/save.out"
 mode=source
 "$prefix/bin/birnam" "$work/run.birnam" > "$work/$mode.out"
 cat "$work/$mode.out"
-grep -Fxq '#[#multicoreChecks 24 #failures 0]' "$work/$mode.out"
+grep -Fxq '#[#multicoreChecks 27 #failures 0]' "$work/$mode.out"
 python3 - "$work/$mode.out" <<'PY'
 import re,sys
 s=open(sys.argv[1]).read()

@@ -64,7 +64,14 @@
   [self assert: [[bad state] = #ready] label: #applicationFailureKeepsWorkerUsable];
   [bad stop];
   let timeoutWorker := [Isolate start: #Isolate selector: #_isolateSleep: image: image];
-  let timed := [TaskControl request: 50 from: timeoutWorker timeout: 0];
+  let rejected := [TaskControl request: 50 from: timeoutWorker timeout: 0];
+  [self assert: [[[[[rejected pollOutcome] at: 1] at: 0] class] = #timeout] label: #zeroBudgetSettlesBeforeTransmission];
+  [self assert: [[timeoutWorker state] = #ready] label: #zeroBudgetKeepsWorkerReady];
+  let reused := [TaskControl request: 0 from: timeoutWorker timeout: 5000];
+  [self assert: [[reused pollOutcome] = #[#success 0]] label: #workerReusableAfterZeroBudget];
+  // An admitted request with a positive budget still terminates the worker
+  // when its deadline expires before the handler replies.
+  let timed := [TaskControl request: 5000 from: timeoutWorker timeout: 500];
   [self assert: [[[[[timed pollOutcome] at: 1] at: 0] class] = #timeout] label: #deadlineSettlesRequest];
   [self assert: [[timeoutWorker state] = #exited] label: #deadlineTerminatesProcess];
 
