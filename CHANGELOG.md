@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect Storage/Trace diagnostics through Id, Roots and reference-owner messages.
+  Preserve explicit coverage gaps and scoped observation roots; remove retired
+  storage tables and deferred identity/index services.
+
 - Reconnect console/socket REPLs, project interactive modes, LSP and authored
   documentation/scaffolding tools through scoped Id messages. Install their
   compiled artifacts, restore image REPL fallback and executable baking, and

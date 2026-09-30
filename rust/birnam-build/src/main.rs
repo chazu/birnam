@@ -66,6 +66,8 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_environment.dylib",
     "libbirnam_file_io.dylib",
     "libbirnam_system_gc.dylib",
+    "libbirnam_storage.dylib",
+    "libbirnam_trace.dylib",
     "libbirnam_native_loader.dylib",
     "libbirnam_source_loader.dylib",
     "libbirnam_block_loop.dylib",

@@ -47,7 +47,9 @@ ObjectModel descriptor storage. [PortableCode](rust/birnam-portable-code/README.
 [Isolate workers](rust/birnam-isolate/README.md), and installed
 [Host/CLI source and image execution](rust/birnam-host/README.md) now use Id messages.
 Project commands, console/socket REPLs, LSP, documentation tools and executable
-baking now use the same path. Broader generation replacement remains deferred.
+baking now use the same path. [Storage](rust/birnam-storage/README.md) and
+[Trace](rust/birnam-trace/README.md) diagnostics also use Id messages. Broader
+generation replacement remains deferred.
 The usage documentation below describes the language being preserved.
 
 ## Contents

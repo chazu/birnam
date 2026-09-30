@@ -1,272 +1,386 @@
-//! Validation of owner-supplied storage descriptions above Id.
-//! Native observation scopes are independent of description-provider scopes.
-//! No heap, registry, mark algorithm or GC policy.
-mod observation;
-mod deferred_identity;
-mod deferred_index;
-use birnam_abi::storage::*;
-use birnam_abi::{Oop, borrowed_slice};
-use core::cell::Cell;
-use core::ffi::c_void;
-use std::collections::{BTreeMap, BTreeSet};
+//! Scoped storage diagnostics over Id/Roots/reference-owner messages.
+//! Observation roots protect the inventory without becoming declared graph roots.
+use birnam_abi::{
+    Oop, borrowed_slice,
+    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    ptr,
+};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
+};
 
-struct Builder {
-    token: usize,
-    runtime: u64,
-    allocations: BTreeMap<usize, AllocationV1>,
-    claimed: BTreeSet<u64>,
+// Native stack roots are not inspected. Missing owner coverage is never guessed.
+const NATIVE_ROOTS_UNOBSERVED: usize = 1;
+const PAYLOAD_OWNER_MISSING: usize = 2;
+#[derive(Clone, Copy)]
+struct Allocation {
+    object: Oop,
+    bytes: usize,
+    identity: usize,
+}
+#[derive(Default)]
+struct Snapshot {
+    allocations: Vec<Allocation>,
+    indices: HashMap<usize, usize>,
     roots: Vec<Oop>,
-    descriptions: Vec<(DescriptionV1, Vec<usize>)>,
-    edges: Vec<EdgeV1>,
-    error: Status,
+    edges: Vec<(Oop, Oop)>,
+    failure: Option<Outcome>,
 }
-thread_local! {
-    static ACTIVE: Cell<*mut Builder> = const { Cell::new(core::ptr::null_mut()) };
-    static NEXT_TOKEN: Cell<usize> = const { Cell::new(0) };
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    gc: Oop,
+    receiver: Oop,
+    sink_behavior: Oop,
+    thread: std::thread::ThreadId,
+    active: Cell<bool>,
+    sink: Cell<Oop>,
+    phase: Cell<usize>,
+    source: Cell<Oop>,
+    caller: Cell<Oop>,
+    snapshot: RefCell<Snapshot>,
 }
-struct Scope;
-impl Drop for Scope {
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static INITIALIZING: AtomicBool = AtomicBool::new(false);
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 1)
+}
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+}
+unsafe fn state<'a>(c: *mut c_void) -> Result<&'a State, Outcome> {
+    let s = unsafe { &*c.cast::<State>() };
+    if s.thread != std::thread::current().id() {
+        return Err(invalid());
+    }
+    Ok(s)
+}
+impl State {
+    unsafe fn send(&self, r: Oop, name: &[u8], args: &[Operand]) -> Result<Operand, Outcome> {
+        unsafe { self.id.send_named(r, name, args) }
+    }
+    fn checked(&self) -> Result<(), Outcome> {
+        self.snapshot.borrow().failure.map_or(Ok(()), Err)
+    }
+}
+struct Observation<'a>(&'a State);
+impl Drop for Observation<'_> {
     fn drop(&mut self) {
-        ACTIVE.set(core::ptr::null_mut());
+        self.0.phase.set(0);
+        self.0.sink.set(ptr::null_mut());
+        self.0.caller.set(ptr::null_mut());
+        *self.0.snapshot.borrow_mut() = Snapshot::default();
+        self.0.active.set(false);
     }
 }
-
-fn with_sink(context: *mut c_void, action: impl FnOnce(&mut Builder) -> Status) -> Status {
-    let pointer = ACTIVE.get();
-    if pointer.is_null() {
-        return BUSY;
-    }
-    // Context is a non-dereferenced, never-reused token, not a borrowed address.
-    // No foreign callback runs while this exclusive native-state borrow exists.
-    let builder = unsafe { &mut *pointer };
-    if context.addr() != builder.token {
-        return BUSY;
-    }
-    if builder.error != OK {
-        return builder.error;
-    }
-    let status = action(builder);
-    if status != OK {
-        builder.error = status;
-    }
-    status
-}
-unsafe extern "C" fn root(context: *mut c_void, object: Oop) -> Status {
-    with_sink(context, |builder| {
-        if object.is_null() {
-            return OK;
-        }
-        if !builder.allocations.contains_key(&object.addr()) {
-            return INVALID;
-        }
-        builder.roots.push(object);
-        OK
-    })
-}
-unsafe extern "C" fn payload(context: *mut c_void, description: *const DescriptionV1) -> Status {
-    with_sink(context, |builder| {
-        if description.is_null()
-            || !description
-                .addr()
-                .is_multiple_of(align_of::<DescriptionV1>())
-        {
-            return INVALID;
-        }
-        let description = unsafe { *description };
-        let Some(allocation) = builder.allocations.get(&description.object.addr()) else {
-            return INVALID;
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
         };
-        if description.runtime_identity != builder.runtime
-            || description.allocation_identity != allocation.identity
-            || description.extent != allocation.requested_size
-            || allocation.flags & CORE_PAYLOAD != 0
-            || builder.claimed.contains(&allocation.identity)
-        {
-            return INVALID;
+        let v = object(*v)?;
+        let mut values = vec![
+            s.ns,
+            s.receiver,
+            s.sink_behavior,
+            s.caller.get(),
+            s.sink.get(),
+        ];
+        // Only our diagnostic root sink omits the temporary inventory roots.
+        // A collection (including one invoked by a provider) sees every object.
+        if v != s.sink.get() {
+            values.extend(s.snapshot.borrow().allocations.iter().map(|a| a.object));
         }
-        let Some(offsets) = (unsafe {
-            borrowed_slice(description.strong_offsets, description.strong_offset_count)
-        }) else {
-            return INVALID;
-        };
-        let mut unique = BTreeSet::new();
-        let mut edges = Vec::new();
-        for &offset in offsets {
-            if !offset.is_multiple_of(align_of::<Oop>())
-                || offset
-                    .checked_add(size_of::<Oop>())
-                    .is_none_or(|end| end > description.extent)
-                || !unique.insert(offset)
-            {
-                return INVALID;
+        for value in values.into_iter().filter(|o| !o.is_null()) {
+            s.send(v, b"visit:", &[Operand::object(value)])?;
+        }
+        Ok(Operand::unit())
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+unsafe fn receive(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+    allocation: bool,
+) -> Result<Operand, Outcome> {
+    unsafe {
+        let s = state(c)?;
+        let result = (|| {
+            if r != s.sink.get() || !s.active.get() {
+                return Err(invalid());
             }
-            // Exact allocation membership, extent and alignment have been checked.
-            // The enclosing protected view keeps these payload bytes stable.
-            let to = unsafe {
-                description
-                    .object
-                    .cast::<u8>()
-                    .add(offset)
-                    .cast::<Oop>()
-                    .read()
-            };
-            if !to.is_null() {
-                if !builder.allocations.contains_key(&to.addr()) {
-                    return INVALID;
+            let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+            let mut data = s.snapshot.borrow_mut();
+            if allocation {
+                if s.phase.get() != 1 {
+                    return Err(invalid());
                 }
-                edges.push(EdgeV1 {
-                    from: description.object,
-                    to,
-                });
+                let [value, bytes, identity] = args else {
+                    return Err(invalid());
+                };
+                let allocation = Allocation {
+                    object: object(*value)?,
+                    bytes: bytes.as_word().ok_or_else(invalid)?,
+                    identity: identity.as_word().filter(|n| *n != 0).ok_or_else(invalid)?,
+                };
+                let index = data.allocations.len();
+                if data
+                    .indices
+                    .insert(allocation.object.addr(), index)
+                    .is_some()
+                {
+                    return Err(invalid());
+                }
+                data.allocations.push(allocation);
+            } else {
+                let [value] = args else {
+                    return Err(invalid());
+                };
+                let value = value.as_object().ok_or_else(invalid)?;
+                if value.is_null() {
+                    return Ok(Operand::unit());
+                }
+                if !data.indices.contains_key(&value.addr()) {
+                    return Err(invalid());
+                }
+                match s.phase.get() {
+                    2 => data.roots.push(value),
+                    3 => data.edges.push((s.source.get(), value)),
+                    _ => return Err(invalid()),
+                }
             }
-        }
-        builder.claimed.insert(description.allocation_identity);
-        builder.descriptions.push((description, offsets.to_vec()));
-        builder.edges.extend(edges);
-        OK
-    })
-}
-
-/// Validate prepared module descriptions inside one live storage observation.
-/// # Safety
-/// All input arrays, payloads, callbacks and callback data remain live throughout
-/// this call. Providers obey the observation-only contract and may use a sink
-/// only during their own invocation. The view comes from the selected live Id.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_storage_describe_v1(
-    view: *const ViewV1,
-    request: *const DescribeRequestV1,
-) -> Status {
-    if !ACTIVE.get().is_null() {
-        return BUSY;
-    }
-    if view.is_null()
-        || request.is_null()
-        || !view.addr().is_multiple_of(align_of::<ViewV1>())
-        || !request
-            .addr()
-            .is_multiple_of(align_of::<DescribeRequestV1>())
-    {
-        return INVALID;
-    }
-    let (view, request) = unsafe { (&*view, &*request) };
-    if view.version != VERSION
-        || view.byte_size != size_of::<ViewV1>()
-        || view.runtime_identity == 0
-        || view.observation_identity == 0
-        || request.version != VERSION
-        || request.byte_size != size_of::<DescribeRequestV1>()
-    {
-        return INVALID;
-    }
-    let Some(visitor) = request.visitor else {
-        return INVALID;
-    };
-    let Some(allocations) = (unsafe { borrowed_slice(view.allocations, view.allocation_count) })
-    else {
-        return INVALID;
-    };
-    let Some(roots) = (unsafe { borrowed_slice(view.roots, view.root_count) }) else {
-        return INVALID;
-    };
-    let Some(providers) = (unsafe { borrowed_slice(request.providers, request.provider_count) })
-    else {
-        return INVALID;
-    };
-    let mut by_address = BTreeMap::new();
-    let mut identities = BTreeSet::new();
-    for &allocation in allocations {
-        if allocation.object.is_null()
-            || allocation.identity == 0
-            || allocation.requested_size > allocation.padded_size
-            || !allocation.object.addr().is_multiple_of(align_of::<Oop>())
-            || !identities.insert(allocation.identity)
-            || by_address
-                .insert(allocation.object.addr(), allocation)
-                .is_some()
+            Ok(Operand::unit())
+        })();
+        // A provider cannot hide a bad callback by ignoring its failure.
+        if let Err(e) = result
+            && r == s.sink.get()
         {
-            return INVALID;
+            s.snapshot.borrow_mut().failure.get_or_insert(e);
         }
+        result
     }
-    if roots
-        .iter()
-        .any(|root| !root.is_null() && !by_address.contains_key(&root.addr()))
-    {
-        return INVALID;
-    }
-    let mut builder = Builder {
-        token: 0,
-        runtime: view.runtime_identity,
-        allocations: by_address,
-        claimed: BTreeSet::new(),
-        roots: roots.to_vec(),
-        descriptions: Vec::new(),
-        edges: Vec::new(),
-        error: OK,
-    };
-    for provider in providers {
-        let Some(provide) = provider.provide else {
-            return INVALID;
-        };
-        let Some(token) = NEXT_TOKEN.get().checked_add(1) else {
-            return INVALID;
-        };
-        NEXT_TOKEN.set(token);
-        builder.token = token;
-        let sink = ProviderSinkV1 {
-            context: token as *mut c_void,
-            root,
-            describe: payload,
-        };
-        ACTIVE.set(&mut builder);
-        let scope = Scope;
-        let status = unsafe { provide(provider.context, view, &sink) };
-        drop(scope);
-        if builder.error != OK {
-            return builder.error;
-        }
-        if status != OK {
-            return status;
-        }
-    }
-    let missing = allocations
-        .iter()
-        .filter(|entry| {
-            entry.flags & CORE_PAYLOAD == 0
-                && entry.requested_size != 0
-                && !builder.claimed.contains(&entry.identity)
-        })
-        .count();
-    let gaps = view.coverage_gaps
-        | if missing == 0 {
-            0
-        } else {
-            PAYLOAD_DESCRIPTIONS_MISSING
-        };
-    if gaps & request.reject_gaps != 0 {
-        return INCOMPLETE;
-    }
-    let descriptions: Vec<_> = builder
-        .descriptions
-        .iter()
-        .map(|(entry, offsets)| DescriptionV1 {
-            strong_offsets: offsets.as_ptr(),
-            ..*entry
-        })
-        .collect();
-    let described = DescribedViewV1 {
-        storage: view,
-        roots: builder.roots.as_ptr(),
-        root_count: builder.roots.len(),
-        descriptions: descriptions.as_ptr(),
-        description_count: descriptions.len(),
-        payload_edges: builder.edges.as_ptr(),
-        payload_edge_count: builder.edges.len(),
-        missing_description_count: missing,
-        coverage_gaps: gaps,
-    };
-    unsafe { visitor(request.context, &described) }
 }
-
-#[cfg(test)]
-mod tests;
+unsafe extern "C" fn allocation(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { receive(c, r, a, n, true) }.map_or_else(|e| e, Outcome::loaded)
+}
+unsafe extern "C" fn visit(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { receive(c, r, a, n, false) }.map_or_else(|e| e, Outcome::loaded)
+}
+unsafe extern "C" fn observe(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([caller]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let caller = object(*caller)?;
+        if s.active.replace(true) {
+            return Err(Outcome::failed(native::INVALID_REQUEST, 2));
+        }
+        let _guard = Observation(s);
+        s.caller.set(caller);
+        // A fresh receiver makes retained callback objects fail closed forever.
+        let sink = object(s.send(s.sink_behavior, b"allocate", &[Operand::word(0)])?)?;
+        s.sink.set(sink);
+        let visitor = Operand::object(sink);
+        s.phase.set(1);
+        s.send(s.id.receiver, b"allocationsDo:", &[visitor])?;
+        s.checked()?;
+        let mut allocations = s.snapshot.borrow().allocations.clone();
+        allocations.sort_unstable_by_key(|a| a.identity);
+        let mut identities = HashSet::new();
+        if allocations.iter().any(|a| !identities.insert(a.identity)) {
+            return Err(invalid());
+        }
+        s.phase.set(2);
+        s.send(s.id.receiver, b"rootsDo:", &[visitor])?;
+        s.send(s.roots, b"rootsDo:", &[visitor])?;
+        s.checked()?;
+        let mut gaps = NATIVE_ROOTS_UNOBSERVED;
+        s.phase.set(3);
+        for allocation in &allocations {
+            let value = allocation.object;
+            s.source.set(value);
+            let kind = s
+                .send(
+                    s.id.receiver,
+                    b"referencesOf:do:",
+                    &[Operand::object(value), visitor],
+                )?
+                .as_word()
+                .filter(|k| *k <= 2)
+                .ok_or_else(invalid)?;
+            if kind != 2 {
+                let behavior = s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(value)])?;
+                let owner = s.send(s.gc, b"referenceOwnerOf:", &[behavior])?;
+                if let Some(owner) = owner.as_object() {
+                    // Owner is a strong edge in the collector's declared graph.
+                    receive(c, sink, &Operand::object(owner), 1, false)?;
+                    s.send(
+                        owner,
+                        b"referencesOf:do:",
+                        &[Operand::object(value), visitor],
+                    )?;
+                } else if owner.kind() != native::UNIT {
+                    return Err(invalid());
+                } else if kind == 0 && allocation.bytes != 0 {
+                    gaps |= PAYLOAD_OWNER_MISSING;
+                }
+            }
+            s.checked()?;
+        }
+        s.phase.set(0);
+        let (roots, edges) = {
+            let data = s.snapshot.borrow();
+            (data.roots.clone(), data.edges.clone())
+        };
+        for a in allocations {
+            s.send(
+                caller,
+                b"allocation:bytes:identity:",
+                &[
+                    Operand::object(a.object),
+                    Operand::word(a.bytes),
+                    Operand::word(a.identity),
+                ],
+            )?;
+        }
+        for root in roots {
+            s.send(caller, b"root:", &[Operand::object(root)])?;
+        }
+        for (from, to) in edges {
+            s.send(
+                caller,
+                b"edgeFrom:to:",
+                &[Operand::object(from), Operand::object(to)],
+            )?;
+        }
+        let result = s.send(caller, b"complete:", &[Operand::word(gaps)])?;
+        s.checked()?;
+        Ok(result)
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named = |name: &[u8]| {
+            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let gc = named(b"GC")?;
+        let keep = |value: Oop| -> Result<Oop, Outcome> {
+            id.send_named(roots, b"retain:", &[Operand::object(value)])?;
+            Ok(value)
+        };
+        keep(ns)?;
+        let parent = object(id.send_named(
+            id.receiver,
+            b"behaviorOf:",
+            &[id.send_named(id.receiver, b"objectPrototype", &[])?],
+        )?)?;
+        let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        let receiver = keep(object(id.send_named(
+            behavior,
+            b"allocate",
+            &[Operand::word(0)],
+        )?)?)?;
+        let sink_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        // Pre-intern query selectors before an inventory is protected.
+        for name in [
+            b"allocationsDo:".as_slice(),
+            b"referencesOf:do:",
+            b"referenceOwnerOf:",
+            b"root:",
+            b"edgeFrom:to:",
+            b"complete:",
+        ] {
+            keep(id.intern_name(name)?)?;
+        }
+        let s = Box::into_raw(Box::new(State {
+            id,
+            ns,
+            roots,
+            gc,
+            receiver,
+            sink_behavior,
+            thread: std::thread::current().id(),
+            active: Cell::new(false),
+            sink: Cell::new(ptr::null_mut()),
+            phase: Cell::new(0),
+            source: Cell::new(ptr::null_mut()),
+            caller: Cell::new(ptr::null_mut()),
+            snapshot: RefCell::new(Snapshot::default()),
+        }));
+        for (vt, name, method) in [
+            (behavior, b"observe:".as_slice(), observe as native::Method),
+            (behavior, b"rootsDo:", self::roots),
+            (sink_behavior, b"allocation:bytes:identity:", allocation),
+            (sink_behavior, b"visit:", visit),
+        ] {
+            id.send_named(
+                vt,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(method, s.cast())),
+                ],
+            )?;
+        }
+        id.send_named(roots, b"register:", &[Operand::object(receiver)])?;
+        id.send_named(
+            ns,
+            b"at:put:",
+            &[
+                Operand::object(id.intern_name(b"Storage")?),
+                Operand::object(receiver),
+            ],
+        )?;
+        INSTANCE.store(s, Ordering::Release);
+        Ok(Operand::object(receiver))
+    }
+}
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let ns = object(*ns)?;
+        let old = INSTANCE.load(Ordering::Acquire);
+        if !old.is_null() {
+            let s = state(old.cast())?;
+            return if s.id.same_contract(&*id) && s.ns == ns {
+                Ok(Operand::object(s.receiver))
+            } else {
+                Err(invalid())
+            };
+        }
+        if INITIALIZING.swap(true, Ordering::AcqRel) {
+            return Err(invalid());
+        }
+        let result = construct(*id, ns);
+        INITIALIZING.store(false, Ordering::Release);
+        result
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
+    1
+}

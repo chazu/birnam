@@ -289,10 +289,11 @@ fn durable_artifacts_use_owned_code_and_current_messages() {
         );
         std::fs::write(&artifact, old).unwrap();
         h.call(cg, b"sealInitialGeneration", &[]);
-        assert_eq!(h.call(cg, b"load:", &[path]), h.named(b"nil"));
-        assert!(
-            String::from_utf8_lossy(&h.bytes(h.call(cg, b"lastError", &[])))
-                .contains("introduction")
+        let rejected = h.call(cg, b"load:", &[path]);
+        assert_eq!(h.call(rejected, b"isError", &[]), h.named(b"true"));
+        assert_eq!(
+            h.call(rejected, b"kind", &[]),
+            id.intern_name(b"moduleIntroductionNotAvailable").unwrap()
         );
         std::fs::remove_dir_all(temp).unwrap();
     }

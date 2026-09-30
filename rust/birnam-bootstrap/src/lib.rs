@@ -265,6 +265,8 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "environment",
             "file_io",
             "system_gc",
+            "storage",
+            "trace",
             "native_loader",
         ] {
             id.send_named(

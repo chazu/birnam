@@ -260,6 +260,8 @@ impl HostRuntime {
         for name in [
             "artifact",
             "store",
+            "storage",
+            "trace",
             "peg",
             "lang",
             "tcc",
