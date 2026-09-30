@@ -128,31 +128,51 @@
 // retractions. A current-only compaction drops the graph; an explicit history
 // window retains the exact retirement transitions by policy.
 [Reflect defineMethod: #retireDurableEntity: on: CompiledUnit as: [:self :entity |
-  [[| [[db attrCount: entity] > 0]] whileTrue: [|
+  let retired := [[| [[db attrCount: entity] > 0]] whileTrue: [|
     let attribute := [db attrAt: entity index: 0];
     let value := [db currentValue: entity attr: attribute];
     [db retract: entity attr: attribute value: value]]];
-  entity]];
+  [[retired isError] ifTrue: [| retired] ifFalse: [| entity]]]];
 
 // Retire the saved rollback ancestry as well as its current tip. Shared
 // components may appear in several rows; repeated retirement is harmless.
+// Preserve the first Store failure so Image can compensate the entire recovery.
 [Reflect defineMethod: #retireGeneration:into:seen: on: CompiledUnit as: [:self :origin :composed :seen |
   [[[origin isNil] or: [| [seen includes: origin]]]
     ifTrue: [| nil]
     ifFalse: [|
       let parent := [origin predecessor];
       let rows := [origin sourceMap];
-      [self retireGeneration: parent into: composed seen: [seen add: origin]];
-      [[rows isNil] ifTrue: [| nil] ifFalse: [|
-        [rows inject: nil into: [:ignored :entry |
-          let prior := [entry at: 2];
-          [[prior isNil] ifTrue: [| nil] ifFalse: [|
-            [db assert: prior attr: #state value: #historical];
-            [db assert: prior attr: #rollbackAvailable value: false];
-            [db assert: prior attr: #composedInto value: composed];
-            [self retireDurableEntity: prior]]]]]]];
-      [db assert: origin attr: #composedInto value: composed];
-      [self retireDurableEntity: origin]]]]];
+      let previous := [self retireGeneration: parent into: composed seen: [seen add: origin]];
+      [[previous isError]
+        ifTrue: [| previous]
+        ifFalse: [|
+          let retired := [[rows isNil]
+            ifTrue: [| nil]
+            ifFalse: [|
+              [rows inject: nil into: [:status :entry |
+                [[status isError]
+                  ifTrue: [| status]
+                  ifFalse: [|
+                    let prior := [entry at: 2];
+                    [[prior isNil]
+                      ifTrue: [| nil]
+                      ifFalse: [|
+                        let marked := [#[#[#state #historical] #[#rollbackAvailable false] #[#composedInto composed]]
+                          inject: nil into: [:result :field |
+                            [[result isError]
+                              ifTrue: [| result]
+                              ifFalse: [| [db assert: prior attr: [field at: 0] value: [field at: 1]]]]]];
+                        [[marked isError]
+                          ifTrue: [| marked]
+                          ifFalse: [| [self retireDurableEntity: prior]]]]]]]]]]];
+          [[retired isError]
+            ifTrue: [| retired]
+            ifFalse: [|
+              let marked := [db assert: origin attr: #composedInto value: composed];
+              [[marked isError]
+                ifTrue: [| marked]
+                ifFalse: [| [self retireDurableEntity: origin]]]]]]]]]]];
 
 // Image recovery has already restored dispatch before this policy method runs.
 // Mint one process-local composed component per source-map row, publish a fresh
@@ -199,8 +219,8 @@
       [[[adopted isNil] or: [| [adopted isError]]]
         ifTrue: [| [active set: origin]; [[adopted isNil] ifTrue: [| [Error kind: #imageCompositionRejected]] ifFalse: [| adopted]]]
         ifFalse: [|
-          [self retireGeneration: origin into: composed seen: #[]];
-      composed]]]]]]]];
+          let retired := [self retireGeneration: origin into: composed seen: #[]];
+          [[retired isError] ifTrue: [| retired] ifFalse: [| composed]]]]]]]]]];
 
 [Reflect defineMethod: #state on: CompiledUnit as: [:self |
   let recorded := [db currentValue: self attr: #state];

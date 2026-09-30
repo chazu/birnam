@@ -12,6 +12,61 @@ unsafe extern "C" fn failed_fulfill(
     Outcome::failed(native::UNBOUND, 54321)
 }
 
+struct ReturnedFailure {
+    error: Oop,
+    calls: usize,
+}
+unsafe extern "C" fn returned_failure(
+    context: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    _: usize,
+) -> Outcome {
+    let fault = unsafe { &mut *context.cast::<ReturnedFailure>() };
+    fault.calls += 1;
+    Outcome::loaded(Operand::object(fault.error))
+}
+
+struct RetirementFailure {
+    adopt: native::NativeEntry,
+    retract: native::NativeEntry,
+    error: Oop,
+    armed: bool,
+    calls: usize,
+}
+unsafe extern "C" fn arm_retirement_failure(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let fault = unsafe { &mut *context.cast::<RetirementFailure>() };
+    let result =
+        unsafe { (fault.adopt.method.unwrap())(fault.adopt.context, receiver, args, count) };
+    let generation = unsafe { birnam_abi::borrowed_slice(args, count) }
+        .and_then(|values| values.first())
+        .and_then(|value| value.as_object());
+    fault.armed = result.status == native::LOADED
+        && generation.is_some()
+        && result.value.as_object() == generation;
+    result
+}
+unsafe extern "C" fn fail_retirement_retract(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let fault = unsafe { &mut *context.cast::<RetirementFailure>() };
+    if fault.armed {
+        fault.armed = false;
+        fault.calls += 1;
+        Outcome::loaded(Operand::object(fault.error))
+    } else {
+        unsafe { (fault.retract.method.unwrap())(fault.retract.context, receiver, args, count) }
+    }
+}
+
 struct FailedAdoption {
     original: native::NativeEntry,
     id: Protocol,
@@ -139,14 +194,18 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
     .unwrap();
     let failure = q.fulfill_intent(intent).unwrap_err();
     assert!(failure.0.contains("54321"), "{failure}");
-    host.send(vt, b"addMethod", &[Operand::object(selector), original])
-        .unwrap();
-    q.evaluate(
-        b"[hostLifecycleUnit activate]",
-        Path::new("<activation>"),
-        None,
+    // The image-main route must also fulfill only after the main frame exits,
+    // preserve native failure details, and close the extent before retrying.
+    q.check(
+        cg,
+        eval(b"[Globals at: #main put: [| [hostLifecycleUnit activate]]]"),
     )
     .unwrap();
+    let failure = host.run_image_main().unwrap_err();
+    assert!(failure.0.contains("54321"), "{failure}");
+    host.send(vt, b"addMethod", &[Operand::object(selector), original])
+        .unwrap();
+    host.run_image_main().unwrap();
     expect(b"[[2 hostLifecycleValue] = 20]");
     expect(b"[[hostLifecycleUnit state] = #active]");
     host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
@@ -378,6 +437,76 @@ fn image_recovers_composed_generation_before_entry() {
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageCandidate state] = #active]");
     }
+    // A source-policy retirement failure after adoption must compensate the
+    // entire Image exchange, including the previous native generation ledger.
+    let store = host.named(b"Store").unwrap();
+    let retract_vt = q
+        .call(host.id.receiver, b"behaviorOf:", &[Operand::object(store)])
+        .unwrap();
+    let retract_selector = unsafe { host.id.intern_name(b"retract:attr:value:") }.unwrap();
+    let retract_original = host
+        .send(
+            host.id.receiver,
+            b"bindingOf:in:",
+            &[
+                Operand::object(retract_selector),
+                Operand::object(retract_vt),
+            ],
+        )
+        .unwrap()
+        .as_entry()
+        .unwrap();
+    let mut fault = RetirementFailure {
+        adopt: original,
+        retract: retract_original,
+        error,
+        armed: false,
+        calls: 0,
+    };
+    let context = (&mut fault as *mut RetirementFailure).cast();
+    host.send(
+        vt,
+        b"addMethod",
+        &[
+            Operand::object(selector),
+            Operand::entry(native::NativeEntry::new(arm_retirement_failure, context)),
+        ],
+    )
+    .unwrap();
+    host.send(
+        retract_vt,
+        b"addMethod",
+        &[
+            Operand::object(retract_selector),
+            Operand::entry(native::NativeEntry::new(fail_retirement_retract, context)),
+        ],
+    )
+    .unwrap();
+    let failure = host.load_image(&path);
+    host.send(
+        vt,
+        b"addMethod",
+        &[Operand::object(selector), Operand::entry(original)],
+    )
+    .unwrap();
+    host.send(
+        retract_vt,
+        b"addMethod",
+        &[
+            Operand::object(retract_selector),
+            Operand::entry(retract_original),
+        ],
+    )
+    .unwrap();
+    assert!(
+        failure.is_err(),
+        "retirement failure must reject Image recovery"
+    );
+    assert_eq!(fault.calls, 1, "retirement must stop at its first failure");
+    assert_eq!(eval(b"[DispatchGeneration current]"), before);
+    expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+    expect(b"[[2 imageGenerationValue] = 20]");
+    expect(b"[[imageCandidate state] = #active]");
     q.evaluate(
         b"[imageCandidate rollback]",
         Path::new("<after-failed-image>"),
@@ -388,4 +517,104 @@ fn image_recovers_composed_generation_before_entry() {
     child(&path, "mapped");
     child(&path, "rebuild");
     fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+#[ignore = "requires installed production modules"]
+fn durable_retirement_preserves_store_retraction_errors() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(
+        Path::new("/unused/bin"),
+        crate::Overrides {
+            lib_dir: Some(&lib),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let host = HostRuntime::start(
+        &resources,
+        StartupPolicy {
+            skip_stdlib: false,
+            precise_gc: true,
+        },
+    )
+    .unwrap();
+    let q = host.scope();
+    let entity = q
+        .call(host.named(b"Object").unwrap(), b"clone", &[])
+        .unwrap();
+    let attribute = unsafe { host.id.intern_name(b"retirementProbe") }.unwrap();
+    let store = host.named(b"Store").unwrap();
+    let value = host.named(b"true").unwrap();
+    q.call(
+        store,
+        b"assert:attr:value:",
+        &[
+            Operand::object(entity),
+            Operand::object(attribute),
+            Operand::object(value),
+        ],
+    )
+    .unwrap();
+    let kind = unsafe { host.id.intern_name(b"retirementFailure") }.unwrap();
+    let error = q
+        .call(
+            host.named(b"Error").unwrap(),
+            b"kind:",
+            &[Operand::object(kind)],
+        )
+        .unwrap();
+    let vt = q
+        .call(host.id.receiver, b"behaviorOf:", &[Operand::object(store)])
+        .unwrap();
+    let selector = unsafe { host.id.intern_name(b"retract:attr:value:") }.unwrap();
+    let original = host
+        .send(
+            host.id.receiver,
+            b"bindingOf:in:",
+            &[Operand::object(selector), Operand::object(vt)],
+        )
+        .unwrap();
+    let mut fault = ReturnedFailure { error, calls: 0 };
+    host.send(
+        vt,
+        b"addMethod",
+        &[
+            Operand::object(selector),
+            Operand::entry(native::NativeEntry::new(
+                returned_failure,
+                (&mut fault as *mut ReturnedFailure).cast(),
+            )),
+        ],
+    )
+    .unwrap();
+    let unit = host.global(&q, b"CompiledUnit").unwrap();
+    let retired = q.call(unit, b"retireDurableEntity:", &[Operand::object(entity)]);
+    host.send(vt, b"addMethod", &[Operand::object(selector), original])
+        .unwrap();
+    assert_eq!(retired.unwrap(), error);
+    assert_eq!(fault.calls, 1);
+    assert_eq!(
+        q.call(
+            store,
+            b"currentValue:attr:",
+            &[Operand::object(entity), Operand::object(attribute),]
+        )
+        .unwrap(),
+        value
+    );
+    assert_eq!(
+        q.call(unit, b"retireDurableEntity:", &[Operand::object(entity)])
+            .unwrap(),
+        entity
+    );
+    assert_eq!(
+        q.call(
+            store,
+            b"currentValue:attr:",
+            &[Operand::object(entity), Operand::object(attribute),]
+        )
+        .unwrap(),
+        host.named(b"nil").unwrap()
+    );
 }

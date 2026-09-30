@@ -113,19 +113,23 @@ impl Model {
     }
     unsafe fn image_layout(&self, value: Oop) -> Result<Layout, Outcome> {
         unsafe {
-            let behavior = self.behavior(value)?;
-            if let Some(layout) = self.layout(behavior)? {
-                return Ok(layout);
-            }
-            if self.owner(behavior)? == Some(value) {
-                let parent = object(self.send(
+            // Behavior sharing and additional private layers preserve the
+            // representation layout inherited from the nearest registered owner.
+            let mut behavior = self.behavior(value)?;
+            let mut seen = std::collections::HashSet::new();
+            loop {
+                if !seen.insert(behavior) {
+                    return Err(invalid());
+                }
+                if let Some(layout) = self.layout(behavior)? {
+                    return Ok(layout);
+                }
+                behavior = object(self.send(
                     self.id.receiver,
                     b"parentOf:",
                     &[Operand::object(behavior)],
                 )?)?;
-                return self.layout(parent)?.ok_or_else(invalid);
             }
-            Err(invalid())
         }
     }
     unsafe fn extent(&self, value: Oop) -> Result<usize, Outcome> {

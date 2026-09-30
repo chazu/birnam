@@ -19,9 +19,9 @@
 // `[x + 2]` on the next work — you are talking to the real image. Multi-line forms
 // accumulate until their brackets balance before evaluating. `:quit` disconnects.
 //
-// SCOPE (v1): one connection at a time (blocking, on the Socket floor); a long
-// single session recurses once per form (fine for interactive use, not for tens of
-// thousands of forms). Both go away with the poll() reactor / a richer reader later.
+// SCOPE: one connection at a time (blocking, on the Socket floor). Native CLI
+// entry uses Host-owned turns; direct authored serveOn: retains its recursive
+// session helper and does not fulfill generation intents.
 
 // -- the REPL -----------------------------------------------------------------
 
@@ -59,6 +59,43 @@
   [conn sendString: msg];
   self] doc:
   "Evaluates the complete form `src` against the live image and writes the value (or `!! error`) reply to `conn`."];
+
+// Host socket turns use the same reader and wire format, but return evaluated
+// values before presentation so generation intents can run with no live frame.
+[Reflect defineMethod: #socketHostStep:buffer: on: Repl as: [:self :conn :buffer |
+  let chunk := [conn recv];
+  [[chunk isEmpty]
+    ifTrue: [| #[#done nil]]
+    ifFalse: [|
+      let acc := [[buffer value] , chunk];
+      [[[acc trimmed] startsWith: ":quit"]
+        ifTrue: [| #[#done nil]]
+        ifFalse: [|
+          [[self isComplete: acc]
+            ifTrue: [|
+              [buffer set: ""];
+              let val := [Codegen evalPersisting: [acc trimmed]];
+              let err := [Codegen lastError];
+              [[err notNil]
+                ifTrue: [|
+                  [conn sendString: [["!! " , [err printString]] , "\r\nbirnam> "]];
+                  #[#continue nil]]
+                ifFalse: [| #[#evaluated val]]]]
+            ifFalse: [| [buffer set: acc]; #[#continue nil]]]]]]]] doc:
+  "Reads one socket chunk, returning a host turn record; the buffer Cell retains incomplete source."];
+
+[Reflect defineMethod: #printSocketResult:to: on: Repl as: [:self :value :conn |
+  [conn sendString: [["=> " , [value printString]] , "\r\nbirnam> "]];
+  self] doc:
+  "Prints the final value of a host-owned socket turn and its next prompt."];
+
+[Reflect defineMethod: #socketHostListen:bind: on: Repl as: [:self :port :bind |
+  [System println: ["birnam socket REPL listening on " , [bind , [":" , [port printString]]]]];
+  let fd := [Socket listenOn: port bind: bind];
+  [[fd < 0]
+    ifTrue: [| [Error kind: #socketBindFailed message: ["could not bind " , [bind , [":" , [port printString]]]]]]
+    ifFalse: [| fd]]] doc:
+  "Opens the listener for the Host-owned accept loop, or answers a bind Error."];
 
 // Read/accumulate/evaluate loop for one connected client. Recurses per read;
 // ends when the client hangs up ("" from recv) or sends `:quit`.

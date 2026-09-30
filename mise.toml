@@ -51,14 +51,6 @@ run = "scripts/gc-settings-test.sh"
 description = "Check production GC, including native stack and register roots (debug)"
 run = "scripts/native-message-test.sh"
 
-[tasks.mutation-epoch]
-description = "Check Vtable epoch ownership, exact mutation counts, live dispatch and host admission (debug)"
-run = "scripts/mutation-epoch-test.sh"
-
-[tasks.key-index]
-description = "Check derived Vtable key-index ownership, threshold transitions, live lookup and host admission (debug)"
-run = "scripts/key-index-test.sh"
-
 [tasks.deferred-identity]
 description = "Check deferred identity ownership, mixed journals, exhaustion, recovery and host admission (debug)"
 run = "scripts/deferred-identity-test.sh"

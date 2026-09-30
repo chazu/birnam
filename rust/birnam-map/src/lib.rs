@@ -759,14 +759,17 @@ unsafe fn execute(
         }
         if op == 12 {
             s.send(s.values[b"GC".as_slice()], b"prepareAllocation", &[])?;
-            let behavior =
+            let mut behavior =
                 object(s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(args[0])])?)?;
-            if behavior != s.behavior
-                && s.send(s.id.receiver, b"parentOf:", &[Operand::object(behavior)])?
-                    .as_object()
-                    != Some(s.behavior)
-            {
-                return Err(invalid());
+            let mut seen = std::collections::HashSet::new();
+            while behavior != s.behavior {
+                if !seen.insert(behavior) {
+                    return Err(invalid());
+                }
+                scope.keep(behavior)?;
+                behavior = object(s.send(
+                    s.id.receiver, b"parentOf:", &[Operand::object(behavior)],
+                )?)?;
             }
             let target = args[0];
             let old = payload(s, target)?;

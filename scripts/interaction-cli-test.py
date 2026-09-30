@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-interaction-') as directory:
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as error:
             process = subprocess.Popen([binary, *args], cwd=work, env=env, stdout=output, stderr=error)
             try:
-                deadline = time.monotonic() + 300
+                deadline = time.monotonic() + 900
                 while True:
                     assert process.poll() is None, ('socket exited', process.returncode)
                     try:

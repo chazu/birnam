@@ -96,13 +96,93 @@ impl HostRuntime {
             &[Operand::word(port as usize)],
         )?;
         let bind = q.string(bind.as_bytes())?;
+        let repl = self.global(&q, b"Repl")?;
+        let socket = self.global(&q, b"Socket")?;
+        let sealed = q.call(
+            self.global(&q, b"DispatchGeneration")?,
+            b"initializeCurrent",
+            &[],
+        )?;
+        q.check_result(sealed)?;
         self.enter_running()?;
-        let result = q.call(
-            self.global(&q, b"Repl")?,
-            b"serveOn:bind:",
+        let listener = q.call(
+            repl,
+            b"socketHostListen:bind:",
             &[Operand::object(port), Operand::object(bind)],
         )?;
-        q.check_result(result)
+        q.check_result(listener)?;
+        let zero = q.call(self.named(b"Integer")?, b"fromWord:", &[Operand::word(0)])?;
+        let serving = (|| -> Result<(), HostError> {
+            loop {
+                let client = self.scope();
+                let fd = client.call(socket, b"rawAccept:", &[Operand::object(listener)])?;
+                client.check_result(fd)?;
+                if client.call(fd, b"<", &[Operand::object(zero)])? == self.named(b"true")? {
+                    continue;
+                }
+                let connection: Result<Oop, HostError> = (|| {
+                    let conn = client.call(socket, b"wrapFd:", &[Operand::object(fd)])?;
+                    client.check_result(conn)?;
+                    Ok(conn)
+                })();
+                match connection {
+                    Ok(conn) => {
+                        // A client fault ends only this session. Always close its
+                        // buffer and descriptor before accepting the next client.
+                        let _ = self.socket_session(repl, conn);
+                        let _ = client.call(conn, b"close", &[]);
+                    }
+                    Err(_) => {
+                        let _ = client.call(fd, b"closeFd", &[]);
+                    }
+                }
+                drop(client);
+                self.send(self.named(b"Isolate")?, b"checkpoint", &[])?;
+            }
+        })();
+        let closed = q.call(listener, b"closeFd", &[]);
+        serving?;
+        q.check_result(closed?)
+    }
+
+    fn socket_session(&self, repl: Oop, conn: Oop) -> Result<(), HostError> {
+        let session = self.scope();
+        let empty = session.string(b"")?;
+        let buffer = session.call(empty, b"asCell", &[])?;
+        let greeting = session.string(
+            "birnam socket REPL — type a form (multi-line ok), :quit to leave.\r\nbirnam> "
+                .as_bytes(),
+        )?;
+        let sent = session.call(conn, b"sendString:", &[Operand::object(greeting)])?;
+        session.check_result(sent)?;
+        loop {
+            let q = self.scope();
+            let step = q.call(
+                repl,
+                b"socketHostStep:buffer:",
+                &[Operand::object(conn), Operand::object(buffer)],
+            )?;
+            q.check_result(step)?;
+            if q.vector_size(step)? != 2 {
+                return Err(HostError("Repl socketHostStep: expected two fields".into()));
+            }
+            match q.symbol_text(q.vector_at(step, 0)?)?.as_str() {
+                "done" => return Ok(()),
+                "continue" => {}
+                "evaluated" => {
+                    let value = q.fulfill_intent(q.vector_at(step, 1)?)?;
+                    let printed = q.call(
+                        repl,
+                        b"printSocketResult:to:",
+                        &[Operand::object(value), Operand::object(conn)],
+                    )?;
+                    q.check_result(printed)?;
+                }
+                _ => return Err(HostError("Repl socketHostStep: invalid tag".into())),
+            }
+            drop(q);
+            self.send(self.named(b"Isolate")?, b"checkpoint", &[])?;
+        }
     }
 
     pub fn run_cli(&self, args: &[OsString]) -> Result<(), HostError> {

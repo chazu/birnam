@@ -422,6 +422,17 @@ fn image_owner_roundtrip() {
             );
             let map = global(&h, b"ImageMap");
             assert_eq!(h.call(map, b"at:", &[shared]), closure);
+            let keys = global(&h, b"ImageMapKeys");
+            for name in [b"ImageMap".as_slice(), b"ImageMapAlias", b"ImageMapChild"] {
+                let map = global(&h, name);
+                assert_eq!(h.number(h.call(map, b"imageMapMarker", &[])), 73);
+                for index in 0..24 {
+                    let key = h.call(keys, b"at:", &[h.int(index)]);
+                    assert_eq!(h.call(map, b"at:", &[key]), closure,
+                        "private/shared Map identity key {index} must be rehashed");
+                }
+            }
+            assert_eq!(h.number(h.call(global(&h, b"ImageMapChild"), b"imageMapChildMarker", &[])), 91);
             let cell = global(&h, b"ImageCell");
             assert_eq!(h.number(h.call(cell, b"value", &[])), 2);
             let cell_block = global(&h, b"ImageCellBlock");
@@ -564,14 +575,33 @@ fn image_owner_roundtrip() {
             );
         }
         let map = h.call(h.named(b"Map"), b"new", &[]);
-        let map = h.call(map, b"at:put:", &[shared, closure]);
-        for (name, value) in [(b"ImageCycle".as_slice(), cycle), (b"ImageMap", map)] {
+        let mut map = h.call(map, b"at:put:", &[shared, closure]);
+        let mut keys = h.call(h.named(b"Vector"), b"new", &[]);
+        for _ in 0..24 {
+            let key = h.call(h.named(b"Object"), b"clone", &[]);
+            keys = h.call(keys, b"add:", &[key]);
+            map = h.call(map, b"at:put:", &[key, closure]);
+        }
+        for (name, value) in [(b"ImageCycle".as_slice(), cycle), (b"ImageMap", map), (b"ImageMapKeys", keys)] {
             h.call(
                 h.named(b"Globals"),
                 b"at:put:",
                 &[h.id.intern_name(name).unwrap(), value],
             );
         }
+        h.eval(b"[Reflect defineMethod: #imageMapMarker on: ImageMap as: [:self | 73]]");
+        let map_behavior = behavior_of(&h, map);
+        for name in [b"ImageMapAlias".as_slice(), b"ImageMapChild"] {
+            let copy = h.call(map, b"at:put:", &[h.id.intern_name(name).unwrap(), closure]);
+            send(h.id, h.id.receiver, b"reassociateBehaviorOf:with:", &[
+                Operand::object(copy), Operand::object(map_behavior),
+            ]);
+            h.call(h.named(b"Globals"), b"at:put:", &[h.id.intern_name(name).unwrap(), copy]);
+            assert_eq!(h.number(h.call(copy, b"imageMapMarker", &[])), 73);
+        }
+        h.eval(b"[Reflect defineMethod: #imageMapChildMarker on: ImageMapChild as: [:self | 91]]");
+        assert_eq!(h.number(h.call(global(&h, b"ImageMapChild"), b"imageMapChildMarker", &[])), 91);
+
         h.eval(b"[db assert: #tracked attr: #history value: true]; [db assert: #imageHistory attr: #tracked value: 1]; [db assert: #imageHistory attr: #tracked value: 2]; [Reflect defineMethod: #imageFixture on: Integer as: [:self | #saved]]");
         h.eval(b"let ImageCell := [db cellFor: #imageHistory attr: #tracked]; let ImageCellBlock := [[:cell | [| [cell value]]] value: ImageCell]");
         let codegen = h.named(b"Codegen");

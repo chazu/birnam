@@ -64,6 +64,14 @@ the idle Host boundary. Ordinary tracked method edits then return
 `generationNotQuiescent`; candidate publication and Image recovery use explicit
 internal extents. Source bootstrap remains open while initial modules load.
 
+Image `main` also returns to Host before intent fulfillment and checkpoints
+Isolate after either successful entry or failure.
+
+The socket REPL seals the initial generation and uses Host-owned accept/session
+loops. Each authored read/evaluation step returns before intent fulfillment and
+printing; turn roots are released before Isolate checkpoints. EOF, quit and client
+faults close that connection before the next accept.
+
 The console keeps a session root plus a fresh scope per turn and checkpoints
 Isolate after evaluation. A returned EvolutionIntent is fulfilled through Codegen
 at the idle owner-thread boundary before presentation; source-file results use

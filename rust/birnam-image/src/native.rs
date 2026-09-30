@@ -1301,16 +1301,16 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
         if s.call(q, codegen, b"finishPortableImageUnit", &[])? != yes {
             return Err(bad());
         }
-        let map_vt = s.named(b"MapVt")?;
-        let maps = objects
+        // The admitted heap locator names the representation family. Restored
+        // private/shared behavior layers do not change a Map's hash table.
+        let maps = heap_nodes(&decoded)?
             .iter()
-            .copied()
-            .filter_map(|o| match s.behavior(o) {
-                Ok(vt) if vt == map_vt => Some(Ok(o)),
-                Ok(_) => None,
-                Err(e) => Some(Err(e)),
+            .zip(&objects)
+            .filter_map(|(node, &o)| {
+                matches!(&node.locator, Value::Export(name) if name == b"MapVt")
+                    .then_some(o)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Vec<_>>();
         let store = q.keep(s.named(b"Store")?)?;
         let admitted = s.call(
             q,

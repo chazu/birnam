@@ -135,7 +135,6 @@ pub struct RebuildOptions {
 pub struct CompileModuleOptions {
     pub source: PathBuf,
     pub output: PathBuf,
-    pub initial_generation_resumable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -576,11 +575,7 @@ pub fn parse_rebuild_args<T: AsRef<std::ffi::OsStr>>(
 pub fn parse_compile_module_args<T: AsRef<std::ffi::OsStr>>(
     args: &[T],
 ) -> Result<CompileModuleOptions, ToolingParseError> {
-    if (args.len() != 2 && args.len() != 3)
-        || args.get(2).is_some_and(|value| {
-            value.as_ref() != std::ffi::OsStr::new("--initial-generation-resumable")
-        })
-    {
+    if args.len() != 2 {
         return Err(ToolingParseError::Arity {
             command: "--compile-module",
             expected: 2,
@@ -590,9 +585,6 @@ pub fn parse_compile_module_args<T: AsRef<std::ffi::OsStr>>(
     Ok(CompileModuleOptions {
         source: PathBuf::from(args[0].as_ref()),
         output: PathBuf::from(args[1].as_ref()),
-        initial_generation_resumable: args.get(2).is_some_and(|value| {
-            value.as_ref() == std::ffi::OsStr::new("--initial-generation-resumable")
-        }),
     })
 }
 
@@ -968,13 +960,22 @@ mod tests {
             CompileModuleOptions {
                 source: PathBuf::from("module.birnam"),
                 output: PathBuf::from("module.dylib"),
-                initial_generation_resumable: false,
             }
         );
     }
 
     #[test]
     fn tooling_parsers_reject_wrong_arity_before_runtime_access() {
+        assert_eq!(
+            parse_compile_module_args(&[
+                "module.birnam", "module.o", "--initial-generation-resumable",
+            ]),
+            Err(ToolingParseError::Arity {
+                command: "--compile-module",
+                expected: 2,
+                actual: 3,
+            })
+        );
         assert_eq!(
             parse_bake_args::<&str>(&["only-image"]),
             Err(ToolingParseError::Arity {

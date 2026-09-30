@@ -397,9 +397,6 @@ fn run() -> Result<(), String> {
         CommandKind::CompileModule => {
             let options =
                 command::parse_compile_module_args(&args[1..]).map_err(|e| format!("{e:?}"))?;
-            if options.initial_generation_resumable {
-                return Err("initial-generation selection awaits migration".into());
-            }
             let resources = resolve().map_err(|e| e.to_string())?;
             let host = HostRuntime::start(
                 &resources,

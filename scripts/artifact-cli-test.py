@@ -99,9 +99,9 @@ probe.write_text(f'[Codegen load: {quote(registered)}]; '
     f'[System println: [[Codegen load: {quote(conflict)}] isNil]]; '
     '[System println: [Codegen lastError]]; '
     '[Codegen sealInitialGeneration]; '
-    f'[System println: [[Codegen load: {quote(registered)}] isNil]]')
+    f'[System println: [[[Codegen load: {quote(registered)}] kind] = #moduleIntroductionNotAvailable]]')
 result = run([probe])
-assert result.returncode == 1 and b'introduction is not available' in result.stderr, result
+assert result.returncode == 0 and not result.stderr, result
 assert result.stdout == registered_text.encode() + b'\ntrue\nRustCodegen duplicate module source\ntrue\n', result
 assert not marker.exists()
 # Direct Codegen loading requires already loaded module dependencies.
@@ -117,7 +117,8 @@ empty = compile('nilResult', 'nil')
 fails(empty, b'could not install module')
 false = compile('false', 'false')
 succeeds(false, b'')
-# The old generation-selection flag is still explicitly outside this slice.
+# Ordinary Id artifacts already use resumable entries. The retired generation
+# bootstrap switch is rejected by argument parsing before opening source/runtime.
 result = run(['--compile-module', 'missing.birnam', 'unused.dylib', '--initial-generation-resumable'])
-assert result.returncode == 1 and b'initial-generation selection awaits migration' in result.stderr, result
+assert result.returncode == 1 and b'Arity' in result.stderr and b'actual: 3' in result.stderr, result
 print('installed artifacts: inert compile, removed source/assets, dependency order, preflight and failures passed')

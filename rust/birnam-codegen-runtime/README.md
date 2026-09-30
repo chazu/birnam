@@ -264,6 +264,11 @@ lookup and return nil when unnamed. Both lookups remain live owner messages.
 
 ## Initial generation projection
 
+Ordinary `--compile-module SOURCE OUTPUT` artifacts already use resumable entries.
+The former `--initial-generation-resumable` bootstrap switch is retired: source
+registration comes from ordinary artifact admission, and Host seals the complete
+initial projection before running. Candidate-specific selections remain explicit.
+
 `initialGenerationProjection` constructs the retained four-element projection:
 `#[#generationProjection sourceMap baseDigest generationSelection]`. Source-map
 rows are sorted by module name and contain the source revision and nil component.

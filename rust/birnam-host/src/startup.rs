@@ -523,8 +523,7 @@ impl HostRuntime {
         };
         load().map_err(|e| HostError(format!("{}: {e}", path.display())))
     }
-    /// Enter the current global main through ordinary dispatch. Nil and false
-    /// results succeed; missing main and returned Errors are failures.
+    /// Install running-phase authorization at an idle owner-thread boundary.
     fn enter_running(&self) -> Result<(), HostError> {
         let q = self.scope();
         let result = q.call(self.named(b"Codegen")?, b"enterRunning", &[])?;
@@ -532,6 +531,8 @@ impl HostRuntime {
         if result != self.named(b"true")? { return Err(HostError("Codegen rejected running entry".into())); }
         Ok(())
     }
+    /// Enter saved main, fulfill a returned intent after its frame exits, and
+    /// checkpoint Isolate on success or failure. Nil and false remain successes.
     pub fn run_image_main(&self) -> Result<(), HostError> {
         self.enter_running()?;
         let run = || -> Result<(), HostError> {
@@ -541,9 +542,14 @@ impl HostRuntime {
                 return Err(HostError("image has no global main".into()));
             }
             let result = scope.call(main, b"value", &[])?;
+            scope.check_result(result)?;
+            let result = scope.fulfill_intent(result)?;
             scope.check_result(result)
         };
-        run().map_err(|e| HostError(format!("image main: {e}")))
+        let result = run();
+        let checkpoint = self.send(self.named(b"Isolate")?, b"checkpoint", &[]);
+        result.and_then(|()| checkpoint.map(|_| ()))
+            .map_err(|e| HostError(format!("image main: {e}")))
     }
     pub fn eval_script(&self, path: &Path) -> Result<(), HostError> {
         let source = read_source_file(path)?;

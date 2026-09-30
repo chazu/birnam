@@ -64,8 +64,16 @@ the prior source registry and the complete previous Store state. This compensati
 does not consume additional fact capacity or reevaluate source. Ordinary external
 effects performed by observer callbacks are outside that state compensation.
 
+Map identity keys are rehashed for the admitted Map representation family,
+including shared and inherited private behaviors. ObjectModel resolves their
+image layouts through registered behavior ancestry.
+
 Managed Image saves validate the generation ledger before snapshotting and again
 before file publication. Drift rejects the save and preserves the existing file.
+
+Retirement of saved generation ancestry preserves the first Store error; a
+retirement failure rejects and compensates recovery rather than publishing a
+partly retired graph.
 
 Generation recovery participates in the same publication transaction. Codegen
 suspends old transient candidate capabilities before dispatch changes; the authored
