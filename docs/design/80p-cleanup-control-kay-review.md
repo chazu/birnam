@@ -94,7 +94,7 @@ already describes committing a staged result-bearing Call with its copies,
 clears, and root transition. That supports the adapter/handler result approach;
 it does not itself implement multi-frame exit.
 
-The installed [ensure:](../../src/id/stackless-control.birnam#L205) evaluates the
+The installed [ensure:](../../modules/stackless-control.birnam#L205) evaluates the
 body, then cleanup, then returns the body's value. 80N correctly identifies that
 as insufficient for the new nonlocal path. No compiler recognition of the
 selector is justified or requested.

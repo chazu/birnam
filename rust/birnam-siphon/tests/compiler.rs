@@ -528,8 +528,8 @@ unsafe fn compiled_recovery(h: &mut H) {
             &[Operand::object(id.intern_name(b"value").unwrap())],
         ));
         h.keep(baseline);
-        let prefix = include_str!("../../../abi/fixtures/id-protocol-v1/id_protocol.h");
-        let fixture = include_str!("../../../abi/fixtures/id-protocol-v1/compiled_recovery.c")
+        let prefix = include_str!("../../../rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h");
+        let fixture = include_str!("../../../rust/birnam-abi/tests/fixtures/id-protocol-v1/compiled_recovery.c")
             .replace("#include \"id_protocol.h\"", "");
         let source = h.string(format!("{prefix}\n{fixture}").as_bytes());
         let unit = object(send(

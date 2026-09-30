@@ -3,7 +3,7 @@
 `id_protocol.h` is the independent C declaration of Birnam's native message
 boundary: opaque Objects, Words, Bytes, method entries, Protocols and outcomes.
 Upper module tables and the former IdApi are retired under
-[Design 90](../../../docs/design/90-functional-modules.md).
+[Design 90](../../../../../docs/design/90-functional-modules.md).
 
 `entry.c` checks the C field layout and call/return convention. Id's unit test loads
 it and installs/invokes it through production Id dispatch without upper modules.

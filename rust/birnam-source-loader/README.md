@@ -28,7 +28,7 @@ nil. Sealing registration also answers nil, so the loader still evaluates that
 file. This preserves the existing distinction between source bookkeeping and
 ordinary immediate execution.
 
-The authored Module manager in `src/id/modules.birnam` runs unchanged through
+The authored Module manager in `modules/modules.birnam` runs unchanged through
 this loader. It publishes Module in Globals; Source Loader's optional notification
 still checks Namespace. Loading a source declaration therefore need not mark it
 loaded. Host startup/dependency orchestration and Module's Artifact-backed loading

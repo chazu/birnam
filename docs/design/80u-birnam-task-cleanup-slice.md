@@ -11,7 +11,7 @@ domains are still separate work.
 ## Behavior
 
 The ordinary `TaskControl` and `TaskExecutor` methods in
-[stackless-control.birnam](../../src/id/stackless-control.birnam) implement:
+[stackless-control.birnam](../../modules/stackless-control.birnam) implement:
 
 - `start:` creates a root task when called by the owner outside task execution.
   Inside a task it creates an owned child. `fork:` registers a child before

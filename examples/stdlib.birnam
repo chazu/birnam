@@ -3,7 +3,7 @@
 //   birnam examples/stdlib.birnam
 //
 // These methods are not built into the native floor — they are defined in BIRNAM (in
-// src/id/stdlib.birnam, loaded by default) on top of the primitives, via
+// modules/stdlib.birnam, loaded by default) on top of the primitives, via
 // `[Reflect defineMethod: …]`. Run with BIRNAM_NO_STDLIB=1 to use the bare
 // floor instead, and these sends become #doesNotUnderstand errors.
 

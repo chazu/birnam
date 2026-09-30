@@ -1,6 +1,6 @@
 # Native loading through System
 
-System wraps the common [Id descriptor protocol](fixtures/id-protocol-v1/id_protocol.h).
+System wraps the common [Id descriptor protocol](../../rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h).
 `[System loadModule: path]` supplies no initializer operands.
 `[System loadModule: path arguments: sequence]` sends `size` and zero-based `at:`
 to the sequence and supplies the resulting Objects in order. Size must be a
@@ -28,7 +28,7 @@ and retains its dependencies through messages, registers both methods through Id
 and returns System. Bootstrap loads it after the System and value prerequisites.
 Its only exported symbol remains the common descriptor. The old Runtime, root,
 Integer, Error and Text View service-table inputs are removed. See the
-[Native Loader contract and tests](../rust/birnam-native-loader/README.md).
+[Native Loader contract and tests](../../rust/birnam-native-loader/README.md).
 
 The aggregate `module_init` entry and exported dependency setters are retired.
 Every native module is constructed through `birnam_native_module_v1` with its
@@ -41,10 +41,10 @@ entry are checked by `scripts/host-cli-test.sh`.
 
 Source files use the separate `[System load: path]` protocol. Its initializer also
 receives Namespace, installs its method through Id and returns Unit. See the
-[Source Loader contract](../rust/birnam-source-loader/README.md) for Codegen
+[Source Loader contract](../../rust/birnam-source-loader/README.md) for Codegen
 registration/evaluation and the current embedding and Host/Image boundaries.
 
 
-[Block Loop](../rust/birnam-block-loop/README.md) likewise takes one Namespace and
+[Block Loop](../../rust/birnam-block-loop/README.md) likewise takes one Namespace and
 returns Unit. Bootstrap loads it after Execution; repeated loading preserves the
 current `whileTrue:`/`whileFalse:` bindings, including authored replacements.

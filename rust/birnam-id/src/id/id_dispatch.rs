@@ -322,7 +322,7 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         let library = directory.join("entry.dylib");
         let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../abi/fixtures/id-protocol-v1/entry.c");
+            .join("../../rust/birnam-abi/tests/fixtures/id-protocol-v1/entry.c");
         let output = std::process::Command::new("cc")
             .args(["-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib"])
             .arg(source)

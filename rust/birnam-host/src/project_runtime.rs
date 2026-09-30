@@ -16,12 +16,12 @@ impl HostRuntime {
             (
                 b"toml".as_slice(),
                 b"Toml".as_slice(),
-                include_bytes!("../../../src/id/toml.birnam").as_slice(),
+                include_bytes!("../../../modules/toml.birnam").as_slice(),
             ),
             (
                 b"projectPolicy",
                 b"ProjectPolicy",
-                include_bytes!("../../../src/id/project-policy.birnam").as_slice(),
+                include_bytes!("../../../modules/project-policy.birnam").as_slice(),
             ),
         ] {
             if self.global(&q, global)? == self.named(b"nil")? {

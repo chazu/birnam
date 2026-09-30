@@ -5,7 +5,7 @@
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
 [Module load: #file];
 [[Globals includes: #Toml] ifTrue: [| nil] ifFalse: [| [Module load: #toml]]];
-[[Globals includes: #AppConfig] ifTrue: [| nil] ifFalse: [| [System load: "src/id/app-config.birnam"]]];
+[[Globals includes: #AppConfig] ifTrue: [| nil] ifFalse: [| [System load: "modules/app-config.birnam"]]];
 
 let s := [TestSuite named: "AppConfig" module: #appConfig];
 

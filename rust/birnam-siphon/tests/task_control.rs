@@ -97,9 +97,9 @@ fn authored_task_scheduling_preserves_native_boundaries() {
                 &[Operand::object(text(source))],
             )))
         };
-        eval(include_bytes!("../../../src/id/modules.birnam"));
-        eval(include_bytes!("../../../src/id/stdlib.birnam"));
-        eval(include_bytes!("../../../src/id/stackless-control.birnam"));
+        eval(include_bytes!("../../../modules/modules.birnam"));
+        eval(include_bytes!("../../../modules/stdlib.birnam"));
+        eval(include_bytes!("../../../modules/stackless-control.birnam"));
         let p = Box::new(Observer {
             id,
             cleanup: eval(b"[| nil]"),

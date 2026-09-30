@@ -9,10 +9,10 @@ export CARGO_TARGET_DIR
 cargo build --offline --locked --features birnam-tcc/resource-metrics -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-boolean -p birnam-nil -p birnam-bootstrap -p birnam-collect -p birnam-object-model -p birnam-string -p birnam-error -p birnam-integer -p birnam-float -p birnam-word -p birnam-vector -p birnam-map -p birnam-range -p birnam-execution -p birnam-peg -p birnam-lang -p birnam-tcc -p birnam-codegen-runtime -p birnam-store -p birnam-relational -p birnam-prelude -p birnam-printing -p birnam-system-output -p birnam-system-input -p birnam-environment -p birnam-file-io -p birnam-system-gc -p birnam-storage -p birnam-trace -p birnam-native-loader -p birnam-source-loader -p birnam-block-loop -p birnam-artifact -p birnam-portable-code -p birnam-image -p birnam-alien -p birnam-isolate
 export BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/debug"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
-  abi/fixtures/id-protocol-v1/execution_method.c \
+  rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_method.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_method_fixture.dylib"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
-  abi/fixtures/id-protocol-v1/execution_machine.c \
+  rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_machine.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_machine_fixture.dylib"
 for variant in target missing incompatible; do
   flags=()
@@ -21,10 +21,10 @@ for variant in target missing incompatible; do
     incompatible) flags=(-DLOADER_INCOMPATIBLE) ;;
   esac
   cc -std=c11 -Wall -Wextra -Werror -dynamiclib "${flags[@]}" \
-    abi/fixtures/id-protocol-v1/native_loader.c \
+    rust/birnam-abi/tests/fixtures/id-protocol-v1/native_loader.c \
     -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_loader_${variant}_fixture.dylib"
 done
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib abi/fixtures/id-protocol-v1/alien.c -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_alien_fixture.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib rust/birnam-abi/tests/fixtures/id-protocol-v1/alien.c -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_alien_fixture.dylib"
 # Audit the actual converted dylibs; no installed legacy construction graph.
 python3 - "$BIRNAM_TEST_MODULE_DIRECTORY" <<'PY_AUDIT'
 import json
@@ -35,7 +35,7 @@ modules = "id root-registry namespace boolean nil bootstrap collect object-model
 directory = Path(sys.argv[1])
 for module in modules:
     library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")
-    manifest = json.loads(Path(f"abi/rust-{module}-dylib-v1.json").read_text())
+    manifest = json.loads(Path(f"rust/birnam-{module}/exports.json").read_text())
     actual = set(subprocess.check_output(["nm", "-gjU", library], text=True).splitlines())
     assert actual == {"_" + symbol for symbol in manifest["exported_symbols"]}, (module, actual)
     if "install_name" in manifest:

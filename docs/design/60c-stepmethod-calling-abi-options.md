@@ -134,7 +134,7 @@ Relevant prior records are:
   derived](42-object-canonical-relational-derived.md);
 - [60A — Execution semantics](60a-stackless-execution-semantics.md);
 - [60B — Machine, Frames, and GC](60b-stackless-machine-and-frames.md); and
-- the current [IdApi ABI evidence](../../abi/README.md).
+- the current [IdApi ABI evidence](../../rust/birnam-abi/README.md).
 
 ## 4. The calling contract
 

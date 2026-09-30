@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
+#include "../../rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

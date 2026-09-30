@@ -1772,7 +1772,7 @@ and explicit Object operands. `loadModule:` supplies none;
 requires Integer but no collection implementation. The wrapper copies the path
 and roots the sequence and each selected argument across effectful sends and
 initialization. Object results are returned; Unit returns System; native-only
-results and load failures become Errors. See [the contract](../../abi/native-loading.md).
+results and load failures become Errors. See [the contract](../guide/native-loading.md).
 
 Native Loader no longer exports `module_init`, a provider, an installer, or
 private dependency attachment entries. Its constructor returns completed System.

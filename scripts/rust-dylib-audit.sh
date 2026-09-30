@@ -5,7 +5,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 # An isolated configuration cache avoids rebuilding the workspace or confusing
 # a diagnostic floor with the normal ABI. Cargo revalidates source/toolchain inputs.
 target_dir="$repo/.cargo-target/dylib-audit"
-expected_exports=$(python3 - "$repo/abi/rust-id-dylib-v1.json" <<'PYEXPORTS'
+expected_exports=$(python3 - "$repo/rust/birnam-id/exports.json" <<'PYEXPORTS'
 import json, sys
 proof = json.load(open(sys.argv[1]))
 print("\n".join("_" + name for name in sorted(proof["exported_symbols"])))

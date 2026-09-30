@@ -14,10 +14,10 @@ mod tests {
     #[test]
     fn mapped_plan_checks_inventory_authority_without_emitting_source() {
         let programs =
-            include_bytes!("../../../abi/fixtures/portable-code-v1/inventory-nested-closure.bin");
-        let bindings = include_bytes!("../../../abi/fixtures/portable-code-v1/bindings-mixed.bin");
+            include_bytes!("../../../tests/fixtures/portable-code-v1/inventory-nested-closure.bin");
+        let bindings = include_bytes!("../../../tests/fixtures/portable-code-v1/bindings-mixed.bin");
         let selection =
-            include_bytes!("../../../abi/fixtures/portable-code-v1/selection-mixed.bin");
+            include_bytes!("../../../tests/fixtures/portable-code-v1/selection-mixed.bin");
         let plan = Plan::new(programs, bindings, selection, false).unwrap();
         assert!(plan.sources.iter().all(Vec::is_empty));
         assert_eq!(plan.sources.len(), 2 * plan.programs + plan.bindings);

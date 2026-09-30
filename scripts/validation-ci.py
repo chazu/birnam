@@ -18,7 +18,7 @@ OUTPUT = ROOT / '.cargo-target/validation'
 
 def select(paths):
     bootstrap=re.compile(r'^(\.github/|mise\.toml$|scripts/(rust-(install|driver-cold)|dist\.sh|release[.-]|install[-_])|rust/birnam-(host|cli|siphon|build)/|.*/build\.rs$)')
-    protected=re.compile(r'^(rust/|src/id/|modules/|vendor/|abi/|Cargo\.|scripts/(fixtures/|closure|unboxed|loop|recovery|validation|validate))')
+    protected=re.compile(r'^(rust/|modules/|vendor/|tests/|Cargo\.|scripts/(fixtures/|closure|unboxed|loop|recovery|validation|validate))')
     if any(bootstrap.search(path) for path in paths): return 'release'
     return 'exhaustive' if any(protected.search(path) for path in paths) else 'routine'
 

@@ -1,5 +1,5 @@
 // modules-test.birnam — the suite for the self-hosted module manager
-// (src/id/modules.birnam, docs/44 Phase 5b): the store-native dependency graph,
+// (modules/modules.birnam, docs/44 Phase 5b): the store-native dependency graph,
 // the topological loadOrder:, and the cycle error. Ported from the retired
 // the old native manager tests when the manager moved to birnam — these assertions
 // pin the OLD native semantics byte-for-byte. Test modules use tt-prefixed

@@ -339,7 +339,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
             assert_eq!(h.call(plain, b"captureAt:", &[h.int(0)]), nil);
         }
         let code_factory = h.named(b"CodeObject");
-        let fixture = include_bytes!("../../../abi/fixtures/portable-code-v1/program-send.bin");
+        let fixture = include_bytes!("../../../tests/fixtures/portable-code-v1/program-send.bin");
         let code = h.admit(fixture);
         let canonical = h.call(code_factory, b"canonicalBytesOf:", &[code]);
         assert_eq!(behavior_of(&h, canonical), h.named(b"BytesVt"));
@@ -463,7 +463,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
         // Exact float payloads, binary strings and let bindings survive both emitters.
         for resumable in [false, true] {
             let nan = h.admit(include_bytes!(
-                "../../../abi/fixtures/portable-code-v1/program-signalling-nan.bin"
+                "../../../tests/fixtures/portable-code-v1/program-signalling-nan.bin"
             ));
             let block = h.materialize(nan, &[], resumable);
             let value = h.call(block, b"value", &[]);
@@ -482,7 +482,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
             let block = h.materialize(h.admit(&binary), &[], resumable);
             assert_eq!(h.bytes(h.call(block, b"value", &[])), b"a\0\xffz");
             let lets = h.admit(include_bytes!(
-                "../../../abi/fixtures/portable-code-v1/program-let-scope.bin"
+                "../../../tests/fixtures/portable-code-v1/program-let-scope.bin"
             ));
             let block = h.materialize(lets, &[h.int(99)], resumable);
             assert_eq!(h.number(h.call(block, b"value:", &[h.int(88)])), 7);

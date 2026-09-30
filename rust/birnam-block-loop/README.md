@@ -27,7 +27,7 @@ The private Rust loop itself owns no language execution state.
 
 These are the synchronous bootstrap methods. Execution rejects suspension across
 their native callback boundary. The existing authored Boolean/loop methods in
-`src/id/stackless-control.birnam` replace them for resumable execution; this slice
+`modules/stackless-control.birnam` replace them for resumable execution; this slice
 adds no native loop engine or scheduler. Execution now registers Block as owner of
 its shared behavior through `ownerOf:put:`, so Reflect changes on Block reach both
 existing and newly created compiled Blocks. This repairs a missing prototype

@@ -2,7 +2,7 @@
 //
 //   birnam examples/toml-demo.birnam        (run from the repo root)
 //
-// `Toml` is a standard self-hosted module (src/id/toml.birnam), loaded at boot as
+// `Toml` is a standard self-hosted module (modules/toml.birnam), loaded at boot as
 // a compiled dylib — so it's available with no `[System load:]`. It's a PEG-based
 // TOML parser written entirely in birnam; `[Toml parse: aString]` answers a Map
 // (nested Maps for [tables], Vectors for arrays).

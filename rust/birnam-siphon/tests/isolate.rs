@@ -255,7 +255,7 @@ fn isolate_value_conversion_uses_owner_messages() {
 unsafe fn reply_construction_failure(h: &H) {
     unsafe {
         let peer = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../abi/fixtures/id-protocol-v1/isolate_reply.py");
+            .join("../../rust/birnam-abi/tests/fixtures/id-protocol-v1/isolate_reply.py");
         let previous = std::env::var_os("BIRNAM_WORKER_EXECUTABLE");
         std::env::set_var("BIRNAM_WORKER_EXECUTABLE", &peer);
         let handle = h.call(

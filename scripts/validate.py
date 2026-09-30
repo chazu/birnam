@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 from validation_support import ROOT, PlanRunner, audit_plan
 
-PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'src/id/**/*', 'modules/**/*',
+PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'modules/**/*',
               'vendor/libtcc-src/**/*', 'wrapped/**/*.dylib')
 HOST_GROUPS = ('cli', 'image', 'interaction', 'generation', 'tasks')
 
@@ -22,7 +22,7 @@ def plan(suite, prefix, output):
               step('workspace', ['cargo', 'test', '--workspace', '--locked', '--offline'],
                    PRODUCTION, timeout=600)]
     for fixture in ('stackless-s2', 'portable-code-v1'):
-        result.append(step(fixture, ['python3', f'abi/fixtures/{fixture}/verify.py'], (f'abi/fixtures/{fixture}/*',)))
+        result.append(step(fixture, ['python3', f'tests/fixtures/{fixture}/verify.py'], (f'tests/fixtures/{fixture}/*',)))
     for script in ('release-changelog-test.py', 'release-acceptance-test.py', 'v014-performance-acceptance-test.py', 'v015-performance-acceptance-test.py'):
         inputs = ('scripts/' + script, 'scripts/' + script.replace('-test', ''))
         if script == 'release-acceptance-test.py': inputs += ('scripts/install_contract.py',)
@@ -31,7 +31,7 @@ def plan(suite, prefix, output):
                        ('scripts/install-contract-test.py', 'scripts/install_contract.py')))
     result.append(step('archive-test', ['python3', 'scripts/measurement-archive-test.py'], ('scripts/measurement*.py',)))
     result.append(step('native', ['bash', 'scripts/native-message-test.sh'],
-                       PRODUCTION + ('scripts/native-message-test.sh', 'abi/**/*'), timeout=900))
+                       PRODUCTION + ('scripts/native-message-test.sh', 'tests/fixtures/**/*'), timeout=900))
     result.append(step('install', ['bash', 'scripts/rust-install.sh', 'install', '--root', ROOT,
                        '--prefix', prefix, '--profile', 'release', '--build-cache', ROOT / '.cargo-target/install'],
                        PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'docs/guide/**/*'),
@@ -41,11 +41,11 @@ def plan(suite, prefix, output):
     for group in HOST_GROUPS:
         result.append(step('host-' + group,
                            ['bash', 'scripts/host-cli-test.sh', '--prefix', prefix, '--group', group],
-                           PRODUCTION + ('scripts/*', 'abi/**/*', 'tests/**/*', 'examples/**/*'),
+                           PRODUCTION + ('scripts/*', 'tests/**/*', 'examples/**/*'),
                            depends=('install',), timeout={'cli': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
     if suite == 'release':
         result.append(step('dylib-audit', ['bash', 'scripts/rust-dylib-audit.sh'],
-                           PRODUCTION + ('scripts/rust-dylib-audit.sh', 'abi/rust-id-dylib-v1.json'), timeout=300))
+                           PRODUCTION + ('scripts/rust-dylib-audit.sh', 'rust/birnam-id/exports.json'), timeout=300))
         result.append(step('cold-source', ['bash', 'scripts/rust-driver-cold-archive-smoke.sh'],
                            PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'scripts/rust-driver-cold-archive-smoke.sh',
                                          'docs/guide/**/*', 'examples/fizzbuzz.birnam'), timeout=1200))

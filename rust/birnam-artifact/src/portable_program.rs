@@ -1219,11 +1219,11 @@ mod tests {
     #[test]
     fn owned_program_views_preserve_frozen_meaning_after_moves_and_source_changes() {
         let fixtures: &[&[u8]] = &[
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-empty.bin"),
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-send.bin"),
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-nested-captures.bin"),
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-numeric-boundaries.bin"),
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-explicit-captures.bin"),
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-empty.bin"),
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-send.bin"),
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-nested-captures.bin"),
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-numeric-boundaries.bin"),
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-explicit-captures.bin"),
         ];
         let mut owners = Vec::new();
         for fixture in fixtures {
@@ -1248,7 +1248,7 @@ mod tests {
     #[test]
     fn owned_program_admission_preserves_validation_errors() {
         let fixture =
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-nested-captures.bin");
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-nested-captures.bin");
         for length in 0..fixture.len() {
             let bytes = &fixture[..length];
             assert_eq!(
@@ -1573,7 +1573,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-nonutf8-names-block.bin"
             ))
         );
@@ -1608,7 +1608,7 @@ mod tests {
         assert_eq!(
             padding,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-padding.bin"
             ))
         );
@@ -1633,7 +1633,7 @@ mod tests {
         assert_eq!(
             future_let,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-future-let.bin"
             ))
         );
@@ -1701,7 +1701,7 @@ mod tests {
         assert_eq!(
             numeric,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-numeric-boundaries.bin"
             ))
         );
@@ -1749,7 +1749,7 @@ mod tests {
         assert_eq!(
             sends,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-send-arities.bin"
             ))
         );
@@ -1759,55 +1759,55 @@ mod tests {
     fn every_stored_program_truncation_rejects_and_single_bit_mutations_do_not_panic() {
         let fixtures: &[&[u8]] = &[
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-auxiliary-values.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-empty.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-explicit-captures.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-future-let.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-let-scope.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-nested-captures.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-nested-inner.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-nonutf8-names-block.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-numeric-boundaries.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-padding.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-send-arities.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-send.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "program-signalling-nan.bin"
             )),
         ];
@@ -2011,7 +2011,7 @@ mod tests {
         use std::hint::black_box;
         use std::time::Instant;
         let bytes =
-            include_bytes!("../../../abi/fixtures/portable-code-v1/program-nested-captures.bin");
+            include_bytes!("../../../tests/fixtures/portable-code-v1/program-nested-captures.bin");
         let owner = super::ValidatedProgram::copy_from_slice(bytes).unwrap();
         for cached in [false, true] {
             let started = Instant::now();

@@ -516,7 +516,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         assert_eq!(call(readoption, b"kind", &[]), sym(b"staleGeneration"));
         // Keep the authored lifecycle facade parseable as its initial adoption
         // is connected to this native mechanism.
-        let facade = text(&std::fs::read("../../src/id/compiled-unit.birnam").unwrap());
+        let facade = text(&std::fs::read("../../modules/compiled-unit.birnam").unwrap());
         assert_eq!(
             call(call(named(b"Lang"), b"parse:", &[facade]), b"isError", &[]),
             no

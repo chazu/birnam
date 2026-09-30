@@ -1,6 +1,6 @@
 # Native boundary and format evidence
 
-[Design 90](../docs/design/90-functional-modules.md) is the current
+[Design 90](../../docs/design/90-functional-modules.md) is the current
 refactoring design: opaque objects and Id messages are the common module boundary.
 `birnam-abi` contains only that protocol, borrowed-buffer helpers and the
 stateless OS loader used by Siphon and Id.
@@ -11,15 +11,16 @@ layouts, factory catalogs or fingerprint checks to repair callers. Production Ru
 
 Retained evidence:
 
-- [Id protocol](fixtures/id-protocol-v1/README.md), its C header and independent
+- [Id protocol](tests/fixtures/id-protocol-v1/README.md), its C header and independent
   C-entry round trip exercise the common native message boundary.
-- [Stackless/recovery formats](fixtures/stackless-s2/README.md) retain registration,
+- [Stackless/recovery formats](../../tests/fixtures/stackless-s2/README.md) retain registration,
   frame, generation and image fixtures, including the registration-envelope C
   header and layout check. These describe recovery formats, not a module API catalog.
-- [Portable Code formats](fixtures/portable-code-v1/README.md) retain independent
+- [Portable Code formats](../../tests/fixtures/portable-code-v1/README.md) retain independent
   binary readers and fixtures for programs, bindings and images.
-- `rust-*-dylib-v1.json` inventories describe exported symbols. Retired publishers are absent from those inventories. The native-message gate
-  verifies each module's descriptor exports and dependencies.
+- Each native crate's `exports.json` inventories its exported symbols. Retired
+  publishers are absent from those inventories. The native-message gate verifies
+  each module's descriptor exports and dependencies.
 
 The retired module-table specifications, IdApi fixture directories and old binary
 clients are preserved only in [Git history](https://github.com/chazu/birnam/tree/cffba722/abi).

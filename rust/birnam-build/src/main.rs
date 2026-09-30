@@ -12,11 +12,11 @@ use sha2::{Digest, Sha256};
 
 // Authored production tools, compiled through the installed Id artifact path.
 const TOOL_MODULES: &[(&str, &str)] = &[
-    ("stdlib", "src/id/stdlib.birnam"),
-    ("stacklessControl", "src/id/stackless-control.birnam"),
-    ("compiledUnit", "src/id/compiled-unit.birnam"),
-    ("toml", "src/id/toml.birnam"),
-    ("config", "src/id/config.birnam"),
+    ("stdlib", "modules/stdlib.birnam"),
+    ("stacklessControl", "modules/stackless-control.birnam"),
+    ("compiledUnit", "modules/compiled-unit.birnam"),
+    ("toml", "modules/toml.birnam"),
+    ("config", "modules/config.birnam"),
     ("doc", "modules/doc.birnam"),
     ("cli", "modules/cli.birnam"),
     ("file", "modules/file.birnam"),
@@ -294,9 +294,6 @@ fn source_manifest(root: &Path) -> Result<BTreeMap<String, String>, String> {
     collect_files(root, Path::new("rust"), &mut entries, &|_| true)?;
     collect_files(root, Path::new("vendor/libtcc-src"), &mut entries, &|_| {
         true
-    })?;
-    collect_files(root, Path::new("src/id"), &mut entries, &|path| {
-        path.extension().and_then(|value| value.to_str()) == Some("birnam")
     })?;
     collect_files(root, Path::new("modules"), &mut entries, &|path| {
         path.extension().and_then(|value| value.to_str()) == Some("birnam")
@@ -691,7 +688,6 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "md",
     )?;
 
-    copy_tree_extension(&root.join("src/id"), &source_root.join("src/id"), "birnam")?;
     copy_tree_extension(
         &root.join("modules"),
         &source_root.join("modules"),

@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn manifest_covers_exactly_resumable_rows_and_derives_identity() {
         let program = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "program-empty.bin"
         ));
         let programs = portable_inventory::encode_closure(&[program.as_slice()]).unwrap();
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn synchronous_rows_cannot_appear_in_manifest() {
         let program = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "program-empty.bin"
         ));
         let programs = portable_inventory::encode_closure(&[program.as_slice()]).unwrap();

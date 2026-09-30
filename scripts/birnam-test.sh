@@ -23,7 +23,7 @@ fi
 
 test -x "$prefix/bin/birnam"
 
-# Suites resolve modules/, src/id/, and docs/guide relative to the working
+# Suites resolve modules/ and docs/guide relative to the working
 # directory, so the runner has to see the repo root. run-tests.birnam gates its
 # own exit code, and </dev/null keeps the runner off an interactive stdin.
 "$prefix/bin/birnam" modules/run-tests.birnam </dev/null

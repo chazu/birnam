@@ -786,7 +786,7 @@ depth cannot exhaust the native stack.
 ## 13. Canonical fixtures and independent reader
 
 **Implemented proof slice, 2026-08-25.**
-[`abi/fixtures/portable-code-v1`](../../abi/fixtures/portable-code-v1/README.md)
+[`abi/fixtures/portable-code-v1`](../../tests/fixtures/portable-code-v1/README.md)
 contains two independent encoders' byte-identical representatives for all four
 common values and image-v7. The frozen corpus covers thirteen PortablePrograms,
 five program inventories, four binding inventories, four materialization

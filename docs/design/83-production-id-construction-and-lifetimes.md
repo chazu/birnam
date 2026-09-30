@@ -187,7 +187,7 @@ their executable release until the checkpoint.
 ## 3. The common native loading protocol
 
 The native C layout is frozen in
-[`id-protocol-v1/id_protocol.h`](../../abi/fixtures/id-protocol-v1/id_protocol.h)
+[`id-protocol-v1/id_protocol.h`](../../rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h)
 and mirrored by [`id_protocol.rs`](../../rust/birnam-abi/src/id_protocol.rs).
 The current production Id dictionaries and core dispatch use these typed
 operands. The common descriptor loader and production Siphon handoff are wired.

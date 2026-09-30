@@ -189,14 +189,14 @@ load policy. The normal dependency order for the current sources is:
 
 | Order | Module | Source | Role / what it builds on |
 |---|---|---|---|
-| 1 | `modules` | [modules.birnam](../../src/id/modules.birnam) | Module manager, dependency graph/order and compiled-module loading; uses only the native stack available before stdlib |
-| 2 | `stdlib` | [stdlib.birnam](../../src/id/stdlib.birnam) | Derived arithmetic, collection/String protocols, error handling and documentation hooks |
-| 3 | `compiledUnit` | [compiled-unit.birnam](../../src/id/compiled-unit.birnam) | CompiledUnit, DispatchGeneration and EvolutionIntent policy over Rust Codegen mechanisms |
-| 4 | `toml` | [toml.birnam](../../src/id/toml.birnam) | Birnam TOML parser over stdlib |
-| 5 | `config` | [config.birnam](../../src/id/config.birnam) | Project manifest/configuration parsing over TOML |
-| 6 | `appConfig` | [app-config.birnam](../../src/id/app-config.birnam) | Application startup configuration over TOML |
-| 7 | `isolate` | [isolate.birnam](../../src/id/isolate.birnam) | Concurrency program preparation, source/compiled-unit/image management and worker-image ownership |
-| 8 | `stacklessControl` | [stackless-control.birnam](../../src/id/stackless-control.birnam) | Resumable control methods, TaskControl/TaskExecutor, cancellation, cleanup and worker-service policy |
+| 1 | `modules` | [modules.birnam](../../modules/modules.birnam) | Module manager, dependency graph/order and compiled-module loading; uses only the native stack available before stdlib |
+| 2 | `stdlib` | [stdlib.birnam](../../modules/stdlib.birnam) | Derived arithmetic, collection/String protocols, error handling and documentation hooks |
+| 3 | `compiledUnit` | [compiled-unit.birnam](../../modules/compiled-unit.birnam) | CompiledUnit, DispatchGeneration and EvolutionIntent policy over Rust Codegen mechanisms |
+| 4 | `toml` | [toml.birnam](../../modules/toml.birnam) | Birnam TOML parser over stdlib |
+| 5 | `config` | [config.birnam](../../modules/config.birnam) | Project manifest/configuration parsing over TOML |
+| 6 | `appConfig` | [app-config.birnam](../../modules/app-config.birnam) | Application startup configuration over TOML |
+| 7 | `isolate` | [isolate.birnam](../../modules/isolate.birnam) | Concurrency program preparation, source/compiled-unit/image management and worker-image ownership |
+| 8 | `stacklessControl` | [stackless-control.birnam](../../modules/stackless-control.birnam) | Resumable control methods, TaskControl/TaskExecutor, cancellation, cleanup and worker-service policy |
 
 The host loads `modules` explicitly first, then registers native kernel names,
 sets the manager's library directory, and registers the other bootstrap modules'

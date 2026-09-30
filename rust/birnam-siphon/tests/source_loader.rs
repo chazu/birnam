@@ -104,7 +104,7 @@ fn source_loading_uses_live_owners() {
             std::env::temp_dir().join(format!("birnam-source-loader-{}", std::process::id()));
         std::fs::create_dir_all(&temp).unwrap();
         let manager = temp.join("modules.birnam");
-        std::fs::write(&manager, include_bytes!("../../../src/id/modules.birnam")).unwrap();
+        std::fs::write(&manager, include_bytes!("../../../modules/modules.birnam")).unwrap();
         let result = h.call(
             system,
             b"load:",

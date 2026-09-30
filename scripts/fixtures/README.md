@@ -2,7 +2,7 @@
 
 Current native integration runs through `rust/birnam-siphon/tests/` and
 `scripts/native-message-test.sh`. Independent C consumers of the Id message
-carrier and Execution descriptors live in `abi/fixtures/id-protocol-v1/`.
+carrier and Execution descriptors live in `rust/birnam-abi/tests/fixtures/id-protocol-v1/`.
 
 The former table-based construction, adoption, service-selection and image
 fixtures are retired. They required deleted IdApi headers, Runtime constructors,

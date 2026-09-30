@@ -824,14 +824,12 @@ application and build driver.
 - Other `rust/birnam-*/` crates — native values, compiler/runtime,
   storage, images, workers and language services. Their algorithms are retained;
   integration still needs migration under [Design 90](docs/design/90-functional-modules.md).
-- `src/id/*.birnam` — core modules written in Birnam: module management,
-  standard-library extensions, compiled-unit lifecycle, configuration/project
-  policy, isolate support and stackless control. The directory name does not
-  identify the native Id implementation. Sources are embedded for bootstrap and
-  listed for compilation by the installer.
-- `modules/` — additional Birnam libraries, CLI/LSP tools, documentation and tests.
-- `abi/` — [common native boundary and format evidence](abi/README.md);
-  module-specific ABI documents are historical.
+- `modules/` — all modules written in Birnam: core language and startup policy,
+  libraries, CLI/LSP tools, documentation and tests. Core sources are embedded
+  for bootstrap; the installer lists modules explicitly for compilation.
+- `tests/fixtures/` — shared portable-code, recovery and image format evidence.
+  [Native protocol checks](rust/birnam-abi/README.md) live beside the ABI crate;
+  each native crate keeps its exported-symbol inventory in `exports.json`.
 - `wrapped/` — native libraries used by optional applications.
 - `examples/` — programs, including images and AOT artifacts.
 - `docs/design/` — designs and implementation status; `docs/archive/` holds
@@ -859,7 +857,7 @@ application and build driver.
   records the earlier construction design and lifetime obligations. Design 84
   supersedes its descriptor/factory integration. The current
   [Siphon](rust/birnam-siphon/src/lib.rs) uses only the
-  [Id protocol](abi/fixtures/id-protocol-v1/README.md).
+  [Id protocol](rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md).
 - [Production extraction status](docs/design/81-production-extraction-status.md)
   summarizes the completed Rust modularization through 81CA, current ownership,
   validation, and the remaining Birnam implementation work. This phase is closed;
@@ -869,7 +867,7 @@ application and build driver.
   modules, including startup preparation and image recovery.
 - [Self-hosting roadmap](docs/design/81-toward-a-birnam-implementation.md) defines
   the eventual Birnam implementation and retained independent bootstrap.
-  The [common Id protocol](abi/fixtures/id-protocol-v1/README.md) is the current
+  The [common Id protocol](rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md) is the current
   native boundary; Design 84 supersedes the former module API tables.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.

@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn nested_program_closure_is_deduplicated_and_digest_sorted() {
         let outer = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "program-nested-captures.bin"
         ));
         let bytes = super::encode_closure(&[outer.as_slice()]).unwrap();
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-nested-closure.bin"
             ))
         );
@@ -292,21 +292,21 @@ mod tests {
     #[test]
     fn repeated_root_is_elided_to_the_frozen_one_row_inventory() {
         let program = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "program-nested-inner.bin"
         ));
         let bytes = super::encode_closure(&[program.as_slice(), program.as_slice()]).unwrap();
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-one.bin"
             ))
         );
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-duplicate-elided.bin"
             ))
         );
@@ -316,14 +316,14 @@ mod tests {
     #[test]
     fn nonempty_nested_closure_matches_the_shared_cyclic_inventory() {
         let outer = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "program-nonutf8-names-block.bin"
         ));
         let bytes = super::encode_closure(&[outer.as_slice()]).unwrap();
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-shared-cyclic.bin"
             ))
         );
@@ -351,23 +351,23 @@ mod tests {
     fn every_stored_inventory_truncation_rejects_and_mutations_do_not_panic() {
         let fixtures: &[&[u8]] = &[
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-empty.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-one.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-duplicate-elided.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-nested-closure.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "inventory-shared-cyclic.bin"
             )),
         ];

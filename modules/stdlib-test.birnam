@@ -1,5 +1,5 @@
 // stdlib-test.birnam — the test suite for the SELF-HOSTED string protocol in
-// src/id/stdlib.birnam (docs/design/44 Phase 2): isEmpty/notEmpty (via
+// modules/stdlib.birnam (docs/design/44 Phase 2): isEmpty/notEmpty (via
 // Collection), startsWith:/endsWith:, includesSubstring: (over the native
 // indexOf: scanner), words, and the derived do:/inject:into: fold. The edge
 // cases here are the byte-for-byte oracle the migration was verified against —

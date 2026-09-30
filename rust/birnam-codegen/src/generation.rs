@@ -579,7 +579,7 @@ mod tests {
             decode_hex_digest(b"d670335de8efd9c6db228e19a70affb3fe738e0864dee726dde273928a5171cf")
                 .unwrap();
         let generation_selection = include_bytes!(
-            "../../../abi/fixtures/stackless-s2/generation-selection-construction-trace.bin"
+            "../../../tests/fixtures/stackless-s2/generation-selection-construction-trace.bin"
         );
         let authority = dispatch_generation_authority_with(
             &[module],

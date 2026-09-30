@@ -5194,7 +5194,7 @@ mod tests {
         for (name, implementation_kind, path) in cases {
             let bytes = std::fs::read(
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../abi/fixtures/stackless-s2")
+                    .join("../../tests/fixtures/stackless-s2")
                     .join(name),
             )
             .unwrap();

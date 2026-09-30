@@ -580,7 +580,7 @@ through CompiledUnit open/map/activate against its recorded predecessor.
 
 Committed golden fixtures:
 
-- [`abi/fixtures/stackless-s2`](../../abi/fixtures/stackless-s2/README.md)
+- [`abi/fixtures/stackless-s2`](../../tests/fixtures/stackless-s2/README.md)
   freezes the empty-scope, all-synchronous, mixed-disposition/nested-block, and
   malformed-scope bytes, exact lengths, SHA-256 values, annotated hexadecimal
   rendering, normalized inventory, and single-fault rejection stages required
@@ -673,7 +673,7 @@ diagnostics, but those boundaries have no effect on these bytes.
 
 Committed golden fixtures:
 
-- [`abi/fixtures/stackless-s2`](../../abi/fixtures/stackless-s2/README.md)
+- [`abi/fixtures/stackless-s2`](../../tests/fixtures/stackless-s2/README.md)
   freezes one-revision and two-revision GenerationSelection values plus the
   ArtifactSelection inputs for one-slice, multi-slice, reversed-order,
   empty-neutral, overlapping, and missing-revision composition cases. The
@@ -876,7 +876,7 @@ offset, selector offset, ArtifactSelection digest, or covered-revision scope.
 
 Committed golden fixtures:
 
-- [`abi/fixtures/stackless-s2`](../../abi/fixtures/stackless-s2/README.md)
+- [`abi/fixtures/stackless-s2`](../../tests/fixtures/stackless-s2/README.md)
   freezes empty, named-only, block-only, mixed, and non-UTF-8 selector manifests
   whose rows commit real independently checked descriptor hashes. It also
   freezes matching ArtifactSelection inputs and proves authority, identity,
@@ -1580,7 +1580,7 @@ reference and its own private PCs, pending transition, links, pins, and
 
 Committed proof:
 
-- [`abi/fixtures/stackless-s2`](../../abi/fixtures/stackless-s2/README.md)
+- [`abi/fixtures/stackless-s2`](../../tests/fixtures/stackless-s2/README.md)
   freezes and independently checks the complete Descriptor-v2 matrix: minimal
   Return, source-mapped block, Call, TailCall, branch/join with a contiguous
   multi-successor Continue group, cyclic parallel copy, and colored-slot reuse.
@@ -1747,7 +1747,7 @@ Accepted semantics therefore remain:
 
 Committed proof:
 
-- [`abi/fixtures/stackless-s2`](../../abi/fixtures/stackless-s2/README.md)
+- [`abi/fixtures/stackless-s2`](../../tests/fixtures/stackless-s2/README.md)
   freezes a code-bearing empty manifest, a complete mapped construction trace
   with four references to one block row, and a no-Code rebuild form. Four
   committed malformed images cover out-of-range and named-row indices plus

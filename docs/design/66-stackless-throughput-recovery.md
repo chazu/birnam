@@ -100,7 +100,7 @@ to:do: -> source-authored stackless control methods and conditional blocks
 
 Verified implementation facts:
 
-1. [`src/id/stackless-control.birnam`](../../src/id/stackless-control.birnam)
+1. [`src/id/stackless-control.birnam`](../../modules/stackless-control.birnam)
    replaces production Integer iteration with `stacklessTo:do:answer:`,
    `stacklessToBody:do:answer:` and `stacklessToContinue:do:answer:`. The native
    `integer_to_do` implementation still exists in the Rust prelude, but treating

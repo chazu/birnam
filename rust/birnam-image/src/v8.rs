@@ -895,10 +895,10 @@ mod tests {
     #[test]
     fn optional_behavior_record_roundtrips_without_changing_old_image_bytes() {
         use crate::behavior_links::{Link, Parent, encode};
-        let programs = include_bytes!("../../../abi/fixtures/portable-code-v1/inventory-empty.bin");
-        let bindings = include_bytes!("../../../abi/fixtures/portable-code-v1/bindings-empty.bin");
+        let programs = include_bytes!("../../../tests/fixtures/portable-code-v1/inventory-empty.bin");
+        let bindings = include_bytes!("../../../tests/fixtures/portable-code-v1/bindings-empty.bin");
         let selection =
-            include_bytes!("../../../abi/fixtures/portable-code-v1/selection-empty.bin");
+            include_bytes!("../../../tests/fixtures/portable-code-v1/selection-empty.bin");
         let mut heap = 2u32.to_le_bytes().to_vec();
         for _ in 0..2 {
             heap.push(9);
@@ -939,9 +939,9 @@ mod tests {
 
     #[test]
     fn system_receivers_have_no_serialized_native_payload() {
-        let programs = include_bytes!("../../../abi/fixtures/portable-code-v1/inventory-empty.bin");
-        let bindings = include_bytes!("../../../abi/fixtures/portable-code-v1/bindings-empty.bin");
-        let selection = include_bytes!("../../../abi/fixtures/portable-code-v1/selection-empty.bin");
+        let programs = include_bytes!("../../../tests/fixtures/portable-code-v1/inventory-empty.bin");
+        let bindings = include_bytes!("../../../tests/fixtures/portable-code-v1/bindings-empty.bin");
+        let selection = include_bytes!("../../../tests/fixtures/portable-code-v1/selection-empty.bin");
         for words in [0u32, 1] {
             let mut heap = 1u32.to_le_bytes().to_vec();
             heap.push(9);
@@ -975,15 +975,15 @@ mod tests {
     #[test]
     fn empty_stripped_image_has_frozen_v8_bytes() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-empty.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-empty.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-empty.bin"
         ));
         let bytes =
@@ -1006,15 +1006,15 @@ mod tests {
     #[test]
     fn mixed_stripped_image_reifies_codeobjects_and_portable_blocks() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-mixed.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-mixed.bin"
         ));
         let heap = mixed_heap();
@@ -1044,7 +1044,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-mixed-stripped.bin"
             ))
         );
@@ -1056,15 +1056,15 @@ mod tests {
     #[test]
     fn mapped_code_is_final_and_bound_to_portable_authority() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-mixed.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-mixed.bin"
         ));
         let heap = mixed_heap();
@@ -1094,7 +1094,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-mixed-code.bin"
             ))
         );
@@ -1108,15 +1108,15 @@ mod tests {
     #[test]
     fn retained_facts_admit_portable_block_vtable_references() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-mixed.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-mixed.bin"
         ));
         let heap = mixed_heap();
@@ -1159,7 +1159,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-mixed-facts-stripped.bin"
             ))
         );
@@ -1174,15 +1174,15 @@ mod tests {
     #[test]
     fn shared_codeobjects_and_cyclic_block_captures_match_independent_bytes() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-shared-cyclic.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-empty.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-shared-cyclic.bin"
         ));
         let heap = shared_cyclic_heap();
@@ -1203,7 +1203,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-shared-cyclic-stripped.bin"
             ))
         );
@@ -1218,15 +1218,15 @@ mod tests {
     #[test]
     fn codebinding_can_reference_a_portable_block_implementation() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-block-implementation.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-block-implementation.bin"
         ));
         let heap = mixed_heap();
@@ -1247,7 +1247,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-block-binding-stripped.bin"
             ))
         );
@@ -1257,27 +1257,27 @@ mod tests {
     fn every_non_image_prefix_rejects_and_stored_image_mutations_do_not_panic() {
         let fixtures: &[&[u8]] = &[
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-block-binding-stripped.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-empty-stripped.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-mixed-stripped.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-mixed-code.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-mixed-facts-stripped.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "image-shared-cyclic-stripped.bin"
             )),
         ];
@@ -1308,7 +1308,7 @@ mod tests {
     #[test]
     fn obsolete_image_versions_reject_at_the_fixed_header() {
         let fixture = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "image-empty-stripped.bin"
         ));
         assert!(super::decode(fixture, 1, 0xcdb6_41f9_7854_0d45).is_ok());
@@ -1325,15 +1325,15 @@ mod tests {
     #[test]
     fn bounded_generated_code_records_round_trip_structurally() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-empty.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-empty.bin"
         ));
         let selection = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "selection-empty.bin"
         ));
         for length in 1..=256usize {
@@ -1373,7 +1373,7 @@ mod tests {
     #[test]
     fn bytes_synchronous_blocks_and_source_registry_are_additive() {
         let original =
-            include_bytes!("../../../abi/fixtures/portable-code-v1/image-mixed-stripped.bin");
+            include_bytes!("../../../tests/fixtures/portable-code-v1/image-mixed-stripped.bin");
         let decoded = super::decode(original, 1, 0xcdb6_41f9_7854_0d45).unwrap();
         let mut heap = mixed_heap();
         // The second object is a capture-free Block referring to CodeObject 0.
@@ -1459,12 +1459,12 @@ mod tests {
 
     fn shared_cyclic_heap() -> Vec<u8> {
         let programs = birnam_artifact::portable_inventory::inspect(include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-shared-cyclic.bin"
         )))
         .unwrap();
         let nested = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "program-nonutf8-names-block.bin"
         ));
         let nested = birnam_artifact::portable_program::inspect(nested)
@@ -1480,7 +1480,7 @@ mod tests {
                 programs.program(*index)
                     == Some(
                         include_bytes!(concat!(
-                            "../../../abi/fixtures/portable-code-v1/",
+                            "../../../tests/fixtures/portable-code-v1/",
                             "program-nonutf8-names-block.bin"
                         ))
                         .as_slice(),

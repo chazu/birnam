@@ -158,7 +158,7 @@
 
 // The starter birnam.toml: the recognised keys, commented out, with the
 // [Config at:] read surface documented inline — a new project's config is
-// self-describing without opening src/id/config.birnam.
+// self-describing without opening modules/config.birnam.
 [Reflect defineMethod: #initTemplate on: Cli as: [:self |
 "# birnam.toml — project configuration, discovered from cwd upward.
 #

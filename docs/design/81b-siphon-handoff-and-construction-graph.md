@@ -68,7 +68,7 @@ Evidence: `C_RUNTIME_PRELUDE` and `TranslationUnit::finish` in
 `bind_global_shims` and `rust_codegen_load` in
 [Codegen runtime](../../rust/birnam-codegen-runtime/src/lib.rs);
 [IdApi](../../rust/birnam-abi/src/lib.rs);
-[Module](../../src/id/modules.birnam); and
+[Module](../../modules/modules.birnam); and
 [image construction](../../rust/birnam-image/src/lib.rs).
 
 An important distinction: today's floor has a raw import/export namespace; the

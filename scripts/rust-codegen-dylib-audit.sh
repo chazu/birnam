@@ -4,7 +4,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 dylib=${BIRNAM_RUST_CODEGEN_DYLIB:-"$repo/.cargo-target/release/libbirnam_codegen_runtime.dylib"}
-manifest="$repo/abi/rust-codegen-runtime-dylib-v1.json"
+manifest="$repo/rust/birnam-codegen-runtime/exports.json"
 test -f "$dylib"
 test -f "$manifest"
 

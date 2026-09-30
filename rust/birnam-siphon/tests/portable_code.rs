@@ -520,7 +520,7 @@ fn portable_code_ordinary_objects_use_id_sends() {
         // Frozen golden fixtures cover byte names, all node forms, nested Blocks,
         // duplicate captures, let scope, selector arities and exact float bits.
         let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../abi/fixtures/portable-code-v1");
+            .join("../../tests/fixtures/portable-code-v1");
         let sums = std::fs::read_to_string(fixture_dir.join("SHA256SUMS")).unwrap();
         for line in sums.lines() {
             let (digest, file) = line.split_once("  ").unwrap();

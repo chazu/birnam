@@ -258,11 +258,11 @@ impl HostRuntime {
         for (name, source) in [
             (
                 b"modules".as_slice(),
-                include_bytes!("../../../src/id/modules.birnam").as_slice(),
+                include_bytes!("../../../modules/modules.birnam").as_slice(),
             ),
             (
                 b"stdlib".as_slice(),
-                include_bytes!("../../../src/id/stdlib.birnam").as_slice(),
+                include_bytes!("../../../modules/stdlib.birnam").as_slice(),
             ),
         ] {
             scope
@@ -277,7 +277,7 @@ impl HostRuntime {
         }
         scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
         scope.evaluate(
-            include_bytes!("../../../src/id/stackless-control.birnam"),
+            include_bytes!("../../../modules/stackless-control.birnam"),
             Path::new("<stacklessControl>"),
             Some(b"stacklessControl"),
         )?;
@@ -287,12 +287,12 @@ impl HostRuntime {
             None,
         )?;
         scope.evaluate(
-            include_bytes!("../../../src/id/compiled-unit.birnam"),
+            include_bytes!("../../../modules/compiled-unit.birnam"),
             Path::new("<compiledUnit>"),
             Some(b"compiledUnit"),
         )?;
         scope.evaluate(
-            include_bytes!("../../../src/id/isolate.birnam"),
+            include_bytes!("../../../modules/isolate.birnam"),
             Path::new("<isolate>"),
             Some(b"isolate"),
         )?;

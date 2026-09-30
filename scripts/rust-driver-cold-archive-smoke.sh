@@ -13,7 +13,7 @@ snapshot() {
   tar -C "$repo" \
     --exclude='*.dylib' \
     --exclude='*.image' \
-    -cf - VERSION Cargo.toml Cargo.lock rust src/id modules docs/guide scripts/rust-install.sh examples/fizzbuzz.birnam vendor/libtcc-src | tar -C "$destination" -xf -
+    -cf - VERSION Cargo.toml Cargo.lock rust modules docs/guide scripts/rust-install.sh examples/fizzbuzz.birnam vendor/libtcc-src | tar -C "$destination" -xf -
   if find "$destination" -type f \( -name '*.dylib' -o -name '*.image' -o -path '*/target/*' -o -path '*/.cargo-target/*' \) -print -quit | grep -q .; then
     echo "rust-cold-archive: source snapshot contains a prebuilt artifact" >&2
     exit 1

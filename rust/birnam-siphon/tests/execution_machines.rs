@@ -92,7 +92,7 @@ impl H {
     unsafe fn method(&mut self, fixture: &str, mode: usize, owner: Oop) -> Oop {
         unsafe {
             let bytes = std::fs::read(format!(
-                "{}/../../abi/fixtures/stackless-s2/frame-descriptor-{fixture}.bin",
+                "{}/../../tests/fixtures/stackless-s2/frame-descriptor-{fixture}.bin",
                 env!("CARGO_MANIFEST_DIR")
             ))
             .unwrap();

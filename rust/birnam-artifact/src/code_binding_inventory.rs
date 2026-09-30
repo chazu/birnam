@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-mixed.bin"
             ))
         );
@@ -593,7 +593,7 @@ mod tests {
         assert_eq!(
             changed_bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-provenance-only-change.bin"
             ))
         );
@@ -608,7 +608,7 @@ mod tests {
         assert_eq!(
             block_bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-block-implementation.bin"
             ))
         );
@@ -622,19 +622,19 @@ mod tests {
     fn every_stored_binding_inventory_truncation_rejects_and_mutations_do_not_panic() {
         let fixtures: &[&[u8]] = &[
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-block-implementation.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-empty.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-mixed.bin"
             )),
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "bindings-provenance-only-change.bin"
             )),
         ];

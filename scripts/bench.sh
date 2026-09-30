@@ -267,7 +267,7 @@ if [ -f "$TMP/bench.image" ]; then
 else
   echo "FAIL macro boot.image: no image artifact (image suite failed?)" >&2; FAIL=1
 fi
-macro_case compile.stage1-stdlib "$REP_HEAVY" "$BIN" --compile-module src/id/stdlib.birnam "$TMP/libbirnam_stdlib.dylib"
+macro_case compile.stage1-stdlib "$REP_HEAVY" "$BIN" --compile-module modules/stdlib.birnam "$TMP/libbirnam_stdlib.dylib"
 macro_case script.primes         "$REP_MACRO" "$BIN" examples/primes.birnam
 macro_case script.word-frequency "$REP_MACRO" "$BIN" examples/word-frequency.birnam
 macro_case docgen.full           "$REP_HEAVY" "$BIN" docgen "$TMP/docsite.html"

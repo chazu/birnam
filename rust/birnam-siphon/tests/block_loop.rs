@@ -560,7 +560,7 @@ unsafe fn control(h: &H) {
         h.bind(b"OldLoopCondition", old_condition);
         // Install the existing authored Boolean/while methods, without importing
         // the unrelated scheduler/collection policy later in that source unit.
-        let authored = include_str!("../../../src/id/stackless-control.birnam");
+        let authored = include_str!("../../../modules/stackless-control.birnam");
         let start = authored.find("// Boolean is").unwrap();
         let end = authored.find("// Integer iteration").unwrap();
         let result = h.eval(authored[start..end].as_bytes());

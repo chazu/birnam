@@ -94,7 +94,7 @@ or the smallest missing transition, not to assume an ABI break is necessary.
 | [finish_stackless_return](../../rust/birnam-runtime/src/runtime.rs#L3296) pops a frame, commits its caller's Call, and releases its entry pin without invoking user code while borrowed. | Delimited exit can follow the same transfer discipline, but must preflight the entire multi-frame transition. This function is not already a delimited unwinder. |
 | [DelimiterKind](../../rust/birnam-runtime/src/execution.rs#L1609) currently contains Host and EntryBarrier; capture/restore is same-Machine and one-shot. | There is no supplied library-handler delimiter today; ordinary capture/restore does not by itself escape back into a retained cleanup handler. |
 | [Abort handling](../../rust/birnam-runtime/src/runtime.rs#L4101) calls `fail`, which clears execution control state. | It cannot stand in for language cleanup. |
-| [Current stackless ensure:](../../src/id/stackless-control.birnam#L205) evaluates its body, evaluates cleanup, then returns the body's value. | It supports sequential/Error-value behavior, not nonlocal cancellation. A task-aware implementation must establish a real handler before the body runs. |
+| [Current stackless ensure:](../../modules/stackless-control.birnam#L205) evaluates its body, evaluates cleanup, then returns the body's value. | It supports sequential/Error-value behavior, not nonlocal cancellation. A task-aware implementation must establish a real handler before the body runs. |
 
 These are current-source observations. The rest of this document is the proposed
 extension, including its obligations rather than an assertion they already hold.

@@ -33,7 +33,7 @@ copies elements, evaluates all keys in input order, then insertion-sorts an
 index vector. It sends `candidate < previous`; only canonical true moves the
 candidate. It constructs a new Vector for input sizes of at least two.
 
-Current [String <](../../src/id/stdlib.birnam) folds over the shorter length.
+Current [String <](../../modules/stdlib.birnam) folds over the shorter length.
 Once unequal bytes decide the answer, subsequent iterations still execute
 accumulator/control checks. It stops byte reads, but does not stop traversal.
 The proposed change is therefore broader than adding a missing byte-read guard.

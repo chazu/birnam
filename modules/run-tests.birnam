@@ -30,7 +30,7 @@ let loadTestSource := [:path |
 [loadTestSource value: "modules/portable-code-test.birnam"];
 [loadTestSource value: "modules/lang-test.birnam"];
 [loadTestSource value: "modules/modules-test.birnam"];
-[loadTestSource value: "src/id/project-policy.birnam"];
+[loadTestSource value: "modules/project-policy.birnam"];
 [loadTestSource value: "modules/project-policy-test.birnam"];
 // CompiledUnit commits run at idle Host boundaries in compiled-unit-cli-test.py.
 [loadTestSource value: "modules/app-config-test.birnam"];

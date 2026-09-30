@@ -320,7 +320,7 @@ different targets on successive sends must work with optimization absent.
 **Evidence:** [scheduling.rs](../../rust/birnam-runtime/src/runtime/scheduling.rs) wraps
 bounded drives and suspended-Machine state through Runtime. Continuation state
 and root helpers are in [execution.rs](../../rust/birnam-runtime/src/execution.rs).
-Task policy already exists in [stackless-control.birnam](../../src/id/stackless-control.birnam).
+Task policy already exists in [stackless-control.birnam](../../modules/stackless-control.birnam).
 
 **Construction:** provide capture/resume, boundary and bounded-driving protocols
 above L7/L8, with owner/epoch checks and retained roots. Keep scheduling and

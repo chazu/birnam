@@ -403,11 +403,11 @@ mod tests {
     #[test]
     fn mixed_selection_covers_every_binding_and_program_in_order() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-mixed.bin"
         ));
         let bytes = super::encode(
@@ -436,7 +436,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "selection-mixed.bin"
             ))
         );
@@ -451,11 +451,11 @@ mod tests {
     #[test]
     fn shared_cyclic_selection_matches_independent_bytes() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-shared-cyclic.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-empty.bin"
         ));
         let bytes = super::encode(
@@ -471,7 +471,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "selection-shared-cyclic.bin"
             ))
         );
@@ -480,11 +480,11 @@ mod tests {
     #[test]
     fn block_implementation_selection_matches_independent_bytes() {
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-block-implementation.bin"
         ));
         let bytes = super::encode(
@@ -504,7 +504,7 @@ mod tests {
         assert_eq!(
             bytes,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "selection-block-implementation.bin"
             ))
         );
@@ -513,21 +513,21 @@ mod tests {
     #[test]
     fn physical_descriptor_hashes_are_outside_portable_selection_authority() {
         let first = include_bytes!(concat!(
-            "../../../abi/fixtures/stackless-s2/",
+            "../../../tests/fixtures/stackless-s2/",
             "frame-descriptor-call.bin"
         ));
         let rebuilt = include_bytes!(concat!(
-            "../../../abi/fixtures/stackless-s2/",
+            "../../../tests/fixtures/stackless-s2/",
             "frame-descriptor-colored-reuse.bin"
         ));
         assert_ne!(Sha256::digest(first), Sha256::digest(rebuilt));
 
         let programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-mixed.bin"
         ));
         let selection = super::encode(
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(
             selection,
             include_bytes!(concat!(
-                "../../../abi/fixtures/portable-code-v1/",
+                "../../../tests/fixtures/portable-code-v1/",
                 "selection-mixed.bin"
             ))
         );
@@ -557,40 +557,40 @@ mod tests {
     #[test]
     fn every_stored_selection_truncation_rejects_and_mutations_do_not_panic() {
         let empty_programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-empty.bin"
         ));
         let empty_bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-empty.bin"
         ));
         let mixed_programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
         ));
         let mixed_bindings = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "bindings-mixed.bin"
         ));
         let shared_programs = include_bytes!(concat!(
-            "../../../abi/fixtures/portable-code-v1/",
+            "../../../tests/fixtures/portable-code-v1/",
             "inventory-shared-cyclic.bin"
         ));
         let fixtures: &[(&[u8], &[u8], &[u8])] = &[
             (
                 include_bytes!(concat!(
-                    "../../../abi/fixtures/portable-code-v1/",
+                    "../../../tests/fixtures/portable-code-v1/",
                     "selection-block-implementation.bin"
                 )),
                 mixed_programs,
                 include_bytes!(concat!(
-                    "../../../abi/fixtures/portable-code-v1/",
+                    "../../../tests/fixtures/portable-code-v1/",
                     "bindings-block-implementation.bin"
                 )),
             ),
             (
                 include_bytes!(concat!(
-                    "../../../abi/fixtures/portable-code-v1/",
+                    "../../../tests/fixtures/portable-code-v1/",
                     "selection-empty.bin"
                 )),
                 empty_programs,
@@ -598,7 +598,7 @@ mod tests {
             ),
             (
                 include_bytes!(concat!(
-                    "../../../abi/fixtures/portable-code-v1/",
+                    "../../../tests/fixtures/portable-code-v1/",
                     "selection-mixed.bin"
                 )),
                 mixed_programs,
@@ -606,7 +606,7 @@ mod tests {
             ),
             (
                 include_bytes!(concat!(
-                    "../../../abi/fixtures/portable-code-v1/",
+                    "../../../tests/fixtures/portable-code-v1/",
                     "selection-shared-cyclic.bin"
                 )),
                 shared_programs,

@@ -1016,17 +1016,17 @@ mod tests {
     use super::*;
 
     const EMPTY: &[u8] =
-        include_bytes!("../../../abi/fixtures/stackless-s2/artifact-selection-empty.bin");
+        include_bytes!("../../../tests/fixtures/stackless-s2/artifact-selection-empty.bin");
     const SYNCHRONOUS: &[u8] =
-        include_bytes!("../../../abi/fixtures/stackless-s2/artifact-selection-all-synchronous.bin");
+        include_bytes!("../../../tests/fixtures/stackless-s2/artifact-selection-all-synchronous.bin");
     const MIXED: &[u8] =
-        include_bytes!("../../../abi/fixtures/stackless-s2/artifact-selection-mixed.bin");
+        include_bytes!("../../../tests/fixtures/stackless-s2/artifact-selection-mixed.bin");
     const B_SYNCHRONOUS: &[u8] =
-        include_bytes!("../../../abi/fixtures/stackless-s2/artifact-selection-b-synchronous.bin");
+        include_bytes!("../../../tests/fixtures/stackless-s2/artifact-selection-b-synchronous.bin");
     const GENERATION_AB: &[u8] =
-        include_bytes!("../../../abi/fixtures/stackless-s2/generation-selection-ab.bin");
+        include_bytes!("../../../tests/fixtures/stackless-s2/generation-selection-ab.bin");
     const BAD_SCOPE: &[u8] =
-        include_bytes!("../../../abi/fixtures/stackless-s2/artifact-selection-bad-scope.bin");
+        include_bytes!("../../../tests/fixtures/stackless-s2/artifact-selection-bad-scope.bin");
 
     fn specs(selection: Selection<'_>) -> (Vec<[u8; 32]>, Vec<(SelectionRow<'_>, Vec<u32>)>) {
         let revisions = (0..selection.revision_count())
