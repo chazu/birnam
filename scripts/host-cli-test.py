@@ -9,7 +9,8 @@ import sys
 prefix = Path(sys.argv[1]).resolve()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
-assert receipt['stage1_modules'] == ['stdlib', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
+assert receipt['stage1_modules'] == ['stdlib', 'compiledUnit', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
+assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'compiledUnit']
 assert {'libbirnam_storage.dylib', 'libbirnam_trace.dylib'} <= set(receipt['dynamic_libraries'])
 for relative, digest in receipt['staged_manifest'].items():
     assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative
@@ -73,11 +74,12 @@ result = run(['output.birnam'], executable=launcher)
 assert result.returncode == 0 and result.stdout == b'hello world\n' and not result.stderr
 stdlib_image = work / 'stdlib.image'
 source('stdlib.birnam', b'[System println: [Module isLoaded: #stdlib]]; [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; '
-       b'[Globals at: #main put: [| [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; [System println: [Module libDir]]]]; '
+       b'let savedLifecycleIntent := [EvolutionIntent for: CompiledUnit action: #activate]; '
+       b'[Globals at: #main put: [| [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; [System println: [Module libDir]]; [System println: [EvolutionIntent isIntent: savedLifecycleIntent]]]]; '
        b'[Module libDir: "/old-install/lib"]; [System saveImage: ' + json.dumps(str(stdlib_image)).encode() + b']',
        stdlib=True, output=b'true\n#[2 3 4]\n')
 assert stdlib_image.is_file()
 result = run([stdlib_image], stdlib=True)
 assert result.returncode == 0 and not result.stderr, result
-assert result.stdout == b'#[2 3 4]\n' + os.fsencode(relocated / 'lib') + b'\n', result
+assert result.stdout == b'#[2 3 4]\n' + os.fsencode(relocated / 'lib') + b'\ntrue\n', result
 print('installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and early mode validation passed')

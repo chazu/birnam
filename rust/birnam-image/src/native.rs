@@ -339,6 +339,7 @@ struct Graph<'a, 'b> {
     objects: Vec<Oop>,
     indices: HashMap<usize, u32>,
     nodes: Vec<Node>,
+    behaviors: Vec<super::behavior_links::Link>,
 }
 impl Graph<'_, '_> {
     unsafe fn reference(&mut self, o: Oop) -> Result<Value, Outcome> {
@@ -381,28 +382,65 @@ impl Graph<'_, '_> {
             let mut i = 0;
             while i < self.objects.len() {
                 let o = self.objects[i];
-                let mut vt = self.q.keep(self.s.behavior(o)?)?;
-                let mut name = self.s.export(vt)?;
-                // Private behavior identity is reconstructed by binding publication.
-                if name.is_none() {
-                    let owner = self
-                        .s
-                        .send(self.s.id.receiver, b"ownerOf:", &[Operand::object(vt)])?
-                        .as_object();
-                    vt = object(self.s.send(
+                let first = self.q.keep(self.s.behavior(o)?)?;
+                let mut vt = first;
+                let mut visited = std::collections::HashSet::new();
+                let name = loop {
+                    if let Some(name) = self.s.export(vt)? {
+                        break name;
+                    }
+                    if !visited.insert(vt) {
+                        return Err(bad());
+                    }
+                    vt = self.q.keep(object(self.s.send(
                         self.s.id.receiver,
                         b"parentOf:",
                         &[Operand::object(vt)],
-                    )?)?;
-                    self.q.keep(vt)?;
-                    name = self.s.export(vt)?;
-                    // Execution's per-Method Block behaviors are shared by
-                    // captures and validated by its Block projection below.
-                    if owner != Some(o) && name.as_deref() != Some(b"BlockVt") {
+                    )?)?)?;
+                };
+                if name == b"BlockVt" {
+                    // Execution reconstructs its intrinsic per-Method behavior.
+                    // Additional user-defined Block behavior layers remain inadmissible.
+                    if visited.len() > 1 {
                         return Err(bad());
                     }
+                } else if !visited.is_empty() {
+                    let owner = self.q.keep(object(self.s.send(
+                        self.s.id.receiver,
+                        b"ownerOf:",
+                        &[Operand::object(first)],
+                    )?)?)?;
+                    let Value::Heap(owner_index) = self.reference(owner)? else {
+                        return Err(bad());
+                    };
+                    let parent = if owner == o {
+                        let parent = self.q.keep(object(self.s.send(
+                            self.s.id.receiver,
+                            b"parentOf:",
+                            &[Operand::object(first)],
+                        )?)?)?;
+                        Some(if let Some(name) = self.s.export(parent)? {
+                            super::behavior_links::Parent::Export(name)
+                        } else {
+                            let parent_owner = self.q.keep(object(self.s.send(
+                                self.s.id.receiver,
+                                b"ownerOf:",
+                                &[Operand::object(parent)],
+                            )?)?)?;
+                            let Value::Heap(index) = self.reference(parent_owner)? else {
+                                return Err(bad());
+                            };
+                            super::behavior_links::Parent::Owner(index)
+                        })
+                    } else {
+                        None
+                    };
+                    self.behaviors.push(super::behavior_links::Link {
+                        object: i as u32,
+                        owner: owner_index,
+                        parent,
+                    });
                 }
-                let name = name.ok_or_else(bad)?;
                 let mut node = Node {
                     locator: Value::Export(name.clone()),
                     fields: Vec::new(),
@@ -577,6 +615,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
             objects: Vec::new(),
             indices: HashMap::new(),
             nodes: Vec::new(),
+            behaviors: Vec::new(),
         };
         let mut fact_values = Vec::new();
         for fact in &facts {
@@ -628,6 +667,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         )
         .map_err(|_| bad())?;
         let heap = graph.encode();
+        let behaviors = super::behavior_links::encode(&graph.behaviors);
         let retention = match policy {
             0 => super::retained_facts::RetentionPolicy::CurrentOnly,
             1 => super::retained_facts::RetentionPolicy::KeepSince(argument as u64),
@@ -650,6 +690,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         // Structural checks precede the native compiler and any file publication.
         v8::compose(v8::ImageSpec {
             sources: Some(&sources_bytes),
+            behaviors: Some(&behaviors),
             architecture: support::IMAGE_ARCH_TAG,
             runtime_abi: runtime_abi(),
             programs: &programs,
@@ -676,6 +717,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         let code = s.bytes(compiled)?;
         let bytes = v8::compose(v8::ImageSpec {
             sources: Some(&sources_bytes),
+            behaviors: Some(&behaviors),
             architecture: support::IMAGE_ARCH_TAG,
             runtime_abi: runtime_abi(),
             programs: &programs,
@@ -965,6 +1007,62 @@ unsafe fn restore_heap(
                     }
                 }
                 _ => (),
+            }
+        }
+        if let Some(bytes) = decoded.behaviors {
+            let links = super::behavior_links::decode(bytes).map_err(|_| bad())?;
+            let mut private = HashMap::new();
+            // Allocate every owner behavior before wiring inheritance or sharing.
+            for link in links.iter().filter(|link| link.object == link.owner) {
+                let owner = *objects.get(link.owner as usize).ok_or_else(bad)?;
+                let behavior = q.keep(object(s.send(
+                    s.id.receiver,
+                    b"ensurePrivateVtableFor:",
+                    &[Operand::object(owner)],
+                )?)?)?;
+                if matches!(&nodes[link.owner as usize].locator, Value::Export(name) if name == b"ObjectVt")
+                {
+                    let kinds = nodes[link.owner as usize]
+                        .fields
+                        .iter()
+                        .map(|field| u8::from(!matches!(field, Value::Raw(_))))
+                        .collect::<Vec<_>>();
+                    s.send(
+                        s.model,
+                        b"setLayoutOf:to:rest:",
+                        &[
+                            Operand::object(behavior),
+                            Operand::bytes(&kinds),
+                            Operand::word(0),
+                        ],
+                    )?;
+                }
+                private.insert(link.owner, behavior);
+            }
+            for link in &links {
+                let behavior = *private.get(&link.owner).ok_or_else(bad)?;
+                if let Some(parent) = &link.parent {
+                    let parent = match parent {
+                        super::behavior_links::Parent::Export(name) => q.keep(s.named(name)?)?,
+                        super::behavior_links::Parent::Owner(index) => {
+                            *private.get(index).ok_or_else(bad)?
+                        }
+                    };
+                    s.send(
+                        s.id.receiver,
+                        b"parentOf:put:",
+                        &[Operand::object(behavior), Operand::object(parent)],
+                    )?;
+                } else {
+                    s.send(
+                        s.id.receiver,
+                        b"reassociateBehaviorOf:with:",
+                        &[
+                            Operand::object(objects[link.object as usize]),
+                            Operand::object(behavior),
+                        ],
+                    )?;
+                }
             }
         }
         Ok(objects)

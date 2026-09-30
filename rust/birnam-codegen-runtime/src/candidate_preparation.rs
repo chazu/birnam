@@ -337,6 +337,10 @@ pub(super) unsafe fn prepare(
                 b"current generation has no matching live binding ledger",
             );
         }
+        // Generation validation can collect unrelated behavior dictionaries.
+        // Reconciliation above checks the managed ledger; snapshot its live
+        // targets only after that inert parsing and validation have completed.
+        prepared.epoch = epoch(s)?;
         for operation in &metadata.operations {
             let name = symbol(s, q, &operation.target)?;
             let Some((target, behavior)) = target(s, q, name)? else {

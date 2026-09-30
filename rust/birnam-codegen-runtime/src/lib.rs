@@ -214,6 +214,7 @@ enum Op {
     Image(image::Op),
     Artifact(artifact::Op),
     Candidate(candidate::Op),
+    FulfillIntent,
 }
 struct Entry {
     state: *const State,
@@ -249,6 +250,9 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         }
         if let Op::Image(op) = e.op {
             return image::operation(s, &scope, op, a);
+        }
+        if matches!(e.op, Op::FulfillIntent) {
+            return candidate::fulfill_intent(s, &scope, object(a[0])?);
         }
         if let Op::Candidate(op) = e.op {
             return candidate::operation(s, &scope, op, a);
@@ -511,6 +515,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 Op::Candidate(candidate::Op::Inspect),
             ),
             (vt, b"mapCandidate:", Op::Candidate(candidate::Op::Map)),
+            (vt, b"fulfillEvolutionIntent:", Op::FulfillIntent),
             (vt, b"prepareActivation:plan:", Op::Candidate(candidate::Op::Prepare)),
             (vt, b"discardPrepared:", Op::Candidate(candidate::Op::DiscardPrepared)),
             (vt, b"commitPrepared:", Op::Candidate(candidate::Op::Commit)),

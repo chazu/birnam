@@ -379,6 +379,24 @@ fn image_owner_roundtrip() {
                 h.number(h.call(global(&h, b"ImageTarget"), b"answer:", &[h.int(40)])),
                 42
             );
+            let target = global(&h, b"ImageTarget");
+            let child = global(&h, b"ImageChild");
+            let grand = global(&h, b"ImageGrand");
+            let sibling = global(&h, b"ImageSibling");
+            assert_eq!(behavior_of(&h, grand), behavior_of(&h, child));
+            assert_eq!(behavior_of(&h, sibling), behavior_of(&h, target));
+            assert_ne!(behavior_of(&h, child), behavior_of(&h, target));
+            assert_eq!(
+                object(send(
+                    h.id,
+                    h.id.receiver,
+                    b"parentOf:",
+                    &[Operand::object(behavior_of(&h, child))]
+                )),
+                behavior_of(&h, target)
+            );
+            assert_eq!(h.number(h.call(grand, b"answer:", &[h.int(40)])), 42);
+            assert_eq!(h.number(h.call(grand, b"extra", &[])), 9);
             let cyclic = global(&h, b"ImageCycle");
             assert_eq!(
                 object(send(
@@ -447,6 +465,23 @@ fn image_owner_roundtrip() {
                 assert!(status.success(), "resaved image child failed");
                 std::fs::remove_file(resaved).unwrap();
             }
+            let replacement = h.call(
+                behavior_of(&h, target),
+                b"methodFor:",
+                &[h.id.intern_name(b"alternateAnswer:").unwrap()],
+            );
+            h.call(
+                h.named(b"Store"),
+                b"addMethod:on:with:",
+                &[
+                    h.id.intern_name(b"answer:").unwrap(),
+                    behavior_of(&h, target),
+                    replacement,
+                ],
+            );
+            h.collect();
+            assert_eq!(h.number(h.call(grand, b"answer:", &[h.int(40)])), 43);
+            assert_eq!(h.number(h.call(sibling, b"answer:", &[h.int(40)])), 43);
             send(
                 h.id,
                 behavior_of(&h, h.named(b"Integer")),
@@ -472,6 +507,7 @@ fn image_owner_roundtrip() {
             return;
         }
         h.eval(b"let ImageShared := [Object clone]; let ImageAlias := ImageShared; let ImageTarget := [Object clone]; [Reflect defineMethod: #answer: on: ImageTarget as: [:self :value | [value + 2]]]; let ImageClosure := [| ImageShared]");
+        h.eval(b"[Reflect defineMethod: #alternateAnswer: on: ImageTarget as: [:self :value | [value + 3]]]; let ImageChild := [ImageTarget clone]; [Reflect defineMethod: #extra on: ImageChild as: [:self | 9]]; let ImageGrand := [ImageChild clone]; let ImageSibling := [ImageTarget clone]");
         // A real capture, not a global lookup: both dispositions share the CodeObject.
         let maker = h.eval(b"[:held | [| held]]");
         let shared = global(&h, b"ImageShared");

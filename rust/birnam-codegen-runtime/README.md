@@ -305,6 +305,13 @@ facts. Successful publication switches the source registry and complete binding
 ledger together. The `generation_transaction` test covers synchronous/resumable
 activation, replacement/addition/removal, failure compensation and exact rollback.
 
-Candidate discard and mapping retirement, Host intent fulfillment and composed-image
-adoption still need connection to these owners. End-to-end authored lifecycle and
-image acceptance remains pending.
+`fulfillEvolutionIntent:` admits an EvolutionIntent only at Execution's idle
+boundary, then scopes permission for its authored `fulfill` policy to commit.
+Running Machines and nested fulfillment cannot enter that scope; native failures
+and returned Errors always close it. Preparation Errors flow unchanged through
+the commit selectors so policy can commit immediately without constructing new
+branch Blocks between token creation and validation.
+
+Installed Host and published-project console tests exercise authored activation
+and exact rollback. Candidate discard, mapping retirement and composed-image
+generation adoption still need connection to these owners.

@@ -112,7 +112,26 @@ impl Scope<'_> {
             b"evalPersisting:from:",
             &[Operand::object(source), Operand::object(path)],
         )?;
-        self.check(cg, result)
+        self.check(cg, result)?;
+        if module.is_none() {
+            let result = self.fulfill_intent(result)?;
+            self.check_result(result)?;
+        }
+        Ok(())
+    }
+    fn fulfill_intent(&self, value: Oop) -> Result<Oop, HostError> {
+        let intents = self.host.global(self, b"EvolutionIntent")?;
+        if intents == self.host.named(b"nil")?
+            || self.call(intents, b"isIntent:", &[Operand::object(value)])?
+                != self.host.named(b"true")?
+        {
+            return Ok(value);
+        }
+        self.call(
+            self.host.named(b"Codegen")?,
+            b"fulfillEvolutionIntent:",
+            &[Operand::object(value)],
+        )
     }
     fn check(&self, cg: Oop, result: Oop) -> Result<(), HostError> {
         let diagnostic = self.call(cg, b"lastError", &[])?;
@@ -253,6 +272,11 @@ impl HostRuntime {
                 })?;
         }
         scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
+        scope.evaluate(
+            include_bytes!("../../../src/id/compiled-unit.birnam"),
+            Path::new("<compiledUnit>"),
+            Some(b"compiledUnit"),
+        )?;
         let globals = host.named(b"Globals")?;
         let name = unsafe { host.id.intern_name(b"Module") }
             .map_err(|e| native_error("intern Module", e))?;
@@ -605,6 +629,10 @@ impl Drop for HostRuntime {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "lifecycle_test.rs"]
+mod lifecycle_test;
 
 #[cfg(test)]
 mod tests {

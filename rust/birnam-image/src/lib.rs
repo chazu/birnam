@@ -2,6 +2,7 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+mod behavior_links;
 mod native_code;
 mod retained_facts;
 pub mod v8;

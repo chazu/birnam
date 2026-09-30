@@ -41,7 +41,11 @@ impl HostRuntime {
         // Teardown runs after initialization and on every subsequent failure.
         let run = (|| {
             session.check_result(result)?;
-            let sealed = session.call(self.named(b"Codegen")?, b"sealInitialGeneration", &[])?;
+            let sealed = session.call(
+                self.global(&session, b"DispatchGeneration")?,
+                b"initializeCurrent",
+                &[],
+            )?;
             session.check_result(sealed)?;
             let ready = session.call(
                 repl,
@@ -65,7 +69,7 @@ impl HostRuntime {
                     "done" => break,
                     "continue" => {}
                     "evaluated" => {
-                        let value = q.vector_at(step, 1)?;
+                        let value = q.fulfill_intent(q.vector_at(step, 1)?)?;
                         let printed =
                             q.call(repl, b"printHostResult:", &[Operand::object(value)])?;
                         q.check_result(printed)?;

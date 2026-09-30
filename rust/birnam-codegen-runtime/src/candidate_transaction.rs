@@ -466,6 +466,23 @@ pub(super) unsafe fn commit(
     rollback: bool,
 ) -> Result<Operand, Outcome> {
     unsafe {
+        // Authored policy can pipeline preparation directly into commitment,
+        // without allocating branch Blocks between the two snapshot checks.
+        if s.exact(q, token, b"ErrorVt")? {
+            return Ok(Operand::object(token));
+        }
+        if token == s.named(b"nil")? {
+            return fail(
+                s,
+                q,
+                if rollback {
+                    b"candidateRollbackPreparationFailed"
+                } else {
+                    b"candidatePreparationFailed"
+                },
+                b"candidate preparation returned nil",
+            );
+        }
         let mut p = take_prepared(s, q, token)?;
         if p.rollback != rollback {
             return fail(
@@ -475,9 +492,10 @@ pub(super) unsafe fn commit(
                 b"prepared token has a different action",
             );
         }
-        if s.send(s.named(b"Execution")?, b"retirementReady", &[])?
-            .as_word()
-            != Some(1)
+        if !s.candidates.quiescent.get()
+            && s.send(s.named(b"Execution")?, b"retirementReady", &[])?
+                .as_word()
+                != Some(1)
         {
             return fail(
                 s,

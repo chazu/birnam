@@ -25,10 +25,10 @@ cannot execute. Map rebuilds address-dependent hashes through `rehashImage:`
 after method publication, preserving each restored Map's identity.
 
 Unsupported native state, including Machines and noncanonical capability objects,
-is rejected. This slice supports exported object families and their private
-behaviors; it does not invent persistence for arbitrary prototype hierarchies or
-replace unsupported references with nil. Namespace exports resolve against the
-resident modules in the receiving process.
+is rejected. Private behaviors preserve their heap owners, shared instances and
+acyclic parent chains rooted in supported native families. Ownerless private
+behaviors and additional custom Block behavior layers remain unsupported.
+Namespace exports resolve against the resident modules in the receiving process.
 
 ## Staging and native ownership
 
@@ -73,7 +73,11 @@ and captured code continues to use Execution/TCC's existing lifetime mechanism.
 Frozen v8 fixtures retain their exact bytes. Additive heap locator 17 stores boxed
 Bytes; locator 18 identifies a synchronous Block with the existing CodeObject and
 capture representation. Optional record 10, before heap/fact records, references
-the ordinary source-registration snapshot. The runtime ABI marker distinguishes
+the ordinary source-registration snapshot. Optional record 11 follows it and
+precedes heap/fact records: ordered object/owner heap indices preserve private
+behavior sharing, and owner rows name a native family or parent owner index.
+Validation rejects missing owners, incompatible layouts and parent cycles before
+native mapping. No process pointers are persisted. The runtime ABI marker distinguishes
 message-based native artifacts from the retired shim ABI. The private `BIRNAMO1`
 bundle belongs to Codegen; Image transports its bytes without reading native code.
 
@@ -81,7 +85,8 @@ bundle belongs to Codegen; Image transports its bytes without reading native cod
 loads mapped and rebuilt in fresh processes, then saves the rebuilt state and
 loads that file in another fresh process. Mapped tests disable both compilation
 entry points. Checks cover shared/cyclic objects, captures, Cells, history, named
-methods, identity-keyed Maps, and binary embedding after deleting the source asset.
+methods, shared and nested prototypes, inherited-method replacement, identity-keyed
+Maps, and binary embedding after deleting the source asset.
 Collection runs after every restored ordinary slot. Partial mapping failure and
 post-write publication failure exercise cleanup and exact Store/source/binding
 compensation. Final removal of references returns the restored Unit count to zero.

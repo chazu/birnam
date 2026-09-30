@@ -253,6 +253,21 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
         let db = v.named(b"db");
         let nil = v.named(b"nil");
         let yes = v.named(b"true");
+        for (commit, kind) in [
+            (
+                b"commitPrepared:".as_slice(),
+                b"candidatePreparationFailed".as_slice(),
+            ),
+            (
+                b"commitPreparedRollback:",
+                b"candidateRollbackPreparationFailed",
+            ),
+        ] {
+            let rejected = v.call(cg, commit, &[nil]);
+            assert_eq!(v.call(rejected, b"kind", &[]), v.sym(kind));
+            assert_eq!(v.call(cg, commit, &[rejected]), rejected);
+        }
+
         let baseline=b"let txHelper := [| 10]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txRemove on: Integer as: [:self | 30]]";
         let initial = v.call(cg, b"evalPersisting:", &[v.text(baseline)]);
         assert_eq!(v.call(initial, b"isError", &[]), v.named(b"false"));

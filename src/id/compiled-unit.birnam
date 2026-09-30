@@ -4,9 +4,8 @@
 
 [Module named: #compiledUnit requires: #[#modules #stdlib]];
 
-// Idempotent because image boot preloads this module before restoring facts, then
-// mapped/replayed image code runs it again to refresh method blocks on the same
-// exported prototype family used by deserialized lifecycle instances.
+// Keep the ordinary prototype families stable when this policy is loaded again.
+// Image preserves them through its object graph and retained portable Methods.
 [[[Globals at: #CompiledUnit] isNil]
   ifTrue: [| [Globals at: #CompiledUnit put: [Object clone]]]
   ifFalse: [| nil]];
@@ -405,17 +404,14 @@
             ifFalse: [|
               let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
               let prior := [current unitFor: name];
-              let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: prior expected: current successor: successor]];
-              [[token isNil]
-                ifTrue: [| [Error kind: #candidatePreparationFailed]]
-                ifFalse: [|
-                  [[token isError]
-                    ifTrue: [| token]
-                    ifFalse: [|
-                      let committed := [Codegen commitPrepared: token];
-                      [[committed isNil]
-                        ifTrue: [| [Error kind: #candidateCommitFailed]]
-                        ifFalse: [| [[committed isError] ifTrue: [| committed] ifFalse: [| self]]]]]]]]]]]]]
+              // Commit immediately: constructing policy branch Blocks after
+              // preparation would change the Id behavior epoch of the token.
+              let committed := [Codegen commitPrepared:
+                [Codegen prepareActivation: self plan:
+                  [self publicationPlan: #activate prior: prior expected: current successor: successor]]];
+              [[committed isNil]
+                ifTrue: [| [Error kind: #candidateCommitFailed]]
+                ifFalse: [| committed]]]]]]]
     ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
 
 [Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
@@ -437,32 +433,17 @@
                 ifTrue: [| [Error kind: #rollbackUnavailable]]
                 ifFalse: [|
                   let prior := [predecessor unitFor: [self unitName]];
-                  let token := [Codegen prepareRollback: self plan: [self publicationPlan: #rollback prior: prior expected: current successor: predecessor]];
-                  [[token isNil]
-                    ifTrue: [| [Error kind: #candidateRollbackPreparationFailed]]
-                    ifFalse: [|
-                      [[token isError]
-                        ifTrue: [| token]
-                        ifFalse: [|
-                          let rolled := [Codegen commitPreparedRollback: token];
-                          [[rolled isNil]
-                            ifTrue: [| [Error kind: #candidateRollbackCommitFailed]]
-                            ifFalse: [| [[rolled isError] ifTrue: [| rolled] ifFalse: [| self]]]]]]]]]]]]]
+                  let rolled := [Codegen commitPreparedRollback:
+                    [Codegen prepareRollback: self plan:
+                      [self publicationPlan: #rollback prior: prior expected: current successor: predecessor]]];
+                  [[rolled isNil]
+                    ifTrue: [| [Error kind: #candidateRollbackCommitFailed]]
+                    ifFalse: [| rolled]]]]]]]
         ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]]]];
 
 [Reflect defineMethod: #activeFor: on: CompiledUnit as: [:self :name |
   let generation := [DispatchGeneration current];
   let unit := [[generation isNil] ifTrue: [| nil] ifFalse: [| [generation unitFor: name]]];
   [[unit isNil] ifTrue: [| nil] ifFalse: [| [unit state]; unit]]]];
-
-// Lifecycle instances share this pure-Birnam prototype family. Its stable
-// loader name lets image heap records relink those instances before module code
-// reconstructs the candidate lifecycle facade.
-[Reflect exportObject: CompiledUnit as: #CompiledUnitPrototype];
-[Reflect exportVtableOf: CompiledUnit as: #CompiledUnitVt];
-[Reflect exportObject: DispatchGeneration as: #DispatchGenerationPrototype];
-[Reflect exportVtableOf: DispatchGeneration as: #DispatchGenerationVt];
-[Reflect exportObject: EvolutionIntent as: #EvolutionIntentPrototype];
-[Reflect exportVtableOf: EvolutionIntent as: #EvolutionIntentVt];
 
 [Module markLoaded: #compiledUnit]

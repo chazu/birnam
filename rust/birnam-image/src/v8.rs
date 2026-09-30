@@ -31,6 +31,7 @@ pub struct ImageSpec<'a> {
     pub facts: &'a [&'a [u8]],
     pub code: Option<&'a [u8]>,
     pub sources: Option<&'a [u8]>,
+    pub behaviors: Option<&'a [u8]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +51,7 @@ pub(crate) struct DecodedImage<'a> {
     pub facts: Vec<&'a [u8]>,
     pub code: Option<&'a [u8]>,
     pub sources: Option<&'a [u8]>,
+    pub behaviors: Option<&'a [u8]>,
 }
 
 #[allow(dead_code)]
@@ -68,10 +70,19 @@ pub(crate) fn decode(
     let mut facts = Vec::new();
     let mut code = None;
     let mut sources = None;
+    let mut behaviors = None;
     while offset < bytes.len() {
         match read_u32(bytes, offset).ok_or(Error::Record)? {
-            10 if heaps.is_empty() && facts.is_empty() && code.is_none() && sources.is_none() => {
+            10 if heaps.is_empty()
+                && facts.is_empty()
+                && code.is_none()
+                && sources.is_none()
+                && behaviors.is_none() =>
+            {
                 sources = Some(next_record(bytes, &mut offset, 10)?);
+            }
+            11 if heaps.is_empty() && facts.is_empty() && code.is_none() && behaviors.is_none() => {
+                behaviors = Some(next_record(bytes, &mut offset, 11)?);
             }
             3 if facts.is_empty() && code.is_none() => {
                 heaps.push(next_record(bytes, &mut offset, 3)?);
@@ -89,6 +100,7 @@ pub(crate) fn decode(
         facts,
         code,
         sources,
+        behaviors,
     })
 }
 
@@ -108,6 +120,7 @@ pub fn compose_stripped(
         heaps: &[],
         facts: &[],
         sources: None,
+        behaviors: None,
         code: None,
     })
 }
@@ -138,7 +151,7 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
             .and_then(|value| value.checked_add(payload.len()))
             .ok_or(Error::Quantity)?;
     }
-    if let Some(sources) = spec.sources {
+    for sources in spec.sources.iter().chain(spec.behaviors.iter()) {
         total = total
             .checked_add(12)
             .and_then(|n| n.checked_add(sources.len()))
@@ -169,6 +182,9 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
     push_hashed_record(&mut output, 9, spec.selection)?;
     if let Some(sources) = spec.sources {
         push_record(&mut output, 10, sources)?;
+    }
+    if let Some(behaviors) = spec.behaviors {
+        push_record(&mut output, 11, behaviors)?;
     }
     for heap in spec.heaps {
         push_record(&mut output, 3, heap)?;
@@ -234,11 +250,20 @@ pub fn structural_preflight(
     let mut facts = Vec::new();
     let mut code = None;
     let mut sources = None;
+    let mut behaviors = None;
     while offset < bytes.len() {
         let kind = read_u32(bytes, offset).ok_or(Error::Record)?;
         match kind {
-            10 if heaps.is_empty() && facts.is_empty() && code.is_none() && sources.is_none() => {
+            10 if heaps.is_empty()
+                && facts.is_empty()
+                && code.is_none()
+                && sources.is_none()
+                && behaviors.is_none() =>
+            {
                 sources = Some(next_record(bytes, &mut offset, 10)?);
+            }
+            11 if heaps.is_empty() && facts.is_empty() && code.is_none() && behaviors.is_none() => {
+                behaviors = Some(next_record(bytes, &mut offset, 11)?);
             }
             3 if facts.is_empty() && code.is_none() => {
                 heaps.push(next_record(bytes, &mut offset, 3)?);
@@ -253,8 +278,13 @@ pub fn structural_preflight(
             _ => return Err(Error::Record),
         }
     }
-    let (heap_objects, code_objects) =
-        validate_heaps(&heaps, &program_inventory, programs, &binding_inventory)?;
+    let (heap_objects, code_objects) = validate_heaps(
+        &heaps,
+        &program_inventory,
+        programs,
+        &binding_inventory,
+        behaviors,
+    )?;
     if let Some(sources) = sources {
         let mut offset = 0;
         let reference = parse_field(sources, &mut offset)?;
@@ -332,6 +362,7 @@ fn validate_heaps(
     inventory: &portable_inventory::Inventory<'_>,
     inventory_bytes: &[u8],
     bindings: &code_binding_inventory::Inventory<'_>,
+    behaviors: Option<&[u8]>,
 ) -> Result<(u32, Vec<bool>), Error> {
     let mut objects = Vec::new();
     for payload in payloads {
@@ -419,6 +450,9 @@ fn validate_heaps(
         validate_field_references(object.locator, heap_count)?;
         visit_slots(object, |field| validate_field_references(field, heap_count))?;
     }
+    if let Some(bytes) = behaviors {
+        validate_behaviors(bytes, &objects)?;
+    }
     portable_inventory::inspect_exact_closure(inventory_bytes, &roots).map_err(|_| Error::Heap)?;
     bindings
         .validate_heap_references(heap_count)
@@ -460,6 +494,118 @@ fn validate_heaps(
             .map(|program| program.is_some())
             .collect(),
     ))
+}
+
+fn native_family<'a>(object: &HeapObject<'a>) -> Result<&'a [u8], Error> {
+    let name = match object.locator.tag {
+        9 => object.locator.data.ok_or(Error::Heap)?,
+        13 => b"IntegerVt",
+        14 => b"FloatVt",
+        15 => b"WordVt",
+        16 => b"StringVt",
+        17 => b"BytesVt",
+        _ => return Err(Error::Heap),
+    };
+    match name {
+        b"VectorNode" => Ok(b"VectorNodeVt"),
+        b"MapNode" => Ok(b"MapNodeVt"),
+        b"ObjectVt" | b"VectorVt" | b"VectorNodeVt" | b"MapVt" | b"MapNodeVt" | b"RangeVt"
+        | b"ErrorVt" | b"IntegerVt" | b"FloatVt" | b"WordVt" | b"StringVt" | b"BytesVt"
+        | b"CellVt" | b"CodeObjectVt" => Ok(name),
+        _ => Err(Error::Heap),
+    }
+}
+fn validate_behaviors(bytes: &[u8], objects: &[HeapObject<'_>]) -> Result<(), Error> {
+    use super::behavior_links::Parent;
+    let links = super::behavior_links::decode(bytes)?;
+    let mut owners = vec![None; objects.len()];
+    for link in &links {
+        if link.object as usize >= objects.len() || link.owner as usize >= objects.len() {
+            return Err(Error::Heap);
+        }
+        if link.object == link.owner {
+            owners[link.owner as usize] = Some(link);
+        }
+    }
+    for link in &links {
+        let object = &objects[link.object as usize];
+        let owner = &objects[link.owner as usize];
+        if owners[link.owner as usize].is_none() || native_family(object)? != native_family(owner)?
+        {
+            return Err(Error::Heap);
+        }
+        if link.object != link.owner && native_family(object)? == b"ObjectVt" {
+            let kinds = |object: &HeapObject<'_>| {
+                let mut kinds = Vec::new();
+                visit_slots(object, |field| {
+                    kinds.push(field.tag == 3);
+                    Ok(())
+                })?;
+                Ok::<_, Error>(kinds)
+            };
+            if kinds(object)? != kinds(owner)? {
+                return Err(Error::Heap);
+            }
+        }
+        match &link.parent {
+            Some(Parent::Export(name)) => {
+                // The parent must be the native payload family encoded by this
+                // owner, never a reinterpretation of another native layout.
+                let parent = HeapObject {
+                    locator: Field {
+                        tag: 9,
+                        data: Some(name),
+                        index: None,
+                    },
+                    word_count: 0,
+                    encoded_slots: &[],
+                };
+                if native_family(&parent)? != native_family(owner)? {
+                    return Err(Error::Heap);
+                }
+            }
+            Some(Parent::Owner(parent)) => {
+                if owners.get(*parent as usize).is_none_or(Option::is_none)
+                    || native_family(&objects[*parent as usize])? != native_family(owner)?
+                {
+                    return Err(Error::Heap);
+                }
+            }
+            None => (),
+        }
+    }
+    // Linear, iterative cycle rejection; no recursion through untrusted input.
+    let mut colors = vec![0; objects.len()];
+    for link in &links {
+        if link.object != link.owner {
+            continue;
+        }
+        let mut index = link.owner as usize;
+        let mut path = Vec::new();
+        loop {
+            if colors[index] == 2 {
+                break;
+            }
+            if colors[index] == 1 {
+                return Err(Error::Heap);
+            }
+            colors[index] = 1;
+            path.push(index);
+            match owners[index]
+                .ok_or(Error::Heap)?
+                .parent
+                .as_ref()
+                .ok_or(Error::Heap)?
+            {
+                Parent::Export(_) => break,
+                Parent::Owner(parent) => index = *parent as usize,
+            }
+        }
+        for index in path {
+            colors[index] = 2;
+        }
+    }
+    Ok(())
 }
 
 fn visit_slots(
@@ -654,6 +800,140 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     #[test]
+    fn behavior_links_validate_owners_layouts_and_acyclic_parents() {
+        use super::{Field, HeapObject, validate_behaviors};
+        use crate::behavior_links::{Link, Parent, encode};
+        let objects = (0..4)
+            .map(|_| HeapObject {
+                locator: Field {
+                    tag: 9,
+                    index: None,
+                    data: Some(b"ObjectVt"),
+                },
+                word_count: 0,
+                encoded_slots: &[],
+            })
+            .collect::<Vec<_>>();
+        let valid = vec![
+            Link {
+                object: 0,
+                owner: 0,
+                parent: Some(Parent::Export(b"ObjectVt".to_vec())),
+            },
+            Link {
+                object: 1,
+                owner: 1,
+                parent: Some(Parent::Owner(0)),
+            },
+            Link {
+                object: 2,
+                owner: 1,
+                parent: None,
+            },
+            Link {
+                object: 3,
+                owner: 0,
+                parent: None,
+            },
+        ];
+        let bytes = encode(&valid);
+        assert_eq!(validate_behaviors(&bytes, &objects), Ok(()));
+        assert_eq!(crate::behavior_links::decode(&bytes).unwrap(), valid);
+        for cut in 0..bytes.len() {
+            assert!(validate_behaviors(&bytes[..cut], &objects).is_err());
+        }
+        let mut invalid = valid.clone();
+        invalid[0].parent = Some(Parent::Owner(1));
+        assert!(
+            validate_behaviors(&encode(&invalid), &objects).is_err(),
+            "parent cycle"
+        );
+        invalid = valid.clone();
+        invalid[2].owner = 3;
+        assert!(
+            validate_behaviors(&encode(&invalid), &objects).is_err(),
+            "owner is an instance"
+        );
+        invalid = valid.clone();
+        invalid[3].object = 4;
+        assert!(
+            validate_behaviors(&encode(&invalid), &objects).is_err(),
+            "missing heap node"
+        );
+        invalid = valid.clone();
+        invalid[0].parent = Some(Parent::Export(b"IntegerVt".to_vec()));
+        assert!(
+            validate_behaviors(&encode(&invalid), &objects).is_err(),
+            "wrong native layout"
+        );
+        invalid = valid.clone();
+        invalid.swap(1, 2);
+        assert!(
+            validate_behaviors(&encode(&invalid), &objects).is_err(),
+            "noncanonical order"
+        );
+        let mut bytes = bytes.clone();
+        bytes.push(0);
+        assert!(
+            validate_behaviors(&bytes, &objects).is_err(),
+            "trailing bytes"
+        );
+        let raw = [3, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut shaped = objects;
+        shaped[2].word_count = 1;
+        shaped[2].encoded_slots = &raw;
+        assert!(
+            validate_behaviors(&encode(&valid), &shaped).is_err(),
+            "shared Object layout mismatch"
+        );
+    }
+
+    #[test]
+    fn optional_behavior_record_roundtrips_without_changing_old_image_bytes() {
+        use crate::behavior_links::{Link, Parent, encode};
+        let programs = include_bytes!("../../../abi/fixtures/portable-code-v1/inventory-empty.bin");
+        let bindings = include_bytes!("../../../abi/fixtures/portable-code-v1/bindings-empty.bin");
+        let selection =
+            include_bytes!("../../../abi/fixtures/portable-code-v1/selection-empty.bin");
+        let mut heap = 2u32.to_le_bytes().to_vec();
+        for _ in 0..2 {
+            heap.push(9);
+            heap.extend_from_slice(&8u32.to_le_bytes());
+            heap.extend_from_slice(b"ObjectVt");
+            heap.extend_from_slice(&0u32.to_le_bytes());
+        }
+        let behaviors = encode(&[
+            Link {
+                object: 0,
+                owner: 0,
+                parent: Some(Parent::Export(b"ObjectVt".to_vec())),
+            },
+            Link {
+                object: 1,
+                owner: 0,
+                parent: None,
+            },
+        ]);
+        let bytes = super::compose(super::ImageSpec {
+            architecture: 1,
+            runtime_abi: 1,
+            programs,
+            bindings,
+            selection,
+            heaps: &[&heap],
+            facts: &[],
+            sources: None,
+            behaviors: Some(&behaviors),
+            code: None,
+        })
+        .unwrap();
+        assert_eq!(
+            super::decode(&bytes, 1, 1).unwrap().behaviors,
+            Some(behaviors.as_slice())
+        );
+    }
+
+    #[test]
     fn empty_stripped_image_has_frozen_v8_bytes() {
         let programs = include_bytes!(concat!(
             "../../../abi/fixtures/portable-code-v1/",
@@ -709,6 +989,7 @@ mod tests {
             heaps: &heaps,
             facts: &[],
             sources: None,
+            behaviors: None,
             code: None,
         })
         .unwrap();
@@ -758,6 +1039,7 @@ mod tests {
             heaps: &heaps,
             facts: &[],
             sources: None,
+            behaviors: None,
             code: Some(b"\x7fELFbirnam-v8-fixture"),
         })
         .unwrap();
@@ -822,6 +1104,7 @@ mod tests {
             heaps: &heaps,
             facts: &fact_sets,
             sources: None,
+            behaviors: None,
             code: None,
         })
         .unwrap();
@@ -874,6 +1157,7 @@ mod tests {
             heaps: &heaps,
             facts: &[],
             sources: None,
+            behaviors: None,
             code: None,
         })
         .unwrap();
@@ -917,6 +1201,7 @@ mod tests {
             heaps: &heaps,
             facts: &[],
             sources: None,
+            behaviors: None,
             code: None,
         })
         .unwrap();
@@ -1025,6 +1310,7 @@ mod tests {
                 heaps: &[],
                 facts: &[],
                 sources: None,
+                behaviors: None,
                 code: Some(&unit),
             })
             .unwrap();
@@ -1074,6 +1360,7 @@ mod tests {
             facts: &[],
             code: None,
             sources: Some(&source),
+            behaviors: None,
         };
         let image = super::compose(spec).unwrap();
         assert_eq!(
@@ -1086,6 +1373,7 @@ mod tests {
         assert!(
             super::compose(super::ImageSpec {
                 sources: Some(&invalid),
+                behaviors: None,
                 ..spec
             })
             .is_err()
@@ -1096,6 +1384,7 @@ mod tests {
             super::compose(super::ImageSpec {
                 heaps: &[&damaged],
                 sources: None,
+                behaviors: None,
                 ..spec
             })
             .is_err()

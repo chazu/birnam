@@ -13,9 +13,10 @@ are successful results. Compiler diagnostics, returned language Errors and nativ
 failures exit unsuccessfully on stderr; ordinary program output goes to stdout.
 Source arguments are not yet supported. Help and version work without loading Id.
 
-Source-file startup records and evaluates the authored Module manager and stdlib,
+Source-file startup records and evaluates the authored Module manager, stdlib and
+CompiledUnit lifecycle policy,
 marks the native kernel modules, and sets Module's library directory. This source
-bootstrap can be slow in debug builds. `BIRNAM_NO_STDLIB=1` skips both authored
+bootstrap can be slow in debug builds. `BIRNAM_NO_STDLIB=1` skips these authored
 modules; `BIRNAM_GC_PRECISE=1` enables precise payload tracing. Host lifetime tests
 also force `collectPrecisely`, excluding conservative native-stack roots.
 `BIRNAM_FORCE_SOURCE` is redundant for source files and does not request image rebuilding.
@@ -58,7 +59,11 @@ Install copies the planned module/native closure. Test launches a fresh worker
 per test source against the published module root, without running application main.
 
 The console keeps a session root plus a fresh scope per turn and checkpoints
-Isolate after evaluation. Project tty/socket entry uses the published context
+Isolate after evaluation. A returned EvolutionIntent is fulfilled through Codegen
+at the idle owner-thread boundary before presentation; source-file results use
+the same path. Fulfillment runs the authored policy inside a scoped quiescent
+extent that closes on success, language Error or native failure. The console
+initializes its generation after session configuration. Project tty/socket entry uses the published context
 without applying caller Config or running main again. Tool loading temporarily
 selects the installed library directory, then restores the project's directory.
 LSP receives scoped Project callbacks, revoked on return or unwinding; retained

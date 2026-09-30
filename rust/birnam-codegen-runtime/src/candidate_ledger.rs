@@ -45,7 +45,11 @@ impl Ledger {
         roots
     }
 }
-pub(super) unsafe fn matches(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<Option<bool>, Outcome> {
+pub(super) unsafe fn matches(
+    s: &State,
+    q: &Scope<'_>,
+    ledger: &Ledger,
+) -> Result<Option<bool>, Outcome> {
     unsafe {
         if ledger.drifted
             || current(s, q)? != ledger.generation
@@ -172,7 +176,6 @@ pub(super) unsafe fn adopt_initial(
             );
         }
         let basis = preparation::basis(s, q)?;
-        let epoch = preparation::epoch(s)?;
         let source_map = fact(s, q, generation, b"sourceMap")?;
         let modules = modules(s, q, source_map)?;
         let rows = seq(s, q, source_map)?;
@@ -246,6 +249,10 @@ pub(super) unsafe fn adopt_initial(
             units: components.values().copied().collect(),
             drifted: false,
         };
+        // Authority parsing may collect unrelated private Block behaviors.
+        // Observe dictionary stability around the live binding snapshot, after
+        // that inert work. The Store basis still covers the entire adoption.
+        let epoch = preparation::epoch(s)?;
         for index in generation::generation_module_order(&modules).ok_or_else(invalid)? {
             let module = &modules[index];
             let unit = components[&module.name];
@@ -316,17 +323,19 @@ pub(super) unsafe fn adopt_initial(
                 });
             }
         }
-        if preparation::basis(s, q)? != basis
-            || preparation::epoch(s)? != epoch
-            || *s.sources.entries.borrow() != registered
-            || matches(s, q, &ledger)? != Some(true)
-        {
-            return fail(
-                s,
-                q,
-                b"staleGeneration",
-                b"initial generation changed during adoption",
-            );
+        let changed = if preparation::basis(s, q)? != basis {
+            Some(b"Store basis changed during initial adoption".as_slice())
+        } else if preparation::epoch(s)? != epoch {
+            Some(b"behavior epoch changed during initial adoption".as_slice())
+        } else if *s.sources.entries.borrow() != registered {
+            Some(b"source registry changed during initial adoption".as_slice())
+        } else if matches(s, q, &ledger)? != Some(true) {
+            Some(b"live bindings changed during initial adoption".as_slice())
+        } else {
+            None
+        };
+        if let Some(message) = changed {
+            return fail(s, q, b"staleGeneration", message);
         }
         *s.candidates.ledger.borrow_mut() = Some(ledger);
         Ok(Operand::object(generation))
