@@ -10,16 +10,24 @@ use core::cell::Cell;
 mod ledger;
 #[path = "candidate_preparation.rs"]
 mod preparation;
+#[path = "candidate_recovery.rs"]
+mod recovery;
+#[path = "candidate_retirement.rs"]
+mod retirement;
 #[path = "candidate_transaction.rs"]
 mod transaction;
+pub(super) use recovery::{begin_recovery, cancel_recovery, recover_image};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
     quiescent: Cell<bool>,
+    recovering_policy: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,
     prepared: RefCell<Vec<preparation::Prepared>>,
     next_token: Cell<usize>,
     ledger: RefCell<Option<ledger::Ledger>>,
+    recovery: RefCell<Option<recovery::Recovery>>,
+    retained: RefCell<Vec<Vec<usize>>>,
 }
 pub(super) struct Candidate {
     pub unit: Oop,
@@ -30,6 +38,7 @@ pub(super) struct Candidate {
     pub selected: Vec<u8>,
     pub plan: code::Plan,
     pub objects: Vec<Vec<u8>>,
+    envelope: Vec<u8>,
     pub mapped: Option<Mapped>,
     construction_started: bool,
     constructed: Option<transaction::Constructed>,
@@ -38,28 +47,33 @@ pub(super) struct Candidate {
 pub(super) struct Mapped {
     pub factory: Oop,
     pub adapters: Vec<Oop>,
+    identities: Vec<usize>,
+}
+impl Candidate {
+    fn roots(&self) -> Vec<Oop> {
+        let mut values = vec![self.unit, self.source, self.name, self.path];
+        if let Some(m) = &self.mapped {
+            values.push(m.factory);
+            values.extend(&m.adapters);
+        }
+        if let Some(v) = &self.constructed {
+            values.extend(v.roots());
+        }
+        if let Some(v) = &self.activation {
+            values.extend(v.roots());
+        }
+        values
+    }
 }
 impl Candidates {
     pub fn roots(&self) -> Vec<Oop> {
         self.entries
             .borrow()
             .iter()
-            .flat_map(|c| {
-                let mut values = vec![c.unit, c.source, c.name, c.path];
-                if let Some(m) = &c.mapped {
-                    values.push(m.factory);
-                    values.extend(&m.adapters);
-                }
-                if let Some(v) = &c.constructed {
-                    values.extend(v.roots());
-                }
-                if let Some(v) = &c.activation {
-                    values.extend(v.roots());
-                }
-                values
-            })
+            .flat_map(Candidate::roots)
             .chain(self.prepared.borrow().iter().flat_map(|p| p.roots()))
             .chain(self.ledger.borrow().iter().flat_map(|l| l.roots()))
+            .chain(self.recovery.borrow().iter().flat_map(|r| r.roots()))
             .collect()
     }
 }
@@ -74,7 +88,12 @@ pub(super) enum Op {
     Path,
     Prepare,
     DiscardPrepared,
+    Discard,
+    RetainedCount,
+    RetainedBytes,
     AdoptInitial,
+    AdoptComposed,
+    RecoveryIdentity,
     Reconcile,
     Commit,
     PrepareRollback,
@@ -83,6 +102,7 @@ pub(super) enum Op {
 impl Op {
     pub fn count(self) -> usize {
         match self {
+            Self::RecoveryIdentity | Self::RetainedCount | Self::RetainedBytes => 0,
             Self::Compile => 3,
             Self::CompileSelected | Self::Successor => 4,
             Self::Inspect | Self::Prepare | Self::PrepareRollback => 2,
@@ -368,6 +388,17 @@ pub(super) unsafe fn operation(
     args: &[Operand],
 ) -> Result<Operand, Outcome> {
     unsafe {
+        if s.candidates.recovery.borrow().is_some()
+            && !(matches!(op, Op::AdoptComposed | Op::RecoveryIdentity)
+                && s.candidates.recovering_policy.get())
+        {
+            return fail(
+                s,
+                q,
+                b"imageRecoveryActive",
+                b"candidate operations are unavailable during image recovery",
+            );
+        }
         if s.candidates.busy.replace(true) {
             return fail(s, q, b"candidateBusy", b"candidate operation is reentrant");
         }
@@ -380,12 +411,31 @@ pub(super) unsafe fn operation(
         let _busy = Busy(&s.candidates.busy);
         s.sources.clear_error();
         match op {
+            Op::Discard => retirement::discard(s, q, object(args[0])?),
+            Op::RetainedCount | Op::RetainedBytes => {
+                retirement::telemetry(s, q, matches!(op, Op::RetainedBytes))
+            }
+            Op::RecoveryIdentity => {
+                let identity = s
+                    .candidates
+                    .recovery
+                    .borrow()
+                    .as_ref()
+                    .filter(|_| s.candidates.recovering_policy.get())
+                    .map(|r| r.identity.clone());
+                Ok(Operand::object(if let Some(identity) = identity {
+                    s.text(q, &identity)?
+                } else {
+                    s.named(b"nil")?
+                }))
+            }
             Op::Commit => transaction::commit(s, q, object(args[0])?, false),
             Op::CommitRollback => transaction::commit(s, q, object(args[0])?, true),
             Op::PrepareRollback => {
                 transaction::prepare_rollback(s, q, object(args[0])?, object(args[1])?)
             }
-            Op::AdoptInitial => ledger::adopt_initial(s, q, object(args[0])?),
+            Op::AdoptInitial => ledger::adopt(s, q, object(args[0])?, false),
+            Op::AdoptComposed => ledger::adopt(s, q, object(args[0])?, true),
             Op::Reconcile => ledger::reconcile_candidate(s, q, object(args[0])?),
             Op::Prepare => preparation::prepare(s, q, object(args[0])?, object(args[1])?),
             Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),
@@ -690,6 +740,7 @@ pub(super) unsafe fn operation(
                     selected: env.artifact_selection.to_vec(),
                     plan,
                     objects,
+                    envelope: side,
                     mapped: None,
                     construction_started: false,
                     constructed: None,
@@ -752,6 +803,7 @@ pub(super) unsafe fn operation(
                     }
                 }
                 let mut mapped = Vec::new();
+                let mut identities = Vec::new();
                 for bytes in objects {
                     let bytes = s.text(q, &bytes)?;
                     let blob = call(s, q, bytes, b"asBytes", &[])?;
@@ -765,6 +817,16 @@ pub(super) unsafe fn operation(
                     if s.is_error(unit)? {
                         return Ok(Operand::object(unit));
                     }
+                    identities.push(
+                        s.send(
+                            s.named(b"TCC")?,
+                            b"mappingIdentityOf:",
+                            &[Operand::object(unit)],
+                        )?
+                        .as_word()
+                        .filter(|v| *v != 0)
+                        .ok_or_else(invalid)?,
+                    );
                     mapped.push(unit);
                 }
                 let factory = call(s, q, mapped[0], b"initialize", &[])?;
@@ -779,7 +841,11 @@ pub(super) unsafe fn operation(
                     .iter_mut()
                     .find(|c| c.unit == unit)
                     .ok_or_else(invalid)?
-                    .mapped = Some(Mapped { factory, adapters });
+                    .mapped = Some(Mapped {
+                    factory,
+                    adapters,
+                    identities,
+                });
                 Ok(Operand::object(unit))
             }
         }
@@ -796,6 +862,7 @@ pub(super) unsafe fn fulfill_intent(
 ) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.quiescent.get()
+            || s.candidates.recovery.borrow().is_some()
             || s.candidates.busy.get()
             || s.send(s.named(b"Execution")?, b"retirementReady", &[])?
                 .as_word()

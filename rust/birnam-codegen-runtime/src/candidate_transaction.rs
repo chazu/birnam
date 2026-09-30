@@ -157,6 +157,38 @@ unsafe fn reserve(s: &State, q: &Scope<'_>, owner: Oop, required: usize) -> Resu
 unsafe fn release(s: &State, q: &Scope<'_>, owner: Oop) -> Result<(), Outcome> {
     unsafe { checked_store(s, q, b"releaseCompensationFor:", &[Operand::object(owner)]) }
 }
+pub(super) unsafe fn discard_facts(s: &State, q: &Scope<'_>, unit: Oop) -> Result<(), Outcome> {
+    unsafe {
+        let change = fact_write(s, q, unit, b"state", symbol(s, q, b"discarded")?)?;
+        reserve(s, q, unit, 1)?;
+        let result = (|| {
+            restore_fact(s, q, unit, &change, false)?;
+            release(s, q, unit)?;
+            if raw_fact(s, q, change.entity, change.attribute)? != change.after {
+                return Err(invalid());
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            if let Some(value) = error.value.as_object() {
+                q.keep(value)?;
+            }
+            reserve(s, q, unit, 1)?;
+            let restored = compensate(s, q, unit, &[Write::Fact(change)]);
+            release(s, q, unit)?;
+            if !restored {
+                return Err(failure(
+                    s,
+                    q,
+                    b"candidateCompensationFailed",
+                    b"discard failed and an intervening edit prevented compensation",
+                ));
+            }
+            return Err(error);
+        }
+        Ok(())
+    }
+}
 unsafe fn restore_fact(
     s: &State,
     q: &Scope<'_>,

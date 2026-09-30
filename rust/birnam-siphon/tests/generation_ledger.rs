@@ -94,6 +94,12 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"assert:attr:value:",
             &[sym(b"dispatch"), sym(b"activeGeneration"), generation],
         );
+        let rejected = call(cg, b"adoptComposedGeneration:", &[generation]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
+        let rejected = call(cg, b"beginPortableImageRecovery:", &[text(&[b'a'; 64])]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
+        let rejected = call(cg, b"recoverPortableImageGeneration:", &[text(&[b'a'; 64])]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
         let vt = named(b"IntegerVt");
         let selector = sym(b"ledgerAnswer");
         // A first-class Method capture remains portable when installed again.

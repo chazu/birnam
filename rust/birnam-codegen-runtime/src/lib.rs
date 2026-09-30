@@ -215,12 +215,13 @@ enum Op {
     Artifact(artifact::Op),
     Candidate(candidate::Op),
     FulfillIntent,
+    Receipt(usize),
 }
 struct Entry {
     state: *const State,
     op: Op,
 }
-unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
         let e = &*c.cast::<Entry>();
         let s = &*e.state;
@@ -229,6 +230,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         }
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let count = match e.op {
+            Op::Receipt(_) => 0,
             Op::Define => 3,
             Op::Reflection(op) => op.count(),
             Op::Source(op) => op.count(),
@@ -245,6 +247,11 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
             s,
             tokens: RefCell::new(Vec::new()),
         };
+        scope.keep(receiver)?;
+        if let Op::Receipt(index) = e.op {
+            if !s.exact(&scope, receiver, b"DiscardReceiptVt")? { return Err(invalid()); }
+            return s.send(s.named(b"ObjectModel")?, b"slotAt:in:", &[Operand::word(index), Operand::object(receiver)]);
+        }
         for &v in a {
             scope.keep(object(v)?)?;
         }
@@ -446,11 +453,18 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             b"allocate:bytes:",
             &[Operand::object(reflect_vt), Operand::word(0)],
         )?)?)?;
+        let receipt_vt = pin(object(id.send_named(named(b"ObjectVt")?, b"delegated", &[])?)?)?;
+        let model = named(b"ObjectModel")?;
+        id.send_named(model, b"setLayoutOf:to:rest:", &[Operand::object(receipt_vt), Operand::bytes(&[1; 4]), Operand::word(0)])?;
+        let receipt = pin(object(id.send_named(model, b"allocate:bytes:", &[Operand::object(receipt_vt), Operand::word(4 * core::mem::size_of::<Oop>())])?)?)?;
+        for index in 0..4 {
+            id.send_named(model, b"slotAt:in:put:", &[Operand::word(index), Operand::object(receipt), Operand::object(named(b"nil")?)])?;
+        }
         let s = Box::into_raw(Box::new(State {
             id,
             ns,
             roots: root,
-            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
+            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect, receipt_vt, receipt],
             sources: source::Sources::default(),
             candidates: Default::default(),
             materializations: RefCell::new(Vec::new()),
@@ -459,7 +473,14 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
-            (vt, b"emit:".as_slice(), Op::Emit),
+            (receipt_vt, b"generation".as_slice(), Op::Receipt(0)),
+            (receipt_vt, b"logical", Op::Receipt(1)),
+            (receipt_vt, b"physical", Op::Receipt(2)),
+            (receipt_vt, b"reason", Op::Receipt(3)),
+            (vt, b"discardCandidate:", Op::Candidate(candidate::Op::Discard)),
+            (vt, b"retainedGenerationCount", Op::Candidate(candidate::Op::RetainedCount)),
+            (vt, b"retainedGenerationBytes", Op::Candidate(candidate::Op::RetainedBytes)),
+            (vt, b"emit:", Op::Emit),
             (reflect_vt, b"nameOf:", Op::NameOf),
             (
                 reflect_vt,
@@ -522,6 +543,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"prepareRollback:plan:", Op::Candidate(candidate::Op::PrepareRollback)),
             (vt, b"commitPreparedRollback:", Op::Candidate(candidate::Op::CommitRollback)),
             (vt, b"adoptInitialGeneration:", Op::Candidate(candidate::Op::AdoptInitial)),
+            (vt, b"adoptComposedGeneration:", Op::Candidate(candidate::Op::AdoptComposed)),
+            (vt, b"imageRecoveryIdentity", Op::Candidate(candidate::Op::RecoveryIdentity)),
             (vt, b"reconcileCandidate:", Op::Candidate(candidate::Op::Reconcile)),
             (
                 vt,
@@ -629,6 +652,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (vt, b"finishPortableImageUnit", Op::Image(image::Op::Finish)),
             (vt, b"cancelPortableImageUnit", Op::Image(image::Op::Cancel)),
+            (vt, b"recoverPortableImageGeneration:", Op::Image(image::Op::Recover)),
+            (vt, b"beginPortableImageRecovery:", Op::Image(image::Op::BeginRecovery)),
             (reflect_vt, b"defineMethod:on:as:", Op::Define),
         ] {
             let c = Box::into_raw(Box::new(Entry { state: s, op }));
@@ -655,6 +680,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (b"RustCodegen", receiver),
             (b"CodegenVt", vt),
             (b"Reflect", reflect),
+            (b"DiscardReceipt", receipt),
+            (b"DiscardReceiptVt", receipt_vt),
         ] {
             id.send_named(
                 ns,

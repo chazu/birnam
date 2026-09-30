@@ -313,5 +313,19 @@ the commit selectors so policy can commit immediately without constructing new
 branch Blocks between token creation and validation.
 
 Installed Host and published-project console tests exercise authored activation
-and exact rollback. Candidate discard, mapping retirement and composed-image
-generation adoption still need connection to these owners.
+and exact rollback. Image stages suspend all old candidate capabilities before
+publication and retain their roots for compensation. After restoring dispatch,
+`recoverPortableImageGeneration:` enters the authored composition policy;
+`adoptComposedGeneration:` is available only in that dynamic recovery scope and
+validates the composition identity, source/selection authority and rollback-free
+components before rebuilding the live ledger. Failure restores the prior caches;
+success releases their roots.
+
+`discardCandidate:` rejects active, prepared and rollback-reachable candidates,
+removes only the admitted author-file contents, and publishes the discarded state
+before releasing native roots. A process-local `DiscardReceipt` separates logical
+discard from physical disposition. Live Methods, Blocks and Machines retain their
+Units through Execution; GC and TCC reclaim them at an idle checkpoint. Weak TCC
+mapping identities drive `retainedGenerationCount` and `retainedGenerationBytes`
+without themselves keeping code alive. File removal is retryable but is outside
+Store compensation: a failed discard can leave one or both author files removed.

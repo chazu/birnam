@@ -134,12 +134,35 @@
     [db retract: entity attr: attribute value: value]]];
   entity]];
 
+// Retire the saved rollback ancestry as well as its current tip. Shared
+// components may appear in several rows; repeated retirement is harmless.
+[Reflect defineMethod: #retireGeneration:into:seen: on: CompiledUnit as: [:self :origin :composed :seen |
+  [[[origin isNil] or: [| [seen includes: origin]]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let parent := [origin predecessor];
+      let rows := [origin sourceMap];
+      [self retireGeneration: parent into: composed seen: [seen add: origin]];
+      [[rows isNil] ifTrue: [| nil] ifFalse: [|
+        [rows inject: nil into: [:ignored :entry |
+          let prior := [entry at: 2];
+          [[prior isNil] ifTrue: [| nil] ifFalse: [|
+            [db assert: prior attr: #state value: #historical];
+            [db assert: prior attr: #rollbackAvailable value: false];
+            [db assert: prior attr: #composedInto value: composed];
+            [self retireDurableEntity: prior]]]]]]];
+      [db assert: origin attr: #composedInto value: composed];
+      [self retireDurableEntity: origin]]]]];
+
 // Image recovery has already restored dispatch before this policy method runs.
 // Mint one process-local composed component per source-map row, publish a fresh
 // rollback-free DispatchGeneration with the exact same source/selection
 // authority, then ask Codegen to snapshot the live direct bindings into its
 // transient ledger. No candidate pointer snapshot crosses the image boundary.
 [Reflect defineMethod: #reconcileImageComposition: on: CompiledUnit as: [:self :identity |
+  [[[[identity notNil] and: [| [[Codegen imageRecoveryIdentity] = identity]]] not]
+    ifTrue: [| [Error kind: #imageRecoveryRequired]]
+    ifFalse: [|
   let origin := [DispatchGeneration current];
   let existingIdentity := [db currentValue: origin attr: #compositionIdentity];
   [[existingIdentity = identity]
@@ -147,7 +170,7 @@
       let adopted := [Codegen adoptComposedGeneration: origin];
       [[adopted isNil]
         ifTrue: [| [Error kind: #imageCompositionRejected]]
-        ifFalse: [| origin]]]
+        ifFalse: [| [[adopted isError] ifTrue: [| adopted] ifFalse: [| origin]]]]]
     ifFalse: [|
       let components := [[origin sourceMap] inject: #[] into: [:rows :entry |
         let name := [entry at: 0];
@@ -168,25 +191,16 @@
       let projection := #[#generationProjection components [origin baseDigest] [origin generationSelection]];
       let composed := [DispatchGeneration fromProjection: projection predecessor: nil delta: nil];
       [db assert: composed attr: #kind value: #composed];
+      [db assert: composed attr: #state value: #active];
       [db assert: composed attr: #compositionIdentity value: identity];
       let active := [db cellFor: #dispatch attr: #activeGeneration];
       [active set: composed];
       let adopted := [Codegen adoptComposedGeneration: composed];
-      [[adopted isNil]
-        ifTrue: [| [active set: origin]; [Error kind: #imageCompositionRejected]]
+      [[[adopted isNil] or: [| [adopted isError]]]
+        ifTrue: [| [active set: origin]; [[adopted isNil] ifTrue: [| [Error kind: #imageCompositionRejected]] ifFalse: [| adopted]]]
         ifFalse: [|
-          [[origin sourceMap] inject: nil into: [:ignored :entry |
-            let prior := [entry at: 2];
-            [[prior isNil]
-              ifTrue: [| nil]
-              ifFalse: [|
-            [db assert: prior attr: #state value: #historical];
-            [db assert: prior attr: #rollbackAvailable value: false];
-            [db assert: prior attr: #composedInto value: composed];
-            [self retireDurableEntity: prior]]]]];
-      [db assert: origin attr: #composedInto value: composed];
-      [self retireDurableEntity: origin];
-      composed]]]]]];
+          [self retireGeneration: origin into: composed seen: #[]];
+      composed]]]]]]]];
 
 [Reflect defineMethod: #state on: CompiledUnit as: [:self |
   let recorded := [db currentValue: self attr: #state];

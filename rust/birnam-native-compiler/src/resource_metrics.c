@@ -1,4 +1,4 @@
-/* Test-only introspection built with the same header/configuration as libtcc.
+/* Mapping introspection built with the same header/configuration as libtcc.
    No copied Rust layout or new language/native-module contract is involved. */
 #include "tcc.h"
 

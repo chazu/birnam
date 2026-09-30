@@ -198,25 +198,31 @@ impl State {
 fn runtime_abi() -> u64 {
     support::wyhash(support::runtime_abi_hash(), b"Id-native-message-image-v1")
 }
-fn composition_identity(code: Option<&[u8]>) -> Option<Vec<u8>> {
+fn composition_identity(decoded: &v8::DecodedImage<'_>) -> Vec<u8> {
     use sha2::{Digest, Sha256};
-    let checksum = code?.get(..8)?;
     let mut digest = Sha256::new();
-    digest.update(b"birnam.image-composition.v1\0");
-    digest.update(1u32.to_le_bytes());
-    digest.update(checksum);
-    Some(
-        digest
-            .finalize()
-            .iter()
-            .flat_map(|b| {
-                [
-                    b"0123456789abcdef"[(b >> 4) as usize],
-                    b"0123456789abcdef"[(b & 15) as usize],
-                ]
-            })
-            .collect(),
-    )
+    if let Some(code) = decoded.code {
+        digest.update(b"birnam.image-composition.v1\0");
+        digest.update(1u32.to_le_bytes());
+        digest.update(&code[..8]); // validated code-record checksum
+    } else {
+        digest.update(b"birnam.image-rebuilt-composition.v1\0");
+        for bytes in [decoded.programs, decoded.bindings, decoded.selection] {
+            digest.update((bytes.len() as u64).to_le_bytes());
+            digest.update(bytes);
+        }
+    }
+
+    digest
+        .finalize()
+        .iter()
+        .flat_map(|b| {
+            [
+                b"0123456789abcdef"[(b >> 4) as usize],
+                b"0123456789abcdef"[(b & 15) as usize],
+            ]
+        })
+        .collect()
 }
 #[derive(Clone, Debug)]
 enum Value {
@@ -1158,6 +1164,9 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
         let b = s.text(q, b"Bytes", decoded.bindings)?;
         let selection = s.text(q, b"Bytes", decoded.selection)?;
         let mapped = !rebuild && decoded.code.is_some();
+        let loaded_result = q.keep(s.named(if mapped { b"true" } else { b"false" })?)?;
+        let composition = composition_identity(&decoded);
+        let composition_value = s.text(q, b"String", &composition)?;
         let started = if mapped {
             let code = s.text(
                 q,
@@ -1292,6 +1301,19 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             })
             .collect::<Result<Vec<_>, _>>()?;
         let store = q.keep(s.named(b"Store")?)?;
+        let admitted = s.call(
+            q,
+            codegen,
+            b"beginPortableImageRecovery:",
+            &[composition_value],
+        )?;
+        if admitted != yes {
+            return Err(if s.is_error(admitted)? {
+                Outcome::loaded(Operand::object(admitted))
+            } else {
+                bad()
+            });
+        }
         let swapped = s.call(q, store, b"swapImageStateWith:", &[staged])?;
         if swapped != store {
             return Err(bad());
@@ -1324,9 +1346,25 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             for &o in &maps {
                 s.call(q, s.named(b"Map")?, b"rehashImage:", &[o])?;
             }
+            let recovered = s.call(
+                q,
+                codegen,
+                b"recoverPortableImageGeneration:",
+                &[composition_value],
+            )?;
+            if recovered != yes {
+                return Err(if s.is_error(recovered)? {
+                    Outcome::loaded(Operand::object(recovered))
+                } else {
+                    bad()
+                });
+            }
             Ok(())
         })();
         if let Err(error) = result {
+            if let Some(value) = error.value.as_object() {
+                q.keep(value)?;
+            }
             // Dictionary restoration is separate from Store compensation. Snapshot
             // state was retained by the staging Store, so rollback cannot exhaust its
             // fact budget or require re-running an initializer.
@@ -1352,12 +1390,8 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             }
             return Err(error);
         }
-        *s.composition.borrow_mut() = composition_identity(decoded.code);
-        Ok(Operand::object(s.named(if mapped {
-            b"true"
-        } else {
-            b"false"
-        })?))
+        *s.composition.borrow_mut() = Some(composition);
+        Ok(Operand::object(loaded_result))
     }
 }
 #[derive(Clone, Copy)]

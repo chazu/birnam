@@ -224,6 +224,53 @@ unsafe extern "C" fn write_file(c: *mut c_void, r: Oop, a: *const Operand, n: us
     })()
     .map_or_else(|e| e, Outcome::loaded)
 }
+// Candidate cleanup only removes the exact bytes that its caller admitted.
+// A missing path is already removed; a replaced author file is left untouched.
+unsafe extern "C" fn remove_matching(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([path, contents]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let path = object(*path)?;
+        let contents = object(*contents)?;
+        s.rooted(&[r, path, contents], || {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return s.error(b"removeFile: expected a String path");
+            };
+            let Some(expected) = s.bytes(contents)? else {
+                return s.error(b"removeFile: expected String contents");
+            };
+            let Some(path) = path_from_bytes(&path_bytes) else {
+                return s.error(b"could not remove file");
+            };
+            let file = match fs::File::open(path) {
+                Ok(file) => file,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Operand::object(r)),
+                Err(_) => return s.error(b"could not inspect file for removal"),
+            };
+            match read_bounded(file, MAX_FILE_BYTES) {
+                Ok(actual) if actual == expected => (),
+                Ok(_) => return s.error(b"file changed since candidate admission"),
+                Err(_) => return s.error(b"could not inspect file for removal"),
+            }
+            match fs::remove_file(path) {
+                Ok(()) => Ok(Operand::object(r)),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Operand::object(r)),
+                Err(_) => s.error(b"could not remove file"),
+            }
+        })
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
 unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
     unsafe {
         let named = |name: &[u8]| {
@@ -252,6 +299,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (b"readFile:".as_slice(), read_file as native::Method),
             (b"embedFile:", embed_file),
             (b"writeFile:contents:", write_file),
+            (b"removeFile:ifContents:", remove_matching),
         ] {
             id.send_named(
                 vt,

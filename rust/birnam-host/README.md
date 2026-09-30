@@ -35,7 +35,8 @@ are not yet supported. Images without main enter the console; native-only images
 bootstrap the source stdlib first. `--rebuild` requests recompilation and `--bake`
 appends an image to an executable, recovered through the same System messages.
 Host replays saved Alien wrapper recipes before user entry so foreign addresses
-are resolved in the new process.
+are resolved in the new process. Image completes composed-generation adoption before
+Host enters main, the console or a worker; saved rollback pointers are not reused.
 
 The private `--worker IMAGE RECEIVER SELECTOR --channel-fd FD` entry restores an
 image and enters Isolate without running global main. Boot errors use the inherited

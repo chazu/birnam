@@ -62,7 +62,6 @@ pub unsafe fn tcc_new() -> *mut TccState {
 /// # Safety
 /// The state must be live, created by this compiler instance, and exclusively
 /// observed with respect to compiler mutation or deletion for this call.
-#[cfg(feature = "resource-metrics")]
 pub unsafe fn relocated_allocation_bytes(state: *const TccState) -> usize {
     unsafe extern "C" {
         fn birnam_tcc_relocated_allocation_bytes(state: *const TccState) -> usize;

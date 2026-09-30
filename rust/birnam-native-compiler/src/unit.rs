@@ -133,7 +133,6 @@ impl Unit {
         super::heap_allocation_totals()
     }
 
-    #[cfg(feature = "resource-metrics")]
     pub fn relocated_allocation_bytes(&self) -> usize {
         let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
         // The C helper reads the live state using the compiler's own layout.

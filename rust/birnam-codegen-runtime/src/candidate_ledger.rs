@@ -144,12 +144,40 @@ pub(super) unsafe fn reconcile_candidate(
         }
     }
 }
-pub(super) unsafe fn adopt_initial(
+pub(super) unsafe fn adopt(
     s: &State,
     q: &Scope<'_>,
     generation: Oop,
+    composed: bool,
 ) -> Result<Operand, Outcome> {
     unsafe {
+        let identity = s
+            .candidates
+            .recovery
+            .borrow()
+            .as_ref()
+            .map(|r| r.identity.clone());
+        if composed {
+            let Some(identity) = identity.filter(|_| s.candidates.recovering_policy.get()) else {
+                return fail(
+                    s,
+                    q,
+                    b"imageRecoveryRequired",
+                    b"composed adoption requires image recovery",
+                );
+            };
+            if fact(s, q, generation, b"kind")? != symbol(s, q, b"composed")?
+                || fact(s, q, generation, b"state")? != symbol(s, q, b"active")?
+                || s.bytes(fact(s, q, generation, b"compositionIdentity")?)? != identity
+            {
+                return fail(
+                    s,
+                    q,
+                    b"invalidGeneration",
+                    b"composed generation identity mismatches image recovery",
+                );
+            }
+        }
         let existing = s.candidates.ledger.borrow().as_ref().map(|l| l.generation);
         if let Some(existing) = existing {
             if existing != generation {
@@ -172,7 +200,7 @@ pub(super) unsafe fn adopt_initial(
                 s,
                 q,
                 b"invalidLifecycleTransition",
-                b"initial adoption requires the durable initial generation",
+                b"adoption requires the durable predecessor-free generation",
             );
         }
         let basis = preparation::basis(s, q)?;
@@ -182,9 +210,26 @@ pub(super) unsafe fn adopt_initial(
         let mut components = std::collections::BTreeMap::new();
         for row in rows {
             let row = seq(s, q, row)?;
-            let [name, _, unit] = row.as_slice() else {
+            let [name, revision, unit] = row.as_slice() else {
                 return Err(invalid());
             };
+            if composed
+                && (*unit == nil
+                    || fact(s, q, *unit, b"kind")? != symbol(s, q, b"composed")?
+                    || fact(s, q, *unit, b"state")? != symbol(s, q, b"active")?
+                    || fact(s, q, *unit, b"rollbackAvailable")? != s.named(b"false")?
+                    || fact(s, q, *unit, b"unitName")? != *name
+                    || fact(s, q, *unit, b"sourceRevision")? != *revision
+                    || s.bytes(fact(s, q, *unit, b"compositionIdentity")?)?
+                        != s.bytes(fact(s, q, generation, b"compositionIdentity")?)?)
+            {
+                return fail(
+                    s,
+                    q,
+                    b"invalidGeneration",
+                    b"composed component has inconsistent authority or rollback state",
+                );
+            }
             components.insert(s.symbol_bytes(q, *name)?.ok_or_else(invalid)?, *unit);
         }
         let registered = s.sources.entries.borrow().clone();
@@ -193,7 +238,7 @@ pub(super) unsafe fn adopt_initial(
                 s,
                 q,
                 b"invalidGeneration",
-                b"initial source map differs from registered sources",
+                b"generation source map differs from registered sources",
             );
         }
         for module in &modules {
@@ -211,7 +256,7 @@ pub(super) unsafe fn adopt_initial(
                     s,
                     q,
                     b"invalidGeneration",
-                    b"initial source map differs from registered sources",
+                    b"generation source map differs from registered sources",
                 );
             }
         }
@@ -228,16 +273,11 @@ pub(super) unsafe fn adopt_initial(
                 s,
                 q,
                 b"invalidGeneration",
-                b"initial generation selection is not canonical",
+                b"generation selection is not canonical",
             );
         };
         if digest != generation::raw_digest_spelling(authority) {
-            return fail(
-                s,
-                q,
-                b"invalidGeneration",
-                b"initial generation digest mismatches",
-            );
+            return fail(s, q, b"invalidGeneration", b"generation digest mismatches");
         }
         let mut ledger = Ledger {
             generation,
@@ -276,7 +316,7 @@ pub(super) unsafe fn adopt_initial(
                             s,
                             q,
                             b"nonPortableGeneration",
-                            b"managed initial binding has no portable implementation",
+                            b"managed binding has no portable implementation",
                         );
                     }
                     let implementation = q.keep(object(implementation)?)?;
@@ -285,7 +325,7 @@ pub(super) unsafe fn adopt_initial(
                             s,
                             q,
                             b"nonPortableGeneration",
-                            b"managed initial binding has no CodeObject",
+                            b"managed binding has no CodeObject",
                         );
                     }
                     Some(call(
@@ -324,13 +364,13 @@ pub(super) unsafe fn adopt_initial(
             }
         }
         let changed = if preparation::basis(s, q)? != basis {
-            Some(b"Store basis changed during initial adoption".as_slice())
+            Some(b"Store basis changed during generation adoption".as_slice())
         } else if preparation::epoch(s)? != epoch {
-            Some(b"behavior epoch changed during initial adoption".as_slice())
+            Some(b"behavior epoch changed during generation adoption".as_slice())
         } else if *s.sources.entries.borrow() != registered {
-            Some(b"source registry changed during initial adoption".as_slice())
+            Some(b"source registry changed during generation adoption".as_slice())
         } else if matches(s, q, &ledger)? != Some(true) {
-            Some(b"live bindings changed during initial adoption".as_slice())
+            Some(b"live bindings changed during generation adoption".as_slice())
         } else {
             None
         };

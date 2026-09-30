@@ -22,6 +22,8 @@ BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
 BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
   cargo test --offline --locked -p birnam-host host_fulfills_authored_generation_intents_at_idle_boundary -- --ignored
 BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
+  cargo test --offline --locked -p birnam-host image_recovers_composed_generation_before_entry -- --ignored
+BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
 BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
   cargo test --offline --locked -p birnam-host startup::tests::image_entry_uses_saved_code_and_roots -- --ignored
 

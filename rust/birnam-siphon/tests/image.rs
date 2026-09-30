@@ -631,7 +631,18 @@ fn image_owner_roundtrip() {
             "partial mapping failure releases its units"
         );
         assert_eq!(global(&h, b"ImageShared"), shared);
-        for mode in ["mapped", "rebuild"] {
+        // Native-free images rebuild from the same validated inventories and
+        // still expose a stable composition identity for generation recovery.
+        let bytes = std::fs::read(&path).unwrap();
+        let mut offset = 28;
+        while u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) != 4 {
+            let size =
+                u64::from_le_bytes(bytes[offset + 4..offset + 12].try_into().unwrap()) as usize;
+            offset += 12 + size;
+        }
+        let stripped = path.with_extension("stripped.image");
+        std::fs::write(&stripped, &bytes[..offset]).unwrap();
+        for mode in ["mapped", "rebuild", "stripped"] {
             let status = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--ignored",
@@ -640,11 +651,15 @@ fn image_owner_roundtrip() {
                     "--nocapture",
                 ])
                 .env("BIRNAM_IMAGE_TEST_MODE", mode)
-                .env("BIRNAM_IMAGE_TEST_PATH", &path)
+                .env(
+                    "BIRNAM_IMAGE_TEST_PATH",
+                    if mode == "stripped" { &stripped } else { &path },
+                )
                 .status()
                 .unwrap();
             assert!(status.success(), "{mode} image child failed");
         }
+        std::fs::remove_file(stripped).unwrap();
         // A failure after a real dictionary write and precise collection restores
         // both the old prototype binding and the original Store state.
         let later = h.string(b"[Module named: #later requires: #[]]");

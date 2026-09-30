@@ -4,7 +4,10 @@ use birnam_abi::{
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
 use birnam_native_compiler::Unit;
-use core::{cell::RefCell, ffi::c_void};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+};
 use std::{collections::HashMap, ffi::CString};
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -17,6 +20,7 @@ fn done(v: Result<Operand, Outcome>) -> Outcome {
 }
 struct Compiled {
     native: Unit,
+    identity: usize,
     refs: Vec<Oop>,
     result: Option<Oop>,
     initializing: bool,
@@ -31,7 +35,8 @@ struct State {
     unit_vt: Oop,
     permanent: Vec<Oop>,
     units: RefCell<HashMap<usize, Compiled>>,
-    retired: RefCell<Vec<Unit>>,
+    retired: RefCell<Vec<(usize, Unit)>>,
+    next_identity: Cell<usize>,
     thread: std::thread::ThreadId,
 }
 struct Scope<'a> {
@@ -125,6 +130,16 @@ unsafe extern "C" fn compile(c: *mut c_void, _: Oop, a: *const Operand, n: usize
         s.units.borrow_mut().insert(
             unit as usize,
             Compiled {
+                identity: s
+                    .next_identity
+                    .get()
+                    .checked_add(1)
+                    .filter(|v| *v <= isize::MAX as usize)
+                    .map(|v| {
+                        s.next_identity.set(v);
+                        v
+                    })
+                    .ok_or_else(invalid)?,
                 native,
                 refs: vec![s.ns],
                 result: None,
@@ -255,6 +270,16 @@ unsafe extern "C" fn load_object(c: *mut c_void, _: Oop, a: *const Operand, n: u
         s.units.borrow_mut().insert(
             unit as usize,
             Compiled {
+                identity: s
+                    .next_identity
+                    .get()
+                    .checked_add(1)
+                    .filter(|v| *v <= isize::MAX as usize)
+                    .map(|v| {
+                        s.next_identity.set(v);
+                        v
+                    })
+                    .ok_or_else(invalid)?,
                 native,
                 refs: vec![s.ns],
                 result: None,
@@ -337,7 +362,7 @@ unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize)
                 .borrow_mut()
                 .remove(&usize::from_ne_bytes(b.try_into().unwrap()));
             if let Some(unit) = removed {
-                s.retired.borrow_mut().push(unit.native);
+                s.retired.borrow_mut().push((unit.identity, unit.native));
             }
         }
         Ok(Operand::unit())
@@ -358,6 +383,50 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
         let retired = std::mem::take(&mut *s.retired.borrow_mut());
         drop(retired);
         Ok(Operand::unit())
+    })())
+}
+// Monotonic weak mapping identities: querying one never roots a Unit or
+// dereferences a former heap address. Retired-but-not-yet-unmapped code counts.
+unsafe extern "C" fn mapping_identity(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([value]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let units = s.units.borrow();
+        let unit = units.get(&(object(*value)? as usize)).ok_or_else(invalid)?;
+        Ok(Operand::word(unit.identity))
+    })())
+}
+unsafe extern "C" fn mapping_bytes(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([value]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let identity = value.as_word().filter(|v| *v != 0).ok_or_else(invalid)?;
+        let units = s.units.borrow();
+        if let Some(unit) = units.values().find(|unit| unit.identity == identity) {
+            return Ok(Operand::word(unit.native.relocated_allocation_bytes()));
+        }
+        let retired = s.retired.borrow();
+        Ok(Operand::word(
+            retired
+                .iter()
+                .find(|(id, _)| *id == identity)
+                .map_or(0, |(_, unit)| unit.relocated_allocation_bytes()),
+        ))
     })())
 }
 unsafe extern "C" fn live_units(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
@@ -421,6 +490,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             permanent: vec![ns, root, gc, model, receiver, vt, unit_vt],
             units: RefCell::new(HashMap::new()),
             retired: RefCell::new(Vec::new()),
+            next_identity: Cell::new(0),
             thread: std::thread::current().id(),
         }));
         for (target, n, f) in [
@@ -429,6 +499,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"loadObject:", load_object),
             (vt, b"checkpoint", checkpoint),
             (vt, b"liveNativeUnits", live_units),
+            (vt, b"mappingIdentityOf:", mapping_identity),
+            (vt, b"mappingBytes:", mapping_bytes),
             (vt, b"rootsDo:", roots),
             (vt, b"referencesOf:do:", references),
             (vt, b"retire:", retire),

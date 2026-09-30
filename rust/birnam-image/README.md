@@ -64,6 +64,14 @@ the prior source registry and the complete previous Store state. This compensati
 does not consume additional fact capacity or reevaluate source. Ordinary external
 effects performed by observer callbacks are outside that state compensation.
 
+Generation recovery participates in the same publication transaction. Codegen
+suspends old transient candidate capabilities before dispatch changes; the authored
+CompiledUnit policy creates composed components and retires saved rollback ancestry
+after restoration. Only successful adoption releases the old capability roots.
+Returned Errors and native failures compensate facts, sources, bindings and the old
+ledger together. Native-free rebuilds derive composition identity from the validated
+program, binding and selection inventories.
+
 No service table, foreign payload access, global GC suppression or candidate
 framework is introduced. Roots survive collecting owner calls; entered, suspended
 and captured code continues to use Execution/TCC's existing lifetime mechanism.

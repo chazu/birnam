@@ -15,12 +15,14 @@ pub(super) enum Op {
     Sources,
     PrepareSources,
     SwapSources,
+    Recover,
+    BeginRecovery,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
             Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::SwapSources => 0,
-            Self::PrepareSources => 1,
+            Self::PrepareSources | Self::Recover | Self::BeginRecovery => 1,
             Self::Compile | Self::Rebuild => 3,
             Self::Mapped | Self::Install => 4,
             Self::Method | Self::Prepare => 2,
@@ -107,6 +109,26 @@ pub(super) unsafe fn operation(
         let nil = q.keep(s.named(b"nil")?)?;
         let yes = q.keep(s.named(b"true")?)?;
         match op {
+            Op::Recover | Op::BeginRecovery => {
+                if !s
+                    .image_stage
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|stage| stage.finished)
+                {
+                    return candidate::fail(
+                        s,
+                        q,
+                        b"imageRecoveryRequired",
+                        b"generation recovery requires a prepared Image stage",
+                    );
+                }
+                return if matches!(op, Op::BeginRecovery) {
+                    candidate::begin_recovery(s, q, object(args[0])?)
+                } else {
+                    candidate::recover_image(s, q, object(args[0])?)
+                };
+            }
             Op::Sources => {
                 let entries = s.sources.entries.borrow().clone();
                 for &(name, source) in &entries {
@@ -378,6 +400,7 @@ pub(super) unsafe fn operation(
                 );
             }
             Op::Cancel => {
+                candidate::cancel_recovery(s);
                 *s.image_stage.borrow_mut() = None;
                 return Ok(Operand::object(yes));
             }
