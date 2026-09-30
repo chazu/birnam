@@ -34,4 +34,5 @@ collecting and replaced methods; native failures; lazy Error publication; and re
 preservation. Source evaluation also exercises `getEnv:`.
 
 [File I/O](../birnam-file-io/README.md) now uses the same prefix, including an owned
-filename snapshot before contents reads. Full Host/CLI startup and loaders remain separate work.
+filename snapshot before contents reads. Installed Host/CLI and Image checks
+exercise startup, loaders and restored OS services.

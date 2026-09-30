@@ -58,8 +58,8 @@ first-occurrence order, including nested Blocks. This preserves the syntactic
 inventory: it does not resolve shadowing, open assets, evaluate source, or
 register modules. Malformed/non-String input produces an empty asset Vector.
 All parsing and value construction use current owner messages and scoped roots.
-Host's project-source observations consume these selectors; project resolution
-and the project check/build commands remain separate work.
+Host's project-source observations consume these selectors. Installed project
+checks cover resolution and the check/build/run commands.
 
 The existing `sourceRevisionOf:`, `recordModuleSource:named:`, `moduleSourceFor:`,
 `sealInitialGeneration`, `lastError`, `evalPersisting:` and `evalPersisting:from:`
@@ -75,7 +75,7 @@ bytes return the incoming source while retaining the first registered Object.
 Different bytes, mismatched names, malformed revisions and closed registration
 answer nil with the existing diagnostic. `moduleSourceFor:` reads this registry.
 Image now restores it and its closed-registration flag through a staged owner
-exchange; broader source-generation replacement remains separate.
+exchange; candidate source-generation replacement uses the lifecycle below.
 
 Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
 Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated
@@ -124,8 +124,8 @@ Store/db and Cells now load through Bootstrap before the compiler. Their separat
 source consumers and Store-backed Globals. Generated source reads and writes now
 use that same Globals protocol, including Store history and query visibility.
 Reflect now publishes through Store's receiver-based MOP hooks and owned Execution Methods. Staged
-compiler publication/compensation still needs migration; the old Store native
-tables are gone.
+compiler publication and compensation use the candidate/ledger messages described
+below; the old Store native tables are gone.
 
 
 ## First allocation-elision producer
@@ -180,7 +180,8 @@ requirement to restore the old architecture:
   contains revision/generation projections, staged activation/rollback,
   compensation and materialization algorithms. Portable materialization is now
   reconnected below, and Image now stages owned Methods and source registration
-  with Store-state compensation. Broader generation replacement remains pending.
+  with Store-state compensation. Candidate activation, rollback, drift detection
+  and retirement now run through the message-based lifecycle described below.
   Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
   and sibling `code_bindings.rs`, `materialization_cache.rs`, `state_contract.rs`
   and `finalizer_tests.rs` remain in the same Git tree. Reconnect only the behavior
@@ -256,7 +257,8 @@ The `artifact_activation` production test disables both TCC compilation methods,
 removes source/assets, forces collecting inspection/relocation, preserves typed
 failures, and checks actual Unit reclamation. Installed artifact tests exercise
 Module's complete dependency preflight, registry rules and CLI diagnostics.
-Project publication policy and generation replacement remain separate work.
+Project publication policy is exercised by installed Host checks; candidate
+generation replacement and its independent tests are described below.
 
 Module filename construction uses restored `Reflect nameOf:`: Symbols return
 their Id-owned name bytes as a String; other objects use Namespace's reverse

@@ -44,6 +44,9 @@ if selected cli; then
 fi
 if selected image; then
   python3 scripts/host-image-test.py "$scratch/relocated"
+  bash scripts/native-loader-image-smoke.sh "$scratch/relocated"
+  bash scripts/string-builder-image-smoke.sh "$scratch/relocated"
+  python3 scripts/system-image-test.py "$scratch/relocated"
   BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
     host_test startup::tests::image_entry_uses_saved_code_and_roots
   cargo test --offline --locked -p birnam-siphon --test image repeated_image_resaves_keep_a_fixed_live_set -- --ignored
@@ -57,11 +60,13 @@ if selected generation; then
   host_test host_fulfills_authored_generation_intents_at_idle_boundary
   host_test image_recovers_composed_generation_before_entry
   python3 scripts/generation-cli-test.py "$scratch/relocated"
+  python3 scripts/compiled-unit-cli-test.py "$scratch/relocated"
 fi
 
 if selected tasks; then
   python3 scripts/task-image-test.py "$scratch/relocated"
   python3 scripts/concurrency-cli-test.py "$scratch/relocated"
   bash scripts/multicore-smoke.sh "$scratch/relocated"
+  bash scripts/closure-observation-test.sh "$scratch/relocated"
   cargo test --offline --locked -p birnam-siphon --test task_control -- --ignored --nocapture
 fi

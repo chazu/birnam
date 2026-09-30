@@ -12,21 +12,28 @@
 
 [System load: "modules/os.birnam"];
 
+// Do not turn a failed suite load into an apparently passing smaller run.
+let loadTestSource := [:path |
+  let answer := [System load: path];
+  [[answer isError] ifTrue: [|
+    [System println: answer]; [OS exit: 1]]];
+  answer];
+
 // -- register every suite (loading defines + registers, runs nothing) ---------
-[System load: "modules/html-test.birnam"];
-[System load: "modules/markdown-test.birnam"];
-[System load: "modules/random-test.birnam"];
-[System load: "modules/doc-test.birnam"];
-[System load: "modules/cli-test.birnam"];
-[System load: "modules/stdlib-test.birnam"];
-[System load: "modules/block-test.birnam"];
-[System load: "modules/portable-code-test.birnam"];
-[System load: "modules/lang-test.birnam"];
-[System load: "modules/modules-test.birnam"];
-[System load: "src/id/project-policy.birnam"];
-[System load: "modules/project-policy-test.birnam"];
-[System load: "modules/compiled-unit-test.birnam"];
-[System load: "modules/app-config-test.birnam"];
+[loadTestSource value: "modules/html-test.birnam"];
+[loadTestSource value: "modules/markdown-test.birnam"];
+[loadTestSource value: "modules/random-test.birnam"];
+[loadTestSource value: "modules/doc-test.birnam"];
+[loadTestSource value: "modules/cli-test.birnam"];
+[loadTestSource value: "modules/stdlib-test.birnam"];
+[loadTestSource value: "modules/block-test.birnam"];
+[loadTestSource value: "modules/portable-code-test.birnam"];
+[loadTestSource value: "modules/lang-test.birnam"];
+[loadTestSource value: "modules/modules-test.birnam"];
+[loadTestSource value: "src/id/project-policy.birnam"];
+[loadTestSource value: "modules/project-policy-test.birnam"];
+// CompiledUnit commits run at idle Host boundaries in compiled-unit-cli-test.py.
+[loadTestSource value: "modules/app-config-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

@@ -32,8 +32,8 @@ constructs diagnostics, preserving replacement behavior.
 
 Run `mise run native-messages` for production tests of finite and non-finite
 arithmetic, signed zero, bit preservation, conversion limits, mixed operations,
-method replacement and collection during dependency calls. Runtime/compiler and
-image integration remain separate work.
+method replacement and collection during dependency calls. Compiler and Image
+owner tests separately exercise generated arithmetic and bit-preserving recovery.
 
 Collections use owner messages `collectionEquals:` (Object → Boolean) and
 `collectionHash` (no arguments → native Word, low 32 bits). Float preserves

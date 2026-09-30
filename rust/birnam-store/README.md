@@ -34,7 +34,7 @@ send. Integer conversion and Error construction therefore observe replacement.
 | `retainCurrentOnly`, `retainSince:`, `retainLast:`, `compact` | Existing retention policy and explicit compaction. Cannot recover previously discarded history. |
 | `retainedFactCount`, `retainedFactBytes`, `factBytesLimit`, `factRecordBytes` | Actual retained-fact diagnostics and configured semantic fact ceiling. |
 | `retentionPolicyCode`, `retentionPolicyArgument` | Current-only = 0, keep-since = 1, keep-last = 2. |
-| `reservedCompensationFactCount`, `reservedCompensationFactBytes` | Zero until a migrated publication consumer owns reservations. The retired compensation table is not exported. |
+| `reservedCompensationFactCount`, `reservedCompensationFactBytes` | Outstanding candidate compensation reservations; consumed or released through the owner messages described below. |
 | `liveTriplesDo:`, `liveTriplesAsOf:do:`, `liveTriplesSince:do:`, `liveTriplesBetween:and:do:` | Snapshot current/as-of triples, then send the block `value:value:value:`. Bounds preserve the existing inclusive-lower/exclusive-upper semantics. |
 | `cellFor:attr:` | New Cell retaining this Store and the exact entity/attribute. |
 | Cell `value`, `set:`, `history` | Fresh sends to its Store. `set:` returns the Cell on successful assertion and otherwise propagates the Store result. |
@@ -111,10 +111,10 @@ The existing language transfer protocol is migrated:
 - `imageLoadEnd:raw:oldest:policy:argument:` restores retention metadata, validating
   nonnegative/range/Boolean constraints before applying it.
 
-These messages prove Store-owned transfer, not complete image save/restore.
-[Relational](../birnam-relational/README.md) now consumes these Store messages.
-Image, full self-hosted task policy, module publication and Host/CLI remain
-separate integration work. No optimizer or deoptimizer is extended here.
+[Relational](../birnam-relational/README.md) consumes these Store messages.
+Image recovery, authored task policy, candidate publication and Host/CLI now use
+this Store through owner messages. Their end-to-end checks run in the native
+message and installed Host groups; the transfer tests here isolate Store behavior.
 
 ## Validation
 

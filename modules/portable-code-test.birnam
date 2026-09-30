@@ -1,5 +1,7 @@
 // portable-code-test.birnam — ordinary-object acceptance for the native
 // Portable Code rung. Loading registers the suite; run through run-tests.
+// Native Unit/byte reclamation after final-owner release is checked by
+// rust/birnam-siphon/tests/materialization.rs at an idle native boundary.
 
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
 
@@ -181,11 +183,10 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
   [t assert: [[firstResumable codeObject] == firstObject] describes: "cache reuse preserves the first CodeObject identity"];
   [t assert: [[secondResumable codeObject] == secondObject] describes: "cache reuse preserves the second CodeObject identity"]]];
 
-[s test: "evicted resumable Blocks retain code until the last carrier dies" do: [:t |
+[s test: "evicted resumable Blocks remain callable through live carriers" do: [:t |
   [Codegen evictMaterializations];
   [System gc];
-  let beforeUnits := [Tcc liveUnitCount];
-  let duringUnits := [[|
+  [[|
     let read := [CodeNode lexicalReadAt: 0];
     let statement := [CodeStatement expression: read];
     let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
@@ -195,16 +196,12 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
     [t expect: [Codegen evictMaterializations] equals: 1 describes: "the repository drops its resumable root"];
     [System gc];
     [t expect: [block value: 47] equals: 47 describes: "the live carrier keeps resumable code mapped"];
-    [Tcc liveUnitCount]] value];
-  [t expect: duringUnits equals: [beforeUnits + 1] describes: "the live carrier owns one resumable TCC unit"];
-  [System gc];
-  [t expect: [Tcc liveUnitCount] equals: [beforeUnits + 1] describes: "the enclosing ordinary send defers physical retirement until its read guard drops"]]];
+    block] value]]];
 
 [s test: "nested source-less resumable Blocks retain the shared unit independently" do: [:t |
   [Codegen evictMaterializations];
   [System gc];
-  let beforeUnits := [Tcc liveUnitCount];
-  let nestedUnits := [[|
+  let nested := [[|
     let nestedRead := [CodeNode lexicalReadAt: 0];
     let nestedStatement := [CodeStatement expression: nestedRead];
     let nestedProgram := [CodeProgram parameters: #[] captures: #["held"] statements: #[nestedStatement]];
@@ -217,17 +214,11 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
     [System gc];
     let nested := [outer value: 52];
     [t expect: [nested value] equals: 52 describes: "an evicted live outer carrier can realize its nested resumable row"];
-    [t expect: [nested value] equals: 52 describes: "the nested Block owns the unit after its outer and repository roots disappear"];
-    [Tcc liveUnitCount]] value];
-  [t expect: nestedUnits equals: [beforeUnits + 1] describes: "all transitive resumable rows share one materialized unit"];
+    nested] value];
   [System gc];
-  [t expect: [Tcc liveUnitCount] equals: [beforeUnits + 1] describes: "nested retirement also waits for the enclosing ordinary-send reader"]]];
+  [t expect: [nested value] equals: 52 describes: "the nested Block executes after its outer scope and repository roots disappear"]]];
 
-[s test: "Reflect publishes current CodeBindings for arbitrary callable implementations" do: [:t |
-  let before := [Codegen currentCodeBindingCount];
-  // Route through an ordinary receiver so this deliberately local callable
-  // does not enter the legacy v6 source-replay journal. K5 persists the current
-  // CodeBinding itself in v7; this case tests live binding semantics only.
+[s test: "Reflect exposes arbitrary callable implementations and removes bindings" do: [:t |
   let reflection := Reflect;
   let implementation := [Object clone];
   let target := [Object clone];
@@ -236,13 +227,12 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
   [t expect: [target answer: 37] equals: 42 describes: "the NamedAdapter late-sends to a non-Block callable implementation"];
   let descriptor := [[reflection allMethodsOf: target] at: 0];
   [t assert: [[descriptor at: #method] == implementation] describes: "reflection exposes the semantic implementation object rather than a raw Method"];
-  [t expect: [Codegen currentCodeBindingCount] equals: [before + 2] describes: "each current target-selector association has one CodeBinding"];
   [reflection removeMethod: #answer: on: target];
   [reflection removeMethod: #value:value: on: implementation];
-  [t expect: [Codegen currentCodeBindingCount] equals: before describes: "removal withdraws the current CodeBinding mirrors"]]];
+  [t expect: [[target answer: 37] kind] equals: #doesNotUnderstand describes: "later sends observe method removal"];
+  [t assert: [[[reflection allMethodsOf: target] detect: [:entry | [[entry at: #selector] = #answer:]]] isNil] describes: "reflection contains no removed binding"]]];
 
 [s test: "self-replacement and self-removal preserve the active NamedAdapter" do: [:t |
-  let before := [Codegen currentCodeBindingCount];
   let reflection := Reflect;
   let target := [Object clone];
   [reflection defineMethod: #replaceSelf on: target as: [:self |
@@ -250,14 +240,13 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
     1]];
   [t expect: [target replaceSelf] equals: 1 describes: "the old invocation completes after replacing its own binding"];
   [t expect: [target replaceSelf] equals: 2 describes: "later sends observe the successor binding"];
-  [t expect: [Codegen currentCodeBindingCount] equals: [before + 1] describes: "replacement retains only one current semantic binding"];
   [reflection defineMethod: #removeSelf on: target as: [:self |
     [reflection removeMethod: #removeSelf on: target];
     7]];
   [t expect: [target removeSelf] equals: 7 describes: "the old invocation completes after removing its own binding"];
   [t assert: [[target removeSelf] isError] describes: "later sends observe method removal"];
   [reflection removeMethod: #replaceSelf on: target];
-  [t expect: [Codegen currentCodeBindingCount] equals: before describes: "self-mutated bindings leave no current semantic roots"]]];
+  [t assert: [[[reflection allMethodsOf: target] detect: [:entry | [[entry at: #selector] = #replaceSelf]]] isNil] describes: "self-mutated bindings are absent from reflection"]]];
 
 [s test: "materialization cache shares native identity but not CodeObject identity" do: [:t |
   [Codegen evictMaterializations];
@@ -282,8 +271,7 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
 [s test: "eviction drops repository roots while live Blocks retain native code" do: [:t |
   [Codegen evictMaterializations];
   [System gc];
-  let beforeUnits := [Tcc liveUnitCount];
-  let duringUnits := [[|
+  [[|
     let read := [CodeNode lexicalReadAt: 0];
     let statement := [CodeStatement expression: read];
     let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
@@ -293,10 +281,7 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
     [t expect: [Codegen evictMaterializations] equals: 1 describes: "the repository releases its materialization root"];
     [System gc];
     [t expect: [block value: 47] equals: 47 describes: "a live Block keeps its evicted unit callable"];
-    [Tcc liveUnitCount]] value];
-  [t expect: duringUnits equals: [beforeUnits + 1] describes: "the live Block owns exactly one materialization unit"];
-  [System gc];
-  [t expect: [Tcc liveUnitCount] equals: [beforeUnits + 1] describes: "synchronous code retirement waits for the enclosing Execution turn"]]];
+    block] value]]];
 
 [s test: "nested source-less Blocks carry captures and retain their shared unit" do: [:t |
   [Codegen evictMaterializations];

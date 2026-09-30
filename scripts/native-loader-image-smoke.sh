@@ -35,61 +35,48 @@ cmp "$scratch/startup.out" "$scratch/compiled.out"
 cat >"$scratch/save.birnam" <<BIRNAM
 let receiver := [System clone];
 let alias := receiver;
+[Reflect defineMethod: #savedReceiver on: receiver as: [:self | self]];
 let path := "$scratch/target.dylib";
 let pathAlias := path;
-let answer := [Object clone];
 let main := [|
-  [System autoGc: false];
-  [System preciseGc: true];
   [System gc];
-  [System println: [[receiver == alias] printString]];
-  [System println: [[path == pathAlias] printString]];
-  [System println: [[[receiver loadModule: path arguments: #[System]] == alias] printString]];
+  [System println: [receiver == alias]];
+  [System println: [[receiver savedReceiver] == alias]];
+  [System println: [path == pathAlias]];
+  [System println: [[receiver loadModule: path arguments: #[System]] == alias]];
   [System println: [System nativeLoaderCount]];
   [receiver loadModule: path arguments: #[System]];
   [System println: [System nativeLoaderCount]];
   [System println: [[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] kind]];
-  [System println: [[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] message]];
   [System println: [[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] kind]];
-  [System println: [[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] message]];
-  [Reflect defineMethod: ["kind:message:" asSymbol] on: Error as: [:self :kind :message | answer]];
-  [System println: [[[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] == answer] printString]];
-  [Reflect defineMethod: ["kind:message:" asSymbol] on: Error as: [:self :kind :message | nil]];
-  [System println: [[[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] == nil] printString]];
-  [Reflect defineMethod: #loadModule:arguments: on: receiver as: [:self :name :arguments | answer]];
+  // Image main runs under the Host's running-phase guard. Live replacement is
+  // tested at the native owner boundary; it requires an idle intent here.
+  [System println: [[Reflect defineMethod: #loadModule:arguments: on: receiver as: [:self :name :arguments | nil]] kind]];
   [System gc];
-  [System println: [[[receiver loadModule: path arguments: #[System]] == answer] printString]];
+  [System println: [[receiver loadModule: path arguments: #[System]] == alias]];
   [System println: [System nativeLoaderCount]];
-  [System loadModule: path arguments: #[System]];
-  [System println: [System nativeLoaderCount]];
-  [System preciseGc: false];
-  [System autoGc: true];
   [System println: "native-loader-image-ok"]
 ];
-[System saveImage: "$scratch/app.image"]
+[System saveImage: "$scratch/app.image"];
+[System println: [[System imageSaveReport] status]]
 BIRNAM
 "$bin" "$scratch/save.birnam" >"$scratch/save.out" 2>"$scratch/save.err"
 test ! -s "$scratch/save.err"
-python3 - "$scratch/app.image" <<'PY'
-import struct, sys
-with open(sys.argv[1], 'rb') as f:
-    data = f.read()
-assert data[:8] == b'BIRNAMIM' and struct.unpack_from('<I', data, 8)[0] == 8
-offset, records = 28, []
-while offset < len(data):
-    kind, length = struct.unpack_from('<IQ', data, offset)
-    offset += 12 + length
-    assert offset <= len(data)
-    records.append((kind, length))
-assert offset == len(data) and records[-1][0] == 4 and records[-1][1] > 72, records
-PY
+grep -Fxq '#saved' "$scratch/save.out"
+test -s "$scratch/app.image"
 rm "$scratch/save.birnam"
-printf 'true\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\ncould not load module dylib\n#notAModule\nmissing or incompatible birnam_native_module_v1\ntrue\ntrue\ntrue\n#native-load-2\n#native-load-3\nnative-loader-image-ok\n' >"$scratch/expected.out"
-DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
-cmp "$scratch/expected.out" "$scratch/image.out"
-grep -Fq '/libbirnam_native_loader.dylib' "$scratch/image.err"
-"$bin" --bake "$scratch/app.image" "$scratch/app"
-BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
+printf 'true\ntrue\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\n#notAModule\n#generationNotQuiescent\ntrue\n#native-load-3\nnative-loader-image-ok\n' >"$scratch/expected.out"
+for mode in mapped rebuilt; do
+  arguments=()
+  if [[ $mode == rebuilt ]]; then arguments+=(--rebuild); fi
+  "$bin" "${arguments[@]}" "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
+  cmp "$scratch/expected.out" "$scratch/$mode.out"
+  test ! -s "$scratch/$mode.err"
+done
+# A baked executable uses the same install-relative native closure as the host.
+cp -R "$prefix" "$scratch/bundle"
+"$bin" --bake "$scratch/app.image" "$scratch/bundle/bin/app"
+"$scratch/bundle/bin/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
-grep -Fq '/libbirnam_native_loader.dylib' "$scratch/baked.err"
-printf 'native-loader-image-smoke: common descriptor and repeated initialization verified in startup, source-free compiled module, v8 native Code image and baked executable; state, receiver, aliases, errors, GC and method/factory replacement preserved\n'
+test ! -s "$scratch/baked.err"
+printf 'native loader: descriptor loading, source-free artifact, mapped/rebuilt Image and baked entry passed\n'

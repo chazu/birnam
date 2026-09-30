@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused debug startup, source-free compiled module and compiled-image checks.
+# Source-free StringBuilder clients, copied Strings and native-buffer rejection.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 prefix=${1:?usage: string-builder-image-smoke.sh PREFIX}
@@ -51,61 +51,43 @@ let main := [|
   [System println: [#["a" "b" 3] joined]];
   [System println: ["birnam" asUppercase]];
   [System println: ["BIRNAM" asLowercase]];
-  [Reflect defineMethod: #size on: StringBuilderVt as: [:self | 99]];
+  [System println: [[Reflect defineMethod: #size on: StringBuilderVt as: [:self | 99]] kind]];
   [System gc];
   [System println: [[builder size] printString]];
   [System println: "string-builder-image-ok"]
 ];
-[System saveImage: "$scratch/app.image"]
+[System saveImage: "$scratch/app.image"];
+[System println: [[System imageSaveReport] status]]
 BIRNAM
 "$bin" "$scratch/save.birnam" >"$scratch/save.out" 2>"$scratch/save.err"
 test ! -s "$scratch/save.err"
-python3 - "$scratch/app.image" <<'PY'
-import struct, sys
-with open(sys.argv[1], 'rb') as f:
-    data = f.read()
-assert data[:8] == b'BIRNAMIM' and struct.unpack_from('<I', data, 8)[0] == 8
-offset, records = 28, []
-while offset < len(data):
-    kind, length = struct.unpack_from('<IQ', data, offset)
-    offset += 12 + length
-    assert offset <= len(data)
-    records.append((kind, length))
-assert offset == len(data) and records[-1][0] == 4 and records[-1][1] > 72, records
-PY
+grep -Fxq '#saved' "$scratch/save.out"
+test -s "$scratch/app.image"
 rm "$scratch/save.birnam"
-printf 'seed\ntrue\n135\nseedA\n0\nfalse\nok\n\nab3\nBIRNAM\nbirnam\n99\nstring-builder-image-ok\n' >"$scratch/expected.out"
-DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
-cmp "$scratch/expected.out" "$scratch/image.out"
-grep -Fq '/libbirnam_string.dylib' "$scratch/image.err"
-"$bin" --bake "$scratch/app.image" "$scratch/app"
-BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
+printf 'seed\ntrue\n135\nseedA\n0\nfalse\nok\n\nab3\nBIRNAM\nbirnam\n#generationNotQuiescent\n135\nstring-builder-image-ok\n' >"$scratch/expected.out"
+for mode in mapped rebuilt; do
+  arguments=()
+  if [[ $mode == rebuilt ]]; then arguments+=(--rebuild); fi
+  "$bin" "${arguments[@]}" "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
+  cmp "$scratch/expected.out" "$scratch/$mode.out"
+  test ! -s "$scratch/$mode.err"
+done
+cp -R "$prefix" "$scratch/bundle"
+"$bin" --bake "$scratch/app.image" "$scratch/bundle/bin/app"
+"$scratch/bundle/bin/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
-grep -Fq '/libbirnam_string.dylib' "$scratch/baked.err"
+test ! -s "$scratch/baked.err"
 
-# Record the existing RAW capture limitation, without executing/restoring a
-# nonportable pointer or changing Image's serialization/rejection policy.
+# A live builder owns a process-local buffer. Never serialize its native address.
 cat >"$scratch/raw-capture.birnam" <<BIRNAM
 let captured := [[StringBuilder new] add: "raw"];
 let main := [| [System println: [[captured size] printString]]];
-[System saveImage: "$scratch/raw-capture.image"]
+[System writeFile: "$scratch/raw-capture.image" contents: "preserved"];
+[System saveImage: "$scratch/raw-capture.image"];
+[System println: [[System imageSaveReport] status]]
 BIRNAM
 "$bin" "$scratch/raw-capture.birnam" >"$scratch/raw-capture.out" 2>"$scratch/raw-capture.err"
 test ! -s "$scratch/raw-capture.err"
-python3 - "$scratch/raw-capture.image" <<'PY'
-import struct, sys
-from pathlib import Path
-data = Path(sys.argv[1]).read_bytes()
-name = b'StringBuilderVt'
-record = bytes([9]) + struct.pack('<I', len(name)) + name + struct.pack('<I', 3)
-assert data.count(record) == 1
-offset = data.index(record) + len(record)
-words = []
-for _ in range(3):
-    assert data[offset] == 3
-    words.append(struct.unpack_from('<Q', data, offset + 1)[0])
-    offset += 9
-assert words[0] != 0 and words[1:] == [3, 64], words
-print('StringBuilder RAW capture remains three words with a native address; not executed')
-PY
-printf 'string-builder-image-smoke: startup, source-free module, native Code image and baked executable preserve buffers, copies, clone/new, stdlib clients, live dispatch and GC\n'
+grep -Fxq '#rejected' "$scratch/raw-capture.out"
+test "$(cat "$scratch/raw-capture.image")" = preserved
+printf 'StringBuilder: copied String identity, source-free artifact, mapped/rebuilt Image, baked entry and native-buffer rejection passed\n'

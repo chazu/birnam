@@ -34,8 +34,9 @@ absent. Failed contents sends create no file.
 
 `cargo test --offline --locked -p birnam-file-io --lib` checks the bounded reader's
 exact-limit, excess-byte and read-error behavior with small inputs; the production
-caller passes the unchanged one-GiB limit. Full Host/CLI and image acceptance remain
-separate migration work.
+caller passes the unchanged one-GiB limit. Installed Host/CLI and Image checks
+exercise file access, embedded assets and fresh-process recovery separately; see
+[validation](../../docs/validation.md).
 
 `embedFile:` reads a resolved UTF-8 String path, capped at 16 MiB, and sends
 `Bytes fromBytes:` to return an owned Bytes object. Path/content snapshots precede

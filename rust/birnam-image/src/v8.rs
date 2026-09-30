@@ -408,6 +408,10 @@ fn validate_heaps(
     let mut code_object_count = 0usize;
     let mut portable_block_count = 0usize;
     for (object_index, object) in objects.iter().enumerate() {
+        if object.locator.tag == 9 && object.locator.data == Some(b"SystemVt")
+            && object.word_count != 0 {
+            return Err(Error::Heap);
+        }
         let is_code_object =
             object.locator.tag == 9 && object.locator.data == Some(b"CodeObjectVt");
         if is_code_object {
@@ -509,7 +513,7 @@ fn native_family<'a>(object: &HeapObject<'a>) -> Result<&'a [u8], Error> {
     match name {
         b"VectorNode" => Ok(b"VectorNodeVt"),
         b"MapNode" => Ok(b"MapNodeVt"),
-        b"ObjectVt" | b"VectorVt" | b"VectorNodeVt" | b"MapVt" | b"MapNodeVt" | b"RangeVt"
+        b"ObjectVt" | b"SystemVt" | b"VectorVt" | b"VectorNodeVt" | b"MapVt" | b"MapNodeVt" | b"RangeVt"
         | b"ErrorVt" | b"IntegerVt" | b"FloatVt" | b"WordVt" | b"StringVt" | b"BytesVt"
         | b"CellVt" | b"CodeObjectVt" => Ok(name),
         _ => Err(Error::Heap),
@@ -931,6 +935,41 @@ mod tests {
             super::decode(&bytes, 1, 1).unwrap().behaviors,
             Some(behaviors.as_slice())
         );
+    }
+
+    #[test]
+    fn system_receivers_have_no_serialized_native_payload() {
+        let programs = include_bytes!("../../../abi/fixtures/portable-code-v1/inventory-empty.bin");
+        let bindings = include_bytes!("../../../abi/fixtures/portable-code-v1/bindings-empty.bin");
+        let selection = include_bytes!("../../../abi/fixtures/portable-code-v1/selection-empty.bin");
+        for words in [0u32, 1] {
+            let mut heap = 1u32.to_le_bytes().to_vec();
+            heap.push(9);
+            heap.extend_from_slice(&8u32.to_le_bytes());
+            heap.extend_from_slice(b"SystemVt");
+            heap.extend_from_slice(&words.to_le_bytes());
+            if words != 0 {
+                heap.push(3);
+                heap.extend_from_slice(&17u64.to_le_bytes());
+            }
+            let encoded = super::compose(super::ImageSpec {
+                runtime_abi: 1,
+                architecture: 1,
+                programs,
+                bindings,
+                selection,
+                heaps: &[&heap],
+                facts: &[],
+                sources: None,
+                behaviors: None,
+                code: None,
+            });
+            if words == 0 {
+                assert!(super::decode(&encoded.unwrap(), 1, 1).is_ok());
+            } else {
+                assert_eq!(encoded, Err(super::Error::Heap));
+            }
+        }
     }
 
     #[test]

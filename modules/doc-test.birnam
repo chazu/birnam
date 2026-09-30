@@ -25,17 +25,6 @@ let s := [TestSuite named: "Doc" module: #doc];
      describes: "an attribute does not detach /// docs from the Rust declaration"];
   [File delete: path]]];
 
-[s test: "workspace scanner distinguishes the floor from other native Rust crates" do: [:t |
-  let mods := [NativeDoc scanRustWorkspace: "."];
-  let floorMod := ["rust-lib" asSymbol];
-  let abiMod := ["rust-abi" asSymbol];
-  [t assert: [mods includes: floorMod] describes: "birnam-id lib.rs keeps the Rust-floor identity"];
-  [t assert: [mods includes: abiMod] describes: "birnam-abi lib.rs gets its crate identity"];
-  [t assert: [Doc isRustFloor: floorMod] describes: "birnam-id source is #rustFloor"];
-  [t assert: [Doc isNativeRust: abiMod] describes: "birnam-abi source is #nativeRust"];
-  [t assert: [[Doc isNativeRust: floorMod] not] describes: "floor source is not conflated with higher native Rust"];
-  [t assert: [[Doc isRustFloor: abiMod] not] describes: "shared native crate is not conflated with the floor"]]];
-
 // Use a throwaway module symbol so the suite is self-contained and order-stable.
 [s test: "markdown renders summary + ordered method list" do: [:t |
   [Doc module: #demoDoc is: "a demo module"];
@@ -196,5 +185,18 @@ let s := [TestSuite named: "Doc" module: #doc];
      describes: "authored activation reference is rendered"];
   [t assert: [md includesSubstring: "`rollback` — Produce a rollback"]
      describes: "guarded rollback reference is rendered"]]];
+
+// Scan the real workspace after fixture rendering: the scan registers all native
+// documentation, which would otherwise inflate every htmlIndex fixture below it.
+[s test: "workspace scanner distinguishes the floor from other native Rust crates" do: [:t |
+  let mods := [NativeDoc scanRustWorkspace: "."];
+  let floorMod := ["rust-lib" asSymbol];
+  let abiMod := ["rust-abi" asSymbol];
+  [t assert: [mods includes: floorMod] describes: "birnam-id lib.rs keeps the Rust-floor identity"];
+  [t assert: [mods includes: abiMod] describes: "birnam-abi lib.rs gets its crate identity"];
+  [t assert: [Doc isRustFloor: floorMod] describes: "birnam-id source is #rustFloor"];
+  [t assert: [Doc isNativeRust: abiMod] describes: "birnam-abi source is #nativeRust"];
+  [t assert: [[Doc isNativeRust: floorMod] not] describes: "floor source is not conflated with higher native Rust"];
+  [t assert: [[Doc isRustFloor: abiMod] not] describes: "shared native crate is not conflated with the floor"]]];
 
 s

@@ -19,7 +19,7 @@ The retained implementation establishes these boundaries:
 | Runtime `runtime.rs` drive/recovery and retirement | Selected entries remain pinned across nested calls, waiting frames and recovery. End a managed turn before draining releases, keep the outward result rooted, and never perform asynchronous cleanup from a finalizer. Preserve these mechanics when moving the drive. |
 | Runtime `registration.rs` | Validate descriptor bytes, arity, digest, manifest agreement and prepare/abort claims. Keep the codecs and admission algorithm private. Do not send the old Rust/C registration structure through Bytes. The native descriptor constructor below feeds the retained canonical validator and frame registry directly. Portable-profile admission and generated recovery publication still need their real batch 2 producers. |
 | Former TCC installation/retirement exports | Removed from production. TCC owns actual mappings; generated initializers construct owned Methods and use `addMethod:as:`. TCC drains detached mappings after Execution's checkpoint and `retirementReady` admission. |
-| Codegen `native.rs` and retained legacy emitters | Production source compilation emits typed NativeEntry steps, Method registration and Block creation through current owner messages. Legacy portable/Image/optimizer emitters remain migration inputs for their later consumers. |
+| Former Codegen `native.rs` and legacy emitters | Production source compilation, portable materialization and Image recovery emit typed NativeEntry steps and construct owned Methods/Blocks through current owner messages. The old emitters are deleted; historical optimizer implementations remain in Git. |
 
 ## Callable contract
 

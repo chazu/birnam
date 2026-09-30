@@ -67,5 +67,5 @@ snapshot identity retention.
 
 `mise exec -- cargo test --offline --locked -p birnam-relational --lib` runs the
 unchanged evaluator tests, including the independent eager matching oracle.
-The manual timing test remains ignored. Full Host/CLI, Image and task-policy
-integration remain separate work; this migration adds no optimization policy.
+The manual timing test remains ignored. Installed Host/CLI, Image and task-policy
+checks exercise their consumers separately; this migration adds no optimization policy.

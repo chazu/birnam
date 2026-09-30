@@ -159,6 +159,58 @@ Installed task acceptance also exercises Concurrency batch preparation, the reta
 19 service checks, source-free worker startup and temporary image cleanup. Native
 materialization tests cover synchronous/resumable eviction and final-owner release,
 replacing the old REPL unit-count arithmetic in portable-resumable-lifecycle.
+Image owner tests now also preserve nested portable closure construction, boxed
+alias identity and private System receiver behavior. Installed generation checks
+carry a projected initializer closure through mapped/rebuilt recovery, resave,
+successor activation and rollback. These replace the old portable-image-v8 and
+stackless-image-lifecycle drivers. Candidate retirement tests independently verify
+physical Unit reclamation; frozen format fixtures retain byte-level checks.
+Artifact acceptance checks one live parser invocation per compilation; Image
+recovery uses portable code without the retired compileImageCode path.
+Installed Image acceptance covers native descriptor loading and StringBuilder
+clients in mapped/rebuilt images and baked executables. Retained native builder
+buffers are rejected without overwriting the destination. The old provider-switching
+Image/Store wrappers, TCC export list and diagnostic storage driver are retired;
+current installed groups, manifest export audits and native lifetime tests cover
+their supported contracts.
+The per-owner primitive Image shell drivers are retired as well. Their startup
+and live-dispatch cases run in `numbers`, `numbers_loading`, `text_error`,
+`collections`, `block_loop`, and `system_output`. The Image owner suite checks
+numeric bits/errors, boxed identity, a 130-element Vector, signed Range bounds,
+typed Map keys and persistence, private/inherited behavior and captured code
+through fresh mapped/rebuilt processes. Installed Image tests cover entry and
+baking under the running-phase mutation guard.
+The consolidated `system-image-test.py` checks restored System aliases, live
+file/environment lookup, binary stdin/stdout, EOF and real input failures,
+retained bytes and collector controls in mapped, rebuilt and baked entry modes.
+It replaces the five per-service Image wrappers; native service tests retain
+live dependency/factory replacement coverage outside running Image entry.
+Portable Code's authored suite now checks callable retention and reflected method
+removal directly, without the removed Tcc/CodeBinding counters. Exact final-owner
+Unit/byte reclamation remains in the native materialization suite. Suite loading
+now stops on an Error, and an unhandled test-case Error counts as a failure.
+The old authored CompiledUnit suite is replaced by `compiled-unit-cli-test.py`:
+57 checks cover inert opening/mapping, dependencies, preparation rejection,
+activation/events, exact rollback, discard receipts and inherited supersession.
+Its source-free console returns intents to the idle Host instead of fulfilling
+inside a test callback. Prepared-token drift/compensation and exact physical
+reclamation remain in `generation_transaction` and `candidate_retirement`;
+selected Image recovery runs in Host's lifecycle tests.
+The installed
+task group also checks live closure aliases, captures and ordered nested effects
+through conservative and precise collection, replacing the removed closure-elision
+flag matrix. Guarded-slot benchmark fixtures whose compiler switches and driver
+were deleted are retired; this is not optimizer qualification.
+`rust-native-memory-smoke.sh PREFIX` runs the current native memory, root and GC
+owner tests under Darwin allocator diagnostics. The old PEG identity-export probe
+is replaced by the manifest export audit in `native-message-test.sh`.
+The benchmark driver measures the current source-stdlib startup once, without a
+removed-provider decoy. Its Image fixture requires a successful save report and
+boots a saved main that checks the retained marker. Timing drivers for deleted
+Id optimizer test binaries and the removed Design 66 counter instrumentation are
+retired; historical measurements remain evidence of their original revisions.
+The unused Artifact sentinel wrapper is also removed; the native Artifact tests
+exercise rejection before loading or activation through the current messages.
 
 For a focused iteration, preview
 `python3 scripts/validate.py --suite routine --plan`, then select named steps with

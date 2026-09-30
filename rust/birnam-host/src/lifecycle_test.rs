@@ -296,6 +296,7 @@ fn image_recovers_composed_generation_before_entry() {
         host.load_image_mode(&path, mode == "rebuild").unwrap();
         host.enter_running().unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
+        expect(b"[[imageGenerationClosure value] = 21]");
         expect(b"[[[DispatchGeneration current] predecessor] isNil]");
         expect(b"[[[DispatchGeneration current] deltaUnit] isNil]");
         expect(b"[[[DispatchGeneration current] compositionIdentity] = [System imageCompositionIdentity]]");
@@ -325,7 +326,7 @@ fn image_recovers_composed_generation_before_entry() {
         eprintln!("generation Image: {mode} successor and rollback");
         let artifact = path.with_extension(format!("{mode}.successor.o"));
         put_path(b"imageGenerationPath", &artifact);
-        eval(br#"[CompiledUnit compile: "[Module named: #imageGeneration requires: #[]]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 30]]" named: #imageGeneration output: imageGenerationPath]"#);
+        eval(br#"[CompiledUnit compile: "[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 31]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 30]]" named: #imageGeneration output: imageGenerationPath]"#);
         eval(
             b"let imageSuccessor := [CompiledUnit open: imageGenerationPath]; [imageSuccessor map]",
         );
@@ -336,6 +337,7 @@ fn image_recovers_composed_generation_before_entry() {
         )
         .unwrap();
         expect(b"[[2 imageGenerationValue] = 30]");
+        expect(b"[[imageGenerationClosure value] = 31]");
         q.evaluate(
             b"[imageSuccessor rollback]",
             Path::new("<image-rollback>"),
@@ -343,6 +345,7 @@ fn image_recovers_composed_generation_before_entry() {
         )
         .unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
+        expect(b"[[imageGenerationClosure value] = 21]");
         // Loading into a process with a live inverse ledger must replace that
         // capability set, not retain its predecessor pointers as the new base.
         host.load_image(&path).unwrap();
@@ -351,16 +354,17 @@ fn image_recovers_composed_generation_before_entry() {
         host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
             .unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
+        expect(b"[[imageGenerationClosure value] = 21]");
         fs::remove_file(artifact).unwrap();
         return;
     }
-    q.evaluate(b"[Module named: #imageGeneration requires: #[]]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 10]]", Path::new("<image-generation>"), Some(b"imageGeneration")).unwrap();
+    q.evaluate(b"[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 11]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 10]]", Path::new("<image-generation>"), Some(b"imageGeneration")).unwrap();
     eval(b"[DispatchGeneration initializeCurrent]");
     host.enter_running().unwrap();
     let dir = env::temp_dir().join(format!("birnam-image-generation-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     put_path(b"imageGenerationPath", &dir.join("candidate.o"));
-    eval(br#"[CompiledUnit compile: "[Module named: #imageGeneration requires: #[]]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 20]]" named: #imageGeneration output: imageGenerationPath]"#);
+    eval(br#"[CompiledUnit compile: "[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 21]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 20]]" named: #imageGeneration output: imageGenerationPath]"#);
     eval(b"let imageCandidate := [CompiledUnit open: imageGenerationPath]; [imageCandidate map]");
     q.evaluate(
         b"[imageCandidate activate]",
@@ -369,6 +373,7 @@ fn image_recovers_composed_generation_before_entry() {
     )
     .unwrap();
     expect(b"[[2 imageGenerationValue] = 20]");
+    expect(b"[[imageGenerationClosure value] = 21]");
     eval(b"let savedOriginGeneration := [DispatchGeneration current]; let savedOriginPredecessor := [savedOriginGeneration predecessor]");
     let path = dir.join("active.image");
     let filename = q.string(path.as_os_str().as_bytes()).unwrap();
@@ -435,6 +440,7 @@ fn image_recovers_composed_generation_before_entry() {
         assert_eq!(eval(b"[DispatchGeneration current]"), before);
         expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         expect(b"[[2 imageGenerationValue] = 20]");
+        expect(b"[[imageGenerationClosure value] = 21]");
         expect(b"[[imageCandidate state] = #active]");
     }
     // A source-policy retirement failure after adoption must compensate the
@@ -506,6 +512,7 @@ fn image_recovers_composed_generation_before_entry() {
     assert_eq!(eval(b"[DispatchGeneration current]"), before);
     expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
     expect(b"[[2 imageGenerationValue] = 20]");
+    expect(b"[[imageGenerationClosure value] = 21]");
     expect(b"[[imageCandidate state] = #active]");
     q.evaluate(
         b"[imageCandidate rollback]",

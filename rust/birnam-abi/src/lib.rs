@@ -34,17 +34,6 @@ pub unsafe fn borrowed_slice<'a, T>(pointer: *const T, count: usize) -> Option<&
     Some(unsafe { core::slice::from_raw_parts(pointer, count) })
 }
 
-/// Borrow opaque object arguments; a zero count permits a null pointer.
-///
-/// # Safety
-///
-/// For a nonzero count, `pointer` must address `count` initialized `Oop`
-/// carriers that remain readable for `'a`.
-pub unsafe fn borrowed_oop_args<'a>(pointer: *const Oop, count: usize) -> Option<&'a [Oop]> {
-    // SAFETY: forwarded caller contract.
-    unsafe { borrowed_slice(pointer, count) }
-}
-
 /// Borrow bytes supplied through a length-delimited C ABI field.
 ///
 /// # Safety
@@ -63,18 +52,26 @@ mod tests {
     fn borrowed_buffers_enforce_null_count_and_alignment_shape() {
         // SAFETY: zero-count buffers are never dereferenced.
         assert_eq!(
-            unsafe { borrowed_oop_args(core::ptr::null(), 0) },
+            unsafe { borrowed_slice::<id_protocol::Operand>(core::ptr::null(), 0) },
             Some(&[][..])
         );
         // SAFETY: this deliberately violates only the checked null/count shape.
-        assert_eq!(unsafe { borrowed_oop_args(core::ptr::null(), 1) }, None);
-
-        let values = [core::ptr::null_mut(), 42usize as Oop];
-        // SAFETY: values supplies two initialized Oop carriers for this scope.
         assert_eq!(
-            unsafe { borrowed_oop_args(values.as_ptr(), values.len()) },
+            unsafe { borrowed_slice::<id_protocol::Operand>(core::ptr::null(), 1) },
+            None
+        );
+
+        let values = [id_protocol::Operand::unit(), id_protocol::Operand::word(42)];
+        // SAFETY: values supplies two initialized message operands for this scope.
+        assert_eq!(
+            unsafe { borrowed_slice(values.as_ptr(), values.len()) },
             Some(&values[..])
         );
+
+        // The deliberately misaligned address is rejected before dereferencing.
+        let misaligned =
+            unsafe { values.as_ptr().cast::<u8>().add(1) }.cast::<id_protocol::Operand>();
+        assert_eq!(unsafe { borrowed_slice(misaligned, 1) }, None);
 
         let bytes = [1u8, 2, 3];
         // SAFETY: bytes supplies three initialized bytes for this scope.

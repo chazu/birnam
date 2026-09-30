@@ -43,4 +43,5 @@ and native failures, both payload modes, numeric private behaviors, Range and
 String/Builder payloads, live mode/layout changes, failed-trace accounting,
 native-stack survival, automatic suppression and reloads. Other production memory
 and execution tests continue to cover finalizers and code/continuation lifetime.
-Full Host/CLI and Image integration remain separate work.
+Installed Host/CLI and Image checks also exercise these controls through source
+programs and restored System receivers.

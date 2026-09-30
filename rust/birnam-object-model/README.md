@@ -96,8 +96,8 @@ Object Model layout knowledge into GC or Id.
 
 Id's existing `behaviorCount`, `behaviorAt:`, `selectorAt:in:`, `parentOf:` and
 binding/lookup messages supply reflection. The redundant enumeration adapter and
-Runtime adoption wrappers are deleted. Runtime must not reinstall the old
-construction/ownership implementations over the completed production methods.
+Runtime adoption wrappers are deleted. Execution uses these production methods
+without reinstalling the old construction/ownership implementations.
 
 ## Validation and remaining scope
 
@@ -108,11 +108,10 @@ replacement, collection during clone allocation, finalizer non-copying, native
 payload rejection, and repeated cycle retirement. `birnam-object-model` also keeps
 the copied-layout algorithm's boundary checks as unit tests.
 
-This completes basic object behavior over the current production prefix. Runtime's
-execution-specific deferred materialization, recovery, guarded specialization and
-code lifetime remain for Execution's migration. Their algorithms and semantic
-tests are retained. Full Runtime/CLI, value families and image integration are
-still pending; this module does not recreate their old descriptor adapters.
+Execution owns callable state, recovery, guarded specialization and code lifetime.
+Its [native tests](../birnam-execution/README.md) and the installed
+[Host/Image checks](../../docs/validation.md) exercise those integrations through
+owner messages. Object Model does not recreate their old descriptor adapters.
 
 Collection keys use ordinary owner methods. Object's `collectionEquals:` takes
 an Object and returns canonical Boolean identity equality; `collectionHash`

@@ -455,6 +455,11 @@ fn image_owner_roundtrip() {
             );
             assert!(collecting.calls.get() > 0);
             set(&h, model_vt, b"restoreImageSlotAt:in:put:", slot_entry);
+            let receiver = global(&h, b"ImageSystem");
+            assert_ne!(receiver, system);
+            assert_eq!(receiver, global(&h, b"ImageSystemAlias"));
+            assert_eq!(h.number(h.call(receiver, b"imageSystemMarker", &[])), 83);
+            h.call(receiver, b"gc", &[]);
             let identity = h.bytes(h.call(system, b"imageCompositionIdentity", &[]));
             assert_eq!(identity.len(), 64);
             assert!(identity.iter().all(|b| b.is_ascii_hexdigit()));
@@ -474,6 +479,48 @@ fn image_owner_roundtrip() {
                 nil
             );
             numeric_image_values(&h, false);
+            let wide = global(&h, b"ImageWideVector");
+            assert_eq!(h.number(h.call(wide, b"size", &[])), 130);
+            for index in 0..130 {
+                assert_eq!(h.number(h.call(wide, b"at:", &[h.int(index)])), index as usize);
+            }
+
+            let range = global(&h, b"ImageRange");
+            assert_eq!(range, global(&h, b"ImageRangeAlias"));
+            assert_eq!(h.number(h.call(range, b"size", &[])), 5);
+            assert_eq!(h.number(h.call(range, b"at:", &[h.int(2)])), 0);
+            let reversed = h.call(range, b"reversed", &[]);
+            for index in 0..5 {
+                assert_eq!(h.number(h.call(reversed, b"at:", &[h.int(index)])) as i64, 2 - index);
+            }
+            let typed = global(&h, b"ImageTypedMap");
+            assert_eq!(typed, global(&h, b"ImageTypedMapAlias"));
+            assert_eq!(h.number(h.call(typed, b"size", &[])), 5);
+            let negative_zero = h.keep(object(send(h.id, h.named(b"Float"), b"fromBits:", &[Operand::word(1usize << 63)])));
+            for (key, expected) in [
+                (h.int(0), b"integer".as_slice()),
+                (negative_zero, b"float"),
+                (h.id.intern_name(b"alpha").unwrap(), b"symbol"),
+                (h.string(b"alpha"), b"string"),
+                (h.string("café".as_bytes()), b"utf8"),
+            ] {
+                assert_eq!(h.bytes(h.call(typed, b"at:", &[key])), expected);
+            }
+            let updated = h.call(typed, b"at:put:", &[h.string(b"alpha"), h.string(b"changed")]);
+            assert_eq!(h.bytes(h.call(updated, b"at:", &[h.string(b"alpha")])), b"changed");
+            assert_eq!(h.bytes(h.call(typed, b"at:", &[h.string(b"alpha")])), b"string");
+
+            let outer = global(&h, b"ImageOuter");
+            let inner = h.call(outer, b"value:", &[h.int(52)]);
+            assert_eq!(h.number(h.call(inner, b"value", &[])), 52);
+            let boxed = global(&h, b"ImageBox");
+            assert_eq!(boxed, global(&h, b"ImageBoxAlias"));
+            assert_eq!(h.number(h.call(boxed, b"imageBoxMarker", &[])), 61);
+            let equal_a = global(&h, b"ImageEqualA");
+            let equal_b = global(&h, b"ImageEqualB");
+            assert_ne!(equal_a, equal_b);
+            assert_eq!(h.bytes(equal_a), h.bytes(equal_b));
+
             let shared = global(&h, b"ImageShared");
             assert_eq!(shared, global(&h, b"ImageAlias"));
             assert_eq!(h.bytes(global(&h, b"ImageBytes")), b"asset\0\xffbytes");
@@ -645,6 +692,15 @@ fn image_owner_roundtrip() {
             return;
         }
         numeric_image_values(&h, true);
+        let mut wide = h.call(h.named(b"Vector"), b"new", &[]);
+        for index in 0..130 {
+            wide = h.call(wide, b"add:", &[h.int(index)]);
+        }
+        h.call(h.named(b"Globals"), b"at:put:", &[h.id.intern_name(b"ImageWideVector").unwrap(), wide]);
+
+        h.eval(r#"let ImageRange := [-2 to: 2]; let ImageRangeAlias := ImageRange; let ImageTypedMap := {0 -> "integer", 0.0 -> "float", #alpha -> "symbol", "alpha" -> "string", "café" -> "utf8"}; let ImageTypedMapAlias := ImageTypedMap"#.as_bytes());
+
+        h.eval(b"let ImageBox := [\"special\" , \"\"]; let ImageBoxAlias := ImageBox; [Reflect defineMethod: #imageBoxMarker on: ImageBox as: [:self | 61]]; let ImageEqualA := [\"equal\" , \"\"]; let ImageEqualB := [\"equal\" , \"\"]");
         // CellVt has Store as its native owner, but hosts instance methods
         // directly. Image binding targets must preserve that distinction.
         h.eval(b"[Reflect defineMethod: #imageCellMarker on: CellVt as: [:self | 73]]");
@@ -663,6 +719,7 @@ fn image_owner_roundtrip() {
         let sync = h.materialize(code, &[shared], false);
         for (name, value) in [
             (b"ImageClosure".as_slice(), closure),
+            (b"ImageOuter", maker),
             (b"ImageSync", sync),
             (b"ImageBytes", h.encoded(b"asset\0\xffbytes")),
             (b"ImageAnnotated", annotated),
@@ -735,6 +792,7 @@ fn image_owner_roundtrip() {
 
         h.eval(b"[db assert: #tracked attr: #history value: true]; [db assert: #imageHistory attr: #tracked value: 1]; [db assert: #imageHistory attr: #tracked value: 2]; [Reflect defineMethod: #imageFixture on: Integer as: [:self | #saved]]");
         h.eval(b"let ImageCell := [db cellFor: #imageHistory attr: #tracked]; let ImageCellBlock := [[:cell | [| [cell value]]] value: ImageCell]");
+        h.eval(b"let ImageSystem := [System clone]; let ImageSystemAlias := ImageSystem; [Reflect defineMethod: #imageSystemMarker on: ImageSystem as: [:self | 83]]");
         let codegen = h.named(b"Codegen");
         let source = h.string(b"[Module named: #fixture requires: #[]]");
         assert_eq!(

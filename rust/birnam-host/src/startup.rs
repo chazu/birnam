@@ -143,6 +143,10 @@ impl Scope<'_> {
     fn check_result(&self, result: Oop) -> Result<(), HostError> {
         if self.call(result, b"isError", &[])? == self.host.named(b"true")? {
             let message = self.call(result, b"message", &[])?;
+            if message == self.host.named(b"nil")? {
+                let kind = self.call(result, b"kind", &[])?;
+                return Err(HostError(format!("error(#{})", self.symbol_text(kind)?)));
+            }
             return Err(HostError(self.text(message)?));
         }
         Ok(())
@@ -767,6 +771,11 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.0.contains("could not read file"), "{error}");
+        let error = host
+            .scope()
+            .evaluate(b"[Error kind: #hostKindOnly]", Path::new("<root-test>"), None)
+            .unwrap_err();
+        assert_eq!(error.0, "error(#hostKindOnly)");
         let error = host
             .scope()
             .evaluate(b"[", Path::new("<root-test>"), None)

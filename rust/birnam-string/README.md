@@ -71,7 +71,7 @@ replacements. It reads numbers through `wordOf:` and constructs through
 
 Indexing remains byte-oriented. Numeric parsing trims space/tab/CR/LF, preserving
 its historical distinction from `trimmed`'s six whitespace characters. Splitting
-still awaits collection objects. Run `mise run native-messages` for production
+uses the collection extension below. Run `mise run native-messages` for production
 coverage, including replaced constructors and collection during conversions.
 
 ## Collection extension

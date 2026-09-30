@@ -184,7 +184,9 @@
   [r suiteStarted: [s name]];
   let t := [TestContext for: r];
   [[s cases] do: [:cse |
-    [[[db cellFor: cse attr: #cblock] value] value: t]]];
+    let answer := [[[db cellFor: cse attr: #cblock] value] value: t];
+    [[answer isError] ifTrue: [|
+      [r failed: [[db cellFor: cse attr: #cname] value] detail: [answer printString]]]]]];
   [r suiteFinished: [s name]];
   s] doc:
   "Run suite `s` against runner `r`, handing each case block a fresh TestContext; does NOT reset `r` (see reset)."];

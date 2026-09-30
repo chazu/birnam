@@ -3,8 +3,8 @@
 // One-shot protocol: boot, install a marker binding (so the saved image is
 // non-trivially different from a bare boot), then time ONE [System saveImage:]
 // on the warm heap. The artifact this writes is what bench.sh's boot.image
-// macro case boots (a REPL over the image exits 0 at EOF, so no `main` is
-// needed). BENCH_IMG overrides where the image lands.
+// macro case boots and checks through its saved main. BENCH_IMG overrides
+// where the image lands.
 //
 //   "$HOME/.local/bin/birnam" bench/image.birnam
 
@@ -19,6 +19,8 @@ let IMG := [[env isNil] ifTrue: [| "bench/results/dev/bench.image"] ifFalse: [| 
 [Bench ensureDir: "bench/results/dev"];
 
 [Globals at: #BenchImageMark put: 42];
+[Globals at: #main put: [|
+  [[BenchImageMark = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 1]]]]];
 
 [System autoGc: false];
 [System gc];
@@ -31,9 +33,9 @@ let s := [BenchSuite named: "image"];
 [Bench record: "image.save" us: [t1 - t0] ops: 1];
 let written := [Bench writeResults: "bench/results/dev/image.json"];
 
-// saveImage: answers SELF on success and NIL on rejection/IO failure (not an
-// error value) — gate on isNil, and surface the report when it fails.
-let saveOk := [[saved isNil] ifTrue: [| false] ifFalse: [| true]];
+// A successful save answers true and publishes a saved report. An Error or nil
+// must not be accepted as benchmark evidence for an image that was not written.
+let saveOk := [[saved == true] & [[[System imageSaveReport] status] = #saved]];
 [saveOk ifTrue: [| nil] ifFalse: [|
   [System println: ["image save REJECTED: " , [[[System imageSaveReport] detail] printString]]]]];
 

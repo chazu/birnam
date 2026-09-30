@@ -38,6 +38,28 @@ def fails(path, diagnostic):
     result = run([path])
     assert result.returncode == 1 and not result.stdout and diagnostic in result.stderr, result
 
+# Metadata and code share one parse, and later compilations observe replacement.
+parse_artifact = work / 'parse-count.dylib'
+rejected_artifact = work / 'parse-rejected.dylib'
+parse_probe = work / 'parse-count.birnam'
+parse_probe.write_text(f'''
+let ArtifactOriginalParse := [Lang methodFor: #parse:];
+let ArtifactParseCount := 0;
+[Reflect defineMethod: #parse: on: Lang as: [:self :source |
+  [Globals at: #ArtifactParseCount put: [[Globals at: #ArtifactParseCount] + 1]];
+  [ArtifactOriginalParse invokeOn: self arguments: #[source]]]];
+[Codegen compile: "[Module named: #parseCount requires: #[]];" output: {quote(parse_artifact)}];
+[System println: [Globals at: #ArtifactParseCount]];
+[Codegen compile: "[Module named: #parseCount requires: #[]];" output: {quote(parse_artifact)}];
+[System println: [Globals at: #ArtifactParseCount]];
+[Reflect defineMethod: #parse: on: Lang as: [:self :source | nil]];
+[System println: [[Codegen compile: "[Module named: #rejected requires: #[]];" output: {quote(rejected_artifact)}] isNil]]
+''')
+result = run([parse_probe])
+assert result.returncode == 1 and result.stdout == b'1\n2\ntrue\n', result
+assert b'syntax error' in result.stderr, result
+assert parse_artifact.is_file() and not rejected_artifact.exists()
+
 # Compilation is inert; relative binary embedding is fixed at compile time.
 (work / 'asset').write_bytes(b'owned\0\xff')
 marker = work / 'executed'

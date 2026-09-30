@@ -36,4 +36,7 @@ runs `native_loader` against independent C dylib fixtures. Coverage includes
 actual admission/results, compiled source calls, path mutation, precise collection
 inside dependencies and initializers, transient argument lifetime and cleanup,
 replacement/failure propagation, lazy Error lookup, and reload preservation.
-Host/CLI and saved-image loader smoke tests still require their own migrations.
+The installed Image group also runs `native-loader-image-smoke.sh`: descriptor
+loading through source and source-free artifacts, cloned System receiver identity,
+private receiver methods, mapped/rebuilt recovery and a baked executable. Image
+main preserves the running-phase guard against direct method replacement.

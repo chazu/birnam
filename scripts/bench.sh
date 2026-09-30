@@ -83,8 +83,6 @@ FLOOR_DIGEST=$(shasum -a 256 "$FLOOR_DYLIB" | awk '{print $1}')
 FLOOR_SIZE=$(stat -f %z "$FLOOR_DYLIB")
 export BIRNAM_LIB_DIR="$PREFIX/lib"
 export BIRNAM_ID_DYLIB="$FLOOR_DYLIB"
-export BIRNAM_ID_FLOOR_IDENTITY="$FLOOR_IDENTITY"
-export BIRNAM_ID_FLOOR_SHA256="$FLOOR_DIGEST"
 echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
 echo "==> selected TCC $TCC"
 
@@ -261,21 +259,9 @@ REP_MACRO=3
 [ -n "$QUICK" ] && REP_MACRO=2
 REP_HEAVY=$(( REP_MACRO < 3 ? REP_MACRO : 3 ))   # tracked heavy macros need an outlier-resistant median
 
-# The source-boot decoy: every dylib EXCEPT the self-hosted four, so
-# loadStdlib falls back to embedded source exactly (docs/46).
-DECOY="$TMP/decoylib"
-mkdir -p "$DECOY"
-for f in "$PREFIX"/lib/*.dylib; do
-  b=$(basename "$f")
-  case "$b" in
-    libbirnam_modules.dylib|libbirnam_stdlib.dylib|libbirnam_toml.dylib|libbirnam_config.dylib) ;;
-    *) ln -sf "$f" "$DECOY/$b" ;;
-  esac
-done
-
+# Host bootstraps the authored stdlib from source through Id messages.
 macro_case boot.bare          "$REP_MACRO" env BIRNAM_NO_STDLIB=1 "$BIN" bench/nil.birnam
-macro_case boot.stdlib-dylib  "$REP_MACRO" "$BIN" bench/nil.birnam
-macro_case boot.stdlib-source "$REP_MACRO" env BIRNAM_LIB_DIR="$DECOY" "$BIN" bench/nil.birnam
+macro_case boot.stdlib-source "$REP_MACRO" "$BIN" bench/nil.birnam
 if [ -f "$TMP/bench.image" ]; then
   macro_case boot.image       "$REP_MACRO" "$BIN" "$TMP/bench.image"
 else

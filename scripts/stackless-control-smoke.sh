@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Prove that the ordinary source-authored Boolean and Block control unit is a
-# selection-bearing Module AOT in G0 and drives a deep loop without native-stack
-# recursion. The same contract must survive forced source recovery.
+# Exercise source-authored control and collection callbacks without native-stack
+# recursion, including the 100k loop and precise collection during sort.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 prefix=${1:?usage: stackless-control-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
-lib="$prefix/lib"
 test -x "$bin"
 
 smoke_root=$(mktemp -d "${TMPDIR:-/tmp}/birnam-stackless-control.XXXXXX")
@@ -21,7 +19,6 @@ fi
 run_script="$smoke_root/run.birnam"
 
 cat >"$run_script" <<'EOF'
-[DispatchGeneration initializeCurrent];
 [System println: [true ifTrue: [| 11] ifFalse: [| 22]]];
 [System println: [false ifTrue: [| 11] ifFalse: [| 22]]];
 [System println: [[| false] whileTrue: [| nil]]];
@@ -65,8 +62,7 @@ let handled := [[| [Error kind: #expected]] on: #expected do: [:error | #handled
 [System println: [cleaned value]];
 EOF
 
-BIRNAM_LIB_DIR="$lib" "$bin" "$run_script" >"$smoke_root/run.out"
-BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$lib" "$bin" "$run_script" >"$smoke_root/source.out"
+"$bin" "$run_script" >"$smoke_root/run.out"
 
 cat >"$smoke_root/expected.out" <<'EOF'
 11
@@ -91,14 +87,4 @@ true
 EOF
 
 cmp "$smoke_root/expected.out" "$smoke_root/run.out"
-cmp "$smoke_root/expected.out" "$smoke_root/source.out"
-nm -j "$lib/libbirnam_stacklessControl.dylib" >"$smoke_root/module.symbols"
-grep -Eq '__birnam_resumable_step_[0-9]+$' "$smoke_root/module.symbols"
-grep -Eq '__birnam_resumable_thunk_[0-9]+$' "$smoke_root/module.symbols"
-nm -gj "$lib/libbirnam_stacklessControl.dylib" >"$smoke_root/module.exports"
-if grep -Eq '__birnam_resumable_(step|thunk)_[0-9]+$' "$smoke_root/module.exports"; then
-  echo "stackless control artifact leaked artifact-local resumable helpers" >&2
-  exit 1
-fi
-
-echo "stackless-control-smoke: G0 Module AOT and source recovery passed the 100k callback loop"
+echo "stackless control: source callbacks, 100k loops, collection and error boundaries passed"

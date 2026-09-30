@@ -547,6 +547,7 @@ impl Graph<'_, '_> {
                         let allowed = matches!(
                             name.as_slice(),
                             b"ObjectVt"
+                                | b"SystemVt"
                                 | b"VectorVt"
                                 | b"VectorNodeVt"
                                 | b"VectorNode"
@@ -564,7 +565,10 @@ impl Graph<'_, '_> {
                             .send(self.s.model, b"imageSizeOf:", &[Operand::object(o)])?
                             .as_word()
                             .ok_or_else(bad)?;
-                        if bytes % size_of::<usize>() != 0 || bytes > 64 << 20 {
+                        // Prelude owns System as an empty Object. Native service state
+                        // belongs to module contexts, never to a cloned receiver.
+                        if (name == b"SystemVt" && bytes != 0)
+                            || bytes % size_of::<usize>() != 0 || bytes > 64 << 20 {
                             return Err(bad());
                         }
                         for slot in 0..bytes / size_of::<usize>() {
@@ -867,6 +871,7 @@ unsafe fn restore_heap(
                     if !matches!(
                         n.as_slice(),
                         b"ObjectVt"
+                            | b"SystemVt"
                             | b"VectorVt"
                             | b"VectorNode"
                             | b"VectorNodeVt"
@@ -876,6 +881,9 @@ unsafe fn restore_heap(
                             | b"RangeVt"
                             | b"ErrorVt"
                     ) {
+                        return Err(bad());
+                    }
+                    if n == b"SystemVt" && !node.fields.is_empty() {
                         return Err(bad());
                     }
                     let vt = q.keep(s.named(n)?)?;

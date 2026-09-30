@@ -145,8 +145,9 @@ intact; normal language execution must not resume on that heap.
 Private marking, phases, accounting, hook resolution, finalizer records and native
 capture replace the former Collect/Lifetime/Trace integration and the Native Mark,
 Native Stack, Trace Hooks and Finalizers helper libraries. GC depends only on the
-common Id ABI. Diagnostic described-graph tracing remains separate pending its
-own storage integration.
+common Id ABI. Diagnostic described-graph tracing is owned separately by
+[Storage](../birnam-storage/README.md) and [Trace](../birnam-trace/README.md);
+it does not authorize collection.
 
 Run `mise run native-messages`. Its tests build the actual production dylibs and
 load through Siphon and Id, exercising Bootstrap activation, the same heap across

@@ -1,5 +1,5 @@
-// Recover before the caller's observing successor, including nested entry and
-// collection while the recovered closure is still live in the caller Frame.
+// Closure identity and captures survive nested entry and collection while
+// the closure remains live in its caller's frame.
 [System load: "modules/os.birnam"];
 [System preciseGc: [[System getEnv: "BIRNAM_CLOSURE_PRECISE"] = "1"]];
 let source := [:input :other :argument :observer |
@@ -54,8 +54,8 @@ let first := [factory value: input value: other value: argument value: observer]
 [[first == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 33]]];
 [System println: "closure-observation: end collecting caller"];
 [255 timesRepeat: [|
-    let recovered := [factory value: input value: other value: argument value: observer];
-    [[recovered == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 29]]]]];
+    let observed := [factory value: input value: other value: argument value: observer];
+    [[observed == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 29]]]]];
 [[[effects value] = 256] ifTrue: [| nil] ifFalse: [| [OS exit: 30]]];
 [[[nestedEffects value] = 256] ifTrue: [| nil] ifFalse: [| [OS exit: 31]]];
 [input set: 149];

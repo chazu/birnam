@@ -56,10 +56,6 @@ run = "bash scripts/host-cli-test.sh"
 description = "Audit Rust floor dependencies, install name, paths, and exports"
 run = "bash scripts/rust-dylib-audit.sh"
 
-[tasks.rust-store-stack-smoke]
-description = "Probe the canonical Rust Store and runtime stack"
-run = "bash scripts/rust-store-stack-smoke.sh"
-
 [tasks.rust-project-check-smoke]
 description = "Exercise the Rust-host project workflow"
 run = "bash scripts/rust-project-check-smoke.sh"
