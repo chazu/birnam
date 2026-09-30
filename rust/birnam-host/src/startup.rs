@@ -287,6 +287,11 @@ impl HostRuntime {
             Path::new("<compiledUnit>"),
             Some(b"compiledUnit"),
         )?;
+        scope.evaluate(
+            include_bytes!("../../../src/id/isolate.birnam"),
+            Path::new("<isolate>"),
+            Some(b"isolate"),
+        )?;
         let globals = host.named(b"Globals")?;
         let name = unsafe { host.id.intern_name(b"Module") }
             .map_err(|e| native_error("intern Module", e))?;

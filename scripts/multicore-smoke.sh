@@ -39,20 +39,16 @@ let source := {json.dumps(source)};
 [Codegen eval: source];
 [Codegen recordModuleSource: source named: #multicoreSmoke];
 [DispatchGeneration initializeCurrent];
-[CompiledUnit compile: source named: #multicoreSmoke output: "{w / 'checks.dylib'}" selection: #resumableRequired];
-let unit := [CompiledUnit open: "{w / 'checks.dylib'}"];
-[unit map]; [[unit activate] fulfill];
 [MulticoreCheck run: "{image}"];
 ''')
 PY
 "$prefix/bin/birnam" "$work/save.birnam" > "$work/save.out"
 grep -Fxq '#saved' "$work/save.out"
-for mode in aot source; do
-  if [[ $mode == source ]]; then export BIRNAM_FORCE_SOURCE=1; else unset BIRNAM_FORCE_SOURCE; fi
-  "$prefix/bin/birnam" "$work/run.birnam" > "$work/$mode.out"
-  cat "$work/$mode.out"
-  grep -Fxq '#[#multicoreChecks 24 #failures 0]' "$work/$mode.out"
-  python3 - "$work/$mode.out" <<'PY'
+mode=source
+"$prefix/bin/birnam" "$work/run.birnam" > "$work/$mode.out"
+cat "$work/$mode.out"
+grep -Fxq '#[#multicoreChecks 24 #failures 0]' "$work/$mode.out"
+python3 - "$work/$mode.out" <<'PY'
 import re,sys
 s=open(sys.argv[1]).read()
 m=re.search(r'#\[#multicoreTiming (\d+) (\d+) (\d+)\]',s)
@@ -62,4 +58,3 @@ print(f'CPU evidence: sequential={sequential/1e6:.3f}s parallel={parallel/1e6:.3
 # A resource-constrained host may not provide simultaneous CPU service. Keep
 # the measurement explicit rather than turning machine load into a flaky gate.
 PY
-done

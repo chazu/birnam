@@ -4,11 +4,11 @@
 
 [Doc module: #concurrency is: "Concurrency prepares named source modules and worker images for process-backed multicore tasks. See the Concurrency guide in birnam docgen."];
 [Doc for: #load: in: #concurrency says:
-  "Concurrency load: paths loads a complete batch of named module sources, selects resumable implementations, and captures a worker image. Answers a program or Error. Call before the initial dispatch generation exists; paths are relative to the working directory. Setup and initializers are synchronous; initializer effects are not rolled back on failure. Keep initializer callbacks inside named methods. Owns temporary artifacts until close."];
+  "Concurrency load: paths loads a complete batch of named module sources, adopts their resumable source generation, and captures a worker image. Answers a program or Error. Call before the initial dispatch generation exists; paths are relative to the working directory. Setup and initializers are synchronous; initializer effects are not rolled back on failure. Keep initializer callbacks inside named methods. Owns the temporary worker image and its directory until close."];
 [Doc for: #worker: in: #concurrency says:
   "program worker: #Receiver starts an independent process from the prepared image. The named global implements handle:. Answers a Worker or Error; a closed program answers concurrencyClosed. Startup is synchronous. Different workers can execute on different cores; requests and results are copied."];
 [Doc for: #close in: #concurrency says:
-  "program close closes admission, joins every owned worker's shutdown, and removes its image/compiler artifacts. Returns a shielded cleanup task; inside a task use outcome to wait for release, or rely on automatic scope joining. At the host boundary it drives synchronously. Shielding begins at creation, including cancellation before the first turn."];
+  "program close closes admission, joins every owned worker's shutdown, and removes its worker image and temporary directory. Returns a shielded cleanup task; inside a task use outcome to wait for release, or rely on automatic scope joining. At the host boundary it drives synchronously. Shielding begins at creation, including cancellation before the first turn."];
 
 [Doc module: #worker is: "Worker is a serial task service in an independent process. Each handle: request owns a fresh task scope. One outstanding request per worker; no hidden queue."];
 [Doc for: #request: in: #worker says:

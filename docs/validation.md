@@ -155,6 +155,10 @@ Images. It replaces the old task-control smoke driver. Native materialization
 checks retain source, synchronous and resumable Methods through aliases, then
 verify Unit and native-byte reclamation after the final reference disappears;
 these replace the old method-unit-lifetime driver.
+Installed task acceptance also exercises Concurrency batch preparation, the retained
+19 service checks, source-free worker startup and temporary image cleanup. Native
+materialization tests cover synchronous/resumable eviction and final-owner release,
+replacing the old REPL unit-count arithmetic in portable-resumable-lifecycle.
 
 For a focused iteration, preview
 `python3 scripts/validate.py --suite routine --plan`, then select named steps with

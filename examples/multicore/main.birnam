@@ -7,7 +7,7 @@ let program := [Concurrency load: #[
 [[program isError] ifTrue: [| [System println: program]; [OS exit: 1]]];
 
 // Change the limit for a longer or shorter run. The library owns compilation,
-// the worker image, and temporary artifacts; requests return ordinary tasks.
+// the worker image, and temporary directory; requests return ordinary tasks.
 let success := [MulticoreDemo run: program limit: 10000];
 [program close];
 [[success = true] ifFalse: [| [OS exit: 1]]];

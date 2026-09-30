@@ -54,16 +54,16 @@ either is awaited. With substantial CPU work, their independent processes can
 use different cores. For a measured workload, run
 `birnam examples/multicore/main.birnam` from the repository root.
 
-`Concurrency load:` loads the named modules' initializers, selects resumable
-methods and blocks, and captures a worker image. Put task bodies in those modules;
+`Concurrency load:` loads the named modules' initializers through the resumable
+source compiler, adopts their initial generation, and captures a worker image. Put task bodies in those modules;
 the entry script performs setup and invokes the prepared application methods.
 Supply the complete batch before the initial dispatch generation exists. An
 already initialized generation gives `concurrencyAlreadyPrepared`. Compilation
 still follows the existing resumable compiler restrictions: keep initializer
 callbacks inside named methods, rather than arbitrary top-level callback blocks.
 
-Setup, compilation, image capture, and worker startup are synchronous. The helper
-owns temporary compiler files and the worker image until `program close`. It
+Setup, source compilation, image capture, and worker startup are synchronous. The helper
+owns the temporary worker image and its directory until `program close`. It
 does not automatically select an entire project's dependency graph or undo
 initializer effects after a preparation failure.
 

@@ -45,6 +45,9 @@ Validation:
   It is also run by `mise run host-cli`, which defaults to an optimized build for
   the large authored-service fixture; source compilation is slow in debug builds.
 
-The historical Concurrency project/image-generation orchestration and its old
-REPL-driven smoke scripts still await their own migrated producers. The tests
-above use the current low-level Isolate and authored Worker entry points directly.
+Host also loads the authored Concurrency helper at startup. It prepares a batch
+through the resumable source compiler, adopts its initial generation, and captures
+the worker image without attempting candidate activation inside a language call.
+`scripts/concurrency-cli-test.py PREFIX` exercises this path, the retained 19-check
+service fixture, source deletion before worker startup, and owned image cleanup.
+It runs in the installed task acceptance group.

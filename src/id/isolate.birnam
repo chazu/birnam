@@ -8,7 +8,7 @@
 [Globals at: #Concurrency put: [Object clone]];
 // A preparation object's paths and live service ownership are process-local
 // bookkeeping, not state to recreate inside every worker image.
-[#[#workspace #artifacts #workers #image #closed] do: [:name |
+[#[#workspace #workers #image #closed] do: [:name |
   [db assert: [["Concurrency." , [name asString]] asSymbol] attr: #imageTransient value: true]]];
 [Reflect defineMethod: #field: on: Concurrency as: [:self :name |
   [db cellFor: self attr: [["Concurrency." , [name asString]] asSymbol]]]];
@@ -33,21 +33,6 @@
     [[[revision isNil] | [revision isError]]
       ifTrue: [| [Error kind: #invalidConcurrencyModule message: path]]
       ifFalse: [| #[path source [revision at: 1]]]]]]]];
-[Reflect defineMethod: #compileSource: on: Concurrency as: [:self :row |
-  let index := [[[self field: #artifacts] value] size];
-  let path := [[[self field: #workspace] value] , "/unit-" , [index printString] , ".dylib"];
-  [[self field: #artifacts] set: [[[self field: #artifacts] value] add: path]];
-  let compiled := [CompiledUnit compile: [row at: 1] named: [row at: 2] output: path selection: #resumableRequired];
-  [[compiled isNil]
-    ifTrue: [| [Error kind: #concurrencyCompileFailed message: [Codegen lastError]]]
-    ifFalse: [|
-      let unit := [CompiledUnit open: path];
-      let mapped := [unit map];
-      [[mapped isError] ifTrue: [| mapped] ifFalse: [|
-        let retained := [Codegen candidateContentPath: unit];
-        [[retained notNil] ifTrue: [|
-          [[self field: #artifacts] set: [[[self field: #artifacts] value] add: retained]]]];
-        [[unit activate] fulfill]]]]]]];
 [Reflect defineMethod: #prepareSources: on: Concurrency as: [:self :paths |
   [[[DispatchGeneration current] notNil]
     ifTrue: [| [Error kind: #concurrencyAlreadyPrepared message: "Load the program's modules together before starting its generation."]]
@@ -59,20 +44,19 @@
         let workspace := [self newWorkspace];
         [[workspace isNil] ifTrue: [| [Error kind: #workspaceUnavailable]] ifFalse: [|
           [[program field: #workspace] set: workspace];
-          [[program field: #artifacts] set: #[]];
           [[program field: #workers] set: #[]];
           [[program field: #image] set: nil];
           [[program field: #closed] set: false];
           let loaded := [rows collect: [:row | [System load: [row at: 0]]]];
           let loadError := [loaded detect: [:answer | [answer isError]]];
           [[loadError notNil] ifTrue: [| [program removeFiles]; loadError] ifFalse: [|
-            [DispatchGeneration initializeCurrent];
-            let compiled := [rows inject: program into: [:answer :row |
-              [[answer isError] ifTrue: [| answer] ifFalse: [|
-                let next := [program compileSource: row];
-                [[next isError] ifTrue: [| next] ifFalse: [| program]]]]]];
-            [[compiled isError] ifTrue: [| [program removeFiles]]];
-            compiled]]]]]]]]]];
+            // Source loading already installs resumable Methods. Adopt that
+            // complete batch once; candidate activation requires an idle Host
+            // boundary and is not part of initial worker preparation.
+            let generation := [DispatchGeneration initializeCurrent];
+            [[generation isError]
+              ifTrue: [| [program removeFiles]; generation]
+              ifFalse: [| program]]]]]]]]]]]];
 // Image capture must occur after the conditional setup callbacks return: live
 // checked Machine activations intentionally remain ineligible for image capture.
 [Globals at: #ConcurrencyLoadFailure put: [Object clone]];
@@ -98,11 +82,8 @@
       [[self field: #workers] set: [[[self field: #workers] value] add: worker]]]];
     worker]]]];
 [Reflect defineMethod: #removeFiles on: Concurrency as: [:self |
-  [[[self field: #artifacts] value] do: [:path |
-    [path concurrencyDelete]; [[path , ".candidate"] concurrencyDelete]]];
   let workspace := [[self field: #workspace] value];
   [[workspace , "/workers.image"] concurrencyDelete];
-  [[workspace , "/.birnam-candidates"] concurrencyRemoveDirectory];
   [workspace concurrencyRemoveDirectory];
   self]];
 

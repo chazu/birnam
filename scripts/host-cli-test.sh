@@ -61,5 +61,7 @@ fi
 
 if selected tasks; then
   python3 scripts/task-image-test.py "$scratch/relocated"
+  python3 scripts/concurrency-cli-test.py "$scratch/relocated"
+  bash scripts/multicore-smoke.sh "$scratch/relocated"
   cargo test --offline --locked -p birnam-siphon --test task_control -- --ignored --nocapture
 fi

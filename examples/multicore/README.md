@@ -11,7 +11,7 @@ birnam examples/multicore/main.birnam
 
 For a longer run, change `limit: 10000` in `main.birnam` to `limit: 100000`.
 
-Requires a current Birnam installation on `PATH` with compiled-unit support
+Requires a current Birnam installation on `PATH` with the authored Concurrency helper
 (currently macOS/arm64). To build and install the current release in the normal prefix:
 
 ```sh
@@ -29,7 +29,7 @@ local task during the parallel phase.
 - [worker.birnam](worker.birnam) contains the CPU work: trial division in Birnam.
 - [main.birnam](main.birnam) prepares the source modules with `Concurrency load:`,
   runs the demonstration, and closes the program. The library owns the worker
-  image and compiler artifacts.
+  image and temporary directory.
 - [coordinator.birnam](coordinator.birnam) contains sequential requests and parallel structured
   tasks using `worker request:timeout:`.
 - [platform.birnam](platform.birnam) provides clock operations through `Alien`.
