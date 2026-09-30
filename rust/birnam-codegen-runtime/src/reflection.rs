@@ -22,6 +22,32 @@ unsafe fn call(
 ) -> Result<Oop, Outcome> {
     unsafe { q.keep(object(s.send(r, name, args)?)?) }
 }
+// Native exports win, then source-owned Globals. All observations go through
+// the owners and remain rooted across collecting or replaced lookup methods.
+unsafe fn target_name(s: &State, q: &Scope<'_>, target: Oop) -> Result<Option<Oop>, Outcome> {
+    unsafe {
+        if let Some(name) = s.send(s.ns, b"nameOf:", &[Operand::object(target)])?.as_object() {
+            return q.keep(name).map(Some);
+        }
+        let db = q.keep(s.named(b"db")?)?;
+        let globals = q.keep(s.id.intern_name(b"__globals__")?)?;
+        let count = call(s, q, db, b"attrCount:", &[Operand::object(globals)])?;
+        let count = s.send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(count)])?
+            .as_word().ok_or_else(invalid)?;
+        for index in 0..count {
+            let index = call(s, q, s.named(b"Integer")?, b"fromWord:", &[Operand::word(index)])?;
+            let Some(name) = s.send(db, b"attrAt:index:",
+                &[Operand::object(globals), Operand::object(index)])?.as_object() else { break };
+            q.keep(name)?;
+            let value = s.send(db, b"rawCurrentValue:attr:",
+                &[Operand::object(globals), Operand::object(name)])?;
+            if value.as_object() == Some(target) {
+                return Ok(Some(name));
+            }
+        }
+        Ok(None)
+    }
+}
 pub(super) unsafe fn operation(
     s: &State,
     q: &Scope<'_>,
@@ -62,10 +88,13 @@ pub(super) unsafe fn operation(
                 .as_object()
                 .unwrap_or(behavior);
             q.keep(owner)?;
-            let target = s
-                .send(s.ns, b"nameOf:", &[Operand::object(owner)])?
-                .as_object()
-                .unwrap_or(nil);
+            let target = if let Some(name) = target_name(s, q, owner)? {
+                name
+            } else if owner != behavior {
+                target_name(s, q, behavior)?.unwrap_or(nil)
+            } else {
+                nil
+            };
             q.keep(target)?;
             for index in 0..1_048_576 {
                 let Some(selector) = s

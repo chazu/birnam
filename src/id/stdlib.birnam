@@ -363,6 +363,16 @@
 [Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == StringExemplarVt]] doc:
    "True iff `x` is a String (a mirror query: compares x's vtable to the String exemplar's)."];
 
+// Fact reflection composes Store's rooted live snapshot with ordinary Blocks.
+// It does not inspect Store payloads or change collection settings.
+[Reflect defineMethod: #factsOf: on: Reflect as: [:self :entity |
+  let result := [#[] asCell];
+  let observed := [db liveTriplesDo: [:e :a :v |
+    [[e == entity] ifTrue: [|
+      [result set: [[result value] add: {#entity -> e #attribute -> a #value -> v}]]]]]];
+  [[observed isError] ifTrue: [| observed] ifFalse: [| [result value]]]] doc:
+  "Current live facts of an entity as Maps with entity, attribute and value keys."];
+
 // Does a caught error's kind satisfy an on:do: spec? the wildcard #error, an exact
 // kind symbol, or any collection of kinds. A single symbol short-circuits to false
 // (no match); only a non-symbol spec (a collection) is probed with `includes:`.

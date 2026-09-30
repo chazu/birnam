@@ -102,9 +102,14 @@ let threadedValue := [[threadCount inc] => + 1 => * 2]
   let threadedError := [Codegen evalPersisting: "[[\"boom\" error: #threadTest] => ifNotError: [:x | 9]]"];
   [t expect: [threadedError kind] equals: #threadTest
      describes: "threading adds no error behavior of its own"];
-  [t expect: [Codegen emit: "[1 => + 2 => * 3]"]
-     equals: [Codegen emit: "[[1 + 2] * 3]"]
-     describes: "ordinary emitted C is identical to nested sends"]]];
+  // Source spans and revision digests deliberately differ in emitted artifacts.
+  // Compare the executable Portable Code after dropping only provenance.
+  let threaded := [[[:x | [x => + 2 => * 3]] codeObject] withoutSourceProvenance];
+  let nested := [[[:x | [[x + 2] * 3]] codeObject] withoutSourceProvenance];
+  [t expect: [threaded format] equals: #portableProgramV1 describes: "threading produces Portable Code"];
+  [t expect: [nested format] equals: #portableProgramV1 describes: "nested sends produce Portable Code"];
+  [t assert: [[threaded digest] = [nested digest]]
+     describes: "portable operations are identical to nested sends"]]];
 
 [s test: "source-sensitive special forms reject a threaded head" do: [:t |
   let forms := #[

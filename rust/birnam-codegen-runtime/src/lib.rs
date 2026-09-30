@@ -298,13 +298,15 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
             return reflection::operation(s, &scope, op, a);
         }
         if matches!(e.op, Op::NameOf) {
-            let mut name = object(a[0])?;
+            let name = object(a[0])?;
             if !s.exact(&scope, name, b"SymbolVt")? {
-                let found = s.send(s.ns, b"nameOf:", a)?;
-                if found.kind() == native::UNIT {
-                    return Ok(Operand::object(s.named(b"nil")?));
-                }
-                name = scope.keep(object(found)?)?;
+                let kind = scope.keep(s.id.intern_name(b"notASymbol")?)?;
+                let message = s.text(&scope, b"nameOf: expects a symbol")?;
+                return s.send(
+                    s.named(b"Error")?,
+                    b"kind:message:",
+                    &[Operand::object(kind), Operand::object(message)],
+                );
             }
             let bytes = s
                 .send(s.id.receiver, b"symbolBytesOf:", &[Operand::object(name)])?

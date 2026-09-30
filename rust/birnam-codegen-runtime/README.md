@@ -261,8 +261,11 @@ Project publication policy is exercised by installed Host checks; candidate
 generation replacement and its independent tests are described below.
 
 Module filename construction uses restored `Reflect nameOf:`: Symbols return
-their Id-owned name bytes as a String; other objects use Namespace's reverse
-lookup and return nil when unnamed. Both lookups remain live owner messages.
+their Id-owned name bytes as a String; non-Symbols answer `notASymbol`.
+`allMethodsOf:` resolves descriptor targets through native Namespace exports,
+then Store-backed source Globals, using live owner messages. Stdlib composes
+`factsOf:` from Store's rooted `liveTriplesDo:` snapshot and ordinary Blocks;
+rows retain entity, attribute and value without changing collection settings.
 
 ## Initial generation projection
 

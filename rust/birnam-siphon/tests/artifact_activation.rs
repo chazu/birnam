@@ -147,7 +147,11 @@ fn durable_artifacts_use_owned_code_and_current_messages() {
             b"artifactName"
         );
         let anonymous = h.call(h.named(b"Object"), b"clone", &[]);
-        assert_eq!(h.call(reflect, b"nameOf:", &[anonymous]), h.named(b"nil"));
+        for value in [anonymous, h.named(b"Object"), h.string(b"not a Symbol")] {
+            let error = h.call(reflect, b"nameOf:", &[value]);
+            assert_eq!(h.call(error, b"kind", &[]), id.intern_name(b"notASymbol").unwrap());
+            assert_eq!(h.bytes(h.call(error, b"message", &[])), b"nameOf: expects a symbol");
+        }
         let cg = h.named(b"Codegen");
         let tcc = h.named(b"TCC");
         let temp = std::env::temp_dir().join(format!("birnam-artifact-{}", std::process::id()));
