@@ -216,12 +216,38 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
         Literal::False => "named(&c,\"false\")".into(),
     })
 }
+#[derive(Clone, Copy, Default)]
+struct Policy<'a> {
+    synchronous: bool,
+    dispositions: Option<&'a [bool]>,
+    persist_root: bool,
+}
+fn portable_function(
+    bytes: &[u8],
+    source: &[u8],
+    filename: &[u8],
+    functions: &mut Vec<Function>,
+    policy: Policy<'_>,
+) -> Result<usize, Error> {
+    let sync = match policy.dispositions {
+        Some(rows) => *rows.get(functions.len()).ok_or(Error::Selection)?,
+        None => policy.synchronous,
+    };
+    if sync {
+        return synchronous::function(bytes, source, filename, functions, policy);
+    }
+    let logical = ir::lower_portable_block(bytes).map_err(|_| Error::Lower)?;
+    let index = function(&logical, source, functions, false, filename, policy)?;
+    functions[index].portable = Some(bytes.to_vec());
+    Ok(index)
+}
 fn function(
     program: &ir::LogicalProgram<'_>,
     source: &[u8],
     functions: &mut Vec<Function>,
     named: bool,
     filename: &[u8],
+    policy: Policy<'_>,
 ) -> Result<usize, Error> {
     let index = functions.len();
     functions.push(Function {
@@ -276,9 +302,7 @@ fn function(
                 Op::PortableBlockLiteral {
                     program, captures, ..
                 } => {
-                    let inner = ir::lower_portable_block(program).map_err(|_| Error::Lower)?;
-                    let child = function(&inner, source, functions, false, filename)?;
-                    functions[child].portable = Some(program.to_vec());
+                    let child = portable_function(program, source, filename, functions, policy)?;
                     let v = operation.result.0;
                     writeln!(
                         out,
@@ -307,7 +331,7 @@ fn function(
                 operation.result.0
             )
             .unwrap();
-            if index == 0 && !named {
+            if index == 0 && !named && policy.persist_root {
                 if let Op::Bind { name, .. } = &operation.kind {
                     writeln!(out,"{{O published=global_put(&c,{},value_{});if(c.failure.status)return finish(&c,(A){{0}});if(published!=value_{}){{put(&c,machine,{},published);return finish(&c,obj(action(&c,machine,\"returnAt:\",{})));}}}}",quoted(name),operation.result.0,operation.result.0,slot(operation.result),slot(operation.result)).unwrap();
                 }
@@ -395,6 +419,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
     )
     .unwrap();
     for (i, f) in functions.iter().enumerate() {
+        if f.synchronous && f.named {
+            writeln!(out, "static O implementation_{i};").unwrap();
+        }
         out.push_str(&f.body);
         if let Some(bytes) = &f.portable {
             array(&mut out, &format!("program_{i}"), bytes);
@@ -410,7 +437,11 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
     }
     for (i, f) in functions.iter().enumerate() {
         if f.synchronous {
-            writeln!(out, "{{A a[2]={{entry(sync_{i}),obj(owner)}};methods[{i}]=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",a,2);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}} ").unwrap();
+            if f.named {
+                writeln!(out,"if(n!=3||a[2].kind!=1)return bad();implementation_{i}=keep(&c,a[2].data.object);{{A a[3]={{entry(sync_{i}),obj(owner),obj(implementation_{i})}};methods[{i}]=call(&c,named(&c,\"Method\"),\"fromNative:owner:implementation:\",a,3);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);A impl=obj(implementation_{i});call(&c,owner,\"retain:\",&impl,1);}}").unwrap();
+            } else {
+                writeln!(out, "{{A a[2]={{entry(sync_{i}),obj(owner)}};methods[{i}]=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",a,2);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}} ").unwrap();
+            }
             continue;
         }
         writeln!(out,"{{A args[5]={{entry(step_{i}),bytes(descriptor_{i},sizeof(descriptor_{i})),bytes(selection_{i},sizeof(selection_{i})),obj(owner),n==3?a[2]:(A){{0}}}};").unwrap();
@@ -432,14 +463,50 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
 }
 pub fn compile_portable_synchronous(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let mut functions = Vec::new();
-    synchronous::function(bytes, &mut functions)?;
+    portable_function(
+        bytes,
+        &[],
+        b"<compiler>",
+        &mut functions,
+        Policy {
+            synchronous: true,
+            ..Policy::default()
+        },
+    )?;
     Ok(module(functions))
 }
 pub fn compile_portable(bytes: &[u8], source: &[u8]) -> Result<Vec<u8>, Error> {
-    let logical = ir::lower_portable_block(bytes).map_err(|_| Error::Lower)?;
     let mut functions = Vec::new();
-    function(&logical, source, &mut functions, false, b"<compiler>")?;
-    functions[0].portable = Some(bytes.to_vec());
+    portable_function(
+        bytes,
+        source,
+        b"<compiler>",
+        &mut functions,
+        Policy::default(),
+    )?;
+    Ok(module(functions))
+}
+/// Compile an inert candidate factory with an exact preorder disposition for
+/// its factory and each nested Block. Its lexical lets never publish Globals.
+pub fn compile_factory(
+    bytes: &[u8],
+    source: &[u8],
+    dispositions: &[bool],
+) -> Result<Vec<u8>, Error> {
+    let mut functions = Vec::new();
+    portable_function(
+        bytes,
+        source,
+        b"<candidate>",
+        &mut functions,
+        Policy {
+            dispositions: Some(dispositions),
+            ..Policy::default()
+        },
+    )?;
+    if functions.len() != dispositions.len() {
+        return Err(Error::Selection);
+    }
     Ok(module(functions))
 }
 pub fn compile_program(program: crate::Program<'_>, source: &[u8]) -> Result<Vec<u8>, Error> {
@@ -457,16 +524,72 @@ pub fn compile_program_from(
     let bytes = crate::portable::encode_block(&block, &[]).map_err(|_| Error::Portable)?;
     let logical = ir::lower_portable_block(&bytes).map_err(|_| Error::Lower)?;
     let mut functions = Vec::new();
-    function(&logical, source, &mut functions, false, filename)?;
+    function(
+        &logical,
+        source,
+        &mut functions,
+        false,
+        filename,
+        Policy {
+            persist_root: true,
+            ..Policy::default()
+        },
+    )?;
     functions[0].portable = Some(bytes);
     Ok(module(functions))
 }
-pub fn compile_named(arity: u32) -> Result<Vec<u8>, Error> {
+fn named_functions(arity: u32) -> Result<Vec<Function>, Error> {
     let selector = b"value:".repeat(arity as usize + 1);
     let logical = ir::lower_named_adapter(arity, &selector).map_err(|_| Error::Lower)?;
     let mut functions = Vec::new();
-    function(&logical, &selector, &mut functions, true, b"<compiler>")?;
-    Ok(module(functions))
+    function(
+        &logical,
+        &selector,
+        &mut functions,
+        true,
+        b"<compiler>",
+        Policy::default(),
+    )?;
+    Ok(functions)
+}
+pub fn compile_named(arity: u32) -> Result<Vec<u8>, Error> {
+    Ok(module(named_functions(arity)?))
+}
+pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
+    if arity > 16 {
+        return Err(Error::Unsupported);
+    }
+    let mut body = format!(
+        "static R sync_0(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};keep(&c,self);if(n!={arity})return bad();A a[{}];a[0]=obj(self);",
+        arity + 1
+    );
+    for i in 0..arity {
+        write!(body, "a[{}]=obj(keep(&c,object(&c,args[{i}])));", i + 1).unwrap();
+    }
+    write!(
+        body,
+        "O result=call(&c,implementation_0,{},a,{});return finish(&c,obj(result));}}",
+        quoted(&b"value:".repeat(arity as usize + 1)),
+        arity + 1
+    )
+    .unwrap();
+    Ok(module(vec![Function {
+        portable: None,
+        synchronous: true,
+        body,
+        descriptor: vec![],
+        selection: vec![],
+        named: true,
+        discarded: None,
+        predicate: None,
+    }]))
+}
+/// Exact descriptor emitted by the current named-adapter backend. Generation
+/// identity must use this, rather than descriptors from the retired C emitter.
+pub fn named_descriptor(selector: &[u8]) -> Result<Vec<u8>, Error> {
+    let arity = birnam_artifact::selector::arity(selector);
+    let arity = u32::try_from(arity).map_err(|_| Error::Unsupported)?;
+    Ok(named_functions(arity)?.remove(0).descriptor)
 }
 
 #[cfg(test)]

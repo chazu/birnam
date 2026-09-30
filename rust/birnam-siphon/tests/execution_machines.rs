@@ -227,6 +227,73 @@ unsafe extern "C" fn during_trace(c: *mut c_void, _: Oop, _: *const Operand, _: 
         Outcome::loaded(Operand::unit())
     }
 }
+unsafe extern "C" fn control_replacement(
+    _: *mut c_void,
+    receiver: Oop,
+    _: *const Operand,
+    _: usize,
+) -> Outcome {
+    Outcome::loaded(Operand::object(receiver))
+}
+
+// Preserve the former Runtime task-control acceptance: repeated preparation
+// and new Machines must never overwrite an intentionally replaced adapter.
+unsafe fn control_replacements(h: &mut H) {
+    unsafe {
+        let machine = h.machine();
+        let behavior = object(send(
+            h.id,
+            h.id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(machine)],
+        ));
+        for name in [b"park".as_slice(), b"protectedBlock:"] {
+            let selector = h.id.intern_name(name).unwrap();
+            h.keep(selector);
+            let prior = send(
+                h.id,
+                h.id.receiver,
+                b"bindingOf:in:",
+                &[Operand::object(selector), Operand::object(behavior)],
+            );
+            // Capture the Method, retaining its registered implementation while
+            // its original dictionary binding is absent.
+            let method = object(send(
+                h.id,
+                machine,
+                b"methodFor:",
+                &[Operand::object(selector)],
+            ));
+            h.keep(method);
+            install(h.id, behavior, name, control_replacement, ptr::null_mut());
+            for _ in 0..2 {
+                send(h.id, machine, b"prepareBlockControl", &[]);
+                let other = h.machine();
+                send(h.id, other, b"prepareBlockControl", &[]);
+                collect(h.id, h.gc);
+                let current = send(
+                    h.id,
+                    h.id.receiver,
+                    b"bindingOf:in:",
+                    &[Operand::object(selector), Operand::object(behavior)],
+                )
+                .as_entry()
+                .unwrap();
+                assert_eq!(
+                    current.method.unwrap() as usize,
+                    control_replacement as *const () as usize
+                );
+                assert_eq!(h.value(send(h.id, other, b"liveFrameCount", &[])), 0);
+            }
+            send(
+                h.id,
+                behavior,
+                b"addMethod",
+                &[Operand::object(selector), prior],
+            );
+        }
+    }
+}
 #[test]
 #[ignore = "scripts/native-message-test.sh builds production dylibs and executable fixture"]
 fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
@@ -234,6 +301,7 @@ fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
         let mut h = H::new();
         let nil = h.named(b"nil");
         recovery::check(&mut h);
+        control_replacements(&mut h);
         native_tier::check(&mut h);
         let owner = allocate(h.id, behavior(h.id), 0);
         h.keep(owner);

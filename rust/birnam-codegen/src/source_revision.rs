@@ -169,17 +169,20 @@ pub fn artifact_module(tree: &OwnedCst, source: &[u8]) -> Option<(Vec<u8>, Vec<V
 }
 
 #[derive(Clone)]
-struct RevisionOperation {
-    target: Vec<u8>,
-    selector: Vec<u8>,
-    install: bool,
-    source: Vec<u8>,
+pub struct RevisionOperation {
+    pub target: Vec<u8>,
+    pub selector: Vec<u8>,
+    pub install: bool,
+    pub source: Vec<u8>,
 }
 
 #[derive(Clone)]
 pub struct RevisionMetadata {
     pub name: Vec<u8>,
     pub requires: Vec<Vec<u8>>,
+    pub operations: Vec<RevisionOperation>,
+    pub inventory: Vec<crate::resumable::ImplementationKey>,
+    pub initializer_residual_digest: [u8; 64],
     pub non_method_digest: [u8; 64],
     pub method_digest: [u8; 64],
     pub revision_digest: [u8; 64],
@@ -333,10 +336,19 @@ pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
         });
     }
     let name = name?;
-    lower_program(tree, source).ok()?;
+    let normalized = lower_program(tree, source).ok()?;
+    let projected = crate::resumable::projected_block_bindings(&normalized)
+        .into_iter()
+        .filter(|binding| binding.captures.is_empty())
+        .map(|binding| binding.statement_index)
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut residual_input = b"birnam.initializer-residual.v1\0".to_vec();
     let mut non_method_input = b"birnam.non-method.v1\0".to_vec();
-    for (_, span) in non_method_spans {
+    for (index, span) in non_method_spans {
         append_digest_field(&mut non_method_input, &span);
+        if !projected.contains(&index) {
+            append_digest_field(&mut residual_input, &span);
+        }
     }
     let non_method_digest = sha256_hex(&non_method_input);
 
@@ -361,8 +373,122 @@ pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
     Some(RevisionMetadata {
         name,
         requires,
+        operations,
+        inventory: crate::resumable::implementation_inventory(&normalized),
+        initializer_residual_digest: sha256_hex(&residual_input),
         non_method_digest,
         method_digest,
         revision_digest,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // The normalized source has one module declaration, one ordinary initializer
+    // and one projected Block. Change each independently at the revision boundary.
+    fn revision(seed: &str, body: &str) -> RevisionMetadata {
+        let source = format!(
+            "[Module named: #unit requires: #[]]; let seed := {seed}; let saved := [| {body}]"
+        );
+        let node = |rule: &[u8], start, end, children| OwnedCst::new(rule, start, end, children);
+        let token = |rule: &[u8], text: &str| {
+            let i = source.find(text).unwrap();
+            node(rule, i, i + text.len(), vec![])
+        };
+        let expr = |child: OwnedCst| node(b"expr", child.start(), child.end(), vec![child]);
+        let stmt = |child: OwnedCst| node(b"statement", child.start(), child.end(), vec![child]);
+        let end = source.find(';').unwrap();
+        let declaration = stmt(expr(node(
+            b"send",
+            0,
+            end,
+            vec![
+                token(b"ident", "Module"),
+                node(
+                    b"keywordMsg",
+                    8,
+                    end - 1,
+                    vec![
+                        token(b"keyword", "named:"),
+                        token(b"symbol", "#unit"),
+                        token(b"keyword", "requires:"),
+                        token(b"vectorLit", "#[]"),
+                    ],
+                ),
+            ],
+        )));
+        let seed_start = source.find("let seed").unwrap();
+        let seed_value = source.find(":= ").unwrap() + 3;
+        let binding = stmt(node(
+            b"letBinding",
+            seed_start,
+            seed_value + seed.len(),
+            vec![
+                token(b"ident", "seed"),
+                expr(node(b"number", seed_value, seed_value + seed.len(), vec![])),
+            ],
+        ));
+        let saved_start = source.find("let saved").unwrap();
+        let block_start = source.find("[|").unwrap();
+        let body_start = block_start + 3;
+        let value = node(
+            if body.as_bytes()[0].is_ascii_digit() {
+                b"number"
+            } else {
+                b"ident"
+            },
+            body_start,
+            body_start + body.len(),
+            vec![],
+        );
+        let block = node(
+            b"block",
+            block_start,
+            source.len(),
+            vec![node(
+                b"statements",
+                body_start,
+                body_start + body.len(),
+                vec![stmt(expr(value))],
+            )],
+        );
+        let projected = stmt(node(
+            b"letBinding",
+            saved_start,
+            source.len(),
+            vec![token(b"ident", "saved"), expr(block)],
+        ));
+        let tree = node(
+            b"program",
+            0,
+            source.len(),
+            vec![node(
+                b"statements",
+                0,
+                source.len(),
+                vec![declaration, binding, projected],
+            )],
+        );
+        inspect(&tree, source.as_bytes()).unwrap()
+    }
+    #[test]
+    fn residual_digest_excludes_only_capture_free_projected_blocks() {
+        let baseline = revision("7", "11");
+        let changed = revision("7", "99");
+        assert_ne!(baseline.revision_digest, changed.revision_digest);
+        assert_ne!(baseline.non_method_digest, changed.non_method_digest);
+        assert_eq!(
+            baseline.initializer_residual_digest,
+            changed.initializer_residual_digest
+        );
+        assert_eq!(baseline.inventory.len(), 1);
+        assert!(crate::generation::transition_allowed(&baseline, &changed));
+        assert!(!crate::generation::transition_allowed(
+            &baseline,
+            &revision("8", "11")
+        ));
+        let captured = revision("7", "seed");
+        assert!(!crate::generation::transition_allowed(&captured, &changed));
+    }
 }

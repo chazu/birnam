@@ -342,6 +342,19 @@ unsafe extern "C" fn from_native(c: *mut c_void, _: Oop, a: *const Operand, n: u
         s.make(native_entry(*entry)?, object(*owner)?, None)
     })())
 }
+unsafe extern "C" fn from_native_implementation(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let Some([entry,owner,implementation])=borrowed_slice(a,n) else { return Err(invalid()); };
+        let implementation=object(*implementation)?;
+        let roots=s.scope(&[implementation,object(*owner)?]);
+        let method=s.make(native_entry(*entry)?,object(*owner)?,None)?;
+        let value=object(method)?;
+        roots.keep(value);
+        s.methods.borrow_mut().get_mut(&value.addr()).ok_or_else(invalid)?.implementation=Some(implementation);
+        Ok(method)
+    })())
+}
 unsafe extern "C" fn identity(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
         state(c)?;
@@ -700,6 +713,7 @@ const NAMES: &[&[u8]] = &[
     b"methodOfEntry:",
     b"implementationOfEntry:",
     b"fromNative:owner:",
+    b"fromNative:owner:implementation:",
     b"clone",
     b"invokeOn:",
     b"invokeOn:arguments:",
@@ -808,6 +822,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"checkpoint", checkpoint),
             (behavior, b"retirementReady", retirement_ready),
             (method_behavior, b"fromNative:owner:", from_native),
+            (method_behavior,b"fromNative:owner:implementation:",from_native_implementation),
             (method_behavior, b"clone", identity),
             (method_behavior, b"invokeOn:", invoke),
             (method_behavior, b"invokeOn:arguments:", invoke_arguments),

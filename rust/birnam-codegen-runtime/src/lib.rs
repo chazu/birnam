@@ -7,6 +7,7 @@ use birnam_abi::{
 use birnam_codegen::{OwnedCst, lower_program, native as emission};
 use core::{cell::RefCell, ffi::c_void};
 mod artifact;
+mod candidate;
 mod embedding;
 mod image;
 mod materialization;
@@ -27,6 +28,7 @@ struct State {
     roots: Oop,
     permanent: Vec<Oop>,
     sources: source::Sources,
+    candidates: candidate::Candidates,
     materializations: RefCell<Vec<materialization::Cached>>,
     image_stage: RefCell<Option<image::Stage>>,
     image_busy: core::cell::Cell<bool>,
@@ -211,6 +213,7 @@ enum Op {
     Materialize(materialization::Op),
     Image(image::Op),
     Artifact(artifact::Op),
+    Candidate(candidate::Op),
 }
 struct Entry {
     state: *const State,
@@ -231,6 +234,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
             Op::Materialize(op) => op.count(),
             Op::Image(op) => op.count(),
             Op::Artifact(op) => op.count(),
+            Op::Candidate(op) => op.count(),
             _ => 1,
         };
         if a.len() != count {
@@ -245,6 +249,9 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         }
         if let Op::Image(op) = e.op {
             return image::operation(s, &scope, op, a);
+        }
+        if let Op::Candidate(op) = e.op {
+            return candidate::operation(s, &scope, op, a);
         }
         if let Op::Artifact(op) = e.op {
             return artifact::operation(s, &scope, op, a);
@@ -364,6 +371,9 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             return Err(invalid());
         };
         let v = object(*v)?;
+        for value in s.candidates.roots() {
+            s.id.send_named(v, b"visit:", &[Operand::object(value)])?;
+        }
         let image_roots = s
             .image_stage
             .borrow()
@@ -438,6 +448,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             roots: root,
             permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
             sources: source::Sources::default(),
+            candidates: Default::default(),
             materializations: RefCell::new(Vec::new()),
             image_stage: RefCell::new(None),
             image_busy: core::cell::Cell::new(false),
@@ -478,7 +489,38 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"compile:output:root:",
                 Op::Artifact(artifact::Op::Root),
             ),
+            (
+                vt,
+                b"successorGenerationProjection:replacing:with:unit:",
+                Op::Candidate(candidate::Op::Successor),
+            ),
             (vt, b"load:", Op::Artifact(artifact::Op::Load)),
+            (
+                vt,
+                b"compileCandidate:named:output:",
+                Op::Candidate(candidate::Op::Compile),
+            ),
+            (
+                vt,
+                b"compileCandidate:named:output:selection:",
+                Op::Candidate(candidate::Op::CompileSelected),
+            ),
+            (
+                vt,
+                b"inspectCandidate:into:",
+                Op::Candidate(candidate::Op::Inspect),
+            ),
+            (vt, b"mapCandidate:", Op::Candidate(candidate::Op::Map)),
+            (
+                vt,
+                b"candidateMapped:",
+                Op::Candidate(candidate::Op::Mapped),
+            ),
+            (
+                vt,
+                b"candidateContentPath:",
+                Op::Candidate(candidate::Op::Path),
+            ),
             (
                 vt,
                 b"materializeSynchronous:captures:",
@@ -517,6 +559,11 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 vt,
                 b"recordedMethodSources",
                 Op::Source(source::Op::MethodSources),
+            ),
+            (
+                vt,
+                b"initialGenerationProjection",
+                Op::Source(source::Op::InitialProjection),
             ),
             (vt, b"sealInitialGeneration", Op::Source(source::Op::Seal)),
             (vt, b"lastError", Op::Source(source::Op::LastError)),

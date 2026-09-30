@@ -20,13 +20,14 @@ pub(super) enum Op {
     Seal,
     LastError,
     MethodSources,
+    InitialProjection,
     Eval,
     EvalFrom,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Seal | Self::LastError | Self::MethodSources => 0,
+            Self::Seal | Self::LastError | Self::MethodSources | Self::InitialProjection => 0,
             Self::Record | Self::EvalFrom => 2,
             _ => 1,
         }
@@ -70,7 +71,7 @@ impl State {
             Ok(Some(self.bytes(value)?))
         }
     }
-    unsafe fn symbol_bytes(
+    pub(super) unsafe fn symbol_bytes(
         &self,
         scope: &Scope<'_>,
         value: Oop,
@@ -111,7 +112,7 @@ impl State {
             Ok(Some(self.project(scope, cst, length, 0, &mut 1_000_000)?))
         }
     }
-    unsafe fn revision(
+    pub(super) unsafe fn revision(
         &self,
         scope: &Scope<'_>,
         source: Oop,
@@ -136,7 +137,7 @@ impl State {
             )?)?)
         }
     }
-    unsafe fn vector(&self, scope: &Scope<'_>, values: &[Oop]) -> Result<Oop, Outcome> {
+    pub(super) unsafe fn vector(&self, scope: &Scope<'_>, values: &[Oop]) -> Result<Oop, Outcome> {
         unsafe {
             let factory = scope.keep(self.named(b"Vector")?)?;
             let mut result = scope.keep(object(self.send(factory, b"new", &[])?)?)?;
@@ -199,6 +200,7 @@ pub(super) unsafe fn operation(
         let nil = scope.keep(s.named(b"nil")?)?;
         let nil_value = Operand::object(nil);
         match op {
+            Op::InitialProjection => initial_projection(s, scope),
             Op::MethodSources => {
                 let entries = s.sources.entries.borrow().clone();
                 for &(name, source) in &entries {
@@ -406,5 +408,63 @@ pub(super) unsafe fn operation(
                 s.run_method(scope, method)
             }
         }
+    }
+}
+
+// G0 reflects only the registered source set. Constructing this value does not
+// publish a generation, seal registration or mutate dispatch.
+unsafe fn initial_projection(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+    use birnam_codegen::{artifact_stackless_selection::Disposition, generation as g};
+    unsafe {
+        let snapshot = s.sources.entries.borrow().clone();
+        for &(name, source) in &snapshot {
+            q.keep(name)?;
+            q.keep(source)?;
+        }
+        let mut entries = Vec::new();
+        for &(name, source) in &snapshot {
+            let Some((bytes, metadata)) = s.revision(q, source)? else {
+                return s.error(q, b"generation source is not indexable");
+            };
+            if s.symbol_bytes(q, name)?.as_deref() != Some(metadata.name.as_slice()) {
+                return s.error(q, b"generation source name mismatches");
+            }
+            let module = g::Module::new(bytes, metadata).ok_or_else(invalid)?;
+            let revision = q.keep(object(operation(
+                s,
+                q,
+                Op::Revision,
+                &[Operand::object(source)],
+            )?)?)?;
+            let row = s.vector(q, &[name, revision, s.named(b"nil")?])?;
+            entries.push((module, row));
+        }
+        entries.sort_by(|a, b| a.0.name.cmp(&b.0.name));
+        let rows = entries.iter().map(|(_, row)| *row).collect::<Vec<_>>();
+        let modules = entries.into_iter().map(|(m, _)| m).collect::<Vec<_>>();
+        // The production source backend currently emits resumable implementations
+        // throughout. Never label these rows with the legacy synchronous default.
+        let selection =
+            g::generation_selection_with_overrides(&modules, &[], Disposition::ResumableRequired)
+                .ok_or_else(invalid)?;
+        let authority =
+            g::dispatch_generation_authority_with(&modules, &selection, |module, index, _| {
+                let descriptor =
+                    emission::named_descriptor(&module.metadata.operations.get(index)?.selector)
+                        .ok()?;
+                Some(g::sha256_raw(&descriptor))
+            })
+            .ok_or_else(invalid)?;
+        let source_map = s.vector(q, &rows)?;
+        let digest = s.text(q, &g::raw_digest_spelling(authority))?;
+        let selection = s.text(q, &selection)?;
+        let tag = q.keep(s.id.intern_name(b"generationProjection")?)?;
+        let result = s.vector(q, &[tag, source_map, digest, selection])?;
+        // Callbacks may register another module or swap image sources while we
+        // build reflected values. Reject a mixed snapshot, never seal it.
+        if *s.sources.entries.borrow() != snapshot {
+            return s.error(q, b"generation sources changed during projection");
+        }
+        Ok(Operand::object(result))
     }
 }

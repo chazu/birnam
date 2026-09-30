@@ -4,7 +4,13 @@
 use super::*;
 use birnam_artifact::portable_program::{self, NodeKind, StatementKind};
 
-pub(super) fn function(bytes: &[u8], functions: &mut Vec<Function>) -> Result<usize, Error> {
+pub(super) fn function(
+    bytes: &[u8],
+    source: &[u8],
+    filename: &[u8],
+    functions: &mut Vec<Function>,
+    policy: Policy<'_>,
+) -> Result<usize, Error> {
     let program = portable_program::inspect(bytes).map_err(|_| Error::Portable)?;
     let index = functions.len();
     functions.push(Function {
@@ -71,7 +77,7 @@ pub(super) fn function(bytes: &[u8], functions: &mut Vec<Function>) -> Result<us
                     )
                 }
                 NodeKind::BlockLiteral => {
-                    let child = function(node.data, functions)?;
+                    let child = portable_function(node.data, source, filename, functions, policy)?;
                     writeln!(
                         out,
                         "O captures{next}=call(&c,named(&c,\"Vector\"),\"new\",0,0);"

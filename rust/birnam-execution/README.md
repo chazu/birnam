@@ -137,26 +137,21 @@ algorithms have moved out of Runtime. The obsolete all-Oop wrappers in those
 files are deleted. The pure tail layout plan now belongs here; Codegen temporarily
 shares that private source without becoming an Execution dependency.
 
-The mixed Runtime Method values, driver, task-control and recovery wrappers have
-been removed. TCC's owner-registration bridge and its Runtime exports are now also deleted.
-Production Codegen and TCC construct owned Methods directly. Runtime retains
-allocation-elision and later integration algorithms. Retained source/compiler acceptance cases are migration inputs, not
-passing production tests; see [Runtime's remaining scope](../birnam-runtime/README.md).
+The aggregate Runtime crate and unused dispatch-cache helper have been removed.
+Execution retains their frame, scheduling, boundary, recovery and code-lifetime
+mechanics; production tests exercise those mechanics through current Id messages.
+TCC owns mappings, Store owns tracked mutation, and Id owns dictionaries and
+collection-visible allocation. No aggregate Runtime construction remains.
 
-By explicit scope decision, allocation-elision moves to batch 2: numeric chain/loop
-reuse, closure/region elision, unboxed numeric values, discarded clones
-and virtual aggregates need real compiler producers and guarded recovery.
-Their old allocation-budget/deferred-identity dependencies are explicitly retired
-by the [revised optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
-Recovery describes observable values and aliases; it does not recreate dead
-allocation history. The native candidate contract does not implement or prove
-those algorithms. Batch 2 must supply generated-code registration, necessary
-owner messages, portable admission, guarded recovery and real compiled-mapping
-reclamation. Native fixture recovery does not prove production generated recovery.
+The retired allocation-journal, deferred-identity and raw-layout optimizer glue
+was discarded under the [revised optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
+Reusable closure, numeric-chain, region, virtual-aggregate and recovery analyses
+remain in Codegen. They do not establish support for the retired optimizers.
+The current discarded-clone and numeric-predicate producers are described below.
 
-The Store-backed Birnam TaskControl/TaskExecutor policy, image/worker integration
-and full CLI startup remain deferred. The native control adapters here do not
-substitute a new scheduler for that source policy.
+Generation publication/rollback remains Codegen/Store integration work. Image,
+workers and Host/CLI already use the production prefix. Native control adapters
+remain separate from the Store-backed Birnam TaskControl/TaskExecutor policy.
 
 ## Validation
 

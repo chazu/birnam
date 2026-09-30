@@ -20,8 +20,8 @@ undo it. Temporary compilation roots survive collecting hooks.
 The uncompiled legacy compiler orchestration and its orphaned helpers/tests have
 been deleted. Git retains the historical implementation; it is not current
 validation or a compatibility layer. Remaining behavior is inventoried
-[below](#remaining-migration-reference). Allocation-elision remains separately
-retained in Runtime and the pure compiler planners.
+[below](#remaining-migration-reference). The obsolete Runtime optimizer integration
+has also been removed; reusable analyses remain in the pure compiler planners.
 
 ## Source and generated-code contract
 
@@ -261,3 +261,26 @@ Project publication policy and generation replacement remain separate work.
 Module filename construction uses restored `Reflect nameOf:`: Symbols return
 their Id-owned name bytes as a String; other objects use Namespace's reverse
 lookup and return nil when unnamed. Both lookups remain live owner messages.
+
+## Initial generation projection
+
+`initialGenerationProjection` constructs the retained four-element projection:
+`#[#generationProjection sourceMap baseDigest generationSelection]`. Source-map
+rows are sorted by module name and contain the source revision and nil component.
+The complete implementation inventory records the current source backend's
+resumable disposition; named-adapter descriptor hashes come from that backend.
+Building a projection neither installs methods nor seals the source registry.
+Sources remain rooted across callbacks, and a registry change during construction
+rejects the mixed snapshot. The native `generation` test covers deterministic
+bytes, inert construction, collecting factories and reentrant registration.
+
+The pure generation algebra in Codegen retains the frozen dispatch-base digest,
+selection composition/replacement, dependency ordering and residual-initializer
+checks. Candidates compile to checked object bundles with source and selection
+metadata. Inspection retains an immutable byte snapshot; mapping relocates that
+snapshot without recompiling or publishing methods and Globals. The native
+`candidate` test exercises both synchronous and resumable selections, captured
+helpers, collection and author-file changes after inspection.
+
+Staged activation/rollback, candidate discard and mapping retirement, Host intent
+fulfillment and composed-image adoption still need connection to these owners.
