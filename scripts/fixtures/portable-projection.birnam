@@ -1,4 +1,4 @@
-// 74P normal installation: source-independent projection bodies and callers.
+// Portable projections and captures retain identity across eviction and GC.
 [System load: "modules/os.birnam"];
 let input := [73 asCell];
 let projectionSource := [:value | value];
@@ -17,5 +17,5 @@ let caller := [Codegen materializeResumable: [[callerSource codeObject] withoutS
 [System gc];
 [[[caller value: projection value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 6]]];
 [[[caller value: captured value: nil] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 7]]];
-[[[Machine recoverAt: 0 with: #[]] isNil] ifTrue: [| nil] ifFalse: [| [OS exit: 8]]];
-[System println: "production-recovery: portable projections, captures, identity, eviction and GC passed"];
+[[[[Machine recoverAt: 0 with: #[]] kind] = #nativeInvalidRequest] ifTrue: [| nil] ifFalse: [| [OS exit: 8]]];
+[System println: "portable-projection: portable projections, captures, identity, eviction and GC passed"];

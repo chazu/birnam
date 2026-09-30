@@ -25,9 +25,12 @@ selection and optimizer-specific counters are retired contracts, not missing
 message APIs. Deleting their probes does not establish optimizer equivalence or
 performance. Their prior implementations remain in Git history.
 
-The remaining Birnam execution, recovery, deoptimization, image and concurrency
-fixtures retain useful semantic cases. Port those cases or establish their current
-coverage before removing their old drivers; do not restore the deleted tables.
+The `portable-*.birnam` fixtures retain alias chains, projected captures, ordered
+effects, arithmetic errors and code retention across eviction/GC.
+`scripts/portable-execution-test.py` runs them through the installed Host with
+precise collection. These are semantic checks, not evidence of the retired
+region, specialization or recovery optimizers. Native Execution tests retain
+recovery admission and atomic publication coverage.
 
 The former Runtime churn/longevity drivers required removed aggregate counters.
 Their persistence and lifetime cases now run at these owners, with retained-history

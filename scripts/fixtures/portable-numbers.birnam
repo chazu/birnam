@@ -1,4 +1,5 @@
-"Actual Prelude arithmetic through a hot portable, stackless body.";
+// Portable arithmetic preserves mixed values, errors and boxed identity.
+[System load: "modules/os.birnam"];
 let source := [:a :b | let sum := [a + b]; let product := [sum * b]; [product - a]];
 let numeric := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
 [[numeric isError] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];
@@ -24,4 +25,4 @@ let remainder := [Codegen materializeResumable: [[remainderSource codeObject] wi
   [[[remainder value: 11 value: 3] = 2] ifTrue: [| nil] ifFalse: [| [OS exit: 11]]]]];
 [[[remainder value: -9223372036854775808 value: -1] = 0] ifTrue: [| nil] ifFalse: [| [OS exit: 12]]];
 [[[remainder value: 12 value: 0] isError] ifTrue: [| nil] ifFalse: [| [OS exit: 13]]];
-[System println: "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed"];
+[System println: "portable-numbers: arithmetic, mixed values, errors, identity and retirement passed"];

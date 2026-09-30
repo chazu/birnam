@@ -1,4 +1,4 @@
-// 74R installed/source-independent aliases, captured identity and effect boundary.
+// Portable aliases and captures preserve ordered effects across eviction and GC.
 [System load: "modules/os.birnam"];
 let input := [73 asCell];
 let effects := [0 asCell];
@@ -25,4 +25,4 @@ let caller := [Codegen materializeResumable: [[callerSource codeObject] withoutS
 [[[caller value: captured value: nil] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 10]]];
 [[[caller value: effect value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 11]]];
 [[[effects value] = 129] ifTrue: [| nil] ifFalse: [| [OS exit: 12]]];
-[System println: "small-callee-recovery: aliases, captures, effects, eviction and GC passed"];
+[System println: "portable-effects: aliases, captures, effects, eviction and GC passed"];
