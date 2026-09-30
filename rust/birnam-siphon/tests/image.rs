@@ -435,6 +435,12 @@ fn image_owner_roundtrip() {
             assert_eq!(h.number(h.call(global(&h, b"ImageMapChild"), b"imageMapChildMarker", &[])), 91);
             let cell = global(&h, b"ImageCell");
             assert_eq!(h.number(h.call(cell, b"value", &[])), 2);
+            assert_eq!(h.number(h.call(cell, b"imageCellMarker", &[])), 73);
+            assert_eq!(send(h.id, h.id.receiver, b"bindingOf:in:", &[
+                Operand::object(h.id.intern_name(b"imageCellMarker").unwrap()),
+                Operand::object(h.named(b"StoreVt")),
+            ]).kind(), birnam_abi::id_protocol::UNIT,
+                "Cell methods must not be restored on their native Store owner");
             let cell_block = global(&h, b"ImageCellBlock");
             assert_eq!(h.call(cell_block, b"captureAt:", &[h.int(0)]), cell);
             assert_eq!(h.number(h.call(cell_block, b"value", &[])), 2);
@@ -507,6 +513,12 @@ fn image_owner_roundtrip() {
                     h.id.intern_name(b"imageInherited").unwrap(),
                 )],
             );
+            send(
+                h.id,
+                h.named(b"CellVt"),
+                b"removeMethod:",
+                &[Operand::object(h.id.intern_name(b"imageCellMarker").unwrap())],
+            );
             h.call(h.named(b"Store"), b"imageLoadBegin", &[]);
             h.clear_from(0);
             h.collect();
@@ -517,6 +529,9 @@ fn image_owner_roundtrip() {
             );
             return;
         }
+        // CellVt has Store as its native owner, but hosts instance methods
+        // directly. Image binding targets must preserve that distinction.
+        h.eval(b"[Reflect defineMethod: #imageCellMarker on: CellVt as: [:self | 73]]");
         h.eval(b"let ImageShared := [Object clone]; let ImageAlias := ImageShared; let ImageTarget := [Object clone]; [Reflect defineMethod: #answer: on: ImageTarget as: [:self :value | [value + 2]]]; let ImageClosure := [| ImageShared]");
         h.eval(b"[Reflect defineMethod: #alternateAnswer: on: ImageTarget as: [:self :value | [value + 3]]]; let ImageChild := [ImageTarget clone]; [Reflect defineMethod: #extra on: ImageChild as: [:self | 9]]; let ImageGrand := [ImageChild clone]; let ImageSibling := [ImageTarget clone]");
         // A real capture, not a global lookup: both dispositions share the CodeObject.

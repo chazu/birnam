@@ -294,7 +294,11 @@ and Id behavior epoch checks reject changes during callbacks; monotonic tokens
 are consumed by `discardPrepared:`, releasing preparation-only roots.
 
 `adoptInitialGeneration:` records a canonical initial source/selection snapshot
-and live portable bindings once. Its transient ledger also records projected
+and live portable bindings once. Adoption rejects unavailable targets, missing
+or unexpected bindings, and portable Method bodies that differ from the final
+source definition in dependency order, including aliases of one dictionary.
+Comparison preserves lexical captures and the literal compile-time embedding
+rewrite without reopening assets. Its transient ledger also records projected
 Globals and retains displaced Methods for inverse operations. Preparation checks
 the complete ledger; `reconcileCandidate:` rejects drift without adopting the new
 binding. Unrelated Store facts remain outside that ledger. Repeating initial

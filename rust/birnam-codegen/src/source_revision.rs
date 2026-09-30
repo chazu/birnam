@@ -174,6 +174,8 @@ pub struct RevisionOperation {
     pub selector: Vec<u8>,
     pub install: bool,
     pub source: Vec<u8>,
+    /// Derived source semantics; excluded from the frozen revision digest.
+    pub program: Option<Vec<u8>>,
 }
 
 #[derive(Clone)]
@@ -335,10 +337,24 @@ pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
             selector: operation_selector,
             install: is_define,
             source: whole_source.to_vec(),
+            program: None,
         });
     }
     let name = name?;
     let normalized = lower_program(tree, source).ok()?;
+    for (index, operation) in operations.iter_mut().enumerate() {
+        if operation.install {
+            let key = crate::resumable::ImplementationKey {
+                root_kind: crate::resumable::InventoryRootKind::MethodOperation,
+                root_index: u32::try_from(index).ok()?,
+                path: vec![0],
+                implementation_kind: crate::resumable::InventoryImplementationKind::BlockBody,
+            };
+            let resolved = crate::resumable::resolve_block_implementation(&normalized, &key)?;
+            operation.program =
+                Some(crate::portable::encode_block(resolved.block, &resolved.captures).ok()?);
+        }
+    }
     let projected = crate::resumable::projected_block_bindings(&normalized)
         .into_iter()
         .filter(|binding| binding.captures.is_empty())

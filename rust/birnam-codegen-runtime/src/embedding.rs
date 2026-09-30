@@ -12,7 +12,7 @@ impl State {
         program: &mut Program<'_>,
         filename: &[u8],
     ) -> Result<Option<Oop>, Outcome> {
-        unsafe { self.embed_statements(scope, &mut program.body, filename, false, true) }
+        unsafe { self.embed_statements(scope, &mut program.body, filename, false) }
     }
     unsafe fn embed_statements(
         &self,
@@ -20,7 +20,6 @@ impl State {
         statements: &mut [Statement<'_>],
         filename: &[u8],
         mut shadowed: bool,
-        top_level: bool,
     ) -> Result<Option<Oop>, Outcome> {
         unsafe {
             for statement in statements {
@@ -30,7 +29,7 @@ impl State {
                         name: b"System",
                         ..
                     }
-                ) && !top_level;
+                );
                 let (Statement::Let { value: expr, .. } | Statement::Expr(expr)) = statement;
                 if let Some(error) = self.embed_expr(scope, expr, filename, shadowed)? {
                     return Ok(Some(error));
@@ -152,7 +151,6 @@ impl State {
                         &mut block.body,
                         filename,
                         shadowed || block.params.contains(&b"System".as_slice()),
-                        false,
                     );
                 }
                 _ => {}

@@ -465,6 +465,13 @@ unsafe fn exercise_replacement(h: &H, block: Oop, temp: &std::path::Path) {
         let key = h.keep(id.intern_name(b"System").unwrap());
         let previous = h.call(globals, b"at:", &[key]);
         h.call(globals, b"at:put:", &[key, receiver]);
+        // A top-level let is also a lexical binding. It must be captured by
+        // the nested Block, never replaced with a compile-time global read.
+        let lexical = h.eval(b"let System := System; [| [System embedFile: \"top-level.bin\"]]");
+        assert_eq!(e.calls.get(), 0, "top-level lexical System must not embed");
+        assert_eq!(h.call(lexical, b"value", &[]), value);
+        assert_eq!(e.calls.get(), 1);
+        e.calls.set(0);
         let path = h.string(temp.join("module.birnam").as_os_str().as_bytes());
         let b = h.call(
             h.named(b"Codegen"),

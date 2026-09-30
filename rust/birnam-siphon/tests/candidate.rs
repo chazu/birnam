@@ -115,7 +115,9 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
         let yes = named(b"true");
         let no = named(b"false");
         let nil = named(b"nil");
-        let baseline=text(b"[Module named: #candidateFactory requires: #[]]; let candidateHelper := [| 11]; [Reflect defineMethod: #candidateAnswer on: Integer as: [:self | [candidateHelper value]]]");
+        // This fixture starts with no live method or helper. Its source must
+        // describe that actual baseline before testing inert candidate mapping.
+        let baseline=text(b"[Module named: #candidateFactory requires: #[]]; [Reflect removeMethod: #candidateAnswer on: Integer]");
         let candidate=text(b"[Module named: #candidateFactory requires: #[]]; let candidateHelper := [| 22]; [Reflect defineMethod: #candidateAnswer on: Integer as: [:self | [candidateHelper value]]]");
         let name = symbol(b"candidateFactory");
         assert_eq!(

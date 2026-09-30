@@ -432,16 +432,25 @@ pub(super) unsafe fn adopt(
         // Observe dictionary stability around the live binding snapshot, after
         // that inert work. The Store basis still covers the entire adoption.
         let epoch = preparation::epoch(s)?;
+        // Multiple source names can address one dictionary. Validate the final
+        // writer in dependency order, while retaining every named observation.
+        let mut programs = Vec::<(Oop, Oop, Option<&[u8]>, Option<Vec<u8>>)>::new();
         for index in generation::generation_module_order(&modules).ok_or_else(invalid)? {
             let module = &modules[index];
             let unit = components[&module.name];
             for operation in &module.metadata.operations {
                 let name = symbol(s, q, &operation.target)?;
                 let Some((target, behavior)) = preparation::target(s, q, name)? else {
-                    continue;
+                    return fail(
+                        s,
+                        q,
+                        b"sourceBindingMismatch",
+                        b"managed source target is unavailable",
+                    );
                 };
                 let selector = symbol(s, q, &operation.selector)?;
                 let entry = preparation::direct(s, behavior, selector)?;
+                let mut actual_program = None;
                 let method = if let Some(entry) = entry {
                     // Native entries lacking a portable implementation cannot be
                     // adopted into an image-rebuildable rollback baseline.
@@ -459,7 +468,8 @@ pub(super) unsafe fn adopt(
                         );
                     }
                     let implementation = q.keep(object(implementation)?)?;
-                    if call(s, q, implementation, b"codeObject", &[])? == nil {
+                    let code = call(s, q, implementation, b"codeObject", &[])?;
+                    if code == nil {
                         return fail(
                             s,
                             q,
@@ -467,6 +477,14 @@ pub(super) unsafe fn adopt(
                             b"managed binding has no CodeObject",
                         );
                     }
+                    let bytes = call(
+                        s,
+                        q,
+                        s.named(b"CodeObject")?,
+                        b"canonicalBytesOf:",
+                        &[Operand::object(code)],
+                    )?;
+                    actual_program = Some(s.bytes(bytes)?);
                     Some(call(
                         s,
                         q,
@@ -477,6 +495,13 @@ pub(super) unsafe fn adopt(
                 } else {
                     None
                 };
+                programs.retain(|(b, sel, _, _)| *b != behavior || *sel != selector);
+                programs.push((
+                    behavior,
+                    selector,
+                    operation.program.as_deref(),
+                    actual_program,
+                ));
                 ledger
                     .bindings
                     .retain(|b| b.binding.name != name || b.binding.selector != selector);
@@ -500,6 +525,29 @@ pub(super) unsafe fn adopt(
                     unit,
                     global: Global { name, value },
                 });
+            }
+        }
+        for (behavior, selector, expected, actual) in programs {
+            let agrees = match (expected, actual) {
+                (None, None) => true,
+                (Some(source), Some(actual)) => {
+                    birnam_codegen::portable::matches_source(source, &actual)
+                }
+                _ => false,
+            };
+            if !agrees {
+                let name = ledger
+                    .bindings
+                    .iter()
+                    .find(|b| b.binding.behavior == behavior && b.binding.selector == selector)
+                    .ok_or_else(invalid)?
+                    .binding
+                    .name;
+                let mut message = b"managed binding differs from recorded source: ".to_vec();
+                message.extend(s.symbol_bytes(q, name)?.ok_or_else(invalid)?);
+                message.push(b' ');
+                message.extend(s.symbol_bytes(q, selector)?.ok_or_else(invalid)?);
+                return fail(s, q, b"sourceBindingMismatch", &message);
             }
         }
         let changed = if preparation::basis(s, q)? != basis {

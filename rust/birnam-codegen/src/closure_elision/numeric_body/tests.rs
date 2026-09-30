@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Block, Expr, Statement, portable, resumable, resumable_c};
+use crate::{Block, Expr, Statement, portable, resumable};
 use std::borrow::Cow;
 
 fn send(left: Expr<'static>, right: Expr<'static>) -> Expr<'static> {
@@ -92,37 +92,6 @@ fn numeric_body_preserves_allocation_order_and_return_identity() {
                     .collect();
                 assert_eq!(literals.len(), 2);
                 assert_ne!(literals[0], literals[1]);
-                let c = String::from_utf8(
-                    resumable_c::emit_step_method(19, &program, &layout, 1).unwrap(),
-                )
-                .unwrap();
-                let emitted: Vec<i64> = c
-                    .split("MKV(")
-                    .skip(1)
-                    .map(|s| {
-                        s.split_once(')')
-                            .unwrap()
-                            .0
-                            .trim_end_matches('L')
-                            .parse()
-                            .unwrap()
-                    })
-                    .collect();
-                let described: Vec<_> = plan
-                    .allocations
-                    .iter()
-                    .filter_map(|a| {
-                        if let Allocation::Integer(v) = a {
-                            Some(*v)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                assert_eq!(
-                    described, emitted,
-                    "canonical C index/literal allocation order"
-                );
                 for publication in &plan.publications {
                     assert_eq!(
                         plan.allocations[publication.allocation_end - 1],

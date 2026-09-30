@@ -36,10 +36,6 @@ run = "CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline"
 description = "Run the pure-Rust floor tests under nightly Miri"
 run = "cargo +nightly miri test --workspace --locked --offline"
 
-[tasks.deopt-experiment]
-description = "Run the test-only Design 74F same-frame recovery experiment"
-run = "python3 scripts/same-frame-deopt.py"
-
 [tasks.root-registry]
 description = "Check native root registration, snapshots and admission (debug)"
 run = "scripts/root-registry-test.sh"
@@ -74,22 +70,6 @@ run = "bash scripts/host-cli-test.sh"
 [tasks.reflection-boundaries]
 description = "Check production namespace admission, native enumeration, typed errors and GC"
 run = "bash scripts/runtime-services-test.sh '' reflection"
-
-[tasks.generated-deopt-experiment]
-description = "Run Design 74G generated same-frame recovery and native unload checks"
-run = "python3 scripts/generated-frame-deopt.py"
-
-[tasks.read-reuse-experiment]
-description = "Run Design 74H guarded Frame read reuse correctness checks"
-run = "python3 scripts/frame-read-reuse.py"
-
-[tasks.deopt-api-experiment]
-description = "Run Design 74I guard-boundary checks through the frozen IdApi"
-run = "python3 scripts/deopt-public-api.py"
-
-[tasks.native-tier-test]
-description = "Check portable native-tier recovery and guarded lookup in debug and release"
-run = "python3 scripts/runtime-native-tier.py --design 74L --output .cargo-target/native-tier-correctness.json"
 
 [tasks.rust-dylib-audit]
 description = "Audit Rust floor dependencies, install name, paths, and exports"

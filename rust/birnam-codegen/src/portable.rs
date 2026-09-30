@@ -7,6 +7,9 @@ use birnam_artifact::portable_program::{LetSpec, NodeSpec, ProgramSpec, Statemen
 
 use crate::{Block, Expr, Statement, resumable::lexical_capture_names};
 
+mod source_match;
+pub use source_match::matches_source;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidLiteral,

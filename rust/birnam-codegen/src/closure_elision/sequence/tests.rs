@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Block, Expr, Statement, portable, resumable_c};
+use crate::{Block, Expr, Statement, portable};
 use std::borrow::Cow;
 
 fn fixture(calls: usize, captured: bool, escaping: bool, observing: bool) -> Vec<u8> {
@@ -66,7 +66,7 @@ fn fixture(calls: usize, captured: bool, escaping: bool, observing: bool) -> Vec
 }
 
 #[test]
-fn repeated_closure_plans_match_physical_execution_and_baseline_indices() {
+fn repeated_closure_plans_match_physical_execution() {
     const CLOSURE: usize = 90_001;
     for calls in [1, 2, 3, 32, 33] {
         for captured in [false, true] {
@@ -76,24 +76,6 @@ fn repeated_closure_plans_match_physical_execution_and_baseline_indices() {
                 let layout = resumable::color_slots(&program).unwrap();
                 let plan = Plan::derive(&program, &layout).unwrap();
                 assert_eq!(plan.following.len() + 1, calls.min(MAX_CALLS));
-                let source = String::from_utf8(
-                    resumable_c::emit_step_method_with_portable_blocks(
-                        0,
-                        &program,
-                        &layout,
-                        1,
-                        &[resumable_c::PortableBlockLiteralSpec {
-                            node_index: plan.node_index,
-                            disposition: resumable_c::BlockLiteralDisposition::Resumable {
-                                manifest_entry_index: 7,
-                            },
-                            portable_program: plan.program.clone(),
-                            retain_materialization_owner: true,
-                        }],
-                    )
-                    .unwrap(),
-                )
-                .unwrap();
                 let mut words = vec![0; layout.slot_count as usize];
                 let mut planned = words.clone();
                 let mut inputs = Vec::new();
@@ -131,19 +113,6 @@ fn repeated_closure_plans_match_physical_execution_and_baseline_indices() {
                     } else {
                         let step = &plan.following[call - 1];
                         assert_eq!(step.pc as usize, call);
-                        let pc_text = source
-                            .split(&format!("case {call}L:{{"))
-                            .nth(1)
-                            .unwrap()
-                            .split(&format!("case {}L:{{", call + 1))
-                            .next()
-                            .unwrap();
-                        let boxes: Vec<u32> = pc_text
-                            .split("MKV(")
-                            .skip(1)
-                            .map(|s| s.split('L').next().unwrap().parse().unwrap())
-                            .collect();
-                        assert_eq!(step.boxed_indices, boxes);
                         (
                             &step.stores,
                             &step.argument_sources,

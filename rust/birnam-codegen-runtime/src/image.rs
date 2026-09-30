@@ -208,18 +208,20 @@ pub(super) unsafe fn operation(
                         .send(s.id.receiver, b"ownerOf:", &[Operand::object(vt)])?
                         .as_object()
                     {
-                        Some(owner) => owner,
-                        None if s
+                        Some(owner) if s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(owner)])?
+                            .as_object() == Some(vt) => owner,
+                        _ if s
                             .send(s.ns, b"nameOf:", &[Operand::object(vt)])?
                             .as_object()
                             .is_some() =>
                         {
                             vt
                         }
-                        None => continue,
+                        _ => continue,
                     };
-                    // Exported behaviors such as Collection host methods directly
-                    // and have no ordinary owner. Their identity is the target.
+                    // A native owner can manage several representation families
+                    // (Store owns both StoreVt and CellVt). Only its own dictionary
+                    // targets that object; other exported behaviors target themselves.
                     q.keep(target)?;
                     for j in 0..1_048_576usize {
                         let Some(selector) = s

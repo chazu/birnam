@@ -1,5 +1,5 @@
 //! Synchronous PortableProgram emission with the current Id calling convention.
-//! The canonical postorder traversal is the same as portable_c; all owner
+//! Traversal follows canonical PortableProgram postorder; all owner
 //! operations, including captures and nested Block construction, are sends.
 use super::*;
 use birnam_artifact::portable_program::{self, NodeKind, StatementKind};

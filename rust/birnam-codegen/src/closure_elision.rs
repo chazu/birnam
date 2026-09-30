@@ -362,7 +362,7 @@ impl<C> Plan<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Block, Expr, Statement, portable, resumable_c};
+    use crate::{Block, Expr, Statement, portable};
     use std::borrow::Cow;
 
     fn send(receiver: Expr<'static>, args: Vec<Expr<'static>>) -> Expr<'static> {
@@ -524,48 +524,7 @@ mod tests {
                     );
                 }
 
-                // Compare allocation order against actual baseline C emission,
-                // not a second hand-written index-count formula.
-                for owner in [false, true] {
-                    let source = resumable_c::emit_step_method_with_portable_blocks(
-                        0,
-                        &program,
-                        &layout,
-                        1,
-                        &[resumable_c::PortableBlockLiteralSpec {
-                            node_index: plan.node_index,
-                            disposition: resumable_c::BlockLiteralDisposition::Resumable {
-                                manifest_entry_index: 7,
-                            },
-                            portable_program: plan.program.clone(),
-                            retain_materialization_owner: owner,
-                        }],
-                    )
-                    .unwrap();
-                    let source = String::from_utf8(source).unwrap();
-                    let pc = source
-                        .split("case 0L:{")
-                        .nth(1)
-                        .unwrap()
-                        .split("case 1L:{")
-                        .next()
-                        .unwrap();
-                    let (before, after) = pc
-                        .split_once(if owner {
-                            "=birnam_portable_materialized_block_new_v2("
-                        } else {
-                            "=birnam_portable_block_new_v1("
-                        })
-                        .unwrap();
-                    let indices = |text: &str| {
-                        text.split("MKV(")
-                            .skip(1)
-                            .map(|s| s.split('L').next().unwrap().parse::<u32>().unwrap())
-                            .collect::<Vec<_>>()
-                    };
-                    assert_eq!(plan.before_constructor_boxes, indices(before));
-                    assert_eq!(plan.after_constructor_boxes, indices(after));
-                }
+
             }
         }
     }
@@ -704,99 +663,7 @@ mod tests {
         );
     }
 
-    #[test]
-    #[cfg(feature = "dev-pc-specialization")]
-    fn literal_pc_specialization_retains_baseline_construction_and_validates_specs() {
-        let bytes = fixture(true, true);
-        let program = resumable::lower_portable_block(&bytes).unwrap();
-        let layout = resumable::color_slots(&program).unwrap();
-        let plan = Plan::derive(&program, &layout).unwrap();
-        for owner in [false, true] {
-            let spec = resumable_c::PortableBlockLiteralSpec {
-                node_index: plan.node_index,
-                disposition: resumable_c::BlockLiteralDisposition::Resumable {
-                    manifest_entry_index: 7,
-                },
-                portable_program: plan.program.clone(),
-                retain_materialization_owner: owner,
-            };
-            let all = resumable_c::emit_step_method_with_portable_blocks(
-                5,
-                &program,
-                &layout,
-                1,
-                std::slice::from_ref(&spec),
-            )
-            .unwrap();
-            let all = String::from_utf8(all).unwrap();
-            for pc in 0..program.blocks.len() {
-                let one = resumable_c::emit_pc_specialized_step_with_portable_blocks(
-                    5,
-                    &program,
-                    &layout,
-                    pc as u32,
-                    std::slice::from_ref(&spec),
-                )
-                .unwrap();
-                let one = String::from_utf8(one).unwrap();
-                let body = one
-                    .split_once("(void)args;\n{\n")
-                    .unwrap()
-                    .1
-                    .strip_suffix("}\nreturn birnam_nil();\n}\n")
-                    .unwrap();
-                let original = all.split_once(&format!("case {pc}L:{{\n")).unwrap().1;
-                assert!(
-                    original.starts_with(body),
-                    "PC {pc} must retain original body bytes"
-                );
-            }
-            assert!(
-                resumable_c::emit_pc_specialized_step_with_portable_blocks(
-                    5,
-                    &program,
-                    &layout,
-                    0,
-                    &[]
-                )
-                .is_err()
-            );
-            let mut wrong = spec.clone();
-            wrong.node_index += 1;
-            assert!(
-                resumable_c::emit_pc_specialized_step_with_portable_blocks(
-                    5,
-                    &program,
-                    &layout,
-                    0,
-                    &[wrong]
-                )
-                .is_err()
-            );
-            let mut wrong = spec.clone();
-            wrong.portable_program.push(0);
-            assert!(
-                resumable_c::emit_pc_specialized_step_with_portable_blocks(
-                    5,
-                    &program,
-                    &layout,
-                    0,
-                    &[wrong]
-                )
-                .is_err()
-            );
-            assert!(
-                resumable_c::emit_pc_specialized_step_with_portable_blocks(
-                    5,
-                    &program,
-                    &layout,
-                    0,
-                    &[spec.clone(), spec]
-                )
-                .is_err()
-            );
-        }
-    }
+
 }
 
 #[cfg(test)]

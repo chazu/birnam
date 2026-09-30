@@ -144,11 +144,12 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         let db = named(b"db");
         let yes = named(b"true");
         let no = named(b"false");
-        let body = b"let ledgerHelper := [| 17]; [Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | [ledgerHelper value]]]";
+        let body = b"let ledgerHelper := [| 17]; [Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | [ledgerHelper value]]]; [Reflect defineMethod: #ledgerOverride on: Integer as: [:self | 1]]";
         let evaluated = call(cg, b"evalPersisting:", &[text(body)]);
         assert_eq!(call(evaluated, b"isError", &[]), no);
         let mut source = b"[Module named: #ledgerFixture requires: #[]]; ".to_vec();
         source.extend_from_slice(body);
+        source.extend_from_slice(b"; [Reflect removeMethod: #ledgerRemoved on: Integer]");
         let source = text(&source);
         assert_eq!(
             call(
@@ -157,6 +158,46 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 &[source, sym(b"ledgerFixture")]
             ),
             source
+        );
+        // An alias and a later dependent module deliberately replace the first
+        // definition. Adoption compares the final dictionary writer, not both.
+        call(
+            named(b"Globals"),
+            b"at:put:",
+            &[sym(b"LedgerIntegerAlias"), named(b"Integer")],
+        );
+        let override_body =
+            b"[Reflect defineMethod: #ledgerOverride on: LedgerIntegerAlias as: [:self | 2]]; let System := System; [Reflect defineMethod: #ledgerLexicalEmbed on: LedgerIntegerAlias as: [:self | [System embedFile: \"never-created.bin\"]]]";
+        call(cg, b"evalPersisting:", &[text(override_body)]);
+        let mut override_source =
+            b"[Module named: #ledgerOverride requires: #[#ledgerFixture]]; ".to_vec();
+        override_source.extend_from_slice(override_body);
+        call(
+            cg,
+            b"recordModuleSource:named:",
+            &[text(&override_source), sym(b"ledgerOverride")],
+        );
+        // Generation adoption must remain inert after assets and source files
+        // are removed. The compiled method retains the embedded binary payload.
+        let temp = std::env::temp_dir().join(format!("birnam-ledger-embed-{}", std::process::id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        std::fs::write(temp.join("asset.bin"), b"\0\xffasset").unwrap();
+        let embedded_body = b"[Reflect defineMethod: #ledgerEmbedded on: Integer as: [:self | [System embedFile: \"asset.bin\"]]]";
+        let file = temp.join("embedded.birnam");
+        std::fs::write(&file, embedded_body).unwrap();
+        let loaded = call(
+            named(b"System"),
+            b"load:",
+            &[text(file.as_os_str().as_bytes())],
+        );
+        assert_eq!(call(loaded, b"isError", &[]), no);
+        std::fs::remove_dir_all(&temp).unwrap();
+        let mut embedded_source = b"[Module named: #ledgerEmbedded requires: #[]]; ".to_vec();
+        embedded_source.extend_from_slice(embedded_body);
+        call(
+            cg,
+            b"recordModuleSource:named:",
+            &[text(&embedded_source), sym(b"ledgerEmbedded")],
         );
         let projection = call(cg, b"initialGenerationProjection", &[]);
         let generation = call(named(b"Object"), b"clone", &[]);
@@ -225,6 +266,49 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             vt,
             b"addMethod",
             &[Operand::object(selector), Operand::entry(prior)],
+        );
+        // A portable Method alone is insufficient: its body must agree with the
+        // recorded source, and an install declaration must have a live binding.
+        let wrong = call(
+            cg,
+            b"evalPersisting:",
+            &[text(
+                b"[Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | 99]]",
+            )],
+        );
+        assert_eq!(call(wrong, b"isError", &[]), no);
+        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
+        call(db, b"removeMethod:on:", &[selector, vt]);
+        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
+        send(
+            id,
+            vt,
+            b"addMethod",
+            &[Operand::object(selector), Operand::entry(prior)],
+        );
+        call(
+            cg,
+            b"evalPersisting:",
+            &[text(
+                b"[Reflect defineMethod: #ledgerRemoved on: Integer as: [:self | 3]]",
+            )],
+        );
+        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
+        call(db, b"removeMethod:on:", &[sym(b"ledgerRemoved"), vt]);
+        call(
+            named(b"Globals"),
+            b"at:put:",
+            &[sym(b"LedgerIntegerAlias"), named(b"nil")],
+        );
+        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
+        call(
+            named(b"Globals"),
+            b"at:put:",
+            &[sym(b"LedgerIntegerAlias"), named(b"Integer")],
         );
         release(id, named(b"Roots"), method_root);
         assert_eq!(
