@@ -118,6 +118,16 @@ separate integration work. No optimizer or deoptimizer is extended here.
 
 ## Validation
 
+Candidate compensation uses `reserveCompensationFor:count:` and
+`releaseCompensationFor:` on the Store receiver. Reservations retain their owner
+and count against the fact limit until consumed or released.
+`restoreValue:attr:expected:previous:reservation:` accepts native Unit for absent
+expected/previous values, distinct from an Object containing language nil. It
+compares one single-valued fact and spends one reserved record atomically; a
+conflict leaves both the fact and reservation unchanged. It does not restore a
+whole Store snapshot or undo unrelated callback facts. The native
+`store_compensation` binary verifies these properties at the resource limit.
+
 `mise run native-messages` builds and audits Store's real dylib alongside the
 production prefix. The Store binary covers schema/history/retention, errors,
 Cells across precise GC, reclamation, live replacement of Store and Integer

@@ -573,7 +573,6 @@ fn prepare_semantic_mutation(
     prepare_fact_capacity(runtime, state, 0, usize::from(needs_append))
 }
 
-#[cfg(test)]
 fn reserve_compensation_in(
     runtime: &Runtime,
     state: &mut StoreState,
@@ -608,7 +607,6 @@ fn reserve_compensation_in(
     Ok(())
 }
 
-#[cfg(test)]
 fn consume_compensation_in(state: &mut StoreState, owner: usize, facts: usize) -> bool {
     if owner == 0 || facts == 0 {
         return false;

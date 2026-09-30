@@ -230,6 +230,12 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
                 .facts
                 .iter()
                 .flat_map(|f| [f.e, f.a, f.v])
+                .chain(
+                    store
+                        .compensation_reservations
+                        .iter()
+                        .map(|r| as_oop(r.owner)),
+                )
                 .collect::<Vec<_>>()
         } else if let Some(cell) = s.cells.borrow().get(&o) {
             cell.to_vec()
@@ -283,6 +289,9 @@ enum OpCode {
     Bytes,
     Reserved,
     ReservedBytes,
+    ReservedFor,
+    ReserveCompensation,
+    ReleaseCompensation,
     Limit,
     RecordBytes,
     Policy,
@@ -338,6 +347,68 @@ macro_rules! entry {
     };
 }
 
+// A candidate inverse is a compare-and-restore of one single-valued fact.
+// Unit denotes absence, distinct from the language nil object. Consume its
+// pre-reserved capacity and perform the inverse under one Store borrow, with no
+// outgoing send between them. Callback facts on other keys remain untouched.
+unsafe extern "C" fn restore_value(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([entity, attribute, expected, previous, owner]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let [entity, attribute, owner] = [object(*entity)?, object(*attribute)?, object(*owner)?];
+        let optional = |value: Operand| {
+            if value.kind() == native::UNIT {
+                Ok(ptr::null_mut())
+            } else {
+                object(value)
+            }
+        };
+        let expected = optional(*expected)?;
+        let previous = optional(*previous)?;
+        let _scope = Scope::new(
+            s,
+            [r, entity, attribute, owner, expected, previous]
+                .into_iter()
+                .filter(|o| !o.is_null())
+                .collect(),
+        );
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let result = s.edit(r, |st| {
+            if cardinality(&s.policy, st, attribute) != s.policy.one
+                || current_value_raw(st, entity, attribute) != expected
+            {
+                return false;
+            }
+            if !consume_compensation_in(st, owner.addr(), 1) {
+                return false;
+            }
+            if expected == previous {
+                return true;
+            }
+            let (value, op) = if previous.is_null() {
+                (expected, super::Op::Retract)
+            } else {
+                (previous, super::Op::Assert)
+            };
+            let historied = st.raw
+                || is_schema_fact(&s.policy, attribute)
+                || history_enabled(&s.policy, st, attribute);
+            // Reserving charged this record before the forward write. Other
+            // mutations cannot spend it; native allocation failure is fatal by
+            // the same rule as ordinary fact append.
+            append_fact(st, entity, attribute, value, op, historied);
+            true
+        })?;
+        if result {
+            Ok(Operand::object(r))
+        } else {
+            s.error(b"compensationConflict")
+        }
+    })())
+}
+
 unsafe fn execute(
     s: &State,
     scope: &Scope<'_>,
@@ -373,6 +444,7 @@ unsafe fn execute(
                 | AddMethod
                 | RemoveMethod
                 | Backfill
+                | ReserveCompensation
         ) {
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
@@ -592,6 +664,34 @@ unsafe fn execute(
                             });
                         }
                     }
+                })?;
+            }
+            ReservedFor => {
+                let count = s.read(r, |st| {
+                    st.compensation_reservations
+                        .iter()
+                        .find(|e| e.owner == a[0].addr())
+                        .map_or(0, |e| e.facts)
+                })?;
+                return s.integer(count);
+            }
+            ReserveCompensation => {
+                let count = s.number(a[1])?;
+                if count <= 0 {
+                    return s.error(b"invalidCompensation");
+                }
+                if s.edit(r, |st| {
+                    reserve_compensation_in(p, st, a[0].addr(), count as usize)
+                })?
+                .is_err()
+                {
+                    return s.error(b"historyResourceLimit");
+                }
+            }
+            ReleaseCompensation => {
+                s.edit(r, |st| {
+                    st.compensation_reservations
+                        .retain(|entry| entry.owner != a[0].addr())
                 })?;
             }
             Raw | Assert | Retract => {
@@ -945,6 +1045,9 @@ entry!(facts, Facts, 0);
 entry!(bytes, Bytes, 0);
 entry!(reserved, Reserved, 0);
 entry!(reserved_bytes, ReservedBytes, 0);
+entry!(reserved_for, ReservedFor, 1);
+entry!(reserve_compensation, ReserveCompensation, 2);
+entry!(release_compensation, ReleaseCompensation, 1);
 entry!(limit, Limit, 0);
 entry!(record_bytes, RecordBytes, 0);
 entry!(policy, Policy, 0);
@@ -1006,6 +1109,13 @@ const STORE_METHODS: &[(&[u8], Method)] = &[
     (b"retainedFactBytes", bytes),
     (b"reservedCompensationFactCount", reserved),
     (b"reservedCompensationFactBytes", reserved_bytes),
+    (b"reserveCompensationFor:count:", reserve_compensation),
+    (b"reservedCompensationFor:", reserved_for),
+    (b"releaseCompensationFor:", release_compensation),
+    (
+        b"restoreValue:attr:expected:previous:reservation:",
+        restore_value,
+    ),
     (b"factBytesLimit", limit),
     (b"factRecordBytes", record_bytes),
     (b"retentionPolicyCode", policy),
@@ -1094,6 +1204,8 @@ const NAMES: &[&[u8]] = &[
     b"historyCompactionResourceLimit",
     b"historyNotRetained",
     b"historyResourceLimit",
+    b"invalidCompensation",
+    b"compensationConflict",
     b"imageAddFact:attr:value:tx:op:historied:",
     b"imageFactsInto:",
     b"imageLoadBegin",
@@ -1133,6 +1245,10 @@ const NAMES: &[&[u8]] = &[
     b"removeMethod:",
     b"removeMethod:on:",
     b"reservedCompensationFactBytes",
+    b"reserveCompensationFor:count:",
+    b"reservedCompensationFor:",
+    b"releaseCompensationFor:",
+    b"restoreValue:attr:expected:previous:reservation:",
     b"reservedCompensationFactCount",
     b"retain:",
     b"retainCurrentOnly",

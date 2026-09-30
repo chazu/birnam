@@ -116,8 +116,14 @@
         ifFalse: [|
           let generation := [self fromProjection: projection predecessor: nil delta: nil];
           [[db cellFor: #dispatch attr: #activeGeneration] set: generation];
-          [Codegen sealInitialGeneration];
-          generation]]]]]];
+          let adopted := [Codegen adoptInitialGeneration: generation];
+          [[adopted isError]
+            ifTrue: [|
+              [db retract: #dispatch attr: #activeGeneration value: generation];
+              adopted]
+            ifFalse: [|
+              [Codegen sealInitialGeneration];
+              generation]]]]]]]];
 
 // Retire one no-longer-current lifecycle carrier through ordinary Store
 // retractions. A current-only compaction drops the graph; an explicit history
@@ -185,8 +191,14 @@
 
 [Reflect defineMethod: #state on: CompiledUnit as: [:self |
   let recorded := [db currentValue: self attr: #state];
-  [[recorded = #active] ifTrue: [| [Codegen reconcileCandidate: self]] ifFalse: [| nil]];
-  [db currentValue: self attr: #state]]];
+  [[recorded = #active]
+    ifTrue: [|
+      let checked := [Codegen reconcileCandidate: self];
+      let actual := [db currentValue: self attr: #state];
+      [[checked isError]
+        ifTrue: [| [[actual = #active] ifTrue: [| checked] ifFalse: [| actual]]]
+        ifFalse: [| actual]]]
+    ifFalse: [| recorded]]]];
 
 [Reflect defineMethod: #kind on: CompiledUnit as: [:self |
   [db currentValue: self attr: #kind]]];

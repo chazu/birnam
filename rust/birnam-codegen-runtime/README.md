@@ -282,5 +282,29 @@ snapshot without recompiling or publishing methods and Globals. The native
 `candidate` test exercises both synchronous and resumable selections, captured
 helpers, collection and author-file changes after inspection.
 
-Staged activation/rollback, candidate discard and mapping retirement, Host intent
-fulfillment and composed-image adoption still need connection to these owners.
+`prepareActivation:plan:` copies the publication plan, checks the full successor
+projection and stable target ownership, and roots exact direct bindings and
+projected Globals. Preparation runs no candidate factory. Numeric Store basis
+and Id behavior epoch checks reject changes during callbacks; monotonic tokens
+are consumed by `discardPrepared:`, releasing preparation-only roots.
+
+`adoptInitialGeneration:` records a canonical initial source/selection snapshot
+and live portable bindings once. Its transient ledger also records projected
+Globals and retains displaced Methods for inverse operations. Preparation checks
+the complete ledger; `reconcileCandidate:` rejects drift without adopting the new
+binding. Unrelated Store facts remain outside that ledger. Repeating initial
+adoption validates the original snapshot and cannot clear an observed divergence.
+
+`commitPrepared:` and `commitPreparedRollback:` consume their token on every
+attempt and require Execution's quiescent native boundary. Candidate construction
+runs once and retains the exact helpers and Methods across publication retries.
+Tracked method changes, projected Globals and lifecycle facts use inverse journals;
+Store reservations cover forward publication, compensation and rollback. A failure
+after mutation restores candidate-owned changes while retaining unrelated callback
+facts. Successful publication switches the source registry and complete binding
+ledger together. The `generation_transaction` test covers synchronous/resumable
+activation, replacement/addition/removal, failure compensation and exact rollback.
+
+Candidate discard and mapping retirement, Host intent fulfillment and composed-image
+adoption still need connection to these owners. End-to-end authored lifecycle and
+image acceptance remains pending.

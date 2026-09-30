@@ -216,7 +216,7 @@ impl Execution {
     unsafe fn capture(&self, entry: NativeEntry) -> Result<Operand, Outcome> {
         if let Some(method) = self.selected(entry) {
             let _roots = self.scope(&[method]);
-            let (entry, owner, image, resumable, inline) = {
+            let (entry, owner, image, resumable, inline, implementation) = {
                 let values = self.methods.borrow();
                 let value = values.get(&method.addr()).ok_or_else(invalid)?;
                 (
@@ -225,6 +225,7 @@ impl Execution {
                     value.image.clone(),
                     value.resumable.clone(),
                     value.inline,
+                    value.implementation,
                 )
             };
             let value = unsafe { self.make(entry, owner, image) }?;
@@ -232,6 +233,7 @@ impl Execution {
             let captured = methods.get_mut(&object(value)?.addr()).unwrap();
             captured.resumable = resumable;
             captured.inline = inline;
+            captured.implementation = implementation;
             return Ok(value);
         }
         let image = image::Image::retain(entry.method.ok_or_else(invalid)? as *const c_void)

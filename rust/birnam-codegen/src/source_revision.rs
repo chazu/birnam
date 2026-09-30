@@ -181,6 +181,8 @@ pub struct RevisionMetadata {
     pub name: Vec<u8>,
     pub requires: Vec<Vec<u8>>,
     pub operations: Vec<RevisionOperation>,
+    /// Capture-free top-level Block Globals eligible for generation journals.
+    pub projected_globals: Vec<Vec<u8>>,
     pub inventory: Vec<crate::resumable::ImplementationKey>,
     pub initializer_residual_digest: [u8; 64],
     pub non_method_digest: [u8; 64],
@@ -340,13 +342,13 @@ pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
     let projected = crate::resumable::projected_block_bindings(&normalized)
         .into_iter()
         .filter(|binding| binding.captures.is_empty())
-        .map(|binding| binding.statement_index)
-        .collect::<std::collections::BTreeSet<_>>();
+        .map(|binding| (binding.statement_index, binding.name))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut residual_input = b"birnam.initializer-residual.v1\0".to_vec();
     let mut non_method_input = b"birnam.non-method.v1\0".to_vec();
     for (index, span) in non_method_spans {
         append_digest_field(&mut non_method_input, &span);
-        if !projected.contains(&index) {
+        if !projected.contains_key(&index) {
             append_digest_field(&mut residual_input, &span);
         }
     }
@@ -374,6 +376,7 @@ pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
         name,
         requires,
         operations,
+        projected_globals: projected.into_values().collect(),
         inventory: crate::resumable::implementation_inventory(&normalized),
         initializer_residual_digest: sha256_hex(&residual_input),
         non_method_digest,

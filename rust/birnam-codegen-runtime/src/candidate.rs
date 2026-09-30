@@ -6,10 +6,19 @@ use birnam_codegen::{
     candidate as code, candidate_envelope as envelope, generation, source_revision,
 };
 use core::cell::Cell;
+#[path = "candidate_ledger.rs"]
+mod ledger;
+#[path = "candidate_preparation.rs"]
+mod preparation;
+#[path = "candidate_transaction.rs"]
+mod transaction;
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,
+    prepared: RefCell<Vec<preparation::Prepared>>,
+    next_token: Cell<usize>,
+    ledger: RefCell<Option<ledger::Ledger>>,
 }
 pub(super) struct Candidate {
     pub unit: Oop,
@@ -21,6 +30,9 @@ pub(super) struct Candidate {
     pub plan: code::Plan,
     pub objects: Vec<Vec<u8>>,
     pub mapped: Option<Mapped>,
+    construction_started: bool,
+    constructed: Option<transaction::Constructed>,
+    activation: Option<transaction::Activation>,
 }
 pub(super) struct Mapped {
     pub factory: Oop,
@@ -37,8 +49,16 @@ impl Candidates {
                     values.push(m.factory);
                     values.extend(&m.adapters);
                 }
+                if let Some(v) = &c.constructed {
+                    values.extend(v.roots());
+                }
+                if let Some(v) = &c.activation {
+                    values.extend(v.roots());
+                }
                 values
             })
+            .chain(self.prepared.borrow().iter().flat_map(|p| p.roots()))
+            .chain(self.ledger.borrow().iter().flat_map(|l| l.roots()))
             .collect()
     }
 }
@@ -51,13 +71,20 @@ pub(super) enum Op {
     Map,
     Mapped,
     Path,
+    Prepare,
+    DiscardPrepared,
+    AdoptInitial,
+    Reconcile,
+    Commit,
+    PrepareRollback,
+    CommitRollback,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
             Self::Compile => 3,
             Self::CompileSelected | Self::Successor => 4,
-            Self::Inspect => 2,
+            Self::Inspect | Self::Prepare | Self::PrepareRollback => 2,
             _ => 1,
         }
     }
@@ -352,6 +379,15 @@ pub(super) unsafe fn operation(
         let _busy = Busy(&s.candidates.busy);
         s.sources.clear_error();
         match op {
+            Op::Commit => transaction::commit(s, q, object(args[0])?, false),
+            Op::CommitRollback => transaction::commit(s, q, object(args[0])?, true),
+            Op::PrepareRollback => {
+                transaction::prepare_rollback(s, q, object(args[0])?, object(args[1])?)
+            }
+            Op::AdoptInitial => ledger::adopt_initial(s, q, object(args[0])?),
+            Op::Reconcile => ledger::reconcile_candidate(s, q, object(args[0])?),
+            Op::Prepare => preparation::prepare(s, q, object(args[0])?, object(args[1])?),
+            Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),
             Op::Compile | Op::CompileSelected => {
                 let source = object(args[0])?;
                 let name = object(args[1])?;
@@ -654,6 +690,9 @@ pub(super) unsafe fn operation(
                     plan,
                     objects,
                     mapped: None,
+                    construction_started: false,
+                    constructed: None,
+                    activation: None,
                 });
                 Ok(Operand::object(unit))
             }

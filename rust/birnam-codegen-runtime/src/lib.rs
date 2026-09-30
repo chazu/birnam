@@ -511,6 +511,13 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 Op::Candidate(candidate::Op::Inspect),
             ),
             (vt, b"mapCandidate:", Op::Candidate(candidate::Op::Map)),
+            (vt, b"prepareActivation:plan:", Op::Candidate(candidate::Op::Prepare)),
+            (vt, b"discardPrepared:", Op::Candidate(candidate::Op::DiscardPrepared)),
+            (vt, b"commitPrepared:", Op::Candidate(candidate::Op::Commit)),
+            (vt, b"prepareRollback:plan:", Op::Candidate(candidate::Op::PrepareRollback)),
+            (vt, b"commitPreparedRollback:", Op::Candidate(candidate::Op::CommitRollback)),
+            (vt, b"adoptInitialGeneration:", Op::Candidate(candidate::Op::AdoptInitial)),
+            (vt, b"reconcileCandidate:", Op::Candidate(candidate::Op::Reconcile)),
             (
                 vt,
                 b"candidateMapped:",

@@ -381,6 +381,7 @@ mod tests {
             RevisionMetadata {
                 name: name.to_vec(),
                 requires: vec![],
+                projected_globals: vec![],
                 operations: vec![RevisionOperation {
                     target: b"Integer".to_vec(),
                     selector: b"answer".to_vec(),
@@ -545,6 +546,7 @@ mod tests {
             metadata: RevisionMetadata {
                 name: b"trace".to_vec(),
                 requires: Vec::new(),
+                projected_globals: vec![],
                 operations: vec![RevisionOperation {
                     target: b"Trace".to_vec(),
                     selector: b"run".to_vec(),
