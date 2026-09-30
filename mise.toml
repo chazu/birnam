@@ -36,24 +36,9 @@ run = "CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline"
 description = "Run the pure-Rust floor tests under nightly Miri"
 run = "cargo +nightly miri test --workspace --locked --offline"
 
-[tasks.root-registry]
-description = "Check native root registration, snapshots and admission (debug)"
-run = "scripts/root-registry-test.sh"
-
-[tasks.gc-settings]
-description = "Check native GC settings, allocation policy and admission (debug)"
-run = "scripts/gc-settings-test.sh"
 [tasks.native-stack]
 description = "Check production GC, including native stack and register roots (debug)"
 run = "scripts/native-message-test.sh"
-
-[tasks.deferred-identity]
-description = "Check deferred identity ownership, mixed journals, exhaustion, recovery and host admission (debug)"
-run = "scripts/deferred-identity-test.sh"
-
-[tasks.deferred-index]
-description = "Check lazy deferred-clone index ownership, ordered recovery, capacity and host admission (debug)"
-run = "scripts/deferred-index-test.sh"
 
 [tasks.siphon]
 description = "Check the production Siphon-to-Id handoff without upper modules"
@@ -66,10 +51,6 @@ run = "scripts/native-message-test.sh"
 [tasks.host-cli]
 description = "Install and validate the migrated source Host/CLI"
 run = "bash scripts/host-cli-test.sh"
-
-[tasks.reflection-boundaries]
-description = "Check production namespace admission, native enumeration, typed errors and GC"
-run = "bash scripts/runtime-services-test.sh '' reflection"
 
 [tasks.rust-dylib-audit]
 description = "Audit Rust floor dependencies, install name, paths, and exports"
@@ -96,7 +77,7 @@ description = "Run the birnam-mode ERT suite (set BIRNAM_EMACS to pick an Emacs)
 run = "bash scripts/emacs-test.sh"
 
 [tasks.verify]
-description = "Run bounded everyday correctness (use verify-plan to preview)"
+description = "Run workspace, native-message and installed Host acceptance"
 run = "python3 scripts/validate.py --suite routine"
 
 [tasks.verify-plan]
@@ -104,12 +85,8 @@ description = "List everyday checks and deadlines without executing them"
 run = "python3 scripts/validate.py --suite routine --plan"
 
 [tasks.verify-exhaustive]
-description = "Run complete compiler/recovery matrices for relevant changes"
+description = "Run all migrated correctness and generation lifecycle checks"
 run = "python3 scripts/validate.py --suite exhaustive"
-
-[tasks.verify-performance]
-description = "Bounded practical slowdown screen; no quiet-host wait"
-run = "python3 scripts/validate.py --suite performance"
 
 [tasks.verify-release]
 description = "Run exhaustive correctness plus independent cold-source release proof"

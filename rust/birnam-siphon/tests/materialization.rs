@@ -387,6 +387,34 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
         h.count(first, b"captureCount", 1);
         assert_eq!(h.number(h.call(first, b"captureAt:", &[h.int(0)])), 11);
         assert_eq!(h.number(h.call(second, b"value", &[])), 29);
+        // Source Blocks share canonical code but keep their own Method behavior.
+        // An edit survives eviction without changing another instance.
+        let private = h.keep(behavior_of(&h, first));
+        assert_ne!(behavior_of(&h, second), private);
+        let original = binding(&h, private, b"value");
+        let replacement = h.int(999);
+        set(
+            &h,
+            private,
+            b"value",
+            NativeEntry::new(constant, replacement.cast()),
+        );
+        assert_eq!(h.call(first, b"value", &[]), replacement);
+        assert_eq!(h.number(h.call(second, b"value", &[])), 29);
+        h.call(codegen, b"evictMaterializations", &[]);
+        h.collect();
+        let third = h.call(factory, b"value:", &[h.int(37)]);
+        assert_ne!(behavior_of(&h, third), private);
+        assert_eq!(
+            h.call(third, b"codeObject", &[]),
+            h.call(first, b"codeObject", &[])
+        );
+        assert_eq!(h.call(first, b"value", &[]), replacement);
+        assert_eq!(h.number(h.call(third, b"value", &[])), 37);
+        set(&h, private, b"value", original);
+        assert_eq!(h.number(h.call(first, b"value", &[])), 11);
+        assert_eq!(h.number(h.call(second, b"value", &[])), 29);
+        assert_eq!(h.number(h.call(third, b"value", &[])), 37);
         let capture_code = h.call(first, b"codeObject", &[]);
         for resumable in [false, true] {
             let held = h.vector(&[h.int(101)]);
@@ -630,20 +658,39 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
         let baseline = h.units();
         assert_eq!(baseline, 0);
         for resumable in [false, true] {
-            let source = h.eval(b"[:held | [| held]]");
-            let co = h.call(source, b"codeObject", &[]);
-            let outer = h.materialize(co, &[], resumable);
-            let inner = h.call(outer, b"value:", &[h.int(87)]);
-            let token = retain(id, h.roots, inner);
-            h.call(codegen, b"evictMaterializations", &[]);
-            h.clear_from(0);
-            h.collect();
-            assert_eq!(h.units(), baseline + 1);
-            assert_eq!(h.number(h.call(inner, b"value", &[])), 87);
-            h.clear_from(0);
-            release(id, h.roots, token);
-            h.collect();
-            assert_eq!(h.units(), baseline);
+            for cycle in 0..3 {
+                let source = h.eval(b"[:held | [| held]]");
+                let co = h.call(source, b"codeObject", &[]);
+                let outer = h.materialize(co, &[], resumable);
+                let cell = h.eval(b"[db cellFor: [Object clone] attr: #retainedMutableCapture]");
+                h.call(cell, b"set:", &[h.int(87)]);
+                let inner = h.call(outer, b"value:", &[cell]);
+                let alias = h.call(inner, b"clone", &[]);
+                assert_ne!(inner, alias);
+                let token = retain(id, h.roots, inner);
+                let alias_token = retain(id, h.roots, alias);
+                h.call(codegen, b"evictMaterializations", &[]);
+                h.clear_from(0);
+                h.collect();
+                assert_eq!(h.units(), baseline + 1);
+                assert_eq!(h.call(inner, b"value", &[]), cell);
+                assert_eq!(h.call(alias, b"value", &[]), cell);
+                h.call(cell, b"set:", &[h.int(91 + cycle)]);
+                assert_eq!(h.number(h.call(cell, b"value", &[])), 91 + cycle as usize);
+                h.clear_from(0);
+                release(id, h.roots, token);
+                h.collect();
+                // A direct clone alias alone still owns the native context and
+                // the shared mutable capture after every cache has been evicted.
+                assert_eq!(h.units(), baseline + 1);
+                let held = h.call(alias, b"value", &[]);
+                assert_eq!(held, cell);
+                assert_eq!(h.number(h.call(held, b"value", &[])), 91 + cycle as usize);
+                h.clear_from(0);
+                release(id, h.roots, alias_token);
+                h.collect();
+                assert_eq!(h.units(), baseline);
+            }
         }
     }
 }

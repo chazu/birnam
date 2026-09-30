@@ -144,7 +144,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         let db = named(b"db");
         let yes = named(b"true");
         let no = named(b"false");
-        let body = b"let ledgerHelper := [| 17]; [Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | [ledgerHelper value]]]; [Reflect defineMethod: #ledgerOverride on: Integer as: [:self | 1]]";
+        let body = b"let ledgerHelper := [| 17]; let ledgerProjected := [| 1]; [Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | [ledgerHelper value]]]; [Reflect defineMethod: #ledgerOverride on: Integer as: [:self | 1]]";
         let evaluated = call(cg, b"evalPersisting:", &[text(body)]);
         assert_eq!(call(evaluated, b"isError", &[]), no);
         let mut source = b"[Module named: #ledgerFixture requires: #[]]; ".to_vec();
@@ -167,7 +167,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             &[sym(b"LedgerIntegerAlias"), named(b"Integer")],
         );
         let override_body =
-            b"[Reflect defineMethod: #ledgerOverride on: LedgerIntegerAlias as: [:self | 2]]; let System := System; [Reflect defineMethod: #ledgerLexicalEmbed on: LedgerIntegerAlias as: [:self | [System embedFile: \"never-created.bin\"]]]";
+            b"let ledgerProjected := [| 2]; [Reflect defineMethod: #ledgerOverride on: LedgerIntegerAlias as: [:self | 2]]; let System := System; [Reflect defineMethod: #ledgerLexicalEmbed on: LedgerIntegerAlias as: [:self | [System embedFile: \"never-created.bin\"]]]";
         call(cg, b"evalPersisting:", &[text(override_body)]);
         let mut override_source =
             b"[Module named: #ledgerOverride requires: #[#ledgerFixture]]; ".to_vec();
@@ -182,7 +182,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         let temp = std::env::temp_dir().join(format!("birnam-ledger-embed-{}", std::process::id()));
         std::fs::create_dir_all(&temp).unwrap();
         std::fs::write(temp.join("asset.bin"), b"\0\xffasset").unwrap();
-        let embedded_body = b"[Reflect defineMethod: #ledgerEmbedded on: Integer as: [:self | [System embedFile: \"asset.bin\"]]]";
+        let embedded_body = b"let ledgerEmbeddedGlobal := [| [System embedFile: \"asset.bin\"]]; [Reflect defineMethod: #ledgerEmbedded on: Integer as: [:self | [System embedFile: \"asset.bin\"]]]";
         let file = temp.join("embedded.birnam");
         std::fs::write(&file, embedded_body).unwrap();
         let loaded = call(
@@ -310,6 +310,18 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"at:put:",
             &[sym(b"LedgerIntegerAlias"), named(b"Integer")],
         );
+        // Source authority includes the final capture-free global Block body.
+        // The dependent module's ledgerProjected overrides the earlier module.
+        let globals = named(b"Globals");
+        let helper_name = sym(b"ledgerHelper");
+        let helper = call(globals, b"at:", &[helper_name]);
+        let wrong_helper = call(cg, b"eval:", &[text(b"[| 99]")]);
+        for replacement in [wrong_helper, integer(17), named(b"nil")] {
+            call(globals, b"at:put:", &[helper_name, replacement]);
+            let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+            assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
+        }
+        call(globals, b"at:put:", &[helper_name, helper]);
         release(id, named(b"Roots"), method_root);
         assert_eq!(
             call(cg, b"adoptInitialGeneration:", &[generation]),

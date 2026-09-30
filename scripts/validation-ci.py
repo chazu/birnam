@@ -9,13 +9,11 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from closure_plan import closure_plan, TARGET
-from validate import plan
-from validation_support import ROOT, PlanRunner, audit_steps, save_json, sha
+from validate import HOST_GROUPS, plan
+from validation_support import ROOT, audit_plan, save_json
 
 PREFIX = Path('/private/tmp/birnam-ci/prefix')
 OUTPUT = ROOT / '.cargo-target/validation'
-LIBRARIES = ('libbirnam_id.dylib', 'libbirnam_codegen_runtime.dylib', 'libbirnam_tcc.dylib')
 
 
 def select(paths):
@@ -35,30 +33,25 @@ def scope():
 
 def groups(suite):
     steps=plan(suite,PREFIX,OUTPUT)
-    matrices={s['name'] for s in closure_plan(PREFIX,OUTPUT/'matrices','exhaustive')
-              if not s['name'].startswith('diagnostics-') and s['name'] not in ('normal-probe-absence','complete-matrix-oracle')}
-    core=[s['name'] for s in steps if s['name'] not in matrices and s['name']!='complete-matrix-oracle']
-    return steps,core,[s for s in steps if s['name'] in matrices]
+    integrations = {'host-' + group for group in HOST_GROUPS}
+    core = [s['name'] for s in steps if s['name'] not in integrations]
+    return steps, core, [s for s in steps if s['name'] in integrations]
 
 
 def shards(steps, count=4):
-    # Approximate process counts only balance scheduling; they never determine
-    # coverage or acceptance. Debug cases cost more; all cases remain assigned.
-    def weight(step):
-        argv=' '.join(step['argv'])
-        cases=next((n for text,n in (('closure-sequence-smoke',320),('closure-budget-smoke',208),
-                   ('closure-string-cleanup',240),('unboxed-numeric-control',448),
-                   ('unboxed-numeric-smoke',146),('loop-measurement',96)) if text in argv),32)
-        return cases*(5 if step['name'].endswith('-debug') else 1)
-    bins=[[] for _ in range(count)]; totals=[0]*count
-    for step in sorted(steps,key=lambda s:(-weight(s),s['name'])):
-        index=min(range(count),key=lambda i:totals[i])
-        bins[index].append(step['name']);totals[index]+=weight(step)
+    # Each integration group has its own prefix and fixture lifetime. Time limits
+    # only balance work; required receipts determine coverage.
+    bins = [[] for _ in range(count)]
+    totals = [0] * count
+    for step in sorted(steps, key=lambda s: (-s['timeout'], s['name'])):
+        index = min(range(count), key=lambda i: totals[i])
+        bins[index].append(step['name'])
+        totals[index] += step['timeout']
     return bins
 
 
 def execute(suite, names=None):
-    argv=[sys.executable,str(ROOT/'scripts/validate.py'),'--suite',suite,'--prefix',str(PREFIX),'--deadline','1800']
+    argv=[sys.executable,str(ROOT/'scripts/validate.py'),'--suite',suite,'--prefix',str(PREFIX),'--deadline','4800']
     if names:argv+=['--only',*names]
     subprocess.run(argv,cwd=ROOT,check=True)
 
@@ -68,9 +61,6 @@ def pack_seed(destination):
     with tarfile.open(destination,'w:gz') as archive:
         archive.add(PREFIX,arcname='prefix')
         archive.add(OUTPUT,arcname='validation')
-        for profile in ('debug','release'):
-            for name in LIBRARIES:
-                archive.add(TARGET/profile/name,arcname=f'diagnostics/{profile}/{name}')
 
 
 def unpack_seed(source):
@@ -82,7 +72,6 @@ def unpack_seed(source):
     PREFIX.parent.mkdir(parents=True,exist_ok=True)
     shutil.copytree(seed/'prefix',PREFIX,dirs_exist_ok=True)
     shutil.copytree(seed/'validation',OUTPUT,dirs_exist_ok=True)
-    shutil.copytree(seed/'diagnostics',TARGET,dirs_exist_ok=True)
 
 
 def main():
@@ -100,9 +89,9 @@ def main():
     if not args.suite:p.error('--suite is required')
     if args.stage=='core':
         _,core,_=groups(args.suite)
-        execute(args.suite,None if args.suite=='routine' else core)
+        execute(args.suite,core)
         shutil.copy2(OUTPUT/'run.json',OUTPUT/'stage-core.json')
-        if args.suite!='routine':pack_seed(args.seed)
+        pack_seed(args.seed)
     elif args.stage=='matrix':
         if args.shard is None:p.error('--shard is required')
         unpack_seed(args.seed)
@@ -120,14 +109,11 @@ def main():
                     raise ValueError('workers used different prerequisites: '+label)
                 rows[label]=row
         expected=plan(args.suite,PREFIX,OUTPUT)
-        audit_steps(rows,[s['name'] for s in expected if s['name']!='complete-matrix-oracle'])
-        runner=PlanRunner(OUTPUT,deadline=180)
-        runner.rows.update(rows)
-        runner.run(**next(s for s in expected if s['name']=='complete-matrix-oracle'))
-        audit_steps(runner.rows,[s['name'] for s in expected])
-        runner.receipt.update(status='passed',suite=args.suite,selected_steps=[s['name'] for s in expected])
-        runner.save()
-        print('CI: all disjoint matrices and complete coverage oracle passed')
+        audit_plan(rows, expected)
+        save_json(OUTPUT/'run.json', dict(schema=1, status='passed', suite=args.suite,
+                  selected_steps=[s['name'] for s in expected], steps=rows))
+        print('CI: all native and installed Host acceptance groups passed')
+
 
 
 if __name__=='__main__':main()

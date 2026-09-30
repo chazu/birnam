@@ -298,8 +298,11 @@ and live portable bindings once. Adoption rejects unavailable targets, missing
 or unexpected bindings, and portable Method bodies that differ from the final
 source definition in dependency order, including aliases of one dictionary.
 Comparison preserves lexical captures and the literal compile-time embedding
-rewrite without reopening assets. Its transient ledger also records projected
-Globals and retains displaced Methods for inverse operations. Preparation checks
+rewrite without reopening assets. Capture-free projected global Blocks must also
+match the final source definition; missing, non-Block, captured or different-body
+values cannot establish the initial ledger. Dependency overrides are compared
+against the last definition. The transient ledger retains these Globals and
+displaced Methods for inverse operations. Preparation checks
 the complete ledger; `reconcileCandidate:` rejects drift without adopting the new
 binding. Unrelated Store facts remain outside that ledger. Repeating initial
 adoption validates the original snapshot and cannot clear an observed divergence.

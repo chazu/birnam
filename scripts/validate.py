@@ -6,80 +6,51 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
-from validation_support import ROOT, PlanRunner, audit_steps
-from closure_plan import closure_plan
+from validation_support import ROOT, PlanRunner, audit_plan
 
 PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'src/id/**/*', 'modules/**/*',
               'vendor/libtcc-src/**/*', 'wrapped/**/*.dylib')
-NATIVE = PRODUCTION + ('scripts/*lifecycle*', 'scripts/portable-image-v8-smoke.sh',
-                      'scripts/stackless-control-smoke.sh', 'scripts/task-control-smoke.*',
-                      'scripts/multicore-smoke.*',
-                      'scripts/worker-service-smoke.*',
-                      'scripts/closure-elision-smoke.sh',
-                      'scripts/rust-driver-native-smoke.sh', 'scripts/fixtures/*', 'abi/**/*')
+HOST_GROUPS = ('cli', 'image', 'interaction', 'generation', 'tasks')
 
 
 def plan(suite, prefix, output):
     def step(name, argv, inputs, **kwargs):
         return dict(name=name, argv=[str(a) for a in argv], inputs=inputs, **kwargs)
     result = [step('tool-tests', ['python3', 'scripts/validation-support-test.py'],
-                   ('scripts/validation*.py', 'scripts/validate.py', 'scripts/closure_plan.py', 'scripts/rust-install.sh', 'scripts/*timing*.py')),
+                   ('scripts/validation*.py', 'scripts/validate.py', 'scripts/host-cli-test.sh',
+                    'scripts/rust-install.sh', 'scripts/*timing*.py')),
               step('workspace', ['cargo', 'test', '--workspace', '--locked', '--offline'],
-                   PRODUCTION, timeout=300)]
+                   PRODUCTION, timeout=600)]
     for fixture in ('stackless-s2', 'portable-code-v1'):
         result.append(step(fixture, ['python3', f'abi/fixtures/{fixture}/verify.py'], (f'abi/fixtures/{fixture}/*',)))
     for script in ('release-changelog-test.py', 'v014-performance-acceptance-test.py', 'v015-performance-acceptance-test.py'):
         result.append(step(script[:-3], ['python3', 'scripts/' + script], ('scripts/' + script, 'scripts/' + script.replace('-test', ''))))
     result.append(step('archive-test', ['python3', 'scripts/measurement-archive-test.py'], ('scripts/measurement*.py',)))
+    result.append(step('native', ['bash', 'scripts/native-message-test.sh'],
+                       PRODUCTION + ('scripts/native-message-test.sh', 'abi/**/*'), timeout=900))
     result.append(step('install', ['bash', 'scripts/rust-install.sh', 'install', '--root', ROOT,
                        '--prefix', prefix, '--profile', 'release', '--build-cache', ROOT / '.cargo-target/install'],
-                       PRODUCTION + ('scripts/rust-install.sh', 'docs/guide/**/*'), artifacts=(str(prefix),), timeout=300))
-    result.append(step('native', ['bash', 'scripts/rust-driver-native-smoke.sh', prefix], NATIVE,
-                       depends=('install',), timeout=600))
-    if suite != 'performance':
-        result.append(step('source-global-lookup', ['bash', 'scripts/source-global-lookup-smoke.sh', prefix],
-                           PRODUCTION + ('scripts/source-global-lookup-smoke.sh',),
-                           depends=('install',), timeout=600))
-        result.append(step('method-values', ['bash', 'scripts/method-values-smoke.sh', prefix],
-                           PRODUCTION + ('scripts/method-values-smoke.sh',),
-                           depends=('install',), timeout=600))
-        result.append(step('method-unit-lifetime', ['bash', 'scripts/method-unit-lifetime-smoke.sh', prefix],
-                           PRODUCTION + ('scripts/method-unit-lifetime-smoke.sh',),
-                           depends=('install',), timeout=300))
-    result.append(step('host-bridge', ['python3', 'scripts/host-bridge-test.py',
-                       '--prefix', prefix, '--output', output/'host-bridge.json'],
-                       PRODUCTION + ('scripts/host-bridge-test.py',), depends=('install',),
-                       artifacts=(str(output/'host-bridge.json'),), timeout=300))
-    result.append(step('host-project', ['env', 'BIRNAM_BIN=' + str(prefix/'bin/birnam'),
-                       'bash', 'scripts/rust-project-check-smoke.sh'],
-                       PRODUCTION + ('scripts/rust-project-check-smoke.sh',),
-                       depends=('install',), timeout=600))
-    if suite == 'performance':
-        result.append(step('performance', ['python3', 'scripts/performance-smoke.py', '--prefix', prefix,
-                           '--output', output/'performance.json'], PRODUCTION +
-                           ('scripts/performance-smoke.py', 'scripts/recovery-applications.py', 'scripts/benchmark_support.py',
-                            'bench/native-tier-focus.birnam'), depends=('workspace', 'native'),
-                           artifacts=(str(output/'performance.json'),), timeout=600))
-        return result
-    coverage = 'exhaustive' if suite in ('exhaustive', 'release') else 'routine'
-    result.extend(closure_plan(prefix, output/'matrices', coverage))
-    if suite in ('exhaustive', 'release'):
-        result.append(step('recovery', ['python3', 'scripts/recovery-graphs.py', '--all-families', '--output', output / 'recovery.json'],
-                           PRODUCTION + ('scripts/recovery-graphs.py', 'scripts/compatibility_authority.py',
-                                         'scripts/compatibility-authority-test.py', 'scripts/fixtures/*', 'abi/**/*'),
-                           artifacts=(str(output / 'recovery.json'),), timeout=600))
+                       PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'docs/guide/**/*'),
+                       artifacts=(str(prefix),), timeout=900))
+    # Keep all installed checks in every suite. CI shards the groups, while local
+    # execution is serial so self-spawning Host tests never race a binary rebuild.
+    for group in HOST_GROUPS:
+        result.append(step('host-' + group,
+                           ['bash', 'scripts/host-cli-test.sh', '--prefix', prefix, '--group', group],
+                           PRODUCTION + ('scripts/*', 'abi/**/*', 'tests/**/*', 'examples/**/*'),
+                           depends=('install',), timeout={'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
     if suite == 'release':
         result.append(step('dylib-audit', ['bash', 'scripts/rust-dylib-audit.sh'],
                            PRODUCTION + ('scripts/rust-dylib-audit.sh', 'abi/rust-id-dylib-v1.json'), timeout=300))
         result.append(step('cold-source', ['bash', 'scripts/rust-driver-cold-archive-smoke.sh'],
-                           PRODUCTION + ('scripts/rust-install.sh', 'scripts/rust-driver-cold-archive-smoke.sh',
-                                         'docs/guide/**/*', 'examples/fizzbuzz.birnam'), timeout=600))
+                           PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'scripts/rust-driver-cold-archive-smoke.sh',
+                                         'docs/guide/**/*', 'examples/fizzbuzz.birnam'), timeout=1200))
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=('routine', 'exhaustive', 'release', 'performance'), default='routine')
+    parser.add_argument('--suite', choices=('routine', 'exhaustive', 'release'), default='routine')
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--deadline', type=int, help='Total seconds; expiry is incomplete, never a pass')
     parser.add_argument('--no-resume', action='store_true')
@@ -97,14 +68,14 @@ def main():
         for step in reversed(steps):
             if step['name'] in selected: selected.update(step.get('depends', ()))
         steps = [step for step in steps if step['name'] in selected]
-    deadline = args.deadline if args.deadline is not None else (900 if args.suite == 'routine' else 1800)
+    deadline = args.deadline if args.deadline is not None else 7200
     if deadline <= 0: parser.error('deadline must be positive')
     if args.plan:
         print(json.dumps(dict(suite=args.suite, deadline_seconds=deadline, steps=steps), indent=2))
         return
     args.output.mkdir(parents=True, exist_ok=True)
     (ROOT / '.cargo-target').mkdir(exist_ok=True)
-    # One checkout owns the shared diagnostic targets and default published prefix.
+    # One checkout owns the shared Cargo targets and default published prefix.
     with (ROOT / '.cargo-target/validation.lock').open('w') as lock:
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: parser.error('another validation plan is active in this checkout')
@@ -112,7 +83,7 @@ def main():
         runner.receipt.update(suite=args.suite, selected_steps=[s['name'] for s in steps])
         try:
             for step in steps: runner.run(**step)
-            audit_steps(runner.rows, [step['name'] for step in steps])
+            audit_plan(runner.rows, steps)
             runner.receipt['status'] = 'passed'
         except BaseException as error:
             runner.receipt.update(status='failed', error=str(error))

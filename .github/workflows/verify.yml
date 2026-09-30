@@ -15,7 +15,7 @@ jobs:
   core:
     name: Core contracts and shared builds
     runs-on: macos-14
-    timeout-minutes: 35
+    timeout-minutes: 85
     outputs:
       suite: ${{ steps.scope.outputs.suite }}
     steps:
@@ -38,8 +38,7 @@ jobs:
         run: python3 scripts/validation-ci.py select
       - name: Verify core contracts and prepare shared artifacts
         run: python3 scripts/validation-ci.py core --suite "${{ steps.scope.outputs.suite }}"
-      - name: Share installation and diagnostic artifacts
-        if: steps.scope.outputs.suite != 'routine'
+      - name: Share installation and validation receipts
         uses: actions/upload-artifact@v4
         with:
           name: validation-seed
@@ -55,11 +54,10 @@ jobs:
           retention-days: 30
 
   matrices:
-    name: Exhaustive matrices (${{ matrix.shard }})
+    name: Installed Host acceptance (${{ matrix.shard }})
     needs: core
-    if: needs.core.outputs.suite != 'routine'
     runs-on: macos-14
-    timeout-minutes: 35
+    timeout-minutes: 85
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -82,7 +80,7 @@ jobs:
         with:
           name: validation-seed
           path: .cargo-target
-      - name: Run disjoint matrix shard using shared artifacts
+      - name: Run independent Host acceptance group
         run: python3 scripts/validation-ci.py matrix --suite "${{ needs.core.outputs.suite }}" --shard "${{ matrix.shard }}"
       - name: Retain matrix evidence
         if: always()
@@ -94,9 +92,8 @@ jobs:
           retention-days: 30
 
   coverage:
-    name: Verify complete matrix coverage
+    name: Verify complete acceptance coverage
     needs: [core, matrices]
-    if: needs.core.outputs.suite != 'routine'
     runs-on: macos-14
     timeout-minutes: 10
     steps:
@@ -121,7 +118,7 @@ jobs:
           pattern: validation-matrix-*
           merge-multiple: true
           path: .cargo-target/validation
-      - name: Verify every prerequisite and the full coverage oracle
+      - name: Verify every required check and its prerequisite evidence
         run: python3 scripts/validation-ci.py collect --suite "${{ needs.core.outputs.suite }}"
       - name: Retain complete acceptance evidence
         if: always()

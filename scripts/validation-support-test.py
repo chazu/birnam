@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from validation_support import ROOT, PlanRunner, command, save_json, audit_steps
+from validation_support import ROOT, PlanRunner, command, save_json, audit_steps, audit_plan
 
 
 class ValidationTests(unittest.TestCase):
@@ -73,46 +73,35 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(sum(s['name']=='workspace' for s in release),1)
             self.assertEqual(sum(s['name']=='cold-source' for s in release),1)
             self.assertFalse(any(s['name']=='cold-source' for s in routine))
-            self.assertEqual({s['name'] for s in routine if s['name'].startswith('diagnostics-')},{'diagnostics-release'})
-            self.assertEqual({s['name'] for s in release if s['name'].startswith('diagnostics-')},{'diagnostics-debug','diagnostics-release'})
-            for steps in (routine,release):
-                sequences=[s for s in steps if 'scripts/closure-sequence-smoke.py' in s['argv']]
-                self.assertEqual(len(sequences),4 if steps is routine else 8)
-                self.assertTrue(all('--quick' not in s['argv'] for s in steps))
-            self.assertIn('--all-families',next(s for s in release if s['name']=='recovery')['argv'])
+            for steps in (routine, release):
+                native = next(s for s in steps if s['name'] == 'native')
+                self.assertEqual(native['argv'], ['bash', 'scripts/native-message-test.sh'])
+                hosts = [s for s in steps if s['name'].startswith('host-')]
+                self.assertEqual({s['name'] for s in hosts},
+                                 {'host-cli', 'host-image', 'host-interaction', 'host-generation', 'host-tasks'})
+                self.assertTrue(all(s['depends'] == ('install',) for s in hosts))
+                self.assertNotIn('birnam-runtime', json.dumps(steps))
 
-    def test_generated_loop_invariant_commands_satisfy_the_actual_parser(self):
-        import argparse
-        import runpy
-        from unittest import mock
-        from validate import plan
-        original_parse = argparse.ArgumentParser.parse_args
-
-        class Parsed(Exception):
-            pass
-
-        checked = []
-        for suite in ('routine', 'release'):
-            for step in plan(suite, ROOT / 'test-prefix', ROOT / 'test-output'):
-                if not step['name'].startswith('loop-invariant-'):
-                    continue
-                checked.append((suite, step['name']))
-                with self.subTest(suite=suite, step=step['name']):
-                    captured = []
-                    def parse(parser, *args, **kwargs):
-                        captured.append(original_parse(parser, *args, **kwargs))
-                        # Stop after real argument validation, before any floor/file access.
-                        raise Parsed()
-                    argv = step['argv'][1:]
-                    with mock.patch.object(sys, 'argv', argv), \
-                         mock.patch.object(argparse.ArgumentParser, 'parse_args', parse), \
-                         self.assertRaises(Parsed):
-                        runpy.run_path(str(ROOT / argv[0]), run_name='__main__')
-                    expected = step['name'].rsplit('-', 1)[1]
-                    self.assertEqual(captured[0].profile, expected)
-                    self.assertEqual(captured[0].floor.parent.name, expected)
-        self.assertEqual(checked, [('release', 'loop-invariant-debug'),
-                                   ('release', 'loop-invariant-release')])
+    def test_plan_audit_rejects_receipts_for_another_command_or_dependency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'source'
+            source.write_text('input')
+            step = dict(name='case', argv=[sys.executable, '-c', 'print("accepted")'],
+                        inputs=(str(source),))
+            runner = PlanRunner(Path(directory) / 'evidence', deadline=30)
+            runner.run(**step)
+            audit_plan(runner.rows, [step])
+            for changed, message in [
+                (dict(argv=[sys.executable, '-c', 'raise SystemExit(1)']), 'command'),
+                (dict(depends=('unexecuted',)), 'prerequisites'),
+                (dict(inputs=(str(source), 'Cargo.toml')), 'inputs'),
+                (dict(artifacts=(str(source),)), 'outputs'),
+            ]:
+                with self.subTest(changed=changed):
+                    with self.assertRaisesRegex(ValueError, message):
+                        audit_plan(runner.rows, [dict(step, **changed)])
+            with self.assertRaisesRegex(ValueError, 'command'):
+                audit_plan({}, [step])
 
     def test_ci_shards_cover_each_matrix_once(self):
         import importlib.util
@@ -123,9 +112,9 @@ class ValidationTests(unittest.TestCase):
             names=[name for shard in ci.shards(matrices) for name in shard]
             self.assertEqual(len(names),len(set(names)))
             self.assertEqual(set(names),{s['name'] for s in matrices})
-            self.assertEqual(set(core)|set(names)|{'complete-matrix-oracle'},{s['name'] for s in steps})
+            self.assertEqual(set(core)|set(names),{s['name'] for s in steps})
         self.assertEqual(ci.select(['docs/validation.md']),'routine')
-        self.assertEqual(ci.select(['rust/birnam-runtime/src/runtime.rs']),'exhaustive')
+        self.assertEqual(ci.select(['rust/birnam-execution/src/lib.rs']),'exhaustive')
         self.assertEqual(ci.select(['scripts/rust-install.sh']),'release')
 
     def test_ci_seed_preserves_artifact_bytes_and_executable_mode(self):
@@ -135,19 +124,14 @@ class ValidationTests(unittest.TestCase):
         ci=importlib.util.module_from_spec(spec);spec.loader.exec_module(ci)
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary)
-            ci.ROOT=root;ci.PREFIX=root/'published/prefix';ci.OUTPUT=root/'evidence';ci.TARGET=root/'diagnostics'
+            ci.ROOT=root;ci.PREFIX=root/'published/prefix';ci.OUTPUT=root/'evidence'
             binary=ci.PREFIX/'bin/birnam';binary.parent.mkdir(parents=True);binary.write_bytes(b'executable');binary.chmod(0o755)
             ci.OUTPUT.mkdir();(ci.OUTPUT/'proof.json').write_text('{"status":"passed"}')
-            for profile in ('debug','release'):
-                (ci.TARGET/profile).mkdir(parents=True)
-                for name in ci.LIBRARIES:(ci.TARGET/profile/name).write_text(profile+name)
             archive=root/'seed.tgz';ci.pack_seed(archive)
-            shutil.rmtree(ci.PREFIX);shutil.rmtree(ci.OUTPUT);shutil.rmtree(ci.TARGET)
+            shutil.rmtree(ci.PREFIX);shutil.rmtree(ci.OUTPUT)
             ci.unpack_seed(archive)
             self.assertEqual(binary.read_bytes(),b'executable')
             self.assertEqual(binary.stat().st_mode & 0o777,0o755)
-            for profile in ('debug','release'):
-                for name in ci.LIBRARIES:self.assertEqual((ci.TARGET/profile/name).read_text(),profile+name)
             self.assertEqual(json.loads((ci.OUTPUT/'proof.json').read_text())['status'],'passed')
 
     def test_installer_cleanup_and_status(self):

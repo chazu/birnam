@@ -130,6 +130,23 @@ def audit_steps(rows, required):
     return visited
 
 
+def audit_plan(rows, steps):
+    """Bind complete receipts to the requested plan, not just passing step names."""
+    for step in steps:
+        row = rows.get(step['name'], {})
+        binding = row.get('binding', {})
+        if binding.get('argv') != [str(a) for a in step['argv']]:
+            raise ValueError('phase command differs from plan: ' + step['name'])
+        if set(binding.get('dependencies', {})) != set(step.get('depends', ())):
+            raise ValueError('phase prerequisites differ from plan: ' + step['name'])
+        patterns = list(step['inputs']) + ['scripts/validation_support.py', 'scripts/validate.py']
+        if binding.get('patterns') != patterns:
+            raise ValueError('phase inputs differ from plan: ' + step['name'])
+        if row.get('artifact_patterns') != list(step.get('artifacts', ())):
+            raise ValueError('phase outputs differ from plan: ' + step['name'])
+    return audit_steps(rows, [step['name'] for step in steps])
+
+
 class PlanRunner:
     """One plan owns execution; cache entries bind commands, inputs and outputs."""
     def __init__(self, directory, *, deadline=900, resume=True):

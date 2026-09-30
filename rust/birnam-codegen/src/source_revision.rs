@@ -179,12 +179,19 @@ pub struct RevisionOperation {
 }
 
 #[derive(Clone)]
+pub struct ProjectedGlobal {
+    pub name: Vec<u8>,
+    /// Derived canonical body; excluded from frozen revision digests.
+    pub program: Vec<u8>,
+}
+
+#[derive(Clone)]
 pub struct RevisionMetadata {
     pub name: Vec<u8>,
     pub requires: Vec<Vec<u8>>,
     pub operations: Vec<RevisionOperation>,
     /// Capture-free top-level Block Globals eligible for generation journals.
-    pub projected_globals: Vec<Vec<u8>>,
+    pub projected_globals: Vec<ProjectedGlobal>,
     pub inventory: Vec<crate::resumable::ImplementationKey>,
     pub initializer_residual_digest: [u8; 64],
     pub non_method_digest: [u8; 64],
@@ -358,8 +365,19 @@ pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
     let projected = crate::resumable::projected_block_bindings(&normalized)
         .into_iter()
         .filter(|binding| binding.captures.is_empty())
-        .map(|binding| (binding.statement_index, binding.name))
-        .collect::<std::collections::BTreeMap<_, _>>();
+        .map(|binding| {
+            let resolved =
+                crate::resumable::resolve_block_implementation(&normalized, &binding.key)?;
+            Some((
+                binding.statement_index,
+                ProjectedGlobal {
+                    name: binding.name,
+                    program: crate::portable::encode_block(resolved.block, &resolved.captures)
+                        .ok()?,
+                },
+            ))
+        })
+        .collect::<Option<std::collections::BTreeMap<_, _>>>()?;
     let mut residual_input = b"birnam.initializer-residual.v1\0".to_vec();
     let mut non_method_input = b"birnam.non-method.v1\0".to_vec();
     for (index, span) in non_method_spans {

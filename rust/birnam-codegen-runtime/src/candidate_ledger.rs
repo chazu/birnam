@@ -3,6 +3,55 @@
 use super::*;
 use preparation::{Binding, Global};
 
+// Inspect only Block values through their owner messages. Behavior ancestry
+// includes compiler-created private Block behaviors; it cannot admit a scalar
+// merely because that value happens to answer a similarly named message.
+unsafe fn projected_program(
+    s: &State,
+    q: &Scope<'_>,
+    value: Oop,
+) -> Result<Option<Vec<u8>>, Outcome> {
+    unsafe {
+        let block = s.named(b"BlockVt")?;
+        let mut behavior = s
+            .send(s.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+            .as_object();
+        let mut visited = std::collections::HashSet::new();
+        loop {
+            let Some(current) = behavior else {
+                return Ok(None);
+            };
+            if current == block {
+                break;
+            }
+            if !visited.insert(current) {
+                return Ok(None);
+            }
+            q.keep(current)?;
+            behavior = s
+                .send(s.id.receiver, b"parentOf:", &[Operand::object(current)])?
+                .as_object();
+        }
+        let nil = s.named(b"nil")?;
+        let code = call(s, q, value, b"codeObject", &[])?;
+        if code == nil {
+            return Ok(None);
+        }
+        let captures = call(s, q, value, b"captureCount", &[])?;
+        if preparation::number(s, captures)? != 0 {
+            return Ok(None);
+        }
+        let bytes = call(
+            s,
+            q,
+            s.named(b"CodeObject")?,
+            b"canonicalBytesOf:",
+            &[Operand::object(code)],
+        )?;
+        Ok(Some(s.bytes(bytes)?))
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct ManagedBinding {
     pub unit: Oop,
@@ -435,6 +484,7 @@ pub(super) unsafe fn adopt(
         // Multiple source names can address one dictionary. Validate the final
         // writer in dependency order, while retaining every named observation.
         let mut programs = Vec::<(Oop, Oop, Option<&[u8]>, Option<Vec<u8>>)>::new();
+        let mut global_programs = Vec::<(Oop, &[u8], Option<Oop>)>::new();
         for index in generation::generation_module_order(&modules).ok_or_else(invalid)? {
             let module = &modules[index];
             let unit = components[&module.name];
@@ -517,14 +567,30 @@ pub(super) unsafe fn adopt(
                     },
                 });
             }
-            for name in &module.metadata.projected_globals {
-                let name = symbol(s, q, name)?;
+            for projected in &module.metadata.projected_globals {
+                let name = symbol(s, q, &projected.name)?;
                 let value = preparation::global(s, q, name)?;
+                global_programs.retain(|(n, _, _)| *n != name);
+                global_programs.push((name, &projected.program, value));
                 ledger.globals.retain(|g| g.global.name != name);
                 ledger.globals.push(ManagedGlobal {
                     unit,
                     global: Global { name, value },
                 });
+            }
+        }
+        for (name, expected, value) in global_programs {
+            let actual = match value {
+                Some(value) => projected_program(s, q, value)?,
+                None => None,
+            };
+            if !actual
+                .as_deref()
+                .is_some_and(|actual| birnam_codegen::portable::matches_source(expected, actual))
+            {
+                let mut message = b"managed global differs from recorded source: ".to_vec();
+                message.extend(s.symbol_bytes(q, name)?.ok_or_else(invalid)?);
+                return fail(s, q, b"sourceBindingMismatch", &message);
             }
         }
         for (behavior, selector, expected, actual) in programs {

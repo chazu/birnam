@@ -1,14 +1,15 @@
 # Validation
 
-During [Design 90](design/90-functional-modules.md), full-language
-validation is unavailable: the old native API and construction interfaces have
-been deliberately deleted before caller migration. The production prefix now also
-compiles and executes source through PEG/Lang, Codegen and TCC. Full-workspace and
-full-language acceptance remain unavailable; this source path does not restore
-every upper module. Deoptimization and concurrency assertions are retained, but
-their Runtime/native harnesses need migration. Existing installed
-prefixes do not validate the current source. Release validation is not required
-for this deletion work.
+[Design 90](design/90-functional-modules.md) has moved the production Rust
+modules to Id messages and removed the aggregate Runtime. Workspace and native
+integration tests are runnable. The validation planner also covers the installed
+Host's source, project, Image, worker, interaction and generation paths; see the
+current commands below. Full migration completion still requires the remaining
+source-task and retained-lifetime acceptance plus obsolete-harness cleanup.
+
+The module-by-module notes below record the incremental migration evidence.
+Their historical counts and exclusions describe those slices, not the current
+plan. Existing installed prefixes alone do not validate changed source.
 
 The retired IdApi manifests, module-table headers, factory publishers and
 construction-graph validator are gone. ABI inventories no longer demand those
@@ -127,60 +128,51 @@ parallel API's caching policy. The independent C Id protocol round trip remains
 in Id's unit tests. Source/image smoke tests and recovery/concurrency assertions
 remain for their later integration; do not count them as passing prefix coverage.
 
-`mise run verify-plan` describes the future full-language workflow below.
-`mise run verify` and the other full suites still require upper integration;
-they are not current acceptance commands for this checkout. Design 74's temporary
-controllers and chronological measurement notes are historical evidence.
+`mise run verify-plan` lists the current Id-message validation plan. The
+planner runs workspace tests, independent byte fixtures, validation-tool tests,
+the native-message suite and a fresh release installation. Installed acceptance
+is divided into five groups: CLI/project/worker behavior, Image entry,
+REPL/socket/tooling, generation activation/recovery/rollback, and authored task
+scheduling with native boundaries. Each group
+copies the installation before relocating it or creating fixtures.
 
-| Task | When to use it |
+| Task | Scope |
 | --- | --- |
-| `mise run verify` | Everyday workspace, independent byte fixtures, installed native behavior and compact semantic integration |
-| `mise run verify-exhaustive` | Compiler, runtime, GC, recovery, language or ABI changes; every forced exit and full diagnostic matrices |
-| `mise run verify-release` | Release acceptance: exhaustive correctness, export/dependency audit and two independent cold-source installs |
-| `mise run verify-performance` | Three alternating off/on pairs on four ordinary application/cold cases; practical slowdown screen without quiet-host waits |
-| `mise run build` | Development prefix with Cargo reuse, separated by configuration |
-| `mise run install` | Cold production install without development cache reuse |
+| `mise run verify` | All migrated workspace, native and installed Host checks |
+| `mise run verify-exhaustive` | The same complete migrated correctness plan |
+| `mise run verify-release` | Correctness plus export/dependency audit and two independent cold-source installs |
+| `mise run build` | Development prefix with Cargo reuse |
+| `mise run install` | Cold production install |
 
-The full [coverage map and delivery record](design/77-validation-workflow.md)
-explains which semantic checks are in each plan. Correctness does not wait for
-AC power or a quiet machine. Host admission remains available for an explicitly
-requested qualified speedup claim. A practical performance comparison must state
-its scope and retain answer/identity checks; incomplete runs are not passes.
+The retired Runtime diagnostic matrices and performance controller are no longer
+part of these plans. Their removal does not prove optimizer equivalence or a
+speedup. The older source-global-lookup, method-values, method-unit-lifetime and
+task-control scripts still require porting or case-by-case decommissioning;
+they are not passing acceptance gates. Retained-code lifetime and authored task
+scheduling remain migration work beyond the current suites.
 
 For a focused iteration, preview
 `python3 scripts/validate.py --suite routine --plan`, then select named steps with
-`--only NAME`. Required prerequisites are included. Default total deadlines are
-15 minutes for routine and 30 minutes for exhaustive/release. Use `--deadline N`
-when a task explicitly needs a different budget; expiration records a failure.
-Do not silently shrink coverage to fit a deadline.
+`--only NAME`. Required prerequisites are included. Local plans have a two-hour
+total deadline; `--deadline N` overrides it. Each Host group also has a bounded
+step deadline: one hour for interaction/tooling (including documentation generation),
+forty minutes for generation recovery or task scheduling, and twenty minutes for
+CLI/project or Image entry. Expiration
+records failure, never partial success. Do not shrink coverage to fit a deadline.
 
-The `method-values` step checks owned callable reflection through source,
-source-free compiled modules, mapped/rebuilt images and baked executables,
-including replacement, removal, callback GC and process-local image rejection.
-For a prebuilt debug installation, run `scripts/method-values-smoke.sh PREFIX`.
-The `method-unit-lifetime` step uses separate REPL turns to verify that retained
-Methods and aliases keep source and anonymous synchronous/resumable Units callable after
-cache eviction and GC, then release them after the last binding is removed.
-Run `scripts/method-unit-lifetime-smoke.sh PREFIX` against a debug installation.
-
-Each build and matrix writes progress and its log under `.cargo-target/validation`.
-Full matrix coverage is checked by the existing coordinate and semantic oracles.
-For counter-bound timing prerequisites, select only the needed matrix and workspace,
-for example `python3 scripts/validate.py --suite exhaustive --only workspace measure-release`.
-The timing driver accepts that `run.json`; it does not require cold-source proof.
+Every step writes its log and receipt under `.cargo-target/validation`.
 Re-running reuses only terminal passed evidence with matching commands, relevant
 inputs, toolchain/configuration, prerequisite evidence and output artifacts.
-`--no-resume` explicitly requests fresh execution. A changed output or added input
-invalidates reuse. Never infer a live process from a receipt saying `running`.
+`--no-resume` requests fresh execution. A changed output or added input invalidates
+reuse. The final audit also checks each receipt against the requested plan.
+Never infer a live process from a receipt saying `running`.
 
-CI fetches locked Cargo dependencies before offline work. Relevant code and test
-changes select exhaustive validation; bootstrap/workflow changes and weekly or
-manual runs select release acceptance. Other changes select routine. Exhaustive
-CI shares one installation and two diagnostic builds across four disjoint matrix
-workers; a final job checks the combined coverage and all prerequisite evidence.
-Each worker has a fixed deadline. Logs and receipts are uploaded on success and
-failure. Local compilation products and raw new measurements
-belong under `.cargo-target`, not in the documentation tree.
+CI fetches locked Cargo dependencies before offline work. Bootstrap/workflow
+changes and weekly/manual runs select release acceptance. All suites share one
+installation across four independent workers covering all five Host acceptance groups; a final job checks
+the complete plan and all prerequisite evidence. Executable modes are preserved
+in the seed archive. Logs and receipts are uploaded on success and failure.
+Local compilation products belong under `.cargo-target`.
 
 Optimization implementation and default decisions are recorded in
 [74AK](design/74ak-bounded-qualification-and-defaults.md). The validation cleanup
