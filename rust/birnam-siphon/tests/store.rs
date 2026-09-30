@@ -957,6 +957,7 @@ fn store_history_cells_snapshots_and_source_use_id_messages() {
         }
         collecting_construction(&h);
         semantics(&h);
+        history_plateaus(&h);
         h.clear();
         collect(h.id, h.gc);
         cells_and_dispatch(&h);
@@ -985,5 +986,90 @@ fn store_history_cells_snapshots_and_source_use_id_messages() {
             String::from_utf8_lossy(&child.stdout),
             String::from_utf8_lossy(&child.stderr)
         );
+    }
+}
+
+unsafe fn history_plateaus(h: &H) {
+    unsafe {
+        for policy in [
+            b"retainCurrentOnly".as_slice(),
+            b"retainSince:",
+            b"retainLast:",
+        ] {
+            let store = h.call(h.named(b"Store"), b"new", &[]);
+            let entity = h.fresh();
+            let attribute = h.symbol(b"churnHistory");
+            h.assert(store, attribute, h.symbol(b"history"), h.named(b"true"));
+            let mut baseline = None;
+            for batch in 0..3 {
+                match policy {
+                    b"retainSince:" => {
+                        let basis = h.call(store, b"basis", &[]);
+                        h.call(store, policy, &[basis]);
+                    }
+                    b"retainLast:" => {
+                        h.call(store, policy, &[h.i(128)]);
+                    }
+                    _ => {
+                        h.call(store, policy, &[]);
+                    }
+                }
+                let mark = h.tokens.borrow().len();
+                for value in 0..5000 {
+                    h.assert(store, entity, attribute, h.i(value));
+                    let temporary = h.tokens.borrow_mut().split_off(mark);
+                    for token in temporary {
+                        release(h.id, h.roots, token);
+                    }
+                }
+                h.call(store, b"compact", &[]);
+                collect(h.id, h.gc);
+                assert_eq!(h.number(h.read(store, entity, attribute)), 4999);
+                let row = (
+                    h.metric(store, b"retainedFactCount"),
+                    h.metric(store, b"retainedFactBytes"),
+                );
+                assert!(row.0 > 0 && row.1 > 0);
+                if batch > 0 {
+                    if let Some(expected) = baseline {
+                        assert_eq!(row, expected, "retained history grew for {:?}", policy);
+                    } else {
+                        baseline = Some(row);
+                    }
+                }
+            }
+        }
+        // A retained-history control must grow, so a counter stuck at zero or
+        // an implementation that always discards history cannot pass the oracle.
+        let store = h.call(h.named(b"Store"), b"new", &[]);
+        let entity = h.fresh();
+        let attribute = h.symbol(b"retainedControl");
+        h.assert(store, attribute, h.symbol(b"history"), h.named(b"true"));
+        h.call(store, b"retainSince:", &[h.i(0)]);
+        let mut previous = (0, 0);
+        let mark = h.tokens.borrow().len();
+        for batch in 0..3 {
+            for value in 0..1000 {
+                h.assert(store, entity, attribute, h.i(value));
+                let temporary = h.tokens.borrow_mut().split_off(mark);
+                for token in temporary {
+                    release(h.id, h.roots, token);
+                }
+            }
+            h.call(store, b"compact", &[]);
+            let current = (
+                h.metric(store, b"retainedFactCount"),
+                h.metric(store, b"retainedFactBytes"),
+            );
+            assert!(
+                current.0 > previous.0 && current.1 > previous.1,
+                "retained control batch {batch}"
+            );
+            previous = current;
+        }
+        h.call(store, b"retainCurrentOnly", &[]);
+        h.call(store, b"compact", &[]);
+        assert_eq!(h.number(h.read(store, entity, attribute)), 999);
+        assert!(h.metric(store, b"retainedFactCount") < previous.0);
     }
 }

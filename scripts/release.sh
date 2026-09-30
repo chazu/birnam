@@ -62,13 +62,8 @@ git tag -a "$tag" -m "birnam ${tag}"
 tarball="$(scripts/dist.sh)"
 echo "==> built ${tarball}"
 
-baseline=${BIRNAM_PERFORMANCE_BASELINE:-}
-[ -n "$baseline" ] && [ -f "$baseline" ] || {
-  echo "error: set BIRNAM_PERFORMANCE_BASELINE to the explicit prior-production Rust baseline" >&2
-  exit 1
-}
-evidence_dir="dist/${tag}-stackless-acceptance"
-scripts/stackless-release-acceptance.sh "$tarball" "$evidence_dir" "$baseline"
+evidence_dir="dist/${tag}-id-message-acceptance"
+python3 scripts/release-acceptance.py "$tarball" "$evidence_dir"
 python3 - "$evidence_dir/receipt.json" <<'PY'
 import json
 import sys

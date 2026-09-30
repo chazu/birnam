@@ -187,7 +187,7 @@ Completed debug checks:
   Artifact digest:
   `3893d65bf420ae98bbf9e7984c85c548537c085072191728dd04c22bff7345e4`.
 
-The [v1 reference](../../abi/storage-observation-scope-v1.md), independent C
+The [v1 reference](https://github.com/chazu/birnam/blob/cffba722/abi/storage-observation-scope-v1.md), independent C
 declaration, `mise run storage-observation-scope`, README links and changelog
 accompany the implementation. Local evidence and prefix markers are under
 `.cargo-target/81bt-*`. No release validation was run.

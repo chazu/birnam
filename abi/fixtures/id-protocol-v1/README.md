@@ -6,7 +6,7 @@ Upper module tables and the former IdApi are retired under
 [Design 90](../../../docs/design/90-functional-modules.md).
 
 `entry.c` checks the C field layout and call/return convention. Id's unit test loads
-it and installs/invokes it through production Id dispatch before Runtime exists.
+it and installs/invokes it through production Id dispatch without upper modules.
 It checks all six operand kinds and scalar failure details, without supplying an
 alternate Id implementation.
 
@@ -21,8 +21,8 @@ The first exercises the real Siphon-to-Id handoff, interning/loading and invalid
 paths. The second builds and audits the completed prefix's dylibs, then exercises
 Bootstrap, Namespace, Roots, GC, object behavior, values and collections through
 messages. It checks live replacement, nested loading, temporary lifetimes,
-activation, retirement and finalization. The full Host/Execution/compiler/image
-integration is still pending.
+activation, retirement and finalization. It also covers Execution, the compiler
+and Image; installed Host acceptance runs through `scripts/host-cli-test.sh`.
 
 The installed native-adoption driver and cached floor-function lookup fixture are
 deleted. Their former descriptions are available in this file at `8735496a`.

@@ -7,8 +7,7 @@ stateless OS loader used by Siphon and Id.
 
 The old module tables, twenty IdApi schema manifests, their C headers and the
 central production-construction catalog are deleted. Do not restore their
-layouts, factory catalogs or fingerprint checks to repair callers. The complete
-language is intentionally unbuildable during this deletion-first transition.
+layouts, factory catalogs or fingerprint checks to repair callers. Production Rust modules use the message protocol; the aggregate Runtime is gone.
 
 Retained evidence:
 
@@ -19,14 +18,11 @@ Retained evidence:
   header and layout check. These describe recovery formats, not a module API catalog.
 - [Portable Code formats](fixtures/portable-code-v1/README.md) retain independent
   binary readers and fixtures for programs, bindings and images.
-- `rust-*-dylib-v1.json` inventories describe exported symbols. Publishers deleted
-  in Design 84 are removed from those inventories. Retained owner implementations
-  still require message entrypoints before they can be loaded in production.
+- `rust-*-dylib-v1.json` inventories describe exported symbols. Retired publishers are absent from those inventories. The native-message gate
+  verifies each module's descriptor exports and dependencies.
 
-The other module-specific documents and fixture READMEs in this directory are
-historical descriptions of the removed architecture, not current implementation
-requirements. References to removed headers and manifests can be read from
-[the last checkpoint before this cleanup](https://github.com/chazu/birnam/tree/4f76ba42/abi)
-or with `git show 4f76ba42:abi/PATH`. Their layouts must not become a parallel
-protocol again. Deoptimization/concurrency semantic fixtures remain in the tree;
-fixtures that used the deleted headers need new message-based harnesses.
+The retired module-table specifications, IdApi fixture directories and old binary
+clients are preserved only in [Git history](https://github.com/chazu/birnam/tree/cffba722/abi).
+Their layouts are not current interfaces. Older semantic tests must either use
+the production message boundary or be decommissioned after their useful coverage
+has been accounted for.

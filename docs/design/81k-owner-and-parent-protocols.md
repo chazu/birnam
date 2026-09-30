@@ -72,7 +72,7 @@ bounded Block ancestry condition and reads the owner. Any failed check declines
 the optimization; ordinary construction executes the current protocols.
 
 The optional producer declaration is now
-[`birnam_native_block_construction_v2`](../../abi/native-block-construction-v2.md).
+[`birnam_native_block_construction_v2`](https://github.com/chazu/birnam/blob/cffba722/abi/native-block-construction-v2.md).
 Its caller supplies the validated owner fact after proving those prerequisites;
 it supplies no parent/owner access function. The producer compares its current
 API context, inspects the carrier and CodeObject, and retains the existing warm

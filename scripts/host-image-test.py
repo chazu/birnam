@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 
 prefix = Path(sys.argv[1]).resolve()
@@ -60,6 +61,21 @@ bad.write_bytes(b'not an image')
 for path, diagnostic in [(bad, b'image load #rejected'), (work / 'absent.image', b'No such file')]:
     result = run(path)
     assert result.returncode == 1 and diagnostic in result.stderr and not result.stdout, result
+# The current format is exact: reject prior/future versions and invalid magic
+# before any saved entry can run. These mutations preserve the rest of a real save.
+for version in (4, 5, 6, 7, 9):
+    changed = bytearray(image.read_bytes())
+    struct.pack_into('<I', changed, 8, version)
+    rejected = work / f'version-{version}.image'
+    rejected.write_bytes(changed)
+    result = run(rejected)
+    assert result.returncode == 1 and b'image load #rejected' in result.stderr and not result.stdout, result
+changed = bytearray(image.read_bytes())
+changed[0] ^= 1
+rejected = work / 'invalid-magic.image'
+rejected.write_bytes(changed)
+result = run(rejected)
+assert result.returncode == 1 and b'image load #rejected' in result.stderr and not result.stdout, result
 result = run(image, extra=['extra'])
 assert result.returncode == 1 and b'one file' in result.stderr, result
 # The native Host fixture consumes this exact artifact in a separate process.

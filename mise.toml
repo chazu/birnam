@@ -138,7 +138,3 @@ run = "./scripts/bench.sh --release --floor=rust"
 [tasks.bench-compare]
 description = "Diff two benchmark results; exits 1 on regression past threshold"
 run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"
-
-[tasks.compiled-image-startup]
-description = "Check compiled image/baked startup without source compilation and explicit recovery"
-run = 'bash scripts/compiled-image-startup-smoke.sh "${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"'

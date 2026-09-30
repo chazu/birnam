@@ -46,6 +46,7 @@ if selected image; then
   python3 scripts/host-image-test.py "$scratch/relocated"
   BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
     host_test startup::tests::image_entry_uses_saved_code_and_roots
+  cargo test --offline --locked -p birnam-siphon --test image repeated_image_resaves_keep_a_fixed_live_set -- --ignored
 fi
 if selected interaction; then
   python3 scripts/interaction-cli-test.py "$scratch/relocated"

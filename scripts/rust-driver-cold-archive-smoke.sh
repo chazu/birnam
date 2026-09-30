@@ -47,7 +47,7 @@ with open(sys.argv[2], encoding="utf-8") as handle:
     second = json.load(handle)
 
 for receipt in (first, second):
-    assert receipt["schema"] == 3
+    assert receipt["schema"] == 4
     assert receipt["authority"] == "rust"
     assert receipt["build_mode"] == "cold"
     assert receipt["profile"] == "release"

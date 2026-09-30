@@ -22,7 +22,7 @@ per-Runtime Id adapters; Integer is only a **dev-dependency** of `birnam-id`.
 
 IdApi v4 removes `smallint_vt`, `mkSmallInt`, `smallIntValue`, and `isSmallInt`:
 45 fields, 360 bytes. All native clients migrate to the explicit
-[Integer dependency](../../abi/integer-v1.md); there is no compatibility facade.
+[Integer dependency](https://github.com/chazu/birnam/blob/cffba722/abi/integer-v1.md); there is no compatibility facade.
 The host injects named dependencies before `module_init`, whose opaque state
 contract remains unchanged. Generated code retains its existing TCC bridge names.
 The still-combined Machine, recovery and optimizer components explicitly consume

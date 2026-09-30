@@ -37,7 +37,6 @@ def main():
     if not 1 <= args.modules <= 100:
         parser.error("--modules must be between 1 and 100")
     env = {k: v for k, v in os.environ.items() if not k.startswith("BIRNAM_")}
-    env["BIRNAM_FORCE_SOURCE"] = "1"
     results = []
     with tempfile.TemporaryDirectory(prefix="birnam-project-launch-") as temporary:
         root = Path(temporary)

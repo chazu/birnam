@@ -61,7 +61,7 @@ silently filled in. Enumeration and permanence do not make every allocation a
 root. A permanent allocation can be not reached in this declared graph and still
 be retained by collection policy. No report authorizes reclamation.
 
-The [native contract](../../abi/trace-v1.md) specifies scope, identities, status
+The [native contract](https://github.com/chazu/birnam/blob/cffba722/abi/trace-v1.md) specifies scope, identities, status
 propagation and completeness. Id's replaceable `withStorageView:` lookup remains
 the entry to observation. Provider selection happens before exclusion; the
 tracer does not invoke messages or payload callbacks. GC marks, live accounting,

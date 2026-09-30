@@ -172,7 +172,7 @@ requirement to restore the old architecture:
   [persisting evaluation](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L6658-L6742)
   and `lastError` (line 10662). Preserve the loader's registration-before-evaluation,
   exact Error/nil handling and optional Namespace Module notification described in
-  the [historical loader contract](../../abi/source-loader-v2.md). Current generated
+  the [historical loader contract](https://github.com/chazu/birnam/blob/cffba722/abi/source-loader-v2.md). Current generated
   evaluation already publishes top-level bindings through Globals; nested bindings
   remain lexical. Filename-aware descriptors and loader-facing errors now use
   the current compiler, including the embedding path below.
@@ -354,3 +354,11 @@ method installation/removal. Reflect rejects before compiling an adapter or
 specializing a target. A candidate's exact publication admits one Store mutation;
 a nested callback cannot reuse that permission. Image publication has its own
 recovery extent, and neither extent leaves an ambient permission behind.
+
+The native `materialization` test also retains a reflected Method after its source
+Block is released, transfers ownership to an alias binding on another Block,
+and removes that final binding. Source, synchronous and resumable cases each run
+three cycles; both live TCC Unit counts and relocated native bytes return to the
+receiver baseline, then to zero after releasing the receiver. This replaces
+`scripts/method-unit-lifetime-smoke.sh` and requires TCC resource metrics, enabled
+by `scripts/native-message-test.sh`.

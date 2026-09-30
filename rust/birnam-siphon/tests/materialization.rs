@@ -214,6 +214,13 @@ impl H {
                 .unwrap()
         }
     }
+    unsafe fn native_bytes(&self) -> usize {
+        unsafe {
+            send(self.id, self.named(b"TCC"), b"liveNativeBytes", &[])
+                .as_word()
+                .unwrap()
+        }
+    }
     unsafe fn collect(&self) {
         unsafe {
             collect(self.id, self.gc);
@@ -293,7 +300,7 @@ unsafe extern "C" fn constant(c: *mut c_void, _: Oop, _: *const Operand, _: usiz
     Outcome::loaded(Operand::object(c.cast()))
 }
 #[test]
-#[ignore = "requires production native modules"]
+#[ignore = "requires production native modules with TCC resource metrics"]
 fn portable_materialization_preserves_identity_control_and_lifetime() {
     unsafe {
         let id = id();
@@ -423,6 +430,25 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
             assert_eq!(h.call(block, b"captureAt:", &[h.int(0)]), held);
             assert_eq!(h.call(block, b"captureAt:", &[h.int(-1)]), nil);
             assert_eq!(h.call(block, b"captureAt:", &[h.int(1)]), nil);
+            let method = h.call(block, b"methodFor:", &[id.intern_name(b"value").unwrap()]);
+            assert_eq!(h.call(method, b"invokeOn:", &[block]), held);
+            for wrong_receiver in [nil, h.string(b"not a Block capture layout")] {
+                let result = h.call(method, b"invokeOn:", &[wrong_receiver]);
+                if resumable {
+                    h.kind(result, b"nativeInvalidRequest");
+                } else {
+                    assert_eq!(result, nil);
+                }
+            }
+            // Execution's language frame entry is variadic-tolerant (Design
+            // 60E section 6); the synchronous entry rejects a count mismatch.
+            let result = h.call(
+                method,
+                b"invokeOn:arguments:",
+                &[block, h.vector(&[h.int(1)])],
+            );
+            assert_eq!(result, if resumable { held } else { nil });
+
         }
         // Root arity and nested captures work for both dispositions.
         let parameter = h.eval(b"[:x | [x + 7]]");
@@ -657,6 +683,69 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
         h.collect();
         let baseline = h.units();
         assert_eq!(baseline, 0);
+        // A reflected Method owns anonymous code independently of its original
+        // Block. Transfer that ownership to an alias on a different Block, then
+        // remove the final binding. Repeat across source and both materializers.
+        for disposition in 0..3 {
+            for _ in 0..3 {
+                let receiver = h.eval(b"[:argument | 19]");
+                let receiver_token = retain(id, h.roots, receiver);
+                h.call(codegen, b"evictMaterializations", &[]);
+                h.clear_from(0);
+                h.collect();
+                let receiver_units = h.units();
+                let receiver_bytes = h.native_bytes();
+                assert!(receiver_units > 0 && receiver_bytes > 0);
+                let source = h.eval(b"[:argument | argument]");
+                let block = if disposition == 0 {
+                    source
+                } else {
+                    let code = h.call(source, b"codeObject", &[]);
+                    h.materialize(code, &[], disposition == 2)
+                };
+                let method = h.call(block, b"methodFor:", &[id.intern_name(b"value:").unwrap()]);
+                let method_token = retain(id, h.roots, method);
+                h.call(codegen, b"evictMaterializations", &[]);
+                h.clear_from(0);
+                h.collect();
+                assert_eq!(h.units(), receiver_units + 1);
+                assert!(h.native_bytes() > receiver_bytes);
+                assert_eq!(
+                    h.number(h.call(
+                        method,
+                        b"invokeOn:arguments:",
+                        &[receiver, h.vector(&[h.int(73)])]
+                    )),
+                    73
+                );
+                let behavior = h.keep(behavior_of(&h, receiver));
+                let alias = h.keep(id.intern_name(b"retainedMethodAlias:").unwrap());
+                send(
+                    id,
+                    behavior,
+                    b"addMethod:as:",
+                    &[Operand::object(method), Operand::object(alias)],
+                );
+                h.clear_from(0);
+                release(id, h.roots, method_token);
+                h.collect();
+                assert_eq!(h.units(), receiver_units + 1);
+                assert_eq!(
+                    h.number(h.call(receiver, b"retainedMethodAlias:", &[h.int(89)])),
+                    89
+                );
+                assert_eq!(h.number(h.call(receiver, b"value:", &[h.int(89)])), 19);
+                send(id, behavior, b"removeMethod:", &[Operand::object(alias)]);
+                h.clear_from(0);
+                h.collect();
+                assert_eq!(h.units(), receiver_units);
+                assert_eq!(h.native_bytes(), receiver_bytes);
+                release(id, h.roots, receiver_token);
+                h.collect();
+                assert_eq!(h.units(), baseline);
+                assert_eq!(h.native_bytes(), 0);
+            }
+        }
         for resumable in [false, true] {
             for cycle in 0..3 {
                 let source = h.eval(b"[:held | [| held]]");

@@ -121,5 +121,14 @@ binding inventories even though those behaviors have no ordinary owner. Restorat
 and compensation address their own method dictionaries, preserving inherited methods.
 
 Host/CLI image entry now restores global main; see the [Host contract](../birnam-host/README.md).
-Executable baking, broader source-generation replacement and optimizer work remain
-separate migration consumers.
+Installed entry and baking checks live with Host; optimizer work remains separate.
+
+Numeric Image coverage includes nonzero Words through the unsigned maximum,
+Integer conversion boundaries and overflow Errors, negative zero, a NaN payload,
+infinity and the largest finite Float. Save/restore uses Word's `bits` and
+`fromBits:` messages. The native Image test checks exact payload bits, shared
+identity and Error kind/message after mapped, rebuilt and resaved loading.
+
+The Image group also chains twenty fresh-process mapped/rebuilt resaves. It
+checks stable retained facts, native Unit counts and image sizes for each load
+mode, then releases every native Unit after the last roots disappear.

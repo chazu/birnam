@@ -29,7 +29,7 @@ generation; native functions retain their image. Anonymous synchronous and
 resumable TCC functions retain their owning Unit. Bindings retain that same Unit
 through Lifetime v2 native references, without permanently rooting unreachable
 cycles. Native consumer migration and the complete construction graph remain
-unfinished. See [the language boundary](../../abi/language-send-v1.md).
+unfinished. See [the language boundary](https://github.com/chazu/birnam/blob/cffba722/abi/language-send-v1.md).
 
 The Method production check is `scripts/method-values-smoke.sh PREFIX`, also
 included as `method-values` in routine/exhaustive validation. It passes source,
@@ -66,7 +66,7 @@ ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
 `libbirnam_bootstrap.dylib:birnam_native_module_v1`. Its only predecessor is Id.
-Its [native owner](../../abi/fixtures/bootstrap-v2/README.md) calls Id's current
+Its [native owner](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md) calls Id's current
 loading message for every subsequent native construction. It retains Object and
 Protocol initialization results, including nested loads, before releasing
 argument roots. Before Lifetime exists those references form a working early
@@ -79,7 +79,7 @@ teardown, without requiring a GC object or a forward Runtime callback.
 
 `libbirnam_root_registry.dylib:birnam_native_module_v1` follows through Bootstrap.
 The registry itself requires only Id. Initial Object arguments are retained before it publishes a Word pointing to
-its complete [root owner descriptor](../../abi/fixtures/root-registry-owner-v1/README.md).
+its complete [root owner descriptor](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/root-registry-owner-v1/README.md).
 Native registration, retain/release and root enumeration work without Runtime or
 GC, including their failure paths. Admission checks the native owner's thread;
 there is no future Runtime callback. After Runtime is complete, it replaces that
@@ -93,7 +93,7 @@ steps. `InitialFloor::finish` constructs the remaining Runtime with the same own
 `start` use this path, while `start_with_floor` continues an explicitly constructed
 prefix. Runtime's native entry in `libbirnam_runtime.dylib` receives nine
 completed predecessor pointers as Word operands and invokes the temporary
-[v15 constructor](../../abi/runtime-construction-v15.md). Earlier Runtime bridges
+[v15 constructor](https://github.com/chazu/birnam/blob/cffba722/abi/runtime-construction-v15.md). Earlier Runtime bridges
 and normal `id_init` exports are removed. Explicit Runtime diagnostic builds
 retain the old local initialization path for fixtures that have not yet migrated;
 that path is absent from normal Id and Runtime libraries. The host's obsolete
@@ -111,7 +111,7 @@ predecessors are Id and the complete native factories returned by
 Those factories construct their public capabilities with Lifetime's own working
 admission, membership and record operations. They do not point forward to Runtime.
 
-[`LifetimeOwnedV2`](../../abi/fixtures/lifetime-v2/README.md) owns the exact payload
+[`LifetimeOwnedV2`](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/lifetime-v2/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
 that owner through `birnam_runtime_init_v11`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
@@ -138,7 +138,7 @@ libraries through Bootstrap. Boolean's native entry takes completed roots and
 Lifetime, creates the actual Nil/Boolean identities through Id messages, and
 installs identity/basic Boolean operations. Nil's native entry takes those
 completed identities and installs the Object/Nil predicates. Their
-[base-value descriptor](../../abi/fixtures/base-values-v1/README.md) contains only
+[base-value descriptor](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/base-values-v1/README.md) contains only
 already constructed objects. Basic methods use that completed native context;
 they do not read the later String/Block/Runtime API. Printing and Block control
 are absent until the later extension entries install them.
@@ -151,7 +151,7 @@ The remaining upper construction graph is still unimplemented.
 
 `InitialFloor::initialize_namespace` then loads Namespace's native entry with
 completed roots, Lifetime and base values. Its
-[native owner](../../abi/fixtures/namespace-owner-v1/README.md) owns the actual
+[native owner](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/namespace-owner-v1/README.md) owns the actual
 ordered binding table and a receiver exposing Symbol-based publication/import,
 Word-valued count/index access and reverse aliases. Initial names refer only to
 completed objects. String, Integer, Error and Block are neither loaded nor
@@ -172,7 +172,7 @@ with its consumers.
 
 `InitialFloor::initialize_object_model` loads Object Model with completed roots,
 Namespace and base values. Its
-[native owner](../../abi/fixtures/object-model-owner-v1/README.md) contains the
+[native owner](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/object-model-owner-v1/README.md) contains the
 actual private-behavior associations and complete Enumeration v2 interface.
 Private behavior construction sends existing Id protocols, roots the new behavior
 until attachment, and works before String, numbers, GC or Runtime. Native
@@ -200,7 +200,7 @@ stages or the Runtime/compiler package separation.
 
 `InitialFloor::initialize_string` loads the existing String library through
 Bootstrap with completed roots, Lifetime and Namespace. Object Model is already
-installed. Its [native entry](../../abi/fixtures/string-v1/README.md) constructs
+installed. Its [native entry](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/string-v1/README.md) constructs
 the real String behavior/prototype, installs its raw layout and finalizer-backed
 byte ownership, and publishes the names. `fromBytes:` accepts native Bytes;
 `bytes` returns borrowed Bytes; `length` returns a Word; `clone`/`new` copy storage.
@@ -218,7 +218,7 @@ The aggregate Runtime remains in Id.
 
 `InitialFloor::initialize_error` now loads the actual installed Error library
 (`libbirnam_id_error.dylib`) with completed roots, Lifetime, base values,
-Namespace and String. Its [native entry](../../abi/error-value-v3.md#production-error-construction)
+Namespace and String. Its [native entry](https://github.com/chazu/birnam/blob/cffba722/abi/error-value-v3.md#production-error-construction)
 returns the Error factory as an Object, publishes the existing three Error names
 and registers its own roots. Bootstrap releases its temporary result root once
 that publication is complete. No descriptor or new library is added.
@@ -236,7 +236,7 @@ This completes step 6's native Error construction.
 
 `InitialFloor::initialize_integer` constructs the actual Integer base through
 Bootstrap with completed roots, Lifetime, base values, Namespace, String and the
-Error factory. The [native entry](../../abi/integer-v1.md#production-construction)
+Error factory. The [native entry](https://github.com/chazu/birnam/blob/cffba722/abi/integer-v1.md#production-construction)
 returns the existing Integer operations table. It owns the same signed-64-bit
 payload and codec, constructs canonical identities, installs the raw layout and
 publishes the names. Integer construction, arithmetic, comparison, printing and
@@ -250,7 +250,7 @@ table and identities; mixed-number methods replace only original base entries,
 preserving early replacements. Float conversion and Block iteration are absent
 until those dependencies exist.
 The old numeric compiler declaration assumes direct allocation and still returns
-zero for this message-based constructor. The [v5 native declaration](../../abi/native-numeric-semantics-v5.md)
+zero for this message-based constructor. The [v5 native declaration](https://github.com/chazu/birnam/blob/cffba722/abi/native-numeric-semantics-v5.md)
 now supplies the successful exact-Integer contract for actual native entries.
 Compiler construction admission checks current lookup and allocation; arithmetic
 also checks Namespace and Symbol lookup. Numeric predictions preserve complete
@@ -264,7 +264,7 @@ Removing a method binding must not collect a selector still held by a native
 context; the same selector can be used to restore the method after collection.
 
 `InitialFloor::initialize_float` constructs Float after Integer through Bootstrap.
-Its [native entry](../../abi/float-v1.md#production-construction) takes the completed
+Its [native entry](https://github.com/chazu/birnam/blob/cffba722/abi/float-v1.md#production-construction) takes the completed
 predecessors and Integer table, owns the existing IEEE bits representation, and
 publishes the canonical identities and seventeen existing methods. `fromBits:`
 and `bits` use native Words and preserve the full payload, including signed zero
@@ -284,7 +284,7 @@ on the same native Id. The legacy-only constructor remains for native clients.
 
 `InitialFloor::initialize_word` constructs Word through Bootstrap with completed
 roots, Lifetime, base values, Namespace, String, Error and Integer. It takes no
-Float input. Its [native entry](../../abi/word-v1.md#production-construction)
+Float input. Its [native entry](https://github.com/chazu/birnam/blob/cffba722/abi/word-v1.md#production-construction)
 constructs the existing unsigned representation, raw layout and canonical names.
 `fromBits:`/`bits` use native Words; equality, hexadecimal printing and checked
 Integer conversion work before Block/Runtime, including overflow errors through
@@ -318,7 +318,7 @@ are still open. Native Integer/compiler admission is described above.
 The live graph portion of step 9 now constructs before Runtime as well.
 `InitialFloor::initialize_trace` loads Native Mark through Id, then constructs
 Trace with completed root-registry, Lifetime, Object Model and Native Mark
-inputs. Its [64-byte descriptor](../../abi/trace-graph-v2.md) owns root discovery,
+inputs. Its [64-byte descriptor](https://github.com/chazu/birnam/blob/cffba722/abi/trace-graph-v2.md) owns root discovery,
 Id/owner edges, payload scanning and inherited-hook selection without a Runtime,
 Machine or compiler input. Production Runtime borrows that same completed graph;
 its mark admission, Execution roots and retirement policy remain upper inputs.
@@ -337,7 +337,7 @@ responsible for declaring their owned references; the graph validator cannot
 infer references hidden in arbitrary native storage.
 
 `ObjectMemory` owns allocations and identities. Collect now constructs the
-[collection-state owner](../../abi/collection-state-v2.md) before Runtime, from
+[collection-state owner](https://github.com/chazu/birnam/blob/cffba722/abi/collection-state-v2.md) before Runtime, from
 complete Native Stack, GC Settings and Allocation Budget factories, Trace graph,
 Lifetime and Object Model plus its own phase implementation. Its native entry enumerates the existing Id allocations
 and creates the actual weak mark/permanence records and initial budget. Runtime
@@ -348,7 +348,7 @@ The four former production preparations inside Id are skipped. The completed
 coordinator is adopted with this owner instead of awaiting a later mount. Marking and dead
 record removal now run in Collect, including deferred allocations when realized.
 The legacy local mark map remains only for legacy initialization/unit consumers.
-The [collector capability](../../abi/collector-v3.md) also owns live tracing,
+The [collector capability](https://github.com/chazu/birnam/blob/cffba722/abi/collector-v3.md) also owns live tracing,
 Lifetime/Object Model retirement, Id index retirement, finalizer detachment and
 allocation release. Once Execution exists, Runtime installs a completed extension
 that supplies scoped upper roots and deferred/code retirement on every call,
@@ -370,7 +370,7 @@ mutation-counter factories and their host preparations are removed.
 The current behavior payload is five words (40 bytes): capacity, tally, keys,
 values and parent. Each dictionary value is a typed 24-byte Operand. Image
 runtime ABI is **7 (`f57d502f7c1c0437`)**, image format is 8, and upper IdApi
-remains version 20. [Dispatch Cache ABI v2](../../abi/dispatch-cache-v2.md) stores
+remains version 20. [Dispatch Cache ABI v2](https://github.com/chazu/birnam/blob/cffba722/abi/dispatch-cache-v2.md) stores
 complete 16-byte native entries in 40-byte slots; its descriptor is 56 bytes.
 These versions reject older incompatible native representations.
 
@@ -716,7 +716,7 @@ Remaining architectural acceptance requires all of the following:
 ### Mandatory completed collector extension
 
 The public collector now has an explicit completed-owner extension
-([Collector v2](../../abi/collector-v2.md)). The base remains independently usable
+([Collector v2](https://github.com/chazu/birnam/blob/cffba722/abi/collector-v2.md)). The base remains independently usable
 before Runtime. Once Runtime and its Execution objects exist, Runtime installs
 its full roots and retirement operations. Saved public descriptors select that
 extension on every call; they cannot accidentally keep collecting the earlier
@@ -747,7 +747,7 @@ manifests, including Id's then-linked artifact exports. No release validation wa
 
 ### Production collector activation and construction
 
-[`Collector v3`](../../abi/collector-v3.md) now activates the production heap
+[`Collector v3`](https://github.com/chazu/birnam/blob/cffba722/abi/collector-v3.md) now activates the production heap
 before Runtime/Execution. `InitialFloor::finish` first calls
 `activate_collection`: Bootstrap v2 pauses publication, the live Trace graph
 validates Id edges and payload layout/native-hook coverage, Collect reconciles
@@ -805,7 +805,7 @@ remain open. No production timeout was changed or release validation run.
 
 ### Diagnostic storage inventory through completed Trace
 
-[Trace graph v2](../../abi/trace-graph-v2.md) now produces the allocation,
+[Trace graph v2](https://github.com/chazu/birnam/blob/cffba722/abi/trace-graph-v2.md) now produces the allocation,
 representation and core-edge portion of the production diagnostic storage view.
 It uses the same selected Id operations as live tracing, with completed Lifetime
 and Object Model records. It reports Id roots and Symbols without exposing Id's
@@ -856,7 +856,7 @@ The local allocation backend remains only for legacy isolated harnesses.
 Bootstrap selects the working, non-collecting `allocate` and `intern:` entries
 before activation replaces their bindings. The temporary upper constructor is
 `birnam_runtime_init_v11`, taking the completed
-[primitive allocation descriptor](../../abi/primitive-allocation-v1.md) alongside
+[primitive allocation descriptor](https://github.com/chazu/birnam/blob/cffba722/abi/primitive-allocation-v1.md) alongside
 its existing predecessors. This is a concrete bootstrap seam: deferred identity
 materialization may occur during collection and must not recursively collect or
 charge its already-accounted journal entries again. Ordinary upper construction
@@ -1028,7 +1028,7 @@ packaging are still architectural work, not acceptance established by these test
 
 Production Id now keeps its state for process life, like its pinned primitive
 native image. There is no `PENDING` owner slot or `take_initial_objects` transfer.
-The [Runtime v12 constructor](../../abi/runtime-construction-v12.md) takes the
+The [Runtime v12 constructor](https://github.com/chazu/birnam/blob/cffba722/abi/runtime-construction-v12.md) takes the
 completed native Id carrier explicitly, followed by the existing completed lower
 owners. Runtime stores a copied `Protocol`; it neither owns nor inspects a boxed
 Id `State`. The host passes the same carrier it received from Siphon.
@@ -1072,8 +1072,8 @@ and `(386, 75)` under forced recovery in all image modes.
 Bootstrap retains the original allocation, interning, lookup, add/remove,
 allocation-size, behavior and Symbol-byte entries immediately after Siphon loads
 Id, before loading Bootstrap or any other upper module. The temporary
-[Runtime v13 constructor](../../abi/runtime-construction-v13.md) receives this
-[complete record](../../abi/id-primitives-v1.md). It replaces the allocation-only
+[Runtime v13 constructor](https://github.com/chazu/birnam/blob/cffba722/abi/runtime-construction-v13.md) receives this
+[complete record](https://github.com/chazu/birnam/blob/cffba722/abi/id-primitives-v1.md). It replaces the allocation-only
 record without changing the Id carrier, native selectors or Id initialization.
 
 Runtime's lookup and Integer admission compare exact retained entries, including
@@ -1192,7 +1192,7 @@ export counts. Their two additional artifact exports came from statically linked
 
 The final six host preparations have been removed. Method Observation, Storage
 and Dispatch Cache now publish their existing complete factories through Id's
-native loading entry, using the explicit [factory requests](../../abi/runtime-support-v1.md).
+native loading entry, using the explicit [factory requests](https://github.com/chazu/birnam/blob/cffba722/abi/runtime-support-v1.md).
 `FactoriesV1` carries the copied operations into Runtime v14; Heap, observation,
 cache and guard consumers receive their actual operations during construction.
 Their ordinary constructors no longer consult global factory slots. Normal Runtime
@@ -1285,7 +1285,7 @@ to an optional compiler extension. Production constructs it through Id with
 `Bytes("compiler"), Word(Runtime API)` after Store, Artifact, PEG, Lang and TCC,
 immediately before Codegen. Its provider returns null beforehand. Codegen
 requires the completed extension and resolves compiler operations through its
-[descriptor](../../abi/runtime-compiler-v1.md), without raw-export fallback.
+[descriptor](https://github.com/chazu/birnam/blob/cffba722/abi/runtime-compiler-v1.md), without raw-export fallback.
 Native Execution, Block and collecting value/control operations work while the
 extension is absent. Both entries share a library, as section 4 permits.
 
@@ -1320,7 +1320,7 @@ function/context pair. `Object methodFor:`, `Vtable methodFor:`,
 representation. TCC and Portable Code select the completed checked language-send
 entry during construction. Invalid language lookup results become errors rather
 than executable addresses. The unsafe legacy `IdApi.send` convention remains a
-migration boundary. See [the language contract](../../abi/language-send-v1.md).
+migration boundary. See [the language contract](https://github.com/chazu/birnam/blob/cffba722/abi/language-send-v1.md).
 
 A Method retains its TCC Unit in an ordinary traced slot when its function comes
 from anonymous compilation. Registered resumable functions additionally retain
@@ -1345,7 +1345,7 @@ results, uses a Unit-owned cache, and registers normal finalization after
 evaluation. Surviving Blocks, Methods and bindings determine the Unit's lifetime.
 The separate-turn lifetime check covers this source path as well.
 
-[Lifetime v2](../../abi/fixtures/lifetime-v2/README.md) adds native references
+[Lifetime v2](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/lifetime-v2/README.md) adds native references
 indexed by source object and a native key. Runtime uses behavior/selector keys
 to retain a bound function's Unit. Trace visits these references only from live
 source objects, allowing unreachable Unit/behavior cycles to collect. Removing
@@ -1438,7 +1438,7 @@ this constructor rather than reimplementing its steps.
 
 Construction is selected through Bootstrap's existing common native descriptor
 and returns a native entry retained by the Bootstrap owner. Its requests and
-result kinds are specified in the [Bootstrap contract](../../abi/fixtures/bootstrap-v2/README.md).
+result kinds are specified in the [Bootstrap contract](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md).
 The 64-byte owner ABI is unchanged. A constructor request removes its mutable
 construction state from the shared owner until it returns; nested construction
 fails, while ordinary nested module loads retain their existing behavior. Prefix
@@ -1489,7 +1489,7 @@ The installed host source matches the worktree used for these checks.
 Bootstrap now constructs the complete Error helper, Integer iteration,
 Object/Symbol printing, Block loops and Boolean control group. Their common
 native constructors take explicit completed inputs; the exact operands are in
-[Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md). Integer's control entry
+[Bootstrap v2](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md). Integer's control entry
 adds only `to:do:`; Boolean's adds only Block-taking branches and short-circuit
 operations. Base arithmetic, predicates and printing remain the lower modules'
 existing behavior. No compiler service is installed by these entries.
@@ -1537,7 +1537,7 @@ The eight corresponding legacy host entries are removed. The host receives the
 completed collection descriptors and Store compensation service from Bootstrap.
 Runtime supplies its existing namespace-export, vtable-enumeration and
 method-observation views through named native requests. The exact predecessor
-operands and advertised results are recorded in [Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+operands and advertised results are recorded in [Bootstrap v2](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md).
 
 The prefix fixture constructs control without collections, collections without
 Store, and Store without any parser/compiler library. Each construction phase
@@ -1562,7 +1562,7 @@ the completed PEG object and builds the real Birnam grammar with message sends
 before returning its facade. Artifact and PEG do not require Store themselves;
 the full host sequence completes Store before requesting this parser group.
 The three legacy host rows are removed. The precise entry operands and results
-are recorded in [Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+are recorded in [Bootstrap v2](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md).
 
 New facade/behavior objects retain temporary constructor roots until permanent
 roots are installed. Repeated native construction returns the completed result
@@ -1606,7 +1606,7 @@ removes that forward dependency without making a partially usable Codegen.
 Codegen also receives Store compensation before it publishes any methods, plus
 completed Tcc, Store, Globals, Lang and CodeObject predecessors. The host's late
 Store configuration and the three legacy module rows are removed. Exact
-operands/results are recorded in [Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+operands/results are recorded in [Bootstrap v2](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md).
 
 The native prefix fixture is extended to compile C, evaluate Birnam and invoke
 a generated closure after GC with System/Image libraries absent. Ordinary source
@@ -1659,7 +1659,7 @@ storage; Source Loader receives completed Codegen. Bootstrap owns this sequence,
 and nine more legacy host rows are removed. The IO prefix requires neither
 collections/Store nor parser/compiler libraries; `load:` is absent until Codegen
 exists. The exact inputs and stage results are in
-[Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+[Bootstrap v2](https://github.com/chazu/birnam/blob/cffba722/abi/fixtures/bootstrap-v2/README.md).
 
 This construction change preserves the existing System language protocols.
 `loadModule:` itself still invokes the old native-module ABI, and legacy direct

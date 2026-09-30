@@ -480,11 +480,12 @@ impl Graph<'_, '_> {
                         } else {
                             b"wordOf:"
                         };
-                        let n = self
-                            .s
-                            .send(self.s.named(family)?, selector, &[Operand::object(o)])?
-                            .as_word()
-                            .ok_or_else(bad)? as u64;
+                        let bits = if family == b"Word" {
+                            self.s.send(o, b"bits", &[])?
+                        } else {
+                            self.s.send(self.s.named(family)?, selector, &[Operand::object(o)])?
+                        };
+                        let n = bits.as_word().ok_or_else(bad)? as u64;
                         node.locator = match family {
                             b"Integer" => Value::Integer(n),
                             b"Float" => Value::Float(n),
@@ -846,10 +847,10 @@ unsafe fn restore_heap(
                         Value::Float(_) => b"Float",
                         _ => b"Word",
                     };
-                    let selector = if family == b"Float" {
-                        b"fromBits:".as_slice()
+                    let selector = if family == b"Integer" {
+                        b"fromWord:".as_slice()
                     } else {
-                        b"fromWord:"
+                        b"fromBits:"
                     };
                     object(s.send(s.named(family)?, selector, &[Operand::word(*n as usize)])?)?
                 }

@@ -36,11 +36,11 @@ nativeRequiresCount / nativeRequireAt:
 capabilitiesCount / capabilityAt:
 ```
 
-Those messages need `libid`, `libbirnam_integer`, and `libbirnam_id_artifact`.
-The installed host mounts Integer before its native consumers; hand-built native
-embedders must attach the [Integer dependency](../../abi/integer-v1.md) explicitly. After Collection
-is active, `roots`, `requires`, `nativeRequires`, and `capabilities` return
-Vectors over the same data.
+Bootstrap constructs Artifact after the value, collection and Execution owners.
+Native embedders pass the completed Namespace to its initializer; no dependency
+table is attached. `roots`, `requires`, `nativeRequires`, and `capabilities`
+return Vectors over the same data. See the
+[Artifact message contract](../../rust/birnam-artifact/README.md).
 
 In a running Birnam environment, the descriptor can be inspected without
 activating its artifact:

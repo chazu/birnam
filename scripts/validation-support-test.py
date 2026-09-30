@@ -115,7 +115,9 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(set(core)|set(names),{s['name'] for s in steps})
         self.assertEqual(ci.select(['docs/validation.md']),'routine')
         self.assertEqual(ci.select(['rust/birnam-execution/src/lib.rs']),'exhaustive')
-        self.assertEqual(ci.select(['scripts/rust-install.sh']),'release')
+        for path in ('scripts/rust-install.sh', 'scripts/dist.sh', 'scripts/release.sh',
+                     'scripts/install-smoke.sh', 'scripts/install_contract.py'):
+            self.assertEqual(ci.select([path]), 'release')
 
     def test_ci_seed_preserves_artifact_bytes_and_executable_mode(self):
         import importlib.util

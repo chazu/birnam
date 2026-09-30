@@ -9,12 +9,16 @@ use birnam_abi::id_protocol::{
 };
 use birnam_abi::{Oop, borrowed_slice};
 use core::{cell::RefCell, ffi::c_void, ptr};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 
 #[derive(Default)]
 struct Roots {
     providers: Vec<Oop>,
     retained: Vec<(usize, Oop)>,
+    positions: HashMap<usize, usize>,
     next: usize,
 }
 impl Roots {
@@ -23,18 +27,20 @@ impl Roots {
             return None;
         }
         self.next = self.next.checked_add(1)?;
+        self.positions.insert(self.next, self.retained.len());
         self.retained.push((self.next, object));
         Some(self.next)
     }
     fn release(&mut self, token: usize) -> bool {
-        let Some(index) = self
-            .retained
-            .iter()
-            .position(|(candidate, _)| *candidate == token)
-        else {
+        let Some(index) = self.positions.remove(&token) else {
             return false;
         };
         self.retained.swap_remove(index);
+        if let Some((moved, _)) = self.retained.get(index) {
+            // Preserve the existing swap-removal enumeration order without
+            // scanning the whole live root set for every parser temporary.
+            *self.positions.get_mut(moved).unwrap() = index;
+        }
         true
     }
     fn register(&mut self, provider: Oop) -> bool {
@@ -137,9 +143,7 @@ unsafe extern "C" fn roots(
         .chain(providers.iter().copied())
         .chain(retained.into_iter().map(|(_, o)| o))
     {
-        let result = unsafe {
-            id.send_named(visitor, b"visit:", &[Operand::object(object)])
-        };
+        let result = unsafe { id.send_named(visitor, b"visit:", &[Operand::object(object)]) };
         if let Err(error) = result {
             return error;
         }
@@ -227,6 +231,43 @@ mod tests {
         roots.next = usize::MAX;
         assert_eq!(roots.retain(object), None);
         assert_eq!(roots.retained, [(second, object)]);
+    }
+    #[test]
+    fn releasing_moved_slots_keeps_duplicate_references_independent() {
+        let mut roots = Roots::default();
+        let object = ptr::without_provenance_mut(8);
+        for _ in 0..3 {
+            let tokens: Vec<_> = (0..4096).map(|_| roots.retain(object).unwrap()).collect();
+            // Removing odd tokens moves both later odd and even entries. Every
+            // remaining lease must still refer to exactly its original root.
+            for token in tokens.iter().step_by(2) {
+                assert!(roots.release(*token));
+                assert!(!roots.release(*token));
+            }
+            let mut remaining: Vec<_> = roots
+                .retained
+                .iter()
+                .map(|(token, value)| {
+                    assert_eq!(*value, object);
+                    *token
+                })
+                .collect();
+            remaining.sort_unstable();
+            assert_eq!(
+                remaining,
+                tokens
+                    .iter()
+                    .skip(1)
+                    .step_by(2)
+                    .copied()
+                    .collect::<Vec<_>>()
+            );
+            for token in tokens.iter().skip(1).step_by(2).rev() {
+                assert!(roots.release(*token));
+            }
+            assert!(roots.retained.is_empty());
+            assert!(roots.positions.is_empty());
+        }
     }
     #[test]
     fn registration_grows_preserving_order_duplicates_and_null_rejection() {

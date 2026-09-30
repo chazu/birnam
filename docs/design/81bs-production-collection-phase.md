@@ -133,7 +133,7 @@ the existing phase enum for callers, and retains assignment diagnostics and
 `CollectionGuard`. Host and standalone fixture preparation attach the new
 factory before Id initialization. Collect's normal initializer, coordinator
 selection and Siphon position remain unchanged. The
-[v1 contract](../../abi/collection-phase-v1.md), C mirror, focused gate, image
+[v1 contract](https://github.com/chazu/birnam/blob/cffba722/abi/collection-phase-v1.md), C mirror, focused gate, image
 smoke, README links and changelog accompany the implementation.
 
 Final review confirmed that the coordinator body and thread-local `ACTIVE`

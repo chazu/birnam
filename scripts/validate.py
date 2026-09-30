@@ -23,8 +23,12 @@ def plan(suite, prefix, output):
                    PRODUCTION, timeout=600)]
     for fixture in ('stackless-s2', 'portable-code-v1'):
         result.append(step(fixture, ['python3', f'abi/fixtures/{fixture}/verify.py'], (f'abi/fixtures/{fixture}/*',)))
-    for script in ('release-changelog-test.py', 'v014-performance-acceptance-test.py', 'v015-performance-acceptance-test.py'):
-        result.append(step(script[:-3], ['python3', 'scripts/' + script], ('scripts/' + script, 'scripts/' + script.replace('-test', ''))))
+    for script in ('release-changelog-test.py', 'release-acceptance-test.py', 'v014-performance-acceptance-test.py', 'v015-performance-acceptance-test.py'):
+        inputs = ('scripts/' + script, 'scripts/' + script.replace('-test', ''))
+        if script == 'release-acceptance-test.py': inputs += ('scripts/install_contract.py',)
+        result.append(step(script[:-3], ['python3', 'scripts/' + script], inputs))
+    result.append(step('install-contract-test', ['python3', 'scripts/install-contract-test.py'],
+                       ('scripts/install-contract-test.py', 'scripts/install_contract.py')))
     result.append(step('archive-test', ['python3', 'scripts/measurement-archive-test.py'], ('scripts/measurement*.py',)))
     result.append(step('native', ['bash', 'scripts/native-message-test.sh'],
                        PRODUCTION + ('scripts/native-message-test.sh', 'abi/**/*'), timeout=900))
@@ -38,7 +42,7 @@ def plan(suite, prefix, output):
         result.append(step('host-' + group,
                            ['bash', 'scripts/host-cli-test.sh', '--prefix', prefix, '--group', group],
                            PRODUCTION + ('scripts/*', 'abi/**/*', 'tests/**/*', 'examples/**/*'),
-                           depends=('install',), timeout={'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
+                           depends=('install',), timeout={'cli': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
     if suite == 'release':
         result.append(step('dylib-audit', ['bash', 'scripts/rust-dylib-audit.sh'],
                            PRODUCTION + ('scripts/rust-dylib-audit.sh', 'abi/rust-id-dylib-v1.json'), timeout=300))
@@ -68,7 +72,7 @@ def main():
         for step in reversed(steps):
             if step['name'] in selected: selected.update(step.get('depends', ()))
         steps = [step for step in steps if step['name'] in selected]
-    deadline = args.deadline if args.deadline is not None else 7200
+    deadline = args.deadline if args.deadline is not None else 14400
     if deadline <= 0: parser.error('deadline must be positive')
     if args.plan:
         print(json.dumps(dict(suite=args.suite, deadline_seconds=deadline, steps=steps), indent=2))

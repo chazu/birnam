@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build a portable arm64 macOS release tarball.
 #
-# Stages the `birnam` host + its Rust rung dylibs into a versioned directory,
-# ad-hoc signs them on macOS (softens Gatekeeper for a downloaded binary), and
-# tars it. The real binary resolves the fixed runtime layout relative to itself;
+# Stages the signed `birnam` host and native modules without changing receipt
+# bytes, verifies their signatures, and tars the exact published closure.
+# The real binary resolves the fixed runtime layout relative to itself;
 # there is no launcher or external layout manifest. The bundle is portable: it
 # runs from wherever it is unpacked.
 #
@@ -38,28 +38,34 @@ published="dist/${name}.tar.gz"
 log "building ${name} (Rust release, production distribution)"
 scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release >&2
 
-log "staging"
-mkdir -p "$stage/bin" "$stage/lib"
-cp "$prefix/bin/birnam" "$stage/bin/birnam"
-# All supported artifacts are Mach-O dylibs.
-cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
-# Native Rust-workspace source documentation + guides, in the install-relative
-# layout.
-cp -R "$prefix/share" "$stage/share"
+log "staging exact installation"
+cp -R "$prefix" "$stage"
 
-# Optional wrappers are not copied opportunistically from developer build dirt.
-# A deliberately published wrapper is a named self-describing module plus its
-# native sibling. Project-owned [[wrapped]] outputs are selected from the local
-# build receipt, then installed without that receipt.
-
-log "ad-hoc signing"
-codesign -s - --force "$stage"/lib/*.dylib "$stage"/bin/*
-for artifact in "$stage"/lib/*.dylib "$stage"/bin/*; do
-  codesign --verify --strict "$artifact"
-done
+# Authored modules are ELF relocatable objects, not Mach-O dylibs, despite the
+# .dylib suffix. Only the host and native shared libraries carry OS signatures.
+# Preserve all bytes (including explicitly shipped wrappers) from the receipt.
+log "verifying native signatures and installed receipt"
+python3 - "$stage" <<'PY_SIGNATURES'
+from pathlib import Path
+import subprocess
+import sys
+sys.path.insert(0, 'scripts')
+from install_contract import verify
+prefix = Path(sys.argv[1])
+receipt = verify(prefix)
+for relative in receipt['staged_manifest']:
+    if not relative.startswith(('bin/', 'lib/')):
+        continue
+    path = prefix / relative
+    with path.open('rb') as stream:
+        magic = stream.read(4)
+    if relative.startswith('lib/') and magic == b'\x7fELF':
+        continue
+    subprocess.run(['codesign', '--verify', '--strict', path], check=True)
+PY_SIGNATURES
 
 log "smoke testing relocated bundle"
-BIRNAM_PREFIX="$stage" BIRNAM_DISTRIBUTION=production scripts/install-smoke.sh >&2
+BIRNAM_PREFIX="$stage" scripts/install-smoke.sh >&2
 
 log "tarball"
 tar -C "$work" -czf "$archive" "$name"

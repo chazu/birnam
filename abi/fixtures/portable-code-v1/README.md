@@ -60,25 +60,14 @@ CodeObject materialization, publication, and human acceptance remain later
 implementation gates. The format codecs in this slice allocate no Birnam
 objects and publish no CodeBinding.
 
-## Compiled production image code
+## Production image admission
 
-New production v8 saves use a versioned bundle inside the existing opaque Code
-payload. The outer Code record retains its checksum and portable authority. The
-bundle starts with eight bytes `BIRNAMIC`, a little-endian u32 version (1), and
-three little-endian u64 lengths. The 36-byte header is followed by exactly three
-nonempty byte strings: the portable native unit, the compiled source-generation
-unit, and that generation's resumable manifest. No trailing bytes are permitted.
+The frozen corpus treats native Code bytes as opaque. Production message-based
+Images use the private `BIRNAMO1` bundle and its canonical authority checks;
+the former `BIRNAMIC` source-generation bundle is not the current save path.
+See [Image's current contract](../../../rust/birnam-image/README.md).
 
-The portable unit must export the exact portable inventories, selection and
-manifest. The source-generation unit uses the ordinary generated-artifact ABI
-and must export the saved manifest, whose authority matches the canonical durable
-generation. Both use the existing native admission and code-lifetime paths.
-Normal loading maps both units; explicit rebuilding ignores both native units.
-A prior v8 Code payload containing only a portable unit requires source recovery
-for the missing generation unit. Malformed bundles or manifests are rejected.
-
-The frozen format corpus above remains unchanged: its native Code bytes are
-opaque test data. `scripts/compiled-image-startup-smoke.sh PREFIX` exercises actual
-production saves, independently inspects the bundle/checksum, disables source
-compilation and evaluation for mapped/baked startup, checks explicit and
-missing-unit recovery, and rejects malformed bundle lengths and manifests.
+`rust/birnam-siphon/tests/image.rs` exercises mapped, rebuilt and resaved Images
+with source compilation and evaluation disabled. Mapped loading also disables
+native compilation. `scripts/host-cli-test.sh --group image` checks installed
+entry and load diagnostics; its `interaction` group also exercises baked artifacts.

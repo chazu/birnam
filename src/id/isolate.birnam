@@ -1,10 +1,10 @@
-[Module named: #isolate requires: #[#stdlib]];
+[Module named: #isolate requires: #[#stdlib #stacklessControl]];
 
 [Reflect docModule: #isolate is: "Process workers from explicit images, with copied wire-v1 values. Handles support blocking request:timeout: and bounded asynchronous submit:timeout:/pollRequest:. TaskControl request:from:timeout: integrates completion with structured tasks."]
 
 // Batch source preparation and image ownership for ordinary Birnam programs.
-// These setup operations run before tasks/workers start. Scheduling and worker
-// lifecycle methods live in the resumable stacklessControl unit.
+// These setup operations run before tasks/workers start. Task and worker
+// scheduling live in stacklessControl; preparation ownership stays here.
 [Globals at: #Concurrency put: [Object clone]];
 // A preparation object's paths and live service ownership are process-local
 // bookkeeping, not state to recreate inside every worker image.
@@ -105,3 +105,11 @@
   [[workspace , "/.birnam-candidates"] concurrencyRemoveDirectory];
   [workspace concurrencyRemoveDirectory];
   self]];
+
+[Reflect defineMethod: #close on: Concurrency as: [:self |
+  [[self field: #closed] set: true];
+  [TaskControl startCleanup: [:task |
+    [task ensure: [| nil] cleanup: [|
+      [[[self field: #workers] value] do: [:worker | [[worker shutdown] outcome]]];
+      [[self field: #workers] set: #[]];
+      [self removeFiles]]]]]]];

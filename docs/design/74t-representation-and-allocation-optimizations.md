@@ -130,7 +130,7 @@ not justify dropping implementation or correctness obligations.
 
 ## Numeric implementation preparation
 
-Prelude now supplies an [optional native declaration](../../abi/native-numeric-semantics-v1.md)
+Prelude now supplies an [optional native declaration](https://github.com/chazu/birnam/blob/cffba722/abi/native-numeric-semantics-v1.md)
 for its exact add, subtract, multiply, divide and remainder implementations.
 The declaration is an unsafe native-module contract, comparable to native Method
 and trace-hook contracts. Arbitrary Id annotations cannot attest opaque native
@@ -677,7 +677,7 @@ values through ordinary current-owner construction and recovery instead.
 The next consumer analyzes a bounded prefix of ordinary Calls. Clone identities
 are virtual values; an admitted native field projection substitutes the existing
 Oop in that private payload. Registered method names do not establish projection
-semantics. The [optional native declaration](../../abi/native-field-projection-v1.md)
+semantics. The [optional native declaration](https://github.com/chazu/birnam/blob/cffba722/abi/native-field-projection-v1.md)
 comes from and pins the actual loaded Method image, and is revalidated against
 the current floor before use. Relational declares its existing LogicVar name
 getter; its cached factory, ordinary Store attributes, and Cell operations are
@@ -1055,7 +1055,7 @@ are still outstanding. No new performance claim accompanies this checkpoint.
 ### Exact warm constructor admission
 
 The Portable Code module now exports the optional
-[native Block construction declaration](../../abi/native-block-construction-v1.md).
+[native Block construction declaration](https://github.com/chazu/birnam/blob/cffba722/abi/native-block-construction-v1.md).
 It recognizes its actual ordinary or materialized constructor, compares the
 current producer API with the calling floor, and verifies exact program bytes,
 capture count, invocation arity, existing carrier meaning and materialization

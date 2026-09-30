@@ -40,7 +40,7 @@ Code stays pinned through existing native module lifetime rules. A missing
 canonical provider fails startup; attempting actual GC without the dependency
 aborts. Bare Id initialization remains possible. IdApi v4 and durable formats are
 unchanged. The native mount protocol is documented in
-[live traversal v1](../../abi/trace-live-v1.md).
+[live traversal v1](https://github.com/chazu/birnam/blob/cffba722/abi/trace-live-v1.md).
 
 ## Borrowing and lifetime
 

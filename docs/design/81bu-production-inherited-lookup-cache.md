@@ -215,7 +215,7 @@ Debug evidence:
   Artifact digest:
   `ef646caede66c54ba432f9c39da650a0e27b40188d87bd148b5d2a8768d4d831`.
 
-The [v1 reference](../../abi/dispatch-cache-v1.md), independent C declaration,
+The [v1 reference](https://github.com/chazu/birnam/blob/cffba722/abi/dispatch-cache-v1.md), independent C declaration,
 `mise run dispatch-cache`, image smoke, README links and changelog accompany
 the extraction. Local evidence and prefix markers are `.cargo-target/81bu-*`.
 No release or dispatch performance qualification was run.

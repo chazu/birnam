@@ -1,19 +1,17 @@
 """Accept an installed prefix; move it and execute from an unrelated directory."""
-import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+from install_contract import verify
 
 prefix = Path(sys.argv[1]).resolve()
-receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
+receipt = verify(prefix)
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
 assert receipt['stage1_modules'] == ['stdlib', 'stacklessControl', 'compiledUnit', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
 assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'stacklessControl', 'compiledUnit']
 assert {'libbirnam_storage.dylib', 'libbirnam_trace.dylib'} <= set(receipt['dynamic_libraries'])
-for relative, digest in receipt['staged_manifest'].items():
-    assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative
 relocated = prefix.parent / 'relocated'
 prefix.rename(relocated)
 work = relocated.parent / 'working elsewhere'

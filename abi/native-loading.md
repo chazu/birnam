@@ -35,8 +35,8 @@ Every native module is constructed through `birnam_native_module_v1` with its
 explicit completed inputs. The installed native gate checks every library for
 absence of those obsolete exports, plus retired preparers and factory/provider
 aliases, in addition to the exact module inventories. The current production
-prefix is checked by `mise run native-messages`; full installed Host/CLI and image
-loader validation awaits those migrations.
+prefix is checked by `mise run native-messages`; installed Host/CLI and Image
+entry are checked by `scripts/host-cli-test.sh`.
 
 
 Source files use the separate `[System load: path]` protocol. Its initializer also

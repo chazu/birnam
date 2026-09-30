@@ -159,7 +159,7 @@ Release validation remains waived.
 ## Completed implementation and evidence
 
 The checkpoint's remaining work is complete. The
-[v1 contract](../../abi/allocation-budget-v1.md), independent C declaration,
+[v1 contract](https://github.com/chazu/birnam/blob/cffba722/abi/allocation-budget-v1.md), independent C declaration,
 `mise run allocation-budget`, installed image smoke, README links and changelog
 now accompany the implementation. Final production review confirms that only
 the counter owner and its operations moved: caller charge/refusal order,

@@ -12,7 +12,7 @@ trap 'rm -rf "$tmp"' EXIT
 # not from the caller's cwd or inherited resource overrides.
 unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB BIRNAM_RUST_WORKSPACE_DIR
 run_from_clean_cwd() {
-  (cd /tmp && BIRNAM_FORCE_SOURCE=1 "$bin" "$@")
+  (cd /tmp && "$bin" "$@")
 }
 
 mkdir -p "$tmp/project/src" "$tmp/project/tests"
@@ -120,7 +120,7 @@ mv "$tmp/main.unavailable" "$tmp/project/main.birnam"
 install_lib="$tmp/install/lib"
 mkdir -p "$install_lib"
 cp "$runtime_lib"/*.dylib "$install_lib/"
-install_output="$(cd /tmp && BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$install_lib" "$bin" install --build "$tmp/project")"
+install_output="$(cd /tmp && BIRNAM_LIB_DIR="$install_lib" "$bin" install --build "$tmp/project")"
 grep -Fq "installed " <<<"$install_output"
 grep -Fq " into $install_lib" <<<"$install_output"
 test -f "$install_lib/libbirnam_app.dylib"
@@ -224,7 +224,7 @@ grep -Fxq '42' <<<"$transitive_run"
 transitive_install_lib="$tmp/transitive-install/lib"
 mkdir -p "$transitive_install_lib"
 cp "$runtime_lib"/*.dylib "$transitive_install_lib/"
-transitive_install="$(cd /tmp && BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$transitive_install_lib" "$bin" install "$tmp/transitive/root")"
+transitive_install="$(cd /tmp && BIRNAM_LIB_DIR="$transitive_install_lib" "$bin" install "$tmp/transitive/root")"
 grep -Fq " into $transitive_install_lib" <<<"$transitive_install"
 test -f "$transitive_install_lib/libbirnam_middle.dylib"
 test -f "$transitive_install_lib/libbirnam_transitive_fixture.dylib"
@@ -325,7 +325,7 @@ grep -Fxq '84' <<<"$relocated"
 git_install_lib="$tmp/git/install/lib"
 mkdir -p "$git_install_lib"
 cp "$runtime_lib"/*.dylib "$git_install_lib/"
-(cd /tmp && BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$git_install_lib" "$bin" install "$tmp/git/relocated") >"$tmp/git/install.out"
+(cd /tmp && BIRNAM_LIB_DIR="$git_install_lib" "$bin" install "$tmp/git/relocated") >"$tmp/git/install.out"
 test -f "$git_install_lib/libbirnam_git_middle.dylib"
 test -f "$git_install_lib/libbirnam_git_native.dylib"
 test -f "$git_install_lib/libgit_native.dylib"

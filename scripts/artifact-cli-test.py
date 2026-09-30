@@ -50,6 +50,25 @@ assert not marker.exists()
 succeeds(root, b'7\n')
 assert marker.read_text() == 'yes'
 
+# Nested source loading publishes globals to a caller compiled before that load.
+# Both the source runner and the source-free compiled runner must execute them.
+leaf_source = work / 'nested-leaf.birnam'
+leaf_source.write_text('let NestedAnswer := 73; true')
+outer_source = work / 'nested-outer.birnam'
+outer_source.write_text(f'[System load: {quote(leaf_source)}]; '
+                        'let NestedReader := [| NestedAnswer]; true')
+runner_text = ('let readLater := [| [NestedReader value]]; '
+               f'[System load: {quote(outer_source)}]; [System gc]; '
+               '[System println: [readLater value]]; '
+               '[Globals at: #NestedAnswer put: 91]; [System gc]; '
+               '[System println: [readLater value]]; true')
+runner_source = work / 'nested-runner.birnam'
+runner_source.write_text(runner_text)
+succeeds(runner_source, b'73\n91\n')
+runner_source.unlink()
+runner_artifact = compile('nested-runner', runner_text)
+succeeds(runner_artifact, b'73\n91\n')
+
 # Dependency-first order, diamond deduplication, arbitrary root filename.
 leaf = compile('artifactLeaf', '[Module named: #artifactLeaf requires: #[]]; [System println: "leaf"]; true')
 left = compile('artifactLeft', '[Module named: #artifactLeft requires: #[#artifactLeaf]]; [System println: "left"]; true')
@@ -121,4 +140,4 @@ succeeds(false, b'')
 # bootstrap switch is rejected by argument parsing before opening source/runtime.
 result = run(['--compile-module', 'missing.birnam', 'unused.dylib', '--initial-generation-resumable'])
 assert result.returncode == 1 and b'Arity' in result.stderr and b'actual: 3' in result.stderr, result
-print('installed artifacts: inert compile, removed source/assets, dependency order, preflight and failures passed')
+print('installed artifacts: inert compile, removed source/assets, nested globals, dependency order, preflight and failures passed')

@@ -826,10 +826,5 @@
 [Reflect defineMethod: #outcome on: RemoteFailure as: [:self | [db currentValue: self attr: #remoteOutcome]]];
 [Reflect defineMethod: #message on: RemoteFailure as: [:self | [[self outcome] printString]]];
 
-[Reflect defineMethod: #close on: Concurrency as: [:self |
-  [[self field: #closed] set: true];
-  [TaskControl startCleanup: [:task |
-    [task ensure: [| nil] cleanup: [|
-      [[[self field: #workers] value] do: [:worker | [[worker shutdown] outcome]]];
-      [[self field: #workers] set: #[]];
-      [self removeFiles]]]]]]];
+// Module initialization succeeds independently of the last prototype defined.
+true

@@ -638,5 +638,37 @@ fn bootstrap_memory_preserves_tracing_finalization_and_live_dispatch() {
         collect(id, gc);
         assert!(!present(id, parent) && !present(id, left) && !present(id, right));
         assert!(a.phase_checks.get() > 0 && b.phase_checks.get() > 0);
+        // Churn formerly measured through Codegen's aggregate counters belongs
+        // to Id's symbol owner. Root each batch, then reclaim its entire live set.
+        collect(id, gc);
+        let metrics = || {
+            (
+                send(id, id.receiver, b"symbolCount", &[])
+                    .as_word()
+                    .unwrap(),
+                send(id, id.receiver, b"symbolNameBytes", &[])
+                    .as_word()
+                    .unwrap(),
+            )
+        };
+        let baseline = metrics();
+        for batch in 0..3 {
+            let mut temporary = Vec::new();
+            for index in 0..5000 {
+                let symbol = id
+                    .intern_name(format!("churn-{batch}-{index}").as_bytes())
+                    .unwrap();
+                temporary.push(retain(id, roots, symbol));
+            }
+            collect(id, gc);
+            let live = metrics();
+            assert!(live.0 >= baseline.0 + 5000 && live.1 > baseline.1);
+            for root in temporary {
+                release(id, roots, root);
+            }
+            collect(id, gc);
+            assert_eq!(metrics(), baseline, "symbol batch {batch} leaked names");
+        }
+
     }
 }

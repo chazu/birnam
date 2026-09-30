@@ -252,6 +252,88 @@ unsafe fn harness() -> H {
 unsafe fn global(h: &H, n: &[u8]) -> Oop {
     unsafe { h.call(h.named(b"Globals"), b"at:", &[h.id.intern_name(n).unwrap()]) }
 }
+const IMAGE_WORD_BITS: [usize; 4] = [0, i64::MAX as usize, 1usize << 63, usize::MAX];
+const IMAGE_FLOAT_BITS: [usize; 4] = [
+    0x8000000000000000,
+    0x7ff8000000000042,
+    0x7ff0000000000000,
+    0x7fefffffffffffff,
+];
+unsafe fn numeric_image_values(h: &H, saving: bool) {
+    unsafe {
+        for (name, family, bits) in [
+            (
+                b"ImageWords".as_slice(),
+                b"Word".as_slice(),
+                IMAGE_WORD_BITS,
+            ),
+            (
+                b"ImageFloats".as_slice(),
+                b"Float".as_slice(),
+                IMAGE_FLOAT_BITS,
+            ),
+        ] {
+            if saving {
+                let mut values = Vec::new();
+                for value in bits {
+                    values.push(h.keep(object(send(
+                        h.id,
+                        h.named(family),
+                        b"fromBits:",
+                        &[Operand::word(value)],
+                    ))));
+                }
+                values.push(values[3]);
+                h.call(
+                    h.named(b"Globals"),
+                    b"at:put:",
+                    &[h.id.intern_name(name).unwrap(), h.vector(&values)],
+                );
+            }
+            let values = global(h, name);
+            for (index, value) in bits.into_iter().enumerate() {
+                let restored = h.call(values, b"at:", &[h.int(index as i64)]);
+                assert_eq!(send(h.id, restored, b"bits", &[]).as_word(), Some(value));
+            }
+            assert_eq!(
+                h.call(values, b"at:", &[h.int(3)]),
+                h.call(values, b"at:", &[h.int(4)])
+            );
+        }
+        let words = global(h, b"ImageWords");
+        let boundary = h.call(words, b"at:", &[h.int(1)]);
+        assert_eq!(
+            h.number(h.call(boundary, b"asInteger", &[])),
+            i64::MAX as usize
+        );
+        let overflow = h.call(words, b"at:", &[h.int(3)]);
+        let error = h.call(overflow, b"asInteger", &[]);
+        assert_eq!(
+            h.call(error, b"kind", &[]),
+            h.id.intern_name(b"overflow").unwrap()
+        );
+        assert_eq!(
+            h.bytes(h.call(error, b"message", &[])),
+            b"word out of Integer range"
+        );
+        if saving {
+            h.call(
+                h.named(b"Globals"),
+                b"at:put:",
+                &[h.id.intern_name(b"ImageNumericError").unwrap(), error],
+            );
+        }
+        let saved_error = global(h, b"ImageNumericError");
+        assert_eq!(
+            h.call(saved_error, b"kind", &[]),
+            h.call(error, b"kind", &[])
+        );
+        assert_eq!(
+            h.bytes(h.call(saved_error, b"message", &[])),
+            h.bytes(h.call(error, b"message", &[]))
+        );
+    }
+}
 #[test]
 #[ignore = "requires production native modules"]
 fn image_owner_roundtrip() {
@@ -288,7 +370,39 @@ fn image_owner_roundtrip() {
                 ),
             );
             let mapped = mode == "mapped";
+            // Neither recovery mode evaluates source or reruns initializers.
+            // Rebuilding compiles canonical portable programs through its owner.
+            let codegen_vt = behavior_of(&h, h.named(b"Codegen"));
+            for selector in [
+                b"eval:".as_slice(),
+                b"evalPersisting:",
+                b"evalPersisting:from:",
+                b"compile:",
+                b"compile:output:",
+                b"compile:output:from:",
+                b"compile:output:root:",
+            ] {
+                binding(&h, codegen_vt, selector);
+                set(
+                    &h,
+                    codegen_vt,
+                    selector,
+                    NativeEntry::new(deny_compile, core::ptr::null_mut()),
+                );
+            }
             if mapped {
+                for selector in [
+                    b"compilePortableImageCode:bindings:selection:".as_slice(),
+                    b"beginPortableImageRebuild:bindings:selection:",
+                ] {
+                    binding(&h, codegen_vt, selector);
+                    set(
+                        &h,
+                        codegen_vt,
+                        selector,
+                        NativeEntry::new(deny_compile, core::ptr::null_mut()),
+                    );
+                }
                 let vt = behavior_of(&h, h.named(b"TCC"));
                 for selector in [b"compile:".as_slice(), b"compileObject:"] {
                     set(
@@ -359,6 +473,7 @@ fn image_owner_roundtrip() {
                 ),
                 nil
             );
+            numeric_image_values(&h, false);
             let shared = global(&h, b"ImageShared");
             assert_eq!(shared, global(&h, b"ImageAlias"));
             assert_eq!(h.bytes(global(&h, b"ImageBytes")), b"asset\0\xffbytes");
@@ -529,6 +644,7 @@ fn image_owner_roundtrip() {
             );
             return;
         }
+        numeric_image_values(&h, true);
         // CellVt has Store as its native owner, but hosts instance methods
         // directly. Image binding targets must preserve that distinction.
         h.eval(b"[Reflect defineMethod: #imageCellMarker on: CellVt as: [:self | 73]]");
@@ -775,17 +891,38 @@ fn image_owner_roundtrip() {
         assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"true"));
         let original_bytes = std::fs::read(&path).unwrap();
         let machine = h.call(h.named(b"Machine"), b"new", &[]);
-        h.call(
-            h.named(b"Globals"),
-            b"at:put:",
-            &[h.id.intern_name(b"ImageUnsupported").unwrap(), machine],
+        let native_method = h.call(
+            h.named(b"Integer"),
+            b"methodFor:",
+            &[h.id.intern_name(b"+").unwrap()],
         );
-        assert_eq!(h.call(system, b"saveImage:", &[filename]), nil);
-        assert_eq!(
-            std::fs::read(&path).unwrap(),
-            original_bytes,
-            "failed save preserves destination"
+        let block_method = h.call(
+            closure,
+            b"methodFor:",
+            &[h.id.intern_name(b"value").unwrap()],
         );
+        for capability in [machine, native_method, block_method] {
+            for private in [false, true] {
+                if private {
+                    h.call(
+                        h.named(b"ObjectModel"),
+                        b"ensurePrivateVtableFor:",
+                        &[capability],
+                    );
+                }
+                h.call(
+                    h.named(b"Globals"),
+                    b"at:put:",
+                    &[h.id.intern_name(b"ImageUnsupported").unwrap(), capability],
+                );
+                assert_eq!(h.call(system, b"saveImage:", &[filename]), nil);
+                assert_eq!(
+                    std::fs::read(&path).unwrap(),
+                    original_bytes,
+                    "failed capability save preserves destination"
+                );
+            }
+        }
         assert_eq!(
             h.call(
                 codegen,
@@ -942,4 +1079,123 @@ unsafe extern "C" fn fail_publication(
         Err(Outcome::failed(881, 73))
     })()
     .map_or_else(|e| e, Outcome::loaded)
+}
+#[test]
+#[ignore = "requires production native modules"]
+fn repeated_image_resaves_keep_a_fixed_live_set() {
+    const EPOCHS: usize = 20;
+    if let Ok(epoch) = std::env::var("BIRNAM_IMAGE_CHAIN_EPOCH") {
+        let epoch: usize = epoch.parse().unwrap();
+        let path = std::path::PathBuf::from(std::env::var_os("BIRNAM_IMAGE_CHAIN_PATH").unwrap());
+        unsafe {
+            let h = harness();
+            let system = h.named(b"System");
+            let store = h.named(b"Store");
+            let globals = h.named(b"Globals");
+            let codegen = h.named(b"Codegen");
+            let filename = h.string(path.as_os_str().as_bytes());
+            let saved_roots = h.tokens.borrow().len();
+            if epoch == 0 {
+                h.eval(b"let ChainValue := 0; let ChainClosure := [:value | [value + 1]]; [db assert: #chainValue attr: #history value: true]");
+            } else {
+                let rebuild = epoch % 2 == 0;
+                assert_eq!(
+                    h.call(
+                        system,
+                        b"loadImage:rebuild:",
+                        &[filename, h.named(if rebuild { b"true" } else { b"false" })]
+                    ),
+                    h.named(if rebuild { b"false" } else { b"true" })
+                );
+                let previous = global(&h, b"ChainValue");
+                assert_eq!(h.number(previous), epoch - 1);
+                let next = h.call(global(&h, b"ChainClosure"), b"value:", &[previous]);
+                assert_eq!(h.number(next), epoch);
+                h.call(
+                    globals,
+                    b"at:put:",
+                    &[h.id.intern_name(b"ChainValue").unwrap(), next],
+                );
+            }
+            // Every epoch changes the same historical fact, then drops old
+            // history. Both the restored closure and latest value stay live.
+            let entity = h.keep(h.id.intern_name(b"chainEntity").unwrap());
+            let attribute = h.keep(h.id.intern_name(b"chainValue").unwrap());
+            h.call(store, b"retainCurrentOnly", &[]);
+            for value in 0..1000 {
+                let mark = h.tokens.borrow().len();
+                h.call(
+                    store,
+                    b"assert:attr:value:",
+                    &[entity, attribute, h.int(value)],
+                );
+                h.clear_from(mark);
+            }
+            h.call(store, b"compact", &[]);
+            h.call(codegen, b"evictMaterializations", &[]);
+            h.clear_from(saved_roots);
+            h.collect();
+            assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"true"));
+            h.clear_from(saved_roots);
+            h.collect();
+            let facts = h.number(h.call(store, b"retainedFactCount", &[]));
+            let fact_bytes = h.number(h.call(store, b"retainedFactBytes", &[]));
+            let units = h.units();
+            assert!(units > 0, "the saved closure must retain executable code");
+            std::fs::write(
+                path.with_extension(format!("epoch-{epoch}")),
+                format!(
+                    "{facts} {fact_bytes} {units} {}\n",
+                    std::fs::metadata(&path).unwrap().len()
+                ),
+            )
+            .unwrap();
+            // Clearing Store/Globals and the last external root must release
+            // every restored or freshly materialized native Unit in this process.
+            h.call(store, b"imageLoadBegin", &[]);
+            h.call(codegen, b"evictMaterializations", &[]);
+            h.clear_from(0);
+            h.collect();
+            assert_eq!(h.units(), 0, "epoch {epoch} retained native mappings");
+        }
+        return;
+    }
+    let directory = std::env::temp_dir().join(format!("birnam-image-chain-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("current.image");
+    let mut baselines: [Option<Vec<usize>>; 2] = [None, None];
+    for epoch in 0..=EPOCHS {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "repeated_image_resaves_keep_a_fixed_live_set",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("BIRNAM_IMAGE_CHAIN_EPOCH", epoch.to_string())
+            .env("BIRNAM_IMAGE_CHAIN_PATH", &path)
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "Image chain epoch {epoch} failed; evidence in {}",
+            directory.display()
+        );
+        let row: Vec<usize> =
+            std::fs::read_to_string(path.with_extension(format!("epoch-{epoch}")))
+                .unwrap()
+                .split_whitespace()
+                .map(|v| v.parse().unwrap())
+                .collect();
+        assert_eq!(row.len(), 4);
+        if epoch >= 3 {
+            let baseline = &mut baselines[epoch % 2];
+            if let Some(expected) = baseline {
+                assert_eq!(&row, expected, "Image chain grew in epoch {epoch}");
+            } else {
+                *baseline = Some(row);
+            }
+        }
+    }
+    std::fs::remove_dir_all(directory).unwrap();
 }
