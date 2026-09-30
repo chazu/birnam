@@ -76,8 +76,8 @@ birnam> Commands:
   :globals     list the bindings you've defined
   :quit        leave the REPL  (or Ctrl-D)
 Everything else is birnam: an expression prints its value; \`let x := …\`
-binds a name that persists across lines; \`[Reflect defineMethod:…]\` extends
-the live system. Multi-line forms continue until the brackets balance.
+binds a name that persists across lines. Use CompiledUnit candidates for
+method changes. Multi-line forms continue until the brackets balance.
 birnam> unknown command (try :help)
 birnam> unknown command (try :help)
 birnam> "

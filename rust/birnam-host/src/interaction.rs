@@ -47,6 +47,7 @@ impl HostRuntime {
                 &[],
             )?;
             session.check_result(sealed)?;
+            self.enter_running()?;
             let ready = session.call(
                 repl,
                 if apply_config {
@@ -95,6 +96,7 @@ impl HostRuntime {
             &[Operand::word(port as usize)],
         )?;
         let bind = q.string(bind.as_bytes())?;
+        self.enter_running()?;
         let result = q.call(
             self.global(&q, b"Repl")?,
             b"serveOn:bind:",

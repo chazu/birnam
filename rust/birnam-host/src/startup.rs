@@ -424,6 +424,7 @@ impl HostRuntime {
                 return Err(e);
             }
         };
+        host.enter_running()?;
         let result = host.send(
             isolate,
             b"runWorker:receiver:selector:",
@@ -524,7 +525,15 @@ impl HostRuntime {
     }
     /// Enter the current global main through ordinary dispatch. Nil and false
     /// results succeed; missing main and returned Errors are failures.
+    fn enter_running(&self) -> Result<(), HostError> {
+        let q = self.scope();
+        let result = q.call(self.named(b"Codegen")?, b"enterRunning", &[])?;
+        q.check_result(result)?;
+        if result != self.named(b"true")? { return Err(HostError("Codegen rejected running entry".into())); }
+        Ok(())
+    }
     pub fn run_image_main(&self) -> Result<(), HostError> {
+        self.enter_running()?;
         let run = || -> Result<(), HostError> {
             let scope = self.scope();
             let main = self.global(&scope, b"main")?;

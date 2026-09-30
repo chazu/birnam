@@ -26,6 +26,8 @@ struct State {
     id: Protocol,
     ns: Oop,
     roots: Oop,
+    mutation_guard: Oop,
+    running: core::cell::Cell<bool>,
     permanent: Vec<Oop>,
     sources: source::Sources,
     candidates: candidate::Candidates,
@@ -207,6 +209,9 @@ enum Op {
     Compile,
     Eval,
     Define,
+    Remove,
+    EnterRunning,
+    AuthorizeMutation,
     NameOf,
     Reflection(reflection::Op),
     Source(source::Op),
@@ -216,6 +221,8 @@ enum Op {
     Candidate(candidate::Op),
     FulfillIntent,
     Receipt(usize),
+    ManagedChanged,
+    ValidateImage,
 }
 struct Entry {
     state: *const State,
@@ -230,7 +237,9 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
         }
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let count = match e.op {
-            Op::Receipt(_) => 0,
+            Op::Receipt(_) | Op::ValidateImage | Op::EnterRunning | Op::AuthorizeMutation => 0,
+            Op::Remove => 2,
+            Op::ManagedChanged => 2,
             Op::Define => 3,
             Op::Reflection(op) => op.count(),
             Op::Source(op) => op.count(),
@@ -254,6 +263,18 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
         }
         for &v in a {
             scope.keep(object(v)?)?;
+        }
+        if matches!(e.op, Op::EnterRunning) {
+            return candidate::enter_running(s, &scope);
+        }
+        if matches!(e.op, Op::AuthorizeMutation) {
+            return candidate::authorize(s, &scope);
+        }
+        if matches!(e.op, Op::ManagedChanged) {
+            return candidate::method_changed(s, &scope, object(a[0])?, object(a[1])?);
+        }
+        if matches!(e.op, Op::ValidateImage) {
+            return candidate::validate_image(s, &scope);
         }
         if let Op::Image(op) = e.op {
             return image::operation(s, &scope, op, a);
@@ -293,6 +314,20 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
                 .ok_or_else(invalid)?
                 .to_vec();
             return Ok(Operand::object(s.text(&scope, &bytes)?));
+        }
+        if matches!(e.op, Op::Define | Op::Remove) && !candidate::ordinary_mutation_allowed(s) {
+            return candidate::reject_mutation(s, &scope);
+        }
+        if matches!(e.op, Op::Remove) {
+            let target = object(a[1])?;
+            let behavior = if s.send(s.id.receiver, b"isBehavior:", &[a[1]])?.as_word() == Some(1) {
+                target
+            } else {
+                scope.keep(object(s.send(s.id.receiver, b"behaviorOf:", &[a[1]])?)?)?
+            };
+            let store = scope.keep(s.named(b"Store")?)?;
+            let result = s.send(store, b"removeMethod:on:", &[a[0], Operand::object(behavior)])?;
+            return Ok(if result.as_object() == Some(store) { a[1] } else { result });
         }
         if matches!(e.op, Op::Define) {
             let selector = object(a[0])?;
@@ -460,11 +495,15 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         for index in 0..4 {
             id.send_named(model, b"slotAt:in:put:", &[Operand::word(index), Operand::object(receipt), Operand::object(named(b"nil")?)])?;
         }
+        let guard_vt = pin(object(id.send_named(named(b"ObjectVt")?, b"delegated", &[])?)?)?;
+        let mutation_guard = pin(object(id.send_named(model, b"allocate:bytes:", &[Operand::object(guard_vt), Operand::word(0)])?)?)?;
         let s = Box::into_raw(Box::new(State {
             id,
             ns,
             roots: root,
-            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect, receipt_vt, receipt],
+            mutation_guard,
+            running: core::cell::Cell::new(false),
+            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect, receipt_vt, receipt, guard_vt, mutation_guard],
             sources: source::Sources::default(),
             candidates: Default::default(),
             materializations: RefCell::new(Vec::new()),
@@ -477,6 +516,12 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (receipt_vt, b"logical", Op::Receipt(1)),
             (receipt_vt, b"physical", Op::Receipt(2)),
             (receipt_vt, b"reason", Op::Receipt(3)),
+            (guard_vt, b"value", Op::AuthorizeMutation),
+            (vt, b"enterRunning", Op::EnterRunning),
+            (vt, b"authorizeManagedMethodMutation", Op::AuthorizeMutation),
+            (reflect_vt, b"removeMethod:on:", Op::Remove),
+            (vt, b"managedMethodChanged:on:", Op::ManagedChanged),
+            (vt, b"validateImageGeneration", Op::ValidateImage),
             (vt, b"discardCandidate:", Op::Candidate(candidate::Op::Discard)),
             (vt, b"retainedGenerationCount", Op::Candidate(candidate::Op::RetainedCount)),
             (vt, b"retainedGenerationBytes", Op::Candidate(candidate::Op::RetainedBytes)),

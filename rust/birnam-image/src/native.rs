@@ -600,6 +600,12 @@ impl Graph<'_, '_> {
 }
 unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome> {
     unsafe {
+        let codegen = q.keep(s.named(b"Codegen")?)?;
+        let admitted = s.call(q, codegen, b"validateImageGeneration", &[])?;
+        if admitted != s.named(b"true")? {
+            s.reject(b"Managed generation is not current");
+            return if s.is_error(admitted)? { Ok(Operand::object(admitted)) } else { Err(bad()) };
+        }
         s.facts.borrow_mut().clear();
         let store = q.keep(s.named(b"Store")?)?;
         let metadata = [
@@ -734,6 +740,11 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
             code: Some(&code),
         })
         .map_err(|_| bad())?;
+        let admitted = s.call(q, codegen, b"validateImageGeneration", &[])?;
+        if admitted != s.named(b"true")? {
+            s.reject(b"Managed generation changed during image save");
+            return if s.is_error(admitted)? { Ok(Operand::object(admitted)) } else { Err(bad()) };
+        }
         support::publish_atomic(path, &bytes).map_err(|_| bad())?;
         *s.report.borrow_mut() = Report {
             status: b"saved",

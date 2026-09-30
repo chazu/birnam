@@ -25,6 +25,7 @@ pub(crate) unsafe fn begin_recovery(
 ) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.busy.get()
+            || s.candidates.observing.get()
             || s.candidates.quiescent.get()
             || s.candidates.recovery.borrow().is_some()
         {

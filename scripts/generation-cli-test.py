@@ -29,6 +29,8 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
     artifact = json.dumps(str(root / 'candidate.o'))
     forms = [
         '[3 generationCliValue]',
+        '[[[Reflect defineMethod: #generationCliValue on: Integer as: [:self | 99]] kind] = #generationNotQuiescent]',
+        '[[[Reflect removeMethod: #generationCliValue on: Integer] kind] = #generationNotQuiescent]',
         # Published applications own their bundled method definitions as one
         # source revision; replace that admitted revision, preserving its effects.
         f'[CompiledUnit compile: [[Codegen moduleSourceFor: #__generation_cliApplication] replace: "| 10" with: "| 20"] named: #__generation_cliApplication output: {artifact}]',
@@ -49,5 +51,6 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
     assert transcript.count('birnam> 10\n') == 2, transcript
     assert transcript.count('birnam> 20\n') == 1, transcript
     assert transcript.index('birnam> 10\n') < transcript.index('birnam> 20\n') < transcript.rindex('birnam> 10\n'), transcript
+    assert transcript.count('birnam> true\n') >= 2, transcript
     assert 'error(' not in transcript.lower(), transcript
-    print('generation: published baseline, console intent activation and exact rollback passed')
+    print('generation: running mutation guard, console intent activation and exact rollback passed')

@@ -95,26 +95,145 @@ pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<(bool, Option
             None => return Ok((false, Some(ledger.generation))),
             Some(false) => {}
         }
-        if !ledger.drifted {
-            // Publish the cached invalidation before outgoing Store callbacks.
-            s.candidates
-                .ledger
-                .borrow_mut()
-                .as_mut()
-                .ok_or_else(invalid)?
-                .drifted = true;
-            let drifted = symbol(s, q, b"drifted")?;
-            let no = s.named(b"false")?;
-            let nil = s.named(b"nil")?;
-            assert(s, q, ledger.generation, b"state", drifted)?;
-            for unit in ledger.units {
-                if unit != nil {
-                    assert(s, q, unit, b"state", drifted)?;
-                    assert(s, q, unit, b"rollbackAvailable", no)?;
+        // Cache invalidation precedes callbacks. Repeated reconciliation also
+        // retries durable publication after a prior Store failure.
+        s.candidates
+            .ledger
+            .borrow_mut()
+            .as_mut()
+            .ok_or_else(invalid)?
+            .drifted = true;
+        publish_drift(s, q, &ledger)?;
+        Ok((false, Some(ledger.generation)))
+    }
+}
+unsafe fn publish_drift(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<(), Outcome> {
+    unsafe {
+        if s.candidates.observing.replace(true) {
+            return Ok(());
+        }
+        struct Observing<'a>(&'a Cell<bool>);
+        impl Drop for Observing<'_> {
+            fn drop(&mut self) {
+                self.0.set(false);
+            }
+        }
+        let _observing = Observing(&s.candidates.observing);
+        for value in ledger.roots() {
+            q.keep(value)?;
+        }
+        let drifted = symbol(s, q, b"drifted")?;
+        let no = s.named(b"false")?;
+        let nil = s.named(b"nil")?;
+        assert(s, q, ledger.generation, b"state", drifted)?;
+        for &unit in &ledger.units {
+            if unit != nil {
+                assert(s, q, unit, b"state", drifted)?;
+                assert(s, q, unit, b"rollbackAvailable", no)?;
+            }
+        }
+        Ok(())
+    }
+}
+pub(super) fn has_drifted(s: &State) -> bool {
+    s.candidates
+        .ledger
+        .borrow()
+        .as_ref()
+        .is_some_and(|l| l.drifted)
+}
+/// Store notifies after the dictionary and Method mirror have committed. A
+/// transaction may acknowledge exactly one matching publication, never a whole
+/// dynamic scope: nested foreign mutations still invalidate the generation.
+pub(crate) unsafe fn method_changed(
+    s: &State,
+    q: &Scope<'_>,
+    selector: Oop,
+    behavior: Oop,
+) -> Result<Operand, Outcome> {
+    unsafe {
+        let expected = *s.candidates.expected_mutation.borrow();
+        if let Some((key, target, method)) = expected {
+            if key == selector
+                && target == behavior
+                && transaction::is_method(s, preparation::direct(s, behavior, selector)?, method)?
+            {
+                s.candidates.expected_mutation.borrow_mut().take();
+                return Ok(Operand::unit());
+            }
+        }
+        let ledger = s.candidates.ledger.borrow().clone();
+        if let Some(ledger) = ledger {
+            let managed = ledger
+                .bindings
+                .iter()
+                .any(|b| b.binding.selector == selector && b.binding.behavior == behavior);
+            if managed {
+                let entry = preparation::direct(s, behavior, selector)?;
+                if ledger.drifted
+                    || ledger.bindings.iter().any(|b| {
+                        b.binding.selector == selector
+                            && b.binding.behavior == behavior
+                            && b.binding.entry != entry
+                    })
+                {
+                    s.candidates
+                        .ledger
+                        .borrow_mut()
+                        .as_mut()
+                        .ok_or_else(invalid)?
+                        .drifted = true;
+                    publish_drift(s, q, &ledger)?;
                 }
             }
         }
-        Ok((false, Some(ledger.generation)))
+        Ok(Operand::unit())
+    }
+}
+/// A saved managed source map must still describe the dispatch it authorizes.
+/// Drift never becomes a second authority merely because its code is portable.
+pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+    unsafe {
+        if s.candidates.busy.get()
+            || s.candidates.observing.get()
+            || s.candidates.recovery.borrow().is_some()
+        {
+            return fail(
+                s,
+                q,
+                b"candidateBusy",
+                b"image save cannot interrupt generation publication",
+            );
+        }
+        s.candidates.busy.set(true);
+        struct Busy<'a>(&'a Cell<bool>);
+        impl Drop for Busy<'_> {
+            fn drop(&mut self) {
+                self.0.set(false);
+            }
+        }
+        let _busy = Busy(&s.candidates.busy);
+        if s.candidates.ledger.borrow().is_none() {
+            if current(s, q)? == s.named(b"nil")? {
+                return Ok(Operand::object(s.named(b"true")?));
+            }
+            return fail(
+                s,
+                q,
+                b"generationNotAdopted",
+                b"managed image has no binding ledger",
+            );
+        }
+        if reconcile(s, q)?.0 {
+            Ok(Operand::object(s.named(b"true")?))
+        } else {
+            fail(
+                s,
+                q,
+                b"staleGeneration",
+                b"managed generation drift prevents image save",
+            )
+        }
     }
 }
 pub(super) unsafe fn reconcile_candidate(
@@ -202,6 +321,26 @@ pub(super) unsafe fn adopt(
                 b"invalidLifecycleTransition",
                 b"adoption requires the durable predecessor-free generation",
             );
+        }
+        let store = s.named(b"Store")?;
+        let registered = call(
+            s,
+            q,
+            store,
+            b"setMethodMutationObserver:",
+            &[Operand::object(s.named(b"Codegen")?)],
+        )?;
+        if registered != store {
+            return if s.is_error(registered)? {
+                Ok(Operand::object(registered))
+            } else {
+                fail(
+                    s,
+                    q,
+                    b"generationObservationUnavailable",
+                    b"Store did not register generation observation",
+                )
+            };
         }
         let basis = preparation::basis(s, q)?;
         let source_map = fact(s, q, generation, b"sourceMap")?;

@@ -216,7 +216,7 @@ unsafe fn restore_fact(
         )
     }
 }
-unsafe fn is_method(
+pub(super) unsafe fn is_method(
     s: &State,
     entry: Option<NativeEntry>,
     method: Option<Oop>,
@@ -251,6 +251,18 @@ unsafe fn put_method(
         } else {
             b"removeMethod:on:"
         };
+        if s.candidates.expected_mutation.borrow().is_some() {
+            return Err(invalid());
+        }
+        s.candidates.mutation_authorized.set(false);
+        *s.candidates.expected_mutation.borrow_mut() = Some((b.selector, b.behavior, method));
+        struct Expected<'a>(&'a RefCell<Option<(Oop, Oop, Option<Oop>)>>);
+        impl Drop for Expected<'_> {
+            fn drop(&mut self) {
+                self.0.borrow_mut().take();
+            }
+        }
+        let _expected = Expected(&s.candidates.expected_mutation);
         checked_store(s, q, selector, &args)
     }
 }
@@ -710,7 +722,8 @@ pub(super) unsafe fn commit(
                 attempted.push(Write::Fact(f.clone()));
                 restore_fact(s, q, p.unit, f, false)?;
             }
-            if ledger::matches(s, q, &after)? != Some(true)
+            if ledger::has_drifted(s)
+                || ledger::matches(s, q, &after)? != Some(true)
                 || *s.sources.entries.borrow() != old_sources
             {
                 return Err(failure(
@@ -723,7 +736,8 @@ pub(super) unsafe fn commit(
             if rollback {
                 let cleanup = (|| {
                     release(s, q, p.unit)?;
-                    if ledger::matches(s, q, &after)? != Some(true)
+                    if ledger::has_drifted(s)
+                        || ledger::matches(s, q, &after)? != Some(true)
                         || *s.sources.entries.borrow() != old_sources
                     {
                         return Err(failure(
@@ -764,6 +778,11 @@ pub(super) unsafe fn commit(
                     b"candidateCompensationFailed",
                     b"publication failed and an intervening edit prevented exact compensation",
                 );
+            }
+            if ledger::has_drifted(s) {
+                // Exact compensation can restore dispatch but cannot erase a
+                // foreign edit observed during the failed publication.
+                ledger::reconcile(s, q)?;
             }
             return Err(error);
         }

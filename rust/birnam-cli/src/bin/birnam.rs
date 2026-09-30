@@ -74,8 +74,25 @@ fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
             host.run_repl(true).map_err(|e| e.to_string())?;
         }
-        CommandKind::Listen
-        | CommandKind::Lsp
+        CommandKind::Listen => {
+            let Some(port) = args.get(1) else {
+                println!("usage: birnam --listen <port> [file.birnam]");
+                return Ok(());
+            };
+            let Some(port) = port.to_str().and_then(|s| s.parse::<u16>().ok()) else {
+                println!("birnam --listen: port must be a number in 0..65535");
+                return Ok(());
+            };
+            let host = HostRuntime::start(
+                &resolve().map_err(|e| e.to_string())?,
+                StartupPolicy { skip_stdlib: false, ..StartupPolicy::from_environment() },
+            ).map_err(|e| e.to_string())?;
+            if let Some(file) = args.get(2) {
+                host.eval_script(std::path::Path::new(file)).map_err(|e| e.to_string())?;
+            }
+            host.serve_socket(port, "0.0.0.0").map_err(|e| e.to_string())?;
+        }
+        CommandKind::Lsp
         | CommandKind::Doc
         | CommandKind::Docgen
         | CommandKind::Init

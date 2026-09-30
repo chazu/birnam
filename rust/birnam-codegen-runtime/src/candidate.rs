@@ -10,6 +10,8 @@ use core::cell::Cell;
 mod ledger;
 #[path = "candidate_preparation.rs"]
 mod preparation;
+#[path = "candidate_phase.rs"]
+mod phase;
 #[path = "candidate_recovery.rs"]
 mod recovery;
 #[path = "candidate_retirement.rs"]
@@ -17,9 +19,14 @@ mod retirement;
 #[path = "candidate_transaction.rs"]
 mod transaction;
 pub(super) use recovery::{begin_recovery, cancel_recovery, recover_image};
+pub(super) use ledger::{method_changed, validate_image};
+pub(super) use phase::{authorize, enter_running, ordinary_mutation_allowed, reject_mutation};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
+    observing: Cell<bool>,
+    expected_mutation: RefCell<Option<(Oop, Oop, Option<Oop>)>>,
+    mutation_authorized: Cell<bool>,
     quiescent: Cell<bool>,
     recovering_policy: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,
@@ -398,6 +405,9 @@ pub(super) unsafe fn operation(
                 b"imageRecoveryActive",
                 b"candidate operations are unavailable during image recovery",
             );
+        }
+        if s.candidates.observing.get() {
+            return fail(s, q, b"candidateBusy", b"candidate operation interrupts mutation observation");
         }
         if s.candidates.busy.replace(true) {
             return fail(s, q, b"candidateBusy", b"candidate operation is reentrant");

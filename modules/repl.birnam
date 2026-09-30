@@ -209,8 +209,8 @@
   [System println: "  :globals     list the bindings you've defined"];
   [System println: "  :quit        leave the REPL  (or Ctrl-D)"];
   [System println: "Everything else is birnam: an expression prints its value; `let x := …`"];
-  [System println: "binds a name that persists across lines; `[Reflect defineMethod:…]` extends"];
-  [System println: "the live system. Multi-line forms continue until the brackets balance."];
+  [System println: "binds a name that persists across lines. Use CompiledUnit candidates for"];
+  [System println: "method changes. Multi-line forms continue until the brackets balance."];
   self] doc:
   "Prints the console REPL's `:help` text: the commands and the basics of a session."];
 

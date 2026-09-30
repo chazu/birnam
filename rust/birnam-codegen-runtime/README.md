@@ -329,3 +329,16 @@ Units through Execution; GC and TCC reclaim them at an idle checkpoint. Weak TCC
 mapping identities drive `retainedGenerationCount` and `retainedGenerationBytes`
 without themselves keeping code alive. File removal is retryable but is outside
 Store compensation: a failed discard can leave one or both author files removed.
+
+Generation adoption registers Codegen with Store's completed method-mutation hook.
+Ordinary tracked edits of managed bindings publish drift immediately; raw Id edits
+remain detectable by explicit reconciliation. Candidate transactions acknowledge
+only their exact expected method mutation, so callback edits cannot hide inside a
+publication scope. A compensated transaction preserves any observed foreign drift.
+Image save validates the managed ledger before taking its snapshot and before
+publishing the file. Drift cannot be saved under an unchanged managed source identity. Host calls `enterRunning` at an idle boundary before console, socket, image-main
+and worker entry. Store's existing authorization callback then rejects ordinary
+method installation/removal. Reflect rejects before compiling an adapter or
+specializing a target. A candidate's exact publication admits one Store mutation;
+a nested callback cannot reuse that permission. Image publication has its own
+recovery extent, and neither extent leaves an ambient permission behind.

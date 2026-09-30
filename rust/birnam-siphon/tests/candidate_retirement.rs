@@ -1,10 +1,13 @@
 //! Discard admission, weak mapping accounting and retained callable lifetime.
 mod support;
 use birnam_abi::{
-    Oop,
-    id_protocol::{Operand, Protocol},
+    Oop, borrowed_slice,
+    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
 };
-use core::cell::RefCell;
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+};
 use std::os::unix::ffi::OsStrExt;
 use support::*;
 struct Vm {
@@ -158,9 +161,58 @@ impl Vm {
         }
     }
 }
+struct ForeignEdit {
+    id: Protocol,
+    original: NativeEntry,
+    armed: Cell<bool>,
+    denied: Cell<usize>,
+}
+unsafe extern "C" fn edit_after_publication(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<ForeignEdit>();
+        let answer = p.original.method.unwrap()(p.original.context, r, a, n);
+        if p.armed.replace(false) {
+            let a = borrowed_slice(a, n).unwrap();
+            for (name, args) in [
+                (b"removeMethod:on:".as_slice(), &a[..2]),
+                (b"addMethod:on:with:", a),
+            ] {
+                if send(p.id, r, name, args).as_object() != Some(r) {
+                    p.denied.set(p.denied.get() + 1);
+                }
+            }
+        }
+        answer
+    }
+}
 #[test]
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
 fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
+    if std::env::var_os("BIRNAM_RETIREMENT_PHASE").is_none() {
+        for phase in ["bootstrap", "running"] {
+            assert!(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--ignored",
+                        "--exact",
+                        "discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings",
+                        "--nocapture"
+                    ])
+                    .env("BIRNAM_RETIREMENT_PHASE", phase)
+                    .status()
+                    .unwrap()
+                    .success(),
+                "{phase}"
+            );
+        }
+        return;
+    }
+    let running = std::env::var("BIRNAM_RETIREMENT_PHASE").unwrap() == "running";
     unsafe {
         let id = id();
         let ns = load(
@@ -192,11 +244,81 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             generation
         );
         v.call(cg, b"sealInitialGeneration", &[]);
+        if running {
+            let entered = v.call(cg, b"evalPersisting:", &[v.text(b"[Codegen enterRunning]")]);
+            assert_eq!(
+                v.call(entered, b"kind", &[]),
+                v.sym(b"generationNotQuiescent")
+            );
+            let fresh = v.call(v.named(b"Object"), b"clone", &[]);
+            let before = object(send(
+                id,
+                id.receiver,
+                b"behaviorOf:",
+                &[Operand::object(fresh)],
+            ));
+            let block = v.call(cg, b"evalPersisting:", &[v.text(b"[:self | 99]")]);
+            let method = v.keep(object(send(
+                id,
+                v.named(b"Execution"),
+                b"methodOfEntry:",
+                &[v.direct(b"retireValue")],
+            )));
+            assert_eq!(v.call(cg, b"enterRunning", &[]), v.named(b"true"));
+            assert_eq!(v.call(cg, b"enterRunning", &[]), v.named(b"true"));
+            let rejected = v.call(
+                v.named(b"Reflect"),
+                b"defineMethod:on:as:",
+                &[v.sym(b"newMethod"), fresh, block],
+            );
+            assert_eq!(
+                v.call(rejected, b"kind", &[]),
+                v.sym(b"generationNotQuiescent")
+            );
+            assert_eq!(
+                send(id, id.receiver, b"behaviorOf:", &[Operand::object(fresh)]).as_object(),
+                Some(before)
+            );
+            for source in [
+                b"[Reflect defineMethod: #retireValue on: Integer as: [:self | 99]]".as_slice(),
+                b"[Reflect removeMethod: #retireValue on: Integer]",
+            ] {
+                let rejected = v.call(cg, b"evalPersisting:", &[v.text(source)]);
+                assert_eq!(
+                    v.call(rejected, b"kind", &[]),
+                    v.sym(b"generationNotQuiescent")
+                );
+            }
+            assert_eq!(v.call(cg, b"lastError", &[]), nil);
+            let rejected = v.call(
+                v.named(b"Store"),
+                b"addMethod:on:with:",
+                &[v.sym(b"retireValue"), v.named(b"IntegerVt"), method],
+            );
+            assert_eq!(
+                v.call(rejected, b"kind", &[]),
+                v.sym(b"generationNotQuiescent")
+            );
+            let rejected = v.call(
+                v.named(b"Store"),
+                b"removeMethod:on:",
+                &[v.sym(b"retireValue"), v.named(b"IntegerVt")],
+            );
+            assert_eq!(
+                v.call(rejected, b"kind", &[]),
+                v.sym(b"generationNotQuiescent")
+            );
+            assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
+            assert_eq!(
+                v.call(cg, b"reconcileCandidate:", &[generation]),
+                generation
+            );
+        }
         let dir = std::env::temp_dir().join(format!("birnam-retirement-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Keep the projection across explicit root releases between iterations.
         let projection_root = retain(id, v.named(b"Roots"), projection);
-        for (index, mode) in ["unmapped", "inert", "resumable", "synchronous"]
+        for (index, mode) in ["unmapped", "inert", "resumable", "synchronous", "callback"]
             .iter()
             .enumerate()
         {
@@ -255,6 +377,73 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 let rejected = v.call(cg, b"discardCandidate:", &[unit]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 assert!(path.exists() && sidecar.exists());
+                if *mode == "callback" {
+                    let store_vt = v.named(b"StoreVt");
+                    let key = v.sym(b"addMethod:on:with:");
+                    let original = send(
+                        id,
+                        id.receiver,
+                        b"bindingOf:in:",
+                        &[Operand::object(key), Operand::object(store_vt)],
+                    )
+                    .as_entry()
+                    .unwrap();
+                    let mut probe = ForeignEdit {
+                        id,
+                        original,
+                        armed: Cell::new(true),
+                        denied: Cell::new(0),
+                    };
+                    install(
+                        id,
+                        store_vt,
+                        b"addMethod:on:with:",
+                        edit_after_publication,
+                        core::ptr::from_mut(&mut probe).cast(),
+                    );
+                    // Installing the fixture changes Id's epoch. Prepare the
+                    // actual token only after that dictionary instrumentation.
+                    assert_eq!(v.call(cg, b"discardPrepared:", &[token]), unit);
+                    let token = v.call(
+                        cg,
+                        b"prepareActivation:plan:",
+                        &[unit, v.plan(b"activate", unit, generation, next)],
+                    );
+                    let rejected = v.call(cg, b"commitPrepared:", &[token]);
+                    send(
+                        id,
+                        store_vt,
+                        b"addMethod",
+                        &[Operand::object(key), Operand::entry(original)],
+                    );
+                    assert!(!probe.armed.get());
+                    if running {
+                        assert_eq!(probe.denied.get(), 2);
+                        assert_eq!(rejected, unit);
+                        assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 20);
+                        let rollback = v.call(
+                            cg,
+                            b"prepareRollback:plan:",
+                            &[unit, v.plan(b"rollback", unit, next, generation)],
+                        );
+                        assert_eq!(v.call(cg, b"commitPreparedRollback:", &[rollback]), unit);
+                        assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
+                        v.clear();
+                        let receipt = v.call(cg, b"discardCandidate:", &[unit]);
+                        assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
+                        continue;
+                    }
+                    assert_eq!(probe.denied.get(), 0);
+                    assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"staleGeneration"));
+                    assert_eq!(v.fact(generation, b"state"), v.sym(b"drifted"));
+                    assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
+                    assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
+                    v.clear();
+                    let receipt = v.call(cg, b"discardCandidate:", &[unit]);
+                    assert_eq!(v.call(receipt, b"logical", &[]), v.sym(b"discarded"));
+                    assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
+                    continue;
+                }
                 assert_eq!(v.call(cg, b"commitPrepared:", &[token]), unit);
                 let rejected = v.call(cg, b"discardCandidate:", &[unit]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));

@@ -90,6 +90,9 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
     .unwrap();
     q.check(cg, eval(b"[DispatchGeneration initializeCurrent]"))
         .unwrap();
+    host.enter_running().unwrap();
+    expect(b"[[[Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 99]] kind] = #generationNotQuiescent]");
+    expect(b"[[2 hostLifecycleValue] = 10]");
     let dir = env::temp_dir().join(format!("birnam-host-lifecycle-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let path = q
@@ -232,6 +235,7 @@ fn image_recovers_composed_generation_before_entry() {
         let mode = env::var("BIRNAM_GENERATION_IMAGE_MODE").unwrap();
         eprintln!("generation Image: {mode} load");
         host.load_image_mode(&path, mode == "rebuild").unwrap();
+        host.enter_running().unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[[DispatchGeneration current] predecessor] isNil]");
         expect(b"[[[DispatchGeneration current] deltaUnit] isNil]");
@@ -293,6 +297,7 @@ fn image_recovers_composed_generation_before_entry() {
     }
     q.evaluate(b"[Module named: #imageGeneration requires: #[]]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 10]]", Path::new("<image-generation>"), Some(b"imageGeneration")).unwrap();
     eval(b"[DispatchGeneration initializeCurrent]");
+    host.enter_running().unwrap();
     let dir = env::temp_dir().join(format!("birnam-image-generation-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     put_path(b"imageGenerationPath", &dir.join("candidate.o"));

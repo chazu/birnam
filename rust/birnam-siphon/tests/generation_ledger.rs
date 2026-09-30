@@ -1,18 +1,96 @@
 //! Current-generation drift and Method retention through real Id owners.
 mod support;
 use birnam_abi::{
-    Oop,
-    id_protocol::{Operand, Outcome},
+    Oop, borrowed_slice,
+    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
 };
-use core::ffi::c_void;
+use core::{cell::Cell, ffi::c_void};
 use std::os::unix::ffi::OsStrExt;
 use support::*;
 unsafe extern "C" fn raw(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::failed(1, 91)
 }
+struct DuringSave {
+    id: Protocol,
+    original: NativeEntry,
+    roots: Oop,
+    db: Oop,
+    selector: Oop,
+    behavior: Oop,
+    fired: Cell<bool>,
+}
+unsafe extern "C" fn edit_during_save(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<DuringSave>();
+        let answer = p.original.method.unwrap()(p.original.context, r, a, n);
+        let root = answer.value.as_object().map(|o| retain(p.id, p.roots, o));
+        p.fired.set(true);
+        send(
+            p.id,
+            p.db,
+            b"removeMethod:on:",
+            &[Operand::object(p.selector), Operand::object(p.behavior)],
+        );
+        if let Some(root) = root {
+            release(p.id, p.roots, root);
+        }
+        answer
+    }
+}
+struct RejectDrift {
+    id: Protocol,
+    original: NativeEntry,
+    generation: Oop,
+    state: Oop,
+    drifted: Oop,
+    error: Oop,
+    gc: Oop,
+    armed: Cell<bool>,
+}
+unsafe extern "C" fn reject_first_drift(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<RejectDrift>();
+        let args = borrowed_slice(a, n).unwrap();
+        if args[0].as_object() == Some(p.generation)
+            && args[1].as_object() == Some(p.state)
+            && args[2].as_object() == Some(p.drifted)
+            && p.armed.replace(false)
+        {
+            collect(p.id, p.gc);
+            return Outcome::loaded(Operand::object(p.error));
+        }
+        p.original.method.unwrap()(p.original.context, r, a, n)
+    }
+}
 #[test]
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
 fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
+    if std::env::var_os("BIRNAM_LEDGER_DRIFT_CASE").is_none() {
+        for case in ["raw", "store", "source", "save", "retry"] {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "ledger_adoption_roots_portable_methods_and_never_readopts_drift",
+                    "--nocapture",
+                ])
+                .env("BIRNAM_LEDGER_DRIFT_CASE", case)
+                .status()
+                .unwrap();
+            assert!(status.success(), "{case}");
+        }
+        return;
+    }
     unsafe {
         let id = id();
         let ns = load(
@@ -163,9 +241,156 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             &[sym(b"unrelated"), sym(b"note"), yes],
         );
         assert_eq!(call(cg, b"reconcileCandidate:", &[generation]), generation);
-        // Removing a managed entry is visible even without a lifecycle/MOP
-        // operation. The inverse Method must survive this collection.
-        send(id, vt, b"removeMethod:", &[Operand::object(selector)]);
+        // An unrelated tracked publication must not invalidate this ledger.
+        call(
+            cg,
+            b"evalPersisting:",
+            &[text(
+                b"[Reflect defineMethod: #unmanagedAnswer on: Integer as: [:self | 23]]",
+            )],
+        );
+        assert_eq!(call(cg, b"reconcileCandidate:", &[generation]), generation);
+        let removed = call(
+            cg,
+            b"evalPersisting:",
+            &[text(
+                b"[Reflect removeMethod: #unmanagedAnswer on: Integer]",
+            )],
+        );
+        assert_eq!(removed, named(b"Integer"));
+        assert_eq!(
+            send(
+                id,
+                id.receiver,
+                b"bindingOf:in:",
+                &[
+                    Operand::object(sym(b"unmanagedAnswer")),
+                    Operand::object(vt)
+                ]
+            )
+            .kind(),
+            birnam_abi::id_protocol::UNIT
+        );
+        assert_eq!(call(cg, b"reconcileCandidate:", &[generation]), generation);
+        let path = std::env::temp_dir().join(format!("birnam-drift-image-{}", std::process::id()));
+        std::fs::write(&path, b"previous image").unwrap();
+        let filename = text(path.as_os_str().as_bytes());
+        let mut during_save = DuringSave {
+            id,
+            original: prior,
+            roots: named(b"Roots"),
+            db,
+            selector,
+            behavior: vt,
+            fired: Cell::new(false),
+        };
+        let cg_vt = named(b"CodegenVt");
+        let save_selector = sym(b"compilePortableImageCode:bindings:selection:");
+        let case = std::env::var("BIRNAM_LEDGER_DRIFT_CASE").unwrap();
+        let assert_selector = sym(b"assert:attr:value:");
+        let store_vt = named(b"StoreVt");
+        let original_assert = send(
+            id,
+            id.receiver,
+            b"bindingOf:in:",
+            &[Operand::object(assert_selector), Operand::object(store_vt)],
+        )
+        .as_entry()
+        .unwrap();
+        let mut reject = RejectDrift {
+            id,
+            original: original_assert,
+            generation,
+            state: sym(b"state"),
+            drifted: sym(b"drifted"),
+            error: call(named(b"Error"), b"kind:", &[sym(b"injectedDriftFailure")]),
+            gc: named(b"GC"),
+            armed: Cell::new(true),
+        };
+        match case.as_str() {
+            "retry" => {
+                let before = call(db, b"currentValue:attr:", &[generation, sym(b"state")]);
+                install(
+                    id,
+                    store_vt,
+                    b"assert:attr:value:",
+                    reject_first_drift,
+                    core::ptr::from_mut(&mut reject).cast(),
+                );
+                call(db, b"removeMethod:on:", &[selector, vt]);
+                send(
+                    id,
+                    store_vt,
+                    b"addMethod",
+                    &[
+                        Operand::object(assert_selector),
+                        Operand::entry(original_assert),
+                    ],
+                );
+                assert!(!reject.armed.get());
+                assert_eq!(
+                    call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
+                    before
+                );
+            }
+
+            "store" => {
+                call(db, b"removeMethod:on:", &[selector, vt]);
+            }
+            "source" => {
+                call(
+                    cg,
+                    b"evalPersisting:",
+                    &[text(
+                        b"[Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | 19]]",
+                    )],
+                );
+            }
+            "save" => {
+                during_save.original = send(
+                    id,
+                    id.receiver,
+                    b"bindingOf:in:",
+                    &[Operand::object(save_selector), Operand::object(cg_vt)],
+                )
+                .as_entry()
+                .unwrap();
+                install(
+                    id,
+                    cg_vt,
+                    b"compilePortableImageCode:bindings:selection:",
+                    edit_during_save,
+                    core::ptr::from_mut(&mut during_save).cast(),
+                );
+            }
+            _ => {
+                send(id, vt, b"removeMethod:", &[Operand::object(selector)]);
+            }
+        }
+        if case == "store" || case == "source" {
+            // No lifecycle message occurred between the edit and this fact read.
+            assert_eq!(
+                call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
+                sym(b"drifted")
+            );
+        }
+        let saved = call(named(b"System"), b"saveImage:", &[filename]);
+        if case == "save" {
+            send(
+                id,
+                cg_vt,
+                b"addMethod",
+                &[
+                    Operand::object(save_selector),
+                    Operand::entry(during_save.original),
+                ],
+            );
+            assert!(during_save.fired.get());
+        }
+        assert_eq!(call(saved, b"kind", &[]), sym(b"staleGeneration"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
+        std::fs::remove_file(path).unwrap();
+        // The inverse Method remains alive after every form of divergence.
         collect(id, named(b"GC"));
         let result = call(method, b"invokeOn:", &[integer(2)]);
         assert_eq!(

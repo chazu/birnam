@@ -59,6 +59,11 @@ published configuration and bundled application code without reading source;
 Install copies the planned module/native closure. Test launches a fresh worker
 per test source against the published module root, without running application main.
 
+Console, socket, image-main and worker entry switch Codegen to running mode at
+the idle Host boundary. Ordinary tracked method edits then return
+`generationNotQuiescent`; candidate publication and Image recovery use explicit
+internal extents. Source bootstrap remains open while initial modules load.
+
 The console keeps a session root plus a fresh scope per turn and checkpoints
 Isolate after evaluation. A returned EvolutionIntent is fulfilled through Codegen
 at the idle owner-thread boundary before presentation; source-file results use

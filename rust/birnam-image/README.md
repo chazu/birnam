@@ -64,6 +64,9 @@ the prior source registry and the complete previous Store state. This compensati
 does not consume additional fact capacity or reevaluate source. Ordinary external
 effects performed by observer callbacks are outside that state compensation.
 
+Managed Image saves validate the generation ledger before snapshotting and again
+before file publication. Drift rejects the save and preserves the existing file.
+
 Generation recovery participates in the same publication transaction. Codegen
 suspends old transient candidate capabilities before dispatch changes; the authored
 CompiledUnit policy creates composed components and retires saved rollback ancestry
