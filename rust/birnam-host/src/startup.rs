@@ -273,6 +273,16 @@ impl HostRuntime {
         }
         scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
         scope.evaluate(
+            include_bytes!("../../../src/id/stackless-control.birnam"),
+            Path::new("<stacklessControl>"),
+            Some(b"stacklessControl"),
+        )?;
+        scope.evaluate(
+            b"[Module markLoaded: #stacklessControl]",
+            Path::new("<host>"),
+            None,
+        )?;
+        scope.evaluate(
             include_bytes!("../../../src/id/compiled-unit.birnam"),
             Path::new("<compiledUnit>"),
             Some(b"compiledUnit"),

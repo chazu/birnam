@@ -766,6 +766,14 @@ fn image_owner_roundtrip() {
             h.id.intern_name(b"beforeInherited").unwrap()
         );
         let original_bytes = std::fs::read(&path).unwrap();
+        // An ordinary source capability must not silently lose its transient
+        // state. Admission follows the Store declaration, not a prototype name.
+        h.eval(b"[db assert: #imageTransientObject attr: #history value: false]; [db assert: #imageTransientObject attr: #imageTransient value: true]; [[| let ephemeral := [Object clone]; [db assert: ephemeral attr: #imageTransientObject value: true]; [Globals at: #ImageEphemeral put: #[ephemeral]]] value]");
+        assert_eq!(h.call(system, b"saveImage:", &[filename]), nil);
+        assert_eq!(std::fs::read(&path).unwrap(), original_bytes);
+        h.eval(b"[Globals at: #ImageEphemeral put: nil]");
+        assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"true"));
+        let original_bytes = std::fs::read(&path).unwrap();
         let machine = h.call(h.named(b"Machine"), b"new", &[]);
         h.call(
             h.named(b"Globals"),

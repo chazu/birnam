@@ -4,8 +4,8 @@
 modules to Id messages and removed the aggregate Runtime. Workspace and native
 integration tests are runnable. The validation planner also covers the installed
 Host's source, project, Image, worker, interaction and generation paths; see the
-current commands below. Full migration completion still requires the remaining
-source-task and retained-lifetime acceptance plus obsolete-harness cleanup.
+current commands below. Full migration completion still requires complete validation, the remaining
+retained-lifetime acceptance and obsolete-harness cleanup.
 
 The module-by-module notes below record the incremental migration evidence.
 Their historical counts and exclusions describe those slices, not the current
@@ -133,7 +133,7 @@ planner runs workspace tests, independent byte fixtures, validation-tool tests,
 the native-message suite and a fresh release installation. Installed acceptance
 is divided into five groups: CLI/project/worker behavior, Image entry,
 REPL/socket/tooling, generation activation/recovery/rollback, and authored task
-scheduling with native boundaries. Each group
+scheduling with native boundaries and task Image persistence. Each group
 copies the installation before relocating it or creating fixtures.
 
 | Task | Scope |
@@ -146,10 +146,13 @@ copies the installation before relocating it or creating fixtures.
 
 The retired Runtime diagnostic matrices and performance controller are no longer
 part of these plans. Their removal does not prove optimizer equivalence or a
-speedup. The older source-global-lookup, method-values, method-unit-lifetime and
-task-control scripts still require porting or case-by-case decommissioning;
-they are not passing acceptance gates. Retained-code lifetime and authored task
-scheduling remain migration work beyond the current suites.
+speedup. The older source-global-lookup, method-values and method-unit-lifetime
+scripts still require porting or case-by-case decommissioning; they are not
+passing acceptance gates. The task group runs the retained 171-check scheduling
+fixture with actual native boundaries and checks normal startup, rejection of
+retained task handles, outcome persistence and fresh tasks in mapped/rebuilt
+Images. It replaces the old task-control smoke driver. Retained-code lifetime
+acceptance remains migration work beyond these cases.
 
 For a focused iteration, preview
 `python3 scripts/validate.py --suite routine --plan`, then select named steps with

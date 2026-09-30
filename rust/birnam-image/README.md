@@ -25,7 +25,12 @@ cannot execute. Map rebuilds address-dependent hashes through `rehashImage:`
 after method publication, preserving each restored Map's identity.
 
 Unsupported native state, including Machines and noncanonical capability objects,
-is rejected. Private behaviors preserve their heap owners, shared instances and
+is rejected. Authored process-local handles declare a Store fact with
+`imageTransientObject = true`; Image rejects any such object reached by the saved
+graph. TaskControl marks its handles, including completed tasks. The marker's
+attribute is itself `imageTransient`, so unreferenced handles do not enter the
+saved graph through that declaration. Detached outcomes remain ordinary data.
+Private behaviors preserve their heap owners, shared instances and
 acyclic parent chains rooted in supported native families. Ownerless private
 behaviors and additional custom Block behavior layers remain unsupported.
 Namespace exports resolve against the resident modules in the receiving process.

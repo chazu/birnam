@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 // Authored production tools, compiled through the installed Id artifact path.
 const TOOL_MODULES: &[(&str, &str)] = &[
     ("stdlib", "src/id/stdlib.birnam"),
+    ("stacklessControl", "src/id/stackless-control.birnam"),
     ("compiledUnit", "src/id/compiled-unit.birnam"),
     ("toml", "src/id/toml.birnam"),
     ("config", "src/id/config.birnam"),
@@ -756,7 +757,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
         "stage1_modules": TOOL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
-        "source_bootstrap_modules": ["modules", "stdlib", "compiledUnit"],
+        "source_bootstrap_modules": ["modules", "stdlib", "stacklessControl", "compiledUnit"],
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
         "staged_manifest": staged_manifest,
@@ -820,7 +821,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "rust-install: published {} ({} native libraries, {} source bootstrap modules, {} authored tools)",
         prefix.display(),
         CANONICAL_DYNAMIC_LIBRARIES.len(),
-        3,
+        4,
         TOOL_MODULES.len()
     );
     Ok(())

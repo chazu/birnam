@@ -4,7 +4,7 @@
 // compilation requires the whole unit to be resumable; no selector or source
 // definition carries an execution-representation annotation.
 
-[Module named: #stacklessControl requires: #[]];
+[Module named: #stacklessControl requires: #[#modules #stdlib]];
 
 // Boolean is the canonical true/base prototype. False is the canonical false
 // singleton with a private vtable delegating to Boolean.
@@ -227,6 +227,11 @@
     [db assert: attribute attr: #history value: false];
     [db assert: attribute attr: #imageTransient value: true]]]]];
 [TaskControl initializeStateSchema];
+// Handles are process-local even after their Machine has finished. The marker
+// itself is transient, so it does not make otherwise unreachable tasks durable.
+[db assert: #imageTransientObject attr: #cardinality value: #one];
+[db assert: #imageTransientObject attr: #history value: false];
+[db assert: #imageTransientObject attr: #imageTransient value: true];
 [Reflect defineMethod: #field: on: TaskControl as: [:self :name |
   [db cellFor: self attr: [self attribute: name]]]];
 [Reflect defineMethod: #field: on: TaskExecutor as: [:self :name |
@@ -329,6 +334,7 @@
 
 [Reflect defineMethod: #prepare:parent: on: TaskControl as: [:self :body :parent |
   let task := [self clone];
+  [db assert: task attr: #imageTransientObject value: true];
   [[task field: #machine] set: [Machine new]];
   [[task field: #outcome] set: nil];
   [[task field: #waitToken] set: nil];

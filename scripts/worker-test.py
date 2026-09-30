@@ -129,14 +129,13 @@ let answer := [db cellFor: [Object clone] attr: #reply];[answer set: nil];
         if parent.poll() is None:parent.kill();parent.wait()
 
     # Exercise the existing authored TaskService and Worker policy, not a mock server.
-    control = (Path(__file__).resolve().parent.parent / 'src/id/stackless-control.birnam').read_text()
     service_image = work / 'service.image'
     service_path = json.dumps(str(service_image))
     marker = work / 'service-entered'
     marker_path = json.dumps(str(marker))
     fixture=(Path(__file__).resolve().parent/'worker-service-smoke.birnam').read_text()
     fixture=fixture[:fixture.index('[Reflect defineMethod: #waitForEntry:')]
-    run('save-service', control + fixture + f"""
+    run('save-service', fixture + f"""
 [Reflect defineMethod: #library: on: ServiceProbe as: [:self :ignored | [Module libDir]]];
 [Module libDir: "/obsolete-install/lib"];
 let main := [| [System println: "worker must not execute saved main"]];
@@ -163,7 +162,7 @@ let answer := [db cellFor: [Object clone] attr: #reply];[answer set: nil];
 [System println: [System readFile: [{marker_path} , \".done\"]]];
 [w stop];[System println: [w state]];
 """, b'#ready\ntrue\n#cancelled\ncleaned\n#exited\n')
-    run('authored-worker', control + f"""
+    run('authored-worker', f"""
 let w := [Worker fromHandle: [Isolate startService: #ServiceProbe image: {service_path}]];
 let request := [w request: #[#echo 42]];
 [System println: [request pollOutcome]];

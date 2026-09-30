@@ -59,5 +59,6 @@ if selected generation; then
 fi
 
 if selected tasks; then
+  python3 scripts/task-image-test.py "$scratch/relocated"
   cargo test --offline --locked -p birnam-siphon --test task_control -- --ignored --nocapture
 fi

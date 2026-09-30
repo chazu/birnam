@@ -9,8 +9,8 @@ import sys
 prefix = Path(sys.argv[1]).resolve()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
-assert receipt['stage1_modules'] == ['stdlib', 'compiledUnit', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
-assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'compiledUnit']
+assert receipt['stage1_modules'] == ['stdlib', 'stacklessControl', 'compiledUnit', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
+assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'stacklessControl', 'compiledUnit']
 assert {'libbirnam_storage.dylib', 'libbirnam_trace.dylib'} <= set(receipt['dynamic_libraries'])
 for relative, digest in receipt['staged_manifest'].items():
     assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative

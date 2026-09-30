@@ -388,6 +388,22 @@ impl Graph<'_, '_> {
             let mut i = 0;
             while i < self.objects.len() {
                 let o = self.objects[i];
+                // Authored capabilities can have an ordinary Object layout but
+                // process-local state. Store owns the declaration; omitted facts
+                // alone must never turn a retained handle into an empty snapshot.
+                let marker = self.q.keep(self.s.id.intern_name(b"imageTransientObject")?)?;
+                let transient = self.s.call(
+                    self.q,
+                    self.s.named(b"Store")?,
+                    b"currentValue:attr:",
+                    &[o, marker],
+                )?;
+                if transient == self.s.named(b"true")? {
+                    return Err(bad());
+                }
+                if self.s.is_error(transient)? {
+                    return Err(Outcome::loaded(Operand::object(transient)));
+                }
                 let first = self.q.keep(self.s.behavior(o)?)?;
                 let mut vt = first;
                 let mut visited = std::collections::HashSet::new();
