@@ -7,6 +7,7 @@ use std::borrow::Cow;
 mod c_string;
 pub mod native;
 pub mod literal;
+pub mod source_metadata;
 pub mod closure_elision;
 pub mod discarded_clone;
 pub mod frame_region;

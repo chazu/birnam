@@ -11,6 +11,7 @@ mod candidate;
 mod embedding;
 mod image;
 mod materialization;
+mod source_metadata;
 mod reflection;
 mod source;
 fn invalid() -> Outcome {
@@ -30,6 +31,7 @@ struct State {
     running: core::cell::Cell<bool>,
     permanent: Vec<Oop>,
     sources: source::Sources,
+    compiled_adapters: RefCell<Vec<Option<Vec<(u32, Oop)>>>>,
     candidates: candidate::Candidates,
     materializations: RefCell<Vec<materialization::Cached>>,
     image_stage: RefCell<Option<image::Stage>>,
@@ -39,6 +41,10 @@ struct State {
 struct Scope<'a> {
     s: &'a State,
     tokens: RefCell<Vec<usize>>,
+}
+struct AdapterScope<'a>(&'a State);
+impl Drop for AdapterScope<'_> {
+    fn drop(&mut self) { self.0.compiled_adapters.borrow_mut().pop(); }
 }
 impl Scope<'_> {
     unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
@@ -66,6 +72,10 @@ impl Drop for Scope<'_> {
     }
 }
 impl State {
+    fn adapter_scope(&self, adapters: Option<Vec<(u32, Oop)>>) -> AdapterScope<'_> {
+        self.compiled_adapters.borrow_mut().push(adapters);
+        AdapterScope(self)
+    }
     unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Operand, Outcome> {
         unsafe { self.id.send_named(r, n, a) }
     }
@@ -365,9 +375,18 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
             if arity > 16 {
                 return Err(invalid());
             }
-            let c = emission::compile_named(arity as u32).map_err(|_| invalid())?;
-            let method =
-                scope.keep(object(s.native_method(&scope, &c, Some(object(a[2])?))?)?)?;
+            let compiled = s.compiled_adapters.borrow().last().cloned().flatten();
+            let method = if let Some(adapters) = compiled {
+                let Some((_, bytes)) = adapters.iter().find(|(a, _)| *a == arity as u32) else {
+                    return s.error(&scope, b"compiled artifact lacks a required method adapter; rebuild it");
+                };
+                let unit = scope.keep(object(s.send(s.named(b"TCC")?, b"loadObject:", &[Operand::object(*bytes)])?)?)?;
+                if s.is_error(unit)? { return Ok(Operand::object(unit)); }
+                scope.keep(object(s.send(unit, b"initializeWith:", &[a[2]])?)?)?
+            } else {
+                let c = emission::compile_named(arity as u32).map_err(|_| invalid())?;
+                scope.keep(object(s.native_method(&scope, &c, Some(object(a[2])?))?)?)?
+            };
             if s.is_error(method)? {
                 return Ok(Operand::object(method));
             }
@@ -420,6 +439,7 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
         if matches!(e.op, Op::Compile) {
             return Ok(Operand::object(method));
         }
+        let _source = s.adapter_scope(None);
         s.run_method(&scope, method)
     })())
 }
@@ -455,6 +475,10 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         for (name, source) in entries {
             s.id.send_named(v, b"visit:", &[Operand::object(name)])?;
             s.id.send_named(v, b"visit:", &[Operand::object(source)])?;
+        }
+        let adapters = s.compiled_adapters.borrow().clone();
+        for unit in adapters.iter().flatten().flatten().map(|(_, unit)| unit) {
+            s.id.send_named(v, b"visit:", &[Operand::object(*unit)])?;
         }
         for &o in &s.permanent {
             s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
@@ -518,6 +542,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             running: core::cell::Cell::new(false),
             permanent: vec![ns, root, vt, reflect_vt, receiver, reflect, receipt_vt, receipt, guard_vt, mutation_guard],
             sources: source::Sources::default(),
+            compiled_adapters: RefCell::new(Vec::new()),
             candidates: Default::default(),
             materializations: RefCell::new(Vec::new()),
             image_stage: RefCell::new(None),

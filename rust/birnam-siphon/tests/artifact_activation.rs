@@ -186,12 +186,15 @@ fn durable_artifacts_use_owned_code_and_current_messages() {
         let tcc_vt = h.named(b"TCCVt");
         let compile = binding(id, tcc_vt, b"compile:");
         let compile_object = binding(id, tcc_vt, b"compileObject:");
+        let lang_vt = h.named(b"LangVt");
+        let parse = binding(id, lang_vt, b"parse:");
         let failure = NativeEntry {
             method: Some(reject),
             context: std::ptr::null_mut(),
         };
         set(id, tcc_vt, b"compile:", failure);
         set(id, tcc_vt, b"compileObject:", failure);
+        set(id, lang_vt, b"parse:", failure);
         // Force collection immediately before snapshot inspection and relocation.
         let mut hooks = Vec::new();
         for (vt, selector, alias) in [
@@ -238,6 +241,7 @@ fn durable_artifacts_use_owned_code_and_current_messages() {
         }
         set(id, tcc_vt, b"compile:", compile);
         set(id, tcc_vt, b"compileObject:", compile_object);
+        set(id, lang_vt, b"parse:", parse);
         let bytes_root = retain(id, h.roots, bytes);
         let block_root = retain(id, h.roots, block);
         for token in h.tokens.borrow_mut().drain(mark..) {

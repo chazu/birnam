@@ -4,7 +4,7 @@ use crate::{OwnedCst, source_revision};
 use birnam_artifact::{ABI, DESCRIPTOR_MAGIC, TARGET};
 use std::fmt::Write;
 
-pub const CAPABILITY: &[u8] = b"id-object-v1";
+pub const CAPABILITY: &[u8] = b"id-object-v2";
 fn field(out: &mut Vec<u8>, bytes: &[u8]) {
     out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
     out.extend_from_slice(bytes);
@@ -22,9 +22,17 @@ fn array(out: &mut String, name: &str, bytes: &[u8]) {
     }
     out.push_str("0};\n");
 }
-pub fn emit(tree: &OwnedCst, source: &[u8], generated: &[u8], path: &[u8]) -> Option<Vec<u8>> {
-    let revision = source_revision::inspect(tree, source);
-    let module = source_revision::artifact_module(tree, source);
+pub fn emit(
+    tree: &OwnedCst,
+    source: &[u8],
+    generated: &[u8],
+    path: &[u8],
+    metadata: &crate::source_metadata::Metadata,
+    adapters: &[(u32, Vec<u8>)],
+) -> Option<Vec<u8>> {
+    let encoded_metadata = metadata.encode()?;
+    let revision = &metadata.revision;
+    let module = &metadata.module;
     let fallback = || {
         let mut name = path.rsplit(|b| *b == b'/').next().unwrap_or(path);
         if let Some(dot) = name.iter().rposition(|b| *b == b'.') {
@@ -82,8 +90,20 @@ pub fn emit(tree: &OwnedCst, source: &[u8], generated: &[u8], path: &[u8]) -> Op
     out.push_str("\n#undef birnam_native_module_v1\n");
     array(&mut out, "__birnam_artifact_descriptor", &descriptor);
     array(&mut out, "__birnam_artifact_source", source);
+    array(&mut out, "__birnam_artifact_metadata", &encoded_metadata);
+    for (arity, bytes) in adapters {
+        array(
+            &mut out,
+            &format!("__birnam_artifact_adapter_{arity}"),
+            bytes,
+        );
+    }
     out.push_str("static R artifact_initialize(const P*p,const A*a,size_t n){\nR r=artifact_code_module.initialize(p,a,n);if(r.status||r.value.kind!=1)return r;Call c={0};O method=keep(&c,r.value.data.object);\n");
     out.push_str("if(method==named(&c,\"nil\")||call(&c,method,\"isError\",0,0)==named(&c,\"true\"))return finish(&c,obj(method));\n");
-    writeln!(out, "O source=string(&c,__birnam_artifact_source,{});O result=call(&c,named(&c,\"Vector\"),\"new\",0,0);A v=obj(method);result=call(&c,result,\"add:\",&v,1);v=obj(source);result=call(&c,result,\"add:\",&v,1);return finish(&c,obj(result));}}\nconst Module birnam_native_module_v1={{1,sizeof(Module),artifact_initialize}};", source.len()).unwrap();
+    writeln!(out, "O source=string(&c,__birnam_artifact_source,{});O metadata=string(&c,__birnam_artifact_metadata,{});O adapters=call(&c,named(&c,\"Vector\"),\"new\",0,0);A v;", source.len(), encoded_metadata.len()).unwrap();
+    for (arity, bytes) in adapters {
+        writeln!(out, "O row_{arity}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(integer(&c,{arity}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(string(&c,__birnam_artifact_adapter_{arity},{}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(row_{arity});adapters=call(&c,adapters,\"add:\",&v,1);", bytes.len()).unwrap();
+    }
+    out.push_str("O result=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(method);result=call(&c,result,\"add:\",&v,1);v=obj(source);result=call(&c,result,\"add:\",&v,1);v=obj(metadata);result=call(&c,result,\"add:\",&v,1);v=obj(adapters);result=call(&c,result,\"add:\",&v,1);return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),artifact_initialize};");
     Some(out.into_bytes())
 }

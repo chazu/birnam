@@ -6,6 +6,9 @@ through a same-directory temporary file and atomic rename. `loadImage:`,
 messages. `loadImageMapped:` requires saved native code and rejects a source-only
 image before compiler entry; Host uses it for the installed bootstrap.
 Successful mapped loading answers true; rebuilding answers false.
+Compiler-produced source metadata is restored with ordinary Store facts. Both
+mapped activation and canonical-program rebuild use it for generation recovery;
+neither reparses module source. Images missing this metadata must be regenerated.
 Image validation/file failures answer nil with `imageSaveReport` status/detail;
 dependency native failures propagate unchanged. Failed saves preserve the existing
 destination. `imageCompositionIdentity` is nil before loading and the existing

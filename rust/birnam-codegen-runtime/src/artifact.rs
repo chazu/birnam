@@ -102,10 +102,29 @@ pub(super) unsafe fn operation(
         if let Some(error) = s.embed_program(q, &mut program, &filename)? {
             return Ok(Operand::object(error));
         }
+        let mut adapters = Vec::new();
+        for arity in birnam_codegen::source_metadata::named_adapter_arities(&program) {
+            let c = emission::compile_named(arity).map_err(|_| invalid())?;
+            let c = s.text(q, &c)?;
+            let bytes = call(
+                s,
+                q,
+                s.named(b"TCC")?,
+                b"compileObject:",
+                &[Operand::object(c)],
+            )?;
+            if s.is_error(bytes)? {
+                return Ok(Operand::object(bytes));
+            }
+            adapters.push((arity, s.bytes(bytes)?));
+        }
         let Ok(generated) = emission::compile_program_from(program, &bytes, &filename) else {
             return fail(s, b"RustCodegen could not emit the source");
         };
-        let Some(generated) = emission_artifact::emit(&tree, &bytes, &generated, &path) else {
+        let metadata = birnam_codegen::source_metadata::Metadata::inspect(&tree, &bytes);
+        let Some(generated) =
+            emission_artifact::emit(&tree, &bytes, &generated, &path, &metadata, &adapters)
+        else {
             return fail(s, b"RustCodegen artifact identity is invalid");
         };
         let c = s.text(q, &generated)?;
@@ -134,6 +153,7 @@ pub(super) unsafe fn operation(
         if result == s.named(b"nil")? {
             return fail(s, b"RustCodegen could not write the artifact");
         }
+        source_metadata::persist(s, q, source, &metadata)?;
         Ok(Operand::object(output))
     }
 }
@@ -233,7 +253,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
         if result == nil || s.is_error(result)? {
             return Ok(Operand::object(result));
         }
-        if !s.exact(q, result, b"VectorVt")? || s.index(q, result, b"size")? != 2 {
+        if !s.exact(q, result, b"VectorVt")? || s.index(q, result, b"size")? != 4 {
             return fail(
                 s,
                 b"RustCodegen artifact initializer returned an invalid record",
@@ -251,16 +271,27 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
         if source_revision::source_digest(&source_bytes).as_slice() != s.bytes(digest)? {
             return fail(s, b"RustCodegen artifact source digest is incompatible");
         }
-        let Some(tree) = s.source_tree(q, source, source_bytes.len())? else {
-            return fail(s, b"RustCodegen artifact source is invalid");
+        let encoded = at(s, q, result, 2)?;
+        let Some(metadata) = birnam_codegen::source_metadata::Metadata::decode(&s.bytes(encoded)?)
+        else {
+            return fail(
+                s,
+                b"RustCodegen artifact compiled source metadata is invalid",
+            );
         };
+        if !metadata.matches_source(&source_bytes) {
+            return fail(
+                s,
+                b"RustCodegen artifact compiled source metadata mismatches source",
+            );
+        }
         let name = call(s, q, descriptor, b"identity", &[])?;
-        let module = source_revision::artifact_module(&tree, &source_bytes);
+        let module = &metadata.module;
         let expected_requires = module.as_ref().map(|m| m.1.as_slice()).unwrap_or(&[]);
         if module.as_ref().is_some_and(|m| m.0.is_empty()) || expected_requires.len() != count {
             return fail(s, b"RustCodegen artifact requirements are incompatible");
         }
-        if let Some((identity, _)) = &module
+        if let Some((identity, _)) = module
             && *identity != symbol_bytes(s, name)?
         {
             return fail(s, b"RustCodegen artifact source identity is incompatible");
@@ -270,8 +301,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 return fail(s, b"RustCodegen artifact requirements are incompatible");
             }
         }
-        let revision = source_revision::inspect(&tree, &source_bytes);
-        if let Some(revision) = &revision {
+        if let Some(revision) = &metadata.revision {
             let revision_digest = call(s, q, descriptor, b"revisionDigest", &[])?;
             if revision.name != symbol_bytes(s, name)?
                 || revision.revision_digest.as_slice() != s.bytes(revision_digest)?
@@ -297,15 +327,48 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 )],
             );
         }
+        source_metadata::persist(s, q, source, &metadata)?;
+        let adapter_rows = at(s, q, result, 3)?;
+        let mut adapters = Vec::new();
+        let mut previous = None;
+        for i in 0..s.index(q, adapter_rows, b"size")? {
+            let row = at(s, q, adapter_rows, i)?;
+            if s.index(q, row, b"size")? != 2 {
+                return Err(invalid());
+            }
+            let arity = s
+                .send(
+                    s.named(b"Integer")?,
+                    b"wordOf:",
+                    &[Operand::object(at(s, q, row, 0)?)],
+                )?
+                .as_word()
+                .filter(|a| *a <= 16)
+                .ok_or_else(invalid)? as u32;
+            if previous.is_some_and(|p| p >= arity) {
+                return Err(invalid());
+            }
+            previous = Some(arity);
+            let bytes = s.bytes(at(s, q, row, 1)?)?;
+            let bytes = call(
+                s,
+                q,
+                s.named(b"Bytes")?,
+                b"fromBytes:",
+                &[Operand::bytes(&bytes)],
+            )?;
+            adapters.push((arity, bytes));
+        }
+        let _activation = s.adapter_scope(Some(adapters));
         let result = q.keep(object(s.run_method(q, method)?)?)?;
         if result == nil || s.is_error(result)? {
             return Ok(Operand::object(result));
         }
-        if revision.is_some() {
+        if metadata.revision.is_some() {
             let recorded = q.keep(object(source::operation(
                 s,
                 q,
-                source::Op::Record,
+                source::Op::RecordCompiled,
                 &[Operand::object(source), Operand::object(name)],
             )?)?)?;
             if recorded == nil || s.is_error(recorded)? {

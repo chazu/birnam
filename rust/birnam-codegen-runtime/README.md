@@ -69,6 +69,16 @@ original source and three historical digests and admission rules.
 
 Codegen owns an append-only source/name registry and the existing closed-registration
 flag. Sources remain original Objects and are visited through `rootsDo:` / `visit:`.
+Compilation attaches a `#compiledSourceMetadata` fact to each source Object in
+Store. Its ordinary Vector contains the version tag, source digest, module name,
+requirements, revision inventory, documentation source and embedded-file paths.
+The revision inventory contains method operations and their canonical programs,
+projected Globals, implementation keys and the existing revision digests.
+These are imageable relational values; there is no separate native metadata cache.
+Generation projection/adoption and documentation inventory read these facts and
+check source digests and live bindings without parsing. Missing or malformed
+metadata fails admission; rebuild the compiled artifact or image. Explicit source
+compilation and source-inspection operations may analyze new source.
 Registry comparisons use current Symbol/String messages, without a state borrow
 across sends; reentrant additions are observed before publication. Identical source
 bytes return the incoming source while retaining the first registered Object.
@@ -236,22 +246,26 @@ uses the same canonical programs and code owners; optimizer work remains separat
 TCC relocatable native object through System File IO without evaluating source.
 The filename/root variants preserve source-relative embedding. The object stores
 the existing inert Artifact descriptor, original source, embedded payloads and
-current generated Methods. It advertises `id-object-v1`. The historical `.dylib`
+current generated Methods, plus compiler-produced source metadata. It advertises
+`id-object-v2`. The historical `.dylib`
 suffix remains for Module resolution; this payload is an ELF object for TCC,
 not an OS-loadable Mach-O library. Native kernel dylibs keep their separate ABI.
 
 `load:` reads one snapshot and sends `Artifact inspectBytes:from:` before passing
 those same bytes to `TCC loadObject:`. It checks kind, capability and already-loaded
-requirements, initializes an owned Method/source record, validates source identity
+requirements, initializes an owned Method/source/metadata/adapter record, validates source identity
 and digests, and runs the Method on a Machine. Successfully activated, revision-indexable modules enter
 Codegen's source registry. Artifact dependency discovery preserves the broader
 historical syntactic declaration scan, independently of revision admission. Conflicting sources and sealed registration fail before
 user initialization. Errors and native failures propagate; nil means unsuccessful
 activation. Ordinary user initialization is not a rollback transaction.
 
-The source is parsed for registry validation but its original program is not
-recompiled during loading. Reflect installations can compile their normal named
-adapters. Blocks and Methods retain the TCC Unit across collection; the mapping
+Activation decodes the compiler-produced metadata, checks its source digest,
+identity and requirements against the descriptor, and persists ordinary metadata
+facts through Store. It neither parses source nor compiles adapters.
+Methods installed during activation use the compiler's bundled adapter objects;
+explicit source compilation retains the source adapter path. Blocks and
+Methods retain the TCC Unit across collection; the mapping
 is reclaimed after the final executable reference and an idle checkpoint.
 The `artifact_activation` production test disables both TCC compilation methods,
 removes source/assets, forces collecting inspection/relocation, preserves typed

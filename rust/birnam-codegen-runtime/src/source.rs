@@ -16,6 +16,7 @@ pub(super) enum Op {
     Metadata,
     EmbeddedFiles,
     Record,
+    RecordCompiled,
     Find,
     Seal,
     LastError,
@@ -28,7 +29,7 @@ impl Op {
     pub fn count(self) -> usize {
         match self {
             Self::Seal | Self::LastError | Self::MethodSources | Self::InitialProjection => 0,
-            Self::Record | Self::EvalFrom => 2,
+            Self::Record | Self::RecordCompiled | Self::EvalFrom => 2,
             _ => 1,
         }
     }
@@ -127,10 +128,12 @@ impl State {
             let Some(bytes) = self.source_bytes(scope, source)? else {
                 return Ok(None);
             };
-            let Some(tree) = self.source_tree(scope, source, bytes.len())? else {
+            let Some(metadata) = source_metadata::read(self, scope, source)? else {
+                self.sources
+                    .note(b"compiled source metadata is missing; rebuild the artifact or image");
                 return Ok(None);
             };
-            Ok(source_revision::inspect(&tree, &bytes).map(|revision| (bytes, revision)))
+            Ok(metadata.revision.map(|revision| (bytes, revision)))
         }
     }
     pub(super) unsafe fn text(&self, scope: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
@@ -215,21 +218,11 @@ pub(super) unsafe fn operation(
                 }
                 let mut sources = Vec::new();
                 for (_, source) in entries {
-                    // Retain source snapshots and final text, not every module's
-                    // parse tree for the lifetime of a whole documentation query.
-                    let document = Scope {
-                        s,
-                        tokens: RefCell::new(Vec::new()),
-                    };
-                    let Some(bytes) = s.source_bytes(&document, source)? else {
+                    // Documentation uses the compiler's saved inventory.
+                    let Some(metadata) = source_metadata::read(s, scope, source)? else {
                         return Err(invalid());
                     };
-                    let Some(tree) = s.source_tree(&document, source, bytes.len())? else {
-                        return Err(invalid());
-                    };
-                    let definitions = source_revision::method_sources(&tree, &bytes);
-                    drop(document);
-                    for text in definitions {
+                    for text in metadata.method_sources {
                         sources.push(s.text(scope, &text)?);
                     }
                 }
@@ -250,11 +243,9 @@ pub(super) unsafe fn operation(
             Op::EmbeddedFiles => {
                 let source = object(a[0])?;
                 let mut paths = Vec::new();
-                if let Some(bytes) = s.source_bytes(scope, source)? {
-                    if let Some(tree) = s.source_tree(scope, source, bytes.len())? {
-                        for path in source_revision::embedded_files(&tree, &bytes) {
-                            paths.push(s.text(scope, &path)?);
-                        }
+                if let Some(metadata) = source_metadata::analyze(s, scope, source)? {
+                    for path in metadata.embedded_files {
+                        paths.push(s.text(scope, &path)?);
                     }
                 } else {
                     s.sources.note(b"RustCodegen source was not a String");
@@ -263,49 +254,44 @@ pub(super) unsafe fn operation(
             }
             Op::Revision | Op::Metadata => {
                 let source = object(a[0])?;
+                source_metadata::analyze(s, scope, source)?;
                 let Some((bytes, revision)) = s.revision(scope, source)? else {
                     if matches!(op, Op::Revision) {
                         s.sources.note(b"RustCodegen source was not a String");
                     }
                     return Ok(nil_value);
                 };
-                let tag = scope.keep(s.id.intern_name(if matches!(op, Op::Metadata) {
-                    b"moduleMetadata"
-                } else {
-                    b"sourceRevision"
-                })?)?;
+                if matches!(op, Op::Revision) {
+                    return reflect_revision(s, scope, source, &revision).map(Operand::object);
+                }
+                let tag = scope.keep(s.id.intern_name(b"moduleMetadata")?)?;
                 let name = scope.keep(s.id.intern_name(&revision.name)?)?;
                 let mut requires = Vec::new();
                 for name in revision.requires {
                     requires.push(scope.keep(s.id.intern_name(&name)?)?);
                 }
                 let requires = s.vector(scope, &requires)?;
-                if matches!(op, Op::Metadata) {
-                    let source_digest = s.text(scope, &source_revision::source_digest(&bytes))?;
-                    let revision_digest = s.text(scope, &revision.revision_digest)?;
-                    return Ok(Operand::object(s.vector(
-                        scope,
-                        &[tag, name, requires, source_digest, revision_digest],
-                    )?));
-                }
-                let non_method = s.text(scope, &revision.non_method_digest)?;
-                let method = s.text(scope, &revision.method_digest)?;
-                let digest = s.text(scope, &revision.revision_digest)?;
+                let source_digest = s.text(scope, &source_revision::source_digest(&bytes))?;
+                let revision_digest = s.text(scope, &revision.revision_digest)?;
                 Ok(Operand::object(s.vector(
                     scope,
-                    &[tag, name, requires, source, non_method, method, digest],
+                    &[tag, name, requires, source_digest, revision_digest],
                 )?))
             }
-            Op::Record | Op::Find => {
-                let name_object = object(a[if matches!(op, Op::Record) { 1 } else { 0 }])?;
+            Op::Record | Op::RecordCompiled | Op::Find => {
+                let is_record = matches!(op, Op::Record | Op::RecordCompiled);
+                let name_object = object(a[if is_record { 1 } else { 0 }])?;
                 let Some(name) = s.symbol_bytes(scope, name_object)? else {
-                    if matches!(op, Op::Record) {
+                    if is_record {
                         s.sources.note(b"RustCodegen module name was not a Symbol");
                     }
                     return Ok(nil_value);
                 };
-                let recording = if matches!(op, Op::Record) {
+                let recording = if is_record {
                     let source = object(a[0])?;
+                    if matches!(op, Op::Record) {
+                        source_metadata::analyze(s, scope, source)?;
+                    }
                     let Some((bytes, revision)) = s.revision(scope, source)? else {
                         s.sources
                             .note(b"RustCodegen module source is not indexable");
@@ -411,9 +397,35 @@ pub(super) unsafe fn operation(
                     s.sources.note(b"RustCodegen generated C failed to compile");
                     return Ok(nil_value);
                 }
+                let _source = s.adapter_scope(None);
                 s.run_method(scope, method)
             }
         }
+    }
+}
+
+unsafe fn reflect_revision(
+    s: &State,
+    q: &Scope<'_>,
+    source: Oop,
+    revision: &RevisionMetadata,
+) -> Result<Oop, Outcome> {
+    unsafe {
+        let tag = q.keep(s.id.intern_name(b"sourceRevision")?)?;
+        let name = q.keep(s.id.intern_name(&revision.name)?)?;
+        let requires = revision
+            .requires
+            .iter()
+            .map(|name| q.keep(s.id.intern_name(name)?))
+            .collect::<Result<Vec<_>, _>>()?;
+        let requires = s.vector(q, &requires)?;
+        let non_method = s.text(q, &revision.non_method_digest)?;
+        let method = s.text(q, &revision.method_digest)?;
+        let digest = s.text(q, &revision.revision_digest)?;
+        s.vector(
+            q,
+            &[tag, name, requires, source, non_method, method, digest],
+        )
     }
 }
 
@@ -430,18 +442,16 @@ unsafe fn initial_projection(s: &State, q: &Scope<'_>) -> Result<Operand, Outcom
         let mut entries = Vec::new();
         for &(name, source) in &snapshot {
             let Some((bytes, metadata)) = s.revision(q, source)? else {
-                return s.error(q, b"generation source is not indexable");
+                return s.error(
+                    q,
+                    b"compiled source metadata is missing; rebuild the artifact or image",
+                );
             };
             if s.symbol_bytes(q, name)?.as_deref() != Some(metadata.name.as_slice()) {
                 return s.error(q, b"generation source name mismatches");
             }
+            let revision = reflect_revision(s, q, source, &metadata)?;
             let module = g::Module::new(bytes, metadata).ok_or_else(invalid)?;
-            let revision = q.keep(object(operation(
-                s,
-                q,
-                Op::Revision,
-                &[Operand::object(source)],
-            )?)?)?;
             let row = s.vector(q, &[name, revision, s.named(b"nil")?])?;
             entries.push((module, row));
         }

@@ -451,6 +451,7 @@ pub(super) unsafe fn operation(
             Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),
             Op::Compile | Op::CompileSelected => {
                 let source = object(args[0])?;
+                source_metadata::analyze(s, q, source)?;
                 let name = object(args[1])?;
                 let path = object(args[2])?;
                 let Some((bytes, metadata)) = s.revision(q, source)? else {
@@ -661,6 +662,7 @@ pub(super) unsafe fn operation(
                 let tree = s
                     .source_tree(q, source, env.source.len())?
                     .ok_or_else(invalid)?;
+                source_metadata::persist(s, q, source, &birnam_codegen::source_metadata::Metadata::inspect(&tree, env.source))?;
                 let Some(plan) = code::Plan::new(&tree, env.source, env.artifact_selection, false)
                 else {
                     return fail(s, q, b"invalidCandidate", b"candidate inventory is invalid");

@@ -282,7 +282,7 @@ birnam /path/to/libbirnam_app.dylib
 Before activation, the artifact inspector validates its identity, ABI, target,
 native requirements, and complete sibling dependency closure. Generated module
 and application artifacts retain the `.dylib` suffix for resolution, but contain
-relocatable TCC objects with the `id-object-v1` contract. The runtime loads these
+relocatable TCC objects with the `id-object-v2` contract. The runtime loads these
 through TCC; native runtime and Alien libraries are ordinary OS dynamic libraries.
 See [Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md) and the
 [current artifact contract](rust/birnam-codegen-runtime/README.md#durable-module-artifacts).
@@ -787,7 +787,9 @@ is the longer-term [self-hosting goal](docs/design/81-toward-a-birnam-implementa
 The installer prepares `lib/birnam-bootstrap.image` for ordinary and console
 startup, plus `lib/birnam-tools.image` for CLI tooling. Both include the required
 authored methods and foreign-function wrappers. Normal startup maps compiled code
-without recompiling the bootstrap or tool adapters. A missing or incompatible image is an
+without recompiling the bootstrap or tool adapters. Compilation also records
+source metadata in Store; compiled startup restores these facts rather than
+parsing source or traversing syntax trees. A missing or incompatible image is an
 error; reinstall to regenerate it. `BIRNAM_FORCE_SOURCE=1 birnam ...` explicitly
 requests source bootstrap for development or recovery and can be slow.
 

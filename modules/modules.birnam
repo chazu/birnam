@@ -164,7 +164,7 @@
           let identityOk := [[descriptor identity] == name];
           [identityOk
             ifTrue: [|
-              [[[[descriptor capabilities] indexOf: ["id-object-v1" asSymbol]] notNil]
+              [[[[descriptor capabilities] indexOf: ["id-object-v2" asSymbol]] notNil]
                 ifTrue: [| descriptor]
                 ifFalse: [| [Error kind: #artifactAbiMismatch
                                message: ["artifact has no Id native-object contract: " , p]]]]]

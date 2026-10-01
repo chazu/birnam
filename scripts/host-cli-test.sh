@@ -53,7 +53,7 @@ if selected image; then
   cargo test --offline --locked -p birnam-siphon --test image repeated_image_resaves_keep_a_fixed_live_set -- --ignored
 fi
 if selected interaction; then
-  host_test startup::tests::installed_bootstrap_and_console_do_not_compile
+  host_test startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse
   python3 scripts/interaction-cli-test.py "$scratch/relocated"
   bash scripts/repl-golden.sh
   bash scripts/lsp-project-smoke.sh

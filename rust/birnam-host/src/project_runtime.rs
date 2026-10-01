@@ -319,7 +319,7 @@ impl HostRuntime {
             };
             if d.kind != b"module"
                 || d.identity != m.name.as_bytes()
-                || !d.capabilities.iter().any(|c| c == b"id-object-v1")
+                || !d.capabilities.iter().any(|c| c == b"id-object-v2")
             {
                 continue;
             }

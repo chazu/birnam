@@ -38,4 +38,4 @@ path used for descriptor provenance and adjacent native requirements. It shares
 the same parser, compatibility checks and diagnostics as `inspect:` without
 reading the artifact file. Codegen uses this to inspect and relocate one snapshot.
 This selector does not execute or map code. Module preflight requires the
-`id-object-v1` capability before planning a generated module for activation.
+`id-object-v2` capability before planning a generated module for activation.

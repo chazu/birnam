@@ -662,7 +662,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires an installed prefix"]
-    fn installed_bootstrap_and_console_do_not_compile() {
+    fn installed_bootstrap_and_console_do_not_compile_or_parse() {
         let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
         let resources = crate::resolve_from_exe_dir(
             Path::new("/unused/bin"),
@@ -673,10 +673,26 @@ mod tests {
         )
         .unwrap();
         let mut host = HostRuntime::start_native(&resources, true).unwrap();
+        let fixture = env::temp_dir().join(format!("birnam-compiled-metadata-{}.o", std::process::id()));
+        {
+            let q = host.scope();
+            let source = q.string(b"[Module named: #metadataFixture requires: #[]]; [Reflect defineMethod: #metadataFixtureAnswer on: Integer as: [:self | 42]]; true").unwrap();
+            let fixture_path = q.string(fixture.as_os_str().as_bytes()).unwrap();
+            let result = q.call(host.named(b"Codegen").unwrap(), b"compile:output:", &[Operand::object(source), Operand::object(fixture_path)]).unwrap();
+            q.check_result(result).unwrap();
+            assert_eq!(result, fixture_path);
+            let key = unsafe { host.id.intern_name(b"compiledSourceMetadata") }.unwrap();
+            let metadata = q.call(host.named(b"Store").unwrap(), b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
+            assert_ne!(metadata, host.named(b"nil").unwrap(), "compilation did not persist metadata");
+        }
         let calls = Box::new(Cell::new(0usize));
-        let tcc = host.named(b"TCCVt").unwrap();
         let mut originals = Vec::new();
-        for name in [b"compile:".as_slice(), b"compileObject:"] {
+        for (family, name) in [
+            (b"TCCVt".as_slice(), b"compile:".as_slice()),
+            (b"TCCVt", b"compileObject:"),
+            (b"LangVt", b"parse:"),
+        ] {
+            let tcc = host.named(family).unwrap();
             let selector = unsafe { host.id.intern_name(name) }.unwrap();
             let original = host
                 .send(
@@ -699,7 +715,7 @@ mod tests {
                 ],
             )
             .unwrap();
-            originals.push((selector, original));
+            originals.push((tcc, selector, original));
         }
         let directory = host.resources.lib_dir.clone();
         host.resources.lib_dir = directory.join("missing-bootstrap-directory");
@@ -716,6 +732,30 @@ mod tests {
             host.load_tool(name).unwrap();
         }
         let q = host.scope();
+        let cg = host.named(b"Codegen").unwrap();
+        let path = q.string(fixture.as_os_str().as_bytes()).unwrap();
+        let result = q.call(cg, b"load:", &[Operand::object(path)]).unwrap();
+        q.check_result(result).unwrap();
+        assert_eq!(result, host.named(b"true").unwrap());
+        std::fs::remove_file(&fixture).unwrap();
+        let name = unsafe { host.id.intern_name(b"stdlib") }.unwrap();
+        let source = q.call(cg, b"moduleSourceFor:", &[Operand::object(name)]).unwrap();
+        let store = host.named(b"Store").unwrap();
+        let key = unsafe { host.id.intern_name(b"compiledSourceMetadata") }.unwrap();
+        let metadata = q.call(store, b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
+        assert_ne!(metadata, host.named(b"nil").unwrap());
+        q.call(store, b"retract:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(metadata)]).unwrap();
+        let result = q.call(cg, b"initialGenerationProjection", &[]).unwrap();
+        assert!(q.check_result(result).is_err(), "missing metadata was silently accepted");
+        assert_eq!(calls.get(), 0, "missing metadata invoked a parser fallback");
+        let malformed = q.call(host.named(b"Vector").unwrap(), b"new", &[]).unwrap();
+        q.call(store, b"assert:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(malformed)]).unwrap();
+        assert!(q.call(cg, b"initialGenerationProjection", &[]).is_err(), "malformed metadata was silently accepted");
+        assert_eq!(calls.get(), 0, "malformed metadata invoked a parser fallback");
+        q.call(store, b"retract:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(malformed)]).unwrap();
+        q.call(store, b"assert:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(metadata)]).unwrap();
+        let docs = q.call(cg, b"recordedMethodSources", &[]).unwrap();
+        assert!(q.vector_size(docs).unwrap() > 0);
         let repl = host.global(&q, b"Repl").unwrap();
         let result = q.call(repl, b"consoleHostInitNoConfig", &[]).unwrap();
         q.check_result(result).unwrap();
@@ -736,8 +776,8 @@ mod tests {
         for name in [b"lsp".as_slice(), b"cli", b"doc"] {
             host.load_tool(name).unwrap();
         }
-        assert_eq!(calls.get(), 0, "bootstrap or console invoked the compiler");
-        for (selector, original) in originals {
+        assert_eq!(calls.get(), 0, "bootstrap or console invoked the compiler or parser");
+        for (tcc, selector, original) in originals {
             host.send(
                 tcc,
                 b"addMethod",
