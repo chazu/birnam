@@ -23,11 +23,31 @@ impl H {
     unsafe fn new() -> Self {
         unsafe {
             let id = id();
-            let ns = load(
-                id,
-                "bootstrap",
-                &[Operand::bytes(directory().as_os_str().as_bytes())],
-            );
+            let ns = if std::env::var_os("BIRNAM_STORE_TEST_LIMIT").is_some() {
+                // The 256-byte fixture exercises Store's own budget, below the
+                // compiled language bootstrap which requires metadata facts.
+                let roots=load(id,"root_registry",&[]);
+                let ns=load(id,"namespace",&[Operand::object(roots)]);
+                let prototype=object(send(id,id.receiver,b"objectPrototype",&[]));
+                let parent=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(prototype)]));
+                for (name,value) in [(b"Object".as_slice(),prototype),(b"ObjectVt",parent)] {
+                    send(id,ns,b"at:put:",&[Operand::object(id.intern_name(name).unwrap()),Operand::object(value)]);
+                }
+                for name in ["boolean","nil"] {
+                    id.send(id.receiver,id.load,&[
+                        Operand::bytes(directory().join(format!("libbirnam_{name}.dylib")).as_os_str().as_bytes()),
+                        Operand::object(ns)]).unwrap();
+                }
+                let gc=load(id,"collect",&[Operand::object(roots)]);
+                send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"GC").unwrap()),Operand::object(gc)]);
+                send(id,gc,b"activate",&[]);
+                for name in ["object_model","string","error","integer","store"] {
+                    load(id,name,&[Operand::object(ns)]);
+                }
+                ns
+            } else {
+                load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())])
+            };
             let named = |n: &[u8]| {
                 object(send(
                     id,

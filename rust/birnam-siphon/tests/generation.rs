@@ -82,6 +82,12 @@ fn initial_projection_is_canonical_inert_rooted_and_rejects_mixed_sources() {
             borrowed_bytes(b.pointer, b.length).unwrap().to_vec()
         };
         let codegen = named(b"Codegen");
+        let core = call(codegen, b"initialGenerationProjection", &[]);
+        let core_selection = bytes(at(core, 3));
+        let core_selection = inspect_generation_selection(&core_selection).unwrap();
+        let core_revisions = core_selection.revision_count();
+        let core_rows = core_selection.row_count();
+        assert_eq!(core_revisions, 2, "Module and Lang are compiled core modules");
         let source_a=text(b"[Module named: #a requires: #[]]; [Reflect defineMethod: #generationAnswer on: Integer as: [:self | 42]]");
         let source_b = text(b"[Module named: #b requires: #[#a]]; let projected := [| 99]");
         for (name, source) in [(b"b".as_slice(), source_b), (b"a".as_slice(), source_a)] {
@@ -112,8 +118,8 @@ fn initial_projection_is_canonical_inert_rooted_and_rejects_mixed_sources() {
         assert_eq!(digest.len(), 64);
         let selection = bytes(at(projection, 3));
         let parsed = inspect_generation_selection(&selection).unwrap();
-        assert_eq!(parsed.revision_count(), 2);
-        assert_eq!(parsed.row_count(), 3); // named adapter, its body, projected Block
+        assert_eq!(parsed.revision_count(), core_revisions + 2);
+        assert_eq!(parsed.row_count(), core_rows + 3); // named adapter, its body, projected Block
         assert!(
             parsed
                 .rows()
@@ -178,7 +184,7 @@ fn initial_projection_is_canonical_inert_rooted_and_rejects_mixed_sources() {
             inspect_generation_selection(&bytes(at(fresh, 3)))
                 .unwrap()
                 .revision_count(),
-            3
+            core_revisions + 3
         );
         assert_eq!(
             call(codegen, b"moduleSourceFor:", &[Operand::object(c.name)]),

@@ -1,0 +1,199 @@
+// Lang owns the Birnam grammar and its public parsing protocol.
+// PEG owns pattern representation, matching, memoization and CST construction.
+// This compiled module runs before source parsing and the standard library.
+[Module named: #lang requires: #[]];
+[Globals at: #Lang put: [Object clone]];
+
+[Reflect defineMethod: #buildGrammar on: Lang as: [:self |
+  let grammar := [Peg grammar];
+  let newline := [[Peg charset] from: 10 to: 10];
+  let comment := [Peg seqOf: #[[Peg literal: "//"] [[Peg seqOf: #[[newline negate] [Peg any]]] star]]];
+  let space_char := [[[[[Peg charset] from: 32 to: 32] from: 9 to: 9] from: 10 to: 10] from: 13 to: 13];
+  let whitespace := [[Peg choiceOf: #[space_char comment]] star];
+  let spacing1 := [[Peg choiceOf: #[space_char comment]] plus];
+  let alpha := [[[[Peg charset] from: 97 to: 122] from: 65 to: 90] from: 95 to: 95];
+  let alnum := [[[[[Peg charset] from: 97 to: 122] from: 65 to: 90] from: 48 to: 57] from: 95 to: 95];
+  let digit := [[Peg charset] from: 48 to: 57];
+  [grammar rule: #ident is: [Peg seqOf: #[alpha [alnum star]]]];
+  [grammar rule: #number is: [Peg seqOf: #[[[Peg literal: "-"] opt] [digit plus]]]];
+  [grammar rule: #float is:
+    [Peg seqOf: #[[[Peg literal: "-"] opt] [digit plus] [Peg literal: "."] [digit plus]]]];
+  [grammar rule: #string is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "\""]
+        [[Peg choiceOf:
+            #[
+              [Peg seqOf: #[[Peg literal: "\\"] [Peg any]]]
+              [Peg seqOf: #[[[Peg literal: "\""] negate] [Peg any]]]
+            ]] star]
+        [Peg literal: "\""]
+      ]]];
+  let binop := [Peg charset];
+  [binop from: 61 to: 61]; // =
+  [binop from: 60 to: 60]; // <
+  [binop from: 62 to: 62]; // >
+  [binop from: 38 to: 38]; // &
+  [binop from: 124 to: 124]; // |
+  [binop from: 44 to: 44]; // ,
+  [binop from: 43 to: 43]; // +
+  [binop from: 45 to: 45]; // -
+  [binop from: 42 to: 42]; // *
+  [binop from: 47 to: 47]; // /
+  [binop from: 126 to: 126]; // ~
+  [binop from: 37 to: 37]; // %
+  [binop from: 64 to: 64]; // @
+  [binop from: 33 to: 33]; // !
+  [binop from: 94 to: 94]; // ^
+  [grammar rule: #binop is: binop];
+  [grammar rule: #symbol is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "#"]
+        [Peg choiceOf:
+          #[
+            [[Peg seqOf: #[[Peg ruleRef: #ident] [Peg literal: ":"]]] plus]
+            [Peg ruleRef: #ident]
+            [[Peg ruleRef: #binop] plus]
+          ]]
+      ]]];
+  [grammar rule: #primary is:
+    [Peg choiceOf:
+      #[
+        [Peg ruleRef: #float]
+        [Peg ruleRef: #number]
+        [Peg ruleRef: #string]
+        [Peg ruleRef: #symbol]
+        [Peg ruleRef: #ident]
+      ]]];
+  [grammar rule: #keyword is: [Peg seqOf: #[[Peg ruleRef: #ident] [Peg literal: ":"]]]];
+  [grammar rule: #keywordMsg is:
+    [[Peg seqOf: #[[Peg ruleRef: #keyword] whitespace [Peg ruleRef: #expr] whitespace]] plus]];
+  [grammar rule: #binops is: [[Peg ruleRef: #binop] plus]];
+  [grammar rule: #binaryMsg is:
+    [Peg seqOf:
+      #[
+        [[Peg choiceOf:
+            #[
+              [Peg seqOf: #[[Peg literal: "=>"] spacing1]]
+              [Peg seqOf: #[[Peg literal: "=>"] [[Peg ruleRef: #binop] negate]]]
+            ]] negate]
+        [Peg ruleRef: #binops]
+        whitespace
+        [Peg ruleRef: #expr]
+      ]]];
+  [grammar rule: #unaryMsg is: [Peg ruleRef: #ident]];
+  [grammar rule: #threadDispatch is:
+    [Peg choiceOf:
+      #[[Peg ruleRef: #keywordMsg] [Peg ruleRef: #binaryMsg] [Peg ruleRef: #unaryMsg]]]];
+  let thread_leg := [Peg seqOf: #[[Peg literal: "=>"] spacing1 [Peg ruleRef: #threadDispatch]]];
+  [grammar rule: #threadedMsg is: [Peg seqOf: #[thread_leg [[Peg seqOf: #[whitespace thread_leg]] star]]]];
+  [grammar rule: #message is:
+    [Peg choiceOf:
+      #[
+        [Peg ruleRef: #threadedMsg]
+        [Peg ruleRef: #keywordMsg]
+        [[Peg seqOf: #[[Peg ruleRef: #binaryMsg] whitespace]] plus]
+        [[Peg seqOf: #[[Peg ruleRef: #unaryMsg] whitespace]] plus]
+      ]]];
+  [grammar rule: #send is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "["]
+        whitespace
+        [Peg ruleRef: #expr]
+        whitespace
+        [Peg ruleRef: #message]
+        whitespace
+        [Peg literal: "]"]
+      ]]];
+  let block_header := [Peg seqOf:
+                        #[
+                          [[Peg seqOf: #[[Peg literal: ":"] [Peg ruleRef: #ident] whitespace]]
+                            star]
+                          [Peg literal: "|"]
+                        ]];
+  [grammar rule: #block is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "["]
+        whitespace
+        block_header
+        whitespace
+        [[Peg ruleRef: #statements] opt]
+        whitespace
+        [Peg literal: "]"]
+      ]]];
+  [grammar rule: #vectorLit is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "#["]
+        whitespace
+        [[Peg seqOf: #[[Peg ruleRef: #expr] whitespace]] star]
+        [Peg literal: "]"]
+      ]]];
+  [grammar rule: #mapEntry is:
+    [Peg seqOf:
+      #[[Peg ruleRef: #expr] whitespace [Peg literal: "->"] whitespace [Peg ruleRef: #expr]]]];
+  [grammar rule: #mapLit is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "{"]
+        whitespace
+        [[Peg seqOf: #[[Peg ruleRef: #mapEntry] whitespace [[Peg literal: ","] opt] whitespace]]
+          star]
+        [Peg literal: "}"]
+      ]]];
+  [grammar rule: #logicVar is: [Peg seqOf: #[[Peg literal: "?"] [Peg ruleRef: #ident]]]];
+  [grammar rule: #expr is:
+    [Peg choiceOf:
+      #[
+        [Peg ruleRef: #block]
+        [Peg ruleRef: #send]
+        [Peg ruleRef: #vectorLit]
+        [Peg ruleRef: #mapLit]
+        [Peg ruleRef: #logicVar]
+        [Peg ruleRef: #primary]
+      ]]];
+  [grammar rule: #letBinding is:
+    [Peg seqOf:
+      #[
+        [Peg literal: "let"]
+        [alnum negate]
+        whitespace
+        [Peg ruleRef: #ident]
+        whitespace
+        [Peg literal: ":="]
+        whitespace
+        [Peg ruleRef: #expr]
+      ]]];
+  [grammar rule: #statement is: [Peg choiceOf: #[[Peg ruleRef: #letBinding] [Peg ruleRef: #expr]]]];
+  [grammar rule: #statements is:
+    [Peg seqOf:
+      #[
+        [Peg ruleRef: #statement]
+        [[Peg seqOf:
+            #[whitespace [[Peg literal: ";"] opt] whitespace [Peg ruleRef: #statement]]]
+          star]
+        [[Peg seqOf: #[whitespace [Peg literal: ";"]]] opt]
+      ]]];
+  [grammar rule: #program is:
+    [Peg seqOf: #[whitespace [[Peg ruleRef: #statements] opt] whitespace [Peg eof]]]];
+  grammar]];
+
+// Each public Method retains its grammar in an ordinary Block capture. Clones
+// therefore share the same grammar, as they did with the native Lang context.
+[Reflect defineMethod: #initializeGrammar on: Lang as: [:self |
+  let grammar := [self buildGrammar];
+  [Reflect defineMethod: #grammar on: self as: [:receiver | grammar]];
+  [Reflect defineMethod: #parse: on: self as: [:receiver :source |
+    [grammar parse: source from: #program]]];
+  [Reflect defineMethod: #furthestFail on: self as: [:receiver |
+    [grammar furthestFail]]];
+  [Namespace at: #BirnamGrammar put: grammar];
+  self]];
+[Lang initializeGrammar];
+[Namespace at: #Lang put: Lang];
+[Namespace at: #LangVt put: [Vtable behaviorOf: Lang]];
+[Module markLoaded: #lang];
+Lang

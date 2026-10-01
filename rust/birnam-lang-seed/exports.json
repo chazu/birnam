@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "scope": "build-only Lang seed through Id messages",
+  "install_name": "@rpath/libbirnam_lang_seed.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v1"
+  ]
+}

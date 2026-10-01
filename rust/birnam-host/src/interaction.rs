@@ -23,7 +23,11 @@ impl HostRuntime {
     /// Project/image entry already established its context; it must not run
     /// nearest-directory Config or application main again.
     pub fn run_repl(&self, apply_config: bool) -> Result<(), HostError> {
-        if self.global(&self.scope(), b"Module")? == self.named(b"nil")? {
+        // Module and Lang are present even on the minimal compiled floor.
+        // REPL entry also requires the authored generation/control bootstrap.
+        if self.global(&self.scope(), b"Module")? == self.named(b"nil")?
+            || self.global(&self.scope(), b"DispatchGeneration")? == self.named(b"nil")?
+        {
             if !StartupPolicy::from_environment().source_bootstrap {
                 return Err(HostError("image lacks an authored bootstrap; regenerate it with the current Birnam or use BIRNAM_FORCE_SOURCE=1 for explicit source recovery".into()));
             }

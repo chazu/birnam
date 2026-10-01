@@ -9,8 +9,13 @@ from install_contract import verify
 prefix = Path(sys.argv[1]).resolve()
 receipt = verify(prefix)
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
+assert receipt['bootstrap_modules'] == ['modules', 'lang']
+assert receipt['build_seed'] == {'grammar': 'birnam-lang-seed', 'published': False}
+assert 'libbirnam_lang.dylib' not in receipt['dynamic_libraries']
+assert (prefix / 'lib/libbirnam_lang.dylib').read_bytes().startswith(b'\x7fELF')
+assert not (prefix / 'lib/libbirnam_lang_seed.dylib').exists()
 assert receipt['stage1_modules'] == ['stdlib', 'stacklessControl', 'compiledUnit', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
-assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'stacklessControl', 'compiledUnit', 'isolate']
+assert receipt['source_bootstrap_modules'] == ['stdlib', 'stacklessControl', 'compiledUnit', 'isolate']
 assert {'libbirnam_storage.dylib', 'libbirnam_trace.dylib'} <= set(receipt['dynamic_libraries'])
 relocated = prefix.parent / 'relocated'
 prefix.rename(relocated)

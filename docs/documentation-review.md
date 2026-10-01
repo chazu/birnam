@@ -194,7 +194,7 @@ Every baseline file appears once below. Delete/Archive links are pinned to the r
 | [rust/birnam-image/README.md](../rust/birnam-image/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-integer/README.md](../rust/birnam-integer/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-isolate/README.md](../rust/birnam-isolate/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-lang/README.md](../rust/birnam-lang/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [rust/birnam-lang-seed/README.md](../rust/birnam-lang-seed/README.md) | Build-only grammar seed; production Lang is authored in `modules/lang.birnam`. |
 | [rust/birnam-map/README.md](../rust/birnam-map/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-native-loader/README.md](../rust/birnam-native-loader/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-object-model/README.md](../rust/birnam-object-model/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |

@@ -26,3 +26,8 @@ Integers. Parse failures retain syntaxError, undefinedRule and leftRecursion.
 `mise exec -- cargo test --offline -p birnam-peg --lib` runs the three retained
 independent matcher comparisons; production parsing and precise-GC checks run in
 `mise run native-messages`.
+
+Lang grammar construction is authored in `modules/lang.birnam`. Bootstrap admits
+its compiled artifact after PEG and Codegen; no Rust Lang library participates
+in normal source parsing or image startup. The build-only Rust grammar seed is
+accounted for in `rust/birnam-lang-seed`.

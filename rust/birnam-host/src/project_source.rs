@@ -275,6 +275,10 @@ let nested := [| [System embedFile: "second\nfile"]];
                 .unwrap()
                 .as_entry()
                 .unwrap();
+            if family == b"LangVt" {
+                scope.keep(host.send(host.named(b"Execution").unwrap(),
+                    b"methodOfEntry:", &[Operand::entry(original)]).unwrap()).unwrap();
+            }
             let mut hook = Box::new(Hook {
                 id: host.id,
                 gc,

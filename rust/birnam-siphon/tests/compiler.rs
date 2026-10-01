@@ -24,6 +24,7 @@ struct H {
     ns: Oop,
     roots: Oop,
     tokens: Vec<usize>,
+    floor: CompiledFloor,
 }
 impl H {
     unsafe fn named(&self, n: &[u8]) -> Oop {
@@ -79,14 +80,14 @@ impl H {
         unsafe {
             send(self.id, self.named(b"TCC"), b"liveNativeBytes", &[])
                 .as_word()
-                .unwrap()
+                .unwrap().checked_sub(self.floor.bytes).expect("compiled core bytes remain live")
         }
     }
     unsafe fn units(&self) -> usize {
         unsafe {
             send(self.id, self.named(b"TCC"), b"liveNativeUnits", &[])
                 .as_word()
-                .unwrap()
+                .unwrap().checked_sub(self.floor.units).expect("compiled core units remain live")
         }
     }
     unsafe fn bind(&self, n: &[u8], o: Oop) {
@@ -175,6 +176,7 @@ fn source_compiles_and_runs_on_production_execution() {
             ns,
             roots,
             tokens: vec![],
+            floor: CompiledFloor::pin(id, ns, roots),
         };
         for source in [
             b"[[Reflect vtableOf: \"hello\"] == StringVt]".as_slice(),

@@ -4,6 +4,9 @@ version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+[features]
+# Build-only grammar seed. Published bootstrap uses compiled Birnam Lang.
+lang-seed = []
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 [lib]

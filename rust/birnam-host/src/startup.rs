@@ -273,26 +273,14 @@ impl HostRuntime {
     pub(super) fn bootstrap_source(&self) -> Result<(), HostError> {
         let host = self;
         let scope = host.scope();
-        for (name, source) in [
-            (
-                b"modules".as_slice(),
-                include_bytes!("../../../modules/modules.birnam").as_slice(),
-            ),
-            (
-                b"stdlib".as_slice(),
-                include_bytes!("../../../modules/stdlib.birnam").as_slice(),
-            ),
-        ] {
-            scope
-                .evaluate(
-                    source,
-                    Path::new(&format!("<{}>", String::from_utf8_lossy(name))),
-                    Some(name),
-                )
-                .map_err(|e| {
-                    HostError(format!("bootstrap {}: {e}", String::from_utf8_lossy(name)))
-                })?;
+        if host.global(&scope, b"Module")? == host.named(b"nil")? {
+            scope.evaluate(include_bytes!("../../../modules/modules.birnam"),
+                Path::new("<modules>"), Some(b"modules"))?;
         }
+        scope.evaluate(
+            include_bytes!("../../../modules/stdlib.birnam"),
+            Path::new("<stdlib>"), Some(b"stdlib"),
+        ).map_err(|e| HostError(format!("bootstrap stdlib: {e}")))?;
         scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
         scope.evaluate(
             include_bytes!("../../../modules/stackless-control.birnam"),
@@ -324,7 +312,6 @@ impl HostRuntime {
             "storage",
             "trace",
             "peg",
-            "lang",
             "tcc",
             "codegen",
             "prelude",
@@ -341,6 +328,8 @@ impl HostRuntime {
         }
         let lib = scope.string(self.resources.lib_dir.as_os_str().as_bytes())?;
         scope.call(module, b"libDir:", &[Operand::object(lib)])?;
+        let lang = unsafe { host.id.intern_name(b"lang") }.map_err(|e| native_error("intern lang", e))?;
+        scope.call(module, b"markLoaded:", &[Operand::object(lang)])?;
         Ok(())
     }
     /// Restore into the native runtime without evaluating source bootstrap.
@@ -686,11 +675,13 @@ mod tests {
             assert_ne!(metadata, host.named(b"nil").unwrap(), "compilation did not persist metadata");
         }
         let calls = Box::new(Cell::new(0usize));
+        let mut original_method_tokens = Vec::new();
         let mut originals = Vec::new();
         for (family, name) in [
             (b"TCCVt".as_slice(), b"compile:".as_slice()),
             (b"TCCVt", b"compileObject:"),
             (b"LangVt", b"parse:"),
+            (b"PegGrammarVt", b"parse:from:"),
         ] {
             let tcc = host.named(family).unwrap();
             let selector = unsafe { host.id.intern_name(name) }.unwrap();
@@ -703,6 +694,12 @@ mod tests {
                 .unwrap()
                 .as_entry()
                 .unwrap();
+            if family == b"LangVt" {
+                let method = host.send(host.named(b"Execution").unwrap(),
+                    b"methodOfEntry:", &[Operand::entry(original)]).unwrap();
+                let token = host.send(host.roots, b"retain:", &[method]).unwrap().as_word().unwrap();
+                original_method_tokens.push(token);
+            }
             host.send(
                 tcc,
                 b"addMethod",
@@ -784,6 +781,9 @@ mod tests {
                 &[Operand::object(selector), Operand::entry(original)],
             )
             .unwrap();
+        }
+        for token in original_method_tokens {
+            host.send(host.roots, b"release:", &[Operand::word(token)]).unwrap();
         }
     }
 

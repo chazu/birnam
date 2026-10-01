@@ -120,3 +120,192 @@ pub unsafe fn visitor(id: Protocol, method: Method, context: *mut c_void) -> Ope
         Operand::object(allocate(id, vt, 0))
     }
 }
+
+/// Pin the compiled core while testing temporary code lifetimes. Image tests
+/// restore its original Lang bindings before checking that fixture units retire.
+pub struct CompiledFloor {
+    pub units: usize,
+    pub bytes: usize,
+    id: Protocol,
+    roots: Oop,
+    tokens: Vec<usize>,
+    lang_bindings: Vec<(Oop, Oop, NativeEntry)>,
+}
+impl CompiledFloor {
+    pub unsafe fn pin(id: Protocol, ns: Oop, roots: Oop) -> Self {
+        unsafe { Self::pin_with_module(id, ns, roots, true) }
+    }
+    pub unsafe fn pin_lang_only(id: Protocol, ns: Oop, roots: Oop) -> Self {
+        unsafe {
+            let mut floor = Self::pin_with_module(id, ns, roots, false);
+            let named = |name: &[u8]| {
+                object(send(
+                    id,
+                    ns,
+                    b"at:",
+                    &[Operand::object(id.intern_name(name).unwrap())],
+                ))
+            };
+            // Remove this test process's original manager methods to measure
+            // Lang's exact unit baseline. Reloading the compiled manager below
+            // restores the normal floor without retaining an obsolete factory.
+            let module = object(send(
+                id,
+                named(b"Globals"),
+                b"at:",
+                &[Operand::object(id.intern_name(b"Module").unwrap())],
+            ));
+            let vt = object(send(
+                id,
+                id.receiver,
+                b"behaviorOf:",
+                &[Operand::object(module)],
+            ));
+            let mut selectors = Vec::new();
+            for index in 0..1024 {
+                let value = send(
+                    id,
+                    id.receiver,
+                    b"selectorAt:in:",
+                    &[Operand::word(index), Operand::object(vt)],
+                );
+                let Some(selector) = value.as_object() else {
+                    break;
+                };
+                selectors.push(selector);
+            }
+            for selector in selectors {
+                send(
+                    id,
+                    named(b"Store"),
+                    b"removeMethod:on:",
+                    &[Operand::object(selector), Operand::object(vt)],
+                );
+            }
+            collect(id, named(b"GC"));
+            send(id, named(b"TCC"), b"checkpoint", &[]);
+            floor.units = send(id, named(b"TCC"), b"liveNativeUnits", &[])
+                .as_word()
+                .unwrap();
+            floor.bytes = send(id, named(b"TCC"), b"liveNativeBytes", &[])
+                .as_word()
+                .unwrap();
+            let path = object(send(
+                id,
+                named(b"String"),
+                b"fromBytes:",
+                &[Operand::bytes(
+                    directory()
+                        .join("libbirnam_modules.dylib")
+                        .as_os_str()
+                        .as_bytes(),
+                )],
+            ));
+            let token = retain(id, roots, path);
+            let result = object(send(
+                id,
+                named(b"Codegen"),
+                b"load:",
+                &[Operand::object(path)],
+            ));
+            assert_ne!(result, named(b"nil"));
+            release(id, roots, token);
+            floor
+        }
+    }
+    unsafe fn pin_with_module(id: Protocol, ns: Oop, roots: Oop, pin_module: bool) -> Self {
+        unsafe {
+            let named = |name: &[u8]| {
+                object(send(
+                    id,
+                    ns,
+                    b"at:",
+                    &[Operand::object(id.intern_name(name).unwrap())],
+                ))
+            };
+            let mut tokens = Vec::new();
+            let globals = named(b"Globals");
+            let module = object(send(
+                id,
+                globals,
+                b"at:",
+                &[Operand::object(id.intern_name(b"Module").unwrap())],
+            ));
+            if pin_module {
+                tokens.push(retain(id, roots, module));
+            }
+            let lang = named(b"Lang");
+            let vt = object(send(
+                id,
+                id.receiver,
+                b"behaviorOf:",
+                &[Operand::object(lang)],
+            ));
+            tokens.push(retain(id, roots, vt));
+            let mut lang_bindings = Vec::new();
+            for name in [
+                b"buildGrammar".as_slice(),
+                b"initializeGrammar",
+                b"grammar",
+                b"parse:",
+                b"furthestFail",
+            ] {
+                let selector = id.intern_name(name).unwrap();
+                let entry = send(
+                    id,
+                    id.receiver,
+                    b"bindingOf:in:",
+                    &[Operand::object(selector), Operand::object(vt)],
+                )
+                .as_entry()
+                .unwrap();
+                let method = object(send(
+                    id,
+                    named(b"Execution"),
+                    b"methodOfEntry:",
+                    &[Operand::entry(entry)],
+                ));
+                tokens.push(retain(id, roots, method));
+                lang_bindings.push((vt, selector, entry));
+            }
+            collect(id, named(b"GC"));
+            send(id, named(b"TCC"), b"checkpoint", &[]);
+            let units = send(id, named(b"TCC"), b"liveNativeUnits", &[])
+                .as_word()
+                .unwrap();
+            let bytes = send(id, named(b"TCC"), b"liveNativeBytes", &[])
+                .as_word()
+                .unwrap();
+            assert!(units > 0, "compiled Lang was not exercised");
+            Self {
+                units,
+                bytes,
+                id,
+                roots,
+                tokens,
+                lang_bindings,
+            }
+        }
+    }
+    pub unsafe fn restore_lang(&self) {
+        unsafe {
+            for &(vt, selector, entry) in &self.lang_bindings {
+                send(
+                    self.id,
+                    vt,
+                    b"addMethod",
+                    &[Operand::object(selector), Operand::entry(entry)],
+                );
+            }
+        }
+    }
+}
+impl Drop for CompiledFloor {
+    fn drop(&mut self) {
+        for token in self.tokens.drain(..) {
+            unsafe {
+                release(self.id, self.roots, token);
+            }
+        }
+    }
+}

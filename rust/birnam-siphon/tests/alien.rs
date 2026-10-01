@@ -163,6 +163,7 @@ fn alien_calls_callbacks_and_owned_memory() {
             gc: named(b"GC"),
             tokens: RefCell::new(Vec::new()),
         };
+        let floor = CompiledFloor::pin(id, ns, h.roots);
         let integer_vt = named(b"IntegerVt");
         let old = send(
             id,
@@ -305,7 +306,7 @@ fn alien_calls_callbacks_and_owned_memory() {
             h.call(h.call(alien, b"dlclose:", &[fixture]), b"kind", &[]),
             id.intern_name(b"inUse").unwrap()
         );
-        // Remove installed wrappers and all temporary roots. TCC must reclaim every unit.
+        // Remove wrappers and temporary roots. Only compiled core units may remain.
         for (target, sel) in [
             (h.named(b"String"), b"foreignLength".as_slice()),
             (integer, b"foreignAdd:"),
@@ -347,7 +348,7 @@ fn alien_calls_callbacks_and_owned_memory() {
         send(id, h.named(b"TCC"), b"checkpoint", &[]);
         assert_eq!(
             send(id, h.named(b"TCC"), b"liveNativeUnits", &[]).as_word(),
-            Some(0)
+            Some(floor.units)
         );
         let fixture = h.string(
             directory()

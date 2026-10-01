@@ -29,7 +29,7 @@ members = [
     "rust/birnam-build",
     "rust/birnam-siphon",
     "rust/birnam-isolate",
-    "rust/birnam-lang",
+    "rust/birnam-lang-seed",
     "rust/birnam-native-compiler",
     "rust/birnam-peg",
     "rust/birnam-portable-code",

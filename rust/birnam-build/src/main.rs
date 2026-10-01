@@ -10,6 +10,12 @@ use std::os::unix::fs::PermissionsExt;
 
 use sha2::{Digest, Sha256};
 
+// Bootstrap artifacts are admitted before the source parser exists.
+const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
+    ("modules", "modules/modules.birnam"),
+    ("lang", "modules/lang.birnam"),
+];
+
 // Authored production tools, compiled through the installed Id artifact path.
 const TOOL_MODULES: &[(&str, &str)] = &[
     ("stdlib", "modules/stdlib.birnam"),
@@ -56,7 +62,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_range.dylib",
     "libbirnam_execution.dylib",
     "libbirnam_peg.dylib",
-    "libbirnam_lang.dylib",
     "libbirnam_tcc.dylib",
     "libbirnam_codegen_runtime.dylib",
     "libbirnam_store.dylib",
@@ -616,6 +621,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     } else {
         Vec::new()
     };
+    if cargo_features.as_ref().is_some_and(|features| features.contains("lang-seed")) {
+        return Err("the Lang seed feature is build-only and cannot be requested for a published prefix".into());
+    }
     // Explicit Cargo features are recorded in the receipt so diagnostic builds
     // are distinguishable from ordinary installs.
     let mut cargo_arguments = vec![
@@ -636,8 +644,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     cargo
         .current_dir(&root)
         .env("CARGO_TARGET_DIR", &target_dir)
-        .args(&cargo_arguments);
-    run_status(&mut cargo, "cargo migrated Host and native modules build")?;
+        .args(&cargo_arguments)
+        .args(["-p", "birnam-lang-seed", "--features", "birnam-bootstrap/lang-seed"]);
+    run_status(&mut cargo, "build compiler seed and native modules")?;
 
     let profile_dir = env::var_os("CARGO_BUILD_TARGET")
         .map_or_else(|| target_dir.clone(), |target| target_dir.join(target))
@@ -656,6 +665,29 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             copy_file(&source, &lib_dir.join(name))?;
         }
     }
+    // The Rust grammar is a build seed only. Compile the two early artifacts
+    // without evaluating source bootstrap, then remove the seed from the prefix.
+    let seed = lib_dir.join("libbirnam_lang_seed.dylib");
+    copy_file(&profile_dir.join("libbirnam_lang_seed.dylib"), &seed)?;
+    for (name, source) in BOOTSTRAP_MODULES {
+        let mut compile = Command::new(&host_destination);
+        compile.current_dir(&root);
+        for (key, _) in env::vars_os() {
+            if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
+        }
+        compile.env("BIRNAM_NO_STDLIB", "1")
+            .arg("--compile-module").arg(root.join(source))
+            .arg(lib_dir.join(format!("libbirnam_{name}.dylib")));
+        run_status(&mut compile, &format!("compile bootstrap module {name}"))?;
+    }
+    let production_arguments = ["build", "-p", "birnam-bootstrap", "--locked", "--offline"]
+        .into_iter().chain(cargo_profile.iter().copied()).map(str::to_owned).collect::<Vec<_>>();
+    let mut production = Command::new("cargo");
+    production.current_dir(&root).env("CARGO_TARGET_DIR", &target_dir)
+        .args(&production_arguments);
+    run_status(&mut production, "build bootstrap without the grammar seed")?;
+    copy_file(&profile_dir.join("libbirnam_bootstrap.dylib"), &lib_dir.join("libbirnam_bootstrap.dylib"))?;
+    fs::remove_file(&seed).map_err(|e| format!("remove build-only Lang seed: {e}"))?;
     for (name, source) in TOOL_MODULES {
         let mut compile = Command::new(&host_destination);
         compile
@@ -782,9 +814,18 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             ));
         }
     }
+    for (name, _) in BOOTSTRAP_MODULES {
+        if !staged_manifest.contains_key(&format!("lib/libbirnam_{name}.dylib")) {
+            return Err(format!("missing compiled bootstrap module: {name}"));
+        }
+    }
+    if lib_dir.join("libbirnam_lang_seed.dylib").exists() {
+        return Err("build-only Lang seed leaked into the published prefix".into());
+    }
     let staged_digest = manifest_digest(&staged_manifest)?;
     let cargo_invocation = std::iter::once("cargo".to_owned())
         .chain(cargo_arguments)
+        .chain(["-p", "birnam-lang-seed", "--features", "birnam-bootstrap/lang-seed"].map(str::to_owned))
         .collect::<Vec<_>>();
 
     let git_commit = command_stdout("git", &["rev-parse", "HEAD"], &root)
@@ -819,8 +860,11 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         },
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
+        "bootstrap_modules": BOOTSTRAP_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+        "build_seed": { "grammar": "birnam-lang-seed", "published": false },
+        "production_bootstrap_invocation": std::iter::once("cargo".to_owned()).chain(production_arguments).collect::<Vec<_>>(),
         "stage1_modules": TOOL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
-        "source_bootstrap_modules": ["modules", "stdlib", "stacklessControl", "compiledUnit", "isolate"],
+        "source_bootstrap_modules": ["stdlib", "stacklessControl", "compiledUnit", "isolate"],
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
         "staged_manifest": staged_manifest,
@@ -884,7 +928,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "rust-install: published {} ({} native libraries, {} source bootstrap modules, {} authored tools)",
         prefix.display(),
         CANONICAL_DYNAMIC_LIBRARIES.len(),
-        5,
+        4,
         TOOL_MODULES.len()
     );
     Ok(())

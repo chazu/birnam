@@ -1,4 +1,4 @@
-//! Language grammar construction retains its existing PEG message policy.
+//! Build-only Rust grammar seed; production Lang is modules/lang.birnam.
 use birnam_abi::{
     Oop, borrowed_slice,
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},

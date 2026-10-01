@@ -1,5 +1,5 @@
 [package]
-name = "birnam-lang"
+name = "birnam-lang-seed"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -11,7 +11,7 @@ birnam-abi = { path = "../birnam-abi" }
 [build-dependencies]
 
 [lib]
-name = "birnam_lang"
+name = "birnam_lang_seed"
 crate-type = ["cdylib"]
 
 [lints]

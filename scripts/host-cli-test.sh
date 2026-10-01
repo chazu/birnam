@@ -35,6 +35,7 @@ export BIRNAM_BIN="$scratch/relocated/bin/birnam"
 host_test() { cargo test --offline --locked -p birnam-host "$1" -- --ignored; }
 if selected cli; then
   python3 scripts/artifact-cli-test.py "$scratch/relocated"
+  python3 scripts/lang-migration-test.py "$scratch/relocated"
   python3 scripts/portable-execution-test.py "$scratch/relocated"
   python3 scripts/worker-test.py "$scratch/relocated"
   bash scripts/rust-project-check-smoke.sh

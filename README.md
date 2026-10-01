@@ -784,6 +784,12 @@ modules are Birnam source. The native runtime/compiler implementation remains
 Rust with C/libtcc support. The installed runtime stays on its creating thread;
 parallel workers use independent processes. A Birnam-authored runtime/compiler
 is the longer-term [self-hosting goal](docs/design/81-toward-a-birnam-implementation.md).
+Lang's grammar and parsing facade are authored in `modules/lang.birnam`.
+Bootstrap loads precompiled Module and Lang artifacts before source parsing.
+The installer uses `birnam-lang-seed` to compile those artifacts, then excludes
+that Rust grammar seed from the published runtime. PEG matching and Codegen
+remain Rust implementations.
+
 The installer prepares `lib/birnam-bootstrap.image` for ordinary and console
 startup, plus `lib/birnam-tools.image` for CLI tooling. Both include the required
 authored methods and foreign-function wrappers. Normal startup maps compiled code

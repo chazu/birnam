@@ -188,6 +188,8 @@ fn durable_artifacts_use_owned_code_and_current_messages() {
         let compile_object = binding(id, tcc_vt, b"compileObject:");
         let lang_vt = h.named(b"LangVt");
         let parse = binding(id, lang_vt, b"parse:");
+        // A displaced compiled entry is borrowed; pin its Method until restored.
+        h.keep(object(send(id, h.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(parse)])));
         let failure = NativeEntry {
             method: Some(reject),
             context: std::ptr::null_mut(),

@@ -6,8 +6,19 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.cargo-target/native-message-t
 mkdir -p "$CARGO_TARGET_DIR"
 CARGO_TARGET_DIR=$(cd "$CARGO_TARGET_DIR" && pwd)
 export CARGO_TARGET_DIR
-cargo build --offline --locked --features birnam-tcc/resource-metrics -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-boolean -p birnam-nil -p birnam-bootstrap -p birnam-collect -p birnam-object-model -p birnam-string -p birnam-error -p birnam-integer -p birnam-float -p birnam-word -p birnam-vector -p birnam-map -p birnam-range -p birnam-execution -p birnam-peg -p birnam-lang -p birnam-tcc -p birnam-codegen-runtime -p birnam-store -p birnam-relational -p birnam-prelude -p birnam-printing -p birnam-system-output -p birnam-system-input -p birnam-environment -p birnam-file-io -p birnam-system-gc -p birnam-storage -p birnam-trace -p birnam-native-loader -p birnam-source-loader -p birnam-block-loop -p birnam-artifact -p birnam-portable-code -p birnam-image -p birnam-alien -p birnam-isolate
-export BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/debug"
+# The native floor includes compiled Module/Lang artifacts. Build them with the
+# explicit Rust grammar seed; the published test prefix excludes that seed.
+if [[ -n ${BIRNAM_TEST_PREFIX:-} ]]; then
+  prefix=$BIRNAM_TEST_PREFIX
+else
+  prefix_parent=$(mktemp -d "${TMPDIR:-/tmp}/birnam-native.XXXXXX")
+  trap 'rm -rf "$prefix_parent"' EXIT
+  prefix="$prefix_parent/prefix"
+  BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics \
+    bash scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" \
+      --profile release --build-cache "$CARGO_TARGET_DIR/install"
+fi
+export BIRNAM_TEST_MODULE_DIRECTORY="$prefix/lib"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_method.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_method_fixture.dylib"
@@ -15,12 +26,12 @@ cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_machine.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_machine_fixture.dylib"
 for variant in target missing incompatible; do
-  flags=()
+  flags=(-std=c11 -Wall -Wextra -Werror -dynamiclib)
   case "$variant" in
-    missing) flags=(-DLOADER_MISSING) ;;
-    incompatible) flags=(-DLOADER_INCOMPATIBLE) ;;
+    missing) flags+=(-DLOADER_MISSING) ;;
+    incompatible) flags+=(-DLOADER_INCOMPATIBLE) ;;
   esac
-  cc -std=c11 -Wall -Wextra -Werror -dynamiclib "${flags[@]}" \
+  cc "${flags[@]}" \
     rust/birnam-abi/tests/fixtures/id-protocol-v1/native_loader.c \
     -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_loader_${variant}_fixture.dylib"
 done
@@ -31,7 +42,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg lang tcc codegen-runtime store relational prelude printing system-output system-input environment file-io system-gc storage trace native-loader source-loader block-loop artifact portable-code image alien isolate".split()
+modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg tcc codegen-runtime store relational prelude printing system-output system-input environment file-io system-gc storage trace native-loader source-loader block-loop artifact portable-code image alien isolate".split()
 directory = Path(sys.argv[1])
 for module in modules:
     library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")

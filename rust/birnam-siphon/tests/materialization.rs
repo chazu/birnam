@@ -17,6 +17,7 @@ struct H {
     roots: Oop,
     gc: Oop,
     tokens: RefCell<Vec<usize>>,
+    floor: CompiledFloor,
 }
 impl H {
     unsafe fn named(&self, name: &[u8]) -> Oop {
@@ -211,14 +212,14 @@ impl H {
         unsafe {
             send(self.id, self.named(b"TCC"), b"liveNativeUnits", &[])
                 .as_word()
-                .unwrap()
+                .unwrap().checked_sub(self.floor.units).expect("compiled core units remain live")
         }
     }
     unsafe fn native_bytes(&self) -> usize {
         unsafe {
             send(self.id, self.named(b"TCC"), b"liveNativeBytes", &[])
                 .as_word()
-                .unwrap()
+                .unwrap().checked_sub(self.floor.bytes).expect("compiled core bytes remain live")
         }
     }
     unsafe fn collect(&self) {
@@ -323,6 +324,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
             roots: named(b"Roots"),
             gc: named(b"GC"),
             tokens: RefCell::new(Vec::new()),
+            floor: CompiledFloor::pin(id, ns, named(b"Roots")),
         };
         let nil = h.named(b"nil");
         let codegen = h.named(b"Codegen");

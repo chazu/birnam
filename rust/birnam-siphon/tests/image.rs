@@ -17,6 +17,7 @@ struct H {
     roots: Oop,
     gc: Oop,
     tokens: RefCell<Vec<usize>>,
+    floor: CompiledFloor,
 }
 impl H {
     unsafe fn named(&self, name: &[u8]) -> Oop {
@@ -246,6 +247,7 @@ unsafe fn harness() -> H {
             roots: named(b"Roots"),
             gc: named(b"GC"),
             tokens: RefCell::new(Vec::new()),
+            floor: CompiledFloor::pin_lang_only(id, ns, named(b"Roots")),
         }
     }
 }
@@ -682,12 +684,13 @@ fn image_owner_roundtrip() {
                 &[Operand::object(h.id.intern_name(b"imageCellMarker").unwrap())],
             );
             h.call(h.named(b"Store"), b"imageLoadBegin", &[]);
+            h.floor.restore_lang();
             h.clear_from(0);
             h.collect();
             assert_eq!(
                 h.units(),
-                0,
-                "all restored mappings reclaim after final references"
+                h.floor.units,
+                "restored fixture mappings reclaim after restoring the compiled core"
             );
             return;
         }
@@ -1209,12 +1212,13 @@ fn repeated_image_resaves_keep_a_fixed_live_set() {
             )
             .unwrap();
             // Clearing Store/Globals and the last external root must release
-            // every restored or freshly materialized native Unit in this process.
+            // fixture mappings after restoring the resident compiled core.
             h.call(store, b"imageLoadBegin", &[]);
             h.call(codegen, b"evictMaterializations", &[]);
+            h.floor.restore_lang();
             h.clear_from(0);
             h.collect();
-            assert_eq!(h.units(), 0, "epoch {epoch} retained native mappings");
+            assert_eq!(h.units(), h.floor.units, "epoch {epoch} retained fixture mappings");
         }
         return;
     }

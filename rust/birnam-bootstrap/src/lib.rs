@@ -334,13 +334,8 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "artifact",
             "portable_code",
             "peg",
-            "lang",
             "tcc",
             "codegen_runtime",
-            "source_loader",
-            "image",
-            "alien",
-            "isolate",
         ] {
             id.send_named(
                 receiver,
@@ -349,6 +344,40 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                     Operand::bytes(&module_path(directory, name)),
                     Operand::object(namespace),
                 ],
+            )?;
+        }
+        #[cfg(feature = "lang-seed")]
+        id.send_named(
+            receiver, b"loadNative:",
+            &[Operand::bytes(&module_path(directory, "lang_seed")), Operand::object(namespace)],
+        )?;
+        #[cfg(not(feature = "lang-seed"))]
+        for name in ["modules", "lang"] {
+            let path = object(id.send_named(
+                object(string)?, b"fromBytes:",
+                &[Operand::bytes(&module_path(directory, name))],
+            )?)?;
+            let path_token = retain(id, roots, path)?;
+            let result = (|| {
+                let codegen = object(named(b"Codegen")?)?;
+                let result = object(id.send_named(codegen, b"load:", &[Operand::object(path)])?)?;
+                let result_token = retain(id, roots, result)?;
+                let admission = (|| {
+                    let valid = result != object(named(b"nil")?)?
+                        && id.send_named(result, b"isError", &[])?.as_object()
+                            == Some(object(named(b"false")?)?);
+                    if valid { Ok(()) } else { Err(invalid()) }
+                })();
+                release(id, roots, result_token)?;
+                admission
+            })();
+            release(id, roots, path_token)?;
+            result?;
+        }
+        for name in ["source_loader", "image", "alien", "isolate"] {
+            id.send_named(
+                receiver, b"loadNative:",
+                &[Operand::bytes(&module_path(directory, name)), Operand::object(namespace)],
             )?;
         }
         INSTANCE.store(state, Ordering::Release);
