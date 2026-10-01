@@ -10,7 +10,7 @@ prefix = Path(sys.argv[1]).resolve()
 receipt = verify(prefix)
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
 assert receipt['stage1_modules'] == ['stdlib', 'stacklessControl', 'compiledUnit', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
-assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'stacklessControl', 'compiledUnit']
+assert receipt['source_bootstrap_modules'] == ['modules', 'stdlib', 'stacklessControl', 'compiledUnit', 'isolate']
 assert {'libbirnam_storage.dylib', 'libbirnam_trace.dylib'} <= set(receipt['dynamic_libraries'])
 relocated = prefix.parent / 'relocated'
 prefix.rename(relocated)
@@ -45,6 +45,8 @@ for option in ['--help', '--version']:
     result = run([option], extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
     assert result.returncode == 0 and result.stdout and not result.stderr, result
 source('nil.birnam', b'nil')
+source('bootstrap-json.birnam', b'[Module load: #json]; [System println: [#hello asJson]]; [System println: [nil asJson]]',
+       output=b'"#hello"\nnull\n', stdlib=True)
 source('false.birnam', b'false')
 source('output.birnam', b'[System print: "hello"]; [System println: " world"]', output=b'hello world\n')
 source('syntax.birnam', b'[System println:', diagnostic=b'syntax error')

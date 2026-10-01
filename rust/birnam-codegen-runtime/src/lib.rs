@@ -114,7 +114,7 @@ impl State {
     }
     unsafe fn project(
         &self,
-        scope: &Scope<'_>,
+        _scope: &Scope<'_>,
         o: Oop,
         source_len: usize,
         depth: usize,
@@ -125,6 +125,12 @@ impl State {
                 return Err(invalid());
             }
             *budget -= 1;
+            let local = Scope {
+                s: self,
+                tokens: RefCell::new(Vec::new()),
+            };
+            let scope = &local;
+            scope.keep(o)?;
             let rule = scope.keep(object(self.send(o, b"ruleName", &[])?)?)?;
             let rule = self.bytes(rule)?;
             let start = self.index(scope, o, b"start")?;
@@ -138,6 +144,11 @@ impl State {
             }
             let mut children = Vec::new();
             for i in 0..count {
+                let child_scope = Scope {
+                    s: self,
+                    tokens: RefCell::new(Vec::new()),
+                };
+                let scope = &child_scope;
                 let index = scope.keep(object(self.send(
                     self.named(b"Integer")?,
                     b"fromWord:",

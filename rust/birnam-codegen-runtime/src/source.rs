@@ -95,11 +95,17 @@ impl State {
     }
     pub(super) unsafe fn source_tree(
         &self,
-        scope: &Scope<'_>,
+        _scope: &Scope<'_>,
         source: Oop,
         length: usize,
     ) -> Result<Option<OwnedCst>, Outcome> {
         unsafe {
+            let local = Scope {
+                s: self,
+                tokens: RefCell::new(Vec::new()),
+            };
+            let scope = &local;
+            scope.keep(source)?;
             let lang = scope.keep(self.named(b"Lang")?)?;
             let cst = scope.keep(object(self.send(
                 lang,

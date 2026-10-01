@@ -1190,10 +1190,55 @@ unsafe fn restore_facts(
         Ok(staged)
     }
 }
-unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<Operand, Outcome> {
+// Alien wrappers are ordinary method publications in the Image transaction.
+// Capture their old bindings before swapping facts, so failed recovery can
+// compensate them alongside portable methods without compiling source recipes.
+unsafe fn foreign_publication(
+    s: &State,
+    q: &Scope<'_>,
+    staged: Oop,
+) -> Result<Vec<(Oop, Oop, Oop, Oop, Operand)>, Outcome> {
+    unsafe {
+        let entity = q.keep(s.id.intern_name(b"__aliens__")?)?;
+        let count = s.call(q, staged, b"attrCount:", &[entity])?;
+        let count = s
+            .send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(count)])?
+            .as_word()
+            .ok_or_else(bad)?;
+        let mut publication = Vec::new();
+        for i in 0..count {
+            let index = s.integer(q, i)?;
+            let key = s.call(q, staged, b"attrAt:index:", &[entity, index])?;
+            let recipe = s.call(q, staged, b"currentValue:attr:", &[entity, key])?;
+            let fields = s.sequence(q, recipe)?;
+            let [_, _, selector, target, _] = fields.as_slice() else {
+                return Err(bad());
+            };
+            let behavior = q.keep(s.method_behavior(*target)?)?;
+            let old = s.send(
+                s.id.receiver,
+                b"bindingOf:in:",
+                &[Operand::object(*selector), Operand::object(behavior)],
+            )?;
+            if old.as_entry().is_some() {
+                if let Some(method) = s
+                    .send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?
+                    .as_object()
+                {
+                    q.keep(method)?;
+                }
+            }
+            publication.push((recipe, *target, *selector, behavior, old));
+        }
+        Ok(publication)
+    }
+}
+
+unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool, mapped_only: bool) -> Result<Operand, Outcome> {
     unsafe {
         let decoded =
             v8::decode(bytes, support::IMAGE_ARCH_TAG, runtime_abi()).map_err(|_| bad())?;
+        if mapped_only && decoded.code.is_none() { return Err(bad()); }
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let yes = q.keep(s.named(b"true")?)?;
         let p = s.text(q, b"Bytes", decoded.programs)?;
@@ -1249,6 +1294,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             }
         }
         let staged = restore_facts(s, q, &decoded, &objects)?;
+        let foreign = foreign_publication(s, q, staged)?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1356,6 +1402,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
         }
         let mut attempted = 0;
         let mut sources_swapped = false;
+        let mut foreign_attempted = 0;
         let result = (|| -> Result<(), Outcome> {
             if decoded.sources.is_some() {
                 if s.call(q, codegen, b"swapPortableImageSources", &[])? != yes {
@@ -1377,6 +1424,15 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
                 };
                 if published != store {
                     return Err(bad());
+                }
+            }
+            for &(recipe, target, _, _, _) in &foreign {
+                foreign_attempted += 1;
+                let restored = s.call(q, s.named(b"Alien")?, b"restoreWrapper:", &[recipe])?;
+                if restored != target {
+                    return Err(if s.is_error(restored)? {
+                        Outcome::loaded(Operand::object(restored))
+                    } else { bad() });
                 }
             }
             for &o in &maps {
@@ -1404,6 +1460,18 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             // Dictionary restoration is separate from Store compensation. Snapshot
             // state was retained by the staging Store, so rollback cannot exhaust its
             // fact budget or require re-running an initializer.
+            for &(_, target, selector, behavior, old) in foreign[..foreign_attempted].iter().rev() {
+                let current = s.method_behavior(target)?;
+                if current != behavior {
+                    s.send(s.id.receiver, b"reassociateBehaviorOf:with:", &[
+                        Operand::object(target), Operand::object(behavior),
+                    ])?;
+                } else if old.as_entry().is_some() {
+                    s.send(behavior, b"addMethod", &[Operand::object(selector), old])?;
+                } else {
+                    s.send(behavior, b"removeMethod:", &[Operand::object(selector)])?;
+                }
+            }
             for &(_, target, selector, _, behavior, old) in publication[..attempted].iter().rev() {
                 let current = s.method_behavior(target)?;
                 if current != behavior {
@@ -1432,6 +1500,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
 }
 #[derive(Clone, Copy)]
 enum Op {
+    LoadMapped,
     Save,
     Load,
     Rebuild,
@@ -1465,7 +1534,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
             q.keep(object(a)?)?;
         }
         let expected = match e.op {
-            Op::Save | Op::Load => 1,
+            Op::Save | Op::Load | Op::LoadMapped => 1,
             Op::Rebuild | Op::LoadBytes => 2,
             _ => 0,
         };
@@ -1539,7 +1608,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 std::fs::read(path).map_err(|_| bad())?
             };
             let rebuild = n == 2 && object(args[1])? == s.named(b"true")?;
-            load(s, &q, &bytes, rebuild)
+            load(s, &q, &bytes, rebuild, matches!(e.op, Op::LoadMapped))
         })();
         if result.is_err() {
             s.reject(b"Image admission, owner operation or publication failed");
@@ -1656,6 +1725,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (system_vt, b"saveImage:".as_slice(), Op::Save),
             (system_vt, b"loadImage:", Op::Load),
             (system_vt, b"loadImage:rebuild:", Op::Rebuild),
+            (system_vt, b"loadImageMapped:", Op::LoadMapped),
             (system_vt, b"loadImageBytes:rebuild:", Op::LoadBytes),
             (system_vt, b"imageSaveReport", Op::Report),
             (system_vt, b"imageCompositionIdentity", Op::Identity),

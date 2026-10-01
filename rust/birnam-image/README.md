@@ -3,7 +3,9 @@
 Bootstrap loads Image after Source Loader. System `saveImage:` writes image-v8
 through a same-directory temporary file and atomic rename. `loadImage:`,
 `loadImage:rebuild:` and `loadImageBytes:rebuild:` restore through current owner
-messages. Successful mapped loading answers true; rebuilding answers false.
+messages. `loadImageMapped:` requires saved native code and rejects a source-only
+image before compiler entry; Host uses it for the installed bootstrap.
+Successful mapped loading answers true; rebuilding answers false.
 Image validation/file failures answer nil with `imageSaveReport` status/detail;
 dependency native failures propagate unchanged. Failed saves preserve the existing
 destination. `imageCompositionIdentity` is nil before loading and the existing
@@ -68,6 +70,11 @@ bindings on resident exports that are absent from the snapshot. Failure restores
 the prior source registry and the complete previous Store state. This compensation
 does not consume additional fact capacity or reevaluate source. Ordinary external
 effects performed by observer callbacks are outside that state compensation.
+
+Alien wrapper recipes retain relocatable objects and target/selector identities.
+Image maps and publishes those wrappers inside the same recovery extent, binding
+current foreign addresses without compilation. Failed recovery restores their
+previous dictionary bindings with the rest of the snapshot transaction.
 
 Map identity keys are rehashed for the admitted Map representation family,
 including shared and inherited private behaviors. ObjectModel resolves their

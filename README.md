@@ -81,6 +81,17 @@ command link at `$HOME/.local/bin/birnam` when `BIRNAM_PREFIX` is unset. Setting
 `BIRNAM_PREFIX` selects another prefix; add its `bin/` directory to `PATH`.
 The installed executable finds its runtime dylibs in the sibling `lib/` directory.
 
+Build and install an optimized runtime with:
+
+```sh
+mise run install release
+```
+
+Both install forms build stage 0 (the Rust CLI/native runtime), use it to compile
+stage 1 (the authored Birnam modules), then publish the complete prefix. Stage 1
+retains the Rust runtime. Omitting the profile selects `debug`; `release` selects
+Rust's optimized build and replaces the same prefix, so the command link runs it.
+
 Without mise, use the pinned Rust toolchain and run the installer directly:
 
 ```sh
@@ -90,8 +101,9 @@ export PATH="$BIRNAM_PREFIX/bin:$PATH"
 birnam
 ```
 
-`mise run build` builds a debug prefix at the same default location without
-creating the command link. [mise.toml](mise.toml) pins the toolchain and exposes
+`mise run build` builds both stages with Cargo caching at the same default
+location without creating the command link. Use `mise run build release` for
+optimized development builds. [mise.toml](mise.toml) pins the toolchain and exposes
 build, install, verification, distribution and release tasks.
 
 ## Quick Start
@@ -375,8 +387,8 @@ or `nil` on failure. After a rejected save, inspect:
 Shared and cyclic references, boxed values, Bytes, persistent collections and
 synchronous/resumable Blocks retain their identity and captures. Live Machines
 and process capabilities such as isolate and task handles are rejected. Saved
-Alien wrapper recipes are replayed by Host to resolve native addresses in the new
-process. See the [current Image contract](rust/birnam-image/README.md) for supported
+Alien wrapper objects are mapped during Image publication and bound to native
+addresses in the new process. See the [current Image contract](rust/birnam-image/README.md) for supported
 values, validation and recovery compensation.
 
 [`examples/image.birnam`](examples/image.birnam) creates an image containing
@@ -738,7 +750,7 @@ runtime by asking Siphon to load Id, then sends Id a request to load Bootstrap:
 CLI / Host
   -> Siphon -> Id message protocol
   -> Id loads Bootstrap -> native owners and Namespace
-  -> source startup: authored Module manager, stdlib and lifecycle policy
+  -> compiled bootstrap image: Module manager, stdlib, lifecycle policy and tools
   -> source, artifact, project or image entry
 ```
 
@@ -772,6 +784,13 @@ modules are Birnam source. The native runtime/compiler implementation remains
 Rust with C/libtcc support. The installed runtime stays on its creating thread;
 parallel workers use independent processes. A Birnam-authored runtime/compiler
 is the longer-term [self-hosting goal](docs/design/81-toward-a-birnam-implementation.md).
+The installer prepares `lib/birnam-bootstrap.image` for ordinary and console
+startup, plus `lib/birnam-tools.image` for CLI tooling. Both include the required
+authored methods and foreign-function wrappers. Normal startup maps compiled code
+without recompiling the bootstrap or tool adapters. A missing or incompatible image is an
+error; reinstall to regenerate it. `BIRNAM_FORCE_SOURCE=1 birnam ...` explicitly
+requests source bootstrap for development or recovery and can be slow.
+
 Birnam retains an independent cold source bootstrap through declared non-Birnam
 toolchains, without requiring a prebuilt Birnam artifact.
 
@@ -805,7 +824,8 @@ image and generation lifecycle checks are part of the
   message protocols and lifetime rules.
 - `modules/` — all modules written in Birnam: core language and startup policy,
   libraries, CLI/LSP tools, documentation and tests. Core sources are embedded
-  for bootstrap; the installer lists modules explicitly for compilation.
+  for explicit source bootstrap; the installer lists modules for compilation and
+  prepares the default startup image.
 - `tests/fixtures/` — shared portable-code, recovery and image format evidence.
   [Native protocol checks](rust/birnam-abi/README.md) live beside the ABI crate;
   each native crate keeps its exported-symbol inventory in `exports.json`.

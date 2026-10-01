@@ -2,10 +2,12 @@
 #   mise run clean          # remove generated outputs and project artifacts
 #   mise install            # fetch the pinned Rust toolchain
 #   mise run build          # build the Rust development prefix
+#   mise run build release  # build both stages with release optimization
 #   mise run verify         # bounded everyday correctness
 #   mise run verify-release # exhaustive checks plus independent cold builds
 #   mise run test           # birnam-level module suites (complements verify)
 #   mise run install        # install the Rust prefix
+#   mise run install release # build and install both stages in release mode
 #   mise run dist           # build a Rust release tarball
 #   mise run release minor  # bump version, tag, build, publish
 #   mise run bench          # isolated Rust ReleaseSafe benchmark
@@ -14,10 +16,15 @@
 rust = "1.95.0"
 
 [tasks.build]
-description = "Build the Rust development prefix"
+description = "Build Rust stage 0 and Birnam stage 1 (debug|release; default debug)"
+usage = '''
+arg "[profile]" default="debug" help="Rust build profile" {
+  choices "debug" "release"
+}
+'''
 run = """
 prefix="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"
-scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile debug --build-cache "$PWD/.cargo-target/install"
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile "${usage_profile?}" --build-cache "$PWD/.cargo-target/install"
 """
 
 [tasks.clean]
@@ -93,10 +100,15 @@ description = "Alias for the Rust source-build, publication, cold-archive, and r
 run = "bash scripts/rust-cutover-verify.sh"
 
 [tasks.install]
-description = "Install the Rust production Birnam prefix"
+description = "Build and install both stages (debug|release; default debug)"
+usage = '''
+arg "[profile]" default="debug" help="Rust build profile" {
+  choices "debug" "release"
+}
+'''
 run = """
 prefix="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"
-scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile debug
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile "${usage_profile?}"
 if [ -z "${BIRNAM_PREFIX:-}" ]; then
   mkdir -p "$HOME/.local/bin"
   ln -sfn "$prefix/bin/birnam" "$HOME/.local/bin/birnam"

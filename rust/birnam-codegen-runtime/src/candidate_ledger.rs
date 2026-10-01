@@ -495,7 +495,9 @@ pub(super) unsafe fn adopt(
                         s,
                         q,
                         b"sourceBindingMismatch",
-                        b"managed source target is unavailable",
+                        format!("managed source target is unavailable: {} in {}",
+                            String::from_utf8_lossy(&operation.target),
+                            String::from_utf8_lossy(&module.name)).as_bytes(),
                     );
                 };
                 let selector = symbol(s, q, &operation.selector)?;

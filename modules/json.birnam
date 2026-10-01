@@ -208,7 +208,7 @@
   "Renders the receiver as a JSON number (its printString)."];
 [Reflect defineMethod: #asJson on: String  as: [:self | let r := [Json quote: self]; r] doc:
   "Renders the receiver as a JSON string literal (quoted and escaped)."];
-[Reflect defineMethod: #asJson on: Symbol  as: [:self | let r := [Json quote: [self asString]]; r] doc:
+[Reflect defineMethod: #asJson on: SymbolVt as: [:self | let r := [Json quote: [self asString]]; r] doc:
   "Renders the receiver's name as a JSON string literal (quoted and escaped)."];
 
 [Reflect defineMethod: #asJson on: VectorVt as: [:self |

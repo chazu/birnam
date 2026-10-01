@@ -185,6 +185,7 @@ enum Op {
     Open,
     Close,
     Wrap,
+    RestoreWrapper,
     Callback,
     ReleaseCallback,
     Alloc,
@@ -306,6 +307,10 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     scope.string(format!("ForeignAddress(0x{p:x})").as_bytes())?,
                 ))
             }
+            RestoreWrapper => {
+                let recipe = recipe_values(scope, a[0])?;
+                install_wrapper(s, scope, &recipe)
+            }
             Wrap | Callback => {
                 let (function, signature, block) = if matches!(op, Wrap) {
                     let Some(name) = scope.bytes(a[0])? else {
@@ -331,51 +336,31 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     Err(e) => return scope.error(b"badSignature", e.to_string().as_bytes()),
                 };
                 let c = match emit_native(
-                    function.as_ref().map(|(n, p)| (n.as_slice(), *p)),
+                    function.as_ref().map(|(n, _)| n.as_slice()),
                     &signature,
                 ) {
                     Ok(c) => c,
                     Err(e) => return scope.error(b"badSignature", e.to_string().as_bytes()),
                 };
-                let source = scope.string(c.as_bytes())?;
-                let unit = scope.obj(
-                    scope.named(b"TCC")?,
-                    b"compile:",
-                    &[Operand::object(source)],
-                )?;
-                if scope.is_error(unit)? {
-                    return Ok(Operand::object(unit));
-                }
-                let value = if let Some(block) = block {
-                    scope.obj(unit, b"initializeWith:", &[Operand::object(block)])?
-                } else {
-                    scope.obj(unit, b"initialize", &[])?
-                };
                 if matches!(op, Wrap) {
-                    // Unit is live before publication; collecting authorizers can re-enter Alien.
-                    s.wrappers.borrow_mut().push(unit.addr());
-                    let behavior = scope.obj(
-                        s.id.receiver,
-                        b"ensurePrivateVtableFor:",
-                        &[Operand::object(a[3])],
-                    )?;
-                    let store = scope.named(b"Store")?;
-                    let result = scope.call(
-                        store,
-                        b"addMethod:on:with:",
-                        &[
-                            Operand::object(a[2]),
-                            Operand::object(behavior),
-                            Operand::object(value),
-                        ],
-                    )?;
-                    if result.as_object() == Some(store) {
-                        record_wrap(scope, a)?;
-                        Ok(Operand::object(a[3]))
-                    } else {
-                        Ok(result)
-                    }
+                    let bytes = match recorded_object(scope, a[0], a[1])? {
+                        Some(bytes) => bytes,
+                        None => {
+                            let source = scope.string(c.as_bytes())?;
+                            let bytes = scope.obj(scope.named(b"TCC")?, b"compileObject:", &[Operand::object(source)])?;
+                            if scope.is_error(bytes)? { return Ok(Operand::object(bytes)); }
+                            bytes
+                        }
+                    };
+                    let recipe = [a[0], a[1], a[2], a[3], bytes];
+                    let result = install_wrapper(s, scope, &recipe)?;
+                    if result.as_object() == Some(a[3]) { record_wrap(scope, &recipe)?; }
+                    Ok(result)
                 } else {
+                    let source = scope.string(c.as_bytes())?;
+                    let unit = scope.obj(scope.named(b"TCC")?, b"compile:", &[Operand::object(source)])?;
+                    if scope.is_error(unit)? { return Ok(Operand::object(unit)); }
+                    let value = scope.obj(unit, b"initializeWith:", &[Operand::object(block.unwrap())])?;
                     let address = s.pointer(value).ok_or_else(invalid)?;
                     let token = s
                         .send(s.roots, b"retain:", &[Operand::object(unit)])?
@@ -462,105 +447,138 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
         }
     }
 }
-// Keep the existing authored replay facts, using Store and Namespace owner messages.
-unsafe fn record_wrap(q: &Scope<'_>, a: &[Oop]) -> Result<(), Outcome> {
+// Recipes retain object code and ordinary identities, never process addresses.
+unsafe fn recipe_values(q: &Scope<'_>, recipe: Oop) -> Result<[Oop; 5], Outcome> {
     unsafe {
-        let target = q.call(q.s.ns, b"nameOf:", &[Operand::object(a[3])])?;
-        let target = if let Some(o) = target.as_object() {
-            Some(o)
-        } else {
-            let store = q.named(b"Store")?;
-            let globals = q.keep(q.s.id.intern_name(b"__globals__")?)?;
-            let count = q.obj(store, b"attrCount:", &[Operand::object(globals)])?;
-            let count = q.word(count)?.unwrap_or(0);
-            let mut found = None;
-            for i in 0..count {
-                let i = q.integer(i)?;
-                let key = q.obj(
-                    store,
-                    b"attrAt:index:",
-                    &[Operand::object(globals), Operand::object(i)],
-                )?;
-                if q.call(
-                    store,
-                    b"currentValue:attr:",
-                    &[Operand::object(globals), Operand::object(key)],
-                )?
-                .as_object()
-                    == Some(a[3])
-                {
-                    found = Some(key);
-                    break;
-                }
-            }
-            found
-        };
-        let Some(target) = target else { return Ok(()) };
-        let symbol_bytes = |o| -> Result<Vec<u8>, Outcome> {
-            let b = q
-                .call(q.s.id.receiver, b"symbolBytesOf:", &[Operand::object(o)])?
-                .as_bytes()
-                .ok_or_else(invalid)?;
-            Ok(borrowed_bytes(b.pointer, b.length)
-                .ok_or_else(invalid)?
-                .to_vec())
-        };
-        let target = symbol_bytes(target)?;
-        let selector = symbol_bytes(a[2])?;
-        let Some(function) = q.bytes(a[0])? else {
-            return Ok(());
-        };
-        let Some(signature) = q.bytes(a[1])? else {
-            return Ok(());
-        };
-        if function.contains(&b'"') || signature.contains(&b'"') {
-            return Ok(());
+        let size = q.obj(recipe, b"size", &[])?;
+        if q.word(size)? != Some(5) {
+            return Err(invalid());
         }
-        let source = format!(
-            "[Alien wrap: \"{}\" signature: \"{}\" as: #{} on: {}]",
-            String::from_utf8_lossy(&function),
-            String::from_utf8_lossy(&signature),
-            String::from_utf8_lossy(&selector),
-            String::from_utf8_lossy(&target)
-        );
+        let mut values = [ptr::null_mut(); 5];
+        for (i, value) in values.iter_mut().enumerate() {
+            let index = q.integer(i)?;
+            *value = q.obj(recipe, b"at:", &[Operand::object(index)])?;
+        }
+        Ok(values)
+    }
+}
+unsafe fn recipes(q: &Scope<'_>) -> Result<Vec<(Oop, [Oop; 5])>, Outcome> {
+    unsafe {
         let store = q.named(b"Store")?;
         let entity = q.keep(q.s.id.intern_name(b"__aliens__")?)?;
         let count = q.obj(store, b"attrCount:", &[Operand::object(entity)])?;
-        let count = q.word(count)?.unwrap_or(0);
-        let mut next = 0;
+        let count = q.word(count)?.ok_or_else(invalid)?;
+        let mut values = Vec::new();
         for i in 0..count {
-            let i = q.integer(i)?;
+            let index = q.integer(i)?;
             let key = q.obj(
                 store,
                 b"attrAt:index:",
-                &[Operand::object(entity), Operand::object(i)],
+                &[Operand::object(entity), Operand::object(index)],
             )?;
-            let v = q.obj(
+            let value = q.obj(
                 store,
                 b"currentValue:attr:",
                 &[Operand::object(entity), Operand::object(key)],
             )?;
-            if q.bytes(v)?.as_deref() == Some(source.as_bytes()) {
-                return Ok(());
-            };
-            let name = symbol_bytes(key)?;
-            if let Some(n) = name
-                .strip_prefix(b"__alien_")
-                .and_then(|n| std::str::from_utf8(n).ok())
-                .and_then(|n| n.parse::<usize>().ok())
+            values.push((key, recipe_values(q, value)?));
+        }
+        Ok(values)
+    }
+}
+unsafe fn recorded_object(
+    q: &Scope<'_>,
+    function: Oop,
+    signature: Oop,
+) -> Result<Option<Oop>, Outcome> {
+    unsafe {
+        let name = q.bytes(function)?.ok_or_else(invalid)?;
+        let signature = q.bytes(signature)?.ok_or_else(invalid)?;
+        for (_, recipe) in recipes(q)? {
+            if q.bytes(recipe[0])?.as_deref() == Some(name.as_slice())
+                && q.bytes(recipe[1])?.as_deref() == Some(signature.as_slice())
             {
-                next = next.max(n + 1)
+                return Ok(Some(recipe[4]));
             }
         }
-        let key = q.keep(q.s.id.intern_name(format!("__alien_{next}").as_bytes())?)?;
-        let source = q.string(source.as_bytes())?;
-        q.call(
+        Ok(None)
+    }
+}
+unsafe fn install_wrapper(s: &State, q: &Scope<'_>, recipe: &[Oop; 5]) -> Answer {
+    unsafe {
+        let name = q.bytes(recipe[0])?.ok_or_else(invalid)?;
+        let address = match s.libraries.borrow().symbol_default(&name) {
+            Ok(p) => p.as_ptr().addr(),
+            Err(e) => return q.error(b"symbolNotFound", e.to_string().as_bytes()),
+        };
+        let unit = q.obj(
+            q.named(b"TCC")?,
+            b"loadObject:",
+            &[Operand::object(recipe[4])],
+        )?;
+        if q.is_error(unit)? {
+            return Ok(Operand::object(unit));
+        }
+        let address = q.integer(address)?;
+        let method = q.obj(unit, b"initializeWith:", &[Operand::object(address)])?;
+        if q.is_error(method)? {
+            return Ok(Operand::object(method));
+        }
+        s.wrappers.borrow_mut().push(unit.addr());
+        let behavior = q.obj(
+            s.id.receiver,
+            b"ensurePrivateVtableFor:",
+            &[Operand::object(recipe[3])],
+        )?;
+        let store = q.named(b"Store")?;
+        let result = q.call(
             store,
+            b"addMethod:on:with:",
+            &[
+                Operand::object(recipe[2]),
+                Operand::object(behavior),
+                Operand::object(method),
+            ],
+        )?;
+        if result.as_object() == Some(store) {
+            Ok(Operand::object(recipe[3]))
+        } else {
+            Ok(result)
+        }
+    }
+}
+unsafe fn record_wrap(q: &Scope<'_>, a: &[Oop; 5]) -> Result<(), Outcome> {
+    unsafe {
+        let existing = recipes(q)?;
+        let mut key = None;
+        for (candidate, recipe) in &existing {
+            if q.bytes(recipe[0])? == q.bytes(a[0])?
+                && q.bytes(recipe[1])? == q.bytes(a[1])?
+                && recipe[2..4] == a[2..4]
+            {
+                key = Some(*candidate);
+                break;
+            }
+        }
+        let key = match key {
+            Some(key) => key,
+            None => q.keep(
+                q.s.id
+                    .intern_name(format!("__alien_{}", existing.len()).as_bytes())?,
+            )?,
+        };
+        let mut recipe = q.obj(q.named(b"Vector")?, b"new", &[])?;
+        for value in a {
+            recipe = q.obj(recipe, b"add:", &[Operand::object(*value)])?;
+        }
+        let entity = q.keep(q.s.id.intern_name(b"__aliens__")?)?;
+        q.call(
+            q.named(b"Store")?,
             b"assert:attr:value:",
             &[
                 Operand::object(entity),
                 Operand::object(key),
-                Operand::object(source),
+                Operand::object(recipe),
             ],
         )?;
         Ok(())
@@ -572,6 +590,7 @@ methods!(
     (open, Open),
     (close, Close),
     (wrap, Wrap),
+    (restore_wrapper, RestoreWrapper),
     (callback, Callback),
     (release_callback, ReleaseCallback),
     (alloc, Alloc),
@@ -735,6 +754,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Answer {
             (vt, b"dlopen:", open),
             (vt, b"dlclose:", close),
             (vt, b"wrap:signature:as:on:", wrap),
+            (vt, b"restoreWrapper:", restore_wrapper),
             (vt, b"callback:signature:", callback),
             (vt, b"releaseCallback:", release_callback),
             (vt, b"alloc:", alloc),

@@ -662,11 +662,78 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             .current_dir(&root)
             .env_remove("BIRNAM_LIB_DIR")
             .env_remove("BIRNAM_ID_DYLIB")
+            .env("BIRNAM_FORCE_SOURCE", "1")
             .args(["--compile-module"])
             .arg(root.join(source))
             .arg(lib_dir.join(format!("libbirnam_{name}.dylib")));
         run_status(&mut compile, &format!("compile authored tool {name}"))?;
     }
+    // Prepare authored methods and tool adapters once, before atomic publication.
+    // This source path keeps cold installs independent of prebuilt Birnam artifacts.
+    let bootstrap_script = stage.join("bootstrap.birnam");
+    // Return the first language Error instead of discarding a failed load.
+    let checked = |operation: &str, next: String| -> String {
+        format!(
+            "[[:result | [[result isError] ifTrue: [| result] ifFalse: [| {next}]]] value: {operation}]"
+        )
+    };
+    let mut bootstrap_source = String::from("[System saveImage: \"lib/birnam-tools.image\"]");
+    for (name, _) in TOOL_MODULES.iter().rev() {
+        bootstrap_source = checked(&format!("[Module load: #{name}]"), bootstrap_source);
+    }
+    bootstrap_source = checked(
+        "[System saveImage: \"lib/birnam-bootstrap.image\"]",
+        bootstrap_source,
+    );
+    bootstrap_source = checked("[Repl wrapStdio]", bootstrap_source);
+    for name in ["file", "toml", "config", "repl", "socket"].iter().rev() {
+        bootstrap_source = checked(&format!("[Module load: #{name}]"), bootstrap_source);
+    }
+    fs::write(&bootstrap_script, bootstrap_source)
+        .map_err(|error| format!("write bootstrap script: {error}"))?;
+    let mut prepare = Command::new(&host_destination);
+    prepare.current_dir(&stage);
+    for (name, _) in std::env::vars_os() {
+        if name.as_encoded_bytes().starts_with(b"BIRNAM_") {
+            prepare.env_remove(name);
+        }
+    }
+    prepare
+        .env("BIRNAM_FORCE_SOURCE", "1")
+        .arg(&bootstrap_script);
+    run_status(&mut prepare, "prepare compiled startup image")?;
+    fs::remove_file(&bootstrap_script)
+        .map_err(|error| format!("remove bootstrap script: {error}"))?;
+    for name in ["birnam-bootstrap.image", "birnam-tools.image"] {
+        if !lib_dir.join(name).is_file() {
+            return Err(format!("bootstrap image was not published: {name}"));
+        }
+    }
+    // Qualify the staged image in a fresh process before publication. This also
+    // checks Module admission, wrapper relocation and normal console startup.
+    let mut probe = Command::new(&host_destination);
+    probe
+        .current_dir(&stage)
+        .arg("--repl")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null());
+    for (name, _) in std::env::vars_os() {
+        if name.as_encoded_bytes().starts_with(b"BIRNAM_") {
+            probe.env_remove(name);
+        }
+    }
+    run_status(&mut probe, "verify compiled startup image and console")?;
+    let mut probe = Command::new(&host_destination);
+    probe
+        .current_dir(&stage)
+        .args(["doc", "stdlib"])
+        .stdout(std::process::Stdio::null());
+    for (name, _) in std::env::vars_os() {
+        if name.as_encoded_bytes().starts_with(b"BIRNAM_") {
+            probe.env_remove(name);
+        }
+    }
+    run_status(&mut probe, "verify compiled CLI tool image")?;
     drop(target_lock);
     if options.build_cache.is_none() {
         fs::remove_dir_all(&target_dir)
@@ -741,7 +808,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             "target": "aarch64-macos",
             "id_protocol_version": 1,
             "host_commands": ["source", "image", "worker", "compile-module", "artifact", "check", "build", "run", "fetch", "install", "test", "repl", "listen", "lsp", "doc", "docgen", "init", "wrap", "bake", "rebuild", "help", "version"],
-            "stdlib_loading": "source",
+            "stdlib_loading": "compiled-image",
         },
         "source_root": root,
         "source_manifest_sha256": source_digest,
@@ -753,7 +820,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
         "stage1_modules": TOOL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
-        "source_bootstrap_modules": ["modules", "stdlib", "stacklessControl", "compiledUnit"],
+        "source_bootstrap_modules": ["modules", "stdlib", "stacklessControl", "compiledUnit", "isolate"],
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
         "staged_manifest": staged_manifest,
@@ -817,7 +884,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "rust-install: published {} ({} native libraries, {} source bootstrap modules, {} authored tools)",
         prefix.display(),
         CANONICAL_DYNAMIC_LIBRARIES.len(),
-        4,
+        5,
         TOOL_MODULES.len()
     );
     Ok(())

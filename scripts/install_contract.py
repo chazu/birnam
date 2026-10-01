@@ -15,7 +15,7 @@ def verify(prefix):
         raise ValueError('expected a schema-4 Rust installation receipt')
     contract = receipt['admission_contract']
     if (contract['target'], contract['id_protocol_version'], contract['stdlib_loading']) != (
-            'aarch64-macos', 1, 'source'):
+            'aarch64-macos', 1, 'compiled-image'):
         raise ValueError('unsupported installation admission contract')
     expected = receipt['staged_manifest']
     actual = {}
@@ -33,7 +33,7 @@ def verify(prefix):
     if (len(actual) != receipt['staged_manifest_files'] or
             hashlib.sha256(encoded).hexdigest() != receipt['staged_manifest_sha256']):
         raise ValueError('installed manifest count or digest differs')
-    required = {'bin/birnam', 'share/birnam/src/Cargo.toml', 'share/birnam/src/Cargo.lock'}
+    required = {'lib/birnam-bootstrap.image', 'lib/birnam-tools.image', 'bin/birnam', 'share/birnam/src/Cargo.toml', 'share/birnam/src/Cargo.lock'}
     required.update('lib/' + name for name in receipt['dynamic_libraries'])
     if not required <= actual.keys():
         raise ValueError('installation is missing required artifacts')

@@ -27,7 +27,7 @@ fn run() -> Result<(), String> {
     }
     match classify_command(&args).map_err(|e| format!("{e:?}"))? {
         CommandKind::Help => println!(
-            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | <file.dylib> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImages restore and run global main.\n--compile-module SOURCE OUTPUT creates a durable module artifact; .dylib files activate through Module.\nProject commands: check, build, run, fetch, install, test.\nInteractive modes: --repl, --listen PORT [FILE], --lsp.\nTools: doc, docgen, init, wrap, --bake IMAGE EXECUTABLE, --rebuild IMAGE."
+            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | <file.dylib> | --help | --version\n\nStartup loads the installed compiled bootstrap image.\nBIRNAM_FORCE_SOURCE=1 explicitly recompiles the source bootstrap.\nImages restore and run global main.\n--compile-module SOURCE OUTPUT creates a durable module artifact; .dylib files activate through Module.\nProject commands: check, build, run, fetch, install, test.\nInteractive modes: --repl, --listen PORT [FILE], --lsp.\nTools: doc, docgen, init, wrap, --bake IMAGE EXECUTABLE, --rebuild IMAGE."
         ),
         CommandKind::Version => println!("{}", VERSION.trim()),
         CommandKind::Bake => {
@@ -101,6 +101,7 @@ fn run() -> Result<(), String> {
                 &resolve().map_err(|e| e.to_string())?,
                 StartupPolicy {
                     skip_stdlib: false,
+                    tool_bootstrap: true,
                     ..StartupPolicy::from_environment()
                 },
             )

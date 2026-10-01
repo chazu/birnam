@@ -24,6 +24,9 @@ impl HostRuntime {
     /// nearest-directory Config or application main again.
     pub fn run_repl(&self, apply_config: bool) -> Result<(), HostError> {
         if self.global(&self.scope(), b"Module")? == self.named(b"nil")? {
+            if !StartupPolicy::from_environment().source_bootstrap {
+                return Err(HostError("image lacks an authored bootstrap; regenerate it with the current Birnam or use BIRNAM_FORCE_SOURCE=1 for explicit source recovery".into()));
+            }
             self.bootstrap_source()?;
         }
         self.load_tool(b"repl")?;

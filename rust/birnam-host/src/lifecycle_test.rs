@@ -116,6 +116,8 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
         StartupPolicy {
             skip_stdlib: false,
             precise_gc: true,
+            source_bootstrap: false,
+            tool_bootstrap: false,
         },
     )
     .unwrap();
@@ -245,6 +247,8 @@ fn image_recovers_composed_generation_before_entry() {
         StartupPolicy {
             skip_stdlib: image.is_some(),
             precise_gc: true,
+            source_bootstrap: false,
+            tool_bootstrap: false,
         },
     )
     .unwrap();
@@ -293,7 +297,7 @@ fn image_recovers_composed_generation_before_entry() {
     if let Some(path) = image {
         let mode = env::var("BIRNAM_GENERATION_IMAGE_MODE").unwrap();
         eprintln!("generation Image: {mode} load");
-        host.load_image_mode(&path, mode == "rebuild").unwrap();
+        host.load_image_mode(&path, mode == "rebuild", false).unwrap();
         host.enter_running().unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
@@ -543,6 +547,8 @@ fn durable_retirement_preserves_store_retraction_errors() {
         StartupPolicy {
             skip_stdlib: false,
             precise_gc: true,
+            source_bootstrap: false,
+            tool_bootstrap: false,
         },
     )
     .unwrap();

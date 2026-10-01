@@ -889,13 +889,13 @@ mod tests {
 }
 
 /// Assemble a current native module around the existing C ABI marshalling.
-/// Foreign addresses belong to this process; these units are not image artifacts.
+/// The foreign address is supplied to initializeWith: in the current process.
 pub fn emit_native(
-    function: Option<(&[u8], usize)>,
+    function: Option<&[u8]>,
     signature: &Signature,
 ) -> Result<String, CodegenError> {
     let callback = function.is_none();
-    let mut source = if let Some((name, address)) = function {
+    let mut source = if let Some(name) = function {
         validate_identifier(name)?;
         let name = b"__alien_target";
         let source = emit_shim(name, signature)?;
@@ -906,7 +906,7 @@ pub fn emit_native(
         let prototype = lines.last().unwrap();
         let pointer = prototype.replace(&format!(" {name}("), &format!(" (*{name})("));
         let pointer = format!(
-            "static {} = (void*){address}UL;",
+            "static {};",
             pointer.trim_end_matches(';')
         );
         source.replace(prototype, &pointer)
@@ -961,7 +961,7 @@ static R initialize(const P*p,const A*a,size_t n){
     if callback {
         source.push_str("if(n!=3){active=prior;return finish(&c,(A){0});}__cbBlock=keep(&c,object(&c,a[2]));A address=word((size_t)__cb);O result=call(&c,named(&c,\"Alien\"),\"fromAddress:\",&address,1);\n");
     } else {
-        source.push_str("A args[2]={entry(invoke),obj(owner)};O result=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",args,2);\n");
+        source.push_str("if(n!=3){active=prior;return finish(&c,(A){0});}__alien_target=(void*)unbox(\"Integer\",\"wordOf:\",object(&c,a[2]));A args[2]={entry(invoke),obj(owner)};O result=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",args,2);\n");
     }
     source.push_str("active=prior;return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n");
     Ok(source)

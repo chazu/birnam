@@ -13,17 +13,21 @@ are successful results. Compiler diagnostics, returned language Errors and nativ
 failures exit unsuccessfully on stderr; ordinary program output goes to stdout.
 Source arguments are not yet supported. Help and version work without loading Id.
 
-Source-file startup records and evaluates the authored Module manager, stdlib and
-CompiledUnit lifecycle policy,
-marks the native kernel modules, and sets Module's library directory. This source
-bootstrap can be slow in debug builds. `BIRNAM_NO_STDLIB=1` skips these authored
-modules; `BIRNAM_GC_PRECISE=1` enables precise payload tracing. Host lifetime tests
+Normal startup restores `lib/birnam-bootstrap.image`; CLI tooling uses
+`lib/birnam-tools.image`. Host then rebases Module's library directory. The
+installer prepares the Module manager, stdlib,
+lifecycle policy, console dependencies and compiled Alien wrappers. The separate
+tool image adds the remaining authored tools without expanding the console
+generation. Startup maps their native code without invoking the compiler. Missing or incompatible bootstrap
+images fail with a reinstall diagnostic; there is no source fallback.
+`BIRNAM_FORCE_SOURCE=1` explicitly selects the independent source bootstrap.
+`BIRNAM_NO_STDLIB=1` skips the authored bootstrap;
+`BIRNAM_GC_PRECISE=1` enables precise payload tracing. Host lifetime tests
 also force `collectPrecisely`, excluding conservative native-stack roots.
-`BIRNAM_FORCE_SOURCE` is redundant for source files and does not request image rebuilding.
 
-The installer builds the migrated native modules, CLI and authored tooling artifacts. It preserves
-manifest verification, target locking and atomic prefix publication, and records
-source bootstrap and compiled tool identities in its receipt.
+The installer builds the native modules, CLI and authored tooling artifacts,
+then saves the bootstrap image before atomic publication. Its receipt covers the
+compiled bootstrap and source recovery modules as well as the tooling artifacts.
 
 `birnam file.image` boots native modules, restores the image through System, then
 sends `value` to global `main`. It does not evaluate the source stdlib. Restored
@@ -31,11 +35,14 @@ Module managers receive the current executable's library directory. Non-callable
 main, returned Errors and image admission failures exit unsuccessfully;
 nil and false results succeed. Images without native code retain Image's existing
 rebuild behavior; compatible saved code loads without compilation. Image arguments
-are not yet supported. Images without main enter the console; native-only images
-bootstrap the source stdlib first. `--rebuild` requests recompilation and `--bake`
+are not yet supported. Images without main enter the console when they contain
+the authored bootstrap. Native-only images require explicit source recovery with
+`BIRNAM_FORCE_SOURCE=1`; Host preserves their state instead of replacing it with
+the installed bootstrap snapshot. `--rebuild` requests recompilation and `--bake`
 appends an image to an executable, recovered through the same System messages.
-Host replays saved Alien wrapper recipes before user entry so foreign addresses
-are resolved in the new process. Image completes composed-generation adoption before
+Image maps saved Alien wrapper objects in its publication transaction and binds
+foreign addresses from the current process. Images containing older textual Alien recipes
+need to be regenerated with the current Birnam. Image completes composed-generation adoption before
 Host enters main, the console or a worker; saved rollback pointers are not reused.
 
 The private `--worker IMAGE RECEIVER SELECTOR --channel-fd FD` entry restores an

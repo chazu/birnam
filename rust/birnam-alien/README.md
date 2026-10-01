@@ -20,8 +20,10 @@ unreleased owned buffers. Raw peek/poke operations retain the existing caller-ow
 C memory bounds contract. Borrowed pointer values never free their pointees.
 `dlclose:` refuses while any wrapper Unit remains live, matching the existing
 conservative library policy; collecting obsolete Methods releases that restriction.
-Store retains authored `__aliens__` replay facts. This slice does not make native
-addresses or foreign executable wrappers portable image artifacts.
+Store retains `__aliens__` recipes with function/signature, selector, target and
+relocatable object bytes. `restoreWrapper:` maps those objects and binds the
+current process address without compiling. Repeating a wrap reuses recorded
+object bytes. Callback addresses and foreign memory remain process-local.
 
 `mise run native-messages` includes the production Alien test, covering actual
 scalar, unsigned, aggregate and callback calls, unaligned buffers, collecting

@@ -925,6 +925,8 @@ mod tests {
             StartupPolicy {
                 skip_stdlib: false,
                 precise_gc: true,
+                source_bootstrap: false,
+                tool_bootstrap: false,
             },
         )
         .unwrap();

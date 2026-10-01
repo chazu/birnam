@@ -45,12 +45,16 @@ fn object(value: Operand) -> Result<Oop, HostError> {
 pub struct StartupPolicy {
     pub skip_stdlib: bool,
     pub precise_gc: bool,
+    pub source_bootstrap: bool,
+    pub tool_bootstrap: bool,
 }
 impl StartupPolicy {
     pub fn from_environment() -> Self {
         Self {
             skip_stdlib: env::var_os("BIRNAM_NO_STDLIB").is_some(),
             precise_gc: env::var_os("BIRNAM_GC_PRECISE").is_some(),
+            source_bootstrap: env::var_os("BIRNAM_FORCE_SOURCE").is_some(),
+            tool_bootstrap: false,
         }
     }
 }
@@ -248,9 +252,23 @@ impl HostRuntime {
     pub fn start(resources: &Resources, policy: StartupPolicy) -> Result<Self, HostError> {
         let host = Self::start_native(resources, policy.precise_gc)?;
         if !policy.skip_stdlib {
-            host.bootstrap_source()?;
+            host.bootstrap(policy.source_bootstrap, policy.tool_bootstrap)?;
         }
         Ok(host)
+    }
+    pub(super) fn bootstrap(&self, source: bool, tools: bool) -> Result<(), HostError> {
+        if source {
+            return self.bootstrap_source();
+        }
+        let path = self.resources.lib_dir.join(if tools {
+            "birnam-tools.image"
+        } else {
+            "birnam-bootstrap.image"
+        });
+        self.load_image_mode(&path, false, true).map_err(|error| HostError(format!(
+            "{error}; reinstall Birnam to prepare its bootstrap image (BIRNAM_FORCE_SOURCE=1 explicitly requests source bootstrap)"
+        )))?;
+        self.rebase_module(&self.scope(), &self.resources)
     }
     pub(super) fn bootstrap_source(&self) -> Result<(), HostError> {
         let host = self;
@@ -345,7 +363,7 @@ impl HostRuntime {
         path: &Path,
     ) -> Result<Self, HostError> {
         let host = Self::start_native(resources, policy.precise_gc)?;
-        host.load_image_mode(path, true)?;
+        host.load_image_mode(path, true, false)?;
         host.rebase_module(&host.scope(), resources)?;
         Ok(host)
     }
@@ -370,7 +388,6 @@ impl HostRuntime {
                 q.check_result(result)?;
                 return Err(HostError("baked image rejected".into()));
             }
-            host.restore_foreign_wrappers()?;
             host.rebase_module(&q, resources)?;
         }
         Ok(host)
@@ -464,52 +481,10 @@ impl HostRuntime {
             unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern global", e))?;
         scope.call(self.named(b"Globals")?, b"at:", &[Operand::object(symbol)])
     }
-    // Foreign entry addresses belong to the saving process. Alien persists
-    // authored reconstruction recipes as Store facts; replay before user entry.
-    fn restore_foreign_wrappers(&self) -> Result<(), HostError> {
-        let q = self.scope();
-        let entity = unsafe { self.id.intern_name(b"__aliens__") }
-            .map_err(|e| native_error("Alien recipes", e))?;
-        let store = self.named(b"Store")?;
-        let count = q.call(store, b"attrCount:", &[Operand::object(entity)])?;
-        let count = self
-            .send(
-                self.named(b"Integer")?,
-                b"wordOf:",
-                &[Operand::object(count)],
-            )?
-            .as_word()
-            .ok_or_else(|| HostError("invalid Alien recipe count".into()))?;
-        let mut recipes = Vec::new();
-        for i in 0..count {
-            let index = q.call(self.named(b"Integer")?, b"fromWord:", &[Operand::word(i)])?;
-            let key = q.call(
-                store,
-                b"attrAt:index:",
-                &[Operand::object(entity), Operand::object(index)],
-            )?;
-            let recipe = q.call(
-                store,
-                b"currentValue:attr:",
-                &[Operand::object(entity), Operand::object(key)],
-            )?;
-            q.exact(recipe, b"StringVt")?;
-            recipes.push(recipe);
-        }
-        for recipe in recipes {
-            let result = q.call(
-                self.named(b"Codegen")?,
-                b"eval:",
-                &[Operand::object(recipe)],
-            )?;
-            q.check_result(result)?;
-        }
-        Ok(())
-    }
     fn load_image(&self, path: &Path) -> Result<(), HostError> {
-        self.load_image_mode(path, false)
+        self.load_image_mode(path, false, false)
     }
-    fn load_image_mode(&self, path: &Path, rebuild: bool) -> Result<(), HostError> {
+    fn load_image_mode(&self, path: &Path, rebuild: bool, mapped_only: bool) -> Result<(), HostError> {
         let load = || -> Result<(), HostError> {
             let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
             if !metadata.is_file() {
@@ -520,14 +495,14 @@ impl HostRuntime {
             let system = self.named(b"System")?;
             let result = scope.call(
                 system,
-                b"loadImage:rebuild:",
+                if mapped_only { b"loadImageMapped:" } else { b"loadImage:rebuild:" },
                 &[
                     Operand::object(filename),
                     Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),
-                ],
+                ][..if mapped_only { 1 } else { 2 }],
             )?;
             if result == self.named(b"true")? || result == self.named(b"false")? {
-                return self.restore_foreign_wrappers();
+                return Ok(());
             }
             scope.check_result(result)?;
             let report = scope.call(system, b"imageSaveReport", &[])?;
@@ -674,6 +649,104 @@ mod tests {
     use birnam_abi::id_protocol::{self as native, NativeEntry};
     use std::{cell::Cell, ffi::c_void, path::PathBuf};
 
+    unsafe extern "C" fn deny_compilation(
+        context: *mut c_void,
+        _: Oop,
+        _: *const Operand,
+        _: usize,
+    ) -> Outcome {
+        let calls = unsafe { &*context.cast::<Cell<usize>>() };
+        calls.set(calls.get() + 1);
+        Outcome::failed(native::INVALID_REQUEST, 98765)
+    }
+
+    #[test]
+    #[ignore = "requires an installed prefix"]
+    fn installed_bootstrap_and_console_do_not_compile() {
+        let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+        let resources = crate::resolve_from_exe_dir(
+            Path::new("/unused/bin"),
+            crate::Overrides {
+                lib_dir: Some(&lib),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut host = HostRuntime::start_native(&resources, true).unwrap();
+        let calls = Box::new(Cell::new(0usize));
+        let tcc = host.named(b"TCCVt").unwrap();
+        let mut originals = Vec::new();
+        for name in [b"compile:".as_slice(), b"compileObject:"] {
+            let selector = unsafe { host.id.intern_name(name) }.unwrap();
+            let original = host
+                .send(
+                    host.id.receiver,
+                    b"bindingOf:in:",
+                    &[Operand::object(selector), Operand::object(tcc)],
+                )
+                .unwrap()
+                .as_entry()
+                .unwrap();
+            host.send(
+                tcc,
+                b"addMethod",
+                &[
+                    Operand::object(selector),
+                    Operand::entry(NativeEntry::new(
+                        deny_compilation,
+                        (&*calls as *const Cell<usize>).cast_mut().cast(),
+                    )),
+                ],
+            )
+            .unwrap();
+            originals.push((selector, original));
+        }
+        let directory = host.resources.lib_dir.clone();
+        host.resources.lib_dir = directory.join("missing-bootstrap-directory");
+        let error = host.bootstrap(false, false).unwrap_err();
+        assert!(error.0.contains("reinstall Birnam"), "{error}");
+        assert_eq!(
+            calls.get(),
+            0,
+            "missing bootstrap invoked a source fallback"
+        );
+        host.resources.lib_dir = directory;
+        host.bootstrap(false, false).unwrap();
+        for name in [b"repl".as_slice(), b"socket", b"config", b"toml", b"file"] {
+            host.load_tool(name).unwrap();
+        }
+        let q = host.scope();
+        let repl = host.global(&q, b"Repl").unwrap();
+        let result = q.call(repl, b"consoleHostInitNoConfig", &[]).unwrap();
+        q.check_result(result).unwrap();
+        let result = q
+            .call(
+                host.global(&q, b"DispatchGeneration").unwrap(),
+                b"initializeCurrent",
+                &[],
+            )
+            .unwrap();
+        q.check_result(result).unwrap();
+        host.enter_running().unwrap();
+        let result = q.call(repl, b"consoleHostReadyNoMain", &[]).unwrap();
+        q.check_result(result).unwrap();
+        let result = q.call(repl, b"consoleDone", &[]).unwrap();
+        q.check_result(result).unwrap();
+        host.bootstrap(false, true).unwrap();
+        for name in [b"lsp".as_slice(), b"cli", b"doc"] {
+            host.load_tool(name).unwrap();
+        }
+        assert_eq!(calls.get(), 0, "bootstrap or console invoked the compiler");
+        for (selector, original) in originals {
+            host.send(
+                tcc,
+                b"addMethod",
+                &[Operand::object(selector), Operand::entry(original)],
+            )
+            .unwrap();
+        }
+    }
+
     struct CollectingSend {
         id: Protocol,
         gc: Oop,
@@ -714,6 +787,8 @@ mod tests {
             StartupPolicy {
                 skip_stdlib: true,
                 precise_gc: true,
+                source_bootstrap: false,
+                tool_bootstrap: false,
             },
         )
         .unwrap();

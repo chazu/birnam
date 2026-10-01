@@ -20,11 +20,11 @@ def run(path, *, save=False, extra=()):
     return subprocess.run([binary, path, *extra], cwd=work, env=env,
                           input=b":quit\n", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
 
-def snapshot(name, body):
+def snapshot(name, body, *, stdlib=False):
     image = work / (name + '.image')
     source = work / (name + '.birnam')
     source.write_bytes(body + b'; [System saveImage: ' + json.dumps(str(image)).encode() + b']')
-    result = run(source, save=True)
+    result = run(source, save=not stdlib)
     assert result.returncode == 0 and not result.stderr and image.is_file(), result
     source.unlink()
     return image
@@ -44,9 +44,17 @@ for value in [b'nil', b'false']:
     path = snapshot(value.decode(), b'[Globals at: #main put: [| ' + value + b']]')
     result = run(path)
     assert result.returncode == 0 and not result.stdout and not result.stderr, result
-path = snapshot('missing-main', b'nil')
+path = snapshot('missing-main', b'nil', stdlib=True)
 result = run(path)
 assert result.returncode == 0 and b'birnam>' in result.stdout and not result.stderr, result
+path = snapshot('native-only-no-main', b'[Globals at: #preserved put: 42]')
+result = run(path)
+assert result.returncode == 1 and b'image lacks an authored bootstrap' in result.stderr, result
+recovery_env = environment.copy()
+recovery_env['BIRNAM_FORCE_SOURCE'] = '1'
+result = subprocess.run([binary, path], cwd=work, env=recovery_env,
+                        input=b'preserved\n:quit\n', capture_output=True, timeout=300)
+assert result.returncode == 0 and b'birnam> 42' in result.stdout and not result.stderr, result
 for name, body, diagnostic in [
     ('invalid-main', b'[Globals at: #main put: 42]', b'image main:'),
     ('wrong-arity', b'[Globals at: #main put: [:arg | arg]]', b'image main:'),

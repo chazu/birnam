@@ -19,6 +19,8 @@ fn scoped_project_bridge_revokes_retained_callbacks() {
         StartupPolicy {
             skip_stdlib: false,
             precise_gc: true,
+            source_bootstrap: false,
+            tool_bootstrap: false,
         },
     )
     .unwrap();
