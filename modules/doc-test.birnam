@@ -146,6 +146,16 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [gaps includes: "escape:"] describes: "the generation method is a gap"];
   [t assert: [[gaps includes: "zzHovSel"] not] describes: "a documented selector is not"]]];
 
+[s test: "coverage count uses the supplied index and any module's documentation" do: [:t |
+  [Doc module: #coverageFixture is: "coverage"];
+  [Doc for: #zzDocumentedCoverage in: #coverageFixture says: "known"];
+  let idx := [[[Map new] at: "zzDocumentedCoverage" put: #[]]
+    at: "zzSourceOnlyCoverage" put: #[]];
+  [t expect: [Doc undocumentedSelectorCountIn: idx] equals: 1
+     describes: "only source-only keys counted"];
+  [t expect: [Doc undocumentedSelectorCountIn: [Map new]] equals: 0
+     describes: "an empty provided index stays empty"]]];
+
 // Guides: static .md pages load in filename order, take their title from the
 // first heading, and render into #guide-<slug> sections ahead of the modules.
 [s test: "loadGuides: reads, orders, titles, and renders markdown pages" do: [:t |

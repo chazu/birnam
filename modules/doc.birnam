@@ -26,7 +26,9 @@
 // is written. module:is: seeds the summary and method-list cells; the other
 // methods assume the module was documented first (their stated precondition).
 
-[Module named: #doc requires: #[]];
+[Module named: #doc requires: #[#html]];
+// System load: also supports this file directly, outside dependency planning.
+[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [Module load: #html]]];
 
 [Globals at: #Doc put: [Object clone]];
 // Seed the current-module cell (a VALUE — nil means "none"): the stdlib's
@@ -182,6 +184,16 @@
     [[documented includesKey: k] ifTrue: [| acc] ifFalse: [| [acc add: k]]]]]
     sortBy: [:x | x]]] doc:
   "Every recorded-but-undocumented selector name, sorted — the doc-gap worklist (documented anywhere counts)."];
+
+// Coverage needs only a count; use the page's existing index and never sort.
+[Reflect defineMethod: #undocumentedSelectorCountIn: on: Doc as: [:self :srcIdx |
+  let me := self;
+  let documented := [[self modules] inject: [Map new] into: [:acc :m |
+    [[me methodsOf: m] inject: acc into: [:a2 :e |
+      [a2 at: [me nameOf: [[db cellFor: e attr: #sel] value]] put: true]]]]];
+  [[srcIdx keys] inject: 0 into: [:count :name |
+    [[documented includesKey: name] ifTrue: [| count] ifFalse: [| [count + 1]]]]]] doc:
+  "Count recorded-but-undocumented selectors in an existing source index, without rebuilding it or sorting names."];
 
 // The indexed sources for one selector, narrowed to the receiver when known:
 // `protoName` non-empty keeps only definitions on that prototype (the recorded
@@ -520,7 +532,7 @@
   [mods do: [:m |
     [secs add: [Html tag: "section" attrs: [Html attr: "id" value: [me nameOf: m]] body: [me htmlForModule: m sources: srcIdx]]]]];
   let docCount := [mods inject: 0 into: [:acc :m | [acc + [[me methodsOf: m] size]]]];
-  let gapCount := [[self undocumentedSelectors] size];
+  let gapCount := [self undocumentedSelectorCountIn: srcIdx];
   let stats := [[[[[mods size] printString] , " modules — "] , [[docCount printString] , " documented selectors — "]]
                  , [[gapCount printString] , " recorded selectors still source-only"]];
   [secs add: [Html tag: "footer" body: [Html escape: stats]]];

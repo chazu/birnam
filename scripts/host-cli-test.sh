@@ -39,6 +39,7 @@ if selected cli; then
   cargo test --offline --locked -p birnam-host --test native_compilers -- --ignored
   python3 scripts/artifact-cli-test.py "$scratch/relocated"
   python3 scripts/lang-migration-test.py "$scratch/relocated"
+  python3 scripts/doc-render-test.py "$scratch/relocated"
   python3 scripts/portable-execution-test.py "$scratch/relocated"
   python3 scripts/worker-test.py "$scratch/relocated"
   bash scripts/rust-project-check-smoke.sh
