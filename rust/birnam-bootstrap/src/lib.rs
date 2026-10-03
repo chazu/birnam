@@ -335,7 +335,9 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "portable_code",
             "peg",
             "tcc",
+            "native_backend",
             "codegen_runtime",
+            "generation",
         ] {
             id.send_named(
                 receiver,

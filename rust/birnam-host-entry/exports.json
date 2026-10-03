@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scope": "Process owner constructed through Id with a completed Namespace",
+  "install_name": "@rpath/libbirnam_host_entry.dylib",
+  "exported_symbols": ["birnam_native_module_v1", "birnam_symbol_borrow_v1"]
+}

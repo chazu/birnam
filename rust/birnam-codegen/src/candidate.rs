@@ -1,8 +1,6 @@
 //! Inert candidate construction. Artifact code returns a factory Method; only
 //! executing that factory constructs projected Blocks, without publishing them.
-use crate::{
-    Block, Expr, OwnedCst, Statement, generation, native, portable, resumable, source_revision,
-};
+use crate::{Block, Expr, OwnedCst, Statement, generation, portable, resumable, source_revision};
 use birnam_artifact::{
     candidate as envelope,
     stackless_selection::{self as selection, Disposition},
@@ -14,7 +12,7 @@ pub struct Plan {
     /// Each output is either a method-operation index or a projected Globals name.
     pub outputs: Vec<Output>,
     /// Factory first, then one named adapter per installed operation.
-    pub sources: Vec<Vec<u8>>,
+    pub requests: Vec<crate::backend_request::Request>,
     authority: [u8; 32],
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,7 +53,7 @@ fn send<'a>(receiver: Expr<'a>, selector: &'static [u8], args: Vec<Expr<'a>>) ->
     }
 }
 impl Plan {
-    pub fn new(tree: &OwnedCst, source: &[u8], selected: &[u8], emit: bool) -> Option<Self> {
+    pub fn new(tree: &OwnedCst, source: &[u8], selected: &[u8], _emit: bool) -> Option<Self> {
         let metadata = source_revision::inspect(tree, source)?;
         if metadata.operations.is_empty()
             || !generation::artifact_selection_matches_inventory(&metadata, selected)
@@ -145,12 +143,12 @@ impl Plan {
             &[],
         )
         .ok()?;
-        let mut sources = vec![];
-        if emit {
-            sources.push(native::compile_factory(&factory, source, &dispositions).ok()?);
-        } else {
-            sources.push(vec![]);
-        }
+        use crate::backend_request::Request;
+        let mut requests = vec![Request::Factory {
+            program: factory,
+            source: source.to_vec(),
+            dispositions,
+        }];
         for (index, operation) in metadata
             .operations
             .iter()
@@ -165,12 +163,9 @@ impl Plan {
             })?;
             let arity =
                 u32::try_from(birnam_artifact::selector::arity(&operation.selector)).ok()?;
-            sources.push(if !emit {
-                vec![]
-            } else if row.disposition == Disposition::Synchronous {
-                native::compile_named_synchronous(arity).ok()?
-            } else {
-                native::compile_named(arity).ok()?
+            requests.push(Request::Named {
+                arity,
+                synchronous: row.disposition == Disposition::Synchronous,
             });
         }
         let mut identity = b"birnam.candidate.objects.v1\0".to_vec();
@@ -181,12 +176,61 @@ impl Plan {
         Some(Self {
             metadata,
             outputs,
-            sources,
+            requests,
+            authority: generation::sha256_raw(&identity),
+        })
+    }
+    /// Reconstitute a compiler inventory received as ordinary values. The
+    /// canonical programs stay independent of the compiler's private CST/IR.
+    pub fn from_inventory(
+        metadata: source_revision::RevisionMetadata,
+        outputs: Vec<Output>,
+        requests: Vec<crate::backend_request::Request>,
+        source: &[u8],
+        selected: &[u8],
+    ) -> Option<Self> {
+        use crate::backend_request::Request;
+        if !generation::artifact_selection_matches_inventory(&metadata, selected)
+            || metadata.operations.is_empty()
+            || requests.len() != 1 + metadata.operations.iter().filter(|op| op.install).count()
+            || outputs.iter().any(|o| match o {
+                Output::Method(i) => metadata.operations.get(*i).is_none_or(|op| !op.install),
+                Output::Global(n) => !metadata.projected_globals.iter().any(|g| &g.name == n),
+            })
+        {
+            return None;
+        }
+        let Some(Request::Factory {
+            program,
+            source: provenance,
+            dispositions,
+        }) = requests.first()
+        else {
+            return None;
+        };
+        if provenance != source
+            || program.is_empty()
+            || dispositions.first() != Some(&false)
+            || requests[1..]
+                .iter()
+                .any(|r| !matches!(r, Request::Named { arity: 0..=16, .. }))
+        {
+            return None;
+        }
+        let mut identity = b"birnam.candidate.objects.v1\0".to_vec();
+        for bytes in [source, selected] {
+            identity.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+            identity.extend_from_slice(bytes);
+        }
+        Some(Self {
+            metadata,
+            outputs,
+            requests,
             authority: generation::sha256_raw(&identity),
         })
     }
     pub fn encode(&self, objects: &[Vec<u8>]) -> Option<Vec<u8>> {
-        if objects.len() != self.sources.len() {
+        if objects.len() != self.requests.len() {
             return None;
         }
         let mut out = b"BIRNAMC1".to_vec();
@@ -212,7 +256,7 @@ impl Plan {
             return None;
         }
         let count = u32::from_le_bytes(bytes.get(40..44)?.try_into().ok()?) as usize;
-        if count != self.sources.len() {
+        if count != self.requests.len() {
             return None;
         }
         let mut cursor = 44usize;

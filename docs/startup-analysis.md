@@ -138,8 +138,8 @@ was not isolated.
 
 The relevant paths are
 [initial projection](../rust/birnam-codegen-runtime/src/source.rs),
-[source map validation](../rust/birnam-codegen-runtime/src/candidate.rs),
-[generation adoption](../rust/birnam-codegen-runtime/src/candidate_ledger.rs),
+[source map validation](../rust/birnam-generation/src/candidate.rs),
+[generation adoption](../rust/birnam-generation/src/candidate_ledger.rs),
 and [compiled metadata decoding](../rust/birnam-codegen-runtime/src/source_metadata.rs).
 
 ## Optimization priorities

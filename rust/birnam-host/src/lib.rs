@@ -1,19 +1,17 @@
-//! Owner-thread source, image, artifact and project execution through Id messages.
-//! Console, socket and authored tools share the same scoped owner-thread roots.
+//! Executable handoff to native Host owners through Id messages.
 mod resources;
 pub use resources::{Overrides, Resources, resolve, resolve_from_exe_dir};
+mod runtime;
+pub use runtime::{HostError, HostRuntime};
 mod startup;
-pub use startup::{
-    HostError, HostRuntime, MAX_SCRIPT_BYTES, ProjectSourceMetadata, ProjectSourceObservation,
-    StartupPolicy,
-};
+pub use birnam_host_support::{MAX_SCRIPT_BYTES, StartupPolicy};
+mod baked;
+mod image;
+mod interaction;
+mod program;
+pub mod project;
+mod worker;
+pub use baked::{bake_executable, baked_image, read_baked_image};
 pub mod bootstrap_receipt;
 pub mod publication_receipt;
 mod receipt_validation;
-
-pub mod project_data;
-mod project_files;
-pub use project_data::*;
-
-mod baked;
-pub use baked::{bake_executable, baked_image, read_baked_image};

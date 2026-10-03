@@ -4,16 +4,18 @@ use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
 };
-use birnam_codegen::{OwnedCst, lower_program, native as emission};
+use birnam_codegen::{OwnedCst, backend_request::Request, lower_program};
 use core::{cell::RefCell, ffi::c_void};
 mod artifact;
-mod candidate;
+mod backend;
+mod candidate_inventory;
 mod embedding;
 mod image;
 mod materialization;
-mod source_metadata;
+mod publication;
 mod reflection;
 mod source;
+mod source_metadata;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
@@ -27,12 +29,9 @@ struct State {
     id: Protocol,
     ns: Oop,
     roots: Oop,
-    mutation_guard: Oop,
-    running: core::cell::Cell<bool>,
     permanent: Vec<Oop>,
     sources: source::Sources,
     compiled_adapters: RefCell<Vec<Option<Vec<(u32, Oop)>>>>,
-    candidates: candidate::Candidates,
     materializations: RefCell<Vec<materialization::Cached>>,
     image_stage: RefCell<Option<image::Stage>>,
     image_busy: core::cell::Cell<bool>,
@@ -44,7 +43,9 @@ struct Scope<'a> {
 }
 struct AdapterScope<'a>(&'a State);
 impl Drop for AdapterScope<'_> {
-    fn drop(&mut self) { self.0.compiled_adapters.borrow_mut().pop(); }
+    fn drop(&mut self) {
+        self.0.compiled_adapters.borrow_mut().pop();
+    }
 }
 impl Scope<'_> {
     unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
@@ -231,25 +232,24 @@ enum Op {
     Eval,
     Define,
     Remove,
-    EnterRunning,
-    AuthorizeMutation,
     NameOf,
     Reflection(reflection::Op),
     Source(source::Op),
     Materialize(materialization::Op),
     Image(image::Op),
     Artifact(artifact::Op),
-    Candidate(candidate::Op),
-    FulfillIntent,
-    Receipt(usize),
-    ManagedChanged,
-    ValidateImage,
+    Compiler(candidate_inventory::Op),
 }
 struct Entry {
     state: *const State,
     op: Op,
 }
-unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn operation(
+    c: *mut c_void,
+    receiver: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
     done((|| unsafe {
         let e = &*c.cast::<Entry>();
         let s = &*e.state;
@@ -258,16 +258,14 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
         }
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let count = match e.op {
-            Op::Receipt(_) | Op::ValidateImage | Op::EnterRunning | Op::AuthorizeMutation => 0,
+            Op::Compiler(op) => op.count(),
             Op::Remove => 2,
-            Op::ManagedChanged => 2,
             Op::Define => 3,
             Op::Reflection(op) => op.count(),
             Op::Source(op) => op.count(),
             Op::Materialize(op) => op.count(),
             Op::Image(op) => op.count(),
             Op::Artifact(op) => op.count(),
-            Op::Candidate(op) => op.count(),
             _ => 1,
         };
         if a.len() != count {
@@ -278,33 +276,14 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
             tokens: RefCell::new(Vec::new()),
         };
         scope.keep(receiver)?;
-        if let Op::Receipt(index) = e.op {
-            if !s.exact(&scope, receiver, b"DiscardReceiptVt")? { return Err(invalid()); }
-            return s.send(s.named(b"ObjectModel")?, b"slotAt:in:", &[Operand::word(index), Operand::object(receiver)]);
-        }
         for &v in a {
             scope.keep(object(v)?)?;
         }
-        if matches!(e.op, Op::EnterRunning) {
-            return candidate::enter_running(s, &scope);
-        }
-        if matches!(e.op, Op::AuthorizeMutation) {
-            return candidate::authorize(s, &scope);
-        }
-        if matches!(e.op, Op::ManagedChanged) {
-            return candidate::method_changed(s, &scope, object(a[0])?, object(a[1])?);
-        }
-        if matches!(e.op, Op::ValidateImage) {
-            return candidate::validate_image(s, &scope);
+        if let Op::Compiler(op) = e.op {
+            return candidate_inventory::operation(s, &scope, op, a);
         }
         if let Op::Image(op) = e.op {
             return image::operation(s, &scope, op, a);
-        }
-        if matches!(e.op, Op::FulfillIntent) {
-            return candidate::fulfill_intent(s, &scope, object(a[0])?);
-        }
-        if let Op::Candidate(op) = e.op {
-            return candidate::operation(s, &scope, op, a);
         }
         if let Op::Artifact(op) = e.op {
             return artifact::operation(s, &scope, op, a);
@@ -338,8 +317,16 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
                 .to_vec();
             return Ok(Operand::object(s.text(&scope, &bytes)?));
         }
-        if matches!(e.op, Op::Define | Op::Remove) && !candidate::ordinary_mutation_allowed(s) {
-            return candidate::reject_mutation(s, &scope);
+        if matches!(e.op, Op::Define | Op::Remove)
+            && publication::send(s, &scope, b"ordinaryMutationAllowed", &[])?.as_object()
+                != Some(s.named(b"true")?)
+        {
+            return publication::error(
+                s,
+                &scope,
+                b"generationNotQuiescent",
+                b"ordinary method mutation is unavailable while running",
+            );
         }
         if matches!(e.op, Op::Remove) {
             let target = object(a[1])?;
@@ -349,8 +336,16 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
                 scope.keep(object(s.send(s.id.receiver, b"behaviorOf:", &[a[1]])?)?)?
             };
             let store = scope.keep(s.named(b"Store")?)?;
-            let result = s.send(store, b"removeMethod:on:", &[a[0], Operand::object(behavior)])?;
-            return Ok(if result.as_object() == Some(store) { a[1] } else { result });
+            let result = s.send(
+                store,
+                b"removeMethod:on:",
+                &[a[0], Operand::object(behavior)],
+            )?;
+            return Ok(if result.as_object() == Some(store) {
+                a[1]
+            } else {
+                result
+            });
         }
         if matches!(e.op, Op::Define) {
             let selector = object(a[0])?;
@@ -378,13 +373,30 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
             let compiled = s.compiled_adapters.borrow().last().cloned().flatten();
             let method = if let Some(adapters) = compiled {
                 let Some((_, bytes)) = adapters.iter().find(|(a, _)| *a == arity as u32) else {
-                    return s.error(&scope, b"compiled artifact lacks a required method adapter; rebuild it");
+                    return s.error(
+                        &scope,
+                        b"compiled artifact lacks a required method adapter; rebuild it",
+                    );
                 };
-                let unit = scope.keep(object(s.send(s.named(b"TCC")?, b"loadObject:", &[Operand::object(*bytes)])?)?)?;
-                if s.is_error(unit)? { return Ok(Operand::object(unit)); }
+                let unit = scope.keep(object(s.send(
+                    s.named(b"TCC")?,
+                    b"loadObject:",
+                    &[Operand::object(*bytes)],
+                )?)?)?;
+                if s.is_error(unit)? {
+                    return Ok(Operand::object(unit));
+                }
                 scope.keep(object(s.send(unit, b"initializeWith:", &[a[2]])?)?)?
             } else {
-                let c = emission::compile_named(arity as u32).map_err(|_| invalid())?;
+                let c = backend::emit(
+                    s,
+                    &scope,
+                    &Request::Named {
+                        arity: arity as u32,
+                        synchronous: false,
+                    },
+                )
+                .map_err(backend::Failure::outcome)?;
                 scope.keep(object(s.native_method(&scope, &c, Some(object(a[2])?))?)?)?
             };
             if s.is_error(method)? {
@@ -425,9 +437,19 @@ unsafe extern "C" fn operation(c: *mut c_void, receiver: Oop, a: *const Operand,
         if let Some(error) = s.embed_program(&scope, &mut program, b"<compiler>")? {
             return Ok(Operand::object(error));
         }
-        let c = match emission::compile_program(program, &bytes) {
+        let c = match backend::emit(
+            s,
+            &scope,
+            &Request::program(program, &bytes, b"<compiler>").ok_or_else(invalid)?,
+        ) {
             Ok(c) => c,
-            Err(e) => return s.error(&scope, format!("native emission: {e:?}").as_bytes()),
+            Err(backend::Failure::Native(e)) => return Err(e),
+            Err(backend::Failure::Rejected(e)) => {
+                return s.error(
+                    &scope,
+                    format!("native emission: {}", String::from_utf8_lossy(&e)).as_bytes(),
+                );
+            }
         };
         if matches!(e.op, Op::Emit) {
             return s.send(s.named(b"String")?, b"fromBytes:", &[Operand::bytes(&c)]);
@@ -450,9 +472,6 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             return Err(invalid());
         };
         let v = object(*v)?;
-        for value in s.candidates.roots() {
-            s.id.send_named(v, b"visit:", &[Operand::object(value)])?;
-        }
         let image_roots = s
             .image_stage
             .borrow()
@@ -470,11 +489,6 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             .collect();
         for method in methods {
             s.id.send_named(v, b"visit:", &[Operand::object(method)])?;
-        }
-        let entries = s.sources.entries.borrow().clone();
-        for (name, source) in entries {
-            s.id.send_named(v, b"visit:", &[Operand::object(name)])?;
-            s.id.send_named(v, b"visit:", &[Operand::object(source)])?;
         }
         let adapters = s.compiled_adapters.borrow().clone();
         for unit in adapters.iter().flatten().flatten().map(|(_, unit)| unit) {
@@ -525,44 +539,20 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             b"allocate:bytes:",
             &[Operand::object(reflect_vt), Operand::word(0)],
         )?)?)?;
-        let receipt_vt = pin(object(id.send_named(named(b"ObjectVt")?, b"delegated", &[])?)?)?;
-        let model = named(b"ObjectModel")?;
-        id.send_named(model, b"setLayoutOf:to:rest:", &[Operand::object(receipt_vt), Operand::bytes(&[1; 4]), Operand::word(0)])?;
-        let receipt = pin(object(id.send_named(model, b"allocate:bytes:", &[Operand::object(receipt_vt), Operand::word(4 * core::mem::size_of::<Oop>())])?)?)?;
-        for index in 0..4 {
-            id.send_named(model, b"slotAt:in:put:", &[Operand::word(index), Operand::object(receipt), Operand::object(named(b"nil")?)])?;
-        }
-        let guard_vt = pin(object(id.send_named(named(b"ObjectVt")?, b"delegated", &[])?)?)?;
-        let mutation_guard = pin(object(id.send_named(model, b"allocate:bytes:", &[Operand::object(guard_vt), Operand::word(0)])?)?)?;
         let s = Box::into_raw(Box::new(State {
             id,
             ns,
             roots: root,
-            mutation_guard,
-            running: core::cell::Cell::new(false),
-            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect, receipt_vt, receipt, guard_vt, mutation_guard],
+            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
             sources: source::Sources::default(),
             compiled_adapters: RefCell::new(Vec::new()),
-            candidates: Default::default(),
             materializations: RefCell::new(Vec::new()),
             image_stage: RefCell::new(None),
             image_busy: core::cell::Cell::new(false),
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
-            (receipt_vt, b"generation".as_slice(), Op::Receipt(0)),
-            (receipt_vt, b"logical", Op::Receipt(1)),
-            (receipt_vt, b"physical", Op::Receipt(2)),
-            (receipt_vt, b"reason", Op::Receipt(3)),
-            (guard_vt, b"value", Op::AuthorizeMutation),
-            (vt, b"enterRunning", Op::EnterRunning),
-            (vt, b"authorizeManagedMethodMutation", Op::AuthorizeMutation),
-            (reflect_vt, b"removeMethod:on:", Op::Remove),
-            (vt, b"managedMethodChanged:on:", Op::ManagedChanged),
-            (vt, b"validateImageGeneration", Op::ValidateImage),
-            (vt, b"discardCandidate:", Op::Candidate(candidate::Op::Discard)),
-            (vt, b"retainedGenerationCount", Op::Candidate(candidate::Op::RetainedCount)),
-            (vt, b"retainedGenerationBytes", Op::Candidate(candidate::Op::RetainedBytes)),
+            (reflect_vt, b"removeMethod:on:".as_slice(), Op::Remove),
             (vt, b"emit:", Op::Emit),
             (reflect_vt, b"nameOf:", Op::NameOf),
             (
@@ -597,48 +587,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"compile:output:root:",
                 Op::Artifact(artifact::Op::Root),
             ),
-            (
-                vt,
-                b"successorGenerationProjection:replacing:with:unit:",
-                Op::Candidate(candidate::Op::Successor),
-            ),
             (vt, b"load:", Op::Artifact(artifact::Op::Load)),
-            (
-                vt,
-                b"compileCandidate:named:output:",
-                Op::Candidate(candidate::Op::Compile),
-            ),
-            (
-                vt,
-                b"compileCandidate:named:output:selection:",
-                Op::Candidate(candidate::Op::CompileSelected),
-            ),
-            (
-                vt,
-                b"inspectCandidate:into:",
-                Op::Candidate(candidate::Op::Inspect),
-            ),
-            (vt, b"mapCandidate:", Op::Candidate(candidate::Op::Map)),
-            (vt, b"fulfillEvolutionIntent:", Op::FulfillIntent),
-            (vt, b"prepareActivation:plan:", Op::Candidate(candidate::Op::Prepare)),
-            (vt, b"discardPrepared:", Op::Candidate(candidate::Op::DiscardPrepared)),
-            (vt, b"commitPrepared:", Op::Candidate(candidate::Op::Commit)),
-            (vt, b"prepareRollback:plan:", Op::Candidate(candidate::Op::PrepareRollback)),
-            (vt, b"commitPreparedRollback:", Op::Candidate(candidate::Op::CommitRollback)),
-            (vt, b"adoptInitialGeneration:", Op::Candidate(candidate::Op::AdoptInitial)),
-            (vt, b"adoptComposedGeneration:", Op::Candidate(candidate::Op::AdoptComposed)),
-            (vt, b"imageRecoveryIdentity", Op::Candidate(candidate::Op::RecoveryIdentity)),
-            (vt, b"reconcileCandidate:", Op::Candidate(candidate::Op::Reconcile)),
-            (
-                vt,
-                b"candidateMapped:",
-                Op::Candidate(candidate::Op::Mapped),
-            ),
-            (
-                vt,
-                b"candidateContentPath:",
-                Op::Candidate(candidate::Op::Path),
-            ),
             (
                 vt,
                 b"materializeSynchronous:captures:",
@@ -735,9 +684,42 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (vt, b"finishPortableImageUnit", Op::Image(image::Op::Finish)),
             (vt, b"cancelPortableImageUnit", Op::Image(image::Op::Cancel)),
-            (vt, b"recoverPortableImageGeneration:", Op::Image(image::Op::Recover)),
-            (vt, b"beginPortableImageRecovery:", Op::Image(image::Op::BeginRecovery)),
+            (
+                vt,
+                b"recoverPortableImageGeneration:",
+                Op::Image(image::Op::Recover),
+            ),
+            (
+                vt,
+                b"beginPortableImageRecovery:",
+                Op::Image(image::Op::BeginRecovery),
+            ),
             (reflect_vt, b"defineMethod:on:as:", Op::Define),
+            (
+                vt,
+                b"compiledSourceMetadataFor:".as_slice(),
+                Op::Compiler(candidate_inventory::Op::Metadata),
+            ),
+            (
+                vt,
+                b"analyzeSourceMetadata:".as_slice(),
+                Op::Compiler(candidate_inventory::Op::Analyze),
+            ),
+            (
+                vt,
+                b"candidateInventory:selection:".as_slice(),
+                Op::Compiler(candidate_inventory::Op::Inventory),
+            ),
+            (
+                vt,
+                b"noteCompilationError:".as_slice(),
+                Op::Compiler(candidate_inventory::Op::Note),
+            ),
+            (
+                vt,
+                b"clearCompilationError".as_slice(),
+                Op::Compiler(candidate_inventory::Op::Clear),
+            ),
         ] {
             let c = Box::into_raw(Box::new(Entry { state: s, op }));
             id.send_named(
@@ -763,8 +745,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (b"RustCodegen", receiver),
             (b"CodegenVt", vt),
             (b"Reflect", reflect),
-            (b"DiscardReceipt", receipt),
-            (b"DiscardReceiptVt", receipt_vt),
         ] {
             id.send_named(
                 ns,

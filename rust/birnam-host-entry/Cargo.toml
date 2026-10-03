@@ -1,0 +1,19 @@
+[package]
+name = "birnam-host-entry"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+birnam-host-support = { path = "../birnam-host-support" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+birnam-siphon = { path = "../birnam-siphon" }

@@ -132,17 +132,7 @@ pub(super) unsafe fn operation(
         let method = if let Some(method) = hit {
             scope.keep(method)?
         } else {
-            let c = if resumable {
-                emission::compile_portable(&program, &[])
-            } else {
-                emission::compile_portable_synchronous(&program)
-            };
-            let Ok(c) = c else {
-                return fail(
-                    b"RustCodegen could not compile PortableProgram materialization",
-                    b"RustCodegen could not compile portable resumable materialization",
-                );
-            };
+            let c=match backend::emit(s,scope,&Request::Program{program:program.clone(),source:vec![],filename:b"<compiler>".to_vec(),persistent:false,synchronous:!resumable}){Ok(c)=>c,Err(backend::Failure::Native(e))=>return Err(e),Err(backend::Failure::Rejected(_))=>return fail(b"RustCodegen could not compile PortableProgram materialization",b"RustCodegen could not compile portable resumable materialization")};
             generated_bytes = c.len();
             if program.len() > MAX_PROGRAM_BYTES || generated_bytes > MAX_GENERATED_BYTES {
                 return fail(

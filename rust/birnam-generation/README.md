@@ -1,0 +1,123 @@
+# Generation publication over Id
+
+`Generation` is a separately loaded native module implemented in Rust. It owns
+candidate admission and inert mappings, preparation tokens, the managed binding
+ledger, commit and exact rollback, compensation, retirement, mutation admission,
+and image recovery. It also owns the source registry and its staged image
+exchange so publication updates the registry and ledger together without a
+callback between the two updates.
+
+The constructor receives the completed Namespace. Objects, canonical bytes and
+ordinary Vectors cross the interface; compiler state and Rust IR never do.
+Codegen supplies canonical source metadata through `compiledSourceMetadataFor:`
+and candidate factory inventories through `candidateInventory:selection:`.
+Generation uses NativeBackend for C/descriptor emission, TCC for owned native
+mappings, Execution for executable references and Store for durable records.
+Compiled metadata reads reject missing/malformed metadata and never parse source
+as a fallback. Explicit candidate compilation and inspection may ask Codegen to
+analyze source.
+
+The publication messages retain their existing selectors: candidate compilation,
+inspection/mapping, successor projection, prepare/commit, rollback, adoption,
+reconciliation, retirement and telemetry. Production callers now send these
+messages to Generation; Codegen has no publication aliases. `enterRunning` installs
+Generation's observer and mutation authorizer in Store. CompiledUnit,
+DispatchGeneration and EvolutionIntent continue to own authored policy.
+
+`sourceRegistry` returns `[sealed, [name, source], ...]`; `sourceRegistrySealed`
+returns a Boolean. Registration uses `recordCompiledSource:named:` and
+`moduleSourceFor:`. Image integration uses `prepareSourceRegistry:`,
+`swapSourceRegistry`, `beginImageRecovery:`, `recoverImageGeneration:` and
+`cancelImageRecovery`. The retained exchange stage supports exact compensation.
+All transient candidates, tokens, ledgers, source registries and receipt objects
+are visited through the module's registered roots. Creating-thread execution and
+existing busy/idle admission checks remain enforced.
+
+See the [decomposition roadmap](../../docs/design/native-module-decomposition-roadmap.md)
+and [compiled-unit lifecycle](../../docs/design/47-compiled-unit-lifecycle.md).
+
+## Publication behavior
+
+The pure generation algebra in Codegen retains the frozen dispatch-base digest,
+selection composition/replacement, dependency ordering and residual-initializer
+checks. Candidates compile to checked object bundles with source and selection
+metadata. Inspection retains an immutable byte snapshot; mapping relocates that
+snapshot without recompiling or publishing methods and Globals. The native
+`candidate` test exercises both synchronous and resumable selections, captured
+helpers, collection and author-file changes after inspection.
+
+`prepareActivation:plan:` copies the publication plan, checks the full successor
+projection and stable target ownership, and roots exact direct bindings and
+projected Globals. Preparation runs no candidate factory. Numeric Store basis
+and Id behavior epoch checks reject changes during callbacks; monotonic tokens
+are consumed by `discardPrepared:`, releasing preparation-only roots.
+
+`adoptInitialGeneration:` records a canonical initial source/selection snapshot
+and live portable bindings once. Adoption rejects unavailable targets, missing
+or unexpected bindings, and portable Method bodies that differ from the final
+source definition in dependency order, including aliases of one dictionary.
+Comparison preserves lexical captures and the literal compile-time embedding
+rewrite without reopening assets. Capture-free projected global Blocks must also
+match the final source definition; missing, non-Block, captured or different-body
+values cannot establish the initial ledger. Dependency overrides are compared
+against the last definition. The transient ledger retains these Globals and
+displaced Methods for inverse operations. Preparation checks
+the complete ledger; `reconcileCandidate:` rejects drift without adopting the new
+binding. Unrelated Store facts remain outside that ledger. Repeating initial
+adoption validates the original snapshot and cannot clear an observed divergence.
+
+`commitPrepared:` and `commitPreparedRollback:` consume their token on every
+attempt and require Execution's quiescent native boundary. Candidate construction
+runs once and retains the exact helpers and Methods across publication retries.
+Tracked method changes, projected Globals and lifecycle facts use inverse journals;
+Store reservations cover forward publication, compensation and rollback. A failure
+after mutation restores candidate-owned changes while retaining unrelated callback
+facts. Successful publication switches the source registry and complete binding
+ledger together. The `generation_transaction` test covers synchronous/resumable
+activation, replacement/addition/removal, failure compensation and exact rollback.
+
+`fulfillEvolutionIntent:` admits an EvolutionIntent only at Execution's idle
+boundary, then scopes permission for its authored `fulfill` policy to commit.
+Running Machines and nested fulfillment cannot enter that scope; native failures
+and returned Errors always close it. Preparation Errors flow unchanged through
+the commit selectors so policy can commit immediately without constructing new
+branch Blocks between token creation and validation.
+
+Installed Host and published-project console tests exercise authored activation
+and exact rollback. Image stages suspend all old candidate capabilities before
+publication and retain their roots for compensation. After restoring dispatch,
+`recoverImageGeneration:` enters the authored composition policy;
+`adoptComposedGeneration:` is available only in that dynamic recovery scope and
+validates the composition identity, source/selection authority and rollback-free
+components before rebuilding the live ledger. Failure restores the prior caches;
+success releases their roots.
+
+`discardCandidate:` rejects active, prepared and rollback-reachable candidates,
+removes only the admitted author-file contents, and publishes the discarded state
+before releasing native roots. A process-local `DiscardReceipt` separates logical
+discard from physical disposition. Live Methods, Blocks and Machines retain their
+Units through Execution; GC and TCC reclaim them at an idle checkpoint. Weak TCC
+mapping identities drive `retainedGenerationCount` and `retainedGenerationBytes`
+without themselves keeping code alive. File removal is retryable but is outside
+Store compensation: a failed discard can leave one or both author files removed.
+
+Generation adoption registers Generation with Store's completed method-mutation hook.
+Ordinary tracked edits of managed bindings publish drift immediately; raw Id edits
+remain detectable by explicit reconciliation. Candidate transactions acknowledge
+only their exact expected method mutation, so callback edits cannot hide inside a
+publication scope. A compensated transaction preserves any observed foreign drift.
+Image save validates the managed ledger before taking its snapshot and before
+publishing the file. Drift cannot be saved under an unchanged managed source identity. Host calls `enterRunning` at an idle boundary before console, socket, image-main
+and worker entry. Store's existing authorization callback then rejects ordinary
+method installation/removal. Reflect rejects before compiling an adapter or
+specializing a target. A candidate's exact publication admits one Store mutation;
+a nested callback cannot reuse that permission. Image publication has its own
+recovery extent, and neither extent leaves an ambient permission behind.
+
+The native `materialization` test also retains a reflected Method after its source
+Block is released, transfers ownership to an alias binding on another Block,
+and removes that final binding. Source, synchronous and resumable cases each run
+three cycles; both live TCC Unit counts and relocated native bytes return to the
+receiver baseline, then to zero after releasing the receiver. This replaces
+`scripts/method-unit-lifetime-smoke.sh` and requires TCC resource metrics, enabled
+by `scripts/native-message-test.sh`.

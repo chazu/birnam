@@ -104,7 +104,7 @@ pub(super) unsafe fn operation(
         }
         let mut adapters = Vec::new();
         for arity in birnam_codegen::source_metadata::named_adapter_arities(&program) {
-            let c = emission::compile_named(arity).map_err(|_| invalid())?;
+            let c = backend::emit(s,q,&Request::Named{arity,synchronous:false}).map_err(backend::Failure::outcome)?;
             let c = s.text(q, &c)?;
             let bytes = call(
                 s,
@@ -118,9 +118,7 @@ pub(super) unsafe fn operation(
             }
             adapters.push((arity, s.bytes(bytes)?));
         }
-        let Ok(generated) = emission::compile_program_from(program, &bytes, &filename) else {
-            return fail(s, b"RustCodegen could not emit the source");
-        };
+        let generated=match backend::emit(s,q,&Request::program(program,&bytes,&filename).ok_or_else(invalid)?){Ok(c)=>c,Err(backend::Failure::Native(e))=>return Err(e),Err(backend::Failure::Rejected(_))=>return fail(s,b"RustCodegen could not emit the source")};
         let metadata = birnam_codegen::source_metadata::Metadata::inspect(&tree, &bytes);
         let Some(generated) =
             emission_artifact::emit(&tree, &bytes, &generated, &path, &metadata, &adapters)
@@ -159,7 +157,7 @@ pub(super) unsafe fn operation(
 }
 unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        if s.sources.sealed.get() {
+        if publication::sealed(s,q)? {
             return s.send(
                 s.named(b"Error")?,
                 b"kind:",
@@ -318,7 +316,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 return fail(s, b"RustCodegen duplicate module source");
             }
         }
-        if s.sources.sealed.get() {
+        if publication::sealed(s,q)? {
             return s.send(
                 s.named(b"Error")?,
                 b"kind:",

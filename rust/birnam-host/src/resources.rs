@@ -11,14 +11,7 @@ pub struct Overrides<'a> {
     pub rust_workspace_dir: Option<&'a Path>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Resources {
-    pub prefix: PathBuf,
-    pub lib_dir: PathBuf,
-    pub rust_workspace_dir: PathBuf,
-    pub guide_dir: PathBuf,
-    pub id_dylib: PathBuf,
-}
+pub use birnam_host_support::Resources;
 
 /// Resolve one installed layout from the directory containing the executable.
 ///

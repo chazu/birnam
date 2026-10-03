@@ -294,13 +294,13 @@ Codegen adds thin mechanism operations (names provisional):
 
 ```birnam
 [Codegen candidateManifestOf: path]
-[Codegen mapCandidate: unit]
+[Generation mapCandidate: unit]
 [Codegen validateCandidate: unit]
-[Codegen prepareActivation: unit plan: publicationPlan]
-[Codegen commitPrepared: token]
-[Codegen prepareRollback: unit plan: publicationPlan]
-[Codegen commitPreparedRollback: token]
-[Codegen discardPrepared: token]
+[Generation prepareActivation: unit plan: publicationPlan]
+[Generation commitPrepared: token]
+[Generation prepareRollback: unit plan: publicationPlan]
+[Generation commitPreparedRollback: token]
+[Generation discardPrepared: token]
 ```
 
 `candidateManifestOf:` is byte inspection and never maps code. `mapCandidate:` is
@@ -494,7 +494,7 @@ candidate block creation—not sandboxing hostile native code.
 managed generations. It makes no dispatch change. Pure Birnam verifies that every
 changed managed binding has a sequenced portable operation, mints an
 `#adHocBaseline` generation in state `#active`, marks the drifted predecessor
-historical, and asks Codegen to snapshot the current target/vtable/direct-binding
+historical, and asks Generation to snapshot the current target/vtable/direct-binding
 states as that baseline's ledger.
 An unlogged raw change, unknown target replacement, or non-portable native binding
 rejects adoption. This is the required step before a later candidate can activate
@@ -536,7 +536,7 @@ touched direct binding must equal the candidate's recorded **post-activation**
 presence and pointer. Any mismatch marks the unit `#drifted` and rejects rollback
 without mutation. It never overwrites an intervening ordinary edit.
 
-Pure Birnam then prepares the rollback publication/inverse-log plan. Codegen copies
+Pure Birnam then prepares the rollback publication/inverse-log plan. Generation copies
 it and, for every operation in reverse order:
 
 - candidate replaced a direct binding → tracked-replace the captured old pointer;
@@ -610,7 +610,7 @@ The existing persistence pieces remain:
 - `--rebuild` replays the same ordered method operations.
 
 Before code capture, image save asks `CompiledUnit` to reconcile the reflected active
-unit with Codegen's ledger and the actual dictionary. A mismatch becomes `#drifted`;
+unit with Generation's ledger and the actual dictionary. A mismatch becomes `#drifted`;
 save still captures the current portable operation stream when it is complete, but
 it never publishes an image whose facts claim that a mismatching managed generation
 is active. An unlogged/raw drift with no portable recovery path rejects the save
@@ -622,7 +622,7 @@ composition identity. It re-adopts an already durable composed generation with t
 exact identity, or otherwise mints a reflected **composed executable generation**, relates
 each saved-origin generation with `#composedInto`, marks those origins historical,
 reserves `#active` for the composed unit that actually owns dispatch, and asks
-Codegen to rebuild the transient ledger for every managed pair from the live direct
+Generation to rebuild the transient ledger for every managed pair from the live direct
 bindings. A rebuild similarly mints a recovered composition from the normalized
 operation identity and reconstructs the same ledger after replay.
 Entering image dispatch recovery first retires every pre-load transient active
@@ -651,7 +651,7 @@ component unit per source-map row inside a fresh, predecessor-free
 `DispatchGeneration`. The generation retains byte-identical source revisions,
 base digest, and GenerationSelection; Image supplies a domain-separated SHA-256
 identity over the admitted ordered code checksums. Pure Birnam publishes the
-facts and marks saved origin units `#historical`/`#composedInto`; Codegen admits
+facts and marks saved origin units `#historical`/`#composedInto`; Generation admits
 the new durable current generation only during image recovery and snapshots live
 direct bindings for stable-owned targets. Bootstrap/private targets remain
 reproducible code but do not enter the candidate ledger. The release-prefix smoke
@@ -664,7 +664,7 @@ reconstructed base.
 There is one candidate path:
 
 ```
-source → Codegen candidate compile → candidate bundle ┐
+source → Generation → Codegen candidate compile → candidate bundle ┐
                                                       ├→ inspect/open → explicit map → validate/activate
 trusted prebuilt candidate bundle ────────────────────┘
 ```
@@ -687,7 +687,7 @@ immediate edit vs staged generation, never source vs dylib delivery.
 4. **Explicit dependency/map boundary.** Open reports missing dependencies without
    loading them; dependency preparation is a separate ordinary effect; mapping is
    explicit and checks envelope/export agreement.
-5. **Ledger, roots, and activation.** Codegen's candidate-root provider and transient
+5. **Ledger, roots, and activation.** Generation's candidate-root provider and transient
    inherited binding ledger; stable-owned-target and arity validation; prepared
    one-shot commit plans; add/replace/remove in one candidate; facts/events publish
    inside the non-failing commit.
@@ -708,7 +708,7 @@ immediate edit vs staged generation, never source vs dylib delivery.
   parent redefinition is visible (proves no copied-parent tombstone).
 - Store: tracked remove retracts object and `#primitive` mirrors; history retains
   prior binding; raw change leaves absent, never stale.
-- Codegen: envelope inspection happens before `dlopen` and has zero dispatch/global
+- Generation: envelope inspection happens before `dlopen` and has zero dispatch/global
   effects; invalid candidate/runtime ABI, envelope/export disagreement, forbidden
   initializer/dependency load commands, mutable-path replacement/race, metadata disagreement,
   arity mismatch, missing/unstable target, duplicate binding, lifecycle-stale base,

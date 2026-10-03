@@ -34,15 +34,17 @@ export BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib"
 export BIRNAM_BIN="$scratch/relocated/bin/birnam"
 host_test() { cargo test --offline --locked -p birnam-host "$1" -- --ignored; }
 if selected cli; then
+  cargo test --offline --locked -p birnam-host --test native_owners -- --ignored
+  cargo test --offline --locked -p birnam-host --test native_backend -- --ignored
   python3 scripts/artifact-cli-test.py "$scratch/relocated"
   python3 scripts/lang-migration-test.py "$scratch/relocated"
   python3 scripts/portable-execution-test.py "$scratch/relocated"
   python3 scripts/worker-test.py "$scratch/relocated"
   bash scripts/rust-project-check-smoke.sh
-  host_test project_policy_values_survive_collecting_messages
-  host_test project_source_observation_uses_live_messages
+  cargo test --offline --locked -p birnam-project-build project_policy_values_survive_collecting_messages -- --ignored
+  cargo test --offline --locked -p birnam-host-project project_source_observation_uses_live_messages -- --ignored
   host_test startup::tests::host_roots_survive_collecting_sends
-  python3 scripts/host-bridge-test.py --prefix "$scratch/relocated" --output "$scratch/bridge.json"
+  python3 scripts/project-query-test.py --prefix "$scratch/relocated" --output "$scratch/project-query.json"
 fi
 if selected image; then
   python3 scripts/host-image-test.py "$scratch/relocated"

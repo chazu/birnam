@@ -743,8 +743,13 @@ runtime guarantees. Release-specific acceptance records remain in
 ## Architecture
 
 [Design 90](docs/design/90-functional-modules.md) defines functional ownership,
-minimal dependencies and Id messages between native modules. Host starts the
-runtime by asking Siphon to load Id, then sends Id a request to load Bootstrap:
+minimal dependencies and Id messages between native modules. The
+[native module decomposition roadmap](docs/design/native-module-decomposition-roadmap.md)
+tracks the next extractions and Birnam replacements, starting with the source
+compiler and native backend.
+
+Host starts the runtime by asking Siphon to load Id, then sends Id a request to
+load Bootstrap:
 
 ```text
 CLI / Host

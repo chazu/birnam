@@ -307,7 +307,7 @@ If an image enters the console REPL, the implementation currently always refresh
 the process-local `repl` host capability after image load. It does not rely solely
 on the image's existing Repl or use ordinary application-generation loading for
 this refresh. See `start_repl_mode` in
-[`interaction.rs`](../../../rust/birnam-host/src/interaction.rs).
+[`interaction.rs`](../../../rust/birnam-host-interaction/src/interaction.rs).
 
 Current worker domains are separate processes. The Rust host boots the worker,
 loads its requested image and enters the native isolate driver. Birnam provides
@@ -353,7 +353,7 @@ Primary source entry points:
   [object construction](../../../rust/birnam-id/src/dispatch.rs).
 - [Codegen runtime](../../../rust/birnam-codegen-runtime/src/lib.rs) and
   [Tcc](../../../rust/birnam-tcc/src/lib.rs): compiler publication and C output.
-- [Project runtime](../../../rust/birnam-host/src/project_runtime.rs) and
-  [interaction](../../../rust/birnam-host/src/interaction.rs): lazy policy/tools.
+- [Project runtime](../../../rust/birnam-host-project/src/project/operations.rs) and
+  [interaction](../../../rust/birnam-host-interaction/src/interaction.rs): lazy policy/tools.
 - [Task control adapters](../../../rust/birnam-id/src/runtime/task_control.rs):
   checked native operations below ordinary Birnam task policy.

@@ -34,7 +34,6 @@ pub(super) struct Stage {
     units: Vec<Oop>,
     prepared: Vec<Option<Oop>>,
     finished: bool,
-    sources: Option<(bool, Vec<(Oop, Oop)>)>,
 }
 impl Stage {
     pub fn roots(&self) -> Vec<Oop> {
@@ -43,11 +42,6 @@ impl Stage {
             .chain(&self.units)
             .copied()
             .chain(self.prepared.iter().flatten().copied())
-            .chain(
-                self.sources
-                    .iter()
-                    .flat_map(|(_, entries)| entries.iter().flat_map(|&(n, s)| [n, s])),
-            )
             .collect()
     }
 }
@@ -67,26 +61,6 @@ unsafe fn vector(s: &State, q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Outcom
             v = q.keep(object(s.send(v, b"add:", &[Operand::object(x)])?)?)?;
         }
         Ok(v)
-    }
-}
-unsafe fn sequence(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, Outcome> {
-    unsafe {
-        let count = q.keep(object(s.send(v, b"size", &[])?)?)?;
-        let count = s
-            .send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(count)])?
-            .as_word()
-            .filter(|n| *n <= 1_048_576)
-            .ok_or_else(invalid)?;
-        let mut values = Vec::new();
-        for i in 0..count {
-            let index = q.keep(object(s.send(
-                s.named(b"Integer")?,
-                b"fromWord:",
-                &[Operand::word(i)],
-            )?)?)?;
-            values.push(q.keep(object(s.send(v, b"at:", &[Operand::object(index)])?)?)?);
-        }
-        Ok(values)
     }
 }
 pub(super) unsafe fn operation(
@@ -116,7 +90,7 @@ pub(super) unsafe fn operation(
                     .as_ref()
                     .is_some_and(|stage| stage.finished)
                 {
-                    return candidate::fail(
+                    return publication::fail(
                         s,
                         q,
                         b"imageRecoveryRequired",
@@ -124,68 +98,31 @@ pub(super) unsafe fn operation(
                     );
                 }
                 return if matches!(op, Op::BeginRecovery) {
-                    candidate::begin_recovery(s, q, object(args[0])?)
+                    publication::send(s, q, b"beginImageRecovery:", args)
                 } else {
-                    candidate::recover_image(s, q, object(args[0])?)
+                    publication::send(s, q, b"recoverImageGeneration:", args)
                 };
             }
-            Op::Sources => {
-                let entries = s.sources.entries.borrow().clone();
-                for &(name, source) in &entries {
-                    q.keep(name)?;
-                    q.keep(source)?;
-                }
-                let mut rows = vec![if s.sources.sealed.get() {
-                    yes
-                } else {
-                    s.named(b"false")?
-                }];
-                for (name, source) in entries {
-                    rows.push(vector(s, q, &[name, source])?);
-                }
-                return vector(s, q, &rows).map(Operand::object);
-            }
+            Op::Sources => return publication::send(s, q, b"sourceRegistry", &[]),
             Op::PrepareSources => {
-                let rows = sequence(s, q, object(args[0])?)?;
-                let (&sealed, rows) = rows.split_first().ok_or_else(invalid)?;
-                if sealed != yes && sealed != s.named(b"false")? {
-                    return Err(invalid());
-                }
-                let mut entries = Vec::new();
-                let mut names = std::collections::HashSet::new();
-                for &row in rows {
-                    let values = sequence(s, q, row)?;
-                    let [name, source] = values.as_slice() else {
-                        return Err(invalid());
-                    };
-                    if !s.exact(q, *name, b"SymbolVt")?
-                        || !s.exact(q, *source, b"StringVt")?
-                        || !names.insert(*name)
-                    {
+                {
+                    let st = s.image_stage.borrow();
+                    let st = st.as_ref().ok_or_else(invalid)?;
+                    if st.finished {
                         return Err(invalid());
                     }
-                    entries.push((*name, *source));
                 }
-                let mut st = s.image_stage.borrow_mut();
-                let st = st.as_mut().ok_or_else(invalid)?;
-                if st.finished {
-                    return Err(invalid());
-                }
-                st.sources = Some((sealed == yes, entries));
-                return Ok(Operand::object(yes));
+                return publication::send(s, q, b"prepareSourceRegistry:", args);
             }
             Op::SwapSources => {
-                let mut st = s.image_stage.borrow_mut();
-                let st = st.as_mut().ok_or_else(invalid)?;
-                if !st.finished {
-                    return Err(invalid());
+                {
+                    let st = s.image_stage.borrow();
+                    let st = st.as_ref().ok_or_else(invalid)?;
+                    if !st.finished {
+                        return Err(invalid());
+                    }
                 }
-                let (sealed, entries) = st.sources.as_mut().ok_or_else(invalid)?;
-                // No callbacks or allocation after exchanging ownership. The
-                // stage retains the old registry for exact compensation.
-                std::mem::swap(&mut *s.sources.entries.borrow_mut(), entries);
-                *sealed = s.sources.sealed.replace(*sealed);
-                return Ok(Operand::object(yes));
+                return publication::send(s, q, b"swapSourceRegistry", &[]);
             }
             Op::Bindings => {
                 let mut rows = Vec::new();
@@ -208,8 +145,17 @@ pub(super) unsafe fn operation(
                         .send(s.id.receiver, b"ownerOf:", &[Operand::object(vt)])?
                         .as_object()
                     {
-                        Some(owner) if s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(owner)])?
-                            .as_object() == Some(vt) => owner,
+                        Some(owner)
+                            if s.send(
+                                s.id.receiver,
+                                b"behaviorOf:",
+                                &[Operand::object(owner)],
+                            )?
+                            .as_object()
+                                == Some(vt) =>
+                        {
+                            owner
+                        }
                         _ if s
                             .send(s.ns, b"nameOf:", &[Operand::object(vt)])?
                             .as_object()
@@ -266,9 +212,18 @@ pub(super) unsafe fn operation(
                 let Some(plan) = Plan::new(&p, &b, &sel, !matches!(op, Op::Mapped)) else {
                     return Ok(Operand::object(nil));
                 };
+                let generated = if matches!(op, Op::Mapped) {
+                    vec![]
+                } else {
+                    match backend::all(s, q, &plan.requests) {
+                        Ok(v) => v,
+                        Err(backend::Failure::Native(e)) => return Err(e),
+                        Err(backend::Failure::Rejected(_)) => return Ok(Operand::object(nil)),
+                    }
+                };
                 if matches!(op, Op::Compile) {
                     let mut objects = Vec::new();
-                    for c in &plan.sources {
+                    for c in &generated {
                         let source = value(s, q, b"String", c)?;
                         let object = q.keep(object(s.send(
                             s.named(b"TCC")?,
@@ -294,9 +249,8 @@ pub(super) unsafe fn operation(
                     units: Vec::new(),
                     prepared: vec![None; plan.bindings],
                     finished: false,
-                    sources: None,
                 };
-                for i in 0..plan.sources.len() {
+                for i in 0..plan.requests.len() {
                     let unit = if let Some(ref objects) = objects {
                         let bytes = value(s, q, b"Bytes", &objects[i])?;
                         q.keep(object(s.send(
@@ -305,7 +259,7 @@ pub(super) unsafe fn operation(
                             &[Operand::object(bytes)],
                         )?)?)?
                     } else {
-                        s.native_unit(q, &plan.sources[i])?
+                        s.native_unit(q, &generated[i])?
                     };
                     if s.is_error(unit)? {
                         return Ok(Operand::object(unit));
@@ -402,7 +356,7 @@ pub(super) unsafe fn operation(
                 );
             }
             Op::Cancel => {
-                candidate::cancel_recovery(s);
+                publication::send(s, q, b"cancelImageRecovery", &[])?;
                 *s.image_stage.borrow_mut() = None;
                 return Ok(Operand::object(yes));
             }

@@ -213,7 +213,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"assert:attr:value:",
             &[sym(b"dispatch"), sym(b"activeGeneration"), generation],
         );
-        let rejected = call(cg, b"adoptComposedGeneration:", &[generation]);
+        let rejected = call(
+            named(b"Generation"),
+            b"adoptComposedGeneration:",
+            &[generation],
+        );
         assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
         let rejected = call(cg, b"beginPortableImageRecovery:", &[text(&[b'a'; 64])]);
         assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
@@ -259,7 +263,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         ));
         let method_root = retain(id, named(b"Roots"), method);
         install(id, vt, b"ledgerAnswer", raw, core::ptr::null_mut());
-        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        let rejected = call(
+            named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
         assert_eq!(call(rejected, b"kind", &[]), sym(b"nonPortableGeneration"));
         send(
             id,
@@ -277,10 +285,18 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             )],
         );
         assert_eq!(call(wrong, b"isError", &[]), no);
-        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        let rejected = call(
+            named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
         assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
         call(db, b"removeMethod:on:", &[selector, vt]);
-        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        let rejected = call(
+            named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
         assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
         send(
             id,
@@ -295,7 +311,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 b"[Reflect defineMethod: #ledgerRemoved on: Integer as: [:self | 3]]",
             )],
         );
-        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        let rejected = call(
+            named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
         assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
         call(db, b"removeMethod:on:", &[sym(b"ledgerRemoved"), vt]);
         call(
@@ -303,7 +323,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"at:put:",
             &[sym(b"LedgerIntegerAlias"), named(b"nil")],
         );
-        let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+        let rejected = call(
+            named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
         assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
         call(
             named(b"Globals"),
@@ -318,17 +342,29 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         let wrong_helper = call(cg, b"eval:", &[text(b"[| 99]")]);
         for replacement in [wrong_helper, integer(17), named(b"nil")] {
             call(globals, b"at:put:", &[helper_name, replacement]);
-            let rejected = call(cg, b"adoptInitialGeneration:", &[generation]);
+            let rejected = call(
+                named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation],
+            );
             assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
         }
         call(globals, b"at:put:", &[helper_name, helper]);
         release(id, named(b"Roots"), method_root);
         assert_eq!(
-            call(cg, b"adoptInitialGeneration:", &[generation]),
+            call(
+                named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation]
+            ),
             generation
         );
         assert_eq!(
-            call(cg, b"adoptInitialGeneration:", &[generation]),
+            call(
+                named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation]
+            ),
             generation
         );
         call(
@@ -336,7 +372,10 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"assert:attr:value:",
             &[sym(b"unrelated"), sym(b"note"), yes],
         );
-        assert_eq!(call(cg, b"reconcileCandidate:", &[generation]), generation);
+        assert_eq!(
+            call(named(b"Generation"), b"reconcileCandidate:", &[generation]),
+            generation
+        );
         // An unrelated tracked publication must not invalidate this ledger.
         call(
             cg,
@@ -345,7 +384,10 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 b"[Reflect defineMethod: #unmanagedAnswer on: Integer as: [:self | 23]]",
             )],
         );
-        assert_eq!(call(cg, b"reconcileCandidate:", &[generation]), generation);
+        assert_eq!(
+            call(named(b"Generation"), b"reconcileCandidate:", &[generation]),
+            generation
+        );
         let removed = call(
             cg,
             b"evalPersisting:",
@@ -367,7 +409,10 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             .kind(),
             birnam_abi::id_protocol::UNIT
         );
-        assert_eq!(call(cg, b"reconcileCandidate:", &[generation]), generation);
+        assert_eq!(
+            call(named(b"Generation"), b"reconcileCandidate:", &[generation]),
+            generation
+        );
         let path = std::env::temp_dir().join(format!("birnam-drift-image-{}", std::process::id()));
         std::fs::write(&path, b"previous image").unwrap();
         let filename = text(path.as_os_str().as_bytes());
@@ -499,7 +544,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             .as_word(),
             Some(17)
         );
-        let drift = call(cg, b"reconcileCandidate:", &[generation]);
+        let drift = call(named(b"Generation"), b"reconcileCandidate:", &[generation]);
         assert_eq!(call(drift, b"kind", &[]), sym(b"staleGeneration"));
         assert_eq!(
             call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
@@ -512,7 +557,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"addMethod",
             &[Operand::object(selector), Operand::entry(prior)],
         );
-        let readoption = call(cg, b"adoptInitialGeneration:", &[generation]);
+        let readoption = call(
+            named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
         assert_eq!(call(readoption, b"kind", &[]), sym(b"staleGeneration"));
         // Keep the authored lifecycle facade parseable as its initial adoption
         // is connected to this native mechanism.

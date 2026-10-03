@@ -1,5 +1,27 @@
 # Source, image, artifact and project host over Id
 
+The executable facade loads Id through Siphon and asks Id to load Bootstrap,
+then constructs four native Birnam owners from the completed Namespace:
+
+| Owner | Native library | Responsibility |
+| --- | --- | --- |
+| [HostEntry](../birnam-host-entry/README.md) | `libbirnam_host_entry.dylib` | Authored bootstrap, source/artifact execution, image recovery/main, worker entry and shutdown. |
+| [HostInteraction](../birnam-host-interaction/README.md) | `libbirnam_host_interaction.dylib` | Console/socket turns and authored tool entry. |
+| [HostProject](../birnam-host-project/README.md) | `libbirnam_host_project.dylib` | Read-only discovery, observation, source/dependency queries and LSP snapshots. |
+| [ProjectBuild](../birnam-project-build/README.md) | `libbirnam_project_build.dylib` | Check/build/fetch/install and published project execution/test orchestration. |
+
+Each library exports `birnam_native_module_v1` and registers its own Object in
+Namespace. Calls between owners and from the executable use Id messages. They
+share the existing Id, Namespace and Roots; each remains on the creating thread.
+`birnam-host-support` contains local root/value helpers and owned transport types,
+with no loader, language owner, scheduler or private foreign object layout.
+
+Rust callers retain the `HostRuntime` facade and `host.project()` command adapter.
+Project result/request types come from `birnam_host::project`; the native owner
+contains the filesystem, compiler and publication implementations. The executable
+does not link those implementations. The installer builds and publishes all three
+libraries with its exact prefix receipt.
+
 The migrated host loads Id through Siphon, then asks Id to load Bootstrap from
 the executable-relative `lib` directory. It uses owner messages for namespace
 lookup, roots, GC settings, String construction and Codegen evaluation. Host
@@ -66,7 +88,7 @@ published configuration and bundled application code without reading source;
 Install copies the planned module/native closure. Test launches a fresh worker
 per test source against the published module root, without running application main.
 
-Console, socket, image-main and worker entry switch Codegen to running mode at
+Console, socket, image-main and worker entry switch Generation to running mode at
 the idle Host boundary. Ordinary tracked method edits then return
 `generationNotQuiescent`; candidate publication and Image recovery use explicit
 internal extents. Source bootstrap remains open while initial modules load.
@@ -80,15 +102,15 @@ printing; turn roots are released before Isolate checkpoints. EOF, quit and clie
 faults close that connection before the next accept.
 
 The console keeps a session root plus a fresh scope per turn and checkpoints
-Isolate after evaluation. A returned EvolutionIntent is fulfilled through Codegen
+Isolate after evaluation. A returned EvolutionIntent is fulfilled through Generation
 at the idle owner-thread boundary before presentation; source-file results use
 the same path. Fulfillment runs the authored policy inside a scoped quiescent
 extent that closes on success, language Error or native failure. The console
 initializes its generation after session configuration. Project tty/socket entry uses the published context
 without applying caller Config or running main again. Tool loading temporarily
 selects the installed library directory, then restores the project's directory.
-LSP receives scoped Project callbacks, revoked on return or unwinding; retained
-callback receivers fail closed after the Host borrow ends. Doc, docgen, init and
+LSP queries the permanent HostProject owner through Id. Its editor entry needs
+no temporary Project binding or stack-borrowed callbacks. Doc, docgen, init and
 wrap invoke authored Cli methods directly. Whole-workspace migration and broader
 generation replacement remain unfinished.
 

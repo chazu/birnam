@@ -263,9 +263,12 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 b"candidateRollbackPreparationFailed",
             ),
         ] {
-            let rejected = v.call(cg, commit, &[nil]);
+            let rejected = v.call(v.named(b"Generation"), commit, &[nil]);
             assert_eq!(v.call(rejected, b"kind", &[]), v.sym(kind));
-            assert_eq!(v.call(cg, commit, &[rejected]), rejected);
+            assert_eq!(
+                v.call(v.named(b"Generation"), commit, &[rejected]),
+                rejected
+            );
         }
 
         let baseline=b"let txHelper := [| 10]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txRemove on: Integer as: [:self | 30]]";
@@ -283,7 +286,11 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
         let generation = v.carrier(projection, nil, nil);
         v.set(v.sym(b"dispatch"), b"activeGeneration", generation);
         assert_eq!(
-            v.call(cg, b"adoptInitialGeneration:", &[generation]),
+            v.call(
+                v.named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation]
+            ),
             generation
         );
         v.call(cg, b"sealInitialGeneration", &[]);
@@ -304,23 +311,33 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             );
             let compiled = if synchronous {
                 v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"compileCandidate:named:output:selection:",
                     &[source, v.sym(b"txFixture"), path, v.vector(&[])],
                 )
             } else {
                 v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"compileCandidate:named:output:",
                     &[source, v.sym(b"txFixture"), path],
                 )
             };
             assert_eq!(compiled, path);
             let unit = v.call(v.named(b"Object"), b"clone", &[]);
-            assert_eq!(v.call(cg, b"inspectCandidate:into:", &[path, unit]), unit);
-            assert_eq!(v.call(cg, b"mapCandidate:", &[unit]), unit);
+            assert_eq!(
+                v.call(
+                    v.named(b"Generation"),
+                    b"inspectCandidate:into:",
+                    &[path, unit]
+                ),
+                unit
+            );
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"mapCandidate:", &[unit]),
+                unit
+            );
             let projected = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"successorGenerationProjection:replacing:with:unit:",
                 &[
                     v.at(projection, 1),
@@ -331,7 +348,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             );
             let next = v.carrier(projected, generation, unit);
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareActivation:plan:",
                 &[unit, v.plan(b"activate", unit, generation, next)],
             );
@@ -341,15 +358,15 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 b"version",
                 v.integer(if synchronous { 2 } else { 1 }),
             );
-            let stale = v.call(cg, b"commitPrepared:", &[token]);
+            let stale = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(v.call(stale, b"kind", &[]), v.sym(b"staleGeneration"));
-            let consumed = v.call(cg, b"commitPrepared:", &[token]);
+            let consumed = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(
                 v.call(consumed, b"kind", &[]),
                 v.sym(b"invalidPreparedToken")
             );
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareActivation:plan:",
                 &[unit, v.plan(b"activate", unit, generation, next)],
             );
@@ -357,13 +374,13 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let unsafe_commit = v.call(
                 cg,
                 b"evalPersisting:",
-                &[v.text(b"[Codegen commitPrepared: TxPreparedToken]")],
+                &[v.text(b"[Generation commitPrepared: TxPreparedToken]")],
             );
             assert_eq!(
                 v.call(unsafe_commit, b"kind", &[]),
                 v.sym(b"generationNotQuiescent")
             );
-            let consumed = v.call(cg, b"commitPrepared:", &[token]);
+            let consumed = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(
                 v.call(consumed, b"kind", &[]),
                 v.sym(b"invalidPreparedToken")
@@ -397,11 +414,11 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 core::ptr::from_mut(&mut failure).cast(),
             );
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareActivation:plan:",
                 &[unit, v.plan(b"activate", unit, generation, next)],
             );
-            let rejected = v.call(cg, b"commitPrepared:", &[token]);
+            let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             let reason = v.call(cg, b"lastError", &[]);
             let description = if reason == nil {
                 None
@@ -455,11 +472,11 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 core::ptr::from_mut(&mut publication_failure).cast(),
             );
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareActivation:plan:",
                 &[unit, v.plan(b"activate", unit, generation, next)],
             );
-            let rejected = v.call(cg, b"commitPrepared:", &[token]);
+            let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(
                 v.call(rejected, b"kind", &[]),
                 v.sym(b"injectedPublicationFactFailure")
@@ -475,11 +492,14 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             );
             collect(id, v.named(b"GC"));
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareActivation:plan:",
                 &[unit, v.plan(b"activate", unit, generation, next)],
             );
-            assert_eq!(v.call(cg, b"commitPrepared:", &[token]), unit);
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
+                unit
+            );
             assert_eq!(
                 v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
                 failure.helper.get()
@@ -489,16 +509,19 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
             assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
             assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), next);
-            assert_eq!(v.call(cg, b"reconcileCandidate:", &[unit]), unit);
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"reconcileCandidate:", &[unit]),
+                unit
+            );
             assert!(v.number(v.call(db, b"reservedCompensationFor:", &[unit])) > 0);
             publication_failure.destination = generation;
             publication_failure.armed.set(true);
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareRollback:plan:",
                 &[unit, v.plan(b"rollback", unit, next, generation)],
             );
-            let rejected = v.call(cg, b"commitPreparedRollback:", &[token]);
+            let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
             assert_eq!(
                 v.call(rejected, b"kind", &[]),
                 v.sym(b"injectedPublicationFactFailure")
@@ -508,7 +531,10 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 20);
             assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
             assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(v.call(cg, b"reconcileCandidate:", &[unit]), unit);
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"reconcileCandidate:", &[unit]),
+                unit
+            );
             let release_key = v.sym(b"releaseCompensationFor:");
             let original_release = send(
                 id,
@@ -531,11 +557,11 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 core::ptr::from_mut(&mut release_failure).cast(),
             );
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareRollback:plan:",
                 &[unit, v.plan(b"rollback", unit, next, generation)],
             );
-            let rejected = v.call(cg, b"commitPreparedRollback:", &[token]);
+            let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
             assert_eq!(
                 v.call(rejected, b"kind", &[]),
                 v.sym(b"injectedCleanupFailure")
@@ -549,15 +575,21 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
                 failure.helper.get()
             );
-            assert_eq!(v.call(cg, b"reconcileCandidate:", &[unit]), unit);
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"reconcileCandidate:", &[unit]),
+                unit
+            );
             assert!(v.number(v.call(db, b"reservedCompensationFor:", &[unit])) > 0);
             let token = v.call(
-                cg,
+                v.named(b"Generation"),
                 b"prepareRollback:plan:",
                 &[unit, v.plan(b"rollback", unit, next, generation)],
             );
             assert_eq!(v.call(token, b"isError", &[]), v.named(b"false"));
-            assert_eq!(v.call(cg, b"commitPreparedRollback:", &[token]), unit);
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]),
+                unit
+            );
             assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
             assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
             assert_eq!(v.direct(b"txAdded").kind(), birnam_abi::id_protocol::UNIT);
@@ -598,15 +630,29 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 ],
             );
             assert_eq!(
-                v.call(cg, b"reconcileCandidate:", &[generation]),
+                v.call(
+                    v.named(b"Generation"),
+                    b"reconcileCandidate:",
+                    &[generation]
+                ),
                 generation
             );
             if synchronous {
                 let fresh = v.call(v.named(b"Object"), b"clone", &[]);
-                assert_eq!(v.call(cg, b"inspectCandidate:into:", &[path, fresh]), fresh);
-                assert_eq!(v.call(cg, b"mapCandidate:", &[fresh]), fresh);
+                assert_eq!(
+                    v.call(
+                        v.named(b"Generation"),
+                        b"inspectCandidate:into:",
+                        &[path, fresh]
+                    ),
+                    fresh
+                );
+                assert_eq!(
+                    v.call(v.named(b"Generation"), b"mapCandidate:", &[fresh]),
+                    fresh
+                );
                 let projected = v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"successorGenerationProjection:replacing:with:unit:",
                     &[
                         v.at(projection, 1),
@@ -617,13 +663,16 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 );
                 let changed = v.carrier(projected, generation, fresh);
                 let token = v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"prepareActivation:plan:",
                     &[fresh, v.plan(b"activate", fresh, generation, changed)],
                 );
-                assert_eq!(v.call(cg, b"commitPrepared:", &[token]), fresh);
+                assert_eq!(
+                    v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
+                    fresh
+                );
                 let token = v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"prepareRollback:plan:",
                     &[fresh, v.plan(b"rollback", fresh, changed, generation)],
                 );
@@ -633,7 +682,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                     b"removeMethod:",
                     &[Operand::object(v.sym(b"txReplace"))],
                 );
-                let rejected = v.call(cg, b"commitPreparedRollback:", &[token]);
+                let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"staleGeneration"));
                 assert_eq!(v.fact(fresh, b"state"), v.sym(b"drifted"));
                 assert_eq!(v.fact(fresh, b"rollbackAvailable"), v.named(b"false"));

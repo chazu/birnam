@@ -240,12 +240,20 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
         let generation = v.carrier(projection, nil, nil);
         v.set(v.sym(b"dispatch"), b"activeGeneration", generation);
         assert_eq!(
-            v.call(cg, b"adoptInitialGeneration:", &[generation]),
+            v.call(
+                v.named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation]
+            ),
             generation
         );
         v.call(cg, b"sealInitialGeneration", &[]);
         if running {
-            let entered = v.call(cg, b"evalPersisting:", &[v.text(b"[Codegen enterRunning]")]);
+            let entered = v.call(
+                cg,
+                b"evalPersisting:",
+                &[v.text(b"[Generation enterRunning]")],
+            );
             assert_eq!(
                 v.call(entered, b"kind", &[]),
                 v.sym(b"generationNotQuiescent")
@@ -264,8 +272,14 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 b"methodOfEntry:",
                 &[v.direct(b"retireValue")],
             )));
-            assert_eq!(v.call(cg, b"enterRunning", &[]), v.named(b"true"));
-            assert_eq!(v.call(cg, b"enterRunning", &[]), v.named(b"true"));
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"enterRunning", &[]),
+                v.named(b"true")
+            );
+            assert_eq!(
+                v.call(v.named(b"Generation"), b"enterRunning", &[]),
+                v.named(b"true")
+            );
             let rejected = v.call(
                 v.named(b"Reflect"),
                 b"defineMethod:on:as:",
@@ -310,7 +324,11 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             );
             assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
             assert_eq!(
-                v.call(cg, b"reconcileCandidate:", &[generation]),
+                v.call(
+                    v.named(b"Generation"),
+                    b"reconcileCandidate:",
+                    &[generation]
+                ),
                 generation
             );
         }
@@ -328,13 +346,13 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             let path_object = v.text(path.as_os_str().as_bytes());
             let compiled = if *mode == "synchronous" {
                 v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"compileCandidate:named:output:selection:",
                     &[source, v.sym(b"txFixture"), path_object, v.vector(&[])],
                 )
             } else {
                 v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"compileCandidate:named:output:",
                     &[source, v.sym(b"txFixture"), path_object],
                 )
@@ -342,15 +360,22 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             assert_eq!(compiled, path_object);
             let unit = v.call(v.named(b"Object"), b"clone", &[]);
             assert_eq!(
-                v.call(cg, b"inspectCandidate:into:", &[path_object, unit]),
+                v.call(
+                    v.named(b"Generation"),
+                    b"inspectCandidate:into:",
+                    &[path_object, unit]
+                ),
                 unit
             );
             if *mode != "unmapped" {
-                assert_eq!(v.call(cg, b"mapCandidate:", &[unit]), unit);
+                assert_eq!(
+                    v.call(v.named(b"Generation"), b"mapCandidate:", &[unit]),
+                    unit
+                );
             }
             let artifact = std::fs::read(&path).unwrap();
             std::fs::write(&path, b"new author contents").unwrap();
-            let rejected = v.call(cg, b"discardCandidate:", &[unit]);
+            let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
             assert_eq!(v.call(rejected, b"isError", &[]), v.named(b"true"));
             assert_eq!(std::fs::read(&path).unwrap(), b"new author contents");
             assert!(sidecar.exists());
@@ -359,7 +384,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             let mut held = None;
             if index >= 2 {
                 let projected = v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"successorGenerationProjection:replacing:with:unit:",
                     &[
                         v.at(projection, 1),
@@ -370,11 +395,11 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 );
                 let next = v.carrier(projected, generation, unit);
                 let token = v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"prepareActivation:plan:",
                     &[unit, v.plan(b"activate", unit, generation, next)],
                 );
-                let rejected = v.call(cg, b"discardCandidate:", &[unit]);
+                let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 assert!(path.exists() && sidecar.exists());
                 if *mode == "callback" {
@@ -403,13 +428,16 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     );
                     // Installing the fixture changes Id's epoch. Prepare the
                     // actual token only after that dictionary instrumentation.
-                    assert_eq!(v.call(cg, b"discardPrepared:", &[token]), unit);
+                    assert_eq!(
+                        v.call(v.named(b"Generation"), b"discardPrepared:", &[token]),
+                        unit
+                    );
                     let token = v.call(
-                        cg,
+                        v.named(b"Generation"),
                         b"prepareActivation:plan:",
                         &[unit, v.plan(b"activate", unit, generation, next)],
                     );
-                    let rejected = v.call(cg, b"commitPrepared:", &[token]);
+                    let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
                     send(
                         id,
                         store_vt,
@@ -422,14 +450,21 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                         assert_eq!(rejected, unit);
                         assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 20);
                         let rollback = v.call(
-                            cg,
+                            v.named(b"Generation"),
                             b"prepareRollback:plan:",
                             &[unit, v.plan(b"rollback", unit, next, generation)],
                         );
-                        assert_eq!(v.call(cg, b"commitPreparedRollback:", &[rollback]), unit);
+                        assert_eq!(
+                            v.call(
+                                v.named(b"Generation"),
+                                b"commitPreparedRollback:",
+                                &[rollback]
+                            ),
+                            unit
+                        );
                         assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
                         v.clear();
-                        let receipt = v.call(cg, b"discardCandidate:", &[unit]);
+                        let receipt = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
                         assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
                         continue;
                     }
@@ -439,13 +474,16 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
                     assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
                     v.clear();
-                    let receipt = v.call(cg, b"discardCandidate:", &[unit]);
+                    let receipt = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
                     assert_eq!(v.call(receipt, b"logical", &[]), v.sym(b"discarded"));
                     assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
                     continue;
                 }
-                assert_eq!(v.call(cg, b"commitPrepared:", &[token]), unit);
-                let rejected = v.call(cg, b"discardCandidate:", &[unit]);
+                assert_eq!(
+                    v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
+                    unit
+                );
+                let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 let method = v.keep(object(send(
                     id,
@@ -455,15 +493,22 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 )));
                 held = Some((method, retain(id, v.named(b"Roots"), method)));
                 let rollback = v.call(
-                    cg,
+                    v.named(b"Generation"),
                     b"prepareRollback:plan:",
                     &[unit, v.plan(b"rollback", unit, next, generation)],
                 );
-                assert_eq!(v.call(cg, b"commitPreparedRollback:", &[rollback]), unit);
+                assert_eq!(
+                    v.call(
+                        v.named(b"Generation"),
+                        b"commitPreparedRollback:",
+                        &[rollback]
+                    ),
+                    unit
+                );
                 assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
             }
             v.clear();
-            let receipt = v.call(cg, b"discardCandidate:", &[unit]);
+            let receipt = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
             assert_eq!(v.call(receipt, b"generation", &[]), unit);
             assert_eq!(v.call(receipt, b"logical", &[]), v.sym(b"discarded"));
             assert_eq!(v.fact(unit, b"state"), v.sym(b"discarded"));
@@ -476,25 +521,33 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     v.call(receipt, b"reason", &[]),
                     v.sym(b"codeGenerationPinned")
                 );
-                assert_eq!(v.number(v.call(cg, b"retainedGenerationCount", &[])), 1);
-                assert!(v.number(v.call(cg, b"retainedGenerationBytes", &[])) > 0);
+                assert_eq!(
+                    v.number(v.call(v.named(b"Generation"), b"retainedGenerationCount", &[])),
+                    1
+                );
+                assert!(
+                    v.number(v.call(v.named(b"Generation"), b"retainedGenerationBytes", &[])) > 0
+                );
                 assert_eq!(v.number(v.call(method, b"invokeOn:", &[v.integer(1)])), 20);
                 release(id, v.named(b"Roots"), token);
             } else {
                 assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
                 assert_eq!(v.call(receipt, b"reason", &[]), nil);
             }
-            let rejected = v.call(cg, b"discardCandidate:", &[unit]);
+            let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
             assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"invalidCandidate"));
             v.clear();
             collect(id, v.named(b"GC"));
             send(id, v.named(b"TCC"), b"checkpoint", &[]);
             assert_eq!(
-                v.number(v.call(cg, b"retainedGenerationCount", &[])),
+                v.number(v.call(v.named(b"Generation"), b"retainedGenerationCount", &[])),
                 0,
                 "{mode}"
             );
-            assert_eq!(v.number(v.call(cg, b"retainedGenerationBytes", &[])), 0);
+            assert_eq!(
+                v.number(v.call(v.named(b"Generation"), b"retainedGenerationBytes", &[])),
+                0
+            );
         }
         v.clear();
         release(id, v.named(b"Roots"), projection_root);

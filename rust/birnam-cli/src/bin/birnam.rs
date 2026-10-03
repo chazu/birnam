@@ -123,7 +123,7 @@ fn run() -> Result<(), String> {
                 },
             )
             .map_err(|e| e.to_string())?;
-            let checked = match host.check_project(&options.directory) {
+            let checked = match host.project().check_project(&options.directory) {
                 Ok(checked) => checked,
                 Err(error) => {
                     if options.format == command::OutputFormat::Json {
@@ -181,7 +181,7 @@ fn run() -> Result<(), String> {
                 },
             )
             .map_err(|e| e.to_string())?;
-            let result = host
+            let result = host.project()
                 .fetch_project_dependencies(&options.directory)
                 .map_err(|e| e.to_string())?;
             println!(
@@ -204,8 +204,8 @@ fn run() -> Result<(), String> {
                 },
             )
             .map_err(|e| e.to_string())?;
-            let build = host
-                .build_project(&birnam_host::ProjectBuildRequest {
+            let build = host.project()
+                .build_project(&birnam_host::project::ProjectBuildRequest {
                     start: &options.directory,
                     target: "aarch64-macos",
                     profile: &options.profile,
@@ -240,17 +240,17 @@ fn run() -> Result<(), String> {
             )
             .map_err(|e| e.to_string())?;
             let build = if options.build {
-                host.build_project(&birnam_host::ProjectBuildRequest {
+                host.project().build_project(&birnam_host::project::ProjectBuildRequest {
                     start: &options.directory,
                     target: "aarch64-macos",
                     profile: &options.profile,
                     tool_version: VERSION.trim(),
                 })
             } else {
-                host.locate_project_build(&options.directory, &options.profile)
+                host.project().locate_project_build(&options.directory, &options.profile)
             }
             .map_err(|e| e.to_string())?;
-            let count = host
+            let count = host.project()
                 .install_project_build(&build, &resources.lib_dir)
                 .map_err(|e| e.to_string())?;
             println!(
@@ -274,7 +274,7 @@ fn run() -> Result<(), String> {
             )
             .map_err(|e| e.to_string())?;
             if options.build {
-                host.build_project(&birnam_host::ProjectBuildRequest {
+                host.project().build_project(&birnam_host::project::ProjectBuildRequest {
                     start: &options.directory,
                     target: "aarch64-macos",
                     profile: &options.profile,
@@ -282,7 +282,7 @@ fn run() -> Result<(), String> {
                 })
                 .map_err(|e| e.to_string())?;
             }
-            let (root, sources) = host
+            let (root, sources) = host.project()
                 .project_test_sources(&options.directory)
                 .map_err(|e| e.to_string())?;
             let executable = env::current_exe().map_err(|e| e.to_string())?;
@@ -312,7 +312,7 @@ fn run() -> Result<(), String> {
                 },
             )
             .map_err(|e| e.to_string())?;
-            host.run_project_test_source(
+            host.project().run_project_test_source(
                 &options.project_root,
                 &options.test_source,
                 &options.profile,
@@ -334,15 +334,15 @@ fn run() -> Result<(), String> {
                 },
             )
             .map_err(|e| e.to_string())?;
-            host.run_project(
-                &birnam_host::RunOptions {
+            host.project().run_project(
+                &birnam_host::project::RunOptions {
                     directory: options.directory,
                     build: options.build,
                     profile: options.profile,
                     repl: options.repl.map(|r| match r {
-                        command::ReplMode::None => birnam_host::ReplMode::None,
-                        command::ReplMode::Tty => birnam_host::ReplMode::Tty,
-                        command::ReplMode::Socket => birnam_host::ReplMode::Socket,
+                        command::ReplMode::None => birnam_host::project::ReplMode::None,
+                        command::ReplMode::Tty => birnam_host::project::ReplMode::Tty,
+                        command::ReplMode::Socket => birnam_host::project::ReplMode::Socket,
                     }),
                     socket_bind: options.socket_bind,
                     socket_port: options.socket_port,

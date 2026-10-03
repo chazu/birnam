@@ -1,7 +1,9 @@
 # Source compiler over Id
 
-Codegen consumes Lang CST messages, retains the existing pure lowering and slot
-coloring, and emits typed native entries using live Id messages. `compile:` returns
+Codegen consumes Lang CST messages and produces canonical portable programs and
+compiler metadata. [Generation](../birnam-generation/README.md) owns publication,
+rollback, source registration and image recovery. Codegen calls the separately loaded [NativeBackend](../birnam-native-backend/README.md)
+through Id for native emission, slot coloring and descriptors. `compile:` returns
 an owned resumable Method, `eval:` runs it on a real Machine, and `emit:` returns
 the generated C String. TCC compiles and owns each Unit; its initializer consumes
 Namespace and the Unit owner through the existing native module ABI.
@@ -83,7 +85,7 @@ Registry comparisons use current Symbol/String messages, without a state borrow
 across sends; reentrant additions are observed before publication. Identical source
 bytes return the incoming source while retaining the first registered Object.
 Different bytes, mismatched names, malformed revisions and closed registration
-answer nil with the existing diagnostic. `moduleSourceFor:` reads this registry.
+answer nil with the existing diagnostic. `moduleSourceFor:` asks Generation for this registry.
 Image now restores it and its closed-registration flag through a staged owner
 exchange; candidate source-generation replacement uses the lifecycle below.
 
@@ -135,7 +137,7 @@ source consumers and Store-backed Globals. Generated source reads and writes now
 use that same Globals protocol, including Store history and query visibility.
 Reflect now publishes through Store's receiver-based MOP hooks and owned Execution Methods. Staged
 compiler publication and compensation use the candidate/ledger messages described
-below; the old Store native tables are gone.
+in [Generation](../birnam-generation/README.md); the old Store native tables are gone.
 
 
 ## First allocation-elision producer
@@ -191,7 +193,7 @@ requirement to restore the old architecture:
   compensation and materialization algorithms. Portable materialization is now
   reconnected below, and Image now stages owned Methods and source registration
   with Store-state compensation. Candidate activation, rollback, drift detection
-  and retirement now run through the message-based lifecycle described below.
+  and retirement now run through the message-based lifecycle in [Generation](../birnam-generation/README.md).
   Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
   and sibling `code_bindings.rs`, `materialization_cache.rs`, `state_contract.rs`
   and `finalizer_tests.rs` remain in the same Git tree. Reconnect only the behavior
@@ -255,7 +257,7 @@ not an OS-loadable Mach-O library. Native kernel dylibs keep their separate ABI.
 those same bytes to `TCC loadObject:`. It checks kind, capability and already-loaded
 requirements, initializes an owned Method/source/metadata/adapter record, validates source identity
 and digests, and runs the Method on a Machine. Successfully activated, revision-indexable modules enter
-Codegen's source registry. Artifact dependency discovery preserves the broader
+Generation's source registry. Artifact dependency discovery preserves the broader
 historical syntactic declaration scan, independently of revision admission. Conflicting sources and sealed registration fail before
 user initialization. Errors and native failures propagate; nil means unsuccessful
 activation. Ordinary user initialization is not a rollback transaction.
@@ -298,86 +300,5 @@ Sources remain rooted across callbacks, and a registry change during constructio
 rejects the mixed snapshot. The native `generation` test covers deterministic
 bytes, inert construction, collecting factories and reentrant registration.
 
-The pure generation algebra in Codegen retains the frozen dispatch-base digest,
-selection composition/replacement, dependency ordering and residual-initializer
-checks. Candidates compile to checked object bundles with source and selection
-metadata. Inspection retains an immutable byte snapshot; mapping relocates that
-snapshot without recompiling or publishing methods and Globals. The native
-`candidate` test exercises both synchronous and resumable selections, captured
-helpers, collection and author-file changes after inspection.
-
-`prepareActivation:plan:` copies the publication plan, checks the full successor
-projection and stable target ownership, and roots exact direct bindings and
-projected Globals. Preparation runs no candidate factory. Numeric Store basis
-and Id behavior epoch checks reject changes during callbacks; monotonic tokens
-are consumed by `discardPrepared:`, releasing preparation-only roots.
-
-`adoptInitialGeneration:` records a canonical initial source/selection snapshot
-and live portable bindings once. Adoption rejects unavailable targets, missing
-or unexpected bindings, and portable Method bodies that differ from the final
-source definition in dependency order, including aliases of one dictionary.
-Comparison preserves lexical captures and the literal compile-time embedding
-rewrite without reopening assets. Capture-free projected global Blocks must also
-match the final source definition; missing, non-Block, captured or different-body
-values cannot establish the initial ledger. Dependency overrides are compared
-against the last definition. The transient ledger retains these Globals and
-displaced Methods for inverse operations. Preparation checks
-the complete ledger; `reconcileCandidate:` rejects drift without adopting the new
-binding. Unrelated Store facts remain outside that ledger. Repeating initial
-adoption validates the original snapshot and cannot clear an observed divergence.
-
-`commitPrepared:` and `commitPreparedRollback:` consume their token on every
-attempt and require Execution's quiescent native boundary. Candidate construction
-runs once and retains the exact helpers and Methods across publication retries.
-Tracked method changes, projected Globals and lifecycle facts use inverse journals;
-Store reservations cover forward publication, compensation and rollback. A failure
-after mutation restores candidate-owned changes while retaining unrelated callback
-facts. Successful publication switches the source registry and complete binding
-ledger together. The `generation_transaction` test covers synchronous/resumable
-activation, replacement/addition/removal, failure compensation and exact rollback.
-
-`fulfillEvolutionIntent:` admits an EvolutionIntent only at Execution's idle
-boundary, then scopes permission for its authored `fulfill` policy to commit.
-Running Machines and nested fulfillment cannot enter that scope; native failures
-and returned Errors always close it. Preparation Errors flow unchanged through
-the commit selectors so policy can commit immediately without constructing new
-branch Blocks between token creation and validation.
-
-Installed Host and published-project console tests exercise authored activation
-and exact rollback. Image stages suspend all old candidate capabilities before
-publication and retain their roots for compensation. After restoring dispatch,
-`recoverPortableImageGeneration:` enters the authored composition policy;
-`adoptComposedGeneration:` is available only in that dynamic recovery scope and
-validates the composition identity, source/selection authority and rollback-free
-components before rebuilding the live ledger. Failure restores the prior caches;
-success releases their roots.
-
-`discardCandidate:` rejects active, prepared and rollback-reachable candidates,
-removes only the admitted author-file contents, and publishes the discarded state
-before releasing native roots. A process-local `DiscardReceipt` separates logical
-discard from physical disposition. Live Methods, Blocks and Machines retain their
-Units through Execution; GC and TCC reclaim them at an idle checkpoint. Weak TCC
-mapping identities drive `retainedGenerationCount` and `retainedGenerationBytes`
-without themselves keeping code alive. File removal is retryable but is outside
-Store compensation: a failed discard can leave one or both author files removed.
-
-Generation adoption registers Codegen with Store's completed method-mutation hook.
-Ordinary tracked edits of managed bindings publish drift immediately; raw Id edits
-remain detectable by explicit reconciliation. Candidate transactions acknowledge
-only their exact expected method mutation, so callback edits cannot hide inside a
-publication scope. A compensated transaction preserves any observed foreign drift.
-Image save validates the managed ledger before taking its snapshot and before
-publishing the file. Drift cannot be saved under an unchanged managed source identity. Host calls `enterRunning` at an idle boundary before console, socket, image-main
-and worker entry. Store's existing authorization callback then rejects ordinary
-method installation/removal. Reflect rejects before compiling an adapter or
-specializing a target. A candidate's exact publication admits one Store mutation;
-a nested callback cannot reuse that permission. Image publication has its own
-recovery extent, and neither extent leaves an ambient permission behind.
-
-The native `materialization` test also retains a reflected Method after its source
-Block is released, transfers ownership to an alias binding on another Block,
-and removes that final binding. Source, synchronous and resumable cases each run
-three cycles; both live TCC Unit counts and relocated native bytes return to the
-receiver baseline, then to zero after releasing the receiver. This replaces
-`scripts/method-unit-lifetime-smoke.sh` and requires TCC resource metrics, enabled
-by `scripts/native-message-test.sh`.
+Publication, candidate mapping, ledgers, rollback and retirement are documented
+with their owner in [Generation](../birnam-generation/README.md).

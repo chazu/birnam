@@ -1,0 +1,57 @@
+use crate::{HostError, HostRuntime, Resources, StartupPolicy};
+use birnam_abi::id_protocol::Operand;
+use std::{os::unix::ffi::OsStrExt, path::Path};
+impl HostRuntime {
+    pub fn start_image(r: &Resources, p: StartupPolicy, path: &Path) -> Result<Self, HostError> {
+        let h = Self::start_native(r, p.precise_gc)?;
+        h.load_image(path)?;
+        Ok(h)
+    }
+    pub fn start_image_rebuilding(
+        r: &Resources,
+        p: StartupPolicy,
+        path: &Path,
+    ) -> Result<Self, HostError> {
+        let h = Self::start_native(r, p.precise_gc)?;
+        h.load_image_mode(path, true, false)?;
+        Ok(h)
+    }
+    pub fn start_image_bytes(
+        r: &Resources,
+        p: StartupPolicy,
+        bytes: &[u8],
+    ) -> Result<Self, HostError> {
+        let h = Self::start_native(r, p.precise_gc)?;
+        let q = h.scope();
+        let bytes = q.string(bytes)?;
+        h.call(b"HostEntry", b"loadImageBytes:", &[Operand::object(bytes)])?;
+        drop(q);
+        Ok(h)
+    }
+    pub(crate) fn load_image(&self, path: &Path) -> Result<(), HostError> {
+        self.load_image_mode(path, false, false)
+    }
+    pub(crate) fn load_image_mode(&self, path: &Path, rebuild: bool, compiled: bool) -> Result<(), HostError> {
+        let q = self.scope();
+        let path = q.string(path.as_os_str().as_bytes())?;
+        self.call(
+            b"HostEntry",
+            b"loadImage:rebuild:compiled:",
+            &[
+                Operand::object(path),
+                Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),
+                Operand::object(self.named(if compiled { b"true" } else { b"false" })?),
+            ],
+        )
+    }
+    pub fn run_image_main(&self) -> Result<(), HostError> {
+        self.call(b"HostEntry", b"imageMain", &[])
+    }
+    pub fn image_has_main(&self) -> Result<bool, HostError> {
+        let q = self.scope();
+        Ok(self
+            .context
+            .owner_call(&q, b"HostEntry", b"imageHasMain", &[])?
+            == self.named(b"true")?)
+    }
+}

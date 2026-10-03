@@ -1232,13 +1232,13 @@ let analysisThreadedSpecialSelectors := {
 // -- request/notification handlers --------------------------------------------
 
 [Reflect defineMethod: #loadProjectSnapshotFor: on: Lsp as: [:self :uri |
-  [[Globals includes: #Project]
+  [[[Reflect globalNamed: #HostProject] notNil]
     ifTrue: [|
-      let snapshot := [Project snapshotForUri: uri];
+      let snapshot := [HostProject snapshotForUri: uri];
       [[snapshot isNil] ifTrue: [| nil] ifFalse: [| snapshot]]]
     ifFalse: [| nil]]
   ] doc:
-  "Asks the host-side shared Project resolver for a native snapshot for `uri`; answers a map or nil when the bridge is unavailable." ];
+  "Asks the host-side shared Project resolver for a native snapshot for `uri`; answers a map or nil when the native owner is unavailable." ];
 
 [Reflect defineMethod: #projectRootsMap on: Lsp as: [:self |
   [[db cellFor: self attr: #projectRoots] value]
@@ -1279,11 +1279,11 @@ let analysisThreadedSpecialSelectors := {
   "Answers the read-only authored-source index cache keyed by project root." ];
 
 [Reflect defineMethod: #pathForUri: on: Lsp as: [:self :uri |
-  [[Globals includes: #Project]
-    ifTrue: [| [Project pathForUri: uri]]
+  [[[Reflect globalNamed: #HostProject] notNil]
+    ifTrue: [| [HostProject pathForUri: uri]]
     ifFalse: [| nil]]
   ] doc:
-  "Asks the host project bridge to decode a document URI into its filesystem path." ];
+  "Asks the read-only native project owner to decode a document URI into its filesystem path." ];
 
 [Reflect defineMethod: #uriForPath: on: Lsp as: [:self :path |
   let found := [nil asCell];

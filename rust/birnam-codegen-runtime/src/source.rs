@@ -1,13 +1,10 @@
-//! Source registration and loader-facing evaluation. State belongs to Codegen;
+//! Source compilation and loader-facing evaluation. Registration belongs to Generation;
 //! parsing, values, roots and execution remain current receiver sends.
 use super::*;
 use birnam_codegen::source_revision::{self, RevisionMetadata};
-use core::cell::Cell;
 
 #[derive(Default)]
 pub(super) struct Sources {
-    pub entries: RefCell<Vec<(Oop, Oop)>>,
-    pub(super) sealed: Cell<bool>,
     error: RefCell<Option<Vec<u8>>>,
 }
 #[derive(Clone, Copy)]
@@ -211,7 +208,7 @@ pub(super) unsafe fn operation(
         match op {
             Op::InitialProjection => initial_projection(s, scope),
             Op::MethodSources => {
-                let entries = s.sources.entries.borrow().clone();
+                let entries = publication::snapshot(s, scope)?;
                 for &(name, source) in &entries {
                     scope.keep(name)?;
                     scope.keep(source)?;
@@ -236,10 +233,7 @@ pub(super) unsafe fn operation(
                     None => nil_value,
                 })
             }
-            Op::Seal => {
-                s.sources.sealed.set(true);
-                Ok(Operand::object(s.named(b"true")?))
-            }
+            Op::Seal => publication::send(s, scope, b"sealInitialGeneration", &[]),
             Op::EmbeddedFiles => {
                 let source = object(a[0])?;
                 let mut paths = Vec::new();
@@ -279,75 +273,19 @@ pub(super) unsafe fn operation(
                 )?))
             }
             Op::Record | Op::RecordCompiled | Op::Find => {
-                let is_record = matches!(op, Op::Record | Op::RecordCompiled);
-                let name_object = object(a[if is_record { 1 } else { 0 }])?;
-                let Some(name) = s.symbol_bytes(scope, name_object)? else {
-                    if is_record {
-                        s.sources.note(b"RustCodegen module name was not a Symbol");
-                    }
-                    return Ok(nil_value);
-                };
-                let recording = if is_record {
-                    let source = object(a[0])?;
-                    if matches!(op, Op::Record) {
-                        source_metadata::analyze(s, scope, source)?;
-                    }
-                    let Some((bytes, revision)) = s.revision(scope, source)? else {
-                        s.sources
-                            .note(b"RustCodegen module source is not indexable");
-                        return Ok(nil_value);
-                    };
-                    if revision.name != name {
-                        s.sources
-                            .note(b"RustCodegen module source identity does not match its name");
-                        return Ok(nil_value);
-                    }
-                    Some((source, bytes))
-                } else {
-                    None
-                };
-                // The registry is append-only. Inspect snapshots without a borrow
-                // across sends; retry if a dependency registered a new entry.
-                loop {
-                    if recording.is_some() && s.sources.sealed.get() {
-                        s.sources
-                            .note(b"RustCodegen module introduction is not available");
-                        return Ok(nil_value);
-                    }
-                    let entries = s.sources.entries.borrow().clone();
-                    let mut found = None;
-                    for &(old_name, old_source) in &entries {
-                        if s.symbol_bytes(scope, old_name)?.as_deref() == Some(name.as_slice()) {
-                            found = Some(old_source);
-                            break;
-                        }
-                    }
-                    let same = if let (Some(old), Some((_, bytes))) = (found, &recording) {
-                        s.source_bytes(scope, old)?.as_deref() == Some(bytes.as_slice())
-                    } else {
-                        false
-                    };
-                    if s.sources.entries.borrow().len() != entries.len() {
-                        continue;
-                    }
-                    if recording.is_some() && s.sources.sealed.get() {
-                        s.sources
-                            .note(b"RustCodegen module introduction is not available");
-                        return Ok(nil_value);
-                    }
-                    let Some((source, _)) = recording else {
-                        return Ok(Operand::object(found.unwrap_or(nil)));
-                    };
-                    if found.is_some() {
-                        if same {
-                            return Ok(Operand::object(source));
-                        }
-                        s.sources.note(b"RustCodegen duplicate module source");
-                        return Ok(nil_value);
-                    }
-                    s.sources.entries.borrow_mut().push((name_object, source));
-                    return Ok(Operand::object(source));
+                if matches!(op, Op::Record) {
+                    source_metadata::analyze(s, scope, object(a[0])?)?;
                 }
+                publication::send(
+                    s,
+                    scope,
+                    if matches!(op, Op::Find) {
+                        b"moduleSourceFor:"
+                    } else {
+                        b"recordCompiledSource:named:"
+                    },
+                    a,
+                )
             }
             Op::Eval | Op::EvalFrom => {
                 *s.sources.error.borrow_mut() = None;
@@ -383,9 +321,17 @@ pub(super) unsafe fn operation(
                     s.sources.note(&s.bytes(message)?);
                     return Ok(nil_value);
                 }
-                let Ok(c) = emission::compile_program_from(program, &bytes, &path) else {
-                    s.sources.note(b"RustCodegen could not emit the source");
-                    return Ok(nil_value);
+                let c = match backend::emit(
+                    s,
+                    scope,
+                    &Request::program(program, &bytes, &path).ok_or_else(invalid)?,
+                ) {
+                    Ok(c) => c,
+                    Err(backend::Failure::Native(e)) => return Err(e),
+                    Err(backend::Failure::Rejected(_)) => {
+                        s.sources.note(b"RustCodegen could not emit the source");
+                        return Ok(nil_value);
+                    }
                 };
                 let unit = s.native_unit(scope, &c)?;
                 if unit == nil || s.is_error(unit)? {
@@ -434,7 +380,7 @@ unsafe fn reflect_revision(
 unsafe fn initial_projection(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
     use birnam_codegen::{artifact_stackless_selection::Disposition, generation as g};
     unsafe {
-        let snapshot = s.sources.entries.borrow().clone();
+        let snapshot = publication::snapshot(s, q)?;
         for &(name, source) in &snapshot {
             q.keep(name)?;
             q.keep(source)?;
@@ -463,12 +409,19 @@ unsafe fn initial_projection(s: &State, q: &Scope<'_>) -> Result<Operand, Outcom
         let selection =
             g::generation_selection_with_overrides(&modules, &[], Disposition::ResumableRequired)
                 .ok_or_else(invalid)?;
+        let descriptor_hashes = backend::hashes(
+            s,
+            q,
+            modules
+                .iter()
+                .flat_map(|m| m.metadata.operations.iter().map(|o| o.selector.as_slice())),
+        )?;
         let authority =
             g::dispatch_generation_authority_with(&modules, &selection, |module, index, _| {
-                let descriptor =
-                    emission::named_descriptor(&module.metadata.operations.get(index)?.selector)
-                        .ok()?;
-                Some(g::sha256_raw(&descriptor))
+                descriptor_hashes
+                    .get(&module.metadata.operations.get(index)?.selector)
+                    .copied()
+                    .flatten()
             })
             .ok_or_else(invalid)?;
         let source_map = s.vector(q, &rows)?;
@@ -478,7 +431,7 @@ unsafe fn initial_projection(s: &State, q: &Scope<'_>) -> Result<Operand, Outcom
         let result = s.vector(q, &[tag, source_map, digest, selection])?;
         // Callbacks may register another module or swap image sources while we
         // build reflected values. Reject a mixed snapshot, never seal it.
-        if *s.sources.entries.borrow() != snapshot {
+        if publication::snapshot(s, q)? != snapshot {
             return s.error(q, b"generation sources changed during projection");
         }
         Ok(Operand::object(result))

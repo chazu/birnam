@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 pub struct Plan {
     pub programs: usize,
     pub bindings: usize,
-    pub sources: Vec<Vec<u8>>,
+    pub requests: Vec<crate::backend_request::Request>,
     authority: [u8; 32],
 }
 
@@ -19,9 +19,9 @@ mod tests {
         let selection =
             include_bytes!("../../../tests/fixtures/portable-code-v1/selection-mixed.bin");
         let plan = Plan::new(programs, bindings, selection, false).unwrap();
-        assert!(plan.sources.iter().all(Vec::is_empty));
-        assert_eq!(plan.sources.len(), 2 * plan.programs + plan.bindings);
-        let objects = vec![b"trusted object".to_vec(); plan.sources.len()];
+        // Constructing this plan now produces canonical requests, never C.
+        assert_eq!(plan.requests.len(), 2 * plan.programs + plan.bindings);
+        let objects = vec![b"trusted object".to_vec(); plan.requests.len()];
         let encoded = plan.encode(&objects).unwrap();
         assert_eq!(plan.decode(&encoded), Some(objects));
         for n in 0..encoded.len() {
@@ -36,7 +36,7 @@ mod tests {
     }
 }
 impl Plan {
-    pub fn new(programs: &[u8], bindings: &[u8], selection: &[u8], emit: bool) -> Option<Self> {
+    pub fn new(programs: &[u8], bindings: &[u8], selection: &[u8], _emit: bool) -> Option<Self> {
         let p = portable_inventory::inspect(programs).ok()?;
         let b = code_binding_inventory::inspect(bindings).ok()?;
         materialization_selection::inspect(selection, programs, bindings).ok()?;
@@ -45,38 +45,19 @@ impl Plan {
             hash.update((bytes.len() as u64).to_le_bytes());
             hash.update(bytes);
         }
-        let mut sources = Vec::new();
-        if emit {
-            for i in 0..p.program_count as usize {
-                let program = p.program(i)?;
-                sources.push(crate::native::compile_portable(program, &[]).ok()?);
-                sources.push(crate::native::compile_portable_synchronous(program).ok()?);
-            }
-            for i in 0..b.binding_count as usize {
-                sources.push(crate::native::compile_named(b.binding(i)?.arity).ok()?);
-            }
-        } else {
-            sources.resize(
-                2 * p.program_count as usize + b.binding_count as usize,
-                Vec::new(),
-            );
-        }
-        if sources
-            .iter()
-            .try_fold(0usize, |n, s| n.checked_add(s.len()))?
-            > 128 << 20
-        {
-            return None;
-        }
+        use crate::backend_request::Request;
+        let mut requests=Vec::new();
+        for i in 0..p.program_count as usize {for synchronous in [false,true]{requests.push(Request::Program{program:p.program(i)?.to_vec(),source:vec![],filename:b"<compiler>".to_vec(),persistent:false,synchronous});}}
+        for i in 0..b.binding_count as usize { requests.push(Request::Named{arity:b.binding(i)?.arity,synchronous:false}); }
         Some(Self {
             programs: p.program_count as usize,
             bindings: b.binding_count as usize,
-            sources,
+            requests,
             authority: hash.finalize().into(),
         })
     }
     pub fn encode(&self, objects: &[Vec<u8>]) -> Option<Vec<u8>> {
-        if objects.len() != self.sources.len() {
+        if objects.len() != self.requests.len() {
             return None;
         }
         let mut out = b"BIRNAMO1".to_vec();
@@ -99,7 +80,7 @@ impl Plan {
             return None;
         }
         let count = u32::from_le_bytes(bytes.get(40..44)?.try_into().ok()?) as usize;
-        if count != self.sources.len() {
+        if count != self.requests.len() {
             return None;
         }
         let mut offset = 44usize;

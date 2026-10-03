@@ -1,0 +1,17 @@
+[package]
+name = "birnam-host-support"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

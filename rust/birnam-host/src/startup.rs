@@ -1,633 +1,12 @@
-#[cfg(test)]
-#[path = "host_bridge_contract.rs"]
-mod host_bridge_contract;
-#[path = "interaction.rs"]
-mod interaction;
-#[path = "project_bridge.rs"]
-mod project_bridge;
-#[path = "project_runtime.rs"]
-mod project_runtime;
-use crate::Resources;
-#[path = "project_source.rs"]
-mod project_source;
-use birnam_abi::{
-    Oop, borrowed_bytes,
-    id_protocol::{Operand, Outcome, Protocol},
-};
-pub use project_source::{ProjectSourceMetadata, ProjectSourceObservation};
-use std::{
-    cell::RefCell, env, fmt, fs, io::Read, marker::PhantomData, os::unix::ffi::OsStrExt,
-    path::Path, rc::Rc,
-};
-
-pub const MAX_SCRIPT_BYTES: u64 = 16 * 1024 * 1024;
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostError(pub String);
-impl fmt::Display for HostError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-impl std::error::Error for HostError {}
-fn native_error(operation: &str, error: Outcome) -> HostError {
-    HostError(format!(
-        "{operation}: native status={} detail={}",
-        error.status, error.detail
-    ))
-}
-fn object(value: Operand) -> Result<Oop, HostError> {
-    value
-        .as_object()
-        .filter(|o| !o.is_null())
-        .ok_or_else(|| HostError("expected an object result".into()))
-}
-#[derive(Clone, Copy, Debug, Default)]
-pub struct StartupPolicy {
-    pub skip_stdlib: bool,
-    pub precise_gc: bool,
-    pub source_bootstrap: bool,
-    pub tool_bootstrap: bool,
-}
-impl StartupPolicy {
-    pub fn from_environment() -> Self {
-        Self {
-            skip_stdlib: env::var_os("BIRNAM_NO_STDLIB").is_some(),
-            precise_gc: env::var_os("BIRNAM_GC_PRECISE").is_some(),
-            source_bootstrap: env::var_os("BIRNAM_FORCE_SOURCE").is_some(),
-            tool_bootstrap: false,
-        }
-    }
-}
-
-// No Oop escapes the host API. Each scope retains intermediates before any
-// subsequent send, then releases them on success and on every error path.
-struct Scope<'a> {
-    host: &'a HostRuntime,
-    tokens: RefCell<Vec<usize>>,
-}
-impl Scope<'_> {
-    fn keep(&self, value: Operand) -> Result<Oop, HostError> {
-        let o = object(value)?;
-        let token = self
-            .host
-            .send(self.host.roots, b"retain:", &[Operand::object(o)])?
-            .as_word()
-            .ok_or_else(|| HostError("Roots retain: expected token".into()))?;
-        self.tokens.borrow_mut().push(token);
-        Ok(o)
-    }
-    fn call(&self, receiver: Oop, name: &[u8], arguments: &[Operand]) -> Result<Oop, HostError> {
-        self.keep(self.host.send(receiver, name, arguments)?)
-    }
-    fn string(&self, bytes: &[u8]) -> Result<Oop, HostError> {
-        self.call(
-            self.host.named(b"String")?,
-            b"fromBytes:",
-            &[Operand::bytes(bytes)],
-        )
-    }
-    fn text(&self, o: Oop) -> Result<String, HostError> {
-        let b = self
-            .host
-            .send(o, b"bytes", &[])?
-            .as_bytes()
-            .ok_or_else(|| HostError("expected diagnostic bytes".into()))?;
-        // Copy the borrow before another message can collect its owner.
-        let bytes = unsafe { borrowed_bytes(b.pointer, b.length) }
-            .ok_or_else(|| HostError("invalid diagnostic bytes".into()))?;
-        Ok(String::from_utf8_lossy(bytes).into_owned())
-    }
-    fn evaluate(&self, source: &[u8], path: &Path, module: Option<&[u8]>) -> Result<(), HostError> {
-        let cg = self.host.named(b"Codegen")?;
-        let source = self.string(source)?;
-        if let Some(name) = module {
-            let name = unsafe { self.host.id.intern_name(name) }
-                .map_err(|e| native_error("intern module", e))?;
-            let recorded = self.call(
-                cg,
-                b"recordModuleSource:named:",
-                &[Operand::object(source), Operand::object(name)],
-            )?;
-            self.check(cg, recorded)?;
-        }
-        let path = self.string(path.as_os_str().as_bytes())?;
-        let result = self.call(
-            cg,
-            b"evalPersisting:from:",
-            &[Operand::object(source), Operand::object(path)],
-        )?;
-        self.check(cg, result)?;
-        if module.is_none() {
-            let result = self.fulfill_intent(result)?;
-            self.check_result(result)?;
-        }
-        Ok(())
-    }
-    fn fulfill_intent(&self, value: Oop) -> Result<Oop, HostError> {
-        let intents = self.host.global(self, b"EvolutionIntent")?;
-        if intents == self.host.named(b"nil")?
-            || self.call(intents, b"isIntent:", &[Operand::object(value)])?
-                != self.host.named(b"true")?
-        {
-            return Ok(value);
-        }
-        self.call(
-            self.host.named(b"Codegen")?,
-            b"fulfillEvolutionIntent:",
-            &[Operand::object(value)],
-        )
-    }
-    fn check(&self, cg: Oop, result: Oop) -> Result<(), HostError> {
-        let diagnostic = self.call(cg, b"lastError", &[])?;
-        if diagnostic != self.host.named(b"nil")? {
-            return Err(HostError(self.text(diagnostic)?));
-        }
-        self.check_result(result)
-    }
-    fn check_result(&self, result: Oop) -> Result<(), HostError> {
-        if self.call(result, b"isError", &[])? == self.host.named(b"true")? {
-            let message = self.call(result, b"message", &[])?;
-            if message == self.host.named(b"nil")? {
-                let kind = self.call(result, b"kind", &[])?;
-                return Err(HostError(format!("error(#{})", self.symbol_text(kind)?)));
-            }
-            return Err(HostError(self.text(message)?));
-        }
-        Ok(())
-    }
-}
-impl Drop for Scope<'_> {
-    fn drop(&mut self) {
-        for token in self.tokens.get_mut().drain(..).rev() {
-            let _ = self
-                .host
-                .send(self.host.roots, b"release:", &[Operand::word(token)]);
-        }
-    }
-}
-
-pub struct HostRuntime {
-    id: Protocol,
-    namespace: Oop,
-    roots: Oop,
-    namespace_token: usize,
-    resources: Resources,
-    // Protocol owners and loaded native images live for the process. Host
-    // operations and root release must stay on the creating thread.
-    _owner_thread: PhantomData<Rc<()>>,
-}
+use crate::{Resources,StartupPolicy,runtime::{HostError,HostRuntime}};
+use birnam_abi::id_protocol::Operand;
+#[cfg(test)]use crate::runtime::object;
+#[cfg(test)]use birnam_abi::{Oop,id_protocol::{Outcome,Protocol}};
+#[cfg(test)]use std::{env,path::Path,os::unix::ffi::OsStrExt};
 impl HostRuntime {
-    fn send(&self, receiver: Oop, name: &[u8], args: &[Operand]) -> Result<Operand, HostError> {
-        unsafe { self.id.send_named(receiver, name, args) }
-            .map_err(|e| native_error(&String::from_utf8_lossy(name), e))
-    }
-    fn named(&self, name: &[u8]) -> Result<Oop, HostError> {
-        let symbol =
-            unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern name", e))?;
-        object(self.send(self.namespace, b"at:", &[Operand::object(symbol)])?)
-    }
-    fn scope(&self) -> Scope<'_> {
-        Scope {
-            host: self,
-            tokens: RefCell::new(Vec::new()),
-        }
-    }
-    fn start_native(resources: &Resources, precise_gc: bool) -> Result<Self, HostError> {
-        let id = birnam_siphon::load(resources.id_dylib.as_os_str().as_bytes()).map_err(
-            |(status, detail)| {
-                HostError(format!(
-                    "load {}: native status={status} detail={detail}",
-                    resources.id_dylib.display()
-                ))
-            },
-        )?;
-        let bootstrap = resources.lib_dir.join("libbirnam_bootstrap.dylib");
-        let namespace = object(
-            unsafe {
-                id.send(
-                    id.receiver,
-                    id.load,
-                    &[
-                        Operand::bytes(bootstrap.as_os_str().as_bytes()),
-                        Operand::bytes(resources.lib_dir.as_os_str().as_bytes()),
-                    ],
-                )
-            }
-            .map_err(|e| native_error(&format!("load {}", bootstrap.display()), e))?,
-        )?;
-        let roots_name =
-            unsafe { id.intern_name(b"Roots") }.map_err(|e| native_error("intern Roots", e))?;
-        let roots = object(
-            unsafe { id.send_named(namespace, b"at:", &[Operand::object(roots_name)]) }
-                .map_err(|e| native_error("find Roots", e))?,
-        )?;
-        let token = unsafe { id.send_named(roots, b"retain:", &[Operand::object(namespace)]) }
-            .map_err(|e| native_error("retain namespace", e))?
-            .as_word()
-            .ok_or_else(|| HostError("Roots retain: expected token".into()))?;
-        let host = Self {
-            id,
-            namespace,
-            roots,
-            namespace_token: token,
-            resources: resources.clone(),
-            _owner_thread: PhantomData,
-        };
-        host.send(
-            host.named(b"GC")?,
-            b"precisePayloads:",
-            &[Operand::word(usize::from(precise_gc))],
-        )?;
-        {
-            let scope = host.scope();
-            let directory = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
-            scope.call(
-                host.named(b"Alien")?,
-                b"libraryDir:",
-                &[Operand::object(directory)],
-            )?;
-        }
-        Ok(host)
-    }
-    pub fn start(resources: &Resources, policy: StartupPolicy) -> Result<Self, HostError> {
-        let host = Self::start_native(resources, policy.precise_gc)?;
-        if !policy.skip_stdlib {
-            host.bootstrap(policy.source_bootstrap, policy.tool_bootstrap)?;
-        }
-        Ok(host)
-    }
-    pub(super) fn bootstrap(&self, source: bool, tools: bool) -> Result<(), HostError> {
-        if source {
-            return self.bootstrap_source();
-        }
-        let path = self.resources.lib_dir.join(if tools {
-            "birnam-tools.image"
-        } else {
-            "birnam-bootstrap.image"
-        });
-        self.load_image_mode(&path, false, true).map_err(|error| HostError(format!(
-            "{error}; reinstall Birnam to prepare its bootstrap image (BIRNAM_FORCE_SOURCE=1 explicitly requests source bootstrap)"
-        )))?;
-        self.rebase_module(&self.scope(), &self.resources)
-    }
-    pub(super) fn bootstrap_source(&self) -> Result<(), HostError> {
-        let host = self;
-        let scope = host.scope();
-        if host.global(&scope, b"Module")? == host.named(b"nil")? {
-            scope.evaluate(include_bytes!("../../../modules/modules.birnam"),
-                Path::new("<modules>"), Some(b"modules"))?;
-        }
-        scope.evaluate(
-            include_bytes!("../../../modules/stdlib.birnam"),
-            Path::new("<stdlib>"), Some(b"stdlib"),
-        ).map_err(|e| HostError(format!("bootstrap stdlib: {e}")))?;
-        scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
-        scope.evaluate(
-            include_bytes!("../../../modules/stackless-control.birnam"),
-            Path::new("<stacklessControl>"),
-            Some(b"stacklessControl"),
-        )?;
-        scope.evaluate(
-            b"[Module markLoaded: #stacklessControl]",
-            Path::new("<host>"),
-            None,
-        )?;
-        scope.evaluate(
-            include_bytes!("../../../modules/compiled-unit.birnam"),
-            Path::new("<compiledUnit>"),
-            Some(b"compiledUnit"),
-        )?;
-        scope.evaluate(
-            include_bytes!("../../../modules/isolate.birnam"),
-            Path::new("<isolate>"),
-            Some(b"isolate"),
-        )?;
-        let globals = host.named(b"Globals")?;
-        let name = unsafe { host.id.intern_name(b"Module") }
-            .map_err(|e| native_error("intern Module", e))?;
-        let module = scope.call(globals, b"at:", &[Operand::object(name)])?;
-        for name in [
-            "artifact",
-            "store",
-            "storage",
-            "trace",
-            "peg",
-            "tcc",
-            "codegen",
-            "prelude",
-            "collection",
-            "error",
-            "relational",
-            "image",
-            "alien",
-            "isolate",
-        ] {
-            let symbol = unsafe { host.id.intern_name(name.as_bytes()) }
-                .map_err(|e| native_error("intern kernel module", e))?;
-            scope.call(module, b"kernel:", &[Operand::object(symbol)])?;
-        }
-        let lib = scope.string(self.resources.lib_dir.as_os_str().as_bytes())?;
-        scope.call(module, b"libDir:", &[Operand::object(lib)])?;
-        let lang = unsafe { host.id.intern_name(b"lang") }.map_err(|e| native_error("intern lang", e))?;
-        scope.call(module, b"markLoaded:", &[Operand::object(lang)])?;
-        Ok(())
-    }
-    /// Restore into the native runtime without evaluating source bootstrap.
-    /// Images own their saved methods, globals and source registry.
-    pub fn start_image(
-        resources: &Resources,
-        policy: StartupPolicy,
-        path: &Path,
-    ) -> Result<Self, HostError> {
-        let host = Self::start_native(resources, policy.precise_gc)?;
-        host.load_image(path)?;
-        let scope = host.scope();
-        host.rebase_module(&scope, resources)?;
-        drop(scope);
-        Ok(host)
-    }
-    pub fn start_image_rebuilding(
-        resources: &Resources,
-        policy: StartupPolicy,
-        path: &Path,
-    ) -> Result<Self, HostError> {
-        let host = Self::start_native(resources, policy.precise_gc)?;
-        host.load_image_mode(path, true, false)?;
-        host.rebase_module(&host.scope(), resources)?;
-        Ok(host)
-    }
-    pub fn start_image_bytes(
-        resources: &Resources,
-        policy: StartupPolicy,
-        bytes: &[u8],
-    ) -> Result<Self, HostError> {
-        let host = Self::start_native(resources, policy.precise_gc)?;
-        {
-            let q = host.scope();
-            let bytes = q.string(bytes)?;
-            let result = q.call(
-                host.named(b"System")?,
-                b"loadImageBytes:rebuild:",
-                &[
-                    Operand::object(bytes),
-                    Operand::object(host.named(b"false")?),
-                ],
-            )?;
-            if result != host.named(b"true")? && result != host.named(b"false")? {
-                q.check_result(result)?;
-                return Err(HostError("baked image rejected".into()));
-            }
-            host.rebase_module(&q, resources)?;
-        }
-        Ok(host)
-    }
-    fn rebase_module(&self, scope: &Scope<'_>, resources: &Resources) -> Result<(), HostError> {
-        // The runtime library directory belongs to this executable, not the saving process.
-        let module = self.global(scope, b"Module")?;
-        if module != self.named(b"nil")? {
-            let lib = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
-            scope.call(module, b"libDir:", &[Operand::object(lib)])?;
-        }
-        Ok(())
-    }
-    /// Enter a restored worker without evaluating stdlib or global main.
-    pub fn run_worker(
-        resources: &Resources,
-        policy: StartupPolicy,
-        path: &Path,
-        receiver: &str,
-        selector: &str,
-        fd: i32,
-    ) -> Result<(), HostError> {
-        if fd < 0 {
-            return Err(HostError("worker channel must be nonnegative".into()));
-        }
-        let host = Self::start_native(resources, policy.precise_gc)?;
-        let scope = host.scope();
-        let isolate = host.named(b"Isolate")?;
-        let admission = (|| {
-            host.load_image(path)?;
-            host.rebase_module(&scope, resources)?;
-            let mut target = host.global(&scope, receiver.as_bytes())?;
-            if target == host.named(b"nil")? {
-                target = host.named(receiver.as_bytes())?;
-            }
-            scope.keep(Operand::object(target))?;
-            let selector = unsafe { host.id.intern_name(selector.as_bytes()) }
-                .map_err(|e| native_error("intern worker selector", e))?;
-            scope.keep(Operand::object(selector))?;
-            let behavior =
-                scope.call(host.id.receiver, b"behaviorOf:", &[Operand::object(target)])?;
-            if host
-                .send(behavior, b"lookup", &[Operand::object(selector)])?
-                .as_entry()
-                .is_none()
-            {
-                return Err(HostError("worker selector is not callable".into()));
-            }
-            if std::env::var("BIRNAM_TASK_SERVICE").is_ok_and(|s| s == "1")
-                && host.global(&scope, b"TaskService")? == host.named(b"nil")?
-            {
-                return Err(HostError("image has no TaskService".into()));
-            }
-            Ok((target, selector))
-        })();
-        let (target, selector) = match admission {
-            Ok(v) => v,
-            Err(e) => {
-                let kind = scope.string(b"imageAdmission")?;
-                let message = scope.string(e.0.as_bytes())?;
-                let _ = host.send(
-                    isolate,
-                    b"workerBootError:kind:message:",
-                    &[
-                        Operand::word(fd as usize),
-                        Operand::object(kind),
-                        Operand::object(message),
-                    ],
-                );
-                return Err(e);
-            }
-        };
-        host.enter_running()?;
-        let result = host.send(
-            isolate,
-            b"runWorker:receiver:selector:",
-            &[
-                Operand::word(fd as usize),
-                Operand::object(target),
-                Operand::object(selector),
-            ],
-        )?;
-        if result.as_word() == Some(0) {
-            Ok(())
-        } else {
-            Err(HostError("worker channel failed".into()))
-        }
-    }
-    fn global(&self, scope: &Scope<'_>, name: &[u8]) -> Result<Oop, HostError> {
-        let symbol =
-            unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern global", e))?;
-        scope.call(self.named(b"Globals")?, b"at:", &[Operand::object(symbol)])
-    }
-    fn load_image(&self, path: &Path) -> Result<(), HostError> {
-        self.load_image_mode(path, false, false)
-    }
-    fn load_image_mode(&self, path: &Path, rebuild: bool, mapped_only: bool) -> Result<(), HostError> {
-        let load = || -> Result<(), HostError> {
-            let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
-            if !metadata.is_file() {
-                return Err(HostError("image must be a regular file".into()));
-            }
-            let scope = self.scope();
-            let filename = scope.string(path.as_os_str().as_bytes())?;
-            let system = self.named(b"System")?;
-            let result = scope.call(
-                system,
-                if mapped_only { b"loadImageMapped:" } else { b"loadImage:rebuild:" },
-                &[
-                    Operand::object(filename),
-                    Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),
-                ][..if mapped_only { 1 } else { 2 }],
-            )?;
-            if result == self.named(b"true")? || result == self.named(b"false")? {
-                return Ok(());
-            }
-            scope.check_result(result)?;
-            let report = scope.call(system, b"imageSaveReport", &[])?;
-            let status = scope.call(report, b"status", &[])?;
-            let status = scope.call(status, b"printString", &[])?;
-            let status = scope.text(status)?;
-            let detail = scope.call(report, b"detail", &[])?;
-            Err(HostError(format!(
-                "image load {status}: {}",
-                scope.text(detail)?
-            )))
-        };
-        load().map_err(|e| HostError(format!("{}: {e}", path.display())))
-    }
-    /// Install running-phase authorization at an idle owner-thread boundary.
-    fn enter_running(&self) -> Result<(), HostError> {
-        let q = self.scope();
-        let result = q.call(self.named(b"Codegen")?, b"enterRunning", &[])?;
-        q.check_result(result)?;
-        if result != self.named(b"true")? { return Err(HostError("Codegen rejected running entry".into())); }
-        Ok(())
-    }
-    /// Enter saved main, fulfill a returned intent after its frame exits, and
-    /// checkpoint Isolate on success or failure. Nil and false remain successes.
-    pub fn run_image_main(&self) -> Result<(), HostError> {
-        self.enter_running()?;
-        let run = || -> Result<(), HostError> {
-            let scope = self.scope();
-            let main = self.global(&scope, b"main")?;
-            if main == self.named(b"nil")? {
-                return Err(HostError("image has no global main".into()));
-            }
-            let result = scope.call(main, b"value", &[])?;
-            scope.check_result(result)?;
-            let result = scope.fulfill_intent(result)?;
-            scope.check_result(result)
-        };
-        let result = run();
-        let checkpoint = self.send(self.named(b"Isolate")?, b"checkpoint", &[]);
-        result.and_then(|()| checkpoint.map(|_| ()))
-            .map_err(|e| HostError(format!("image main: {e}")))
-    }
-    pub fn eval_script(&self, path: &Path) -> Result<(), HostError> {
-        let source = read_source_file(path)?;
-        self.scope()
-            .evaluate(&source, path, None)
-            .map_err(|e| HostError(format!("{}: {e}", path.display())))
-    }
-    /// Compile to a durable native-object artifact without executing source.
-    pub fn compile_module(&self, path: &Path, output: &Path) -> Result<(), HostError> {
-        let source = read_source_file(path)?;
-        let compile = || {
-            let scope = self.scope();
-            let source = scope.string(&source)?;
-            let output = scope.string(output.as_os_str().as_bytes())?;
-            let filename = scope.string(path.as_os_str().as_bytes())?;
-            let cg = self.named(b"Codegen")?;
-            let result = scope.call(
-                cg,
-                b"compile:output:from:",
-                &[
-                    Operand::object(source),
-                    Operand::object(output),
-                    Operand::object(filename),
-                ],
-            )?;
-            scope.check(cg, result)?;
-            if result == self.named(b"nil")? {
-                return Err(HostError("artifact compilation failed".into()));
-            }
-            Ok(())
-        };
-        compile().map_err(|e: HostError| HostError(format!("{}: {e}", path.display())))
-    }
-    /// Let the authored Module manager preflight and activate the closure.
-    pub fn load_artifact(&self, path: &Path) -> Result<(), HostError> {
-        let load = || {
-            let path = fs::canonicalize(path).map_err(|e| HostError(e.to_string()))?;
-            let scope = self.scope();
-            let manager = self.global(&scope, b"Module")?;
-            if manager == self.named(b"nil")? {
-                return Err(HostError(
-                    "artifact loading requires the Module manager".into(),
-                ));
-            }
-            let directory = scope.string(
-                path.parent()
-                    .unwrap_or(Path::new("."))
-                    .as_os_str()
-                    .as_bytes(),
-            )?;
-            let configured = scope.call(manager, b"libDir:", &[Operand::object(directory)])?;
-            scope.check_result(configured)?;
-            let path = scope.string(path.as_os_str().as_bytes())?;
-            let result = scope.call(manager, b"loadArtifact:", &[Operand::object(path)])?;
-            scope.check(self.named(b"Codegen")?, result)?;
-            if result == self.named(b"nil")? {
-                return Err(HostError("artifact activation failed".into()));
-            }
-            Ok(())
-        };
-        load().map_err(|e: HostError| HostError(format!("{}: {e}", path.display())))
-    }
+ pub fn start(resources:&Resources,policy:StartupPolicy)->Result<Self,HostError>{let host=Self::start_native(resources,policy.precise_gc)?;if !policy.skip_stdlib {host.bootstrap(policy.source_bootstrap,policy.tool_bootstrap)?;}Ok(host)}
+ pub(crate) fn bootstrap(&self,source:bool,tools:bool)->Result<(),HostError>{self.call(b"HostEntry",b"bootstrap:tools:",&[Operand::object(self.named(if source{b"true"}else{b"false"})?),Operand::object(self.named(if tools{b"true"}else{b"false"})?)])}
 }
-fn read_source_file(path: &Path) -> Result<Vec<u8>, HostError> {
-    let read = || -> Result<Vec<u8>, HostError> {
-        let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
-        if !metadata.is_file() {
-            return Err(HostError("source must be a regular file".into()));
-        }
-        let mut source = Vec::new();
-        fs::File::open(path)
-            .and_then(|f| f.take(MAX_SCRIPT_BYTES + 1).read_to_end(&mut source))
-            .map_err(|e| HostError(e.to_string()))?;
-        if source.len() as u64 > MAX_SCRIPT_BYTES {
-            return Err(HostError(format!(
-                "source exceeds {MAX_SCRIPT_BYTES} bytes"
-            )));
-        }
-        Ok(source)
-    };
-    read().map_err(|e| HostError(format!("{}: {e}", path.display())))
-}
-impl Drop for HostRuntime {
-    fn drop(&mut self) {
-        if let Ok(isolate) = self.named(b"Isolate") {
-            let _ = self.send(isolate, b"shutdown", &[]);
-        }
-        let _ = self.send(
-            self.roots,
-            b"release:",
-            &[Operand::word(self.namespace_token)],
-        );
-    }
-}
-
 #[cfg(test)]
 #[path = "lifecycle_test.rs"]
 mod lifecycle_test;
@@ -661,7 +40,7 @@ mod tests {
             },
         )
         .unwrap();
-        let mut host = HostRuntime::start_native(&resources, true).unwrap();
+        let host = HostRuntime::start_native(&resources, true).unwrap();
         let fixture = env::temp_dir().join(format!("birnam-compiled-metadata-{}.o", std::process::id()));
         {
             let q = host.scope();
@@ -670,7 +49,7 @@ mod tests {
             let result = q.call(host.named(b"Codegen").unwrap(), b"compile:output:", &[Operand::object(source), Operand::object(fixture_path)]).unwrap();
             q.check_result(result).unwrap();
             assert_eq!(result, fixture_path);
-            let key = unsafe { host.id.intern_name(b"compiledSourceMetadata") }.unwrap();
+            let key = unsafe { host.context.id.intern_name(b"compiledSourceMetadata") }.unwrap();
             let metadata = q.call(host.named(b"Store").unwrap(), b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
             assert_ne!(metadata, host.named(b"nil").unwrap(), "compilation did not persist metadata");
         }
@@ -682,12 +61,15 @@ mod tests {
             (b"TCCVt", b"compileObject:"),
             (b"LangVt", b"parse:"),
             (b"PegGrammarVt", b"parse:from:"),
+            (b"NativeBackendVt", b"emit:source:filename:persistent:synchronous:"),
+            (b"NativeBackendVt", b"factory:source:dispositions:"),
+            (b"NativeBackendVt", b"named:synchronous:"),
         ] {
             let tcc = host.named(family).unwrap();
-            let selector = unsafe { host.id.intern_name(name) }.unwrap();
+            let selector = unsafe { host.context.id.intern_name(name) }.unwrap();
             let original = host
                 .send(
-                    host.id.receiver,
+                    host.context.id.receiver,
                     b"bindingOf:in:",
                     &[Operand::object(selector), Operand::object(tcc)],
                 )
@@ -697,7 +79,7 @@ mod tests {
             if family == b"LangVt" {
                 let method = host.send(host.named(b"Execution").unwrap(),
                     b"methodOfEntry:", &[Operand::entry(original)]).unwrap();
-                let token = host.send(host.roots, b"retain:", &[method]).unwrap().as_word().unwrap();
+                let token = host.send(host.context.roots, b"retain:", &[method]).unwrap().as_word().unwrap();
                 original_method_tokens.push(token);
             }
             host.send(
@@ -714,16 +96,21 @@ mod tests {
             .unwrap();
             originals.push((tcc, selector, original));
         }
-        let directory = host.resources.lib_dir.clone();
-        host.resources.lib_dir = directory.join("missing-bootstrap-directory");
+        // Resources are now owned by native HostEntry; changing the facade's
+        // private copy cannot simulate a missing bootstrap. Exercise the real
+        // file boundary, restoring the fixture even if an assertion unwinds.
+        struct MissingBootstrap { original: PathBuf, saved: PathBuf }
+        impl Drop for MissingBootstrap {
+            fn drop(&mut self) { let _=std::fs::rename(&self.saved,&self.original); }
+        }
+        let original=host.context.resources.lib_dir.join("birnam-bootstrap.image");
+        let saved=original.with_extension(format!("disabled-{}",std::process::id()));
+        std::fs::rename(&original,&saved).unwrap();
+        let missing=MissingBootstrap{original,saved};
         let error = host.bootstrap(false, false).unwrap_err();
         assert!(error.0.contains("reinstall Birnam"), "{error}");
-        assert_eq!(
-            calls.get(),
-            0,
-            "missing bootstrap invoked a source fallback"
-        );
-        host.resources.lib_dir = directory;
+        assert_eq!(calls.get(),0,"missing bootstrap invoked a source fallback");
+        drop(missing);
         host.bootstrap(false, false).unwrap();
         for name in [b"repl".as_slice(), b"socket", b"config", b"toml", b"file"] {
             host.load_tool(name).unwrap();
@@ -735,10 +122,10 @@ mod tests {
         q.check_result(result).unwrap();
         assert_eq!(result, host.named(b"true").unwrap());
         std::fs::remove_file(&fixture).unwrap();
-        let name = unsafe { host.id.intern_name(b"stdlib") }.unwrap();
+        let name = unsafe { host.context.id.intern_name(b"stdlib") }.unwrap();
         let source = q.call(cg, b"moduleSourceFor:", &[Operand::object(name)]).unwrap();
         let store = host.named(b"Store").unwrap();
-        let key = unsafe { host.id.intern_name(b"compiledSourceMetadata") }.unwrap();
+        let key = unsafe { host.context.id.intern_name(b"compiledSourceMetadata") }.unwrap();
         let metadata = q.call(store, b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
         assert_ne!(metadata, host.named(b"nil").unwrap());
         q.call(store, b"retract:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(metadata)]).unwrap();
@@ -783,7 +170,7 @@ mod tests {
             .unwrap();
         }
         for token in original_method_tokens {
-            host.send(host.roots, b"release:", &[Operand::word(token)]).unwrap();
+            host.send(host.context.roots, b"release:", &[Operand::word(token)]).unwrap();
         }
     }
 
@@ -836,10 +223,10 @@ mod tests {
         let gc = host.named(b"GC").unwrap();
         let mut hooks = Vec::new();
         for name in [b"evalPersisting:from:".as_slice(), b"lastError"] {
-            let symbol = unsafe { host.id.intern_name(name) }.unwrap();
+            let symbol = unsafe { host.context.id.intern_name(name) }.unwrap();
             let original = host
                 .send(
-                    host.id.receiver,
+                    host.context.id.receiver,
                     b"bindingOf:in:",
                     &[Operand::object(symbol), Operand::object(cg)],
                 )
@@ -847,7 +234,7 @@ mod tests {
                 .as_entry()
                 .unwrap();
             let mut hook = Box::new(CollectingSend {
-                id: host.id,
+                id: host.context.id,
                 gc,
                 original,
                 calls: Cell::new(0),
@@ -922,7 +309,7 @@ mod tests {
         host.send(gc, b"collectPrecisely", &[]).unwrap();
         assert_ne!(
             host.send(
-                host.id.receiver,
+                host.context.id.receiver,
                 b"allocationAt:",
                 &[Operand::word(temporary.addr())]
             )
@@ -984,10 +371,10 @@ mod tests {
         )
         .unwrap();
         let host = HostRuntime::start_native(&resources, true).unwrap();
-        let symbol = |name: &[u8]| unsafe { host.id.intern_name(name) }.unwrap();
+        let symbol = |name: &[u8]| unsafe { host.context.id.intern_name(name) }.unwrap();
         let binding = |vt, name| {
             host.send(
-                host.id.receiver,
+                host.context.id.receiver,
                 b"bindingOf:in:",
                 &[Operand::object(name), Operand::object(vt)],
             )
@@ -1005,7 +392,7 @@ mod tests {
         };
         let behavior = |o| {
             object(
-                host.send(host.id.receiver, b"behaviorOf:", &[Operand::object(o)])
+                host.send(host.context.id.receiver, b"behaviorOf:", &[Operand::object(o)])
                     .unwrap(),
             )
             .unwrap()
@@ -1028,7 +415,7 @@ mod tests {
         let model = behavior(host.named(b"ObjectModel").unwrap());
         let restore = symbol(b"restoreImageSlotAt:in:put:");
         let mut hook = Box::new(CollectingSend {
-            id: host.id,
+            id: host.context.id,
             gc: host.named(b"GC").unwrap(),
             original: binding(model, restore),
             calls: Cell::new(0),
@@ -1048,7 +435,7 @@ mod tests {
         let value = symbol(b"value");
         let mut main_send = Box::new(MainSend {
             hook: CollectingSend {
-                id: host.id,
+                id: host.context.id,
                 gc: host.named(b"GC").unwrap(),
                 original: binding(vt, value),
                 calls: Cell::new(0),

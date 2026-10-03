@@ -1,0 +1,15 @@
+[package]
+name = "birnam-project-support"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+birnam-host-support = { path = "../birnam-host-support" }
+birnam-artifact = { package = "birnam-artifact-codec", path = "../birnam-artifact-codec" }
+serde.workspace = true
+
+[lints]
+workspace = true

@@ -1,7 +1,7 @@
 //! Authored lifecycle policy entered from the real owner-thread Host boundary.
 use super::*;
 use birnam_abi::id_protocol::{self as native};
-use std::{ffi::c_void, path::PathBuf};
+use std::{fs,ffi::c_void, path::PathBuf};
 
 unsafe extern "C" fn failed_fulfill(
     _: *mut c_void,
@@ -156,7 +156,7 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
         .string(dir.join("candidate.o").as_os_str().as_bytes())
         .unwrap();
     let globals = host.named(b"Globals").unwrap();
-    let name = unsafe { host.id.intern_name(b"hostLifecyclePath") }.unwrap();
+    let name = unsafe { host.context.id.intern_name(b"hostLifecyclePath") }.unwrap();
     q.call(
         globals,
         b"at:put:",
@@ -167,17 +167,17 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
     q.check(cg, eval(b"let hostLifecycleUnit := [CompiledUnit open: hostLifecyclePath]; [hostLifecycleUnit map]")).unwrap();
     expect(b"[[2 hostLifecycleValue] = 10]");
     expect(b"[[[[hostLifecycleUnit activate] fulfill] kind] = #generationNotQuiescent]");
-    expect(b"[[[Codegen fulfillEvolutionIntent: [hostLifecycleUnit activate]] kind] = #generationNotQuiescent]");
+    expect(b"[[[Generation fulfillEvolutionIntent: [hostLifecycleUnit activate]] kind] = #generationNotQuiescent]");
     expect(b"[[hostLifecycleUnit state] = #candidate]");
     // A native failure during fulfillment must close the quiescence extent.
     let intent = eval(b"[hostLifecycleUnit activate]");
     let vt = q
-        .call(host.id.receiver, b"behaviorOf:", &[Operand::object(intent)])
+        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(intent)])
         .unwrap();
-    let selector = unsafe { host.id.intern_name(b"fulfill") }.unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"fulfill") }.unwrap();
     let original = host
         .send(
-            host.id.receiver,
+            host.context.id.receiver,
             b"bindingOf:in:",
             &[Operand::object(selector), Operand::object(vt)],
         )
@@ -271,7 +271,7 @@ fn image_recovers_composed_generation_before_entry() {
         );
     };
     let put_path = |name: &[u8], path: &Path| {
-        let name = unsafe { host.id.intern_name(name) }.unwrap();
+        let name = unsafe { host.context.id.intern_name(name) }.unwrap();
         let value = q.string(path.as_os_str().as_bytes()).unwrap();
         q.call(
             host.named(b"Globals").unwrap(),
@@ -307,11 +307,11 @@ fn image_recovers_composed_generation_before_entry() {
         expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] kind] = #composed]");
         expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] state] = #active]");
         expect(b"[[db currentValue: [[DispatchGeneration current] unitFor: #imageGeneration] attr: #rollbackAvailable] = false]");
-        expect(b"[[[Codegen adoptComposedGeneration: [DispatchGeneration current]] kind] = #imageRecoveryRequired]");
+        expect(b"[[[Generation adoptComposedGeneration: [DispatchGeneration current]] kind] = #imageRecoveryRequired]");
         expect(b"[[[CompiledUnit reconcileImageComposition: [System imageCompositionIdentity]] kind] = #imageRecoveryRequired]");
         expect(b"[[db attrCount: savedOriginGeneration] = 0]");
         expect(b"[[db attrCount: savedOriginPredecessor] = 0]");
-        expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+        expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         if mode != "resaved" {
             let resaved = path.with_extension(format!("{mode}.resaved.image"));
             let filename = q.string(resaved.as_os_str().as_bytes()).unwrap();
@@ -353,7 +353,7 @@ fn image_recovers_composed_generation_before_entry() {
         // Loading into a process with a live inverse ledger must replace that
         // capability set, not retain its predecessor pointers as the new base.
         host.load_image(&path).unwrap();
-        expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+        expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         expect(b"[[[DispatchGeneration current] predecessor] isNil]");
         host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
             .unwrap();
@@ -393,19 +393,19 @@ fn image_recovers_composed_generation_before_entry() {
     eprintln!("generation Image: returned Error and native failure compensation");
     let before = eval(b"[DispatchGeneration current]");
     let vt = q
-        .call(host.id.receiver, b"behaviorOf:", &[Operand::object(cg)])
+        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(host.named(b"Generation").unwrap())])
         .unwrap();
-    let selector = unsafe { host.id.intern_name(b"adoptComposedGeneration:") }.unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"adoptComposedGeneration:") }.unwrap();
     let original = host
         .send(
-            host.id.receiver,
+            host.context.id.receiver,
             b"bindingOf:in:",
             &[Operand::object(selector), Operand::object(vt)],
         )
         .unwrap()
         .as_entry()
         .unwrap();
-    let kind = unsafe { host.id.intern_name(b"injectedAdoptionFailure") }.unwrap();
+    let kind = unsafe { host.context.id.intern_name(b"injectedAdoptionFailure") }.unwrap();
     let error = q
         .call(
             host.named(b"Error").unwrap(),
@@ -416,7 +416,7 @@ fn image_recovers_composed_generation_before_entry() {
     for returned_error in [Some(error), None] {
         let mut fault = FailedAdoption {
             original,
-            id: host.id,
+            id: host.context.id,
             gc: host.named(b"GC").unwrap(),
             error: returned_error,
             calls: 0,
@@ -442,7 +442,7 @@ fn image_recovers_composed_generation_before_entry() {
         .unwrap();
         assert_eq!(fault.calls, 1, "{failure}");
         assert_eq!(eval(b"[DispatchGeneration current]"), before);
-        expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+        expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
         expect(b"[[imageCandidate state] = #active]");
@@ -451,12 +451,12 @@ fn image_recovers_composed_generation_before_entry() {
     // entire Image exchange, including the previous native generation ledger.
     let store = host.named(b"Store").unwrap();
     let retract_vt = q
-        .call(host.id.receiver, b"behaviorOf:", &[Operand::object(store)])
+        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(store)])
         .unwrap();
-    let retract_selector = unsafe { host.id.intern_name(b"retract:attr:value:") }.unwrap();
+    let retract_selector = unsafe { host.context.id.intern_name(b"retract:attr:value:") }.unwrap();
     let retract_original = host
         .send(
-            host.id.receiver,
+            host.context.id.receiver,
             b"bindingOf:in:",
             &[
                 Operand::object(retract_selector),
@@ -514,7 +514,7 @@ fn image_recovers_composed_generation_before_entry() {
     );
     assert_eq!(fault.calls, 1, "retirement must stop at its first failure");
     assert_eq!(eval(b"[DispatchGeneration current]"), before);
-    expect(b"[[Codegen reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+    expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
     expect(b"[[2 imageGenerationValue] = 20]");
     expect(b"[[imageGenerationClosure value] = 21]");
     expect(b"[[imageCandidate state] = #active]");
@@ -556,7 +556,7 @@ fn durable_retirement_preserves_store_retraction_errors() {
     let entity = q
         .call(host.named(b"Object").unwrap(), b"clone", &[])
         .unwrap();
-    let attribute = unsafe { host.id.intern_name(b"retirementProbe") }.unwrap();
+    let attribute = unsafe { host.context.id.intern_name(b"retirementProbe") }.unwrap();
     let store = host.named(b"Store").unwrap();
     let value = host.named(b"true").unwrap();
     q.call(
@@ -569,7 +569,7 @@ fn durable_retirement_preserves_store_retraction_errors() {
         ],
     )
     .unwrap();
-    let kind = unsafe { host.id.intern_name(b"retirementFailure") }.unwrap();
+    let kind = unsafe { host.context.id.intern_name(b"retirementFailure") }.unwrap();
     let error = q
         .call(
             host.named(b"Error").unwrap(),
@@ -578,12 +578,12 @@ fn durable_retirement_preserves_store_retraction_errors() {
         )
         .unwrap();
     let vt = q
-        .call(host.id.receiver, b"behaviorOf:", &[Operand::object(store)])
+        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(store)])
         .unwrap();
-    let selector = unsafe { host.id.intern_name(b"retract:attr:value:") }.unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"retract:attr:value:") }.unwrap();
     let original = host
         .send(
-            host.id.receiver,
+            host.context.id.receiver,
             b"bindingOf:in:",
             &[Operand::object(selector), Operand::object(vt)],
         )

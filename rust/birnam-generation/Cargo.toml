@@ -1,0 +1,17 @@
+[package]
+name = "birnam-generation"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+birnam-codegen = { path = "../birnam-codegen" }
+
+[lib]
+name = "birnam_generation"
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true

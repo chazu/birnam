@@ -126,16 +126,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-generation"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-codegen",
+]
+
+[[package]]
 name = "birnam-host"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-artifact-codec",
+ "birnam-host-support",
  "birnam-siphon",
  "hex",
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "birnam-host-entry"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-host-support",
+ "birnam-siphon",
+]
+
+[[package]]
+name = "birnam-host-interaction"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-host-support",
+ "birnam-siphon",
+]
+
+[[package]]
+name = "birnam-host-project"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-host-support",
+ "birnam-project-support",
+ "birnam-siphon",
+ "hex",
+ "sha2",
+]
+
+[[package]]
+name = "birnam-host-support"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -187,6 +234,16 @@ name = "birnam-namespace"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+]
+
+[[package]]
+name = "birnam-native-backend"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-artifact-codec",
+ "birnam-codegen",
+ "sha2",
 ]
 
 [[package]]
@@ -245,6 +302,29 @@ name = "birnam-printing"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+]
+
+[[package]]
+name = "birnam-project-build"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-artifact-codec",
+ "birnam-host-support",
+ "birnam-project-support",
+ "birnam-siphon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "birnam-project-support"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-artifact-codec",
+ "birnam-host-support",
+ "serde",
 ]
 
 [[package]]

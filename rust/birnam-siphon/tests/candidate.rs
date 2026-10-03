@@ -142,11 +142,19 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             &[symbol(b"dispatch"), symbol(b"activeGeneration"), generation],
         );
         assert_eq!(
-            call(codegen, b"adoptInitialGeneration:", &[generation]),
+            call(
+                named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation]
+            ),
             generation
         );
         assert_eq!(
-            call(codegen, b"adoptInitialGeneration:", &[generation]),
+            call(
+                named(b"Generation"),
+                b"adoptInitialGeneration:",
+                &[generation]
+            ),
             generation
         );
         let dir = std::env::temp_dir().join(format!("birnam-candidate-{}", std::process::id()));
@@ -160,7 +168,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             let path_object = text(path.as_os_str().as_bytes());
             let compiled = if synchronous {
                 call(
-                    codegen,
+                    named(b"Generation"),
                     b"compileCandidate:named:output:selection:",
                     &[
                         candidate,
@@ -171,7 +179,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 )
             } else {
                 call(
-                    codegen,
+                    named(b"Generation"),
                     b"compileCandidate:named:output:",
                     &[candidate, name, path_object],
                 )
@@ -185,10 +193,14 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             let artifact = std::fs::read(&path).unwrap();
             let unit = call(named(b"Object"), b"clone", &[]);
             assert_eq!(
-                call(codegen, b"inspectCandidate:into:", &[path_object, unit]),
+                call(
+                    named(b"Generation"),
+                    b"inspectCandidate:into:",
+                    &[path_object, unit]
+                ),
                 unit
             );
-            assert_eq!(call(codegen, b"candidateMapped:", &[unit]), no);
+            assert_eq!(call(named(b"Generation"), b"candidateMapped:", &[unit]), no);
             assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
             let revision = call(
                 db,
@@ -196,7 +208,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 &[unit, symbol(b"sourceRevision")],
             );
             let successor = call(
-                codegen,
+                named(b"Generation"),
                 b"successorGenerationProjection:replacing:with:unit:",
                 &[at(projection, 1), name, revision, unit],
             );
@@ -230,7 +242,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 }
                 plan
             };
-            let unmapped = call(codegen, b"prepareActivation:plan:", &[unit, publication()]);
+            let unmapped = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, publication()],
+            );
             assert_eq!(
                 call(unmapped, b"kind", &[]),
                 symbol(b"candidatePreparationFailed")
@@ -257,8 +273,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 ));
                 install(id, tcc_behavior, selector, forbidden, core::ptr::null_mut());
             }
-            assert_eq!(call(codegen, b"mapCandidate:", &[unit]), unit);
-            assert_eq!(call(codegen, b"candidateMapped:", &[unit]), yes);
+            assert_eq!(call(named(b"Generation"), b"mapCandidate:", &[unit]), unit);
+            assert_eq!(
+                call(named(b"Generation"), b"candidateMapped:", &[unit]),
+                yes
+            );
             assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
             assert_eq!(
                 send(
@@ -274,7 +293,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 birnam_abi::id_protocol::UNIT
             );
             collect(id, named(b"GC"));
-            assert_eq!(call(codegen, b"mapCandidate:", &[unit]), unit);
+            assert_eq!(call(named(b"Generation"), b"mapCandidate:", &[unit]), unit);
             for (key, entry) in prior {
                 send(
                     id,
@@ -288,7 +307,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 b"assert:attr:value:",
                 &[unit, symbol(b"unitName"), symbol(b"forgedModule")],
             );
-            let mismatch = call(codegen, b"prepareActivation:plan:", &[unit, publication()]);
+            let mismatch = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, publication()],
+            );
             assert_eq!(
                 call(mismatch, b"kind", &[]),
                 symbol(b"candidatePreparationFailed")
@@ -299,7 +322,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 &[unit, symbol(b"unitName"), name],
             );
             let plan = publication();
-            let token = call(codegen, b"prepareActivation:plan:", &[unit, plan]);
+            let token = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, plan],
+            );
             assert_eq!(
                 call(token, b"isError", &[]),
                 no,
@@ -320,28 +347,46 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 .kind(),
                 birnam_abi::id_protocol::UNIT
             );
-            let duplicate = call(codegen, b"prepareActivation:plan:", &[unit, publication()]);
+            let duplicate = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, publication()],
+            );
             assert_eq!(
                 call(duplicate, b"kind", &[]),
                 symbol(b"candidatePreparationFailed")
             );
             collect(id, named(b"GC"));
-            assert_eq!(call(codegen, b"discardPrepared:", &[token]), unit);
-            let consumed = call(codegen, b"discardPrepared:", &[token]);
+            assert_eq!(
+                call(named(b"Generation"), b"discardPrepared:", &[token]),
+                unit
+            );
+            let consumed = call(named(b"Generation"), b"discardPrepared:", &[token]);
             assert_eq!(
                 call(consumed, b"kind", &[]),
                 symbol(b"invalidPreparedToken")
             );
-            let second = call(codegen, b"prepareActivation:plan:", &[unit, publication()]);
+            let second = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, publication()],
+            );
             assert!(value(second) > value(token));
-            assert_eq!(call(codegen, b"discardPrepared:", &[second]), unit);
+            assert_eq!(
+                call(named(b"Generation"), b"discardPrepared:", &[second]),
+                unit
+            );
             let stale = publication();
             call(
                 db,
                 b"assert:attr:value:",
                 &[unit, symbol(b"testDrift"), yes],
             );
-            let rejected = call(codegen, b"prepareActivation:plan:", &[unit, stale]);
+            let rejected = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, stale],
+            );
             assert_eq!(call(rejected, b"kind", &[]), symbol(b"staleGeneration"));
             // A callback may return the old basis and then mutate Store. The
             // final snapshot check must catch that mixed observation.
@@ -380,7 +425,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 drift_basis,
                 core::ptr::from_mut(&mut drift).cast(),
             );
-            let rejected = call(codegen, b"prepareActivation:plan:", &[unit, drifting_plan]);
+            let rejected = call(
+                named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, drifting_plan],
+            );
             send(
                 id,
                 db_behavior,
@@ -392,7 +441,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             let bad = call(named(b"Object"), b"clone", &[]);
             assert_eq!(
                 call(
-                    call(codegen, b"inspectCandidate:into:", &[path_object, bad]),
+                    call(
+                        named(b"Generation"),
+                        b"inspectCandidate:into:",
+                        &[path_object, bad]
+                    ),
                     b"isError",
                     &[]
                 ),
@@ -404,7 +457,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             let removal_path = text(dir.join("remove.dylib").as_os_str().as_bytes());
             assert_eq!(
                 call(
-                    codegen,
+                    named(b"Generation"),
                     b"compileCandidate:named:output:",
                     &[removal_source, name, removal_path]
                 ),
@@ -412,17 +465,24 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             );
             let removal = call(named(b"Object"), b"clone", &[]);
             assert_eq!(
-                call(codegen, b"inspectCandidate:into:", &[removal_path, removal]),
+                call(
+                    named(b"Generation"),
+                    b"inspectCandidate:into:",
+                    &[removal_path, removal]
+                ),
                 removal
             );
-            assert_eq!(call(codegen, b"mapCandidate:", &[removal]), removal);
+            assert_eq!(
+                call(named(b"Generation"), b"mapCandidate:", &[removal]),
+                removal
+            );
             let removal_revision = call(
                 db,
                 b"currentValue:attr:",
                 &[removal, symbol(b"sourceRevision")],
             );
             let removal_projection = call(
-                codegen,
+                named(b"Generation"),
                 b"successorGenerationProjection:replacing:with:unit:",
                 &[at(projection, 1), name, removal_revision, removal],
             );
@@ -452,7 +512,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 removal_plan = call(removal_plan, b"add:", &[value]);
             }
             let rejected = call(
-                codegen,
+                named(b"Generation"),
                 b"prepareActivation:plan:",
                 &[removal, removal_plan],
             );
@@ -496,7 +556,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 .as_object()
                 .unwrap();
                 call(globals, b"at:put:", &[symbol(b"Integer"), temporary]);
-                let rejected = call(codegen, b"prepareActivation:plan:", &[unit, publication()]);
+                let rejected = call(
+                    named(b"Generation"),
+                    b"prepareActivation:plan:",
+                    &[unit, publication()],
+                );
                 assert_eq!(call(rejected, b"kind", &[]), symbol(b"staleGeneration"));
                 assert_eq!(
                     send(
@@ -513,7 +577,11 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                     b"retract:attr:value:",
                     &[symbol(b"__globals__"), symbol(b"Integer"), temporary],
                 );
-                let readoption = call(codegen, b"adoptInitialGeneration:", &[generation]);
+                let readoption = call(
+                    named(b"Generation"),
+                    b"adoptInitialGeneration:",
+                    &[generation],
+                );
                 assert_eq!(call(readoption, b"kind", &[]), symbol(b"staleGeneration"));
                 assert_eq!(
                     call(db, b"currentValue:attr:", &[generation, symbol(b"state")]),
