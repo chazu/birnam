@@ -1,6 +1,6 @@
 //! Alien owns foreign addresses, library handles and C marshalling. Dependencies
 //! are selected through Id messages; executable mappings belong to TCC Units.
-use crate::{codegen::emit_native, loader::LibraryRegistry, parse_signature};
+use crate::loader::LibraryRegistry;
 use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
@@ -312,7 +312,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 install_wrapper(s, scope, &recipe)
             }
             Wrap | Callback => {
-                let (function, signature, block) = if matches!(op, Wrap) {
+                let (_resolved_function, signature, block) = if matches!(op, Wrap) {
                     let Some(name) = scope.bytes(a[0])? else {
                         return scope.nil();
                     };
@@ -331,36 +331,56 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     };
                     (None, sig, Some(a[0]))
                 };
-                let signature = match parse_signature(&signature) {
-                    Ok(v) => v,
-                    Err(e) => return scope.error(b"badSignature", e.to_string().as_bytes()),
+                let compiler = scope.named(b"AlienCompiler")?;
+                let function_name = if matches!(op, Wrap) {
+                    a[0]
+                } else {
+                    scope.named(b"nil")?
                 };
-                let c = match emit_native(
-                    function.as_ref().map(|(n, _)| n.as_slice()),
-                    &signature,
-                ) {
-                    Ok(c) => c,
-                    Err(e) => return scope.error(b"badSignature", e.to_string().as_bytes()),
-                };
+                let signature_value = scope.string(&signature)?;
+                let source = scope.obj(
+                    compiler,
+                    b"compile:signature:",
+                    &[
+                        Operand::object(function_name),
+                        Operand::object(signature_value),
+                    ],
+                )?;
+                if scope.is_error(source)? {
+                    return Ok(Operand::object(source));
+                }
                 if matches!(op, Wrap) {
                     let bytes = match recorded_object(scope, a[0], a[1])? {
                         Some(bytes) => bytes,
                         None => {
-                            let source = scope.string(c.as_bytes())?;
-                            let bytes = scope.obj(scope.named(b"TCC")?, b"compileObject:", &[Operand::object(source)])?;
-                            if scope.is_error(bytes)? { return Ok(Operand::object(bytes)); }
+                            let bytes = scope.obj(
+                                scope.named(b"TCC")?,
+                                b"compileObject:",
+                                &[Operand::object(source)],
+                            )?;
+                            if scope.is_error(bytes)? {
+                                return Ok(Operand::object(bytes));
+                            }
                             bytes
                         }
                     };
                     let recipe = [a[0], a[1], a[2], a[3], bytes];
                     let result = install_wrapper(s, scope, &recipe)?;
-                    if result.as_object() == Some(a[3]) { record_wrap(scope, &recipe)?; }
+                    if result.as_object() == Some(a[3]) {
+                        record_wrap(scope, &recipe)?;
+                    }
                     Ok(result)
                 } else {
-                    let source = scope.string(c.as_bytes())?;
-                    let unit = scope.obj(scope.named(b"TCC")?, b"compile:", &[Operand::object(source)])?;
-                    if scope.is_error(unit)? { return Ok(Operand::object(unit)); }
-                    let value = scope.obj(unit, b"initializeWith:", &[Operand::object(block.unwrap())])?;
+                    let unit = scope.obj(
+                        scope.named(b"TCC")?,
+                        b"compile:",
+                        &[Operand::object(source)],
+                    )?;
+                    if scope.is_error(unit)? {
+                        return Ok(Operand::object(unit));
+                    }
+                    let value =
+                        scope.obj(unit, b"initializeWith:", &[Operand::object(block.unwrap())])?;
                     let address = s.pointer(value).ok_or_else(invalid)?;
                     let token = s
                         .send(s.roots, b"retain:", &[Operand::object(unit)])?
@@ -372,7 +392,8 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
             }
             ReleaseCallback => {
                 let Some(address) = s.pointer(a[0]) else {
-                    return scope.error(b"typeMismatch", b"releaseCallback: needs a ForeignAddress");
+                    return scope
+                        .error(b"typeMismatch", b"releaseCallback: needs a ForeignAddress");
                 };
                 let removed = s.callbacks.borrow_mut().remove(&address);
                 if let Some((_, token)) = removed {

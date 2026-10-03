@@ -43,7 +43,7 @@ pub struct Image {
 }
 
 #[allow(dead_code)]
-pub(crate) struct DecodedImage<'a> {
+pub struct DecodedImage<'a> {
     pub programs: &'a [u8],
     pub bindings: &'a [u8],
     pub selection: &'a [u8],
@@ -55,7 +55,7 @@ pub(crate) struct DecodedImage<'a> {
 }
 
 #[allow(dead_code)]
-pub(crate) fn decode(
+pub fn decode(
     bytes: &[u8],
     architecture: u32,
     runtime_abi: u64,
@@ -345,7 +345,7 @@ fn hashed_record(payload: &[u8]) -> Result<([u8; 32], &[u8]), Error> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Field<'a> {
+pub struct Field<'a> {
     pub tag: u8,
     pub index: Option<u32>,
     pub data: Option<&'a [u8]>,
@@ -649,7 +649,7 @@ fn validate_field_references(field: Field<'_>, heap_count: u32) -> Result<(), Er
     Ok(())
 }
 
-pub(crate) fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Field<'a>, Error> {
+pub fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Field<'a>, Error> {
     let tag = *bytes.get(*offset).ok_or(Error::Heap)?;
     *offset = offset.checked_add(1).ok_or(Error::Quantity)?;
     match tag {

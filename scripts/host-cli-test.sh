@@ -36,6 +36,7 @@ host_test() { cargo test --offline --locked -p birnam-host "$1" -- --ignored; }
 if selected cli; then
   cargo test --offline --locked -p birnam-host --test native_owners -- --ignored
   cargo test --offline --locked -p birnam-host --test native_backend -- --ignored
+  cargo test --offline --locked -p birnam-host --test native_compilers -- --ignored
   python3 scripts/artifact-cli-test.py "$scratch/relocated"
   python3 scripts/lang-migration-test.py "$scratch/relocated"
   python3 scripts/portable-execution-test.py "$scratch/relocated"
@@ -51,6 +52,7 @@ if selected image; then
   bash scripts/native-loader-image-smoke.sh "$scratch/relocated"
   bash scripts/string-builder-image-smoke.sh "$scratch/relocated"
   python3 scripts/system-image-test.py "$scratch/relocated"
+  python3 scripts/alien-image-test.py "$scratch/relocated"
   BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
     host_test startup::tests::image_entry_uses_saved_code_and_roots
   cargo test --offline --locked -p birnam-siphon --test image repeated_image_resaves_keep_a_fixed_live_set -- --ignored

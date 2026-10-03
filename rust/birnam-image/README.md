@@ -1,6 +1,9 @@
 # Image persistence over Id
 
-Bootstrap loads Image after Source Loader. System `saveImage:` writes image-v8
+Bootstrap loads [ImageFormat](../birnam-image-format/README.md), then Image, after
+Source Loader. ImageFormat owns complete format encoding and structural validation;
+Image consumes it through current Id messages and retains the live restoration
+transaction. System `saveImage:` writes image-v8
 through a same-directory temporary file and atomic rename. `loadImage:`,
 `loadImage:rebuild:` and `loadImageBytes:rebuild:` restore through current owner
 messages. `loadImageMapped:` requires saved native code and rejects a source-only

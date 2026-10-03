@@ -12,9 +12,10 @@ Id-message interface and ownership of its own state. That makes it possible to
 replace its implementation with Birnam independently. Moving Rust files or making
 another crate that borrows the old owner's state does not complete a decomposition.
 
-The first delivery batch includes the HostEntry, HostInteraction and HostProject
-owners, NativeBackend, Generation and ProjectBuild. Extractions 1–3 are
-implemented and validated; extractions 4 and 5 remain queued.
+All five extractions are implemented and validated. The first delivery batch
+(Host owners and extractions 1–3) was committed and pushed on main as `9aace02e`.
+The final batch adds AlienCompiler and ImageFormat. Subsequent Birnam rewrites
+remain separate milestones.
 
 ## Order and status
 
@@ -23,8 +24,8 @@ implemented and validated; extractions 4 and 5 remain queued.
 | 1 | Source compiler and native backend | Implemented and validated | Planned after extraction |
 | 2 | Compilation and generation publication | Implemented and validated | Existing CompiledUnit policy stays Birnam; remaining bookkeeping can follow |
 | 3 | Project observation and project build | Implemented and validated | Build sequencing and publication construction are initial targets |
-| 4 | Alien wrapper compiler and Alien runtime | Queued | Best smaller independent rewrite; may move earlier after the first extraction |
-| 5 | Image format and image restoration | Queued | Format implementation follows extraction and performance validation |
+| 4 | Alien wrapper compiler and Alien runtime | Implemented and validated | Planned: signature parsing and wrapper generation |
+| 5 | Image format and image restoration | Implemented and validated | Planned: format implementation with startup/load measurements |
 
 Update each row when work starts. An extraction is complete only when production
 callers use the new native owner through Id, its acceptance checks pass, and the
@@ -293,8 +294,8 @@ addresses, library handles, address membership, callback roots and wrapper
 mapping lifetime with Alien runtime. TCC remains the authority for platform ABI
 size, alignment and calling convention.
 
-- [ ] Extract the wrapper compiler and reconnect runtime and image consumers.
-- [ ] Validate and record delivery.
+- [x] Extract the wrapper compiler and reconnect runtime and image consumers.
+- [x] Validate and record delivery.
 - [ ] Replace signature parsing and wrapper-source generation with Birnam.
 
 This is the preferred smaller rewrite after the first compiler extraction if an
@@ -302,10 +303,25 @@ early conversion is useful. Acceptance includes malformed signatures/identifiers
 scalar and aggregate calls, callbacks in both directions, pointer membership,
 collecting callbacks, actual wrapper lifetime and mapped/rebuilt/baked recovery.
 
-Sources: [signature grammar](../../rust/birnam-alien/src/lib.rs),
-[ABI metadata](../../rust/birnam-alien/src/abi.rs),
-[source generation](../../rust/birnam-alien/src/codegen.rs),
+Sources: [signature grammar](../../rust/birnam-alien-compiler/src/lib.rs),
+[ABI metadata](../../rust/birnam-alien-compiler/src/abi.rs),
+[source generation](../../rust/birnam-alien-compiler/src/codegen.rs),
 [runtime ownership](../../rust/birnam-alien/src/runtime.rs).
+
+### Extraction checkpoint: 2026-10-02
+
+AlienCompiler now owns parsing, ABI classification and wrapper/callback source
+generation. Alien performs current Id compiler lookup and retains symbol
+resolution order, address/library/callback ownership and TCC mapping lifetime.
+Saved wrapper restoration still maps recorded object bytes without compilation.
+The parser, classifier, emitter and C prelude moved without algorithm changes.
+
+Pure compiler/registry tests passed (17 compiler tests and 4 registry tests), as
+did installed scalar/unsigned/aggregate calls, recursive/collecting callbacks,
+address membership and final wrapper reclamation. The live Id seam test covers
+malformed signatures/identifiers, collecting compiler replacement and exact native
+failure propagation. Source-free foreign wrapper mapped/rebuilt/baked recovery
+passed through the combined Image check.
 
 ## 5 Image format and image restoration
 
@@ -314,9 +330,9 @@ live heap restoration, Store exchange, source/binding publication, generation
 adoption and compensation as one restoration transaction. Code staging continues
 to consume the compiler/backend and generation-publication owners.
 
-- [ ] Define the complete pure format responsibility and its validated data seam.
-- [ ] Extract it without changing frozen bytes, bounds or admission rules.
-- [ ] Validate and record delivery.
+- [x] Define the complete pure format responsibility and its validated data seam.
+- [x] Extract it without changing frozen bytes, bounds or admission rules.
+- [x] Validate and record delivery.
 - [ ] Replace format implementation with Birnam and measure startup/load cost.
 
 Acceptance includes frozen v8 fixtures, malformed/truncated records, references
@@ -325,9 +341,33 @@ partial failure compensation; and stable repeated resaves. A Birnam replacement
 must preserve bounded parsing and must be measured through usable startup as well
 as isolated format operations.
 
-Sources: [format proof](../../rust/birnam-image/src/v8.rs),
+Sources: [format proof](../../rust/birnam-image-codec/src/v8.rs),
 [snapshot and restoration](../../rust/birnam-image/src/native.rs),
-[retained facts](../../rust/birnam-image/src/retained_facts.rs).
+[retained facts](../../rust/birnam-image-codec/src/retained_facts.rs).
+
+### Extraction checkpoint: 2026-10-02
+
+ImageFormat owns full container encoding and structural validation through
+ordinary value/byte messages. Image retains live object projection/restoration,
+atomic file publication, Store/source exchange, generation adoption and exact
+compensation. Frozen field/record helpers are shared local codecs, not an owner
+state interface. No complete-format encode/decode bypass remains in native Image.
+
+The 17 codec tests passed, including frozen v8 bytes, bounded malformed/truncated
+records, reference validity and checksum/authority cases. The native seam test
+roundtrips frozen fixture bytes exactly, forces collection, preserves public nil
+refusal and proves native dependency failures propagate. Installed composed-image
+mapped/rebuilt/resaved recovery, failure compensation, fixed resave ownership and
+parser/compiler/emission-disabled startup passed. Saved foreign wrappers survived
+source deletion and mapped/rebuilt/baked entry. The 47-library export, install-name
+and dependency audit and workspace compilation check passed.
+
+Evidence is retained locally in `.cargo-target/measurements/last-splits-20261002/`;
+the disposable installed prefix is `/tmp/birnam-last-splits/prefix`. Validation
+excluded the exhaustive per-restored-slot GC suite, the full native suite,
+authored-language suite and doc generation. The standalone native seam check took
+under a second; live Alien validation took about 12 seconds. No Birnam implementation
+rewrite or startup performance benchmark is claimed for this extraction.
 
 ## Responsibilities to keep together
 
@@ -345,6 +385,8 @@ library is not a prerequisite for this roadmap.
 
 For each delivered extraction or rewrite, append its commit, installed prefix or
 artifact, acceptance evidence, remaining limitations and removal audit here. Keep
-the order/status table current. The first delivery batch is committed on main with the Host and first three
-extractions. Evidence and disposable prefixes are recorded in their checkpoints.
-The commit identifier will be recorded with the next delivery batch.
+the order/status table current. - First batch: `9aace02e`, committed and pushed on main; Host owners and
+  extractions 1–3. Acceptance and local evidence are recorded above.
+- Final batch: the commit containing this record, on main; AlienCompiler and
+  ImageFormat. Acceptance and local evidence are recorded above. All five native
+  extractions are complete; their subsequent Birnam rewrites remain planned.

@@ -87,7 +87,9 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
     "libbirnam_image.dylib",
+    "libbirnam_image_format.dylib",
     "libbirnam_alien.dylib",
+    "libbirnam_alien_compiler.dylib",
     "libbirnam_isolate.dylib",
 ];
 

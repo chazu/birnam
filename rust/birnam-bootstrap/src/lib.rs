@@ -335,6 +335,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "portable_code",
             "peg",
             "tcc",
+            "alien_compiler",
             "native_backend",
             "codegen_runtime",
             "generation",
@@ -376,7 +377,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             release(id, roots, path_token)?;
             result?;
         }
-        for name in ["source_loader", "image", "alien", "isolate"] {
+        for name in ["source_loader", "image_format", "image", "alien", "isolate"] {
             id.send_named(
                 receiver, b"loadNative:",
                 &[Operand::bytes(&module_path(directory, name)), Operand::object(namespace)],

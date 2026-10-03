@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "scope": "Image format encoding and structural validation over Id",
+  "install_name": "@rpath/libbirnam_image_format.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v1",
+    "birnam_symbol_borrow_v1"
+  ]
+}

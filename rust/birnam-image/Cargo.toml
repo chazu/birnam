@@ -10,6 +10,7 @@ default = ["module"]
 module = []
 
 [dependencies]
+birnam-image-codec = { path = "../birnam-image-codec" }
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { package = "birnam-artifact-codec", path = "../birnam-artifact-codec" }
 sha2.workspace = true

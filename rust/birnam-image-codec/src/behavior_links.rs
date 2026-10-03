@@ -2,18 +2,18 @@
 use super::v8::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Parent {
+pub enum Parent {
     Export(Vec<u8>),
     Owner(u32),
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Link {
+pub struct Link {
     pub object: u32,
     pub owner: u32,
     // Only the owner's row defines the private behavior's parent.
     pub parent: Option<Parent>,
 }
-pub(crate) fn encode(links: &[Link]) -> Vec<u8> {
+pub fn encode(links: &[Link]) -> Vec<u8> {
     let mut out = (links.len() as u32).to_le_bytes().to_vec();
     for link in links {
         out.extend_from_slice(&link.object.to_le_bytes());
@@ -34,7 +34,7 @@ pub(crate) fn encode(links: &[Link]) -> Vec<u8> {
     }
     out
 }
-pub(crate) fn decode(bytes: &[u8]) -> Result<Vec<Link>, Error> {
+pub fn decode(bytes: &[u8]) -> Result<Vec<Link>, Error> {
     fn word(bytes: &[u8], offset: &mut usize) -> Result<u32, Error> {
         let end = offset.checked_add(4).ok_or(Error::Quantity)?;
         let word = u32::from_le_bytes(

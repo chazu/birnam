@@ -14,6 +14,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-alien-compiler"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-artifact"
 version = "0.0.0"
 dependencies = [
@@ -198,7 +205,24 @@ version = "0.0.0"
 dependencies = [
  "birnam-abi",
  "birnam-artifact-codec",
+ "birnam-image-codec",
  "sha2",
+]
+
+[[package]]
+name = "birnam-image-codec"
+version = "0.0.0"
+dependencies = [
+ "birnam-artifact-codec",
+ "sha2",
+]
+
+[[package]]
+name = "birnam-image-format"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-image-codec",
 ]
 
 [[package]]

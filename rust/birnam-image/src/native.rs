@@ -1,4 +1,6 @@
 //! Image-v8 integration. Representations, code and facts cross owner messages.
+#[path = "format.rs"]
+mod format;
 use super::{support, v8};
 use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
@@ -391,7 +393,9 @@ impl Graph<'_, '_> {
                 // Authored capabilities can have an ordinary Object layout but
                 // process-local state. Store owns the declaration; omitted facts
                 // alone must never turn a retained handle into an empty snapshot.
-                let marker = self.q.keep(self.s.id.intern_name(b"imageTransientObject")?)?;
+                let marker = self
+                    .q
+                    .keep(self.s.id.intern_name(b"imageTransientObject")?)?;
                 let transient = self.s.call(
                     self.q,
                     self.s.named(b"Store")?,
@@ -483,7 +487,8 @@ impl Graph<'_, '_> {
                         let bits = if family == b"Word" {
                             self.s.send(o, b"bits", &[])?
                         } else {
-                            self.s.send(self.s.named(family)?, selector, &[Operand::object(o)])?
+                            self.s
+                                .send(self.s.named(family)?, selector, &[Operand::object(o)])?
                         };
                         let n = bits.as_word().ok_or_else(bad)? as u64;
                         node.locator = match family {
@@ -568,7 +573,9 @@ impl Graph<'_, '_> {
                         // Prelude owns System as an empty Object. Native service state
                         // belongs to module contexts, never to a cloned receiver.
                         if (name == b"SystemVt" && bytes != 0)
-                            || bytes % size_of::<usize>() != 0 || bytes > 64 << 20 {
+                            || bytes % size_of::<usize>() != 0
+                            || bytes > 64 << 20
+                        {
                             return Err(bad());
                         }
                         for slot in 0..bytes / size_of::<usize>() {
@@ -624,7 +631,11 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         let admitted = s.call(q, s.named(b"Generation")?, b"validateImageGeneration", &[])?;
         if admitted != s.named(b"true")? {
             s.reject(b"Managed generation is not current");
-            return if s.is_error(admitted)? { Ok(Operand::object(admitted)) } else { Err(bad()) };
+            return if s.is_error(admitted)? {
+                Ok(Operand::object(admitted))
+            } else {
+                Err(bad())
+            };
         }
         s.facts.borrow_mut().clear();
         let store = q.keep(s.named(b"Store")?)?;
@@ -720,19 +731,22 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         }
         let facts_bytes = writer.finish();
         // Structural checks precede the native compiler and any file publication.
-        v8::compose(v8::ImageSpec {
-            sources: Some(&sources_bytes),
-            behaviors: Some(&behaviors),
-            architecture: support::IMAGE_ARCH_TAG,
-            runtime_abi: runtime_abi(),
-            programs: &programs,
-            bindings: &bindings,
-            selection: &selection,
-            heaps: &[&heap],
-            facts: &[&facts_bytes],
-            code: None,
-        })
-        .map_err(|_| bad())?;
+        format::compose(
+            s,
+            q,
+            v8::ImageSpec {
+                sources: Some(&sources_bytes),
+                behaviors: Some(&behaviors),
+                architecture: support::IMAGE_ARCH_TAG,
+                runtime_abi: runtime_abi(),
+                programs: &programs,
+                bindings: &bindings,
+                selection: &selection,
+                heaps: &[&heap],
+                facts: &[&facts_bytes],
+                code: None,
+            },
+        )?;
         let p = s.text(q, b"Bytes", &programs)?;
         let b = s.text(q, b"Bytes", &bindings)?;
         let selected = s.text(q, b"Bytes", &selection)?;
@@ -747,23 +761,30 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
             return Ok(Operand::object(compiled));
         }
         let code = s.bytes(compiled)?;
-        let bytes = v8::compose(v8::ImageSpec {
-            sources: Some(&sources_bytes),
-            behaviors: Some(&behaviors),
-            architecture: support::IMAGE_ARCH_TAG,
-            runtime_abi: runtime_abi(),
-            programs: &programs,
-            bindings: &bindings,
-            selection: &selection,
-            heaps: &[&heap],
-            facts: &[&facts_bytes],
-            code: Some(&code),
-        })
-        .map_err(|_| bad())?;
+        let bytes = format::compose(
+            s,
+            q,
+            v8::ImageSpec {
+                sources: Some(&sources_bytes),
+                behaviors: Some(&behaviors),
+                architecture: support::IMAGE_ARCH_TAG,
+                runtime_abi: runtime_abi(),
+                programs: &programs,
+                bindings: &bindings,
+                selection: &selection,
+                heaps: &[&heap],
+                facts: &[&facts_bytes],
+                code: Some(&code),
+            },
+        )?;
         let admitted = s.call(q, s.named(b"Generation")?, b"validateImageGeneration", &[])?;
         if admitted != s.named(b"true")? {
             s.reject(b"Managed generation changed during image save");
-            return if s.is_error(admitted)? { Ok(Operand::object(admitted)) } else { Err(bad()) };
+            return if s.is_error(admitted)? {
+                Ok(Operand::object(admitted))
+            } else {
+                Err(bad())
+            };
         }
         support::publish_atomic(path, &bytes).map_err(|_| bad())?;
         *s.report.borrow_mut() = Report {
@@ -1233,11 +1254,19 @@ unsafe fn foreign_publication(
     }
 }
 
-unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool, mapped_only: bool) -> Result<Operand, Outcome> {
+unsafe fn load(
+    s: &State,
+    q: &Scope<'_>,
+    bytes: &[u8],
+    rebuild: bool,
+    mapped_only: bool,
+) -> Result<Operand, Outcome> {
     unsafe {
-        let decoded =
-            v8::decode(bytes, support::IMAGE_ARCH_TAG, runtime_abi()).map_err(|_| bad())?;
-        if mapped_only && decoded.code.is_none() { return Err(bad()); }
+        let owned = format::inspect(s, q, bytes)?;
+        let decoded = owned.view();
+        if mapped_only && decoded.code.is_none() {
+            return Err(bad());
+        }
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let yes = q.keep(s.named(b"true")?)?;
         let p = s.text(q, b"Bytes", decoded.programs)?;
@@ -1377,8 +1406,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool, mapped_onl
             .iter()
             .zip(&objects)
             .filter_map(|(node, &o)| {
-                matches!(&node.locator, Value::Export(name) if name == b"MapVt")
-                    .then_some(o)
+                matches!(&node.locator, Value::Export(name) if name == b"MapVt").then_some(o)
             })
             .collect::<Vec<_>>();
         let store = q.keep(s.named(b"Store")?)?;
@@ -1431,7 +1459,9 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool, mapped_onl
                 if restored != target {
                     return Err(if s.is_error(restored)? {
                         Outcome::loaded(Operand::object(restored))
-                    } else { bad() });
+                    } else {
+                        bad()
+                    });
                 }
             }
             for &o in &maps {
@@ -1462,9 +1492,11 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool, mapped_onl
             for &(_, target, selector, behavior, old) in foreign[..foreign_attempted].iter().rev() {
                 let current = s.method_behavior(target)?;
                 if current != behavior {
-                    s.send(s.id.receiver, b"reassociateBehaviorOf:with:", &[
-                        Operand::object(target), Operand::object(behavior),
-                    ])?;
+                    s.send(
+                        s.id.receiver,
+                        b"reassociateBehaviorOf:with:",
+                        &[Operand::object(target), Operand::object(behavior)],
+                    )?;
                 } else if old.as_entry().is_some() {
                     s.send(behavior, b"addMethod", &[Operand::object(selector), old])?;
                 } else {

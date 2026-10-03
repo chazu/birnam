@@ -5,12 +5,12 @@ const MAGIC: &[u8; 8] = b"BIRNAMIC";
 const HEADER: usize = 36;
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) struct Units<'a> {
+pub struct Units<'a> {
     pub portable: &'a [u8],
     pub generation: Option<(&'a [u8], &'a [u8])>,
 }
 
-pub(crate) fn decode(bytes: &[u8]) -> Option<Units<'_>> {
+pub fn decode(bytes: &[u8]) -> Option<Units<'_>> {
     if !bytes.starts_with(MAGIC) {
         return (!bytes.is_empty()).then_some(Units {
             portable: bytes,
@@ -42,7 +42,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Option<Units<'_>> {
 }
 
 #[cfg(test)]
-pub(crate) fn encode(portable: &[u8], generation: &[u8], manifest: &[u8]) -> Option<Vec<u8>> {
+pub fn encode(portable: &[u8], generation: &[u8], manifest: &[u8]) -> Option<Vec<u8>> {
     let parts = [portable, generation, manifest];
     let size = parts.iter().try_fold(HEADER, |total, part| {
         if part.is_empty() {
