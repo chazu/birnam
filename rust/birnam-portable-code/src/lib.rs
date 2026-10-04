@@ -12,6 +12,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 mod codec;
+mod inventory;
 
 #[derive(Clone, Copy)]
 enum Failure {
@@ -891,6 +892,7 @@ fn binding_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Ou
 fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
     let s = q.state;
     match op {
+        b"inspectInventory:bindings:selection:" | b"inventory:matchesRoots:" | b"bindings:referencesBelow:" => return inventory::operation(q, a, op),
         b"canonicalBytesOf:" => {
             let [value] = a else {
                 return Ok(s.nil);
@@ -1187,6 +1189,9 @@ entry!(
 );
 entry!(clone_3, binding_method, b"clone");
 entry!(canonical_bytes, code_method, b"canonicalBytesOf:");
+entry!(inventory_inspect, code_method, b"inspectInventory:bindings:selection:");
+entry!(inventory_closure, code_method, b"inventory:matchesRoots:");
+entry!(inventory_references, code_method, b"bindings:referencesBelow:");
 entry!(admit_bytes, code_method, b"fromCanonicalBytes:");
 entry!(code_object_from_program, code_method, b"fromProgram:");
 entry!(
@@ -1293,6 +1298,9 @@ const FAMILIES: &[(&[u8], &[u8], &[(&[u8], Method)])] = &[
         b"CodeObjectVt",
         &[
             (b"canonicalBytesOf:", canonical_bytes),
+            (b"inspectInventory:bindings:selection:", inventory_inspect),
+            (b"inventory:matchesRoots:", inventory_closure),
+            (b"bindings:referencesBelow:", inventory_references),
             (b"fromCanonicalBytes:", admit_bytes),
             (b"fromProgram:", code_object_from_program),
             (

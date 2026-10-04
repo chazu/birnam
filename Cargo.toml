@@ -27,7 +27,6 @@ members = [
     "rust/birnam-root-registry",
     "rust/birnam-image",
     "rust/birnam-image-codec",
-    "rust/birnam-image-format",
     "rust/birnam-host",
     "rust/birnam-host-support",
     "rust/birnam-host-entry",

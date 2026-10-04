@@ -354,7 +354,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[Operand::bytes(&module_path(directory, "lang_seed")), Operand::object(namespace)],
         )?;
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang", "alienCompiler"] {
+        for name in ["modules", "lang", "alienCompiler", "imageFormat"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],
@@ -376,7 +376,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             release(id, roots, path_token)?;
             result?;
         }
-        for name in ["source_loader", "image_format", "image", "alien", "isolate"] {
+        for name in ["source_loader", "image", "alien", "isolate"] {
             id.send_named(
                 receiver, b"loadNative:",
                 &[Operand::bytes(&module_path(directory, name)), Operand::object(namespace)],

@@ -34,13 +34,25 @@ unsafe fn optional(s: &State, q: &Scope<'_>, v: Oop) -> Result<Option<Vec<u8>>, 
         }
     }
 }
+unsafe fn admitted(s: &State, q: &Scope<'_>, answer: Oop) -> Result<Oop, Outcome> {
+    unsafe {
+        let error = s.call(q, answer, b"isError", &[])?;
+        if error == s.named(b"true")? {
+            let kind = s.call(q, answer, b"kind", &[])?;
+            if s.symbol(kind)? == b"imageRejected" { return Err(bad()) }
+            return Err(Outcome::failed(abi::INVALID_REQUEST, 0));
+        }
+        Ok(answer)
+    }
+}
 pub(super) unsafe fn inspect(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Decoded, Outcome> {
     unsafe {
-        let owner = q.keep(s.named(b"ImageFormat")?)?;
+        let owner = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"ImageFormat")?)?])?;
         let value = s.text(q, b"Bytes", bytes)?;
         let arch = s.integer(q, support::IMAGE_ARCH_TAG as usize)?;
         let abi = s.integer(q, runtime_abi() as usize)?;
         let answer = s.call(q, owner, b"inspect:architecture:abi:", &[value, arch, abi])?;
+        let answer = admitted(s, q, answer)?;
         let fields = s.sequence(q, answer)?;
         let [
             programs,
@@ -80,7 +92,7 @@ pub(super) unsafe fn compose(
     spec: v8::ImageSpec<'_>,
 ) -> Result<Vec<u8>, Outcome> {
     unsafe {
-        let owner = q.keep(s.named(b"ImageFormat")?)?;
+        let owner = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"ImageFormat")?)?])?;
         let arch = s.integer(q, spec.architecture as usize)?;
         let abi = s.integer(q, spec.runtime_abi as usize)?;
         let blob = |b: &[u8]| s.text(q, b"Bytes", b);
@@ -112,6 +124,6 @@ pub(super) unsafe fn compose(
         ];
         let input = s.vector(q, &values)?;
         let result = s.call(q, owner, b"compose:", &[input])?;
-        s.bytes(result)
+        s.bytes(admitted(s, q, result)?)
     }
 }

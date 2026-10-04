@@ -42,6 +42,16 @@ pub(crate) unsafe fn bind(
     if behavior == context.metavtable && selector == context.lookup {
         return Ok(unsafe { (&*context.dictionaries).lookup(context.metavtable, context.lookup) });
     }
+    // Specialize only the actual built-in lookup implementation. Recheck it
+    // for every send: replacing lookup or using a custom metabehavior takes
+    // the ordinary metacircular path below, before any source method runs.
+    // Dictionary reads stay inside Id; no foreign method/context is cached.
+    if unsafe { ObjectMemory::vtable_of_valid_object(behavior) } == context.metavtable
+        && unsafe { (&*context.dictionaries).lookup(context.metavtable, context.lookup) }
+            == Some(NativeEntry::new(vtable_lookup_method, context.dictionaries.cast()))
+    {
+        return Ok(unsafe { (&*context.dictionaries).lookup(behavior, selector) });
+    }
     let result = unsafe {
         send(
             context,
@@ -259,6 +269,47 @@ mod tests {
         );
     }
 
+    struct LookupProbe {
+        original: NativeEntry,
+        calls: core::cell::Cell<usize>,
+    }
+    unsafe extern "C" fn counted_lookup(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+        let probe = unsafe { &*c.cast::<LookupProbe>() };
+        probe.calls.set(probe.calls.get() + 1);
+        unsafe { probe.original.method.unwrap()(probe.original.context, r, a, n) }
+    }
+    unsafe extern "C" fn answer_word(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+        Outcome::loaded(Operand::word(19))
+    }
+    #[test]
+    fn specialized_lookup_falls_back_for_replacement_and_custom_metabehavior() {
+        let id = InitialObjects::new();
+        let add = intern(&id, b"addMethod");
+        let selector = intern(&id, b"identity");
+        let original = unsafe { (&*id.protocol.dispatch_context().dictionaries).lookup(id.vtable_vt, id.lookup) }.unwrap();
+        let mut probe = LookupProbe { original, calls: core::cell::Cell::new(0) };
+        let custom = NativeEntry::new(counted_lookup, core::ptr::from_mut(&mut probe).cast());
+        unsafe {
+            let send = |r, sel, a: &[Operand]| super::send(id.protocol.dispatch_context(), r, sel, a);
+            let install = |r, sel, method| send(r, add, &[Operand::object(sel), Operand::entry(method)]);
+            assert_eq!(install(id.object_vt, selector, entry(identity)).status, native::LOADED);
+            assert_eq!(send(id.object_prototype, selector, &[]).value.as_object(), Some(id.object_prototype));
+            assert_eq!(install(id.vtable_vt, id.lookup, custom).status, native::LOADED);
+            probe.calls.set(0);
+            assert_eq!(send(id.object_prototype, selector, &[]).value.as_object(), Some(id.object_prototype));
+            assert!(probe.calls.get() > 0, "replaced lookup must execute");
+            assert_eq!(install(id.object_vt, selector, entry(answer_word)).status, native::LOADED);
+            assert_eq!(send(id.object_prototype, selector, &[]).value.as_word(), Some(19));
+            assert_eq!(install(id.vtable_vt, id.lookup, original).status, native::LOADED);
+            assert_eq!(send(id.object_prototype, selector, &[]).value.as_word(), Some(19));
+            let meta = send(id.vtable_vt, intern(&id, b"delegated"), &[]).value.as_object().unwrap();
+            assert_eq!(install(meta, id.lookup, custom).status, native::LOADED);
+            assert_eq!(send(id.vtable_vt, intern(&id, b"reassociateBehaviorOf:with:"), &[Operand::object(id.object_vt), Operand::object(meta)]).status, native::LOADED);
+            probe.calls.set(0);
+            assert_eq!(send(id.object_prototype, selector, &[]).value.as_word(), Some(19));
+            assert!(probe.calls.get() > 0, "custom metabehavior lookup must execute");
+        }
+    }
     #[test]
     fn actual_initial_graph_installs_invokes_and_forwards_without_runtime() {
         let id = InitialObjects::new();

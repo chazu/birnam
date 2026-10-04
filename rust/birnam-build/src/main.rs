@@ -15,6 +15,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
     ("alienCompiler", "modules/alien-compiler.birnam"),
+    ("imageFormat", "modules/image-format.birnam"),
 ];
 
 // Authored production tools, compiled through the installed Id artifact path.
@@ -88,7 +89,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
     "libbirnam_image.dylib",
-    "libbirnam_image_format.dylib",
     "libbirnam_alien.dylib",
     "libbirnam_isolate.dylib",
 ];
@@ -684,10 +684,26 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         for (key, _) in env::vars_os() {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
-        compile.env("BIRNAM_NO_STDLIB", "1")
-            .arg("--compile-module").arg(root.join(source))
-            .arg(lib_dir.join(format!("libbirnam_{name}.dylib")));
-        run_status(&mut compile, &format!("compile bootstrap module {name}"))?;
+        compile.env("BIRNAM_NO_STDLIB", "1");
+        if *name == "imageFormat" {
+            // This pure byte-processing module needs synchronous bodies. Select
+            // that representation at build time; startup only maps saved objects.
+            let source_path = root.join(source);
+            let output_path = lib_dir.join(format!("libbirnam_{name}.dylib"));
+            let quote = |p: &Path| serde_json::to_string(&p.to_string_lossy()).unwrap();
+            let script = stage.join("compile-image-format.birnam");
+            fs::write(&script, format!(
+                "let source := [System readFile: {src}]; let answer := [Codegen compile: source output: {out} from: {src} synchronousBodies: true]; [[[answer isNil] | [answer isError]] ifTrue: [| [System println: answer]; [System exit: 1]]];",
+                src = quote(&source_path), out = quote(&output_path)))
+                .map_err(|e| format!("write pure module compile request: {e}"))?;
+            compile.arg(&script);
+            run_status(&mut compile, &format!("compile bootstrap module {name}"))?;
+            fs::remove_file(script).map_err(|e| format!("remove compile request: {e}"))?;
+        } else {
+            compile.arg("--compile-module").arg(root.join(source))
+                .arg(lib_dir.join(format!("libbirnam_{name}.dylib")));
+            run_status(&mut compile, &format!("compile bootstrap module {name}"))?;
+        }
     }
     let production_arguments = ["build", "-p", "birnam-bootstrap", "--locked", "--offline"]
         .into_iter().chain(cargo_profile.iter().copied()).map(str::to_owned).collect::<Vec<_>>();

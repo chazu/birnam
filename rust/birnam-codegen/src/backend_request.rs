@@ -38,3 +38,22 @@ impl Request {
         })
     }
 }
+
+impl Request {
+    /// An ordinary resumable initializer with synchronous pure language bodies.
+    /// Selection is a compiler input; it is not inferred from selectors or names.
+    pub fn synchronous_factory(program: Vec<u8>, source: &[u8]) -> Option<Self> {
+        fn count(bytes: &[u8]) -> Option<usize> {
+            let p = birnam_artifact::portable_program::inspect(bytes).ok()?;
+            let mut n = 1usize;
+            for i in 0..p.node_count as usize {
+                let node = p.node(i)?;
+                if node.kind == 11 { n = n.checked_add(count(node.data)?)?; }
+            }
+            Some(n)
+        }
+        let mut dispositions = vec![true; count(&program)?];
+        dispositions[0] = false;
+        Some(Self::Factory { program, source: source.to_vec(), dispositions })
+    }
+}

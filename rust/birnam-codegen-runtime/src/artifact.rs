@@ -7,6 +7,7 @@ use birnam_codegen::{artifact as emission_artifact, source_revision};
 pub(super) enum Op {
     Compile,
     From,
+    FromSynchronousBodies,
     Root,
     Load,
 }
@@ -15,6 +16,7 @@ impl Op {
         match self {
             Self::Load => 1,
             Self::Compile => 2,
+            Self::FromSynchronousBodies => 4,
             _ => 3,
         }
     }
@@ -102,9 +104,14 @@ pub(super) unsafe fn operation(
         if let Some(error) = s.embed_program(q, &mut program, &filename)? {
             return Ok(Operand::object(error));
         }
+        let synchronous_bodies = if matches!(op, Op::FromSynchronousBodies) {
+            let flag = object(args[3])?;
+            if flag != s.named(b"true")? && flag != s.named(b"false")? { return Err(invalid()) }
+            flag == s.named(b"true")?
+        } else { false };
         let mut adapters = Vec::new();
         for arity in birnam_codegen::source_metadata::named_adapter_arities(&program) {
-            let c = backend::emit(s,q,&Request::Named{arity,synchronous:false}).map_err(backend::Failure::outcome)?;
+            let c = backend::emit(s,q,&Request::Named{arity,synchronous:synchronous_bodies}).map_err(backend::Failure::outcome)?;
             let c = s.text(q, &c)?;
             let bytes = call(
                 s,
@@ -118,7 +125,13 @@ pub(super) unsafe fn operation(
             }
             adapters.push((arity, s.bytes(bytes)?));
         }
-        let generated=match backend::emit(s,q,&Request::program(program,&bytes,&filename).ok_or_else(invalid)?){Ok(c)=>c,Err(backend::Failure::Native(e))=>return Err(e),Err(backend::Failure::Rejected(_))=>return fail(s,b"RustCodegen could not emit the source")};
+        let generated=match backend::emit(s,q,&{
+            let request = Request::program(program, &bytes, &filename).ok_or_else(invalid)?;
+            if synchronous_bodies {
+                let Request::Program { program, .. } = request else { unreachable!() };
+                Request::synchronous_factory(program, &bytes).ok_or_else(invalid)?
+            } else { request }
+        }){Ok(c)=>c,Err(backend::Failure::Native(e))=>return Err(e),Err(backend::Failure::Rejected(_))=>return fail(s,b"RustCodegen could not emit the source")};
         let metadata = birnam_codegen::source_metadata::Metadata::inspect(&tree, &bytes);
         let Some(generated) =
             emission_artifact::emit(&tree, &bytes, &generated, &path, &metadata, &adapters)

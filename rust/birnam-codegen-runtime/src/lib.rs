@@ -587,6 +587,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"compile:output:root:",
                 Op::Artifact(artifact::Op::Root),
             ),
+            (vt, b"compile:output:from:synchronousBodies:", Op::Artifact(artifact::Op::FromSynchronousBodies)),
             (vt, b"load:", Op::Artifact(artifact::Op::Load)),
             (
                 vt,

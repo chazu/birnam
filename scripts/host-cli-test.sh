@@ -40,6 +40,7 @@ if selected cli; then
   python3 scripts/artifact-cli-test.py "$scratch/relocated"
   python3 scripts/lang-migration-test.py "$scratch/relocated"
   python3 scripts/alien-compiler-test.py "$scratch/relocated"
+  python3 scripts/image-format-test.py "$scratch/relocated"
   python3 scripts/doc-render-test.py "$scratch/relocated"
   python3 scripts/portable-execution-test.py "$scratch/relocated"
   python3 scripts/worker-test.py "$scratch/relocated"

@@ -307,6 +307,8 @@ enum OpCode {
     TriplesBetween,
     Cardinality,
     Cell,
+    LocalCell,
+    LocalCellPrototype,
     CellValue,
     CellSet,
     CellHistory,
@@ -432,6 +434,8 @@ unsafe fn execute(
                 | Last
                 | Compact
                 | Cell
+                | LocalCell
+                | LocalCellPrototype
                 | CellSet
                 | CellImageRestore
                 | ImageSwap
@@ -450,6 +454,16 @@ unsafe fn execute(
         }
         match op {
             New => return Ok(Operand::object(s.fresh(scope)?)),
+            LocalCell | LocalCellPrototype => {
+                s.read(r, |_| ())?;
+                let vt = if matches!(op, LocalCellPrototype) {
+                    if !s.cells.borrow().contains_key(&a[1]) { return Err(invalid()) }
+                    object(s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(a[1])])?)?
+                } else { s.cell_vt };
+                let cell = s.allocate(scope, vt)?;
+                s.cells.borrow_mut().insert(cell, [s.names[b"localCell".as_slice()], a[0], s.values[b"nil".as_slice()]]);
+                return Ok(Operand::object(cell));
+            }
             Cell => {
                 s.read(r, |_| ())?;
                 let cell = s.allocate(scope, s.cell_vt)?;
@@ -462,12 +476,19 @@ unsafe fn execute(
                 return Ok(Operand::object(*fields.get(index).ok_or_else(invalid)?));
             }
             CellImageRestore => {
-                s.read(a[0], |_| ())?;
+                if a[0] != s.names[b"localCell".as_slice()] { s.read(a[0], |_| ())?; }
                 *s.cells.borrow_mut().get_mut(&r).ok_or_else(invalid)? = [a[0], a[1], a[2]];
                 return Ok(Operand::object(r));
             }
             CellValue | CellSet | CellHistory => {
                 let [store, e, attr] = *s.cells.borrow().get(&r).ok_or_else(invalid)?;
+                if store == s.names[b"localCell".as_slice()] {
+                    return match op {
+                        CellValue => Ok(Operand::object(e)),
+                        CellHistory => s.integer(0),
+                        _ => { s.cells.borrow_mut().get_mut(&r).ok_or_else(invalid)?[1] = a[0]; Ok(Operand::object(r)) }
+                    };
+                }
                 scope.keep_all([store, e, attr]);
                 let mut args = vec![Operand::object(e), Operand::object(attr)];
                 let selector = match op {
@@ -1069,6 +1090,8 @@ entry!(image_add, ImageAdd, 6);
 entry!(image_end, ImageEnd, 5);
 entry!(new_store, New, 0);
 entry!(cell, Cell, 2);
+entry!(local_cell, LocalCell, 1);
+entry!(local_cell_prototype, LocalCellPrototype, 2);
 entry!(cell_value, CellValue, 0);
 entry!(cell_set, CellSet, 1);
 entry!(cell_history, CellHistory, 0);
@@ -1085,6 +1108,8 @@ entry!(tracked_remove_method, RemoveMethod, 2);
 entry!(backfill_mirror, Backfill, 0);
 entry!(dictionary_changed, DictionaryChanged, 2);
 const STORE_METHODS: &[(&[u8], Method)] = &[
+    (b"localCell:", local_cell),
+    (b"localCell:prototype:", local_cell_prototype),
     (b"setMethodMutationObserver:", set_observer),
     (b"setMethodMutationAuthorizer:", set_authorizer),
     (b"addMethod:on:with:", tracked_add_method),
@@ -1186,6 +1211,9 @@ const NAMES: &[&[u8]] = &[
     b"cardinality",
     b"cardinality:",
     b"cellFor:attr:",
+    b"localCell:",
+    b"localCell:prototype:",
+    b"localCell",
     b"compact",
     b"count:attr:",
     b"currentValue:attr:",

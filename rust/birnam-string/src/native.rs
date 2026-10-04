@@ -1,8 +1,8 @@
-use birnam_abi::{
+pub(crate) use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-use core::{
+pub(crate) use core::{
     cell::{Cell, RefCell},
     ffi::c_void,
     ptr,
@@ -12,43 +12,47 @@ use std::collections::HashMap;
 // Byte ownership never depends on mutable payload words or current behavior.
 // Payload mirrors are diagnostic only; all native access uses this owner's map.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     String,
     Builder,
     Bytes,
+    TaggedView,
 }
 struct Buffer {
     bytes: Vec<u8>,
     kind: Kind,
 }
-struct Text {
-    id: Protocol,
+pub(crate) struct Text {
+    pub(crate) id: Protocol,
     roots: Oop,
+    pub(crate) namespace: Oop,
     gc: Oop,
     behavior: Oop,
     builder_behavior: Oop,
-    bytes_behavior: Oop,
+    pub(crate) bytes_behavior: Oop,
     prototype: Cell<Oop>,
     builder: Cell<Oop>,
     bytes_prototype: Cell<Oop>,
     truth: Oop,
     falsity: Oop,
-    nil: Oop,
+    pub(crate) nil: Oop,
     names: HashMap<&'static [u8], Oop>,
     buffers: RefCell<HashMap<usize, Buffer>>,
+    pub(crate) views: RefCell<HashMap<usize, crate::tagged_view::View>>,
+    view_behavior: Oop,
     numeric: Cell<bool>,
     thread: std::thread::ThreadId,
 }
-fn invalid() -> Outcome {
+pub(crate) fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
+pub(crate) fn object(v: Operand) -> Result<Oop, Outcome> {
     v.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)
 }
-fn done(v: Result<Operand, Outcome>) -> Outcome {
+pub(crate) fn done(v: Result<Operand, Outcome>) -> Outcome {
     v.map_or_else(|e| e, Outcome::loaded)
 }
-unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Text, Outcome> {
+pub(crate) unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Text, Outcome> {
     let t = unsafe { &*context.cast::<Text>() };
     if t.thread != std::thread::current().id() {
         return Err(invalid());
@@ -64,7 +68,7 @@ impl Text {
     ) -> Result<Operand, Outcome> {
         unsafe { self.id.send(receiver, self.names[name], args) }
     }
-    unsafe fn rooted(
+    pub(crate) unsafe fn rooted(
         &self,
         values: &[Oop],
         f: impl FnOnce() -> Result<Operand, Outcome>,
@@ -106,12 +110,13 @@ impl Text {
             .map(|b| b.bytes.clone())
             .ok_or_else(invalid)
     }
-    unsafe fn make(&self, bytes: Vec<u8>, kind: Kind) -> Result<Operand, Outcome> {
+    pub(crate) unsafe fn make(&self, bytes: Vec<u8>, kind: Kind) -> Result<Operand, Outcome> {
         unsafe {
             let behavior = match kind {
                 Kind::String => self.behavior,
                 Kind::Builder => self.builder_behavior,
                 Kind::Bytes => self.bytes_behavior,
+                Kind::TaggedView => self.view_behavior,
             };
             let extent = if kind == Kind::Builder { 3 } else { 2 } * size_of::<usize>();
             let value = object(self.send(behavior, b"allocate", &[Operand::word(extent)])?)?;
@@ -206,11 +211,12 @@ unsafe extern "C" fn roots(
         };
         let visitor = object(*visitor)?;
         let mut values = vec![
-            t.roots,
+            t.namespace, t.roots,
             t.gc,
             t.behavior,
             t.builder_behavior,
             t.bytes_behavior,
+            t.view_behavior,
             t.bytes_prototype.get(),
             t.prototype.get(),
             t.builder.get(),
@@ -276,6 +282,7 @@ unsafe extern "C" fn finalize(
         };
         // GC has detached the object; no Id query or send is valid for it now.
         let value = object(*value)?;
+        t.views.borrow_mut().remove(&value.addr());
         t.buffers
             .borrow_mut()
             .remove(&value.addr())
@@ -494,9 +501,11 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let builder_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let bytes_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        let view_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let pointer = Box::into_raw(Box::new(Text {
             id,
             roots,
+            namespace,
             gc,
             behavior,
             builder_behavior,
@@ -509,6 +518,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             builder: Cell::new(ptr::null_mut()),
             bytes_prototype: Cell::new(ptr::null_mut()),
             buffers: RefCell::new(HashMap::new()),
+            views: RefCell::new(HashMap::new()),
+            view_behavior,
             numeric: Cell::new(false),
             thread: std::thread::current().id(),
         }));
@@ -528,6 +539,9 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (bytes_behavior, b"clone", binary::clone),
             (bytes_behavior, b"new", binary::clone),
             (bytes_behavior, b"asString", binary::as_string),
+            (view_behavior, b"rootsDo:", self::roots),
+            (view_behavior, b"referencesOf:do:", references),
+            (view_behavior, b"finalize:", finalize),
             (behavior, b"bytes", bytes),
             (behavior, b"length", length),
             (behavior, b"clone", clone_string),
@@ -609,6 +623,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             b"trace:with:",
             &[Operand::object(bytes_behavior), Operand::object(prototype)],
         )?;
+        t.send(gc, b"trace:with:", &[Operand::object(view_behavior), Operand::object(prototype)])?;
         let binary = object(t.make(Vec::new(), Kind::Bytes)?)?;
         t.bytes_prototype.set(binary);
         let builder = object(t.make(Vec::new(), Kind::Builder)?)?;
@@ -617,6 +632,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, prototype),
             (builder_behavior, builder),
             (bytes_behavior, binary),
+            (view_behavior, prototype),
         ] {
             t.send(
                 id.receiver,

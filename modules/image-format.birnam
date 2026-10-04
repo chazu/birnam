@@ -1,0 +1,491 @@
+// Complete image-v8 framing, admission and encoding on the primitive floor.
+// Image owns live heap restoration. CodeObject owns portable program formats.
+// Hashes and bounded byte reads are generic Bytes operations.
+[Module named: #imageFormat requires: #[]];
+[Globals at: #ImageFormat put: [db localCell: nil]];
+
+// Validation labels are also immutable; avoid creating Strings per field.
+let sliceContext := "slice:from:to:";
+let advanceContext := "advance:by:";
+let u32Context := "u32:";
+let u64Context := "u64:";
+let byteContext := "byte:";
+let finishedContext := "finished:";
+let recordContext := "record:kind:";
+let hashedContext := "hashed:";
+let fieldContext := "field:";
+let referenceContext := "reference:below:";
+let blockReferenceContext := "blockReference:codes:";
+let heapFramingContext := "heap framing";
+let heapQuantityContext := "heap quantity";
+let familyContext := "family:";
+let behaviorContext := "behaviors:objects:";
+let locatorContext := "heap locator";
+let nativePayloadContext := "native payload slots";
+let heapContext := "validateHeaps:programs:inventory:bindings:behaviors:";
+let factsContext := "facts:count:codes:";
+let nativeCodeContext := "nativeCode:authority:";
+let inspectContext := "inspectBytes:architecture:abi:";
+let composeContext := "composeFields:";
+
+// Private immutable tag sets, constructed once per module activation.
+let referenceTags := {7 -> true, 12 -> true, 18 -> true};
+let blockTags := {12 -> true, 18 -> true};
+let locatorTags := {9 -> true, 12 -> true, 13 -> true, 14 -> true, 15 -> true, 16 -> true, 17 -> true, 18 -> true};
+let nativePayloadTags := {13 -> true, 14 -> true, 15 -> true, 16 -> true, 17 -> true};
+let forbiddenSlotTags := {4 -> true, 6 -> true, 11 -> true, 13 -> true, 14 -> true, 15 -> true, 16 -> true, 17 -> true};
+let provenanceTags := {0 -> true, 7 -> true, 9 -> true};
+let factTags := {0 -> true, 1 -> true, 2 -> true, 5 -> true, 7 -> true, 8 -> true, 9 -> true, 12 -> true};
+let booleanTags := {0 -> true, 1 -> true};
+let recordTags := {10 -> true, 11 -> true, 3 -> true, 2 -> true, 4 -> true};
+let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
+
+[Reflect defineMethod: #require:context: on: ImageFormat as: [:self :condition :context |
+  [[condition == true] ifTrue: [| self] ifFalse: [|
+    [[condition isError] ifTrue: [| [self reject: condition]] ifFalse: [|
+      [self reject: [Error kind: #imageRejected message: context]]]]]]
+]];
+[Reflect defineMethod: #argument: on: ImageFormat as: [:self :condition |
+  [[condition isError] ifTrue: [| [self reject: condition]] ifFalse: [|
+    [[condition == true] ifTrue: [| self] ifFalse: [|
+      [self reject: [Error kind: #imageArgumentError message: "invalid ImageFormat argument"]]]]]]
+]];
+[Reflect defineMethod: #optionalInteger:equals: on: ImageFormat as: [:self :a :b |
+  [[a isNil] ifTrue: [| false] ifFalse: [| [a = b]]]
+]];
+[Reflect defineMethod: #cell: on: ImageFormat as: [:self :value |
+  [db localCell: value]
+]];
+// Integer owns bounded iteration; avoid a mutable Cell and condition Block
+// for every index. Returning the request error stops to:do: immediately.
+[Reflect defineMethod: #each:do: on: ImageFormat as: [:self :values :body |
+  [self checked: [|
+    [0 to: [[values size] - 1] do: [:i |
+      let result := [body value: [values at: i] value: i];
+      [[result isError] ifTrue: [| [self reject: result]]];
+      [[[self failure] isNil] ifTrue: [| self] ifFalse: [| [self failure]]]
+    ]]; self
+  ]]
+]];
+[Reflect defineMethod: #repeat:do: on: ImageFormat as: [:self :count :body |
+  [self checked: [|
+    [0 to: [count - 1] do: [:i |
+      let result := [body value: i];
+      [[result isError] ifTrue: [| [self reject: result]]];
+      [[[self failure] isNil] ifTrue: [| self] ifFalse: [| [self failure]]]
+    ]]; self
+  ]]
+]];
+[Reflect defineMethod: #isBytes: on: ImageFormat as: [:self :value |
+  [[Vtable behaviorOf: value] == BytesVt]
+]];
+[Reflect defineMethod: #isVector: on: ImageFormat as: [:self :value |
+  [[Vtable behaviorOf: value] == VectorVt]
+]];
+[Reflect defineMethod: #bytesEqual:with: on: ImageFormat as: [:self :a :b |
+  [[a asString] = [b asString]]
+]];
+[Reflect defineMethod: #slice:from:to: on: ImageFormat as: [:self :bytes :from :to |
+  [self checked: [|
+  let answer := [bytes copyFrom: from to: to];
+  [self require: [answer notNil] context: sliceContext]; answer
+  ]]
+]];
+[Reflect defineMethod: #parser:offset: on: ImageFormat as: [:self :bytes :offset |
+  #[bytes [self cell: offset]]
+]];
+[Reflect defineMethod: #position: on: ImageFormat as: [:self :p | [[p at: 1] value]]];
+[Reflect defineMethod: #advance:by: on: ImageFormat as: [:self :p :count |
+  [self checked: [|
+  [self require: [count >= 0] context: advanceContext];
+  [self require: [count <= [[[p at: 0] size] - [self position: p]]] context: advanceContext];
+  let end := [[self position: p] + count];
+  [[p at: 1] set: end]; end
+  ]]
+]];
+[Reflect defineMethod: #u32: on: ImageFormat as: [:self :p |
+  let value := [[p at: 0] readU32At: [self position: p]];
+  [self require: [value notNil] context: u32Context]; [self advance: p by: 4]; value
+]];
+[Reflect defineMethod: #u64: on: ImageFormat as: [:self :p |
+  let value := [[p at: 0] readU64At: [self position: p]];
+  [self require: [value notNil] context: u64Context]; [self advance: p by: 8]; value
+]];
+[Reflect defineMethod: #byte: on: ImageFormat as: [:self :p |
+  let value := [[p at: 0] at: [self position: p]];
+  [self require: [value notNil] context: byteContext]; [self advance: p by: 1]; value
+]];
+[Reflect defineMethod: #take:count: on: ImageFormat as: [:self :p :count |
+  let start := [self position: p]; let end := [self advance: p by: count];
+  [self slice: [p at: 0] from: start to: end]
+]];
+[Reflect defineMethod: #finished: on: ImageFormat as: [:self :p |
+  [self checked: [|
+  [self require: [[self position: p] = [[p at: 0] size]] context: finishedContext]
+  ]]
+]];
+[Reflect defineMethod: #record:kind: on: ImageFormat as: [:self :p :kind |
+  [self checked: [|
+  [self require: [[self u32: p] = kind] context: recordContext];
+  let count := [self u64: p]; [self take: p count: count]
+  ]]
+]];
+[Reflect defineMethod: #hashed: on: ImageFormat as: [:self :payload |
+  [self checked: [|
+  let p := [self parser: payload offset: 0];
+  let digest := [self take: p count: 32]; let count := [self u64: p];
+  let bytes := [self take: p count: count]; [self finished: p];
+  [self require: [self bytesEqual: digest with: [bytes sha256]] context: hashedContext]; #[digest bytes]
+  ]]
+]];
+[Reflect defineMethod: #write:width:on: on: ImageFormat as: [:self :value :width :builder |
+  [self checked: [|
+  let n := [self cell: value];
+  [self repeat: width do: [:i |
+    let raw := [[n value] mod: 256];
+    let byte := [[raw < 0] ifTrue: [| [raw + 256]] ifFalse: [| raw]];
+    [builder addByte: byte]; [n set: [[[n value] - byte] / 256]]]]; builder
+  ]]
+]];
+[Reflect defineMethod: #appendRecord:kind:on: on: ImageFormat as: [:self :bytes :kind :builder |
+  [self checked: [|
+  [self write: kind width: 4 on: builder];
+  [self write: [bytes size] width: 8 on: builder];
+  [builder add: [bytes asString]]; builder
+  ]]
+]];
+[Reflect defineMethod: #appendHashed:kind:on: on: ImageFormat as: [:self :bytes :kind :builder |
+  [self checked: [|
+  let payload := [StringBuilder new]; [payload add: [[bytes sha256] asString]];
+  [self write: [bytes size] width: 8 on: payload]; [payload add: [bytes asString]];
+  [self appendRecord: [[payload asString] asBytes] kind: kind on: builder]
+  ]]
+]];
+[Reflect defineMethod: #hex: on: ImageFormat as: [:self :bytes |
+  [self checked: [|
+  let digits := "0123456789abcdef"; let out := [StringBuilder new];
+  [self repeat: [bytes size] do: [:i |
+    let byte := [bytes at: i]; [out add: [digits at: [byte / 16]]];
+    [out add: [digits at: [byte mod: 16]]]]]; [[out asString] asBytes]
+  ]]
+]];
+[Reflect defineMethod: #authority:binding:selection: on: ImageFormat as: [:self :programs :binding :selection |
+  [self checked: [|
+  let bytes := [StringBuilder new]; [bytes add: "birnam.portable-image-authority.v1"];
+  [bytes addByte: 0]; [bytes add: [programs asString]];
+  [bytes add: [binding asString]]; [bytes add: [selection asString]];
+  [self hex: [[[bytes asString] asBytes] sha256]]
+  ]]
+]];
+// Fields are #[tag index data], with nil for absent index/data.
+// Schema shapes: 0 empty, 1 raw eight bytes, 2 u32 reference,
+// 3 u32-length bytes, 4 u32-length nonempty NUL-free name. '-' rejects a tag.
+[Reflect defineMethod: #field: on: ImageFormat as: [:self :p |
+  [self checked: [|
+    let field := [[p at: 0] readTaggedFieldAt: [self position: p] schema: "0001-4-204-22111332"];
+    [self require: [field notNil] context: fieldContext];
+    [[field notNil] ifTrue: [| [[p at: 1] set: [field at: 3]]]];
+    field
+  ]]
+]];
+[Reflect defineMethod: #reference:below: on: ImageFormat as: [:self :field :count |
+  let tag := [field at: 0];
+  [[[referenceTags at: tag] notNil] ifTrue: [|
+    [self require: [[field at: 1] < count] context: referenceContext]]]; self
+]];
+[Reflect defineMethod: #blockReference:codes: on: ImageFormat as: [:self :field :codes |
+  let tag := [field at: 0];
+  [[[blockTags at: tag] notNil] ifTrue: [|
+    [self require: [[[codes at: [field at: 1]] isNil] not] context: blockReferenceContext]]]; self
+]];
+// Heap objects are #[locator vectorOfFields]. All loops are bounded by bytes.
+[Reflect defineMethod: #heap:into: on: ImageFormat as: [:self :payload :objects |
+  [self checked: [|
+    let rows := [payload readTaggedRowsWithSchema: "0001-4-204-22111332" limit: 1048576];
+    [self require: [rows notNil] context: heapFramingContext];
+    [self require: [[[[objects value] size] + [rows size]] <= 1048576] context: heapQuantityContext];
+    [objects set: [[objects value] , rows]]; self
+  ]]
+]];
+[Reflect defineMethod: #family: on: ImageFormat as: [:self :object |
+  [self checked: [|
+  let locator := [object at: 0]; let tag := [locator at: 0];
+  let family := [[tag = 9] ifTrue: [| [[locator at: 2] asString]] ifFalse: [|
+    [{13 -> "IntegerVt", 14 -> "FloatVt", 15 -> "WordVt", 16 -> "StringVt", 17 -> "BytesVt"} at: tag]]];
+  [self require: [family notNil] context: familyContext];
+  let name := [[family = "VectorNode"] ifTrue: [| "VectorNodeVt"] ifFalse: [|
+    [[family = "MapNode"] ifTrue: [| "MapNodeVt"] ifFalse: [| family]]]];
+  [self require: [name notNil] context: familyContext];
+  let allowed := #["ObjectVt" "SystemVt" "VectorVt" "VectorNodeVt" "MapVt" "MapNodeVt" "RangeVt" "ErrorVt" "IntegerVt" "FloatVt" "WordVt" "StringVt" "BytesVt" "CellVt" "CodeObjectVt"];
+  [self require: [[allowed indexOf: name] notNil] context: familyContext]; name
+  ]]
+]];
+[Reflect defineMethod: #wordLayout: on: ImageFormat as: [:self :object |
+  [self checked: [|
+  let layout := [self cell: #[]];
+  [self each: [object at: 1] do: [:field :i |
+    [layout set: [[layout value] add: [[field at: 0] = 3]]]]]; [layout value]
+  ]]
+]];
+[Reflect defineMethod: #behaviors:objects: on: ImageFormat as: [:self :bytes :objects |
+  [self checked: [|
+  let p := [self parser: bytes offset: 0]; let count := [self u32: p];
+  [self require: [[count <= 1048576] & [count <= [[[bytes size] - 4] / 8]]] context: behaviorContext];
+  let links := [self cell: #[]]; let owners := [self cell: {}]; let previous := [self cell: -1];
+  [self repeat: count do: [:i |
+    let object := [self u32: p]; let owner := [self u32: p];
+    [self require: [[object > [previous value]] & [[object < [objects size]] & [owner < [objects size]]]] context: behaviorContext];
+    [previous set: object]; let parent := [self cell: nil];
+    [[object = owner] ifTrue: [|
+      let tag := [self byte: p]; [self require: [[booleanTags at: tag] notNil] context: behaviorContext];
+      [parent set: [[tag = 0] ifTrue: [| #[0 [self take: p count: [self u32: p]]]] ifFalse: [| #[1 [self u32: p]]]]];
+      [owners set: [[owners value] at: owner put: [parent value]]]]];
+    [links set: [[links value] add: #[object owner [parent value]]]]]]; [self finished: p];
+  [self each: [links value] do: [:link :i |
+    let object := [objects at: [link at: 0]]; let owner := [objects at: [link at: 1]];
+    [self require: [[[owners value] at: [link at: 1]] notNil] context: behaviorContext];
+    let family := [self family: object]; [self require: [family = [self family: owner]] context: behaviorContext];
+    [[[[link at: 0] = [link at: 1]] not] ifTrue: [|
+      [[family = "ObjectVt"] ifTrue: [|
+        // Compare raw/reference slot layouts without requiring stdlib Vector equality.
+        let a := [self wordLayout: object]; let b := [self wordLayout: owner];
+        [self require: [[a size] = [b size]] context: behaviorContext];
+        [self each: a do: [:value :j | [self require: [value == [b at: j]] context: behaviorContext]]]]]]];
+    let parent := [link at: 2];
+    [[parent notNil] ifTrue: [|
+      [[[parent at: 0] = 0] ifTrue: [|
+        [self require: [[self family: #[#[9 nil [parent at: 1]] #[]]] = [self family: owner]] context: behaviorContext]] ifFalse: [|
+        let parentIndex := [parent at: 1];
+        [self require: [[parentIndex < [objects size]] & [[[owners value] at: parentIndex] notNil]] context: behaviorContext];
+        [self require: [[self family: [objects at: parentIndex]] = [self family: owner]] context: behaviorContext]]]]]
+  ]];
+  // Iterative color walk rejects untrusted parent cycles in linear time.
+  let colors := [self cell: {}];
+  [self each: [links value] do: [:link :i |
+    [[[link at: 0] = [link at: 1]] ifTrue: [|
+      let index := [self cell: [link at: 1]]; let path := [self cell: #[]]; let done := [self cell: false];
+      [[| [[[done value] not] & [[self failure] isNil]]] whileTrue: [|
+        let color := [[colors value] at: [index value]];
+        [[self optionalInteger: color equals: 2] ifTrue: [| [done set: true]] ifFalse: [|
+          [self require: [[self optionalInteger: color equals: 1] not] context: behaviorContext];
+          [colors set: [[colors value] at: [index value] put: 1]];
+          [path set: [[path value] add: [index value]]];
+          let parent := [[owners value] at: [index value]]; [self require: [parent notNil] context: behaviorContext];
+          [[[parent at: 0] = 0] ifTrue: [| [done set: true]] ifFalse: [| [index set: [parent at: 1]]]]]]]];
+      [self each: [path value] do: [:value :j | [colors set: [[colors value] at: value put: 2]]]]
+    ]]
+  ]]; self
+  ]]
+]];
+[Reflect defineMethod: #validateHeaps:programs:inventory:bindings:behaviors: on: ImageFormat as: [:self :heaps :programs :inventory :bindings :behaviors |
+  [self checked: [|
+  let objects := [self cell: #[]]; [self each: heaps do: [:payload :i | [self heap: payload into: objects]]];
+  let all := [objects value]; let count := [all size]; let codes := [self cell: {}]; let roots := [self cell: #[]];
+  [self each: all do: [:object :i |
+    let locator := [object at: 0]; let fields := [object at: 1]; let tag := [locator at: 0];
+    [self require: [[locatorTags at: tag] notNil] context: locatorContext];
+    [[[nativePayloadTags at: tag] notNil] ifTrue: [|
+      [self require: [[fields size] = 0] context: nativePayloadContext]]];
+    let family := [[tag = 9] ifTrue: [| [[locator at: 2] asString]] ifFalse: [| ""]];
+    [[family = "SystemVt"] ifTrue: [| [self require: [[fields size] = 0] context: heapContext]]];
+    [[family = "CodeObjectVt"] ifTrue: [|
+      [self require: [[fields size] = 2] context: heapContext];
+      let program := [fields at: 0]; let provenance := [fields at: 1];
+      [self require: [[program at: 0] = 11] context: heapContext];
+      [self require: [[provenanceTags at: [provenance at: 0]] notNil] context: heapContext];
+      let index := [program at: 1]; [self require: [index < [inventory size]] context: heapContext];
+      [codes set: [[codes value] at: i put: index]];
+      [roots set: [[roots value] add: [[inventory at: index] at: 0]]]]
+    ifFalse: [|
+      [self each: fields do: [:field :j |
+        [self require: [[[forbiddenSlotTags at: [field at: 0]] notNil] not] context: heapContext]]]]];
+    [self reference: locator below: count];
+    [self each: fields do: [:field :j |
+      let fieldTag := [field at: 0];
+      [[[referenceTags at: fieldTag] notNil] ifTrue: [|
+        [self require: [[field at: 1] < count] context: referenceContext]
+      ]]
+    ]]
+  ]];
+  [[behaviors notNil] ifTrue: [| [self behaviors: behaviors objects: all]]];
+  [self require: [CodeObject inventory: programs matchesRoots: [roots value]] context: heapContext];
+  [self require: [CodeObject bindings: bindings referencesBelow: count] context: heapContext];
+  [self each: all do: [:object :i |
+    let locator := [object at: 0]; let fields := [object at: 1];
+    [self blockReference: locator codes: [codes value]];
+    [self each: fields do: [:field :j |
+      let fieldTag := [field at: 0];
+      [[[blockTags at: fieldTag] notNil] ifTrue: [|
+        [self require: [[[codes value] at: [field at: 1]] notNil] context: blockReferenceContext]
+      ]]
+    ]];
+    [[[blockTags at: [locator at: 0]] notNil] ifTrue: [|
+      let codeIndex := [locator at: 1]; let programIndex := [[codes value] at: codeIndex];
+      [self require: [programIndex notNil] context: heapContext];
+      let captureCount := [[inventory at: programIndex] at: 1];
+      [self require: [[fields size] = [captureCount + 1]] context: heapContext];
+      let first := [fields at: 0]; [self require: [[[first at: 0] = 7] & [[first at: 1] = codeIndex]] context: heapContext]
+    ]]
+  ]]; #[count [codes value]]
+  ]]
+]];
+[Reflect defineMethod: #unsignedGreater:than: on: ImageFormat as: [:self :a :b |
+  // Ordered Integer comparisons round through f64. Same-sign subtraction is
+  // in i64 range, and comparison with zero preserves the exact difference.
+  [[[a < 0] == [b < 0]] ifTrue: [| [[a - b] > 0]] ifFalse: [| [a < 0]]]
+]];
+[Reflect defineMethod: #facts:count:codes: on: ImageFormat as: [:self :bytes :heapCount :codes |
+  [self checked: [|
+  let p := [self parser: bytes offset: 0]; let basis := [self u64: p]; let floor := [self u64: p];
+  let policy := [self byte: p];
+  [self repeat: 7 do: [:i | [self require: [[self byte: p] = 0] context: factsContext]]];
+  let argument := [self u64: p]; let count := [self u32: p];
+  [self require: [[self unsignedGreater: floor than: basis] not] context: factsContext];
+  [self require: [[retentionPolicies at: policy] notNil] context: factsContext];
+  [[policy = 0] ifTrue: [| [self require: [argument = 0] context: factsContext]]];
+  [[policy = 1] ifTrue: [| [self require: [[self unsignedGreater: argument than: basis] not] context: factsContext]]];
+  [self require: [count <= [[[bytes size] - 36] / 13]] context: factsContext];
+  [self repeat: count do: [:i |
+    [self require: [[booleanTags at: [self byte: p]] notNil] context: factsContext];
+    [self require: [[booleanTags at: [self byte: p]] notNil] context: factsContext]; [self advance: p by: 8];
+    [self repeat: 3 do: [:j |
+      let field := [self field: p]; [self require: [[factTags at: [field at: 0]] notNil] context: factsContext];
+      [self reference: field below: heapCount]; [self blockReference: field codes: codes]]]
+  ]]; [self finished: p]
+  ]]
+]];
+[Reflect defineMethod: #nativeCode:authority: on: ImageFormat as: [:self :payload :authority |
+  [self checked: [|
+  [self require: [[payload size] >= 73] context: nativeCodeContext];
+  [self require: [self bytesEqual: [self slice: payload from: 8 to: 72] with: authority] context: nativeCodeContext];
+  let unit := [self slice: payload from: 72 to: [payload size]];
+  [self require: [self bytesEqual: [self slice: payload from: 0 to: 8] with: [unit wyhash64]] context: nativeCodeContext];
+  [[[[self slice: unit from: 0 to: [[[unit size] < 8] ifTrue: [| [unit size]] ifFalse: [| 8]]] asString] = "BIRNAMIC"] ifTrue: [|
+    let p := [self parser: unit offset: 8]; [self require: [[self u32: p] = 1] context: nativeCodeContext];
+    let lengths := #[[self u64: p] [self u64: p] [self u64: p]];
+    [self each: lengths do: [:length :i | [self require: [length > 0] context: nativeCodeContext]; [self advance: p by: length]]];
+    [self finished: p]
+  ]]; self
+  ]]
+]];
+[Reflect defineMethod: #inspectBytes:architecture:abi: on: ImageFormat as: [:self :bytes :architecture :abi |
+  [self checked: [|
+  [self argument: [self isBytes: bytes]];
+  [self argument: [[[Vtable behaviorOf: architecture] == IntegerVt] & [[Vtable behaviorOf: abi] == IntegerVt]]];
+  [self argument: [[architecture >= 0] & [architecture <= 4294967295]]];
+  [self require: [[[bytes size] >= 28] & [[bytes size] <= 1073741824]] context: inspectContext];
+  let p := [self parser: bytes offset: 0];
+  [self require: [[[self take: p count: 8] asString] = "BIRNAMIM"] context: inspectContext];
+  [self require: [[self u32: p] = 8] context: inspectContext]; [self require: [[self u32: p] = 16909060] context: inspectContext];
+  [self require: [[self u32: p] = architecture] context: inspectContext]; [self require: [[self u64: p] = abi] context: inspectContext];
+  let authority := [self record: p kind: 5]; [self require: [[authority size] = 64] context: inspectContext];
+  let programs := [self hashed: [self record: p kind: 7]];
+  let bindings := [self hashed: [self record: p kind: 8]];
+  let selection := [self hashed: [self record: p kind: 9]];
+  let inventory := [CodeObject inspectInventory: [programs at: 1] bindings: [bindings at: 1] selection: [selection at: 1]];
+  [self require: [inventory notNil] context: inspectContext];
+  [self require: [self bytesEqual: authority with: [self authority: [programs at: 0] binding: [inventory at: 1] selection: [selection at: 0]]] context: inspectContext];
+  let heaps := [self cell: #[]]; let facts := [self cell: #[]]; let code := [self cell: nil];
+  let sources := [self cell: nil]; let behaviors := [self cell: nil];
+  [[| [[[self position: p] < [bytes size]] & [[self failure] isNil]]] whileTrue: [|
+    let kind := [bytes readU32At: [self position: p]];
+    [self require: [kind notNil] context: inspectContext]; [self require: [[recordTags at: kind] notNil] context: inspectContext];
+    [[kind = 10] ifTrue: [|
+      [self require: [[[heaps value] size] = 0] context: inspectContext]; [self require: [[[facts value] size] = 0] context: inspectContext];
+      [self require: [[code value] isNil] context: inspectContext]; [self require: [[sources value] isNil] context: inspectContext]; [self require: [[behaviors value] isNil] context: inspectContext];
+      [sources set: [self record: p kind: 10]]]];
+    [[kind = 11] ifTrue: [|
+      [self require: [[[heaps value] size] = 0] context: inspectContext]; [self require: [[[facts value] size] = 0] context: inspectContext];
+      [self require: [[code value] isNil] context: inspectContext]; [self require: [[behaviors value] isNil] context: inspectContext];
+      [behaviors set: [self record: p kind: 11]]]];
+    [[kind = 3] ifTrue: [|
+      [self require: [[[[facts value] size] = 0] & [[code value] isNil]] context: inspectContext];
+      [heaps set: [[heaps value] add: [self record: p kind: 3]]]]];
+    [[kind = 2] ifTrue: [|
+      [self require: [[code value] isNil] context: inspectContext];
+      [facts set: [[facts value] add: [self record: p kind: 2]]]]];
+    [[kind = 4] ifTrue: [|
+      [self require: [[code value] isNil] context: inspectContext];
+      [code set: [self record: p kind: 4]]; [self finished: p]]]
+  ]];
+  let heapInfo := [self validateHeaps: [heaps value] programs: [programs at: 1] inventory: [inventory at: 0] bindings: [bindings at: 1] behaviors: [behaviors value]];
+  [[[sources value] notNil] ifTrue: [|
+    let sourceParser := [self parser: [sources value] offset: 0]; let field := [self field: sourceParser];
+    [self require: [[field at: 0] = 7] context: inspectContext]; [self reference: field below: [heapInfo at: 0]]; [self finished: sourceParser]
+  ]];
+  [self each: [facts value] do: [:payload :i | [self facts: payload count: [heapInfo at: 0] codes: [heapInfo at: 1]]]];
+  [[[code value] notNil] ifTrue: [| [self nativeCode: [code value] authority: authority]]];
+  #[[programs at: 1] [bindings at: 1] [selection at: 1] [heaps value] [facts value] [code value] [sources value] [behaviors value]]
+  ]]
+]];
+[Reflect defineMethod: #composeFields: on: ImageFormat as: [:self :fields |
+  [self checked: [|
+  [self argument: [self isVector: fields]]; [self argument: [[fields size] = 10]];
+  let arch := [fields at: 0]; let abi := [fields at: 1];
+  [self argument: [[[Vtable behaviorOf: arch] == IntegerVt] & [[Vtable behaviorOf: abi] == IntegerVt]]];
+  [self argument: [[arch >= 0] & [arch <= 4294967295]]];
+  let programs := [fields at: 2]; let bindings := [fields at: 3]; let selection := [fields at: 4];
+  [self each: #[programs bindings selection] do: [:bytes :i | [self argument: [self isBytes: bytes]]]];
+  let heaps := [fields at: 5]; let facts := [fields at: 6];
+  [self each: #[heaps facts] do: [:values :i |
+    [self argument: [self isVector: values]]; [self argument: [[values size] <= 1000000]];
+    [self each: values do: [:bytes :j | [self argument: [self isBytes: bytes]]]]]];
+  let code := [fields at: 7]; let sources := [fields at: 8]; let behaviors := [fields at: 9];
+  [self each: #[code sources behaviors] do: [:bytes :i |
+    [[bytes notNil] ifTrue: [| [self argument: [self isBytes: bytes]]]]]];
+  let total := [self cell: [260 + [[programs size] + [[bindings size] + [selection size]]]]];
+  [self each: #[heaps facts] do: [:parts :i |
+    [self each: parts do: [:payload :j |
+      [total set: [[total value] + [12 + [payload size]]]];
+      [self require: [[total value] <= 1073741824] context: composeContext]]]]];
+  [self each: #[sources behaviors] do: [:payload :i |
+    [[payload notNil] ifTrue: [| [total set: [[total value] + [12 + [payload size]]]]]]]];
+  [[code notNil] ifTrue: [| [total set: [[total value] + [84 + [code size]]]]]];
+  [self require: [[total value] <= 1073741824] context: composeContext];
+  let inventory := [CodeObject inspectInventory: programs bindings: bindings selection: selection];
+  [self require: [inventory notNil] context: composeContext];
+  let authority := [self authority: [programs sha256] binding: [inventory at: 1] selection: [selection sha256]];
+  let builder := [StringBuilder new]; [builder add: "BIRNAMIM"];
+  [self write: 8 width: 4 on: builder]; [self write: 16909060 width: 4 on: builder];
+  [self write: arch width: 4 on: builder]; [self write: abi width: 8 on: builder];
+  [self appendRecord: authority kind: 5 on: builder];
+  [self appendHashed: programs kind: 7 on: builder]; [self appendHashed: bindings kind: 8 on: builder];
+  [self appendHashed: selection kind: 9 on: builder];
+  [[sources notNil] ifTrue: [| [self appendRecord: sources kind: 10 on: builder]]];
+  [[behaviors notNil] ifTrue: [| [self appendRecord: behaviors kind: 11 on: builder]]];
+  [self each: heaps do: [:bytes :i | [self appendRecord: bytes kind: 3 on: builder]]];
+  [self each: facts do: [:bytes :i | [self appendRecord: bytes kind: 2 on: builder]]];
+  [[code notNil] ifTrue: [|
+    [self require: [[code size] > 0] context: composeContext];
+    let payload := [StringBuilder new]; [payload add: [[code wyhash64] asString]];
+    [payload add: [authority asString]]; [payload add: [code asString]];
+    [self appendRecord: [[payload asString] asBytes] kind: 4 on: builder]]];
+  let bytes := [[builder asString] asBytes];
+  [self inspectBytes: bytes architecture: arch abi: abi]; bytes
+  ]]
+]];
+
+// Each request gets its own failure cell; no shared parser or publication state.
+[Reflect defineMethod: #failure on: ImageFormat as: [:self |
+  [self value]
+]];
+[Reflect defineMethod: #reject: on: ImageFormat as: [:self :error |
+  let cell := self;
+  [[[cell value] isNil] ifTrue: [| [cell set: error]]]; [cell value]
+]];
+[Reflect defineMethod: #checked: on: ImageFormat as: [:self :body |
+  [[[self failure] isNil] ifTrue: [|
+    let result := [body value];
+    [[result isError] ifTrue: [| [self reject: result]]];
+    [[[self failure] isNil] ifTrue: [| result] ifFalse: [| [self failure]]]]
+  ifFalse: [| [self failure]]]
+]];
+[Reflect defineMethod: #worker on: ImageFormat as: [:self |
+  [db localCell: nil prototype: self]
+]];
+[Reflect defineMethod: #inspect:architecture:abi: on: ImageFormat as: [:self :bytes :architecture :abi |
+  [[self worker] inspectBytes: bytes architecture: architecture abi: abi]
+]];
+[Reflect defineMethod: #compose: on: ImageFormat as: [:self :fields |
+  [[self worker] composeFields: fields]
+]];

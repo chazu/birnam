@@ -1093,3 +1093,34 @@ unsafe fn history_plateaus(h: &H) {
         assert!(h.metric(store, b"retainedFactCount") < previous.0);
     }
 }
+
+#[test]
+#[ignore = "requires production modules"]
+fn local_cells_keep_values_without_facts_and_restore_their_image_fields() {
+    unsafe {
+        let h = H::new();
+        let _floor = CompiledFloor::pin(h.id, h.ns, h.roots);
+        let store = h.call(h.named(b"Store"), b"new", &[]);
+        let one = h.i(1); let two = h.i(2); let nil = h.named(b"nil");
+        let basis = h.metric(store, b"basis");
+        let facts = h.metric(store, b"retainedFactCount");
+        let cell = h.call(store, b"localCell:", &[one]);
+        for _ in 0..100 { assert_eq!(h.call(cell, b"set:", &[two]), cell); }
+        assert_eq!(h.call(cell, b"value", &[]), two);
+        assert_eq!(h.metric(cell, b"history"), 0);
+        assert_eq!(h.metric(store, b"basis"), basis);
+        assert_eq!(h.metric(store, b"retainedFactCount"), facts);
+        collect(h.id, h.gc);
+        assert_eq!(h.call(cell, b"value", &[]), two);
+        let fields = [h.call(cell, b"imageFieldAt:", &[h.i(0)]),
+                      h.call(cell, b"imageFieldAt:", &[h.i(1)]),
+                      h.call(cell, b"imageFieldAt:", &[h.i(2)])];
+        let restored = h.call(store, b"localCell:", &[nil]);
+        h.call(restored, b"restoreImageStore:entity:attr:", &fields);
+        assert_eq!(h.call(restored, b"value", &[]), two);
+        h.call(restored, b"set:", &[one]);
+        assert_eq!(h.call(restored, b"value", &[]), one);
+        assert_eq!(h.metric(store, b"basis"), basis);
+        h.clear();
+    }
+}

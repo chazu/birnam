@@ -37,6 +37,7 @@ send. Integer conversion and Error construction therefore observe replacement.
 | `reservedCompensationFactCount`, `reservedCompensationFactBytes` | Outstanding candidate compensation reservations; consumed or released through the owner messages described below. |
 | `liveTriplesDo:`, `liveTriplesAsOf:do:`, `liveTriplesSince:do:`, `liveTriplesBetween:and:do:` | Snapshot current/as-of triples, then send the block `value:value:value:`. Bounds preserve the existing inclusive-lower/exclusive-upper semantics. |
 | `cellFor:attr:` | New Cell retaining this Store and the exact entity/attribute. |
+| `localCell:`, `localCell:prototype:` | Transient Cell without fact transitions; the optional Cell prototype supplies behavior. Its three image fields retain a tagged value, with zero history. |
 | Cell `value`, `set:`, `history` | Fresh sends to its Store. `set:` returns the Cell on successful assertion and otherwise propagates the Store result. |
 
 `BIRNAM_STORE_COMPACTION_TRANSITIONS` retains its default of 4096;

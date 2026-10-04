@@ -1,0 +1,11 @@
+[package]
+name = "birnam-image-format-reference"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+birnam-artifact = { package = "birnam-artifact-codec", path = "../../../rust/birnam-artifact-codec" }
+sha2 = "0.10"
+
+[workspace]

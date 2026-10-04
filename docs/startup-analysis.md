@@ -218,3 +218,105 @@ The retained `instrumentation.diff` documents the phase checkpoints used in
 this profile. For later comparisons, record the installed executable, image,
 source identity, build profile, and configuration again: these results belong
 to the measured installation snapshot.
+
+## October 4: ImageFormat rewrite regression
+
+The unfinished, uncommitted Birnam ImageFormat implementation introduces a
+minute-scale image-admission bottleneck in `validateHeaps:programs:inventory:bindings:behaviors:`.
+This diagnosis used an isolated prototype prefix; the installed user binary was
+not replaced. The exact reported 25-minute startup was not run to completion.
+
+Bounded measurements on macOS arm64, from `/tmp`:
+
+| Check | Observed time |
+| --- | ---: |
+| Installed `/Users/chazu/.local/bin/birnam --repl`, first prompt | 2.748 s |
+| Last committed AlienCompiler rewrite prefix, first prompt | 6.210 s |
+| Rust ImageFormat inspecting the complete 110,675,622-byte bootstrap image, including process launch | 0.348 s |
+| Birnam ImageFormat: process launch through inventory inspection | 0.829 s |
+| Birnam ImageFormat: through heap decoding | 2.905 s |
+| First validation pass, first 1,000 objects | 11.402 s additional |
+| First validation pass, next 1,000 objects | 10.893 s additional |
+| First validation pass only, objects 9,000–9,099 | 10.783 s additional |
+
+The last row is a diagnostic subset, not complete image admission. That subset
+contains field-heavy objects. The full image has 23,324 objects and 314,281
+fields. Its first 2,000 objects contain only 591 fields, so extrapolating from
+those early objects substantially understates the total cost.
+
+Heap validation performs two whole-object passes, with nested field loops,
+error checks, tag-membership tests, reference checks, and native view access.
+Those small operations produce many language messages and temporary objects.
+A two-second native stack sample during the first pass contained 1,496 samples;
+at least 896 leaf samples (59.9%) were in Id dispatch, binding, dictionary lookup,
+and their hashing operations. Allocation, root management, and collection also
+appear. The slow phase is after portable-inventory inspection and byte decoding.
+
+A controlled temporary variant reused the numeric tag vectors rather than
+constructing them in each check. Its first 1,000-object pass fell from 11.402 to
+9.765 seconds, and the next from 10.893 to 9.560 seconds. This is a modest gain,
+not a solution to the overall per-field message and allocation volume.
+
+The temporary variants do not bypass validation in production. No runtime fix
+or successful full authored-startup timing is claimed here. ImageFormat should
+not be committed as a completed rewrite until full-image admission and startup
+have an acceptable measured cost. Small-format equivalence fixtures alone do
+not establish this.
+
+Evidence is under `/tmp/birnam-imageformat-rewrite/`: `startup-diagnosis.log`,
+`startup-diagnosis.sample`, `cached-diagnosis.log`, and `dense-diagnosis.log`.
+These files are temporary and are not repository artifacts.
+
+## October 4: source cleanup and first guarded optimization pass
+
+ImageFormat now constructs its tag sets and validation labels once, uses bounded
+Integer iteration instead of per-index Cells and condition Blocks, and removes
+small forwarding calls from the field loops. The separate validation walks and
+first-failure ordering remain. Unsigned fact comparisons now subtract same-sign
+operands before comparing with zero, preserving exact u64 ordering despite the
+language's floating-point rounding in ordered Integer comparisons.
+
+The next pass changes three shared mechanisms:
+
+- Id specializes the actual built-in lookup implementation. Every send rechecks
+  the lookup implementation and metabehavior; replacements and custom lookup run
+  the ordinary metacircular path. It caches no foreign method contexts.
+- Id's private address indexes use a small integer hash. Symbol-name hashing and
+  ordered method/Symbol enumeration are unchanged.
+- Emitted C caches constant selector/name Symbols, retained by their TCC Unit.
+  Namespace/Globals reads and method sends remain live. Explicit source Symbol
+  construction still uses ordinary interning.
+
+These are guarded dispatch and emission improvements, not general small-callee
+inlining, closure elimination, unboxed loops, or a completed deoptimization tier.
+No new recovery frames are required by the dispatch shortcut: a declined guard
+continues the original send before any source method has executed.
+
+Limited wall-clock timings, one run per cell, compilation excluded:
+
+| Workload | Original source/runtime | Source cleanup | Cleanup plus runtime/emission |
+| --- | ---: | ---: | ---: |
+| First heap pass, first 1,000 bootstrap objects | 12.05 s | 9.85 s | 4.83 s |
+| First heap pass, bootstrap objects 9,000–9,099 | 11.44 s | 9.01 s | 4.59 s |
+| Both heap passes, complete admission of 128 objects with 4,096 nil fields | 10.37 s | 8.66 s | 5.37 s |
+
+The source changes save about 17–21%; the combined changes save about 48–60%
+on these workloads. These are diagnostic timings, not cold-start benchmarks.
+The small complete image is synthetic and has no code/behavior/fact records.
+The full 110 MB bootstrap admission still exceeded a 120-second deadline after
+cleanup and optimization; the process was terminated. No improved full-bootstrap
+or REPL startup time is claimed, and the installed user prefix was not changed.
+
+Validation: workspace cargo check; six Id unit tests (including lookup replacement,
+method replacement and custom metabehavior fallback); three backend unit tests;
+production compiler and memory integration checks including collecting callbacks,
+paused frames and code reclamation; 132 ImageFormat admission cases and 16 exact
+roundtrips against the frozen Rust reference. The previous authored artifact
+incorrectly admitted the new adjacent-u64 rejection case; the corrected source
+passes it. Exhaustive suites and a fresh production installation were not run.
+
+The bounded reproduction tool is [image-format-bench.py](../scripts/image-format-bench.py).
+By default it runs complete admission; `--range START COUNT` deliberately measures
+only the first heap pass. The original source snapshot, synthetic image, timing
+JSON and native library hashes are retained in the ignored directory
+`.cargo-target/measurements/image-format-optimization-20261004/`.

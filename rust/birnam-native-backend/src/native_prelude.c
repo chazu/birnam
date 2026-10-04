@@ -19,15 +19,38 @@ static R bad(void){R r={0};r.status=1;return r;}
 static R ok(A a){R r={0};r.value=a;return r;}
 typedef struct{R failure;size_t *tokens,count,capacity;} Call;
 static O intern(Call*c,const char*n){if(c->failure.status)return 0;A a=bytes(n,strlen(n));R r=id.message(id.context,id.receiver,id.intern,&a,1);if(r.status||r.value.kind!=1){c->failure=r.status?r:bad();return 0;}return r.value.data.object;}
-static R raw(Call*c,O receiver,const char*n,const A*a,size_t count){O sel=intern(c,n);if(c->failure.status)return c->failure;R r=id.message(id.context,receiver,sel,a,count);if(r.status)c->failure=r;return r;}
+/* Selector spellings in generated code are static for the Unit's lifetime.
+   Root their Symbols in that Unit; retain live lookup on every actual send. */
+typedef struct {const char *name;O symbol;} Selector;
+static Selector selectors[512];
+static int cache_selectors;
+static O selector(Call*c,const char*n);
+static R raw(Call*c,O receiver,const char*n,const A*a,size_t count){O sel=selector(c,n);if(c->failure.status)return c->failure;R r=id.message(id.context,receiver,sel,a,count);if(r.status)c->failure=r;return r;}
 static O keep(Call*c,O o){if(c->failure.status)return 0;if(!o){c->failure=bad();return 0;}if(c->count==c->capacity){size_t cap=c->capacity?c->capacity*2:32;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return 0;}c->tokens=t;c->capacity=cap;}A a=obj(o);R r=raw(c,roots,"retain:",&a,1);if(r.status||r.value.kind!=2){c->failure=r.status?r:bad();return 0;}c->tokens[c->count++]=r.value.data.word;return o;}
 static A send(Call*c,O receiver,const char*n,const A*a,size_t count){if(c->failure.status)return (A){0};R r=raw(c,receiver,n,a,count);if(!r.status&&r.value.kind==1)keep(c,r.value.data.object);return r.value;}
 static O object(Call*c,A a){if(a.kind!=1||!a.data.object){if(!c->failure.status)c->failure=bad();return 0;}return a.data.object;}
 static O call(Call*c,O receiver,const char*n,const A*a,size_t count){return object(c,send(c,receiver,n,a,count));}
-static O named(Call*c,const char*n){A a=obj(intern(c,n));return call(c,ns,"at:",&a,1);}
+static O selector(Call*c,const char*n){
+ if(!cache_selectors||c->failure.status)return intern(c,n);
+ uintptr_t hash=(uintptr_t)n;hash^=hash>>17;hash*=UINT64_C(0x9e3779b97f4a7c15);
+ size_t slot=(hash>>9)&511;
+ for(size_t probe=0;probe<512;probe++,slot=(slot+1)&511){
+  if(selectors[slot].name==n)return selectors[slot].symbol;
+  if(!selectors[slot].name){
+   O symbol=intern(c,n);if(c->failure.status)return 0;
+   selectors[slot]=(Selector){n,symbol};
+   keep(c,symbol);
+   A a=obj(symbol);call(c,owner,"retain:",&a,1);
+   if(c->failure.status){selectors[slot]=(Selector){0};return 0;}
+   return symbol;
+  }
+ }
+ return intern(c,n);
+}
+static O named(Call*c,const char*n){A a=obj(selector(c,n));return call(c,ns,"at:",&a,1);}
 /* Preserve source lookup: Globals first, then bootstrap exports on nil. */
-static O global(Call*c,const char*n){A key=obj(keep(c,intern(c,n)));O nil=named(c,"nil");O value=call(c,named(c,"Globals"),"at:",&key,1);if(c->failure.status||value!=nil)return value;A fallback=send(c,ns,"at:",&key,1);return fallback.kind==0?nil:object(c,fallback);}
-static O global_put(Call*c,const char*n,O value){A a[2]={obj(keep(c,intern(c,n))),obj(value)};return call(c,named(c,"Globals"),"at:put:",a,2);}
+static O global(Call*c,const char*n){A key=obj(keep(c,selector(c,n)));O nil=named(c,"nil");O value=call(c,named(c,"Globals"),"at:",&key,1);if(c->failure.status||value!=nil)return value;A fallback=send(c,ns,"at:",&key,1);return fallback.kind==0?nil:object(c,fallback);}
+static O global_put(Call*c,const char*n,O value){A a[2]={obj(keep(c,selector(c,n))),obj(value)};return call(c,named(c,"Globals"),"at:put:",a,2);}
 static O integer(Call*c,size_t w){A a=word(w);return call(c,named(c,"Integer"),"fromWord:",&a,1);}
 static O string(Call*c,const void*p,size_t n){A a=bytes(p,n);return call(c,named(c,"String"),"fromBytes:",&a,1);}
 static O float_bits(Call*c,uint64_t w){A a=word(w);return call(c,named(c,"Float"),"fromBits:",&a,1);}

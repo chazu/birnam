@@ -42,7 +42,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg tcc codegen-runtime native-backend generation store relational prelude printing system-output system-input environment file-io system-gc storage trace native-loader source-loader block-loop artifact portable-code image image-format alien isolate host-entry host-project project-build host-interaction".split()
+modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg tcc codegen-runtime native-backend generation store relational prelude printing system-output system-input environment file-io system-gc storage trace native-loader source-loader block-loop artifact portable-code image alien isolate host-entry host-project project-build host-interaction".split()
 directory = Path(sys.argv[1])
 for module in modules:
     library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")
@@ -58,7 +58,7 @@ metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--offline",
 packages = {p["name"]: p for p in metadata["packages"]}
 for module in modules + ["siphon", "abi", "codegen"]:
     dependencies = {d["name"] for d in packages["birnam-" + module]["dependencies"] if d["kind"] is None}
-    expected = {"image": {"birnam-abi", "birnam-image-codec", "birnam-artifact-codec", "sha2"}, "image-format": {"birnam-abi", "birnam-image-codec"}, "portable-code": {"birnam-abi", "birnam-artifact-codec", "sha2"}, "codegen": {"birnam-artifact-codec", "sha2"}, "host-entry": {"birnam-abi", "birnam-host-support"}, "host-interaction": {"birnam-abi", "birnam-host-support"}, "host-project": {"birnam-abi", "birnam-host-support", "birnam-project-support"}, "project-build": {"birnam-abi", "birnam-host-support", "birnam-project-support", "birnam-artifact-codec", "serde", "serde_json"}, "artifact": {"birnam-abi", "sha2"}, "abi": set(), "execution": {"birnam-abi", "birnam-artifact-codec"}, "tcc": {"birnam-abi", "birnam-native-compiler"}, "generation": {"birnam-abi", "birnam-codegen"}, "codegen-runtime": {"birnam-abi", "birnam-codegen"}, "native-backend": {"birnam-abi", "birnam-codegen", "birnam-artifact-codec", "sha2"}}
+    expected = {"image": {"birnam-abi", "birnam-image-codec", "birnam-artifact-codec", "sha2"}, "portable-code": {"birnam-abi", "birnam-artifact-codec", "sha2"}, "codegen": {"birnam-artifact-codec", "sha2"}, "host-entry": {"birnam-abi", "birnam-host-support"}, "host-interaction": {"birnam-abi", "birnam-host-support"}, "host-project": {"birnam-abi", "birnam-host-support", "birnam-project-support"}, "project-build": {"birnam-abi", "birnam-host-support", "birnam-project-support", "birnam-artifact-codec", "serde", "serde_json"}, "string": {"birnam-abi", "sha2"}, "artifact": {"birnam-abi", "sha2"}, "abi": set(), "execution": {"birnam-abi", "birnam-artifact-codec"}, "tcc": {"birnam-abi", "birnam-native-compiler"}, "generation": {"birnam-abi", "birnam-codegen"}, "codegen-runtime": {"birnam-abi", "birnam-codegen"}, "native-backend": {"birnam-abi", "birnam-codegen", "birnam-artifact-codec", "sha2"}}
     assert dependencies == expected.get(module, {"birnam-abi"}), (module, dependencies)
 print("native boundary audit: exports, install names and dependencies passed")
 PY_AUDIT

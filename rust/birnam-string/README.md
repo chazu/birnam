@@ -122,3 +122,12 @@ replacement and Reflect publication apply to Bytes and its clones. The native
 ABI's borrowed `Operand::Bytes` remains distinct from this language prototype.
 The `embedding` production test covers all 256 byte values, conversion, cloning,
 MOP publication, collection/reclamation and live collecting replacements.
+
+`Bytes` supplies bounded `copyFrom:to:`, `readU32At:`/`readU64At:`, `sha256`
+and `wyhash64`. The 64-bit reader returns Integer word bits, including the sign
+bit. `readTaggedFieldAt:schema:` and `readTaggedRowsWithSchema:limit:` interpret
+caller-supplied tag payload shapes (`0` empty, `1` fixed eight bytes, `2` u32,
+`3` length-prefixed bytes, `4` nonempty NUL-free name). Unknown tags and malformed
+framing answer nil. Row tables expose ordinary read-only indexed views over an
+owned byte snapshot. These temporary views own no language references and are
+collected with their buffers; callers retain all format and reference rules.

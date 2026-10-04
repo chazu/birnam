@@ -143,7 +143,7 @@ fn native_compilers_are_live_value_seams() {
             .windows(5)
             .any(|s| s == b"__unm")
     );
-    let format = h.named(b"ImageFormat").unwrap();
+    let format = h.global(&q, b"ImageFormat").unwrap();
     let fixture =
         include_bytes!("../../../tests/fixtures/portable-code-v1/image-mixed-stripped.bin");
     let bytes = q
@@ -209,7 +209,7 @@ fn native_compilers_are_live_value_seams() {
         )
         .unwrap();
     assert!(
-        q.call(
+        q.check_result(q.call(
             format,
             b"inspect:architecture:abi:",
             &[
@@ -217,7 +217,7 @@ fn native_compilers_are_live_value_seams() {
                 Operand::object(arch),
                 Operand::object(abi)
             ]
-        )
+        ).unwrap())
         .is_err()
     );
     let refused = q
@@ -238,7 +238,7 @@ fn native_compilers_are_live_value_seams() {
         ),
         (
             format,
-            h.named(b"ImageFormatVt").unwrap(),
+            q.call(id.receiver, b"behaviorOf:", &[Operand::object(format)]).unwrap(),
             b"inspect:architecture:abi:",
             vec![
                 Operand::object(bytes),

@@ -211,14 +211,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-image-format"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
- "birnam-image-codec",
-]
-
-[[package]]
 name = "birnam-integer"
 version = "0.0.0"
 dependencies = [
@@ -399,6 +391,7 @@ name = "birnam-string"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+ "sha2",
 ]
 
 [[package]]
