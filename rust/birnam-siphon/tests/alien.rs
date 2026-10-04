@@ -116,10 +116,60 @@ impl H {
     unsafe fn eval(&self, b: &[u8]) -> Oop {
         unsafe { self.call(self.named(b"Codegen"), b"eval:", &[self.string(b)]) }
     }
+    unsafe fn compiler_call(&self, selector: &[u8], args: &[Oop]) -> Oop {
+        unsafe {
+            // Collect during FFI marshalling, not every allocation in the authored compiler.
+            // Compiler collection safety is covered by the native_compilers host seam test.
+            let integer_vt = self.named(b"IntegerVt");
+            let factory_selector = self.id.intern_name(b"fromWord:").unwrap();
+            let original_selector = self.id.intern_name(b"alienTestFromWord:").unwrap();
+            let collecting_entry = send(
+                self.id,
+                self.id.receiver,
+                b"bindingOf:in:",
+                &[
+                    Operand::object(factory_selector),
+                    Operand::object(integer_vt),
+                ],
+            )
+            .as_entry()
+            .unwrap();
+            let plain_entry = send(
+                self.id,
+                self.id.receiver,
+                b"bindingOf:in:",
+                &[
+                    Operand::object(original_selector),
+                    Operand::object(integer_vt),
+                ],
+            )
+            .as_entry()
+            .unwrap();
+            send(
+                self.id,
+                integer_vt,
+                b"addMethod",
+                &[
+                    Operand::object(factory_selector),
+                    Operand::entry(plain_entry),
+                ],
+            );
+            let result = self.call(self.named(b"Alien"), selector, args);
+            send(
+                self.id,
+                integer_vt,
+                b"addMethod",
+                &[
+                    Operand::object(factory_selector),
+                    Operand::entry(collecting_entry),
+                ],
+            );
+            result
+        }
+    }
     unsafe fn wrap(&self, name: &[u8], sig: &[u8], selector: &[u8], target: Oop) {
         unsafe {
-            let r = self.call(
-                self.named(b"Alien"),
+            let r = self.compiler_call(
                 b"wrap:signature:as:on:",
                 &[
                     self.string(name),
@@ -274,26 +324,18 @@ fn alien_calls_callbacks_and_owned_memory() {
         h.wrap(b"alien_call", b"l l p", b"foreignCall:", integer);
         let block = h.eval(b"[:x | [GC collectPrecisely]; [x + 1]]");
         assert_eq!(h.number(h.call(block, b"value:", &[h.int(4)])), 5);
-        let cb = h.call(alien, b"callback:signature:", &[block, h.string(b"l l")]);
+        let cb = h.compiler_call(b"callback:signature:", &[block, h.string(b"l l")]);
         assert_eq!(h.number(h.call(h.int(41), b"foreignCall:", &[cb])), 42);
         collect(id, h.gc);
         assert_eq!(h.number(h.call(h.int(9), b"foreignCall:", &[cb])), 10);
         h.bind(b"AlienTestCallback", cb);
         let recursive=h.eval(b"[:x | [[x = 0] ifTrue: [| 10] ifFalse: [| [[[x - 1] foreignCall: AlienTestRecursive] + 1]]]]");
-        let cb2 = h.call(
-            alien,
-            b"callback:signature:",
-            &[recursive, h.string(b"l l")],
-        );
+        let cb2 = h.compiler_call(b"callback:signature:", &[recursive, h.string(b"l l")]);
         h.bind(b"AlienTestRecursive", cb2);
         assert_eq!(h.number(h.call(h.int(3), b"foreignCall:", &[cb2])), 13);
         h.call(alien, b"releaseCallback:", &[cb2]);
         let releasing=h.eval(b"[:x | [Alien releaseCallback: AlienRelease]; [GC collectPrecisely]; [TCC checkpoint]; [x + 2]]");
-        let cb3 = h.call(
-            alien,
-            b"callback:signature:",
-            &[releasing, h.string(b"l l")],
-        );
+        let cb3 = h.compiler_call(b"callback:signature:", &[releasing, h.string(b"l l")]);
         h.bind(b"AlienRelease", cb3);
         assert_eq!(h.number(h.call(h.int(40), b"foreignCall:", &[cb3])), 42);
         assert_eq!(h.call(cb3, b"isNull", &[]), h.named(b"true"));

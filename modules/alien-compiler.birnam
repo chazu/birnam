@@ -1,0 +1,360 @@
+// AlienCompiler owns signature parsing, ABI classification and C generation.
+// Ordinary value trees stay here; Alien owns foreign resources and TCC owns code.
+// This module runs on the primitive floor, before the standard library.
+// Public entry: compile:signature: accepts a function String, or nil for a
+// callback, and a signature String; returns C String or #badSignature Error.
+// Parsed values: #[return arguments aggregates], with type nodes
+// #[#scalar letter], #[#aggregate index], or #[#array decimalCount letter].
+// Array counts are decimal Strings to preserve the complete unsigned 64-bit
+// range. Aggregate definitions are post-order vectors of fields.
+// classify: returns #[returnClass argumentClasses]; TCC owns actual C layout.
+// C assets are embedded in the compiled artifact, never read at startup.
+[Module named: #alienCompiler requires: #[]];
+[Globals at: #AlienCompiler put: [Object clone]];
+[Globals at: #AlienCompilerPrelude put: [[System embedFile: "alien-compiler-assets/native-prelude.c"] asString]];
+
+[Reflect defineMethod: #concat: on: AlienCompiler as: [:self :parts |
+let builder := [StringBuilder new]; let i := [self cell: 0];
+[[| [[i value] < [parts size]]] whileTrue: [|
+  [builder add: [parts at: [i value]]]; [i set: [[i value] + 1]]]];
+[builder asString]
+]];
+
+[Reflect defineMethod: #indexes:do: on: AlienCompiler as: [:self :values :body |
+let i := [self cell: 0]; [[| [[i value] < [values size]]] whileTrue: [|
+ [body value: [values at: [i value]] value: [i value]]; [i set: [[i value] + 1]]]]; self
+]];
+
+[Reflect defineMethod: #decimal: on: AlienCompiler as: [:self :n |
+[n printString]
+]];
+
+[Reflect defineMethod: #hexByte: on: AlienCompiler as: [:self :n |
+let digits := "0123456789abcdef";
+[[n < 16] ifTrue: [| [self concat: #["0x" [digits at: n]]]] ifFalse: [| [self concat: #["0x" [digits at: [n / 16]] [digits at: [n mod: 16]]]]]]
+]];
+
+[Reflect defineMethod: #fail: on: AlienCompiler as: [:self :message |
+[Error kind: #badSignature message: message]
+]];
+
+[Reflect defineMethod: #error:offset: on: AlienCompiler as: [:self :message :offset |
+[self fail: [self concat: #[message " at offset " [self decimal: offset]]]]
+]];
+
+[Reflect defineMethod: #byteError:byte:offset: on: AlienCompiler as: [:self :message :byte :offset |
+[self error: [self concat: #[message [self hexByte: byte]]] offset: offset]
+]];
+
+[Reflect defineMethod: #state:at: on: AlienCompiler as: [:self :parser :key |
+[[db cellFor: parser attr: key] value]
+]];
+
+[Reflect defineMethod: #state:at:put: on: AlienCompiler as: [:self :parser :key :value |
+[[db cellFor: parser attr: key] set: value]; value
+]];
+
+[Reflect defineMethod: #cell: on: AlienCompiler as: [:self :value |
+let cell := [db cellFor: [Object clone] attr: #value]; [cell set: value]; cell
+]];
+
+[Reflect defineMethod: #position: on: AlienCompiler as: [:self :p |
+[self state: p at: #offset]
+]];
+
+[Reflect defineMethod: #peek: on: AlienCompiler as: [:self :p |
+let pos := [self position: p]; let text := [self state: p at: #input];
+[[pos < [text size]] ifTrue: [| [text byteAt: pos]] ifFalse: [| -1]]
+]];
+
+[Reflect defineMethod: #advance: on: AlienCompiler as: [:self :p |
+[self state: p at: #offset put: [[self position: p] + 1]]
+]];
+
+[Reflect defineMethod: #scalar: on: AlienCompiler as: [:self :byte |
+let letters := "iludfspv"; let i := [self cell: 0]; let found := [self cell: nil];
+[[| [[i value] < [letters size]]] whileTrue: [|
+ [[byte = [letters byteAt: [i value]]] ifTrue: [| [found set: [letters at: [i value]]]]];
+ [i set: [[i value] + 1]]]]; [found value]
+]];
+
+[Reflect defineMethod: #fieldScalar: on: AlienCompiler as: [:self :byte |
+let scalar := [self scalar: byte];
+[[[byte = 115] | [byte = 118]] ifTrue: [| nil] ifFalse: [| scalar]]
+]];
+
+[Reflect defineMethod: #parseTop:return: on: AlienCompiler as: [:self :p :isReturn |
+let byte := [self peek: p]; let pos := [self position: p];
+[[byte = 123] ifTrue: [| [self parseAggregate: p]] ifFalse: [|
+ let scalar := [self scalar: byte];
+ [[scalar isNil] ifTrue: [| [self byteError: "invalid type byte " byte: [[byte < 0] ifTrue: [| 0] ifFalse: [| byte]] offset: pos]] ifFalse: [|
+  [[[byte = 118] & [[isReturn == true] not]] ifTrue: [| [self error: "void is not legal as an argument" offset: pos]] ifFalse: [|
+   [self advance: p]; #[#scalar scalar]]]]]]]
+]];
+
+[Reflect defineMethod: #decimalGreater:than: on: AlienCompiler as: [:self :a :b |
+[[[a size] = [b size]] ifTrue: [|
+ let i := [self cell: 0]; let greater := [self cell: false]; let different := [self cell: false];
+ [[| [[[i value] < [a size]] & [[different value] not]]] whileTrue: [|
+  let x := [a byteAt: [i value]]; let y := [b byteAt: [i value]];
+  [[x = y] ifFalse: [| [different set: true]; [greater set: [x > y]]]];
+  [i set: [[i value] + 1]]]]; [greater value]]
+ ifFalse: [| [[a size] > [b size]]]]
+]];
+
+[Reflect defineMethod: #parseField: on: AlienCompiler as: [:self :p |
+let byte := [self peek: p]; let pos := [self position: p];
+[[byte = 123] ifTrue: [| [self parseAggregate: p]] ifFalse: [| [[[byte >= 48] & [byte <= 57]] ifTrue: [| [self parseArray: p]] ifFalse: [| let scalar := [self fieldScalar: byte]; [[scalar isNil] ifTrue: [| [self byteError: "invalid array element byte " byte: byte offset: pos]] ifFalse: [| [self advance: p]; #[#scalar scalar]]]]]]]
+]];
+
+[Reflect defineMethod: #parseAggregate: on: AlienCompiler as: [:self :p |
+let start := [self position: p]; [self advance: p]; let fields := [self cell: #[]]; let error := [self cell: nil];
+[[| [[[[[self peek: p] = 125] not] & [[self peek: p] >= 0]] & [[error value] isNil]]] whileTrue: [|
+ let field := [self parseField: p];
+ [[field isError] ifTrue: [| [error set: field]] ifFalse: [| [fields set: [[fields value] add: field]]]]]];
+[[[error value] notNil] ifTrue: [| [error value]] ifFalse: [| [[[self peek: p] < 0] ifTrue: [| [self fail: [self concat: #["aggregate opened at offset " [self decimal: start] " is unclosed"]]]] ifFalse: [| [self advance: p]; [[[[fields value] size] = 0] ifTrue: [| [self fail: [self concat: #["aggregate at offset " [self decimal: start] " has no fields"]]]] ifFalse: [| let aggs := [self state: p at: #aggregates]; let index := [aggs size]; [self state: p at: #aggregates put: [aggs add: [fields value]]]; #[#aggregate index]]]]]]]
+]];
+
+[Reflect defineMethod: #parse: on: AlienCompiler as: [:self :signature |
+let compact := [StringBuilder new]; let i := [self cell: 0];
+[[| [[i value] < [signature size]]] whileTrue: [|
+ let byte := [signature byteAt: [i value]];
+ [[[[byte = 32] not] & [[byte = 9] not]] ifTrue: [| [compact addByte: byte]]]; [i set: [[i value] + 1]]]];
+let text := [compact asString];
+[[[text size] = 0] ifTrue: [| [self fail: "signature is empty"]] ifFalse: [|
+ let p := [Object clone]; [self state: p at: #input put: text];
+ [self state: p at: #offset put: 0]; [self state: p at: #aggregates put: #[]];
+ let result := [self cell: [self parseTop: p return: true]]; let args := [self cell: #[]];
+ [[| [[[self position: p] < [text size]] & [[[result value] isError] not]]] whileTrue: [|
+  let arg := [self parseTop: p return: false];
+  [[arg isError] ifTrue: [| [result set: arg]] ifFalse: [| [args set: [[args value] add: arg]]]]]];
+ [[[result value] isError] ifTrue: [| [result value]] ifFalse: [| #[[result value] [args value] [self state: p at: #aggregates]]]]]]
+]];
+
+[Reflect defineMethod: #parseArray: on: AlienCompiler as: [:self :p |
+let start := [self position: p]; let digits := [StringBuilder new]; let overflow := [self cell: false];
+[[| [[[self peek: p] >= 48] & [[self peek: p] <= 57]]] whileTrue: [|
+ [[overflow value] ifFalse: [|
+  let text := [self state: p at: #input]; let digit := [text at: [self position: p]];
+  [[[[[digits asString] size] = 0] & [[digit byteAt: 0] = 48]] ifFalse: [| [digits add: digit]]];
+  [[self decimalGreater: [digits asString] than: "18446744073709551615"] ifTrue: [| [overflow set: true]]]]];
+ [self advance: p]]];
+[[overflow value] ifTrue: [| [self fail: [self concat: #["array count overflows at offset " [self decimal: start]]]]] ifFalse: [| let element := [self peek: p]; let pos := [self position: p]; let count := [digits asString];
+[[element < 0] ifTrue: [| [self fail: [self concat: #["array at offset " [self decimal: start] " has no element type"]]]] ifFalse: [| [[[count size] = 0] ifTrue: [| [self fail: [self concat: #["array at offset " [self decimal: start] " has zero length"]]]] ifFalse: [| let scalar := [self fieldScalar: element]; [[scalar isNil] ifTrue: [| [self byteError: "invalid array element byte " byte: element offset: pos]] ifFalse: [| [self advance: p]; #[#array count scalar]]]]]]]]]
+]];
+
+[Reflect defineMethod: #cType: on: AlienCompiler as: [:self :scalar |
+let types := {"i" -> "int", "l" -> "long", "u" -> "unsigned long", "d" -> "double", "f" -> "float", "s" -> "const char*", "p" -> "void*", "v" -> "void"};
+[types at: scalar]
+]];
+
+[Globals at: #AlienCompilerInvoke put: [[System embedFile: "alien-compiler-assets/invoke.c"] asString]];
+[Globals at: #AlienCompilerInitialize put: [[System embedFile: "alien-compiler-assets/initialize.c"] asString]];
+[Reflect defineMethod: #ctype: on: AlienCompiler as: [:self :type |
+[[[type at: 0] == #scalar] ifTrue: [| [self cType: [type at: 1]]] ifFalse: [| [self concat: #["__S" [self decimal: [type at: 1]]]]]]
+]];
+
+[Reflect defineMethod: #pointerGuard:expression:failure: on: AlienCompiler as: [:self :scalar :expression :failure |
+[[scalar = "p"] ifTrue: [| [self concat: #["if (!alien_isForeignAddress(" expression ")) return " failure ";\n"]]] ifFalse: [| ""]]
+]];
+
+[Reflect defineMethod: #unbox:expression: on: AlienCompiler as: [:self :scalar :expression |
+let prefixes := {"i" -> "(int)alien_smallIntValue(", "l" -> "alien_smallIntValue(", "u" -> "alien_uintValue(", "d" -> "alien_floatValue(", "f" -> "(float)alien_floatValue(", "s" -> "alien_cstr(", "p" -> "(void*)alien_foreignAddressValue("};
+[self concat: #[[prefixes at: scalar] expression ")"]]
+]];
+
+[Reflect defineMethod: #box:expression: on: AlienCompiler as: [:self :scalar :expression |
+[[scalar = "u"] ifTrue: [| [self concat: #["(((unsigned long)(" expression ") >> 63) ? alien_mkWord((unsigned long)(" expression ")) : alien_mkSmallInt((long)(" expression ")))"]]] ifFalse: [| let prefixes := {"i" -> "alien_mkSmallInt((long)(", "l" -> "alien_mkSmallInt((long)(", "d" -> "alien_mkFloat((double)(", "f" -> "alien_mkFloat((double)(", "p" -> "alien_mkForeignAddress((unsigned long)("};
+let suffixes := {"i" -> "))", "l" -> "))", "d" -> "))", "f" -> "))", "p" -> "))"};
+[self concat: #[[prefixes at: scalar] expression [suffixes at: scalar]]]]]
+]];
+
+[Reflect defineMethod: #boxReturn: on: AlienCompiler as: [:self :scalar |
+let bodies := {"v" -> "return alien_nil();\n", "i" -> "return alien_mkSmallInt((long)__r);\n", "l" -> "return alien_mkSmallInt((long)__r);\n", "u" -> "return (((unsigned long)__r >> 63) ? alien_mkWord((unsigned long)__r) : alien_mkSmallInt((long)__r));\n", "d" -> "return alien_mkFloat((double)__r);\n", "f" -> "return alien_mkFloat((double)__r);\n", "s" -> "return __r ? alien_mkString(__r, strlen(__r)) : alien_nil();\n", "p" -> "return alien_mkForeignAddress((unsigned long)__r);\n"}; [bodies at: scalar]
+]];
+
+[Reflect defineMethod: #declarations: on: AlienCompiler as: [:self :aggregates |
+let source := [StringBuilder new];
+[self indexes: aggregates do: [:fields :index |
+ [source add: "typedef struct { "];
+ [self indexes: fields do: [:field :i |
+  let label := [self decimal: i];
+  [[[field at: 0] == #array] ifTrue: [|
+   [source add: [self concat: #[[self cType: [field at: 2]] " f" label "[" [field at: 1] "]; "]]]]
+  ifFalse: [| [source add: [self concat: #[[self ctype: field] " f" label "; "]]]]]]];
+ [source add: [self concat: #["} __S" [self decimal: index] ";\n"]]]]];
+[source asString]
+]];
+
+[Reflect defineMethod: #prototype:signature: on: AlienCompiler as: [:self :name :signature |
+let source := [StringBuilder new]; let args := [signature at: 1];
+[source add: [self concat: #[[self ctype: [signature at: 0]] " " name "("]]];
+[[[args size] = 0] ifTrue: [| [source add: "void"]] ifFalse: [|
+ [self indexes: args do: [:arg :i |
+  [[i > 0] ifTrue: [| [source add: ", "]]];
+  [source add: [self concat: #[[self ctype: arg] " a" [self decimal: i]]]]]]]];
+[source add: ");"]; [source asString]
+]];
+
+[Reflect defineMethod: #unmarshalField:index: on: AlienCompiler as: [:self :field :index |
+let i := [self decimal: index]; let kind := [field at: 0];
+[[kind == #scalar] ifTrue: [| let scalar := [field at: 1]; [self concat: #[[self pointerGuard: scalar expression: "e" failure: "0"] "out->f" i " = " [self unbox: scalar expression: "e"] ";\n"]]] ifFalse: [| [[kind == #aggregate] ifTrue: [| [self concat: #["if (!__unm" [self decimal: [field at: 1]] "(e, &out->f" i ")) return 0;\n"]]] ifFalse: [| let count := [field at: 1]; let scalar := [field at: 2];
+[self concat: #["if (alien_smallIntValue(alien_send(e, alien_intern(\"size\"), 0, 0L)) != " count "L) return 0;\n{ long __k; for (__k = 0; __k < " count "L; __k++) {\nvoid* __ae = alien_send(e, alien_intern(\"at:\"), (void*[]){alien_mkSmallInt(__k)}, 1L);\n" [self pointerGuard: scalar expression: "__ae" failure: "0"] "out->f" i "[__k] = " [self unbox: scalar expression: "__ae"] ";\n} }\n"]]]]]]
+]];
+
+[Reflect defineMethod: #marshalField:index: on: AlienCompiler as: [:self :field :index |
+let i := [self decimal: index]; let kind := [field at: 0];
+[[kind == #scalar] ifTrue: [| [self concat: #["e = " [self box: [field at: 1] expression: [self concat: #["v->f" i]]] ";\n"]]] ifFalse: [| [[kind == #aggregate] ifTrue: [| [self concat: #["e = __mk" [self decimal: [field at: 1]] "(&v->f" i ");\n"]]] ifFalse: [| [self concat: #["{ void* s = alien_send(named(active,\"Vector\"), alien_intern(\"new\"), 0, 0L); long __k;\nfor (__k = 0; __k < " [field at: 1] "L; __k++) {\nvoid* __ae = " [self box: [field at: 2] expression: [self concat: #["v->f" i "[__k]"]]] ";\ns = alien_send(s, alien_intern(\"add:\"), (void*[]){__ae}, 1L);\n} e = s; }\n"]]]]]]
+]];
+
+[Reflect defineMethod: #aggregateSupport: on: AlienCompiler as: [:self :aggregates |
+let source := [StringBuilder new];
+[self indexes: aggregates do: [:fields :index |
+ let i := [self decimal: index];
+ [source add: [self concat: #["static int __unm" i "(void* v, __S" i "* out){\nif (alien_smallIntValue(alien_send(v, alien_intern(\"size\"), 0, 0L)) != " [self decimal: [fields size]] "L) return 0;\nvoid* e;\n"]]];
+ [self indexes: fields do: [:field :j |
+  [source add: [self concat: #["e = alien_send(v, alien_intern(\"at:\"), (void*[]){alien_mkSmallInt(" [self decimal: j] ")}, 1L);\n" [self unmarshalField: field index: j]]]]]];
+ [source add: "return 1;\n}\n"]]];
+[self indexes: aggregates do: [:fields :index |
+ let i := [self decimal: index];
+ [source add: [self concat: #["static void* __mk" i "(__S" i "* v){\nvoid* r = alien_send(named(active,\"Vector\"), alien_intern(\"new\"), 0, 0L);\nvoid* e;\n"]]];
+ [self indexes: fields do: [:field :j |
+  [source add: [self concat: #[[self marshalField: field index: j] "r = alien_send(r, alien_intern(\"add:\"), (void*[]){e}, 1L);\n"]]]]];
+ [source add: "return r;\n}\n"]]];
+[source asString]
+]];
+
+[Reflect defineMethod: #argument:at: on: AlienCompiler as: [:self :arg :i |
+let index := [self decimal: i]; let expression := [[i = 0] ifTrue: [| "self"] ifFalse: [| [self concat: #["args[" [self decimal: [i - 1]] "]"]]]];
+[[[arg at: 0] == #scalar] ifTrue: [| [self concat: #[[self pointerGuard: [arg at: 1] expression: expression failure: "alien_nil()"] [self cType: [arg at: 1]] " a" index " = " [self unbox: [arg at: 1] expression: expression] ";\n"]]] ifFalse: [| [self concat: #["__S" [self decimal: [arg at: 1]] " a" index ";\nif (!__unm" [self decimal: [arg at: 1]] "(" expression ", &a" index ")) return alien_nil();\n"]]]]
+]];
+
+[Reflect defineMethod: #arguments:prefix:separator: on: AlienCompiler as: [:self :args :prefix :separator |
+let text := [StringBuilder new];
+[self indexes: args do: [:arg :i |
+ [[i > 0] ifTrue: [| [text add: separator]]];
+ [text add: [self concat: #[prefix [self decimal: i]]]]]];
+[text asString]
+]];
+
+[Reflect defineMethod: #shim: on: AlienCompiler as: [:self :signature |
+let source := [StringBuilder new]; let args := [signature at: 1]; let result := [signature at: 0]; let aggregates := [signature at: 2];
+[source add: AlienCompilerPrelude]; [source add: [self declarations: aggregates]];
+[source add: [self prototype: "__alien_target" signature: signature]]; [source add: "\n"];
+[source add: [self aggregateSupport: aggregates]];
+[source add: "void* __shim(void* self, void** args, long n){\n"];
+let expected := [[[args size] > 0] ifTrue: [| [[args size] - 1]] ifFalse: [| 0]];
+[source add: [self concat: #["if (n != " [self decimal: expected] "L) return alien_nil();\n"]]];
+[self indexes: args do: [:arg :i | [source add: [self argument: arg at: i]]]];
+[source add: "if (active->failure.status) return alien_nil();\n"];
+let scalar := [[result at: 0] == #scalar];
+[source add: "  "];
+[[scalar & [[result at: 1] = "v"]] ifTrue: [| [source add: "(void)"]]
+ ifFalse: [| [source add: [self concat: #[[self ctype: result] " __r = "]]]]];
+[source add: [self concat: #["__alien_target(" [self arguments: args prefix: "a" separator: ", "] ");\n"]]];
+[self indexes: args do: [:arg :i |
+ [[[arg at: 0] == #scalar] ifTrue: [|
+  [[[arg at: 1] = "s"] ifTrue: [| [source add: [self concat: #["alien_free_cstr(a" [self decimal: i] ");\n"]]]]]]]]];
+[scalar ifTrue: [| [source add: [self boxReturn: [result at: 1]]]]
+ ifFalse: [| [source add: [self concat: #["return __mk" [self decimal: [result at: 1]] "(&__r);\n"]]]]];
+[source add: "}\n"]; [source asString]
+]];
+
+[Reflect defineMethod: #callback: on: AlienCompiler as: [:self :signature |
+let result := [signature at: 0]; let args := [signature at: 1];
+[[[[result at: 0] == #scalar] & [[result at: 1] = "s"]] ifTrue: [| [self fail: "a callback cannot return a string"]] ifFalse: [| let source := [StringBuilder new];
+[source add: AlienCompilerPrelude]; [source add: [self declarations: [signature at: 2]]]; [source add: [self aggregateSupport: [signature at: 2]]];
+[source add: "\n"]; let declaration := [self prototype: "__cb" signature: signature];
+[source add: [declaration copyFrom: 0 to: [[declaration size] - 1]]]; [source add: "{\n"];
+[self indexes: args do: [:arg :i |
+ let index := [self decimal: i]; let expression := [self concat: #["a" index]];
+ let boxed := [[[arg at: 0] == #aggregate] ifTrue: [| [self concat: #["__mk" [self decimal: [arg at: 1]] "(&a" index ")"]]]
+  ifFalse: [|
+   [[[arg at: 1] = "s"] ifTrue: [| [self concat: #[expression " ? alien_mkString(" expression ", strlen(" expression ")) : alien_nil()"]]]
+    ifFalse: [| [self box: [arg at: 1] expression: expression]]]]];
+ [source add: [self concat: #["void* b" index " = " boxed ";\n"]]]]];
+let selector := [StringBuilder new];
+[[[args size] = 0] ifTrue: [| [selector add: "value"]] ifFalse: [| [self indexes: args do: [:a :i | [selector add: "value:"]]]]];
+[source add: [self concat: #["void* r = alien_send((void*)__cbBlock, alien_intern(\"" [selector asString] "\"), "]]];
+[[[args size] = 0] ifTrue: [| [source add: "0, 0L);\n"]]
+ ifFalse: [| [source add: [self concat: #["(void*[]){" [self arguments: args prefix: "b" separator: ", "] "}, " [self decimal: [args size]] "L);\n"]]]]];
+[[[result at: 0] == #aggregate] ifTrue: [|
+ let index := [self decimal: [result at: 1]];
+ [source add: [self concat: #["__S" index " __out = {0};\n__unm" index "(r, &__out);\nreturn __out;\n"]]]]
+ ifFalse: [|
+ let bodies := {"v" -> "(void)r;\nreturn;\n", "i" -> "return (int)alien_smallIntValue(r);\n", "l" -> "return alien_smallIntValue(r);\n", "u" -> "return alien_uintValue(r);\n", "d" -> "return alien_floatValue(r);\n", "f" -> "return (float)alien_floatValue(r);\n", "p" -> "return alien_isForeignAddress(r) ? (void*)alien_foreignAddressValue(r) : (void*)0;\n"};
+ [source add: [bodies at: [result at: 1]]]]];
+[source add: "}\n"]; [source asString]]]
+]];
+
+[Reflect defineMethod: #validIdentifier: on: AlienCompiler as: [:self :name |
+let i := [self cell: 0]; let error := [self cell: nil];
+[[[name size] = 0] ifTrue: [| [error set: [self fail: "function name is empty"]]]];
+[[| [[[i value] < [name size]] & [[error value] isNil]]] whileTrue: [|
+ let b := [name byteAt: [i value]];
+ let alpha := [[[b >= 65] & [b <= 90]] | [[b >= 97] & [b <= 122]]];
+ let digit := [[[[i value] > 0] & [b >= 48]] & [b <= 57]];
+ [[[alpha | digit] | [b = 95]] ifFalse: [| [error set: [self byteError: "invalid C identifier byte " byte: b offset: [i value]]]]];
+ [i set: [[i value] + 1]]]]; [error value]
+]];
+
+[Reflect defineMethod: #compile:signature: on: AlienCompiler as: [:self :name :text |
+let signature := [self parse: text];
+[[signature isError] ifTrue: [| signature] ifFalse: [| let callback := [name isNil];
+let error := [callback ifTrue: [| nil] ifFalse: [| [self validIdentifier: name]]];
+[[error notNil] ifTrue: [| error] ifFalse: [| let source := [callback ifTrue: [| [self callback: signature]] ifFalse: [| [self shim: signature]]];
+[[source isError] ifTrue: [| source] ifFalse: [| let body := [StringBuilder new];
+[callback ifTrue: [|
+ [body add: [source replace: " __cb(" with: " __cb_body("]];
+ let declaration := [self prototype: "__cb" signature: signature];
+ [body add: [declaration copyFrom: 0 to: [[declaration size] - 1]]];
+ [body add: "{ Call c={0}; Call *prior=active; active=&c; begin(&c); keep(&c,__cbBlock); "];
+ let args := [self arguments: [signature at: 1] prefix: "a" separator: ","];
+ let result := [signature at: 0];
+ [[[[result at: 0] == #scalar] & [[result at: 1] = "v"]] ifTrue: [|
+  [body add: [self concat: #["__cb_body(" args "); active=prior; R r=finish(&c,(A){0}); if(r.status) abort(); return; }\n"]]]]
+ ifFalse: [| [body add: [self concat: #[[self ctype: result] " result=__cb_body(" args "); active=prior; R r=finish(&c,(A){0}); if(r.status) abort(); return result; }\n"]]]]]]
+ ifFalse: [|
+  let declaration := [self prototype: "__alien_target" signature: signature];
+  let pointer := [self concat: #["static " [[declaration copyFrom: 0 to: [[declaration size] - 1]] replace: " __alien_target(" with: " (*__alien_target)("] ";"]];
+  [body add: [source replace: declaration with: pointer]];
+  [body add: AlienCompilerInvoke]]];
+[body add: AlienCompilerInitialize];
+[callback ifTrue: [| [body add: "if(n!=3){active=prior;return finish(&c,(A){0});}__cbBlock=keep(&c,object(&c,a[2]));A address=word((size_t)__cb);O result=call(&c,named(&c,\"Alien\"),\"fromAddress:\",&address,1);\n"]]
+ ifFalse: [| [body add: "if(n!=3){active=prior;return finish(&c,(A){0});}__alien_target=(void*)unbox(\"Integer\",\"wordOf:\",object(&c,a[2]));A args[2]={entry(invoke),obj(owner)};O result=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",args,2);\n"]]];
+[body add: "active=prior;return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n"];
+[body asString]]]]]]]
+]];
+
+[Reflect defineMethod: #floatMembers:aggregates: on: AlienCompiler as: [:self :field :aggregates |
+[[[field at: 0] == #aggregate] ifTrue: [| [self hfa: [field at: 1] aggregates: aggregates]] ifFalse: [| let scalar := [[[field at: 0] == #array] ifTrue: [| [field at: 2]] ifFalse: [| [field at: 1]]];
+let count := [[[field at: 0] == #array] ifTrue: [|
+ let text := [field at: 1];
+ [[self decimalGreater: text than: "4"] ifTrue: [| 5] ifFalse: [| [[text byteAt: 0] - 48]]]] ifFalse: [| 1]];
+[[[[scalar = "f"] | [scalar = "d"]] & [count <= 4]] ifTrue: [| #[scalar count]] ifFalse: [| nil]]]]
+]];
+
+[Reflect defineMethod: #hfa:aggregates: on: AlienCompiler as: [:self :index :aggregates |
+let state := [Object clone]; [self state: state at: #kind put: nil]; [self state: state at: #count put: 0]; [self state: state at: #valid put: true];
+[self indexes: [aggregates at: index] do: [:field :i |
+ let members := [self floatMembers: field aggregates: aggregates];
+[[members isNil] ifTrue: [| [self state: state at: #valid put: false]] ifFalse: [| let old := [self state: state at: #kind]; let kind := [members at: 0];
+[[old notNil] ifTrue: [| [[[old = kind] not] ifTrue: [| [self state: state at: #valid put: false]]]]];
+[self state: state at: #kind put: kind];
+[self state: state at: #count put: [[self state: state at: #count] + [members at: 1]]]
+]]
+]];
+let count := [self state: state at: #count];
+[[[[self state: state at: #valid] & [count >= 1]] & [count <= 4]] ifTrue: [| #[[self state: state at: #kind] count]] ifFalse: [| nil]]
+]];
+
+[Reflect defineMethod: #classifyType:aggregates: on: AlienCompiler as: [:self :type :aggregates |
+[[[type at: 0] == #scalar] ifTrue: [| let classes := {"i" -> #signedInteger32, "l" -> #signedInteger64, "u" -> #unsignedInteger64, "d" -> #float64, "f" -> #float32, "s" -> #stringPointer, "p" -> #pointer, "v" -> #void}; #[#scalar [classes at: [type at: 1]]]] ifFalse: [| #[#aggregate [type at: 1] [self hfa: [type at: 1] aggregates: aggregates]]]]
+]];
+
+[Reflect defineMethod: #classify: on: AlienCompiler as: [:self :signature |
+let classes := [Object clone]; [self state: classes at: #arguments put: #[]];
+[self indexes: [signature at: 1] do: [:arg :i |
+ [self state: classes at: #arguments put: [[self state: classes at: #arguments] add: [self classifyType: arg aggregates: [signature at: 2]]]]]];
+#[[self classifyType: [signature at: 0] aggregates: [signature at: 2]] [self state: classes at: #arguments]]
+]];

@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
+    ("alienCompiler", "modules/alien-compiler.birnam"),
 ];
 
 // Authored production tools, compiled through the installed Id artifact path.
@@ -89,7 +90,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_image.dylib",
     "libbirnam_image_format.dylib",
     "libbirnam_alien.dylib",
-    "libbirnam_alien_compiler.dylib",
     "libbirnam_isolate.dylib",
 ];
 
@@ -311,6 +311,7 @@ fn source_manifest(root: &Path) -> Result<BTreeMap<String, String>, String> {
     collect_files(root, Path::new("modules"), &mut entries, &|path| {
         path.extension().and_then(|value| value.to_str()) == Some("birnam")
     })?;
+    collect_files(root, Path::new("modules/alien-compiler-assets"), &mut entries, &|_| true)?;
     collect_files(root, Path::new("docs/guide"), &mut entries, &|path| {
         path.extension().and_then(|value| value.to_str()) == Some("md")
     })?;
@@ -673,7 +674,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             copy_file(&source, &lib_dir.join(name))?;
         }
     }
-    // The Rust grammar is a build seed only. Compile the two early artifacts
+    // The Rust grammar is a build seed only. Compile the early authored artifacts
     // without evaluating source bootstrap, then remove the seed from the prefix.
     let seed = lib_dir.join("libbirnam_lang_seed.dylib");
     copy_file(&profile_dir.join("libbirnam_lang_seed.dylib"), &seed)?;
@@ -799,6 +800,11 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         &root.join("modules"),
         &source_root.join("modules"),
         "birnam",
+    )?;
+
+    copy_tree(
+        &root.join("modules/alien-compiler-assets"),
+        &source_root.join("modules/alien-compiler-assets"),
     )?;
 
     let source_after = source_manifest(&root)?;

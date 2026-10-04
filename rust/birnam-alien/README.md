@@ -4,7 +4,7 @@ Bootstrap loads Alien after TCC and the compiler. Host supplies the installed
 library directory. Alien owns library handles and ForeignAddress buffers;
 all language values, method publication, roots and compilation use owner messages.
 Signature parsing, ABI classification and wrapper generation belong to
-[AlienCompiler](../birnam-alien-compiler/README.md), invoked through
+[AlienCompiler](../../modules/alien-compiler.birnam), invoked through
 `compile:signature:`. The receiver-first C convention remains: the first C argument comes from the Birnam receiver.
 
 Generated wrappers are current native modules compiled by `TCC compile:`.
@@ -29,6 +29,7 @@ object bytes. Callback addresses and foreign memory remain process-local.
 `mise run native-messages` includes the production Alien test, covering actual
 scalar, unsigned, aggregate and callback calls, unaligned buffers, collecting
 conversion replacements, recursive callbacks and final TCC reclamation.
-`cargo test --offline --locked -p birnam-alien-compiler -p birnam-alien` checks
-the parser, classifier, C emission and library registry. The older frozen-IdApi fixtures are not current
+`cargo test --offline --locked -p birnam-alien` checks the library registry.
+`scripts/alien-compiler-test.py PREFIX` compares the authored compiler with a
+frozen test-only Rust reference; that reference is outside the production workspace. The older frozen-IdApi fixtures are not current
 acceptance. `mise run host-cli` validates installation and relocated startup.

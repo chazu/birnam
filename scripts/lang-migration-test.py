@@ -13,7 +13,7 @@ lib = prefix / 'lib'
 assert (lib / 'libbirnam_lang.dylib').read_bytes().startswith(b'\x7fELF')
 assert not (lib / 'libbirnam_lang_seed.dylib').exists()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
-assert receipt['bootstrap_modules'] == ['modules', 'lang']
+assert receipt['bootstrap_modules'] == ['modules', 'lang', 'alienCompiler']
 assert 'libbirnam_lang.dylib' not in receipt['dynamic_libraries']
 assert receipt['build_seed']['published'] is False
 

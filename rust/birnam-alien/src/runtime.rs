@@ -331,7 +331,12 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     };
                     (None, sig, Some(a[0]))
                 };
-                let compiler = scope.named(b"AlienCompiler")?;
+                let compiler_name = scope.keep(s.id.intern_name(b"AlienCompiler")?)?;
+                let compiler = scope.obj(
+                    scope.named(b"Globals")?,
+                    b"at:",
+                    &[Operand::object(compiler_name)],
+                )?;
                 let function_name = if matches!(op, Wrap) {
                     a[0]
                 } else {

@@ -10,13 +10,16 @@ struct Hook {
     gc: Oop,
     original: NativeEntry,
     calls: Cell<usize>,
+    once: bool,
 }
 unsafe extern "C" fn collect(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     let h = unsafe { &*c.cast::<Hook>() };
-    if let Err(e) = unsafe { h.id.send_named(h.gc, b"collectPrecisely", &[]) } {
-        return e;
+    if !h.once || h.calls.get() == 0 {
+        if let Err(e) = unsafe { h.id.send_named(h.gc, b"collectPrecisely", &[]) } {
+            return e;
+        }
+        h.calls.set(h.calls.get() + 1);
     }
-    h.calls.set(h.calls.get() + 1);
     unsafe { h.original.method.unwrap()(h.original.context, r, a, n) }
 }
 unsafe extern "C" fn fail(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
@@ -56,7 +59,7 @@ fn native_compilers_are_live_value_seams() {
         &[Operand::word(1)],
     )
     .unwrap();
-    let compiler = h.named(b"AlienCompiler").unwrap();
+    let compiler = h.global(&q, b"AlienCompiler").unwrap();
     let name = q.string(b"sample_function").unwrap();
     let signature = q.string(b"l l").unwrap();
     let source = q
@@ -87,6 +90,59 @@ fn native_compilers_are_live_value_seams() {
             .unwrap();
         assert!(q.check_result(error).is_err());
     }
+    // Force one collection inside the authored compiler, while its parser and
+    // output builder are live. Avoid collecting on every character allocation.
+    let builder_vt = h.named(b"StringBuilderVt").unwrap();
+    let add = unsafe { id.intern_name(b"add:") }.unwrap();
+    let builder_entry = h
+        .send(
+            id.receiver,
+            b"bindingOf:in:",
+            &[Operand::object(add), Operand::object(builder_vt)],
+        )
+        .unwrap()
+        .as_entry()
+        .unwrap();
+    let mut builder_hook = Hook {
+        id,
+        gc: h.named(b"GC").unwrap(),
+        original: builder_entry,
+        calls: Cell::new(0),
+        once: true,
+    };
+    h.send(
+        builder_vt,
+        b"addMethod",
+        &[
+            Operand::object(add),
+            Operand::entry(NativeEntry::new(
+                collect,
+                (&mut builder_hook as *mut Hook).cast(),
+            )),
+        ],
+    )
+    .unwrap();
+    let aggregate_signature = q.string(b"{l3i} {l3i}").unwrap();
+    let collected_source = q
+        .call(
+            compiler,
+            b"compile:signature:",
+            &[Operand::object(name), Operand::object(aggregate_signature)],
+        )
+        .unwrap();
+    h.send(
+        builder_vt,
+        b"addMethod",
+        &[Operand::object(add), Operand::entry(builder_entry)],
+    )
+    .unwrap();
+    assert_eq!(builder_hook.calls.get(), 1);
+    assert!(
+        q.string_bytes(collected_source)
+            .unwrap()
+            .windows(5)
+            .any(|s| s == b"__unm")
+    );
     let format = h.named(b"ImageFormat").unwrap();
     let fixture =
         include_bytes!("../../../tests/fixtures/portable-code-v1/image-mixed-stripped.bin");
@@ -175,7 +231,8 @@ fn native_compilers_are_live_value_seams() {
     for (owner, vt, selector, args) in [
         (
             compiler,
-            h.named(b"AlienCompilerVt").unwrap(),
+            q.call(id.receiver, b"behaviorOf:", &[Operand::object(compiler)])
+                .unwrap(),
             b"compile:signature:".as_slice(),
             vec![Operand::object(name), Operand::object(signature)],
         ),
@@ -200,11 +257,24 @@ fn native_compilers_are_live_value_seams() {
             .unwrap()
             .as_entry()
             .unwrap();
+        // A compiled compiler Method owns its mapped entry. Preserve that owner
+        // while replacing the binding and forcing collection through the hook.
+        let retained = h
+            .send(
+                h.named(b"Execution").unwrap(),
+                b"methodOfEntry:",
+                &[Operand::entry(original)],
+            )
+            .unwrap();
+        if retained.as_object().is_some() {
+            q.keep(retained).unwrap();
+        }
         let mut hook = Hook {
             id,
             gc: h.named(b"GC").unwrap(),
             original,
             calls: Cell::new(0),
+            once: false,
         };
         h.send(
             vt,

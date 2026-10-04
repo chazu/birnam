@@ -3,7 +3,6 @@ members = [
     "rust/birnam-abi",
     "rust/birnam-bootstrap",
     "rust/birnam-alien",
-    "rust/birnam-alien-compiler",
     "rust/birnam-artifact",
     "rust/birnam-artifact-codec",
     "rust/birnam-boolean",

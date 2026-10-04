@@ -335,7 +335,6 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "portable_code",
             "peg",
             "tcc",
-            "alien_compiler",
             "native_backend",
             "codegen_runtime",
             "generation",
@@ -355,7 +354,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[Operand::bytes(&module_path(directory, "lang_seed")), Operand::object(namespace)],
         )?;
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang"] {
+        for name in ["modules", "lang", "alienCompiler"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],

@@ -353,5 +353,3 @@ mod tests {
         ));
     }
 }
-
-mod native;

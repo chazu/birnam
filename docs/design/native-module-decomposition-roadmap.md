@@ -1,6 +1,6 @@
 # Native module decomposition roadmap
 
-Updated: 2026-10-02.
+Updated: 2026-10-03.
 
 All five decompositions below are agreed directions. Start with **source compiler
 and native backend**. This document tracks extraction, acceptance and later Birnam
@@ -24,7 +24,7 @@ remain separate milestones.
 | 1 | Source compiler and native backend | Implemented and validated | Planned after extraction |
 | 2 | Compilation and generation publication | Implemented and validated | Existing CompiledUnit policy stays Birnam; remaining bookkeeping can follow |
 | 3 | Project observation and project build | Implemented and validated | Build sequencing and publication construction are initial targets |
-| 4 | Alien wrapper compiler and Alien runtime | Implemented and validated | Planned: signature parsing and wrapper generation |
+| 4 | Alien wrapper compiler and Alien runtime | Implemented and validated | AlienCompiler rewritten in Birnam |
 | 5 | Image format and image restoration | Implemented and validated | Planned: format implementation with startup/load measurements |
 
 Update each row when work starts. An extraction is complete only when production
@@ -296,16 +296,16 @@ size, alignment and calling convention.
 
 - [x] Extract the wrapper compiler and reconnect runtime and image consumers.
 - [x] Validate and record delivery.
-- [ ] Replace signature parsing and wrapper-source generation with Birnam.
+- [x] Replace signature parsing and wrapper-source generation with Birnam.
 
 This is the preferred smaller rewrite after the first compiler extraction if an
 early conversion is useful. Acceptance includes malformed signatures/identifiers,
 scalar and aggregate calls, callbacks in both directions, pointer membership,
 collecting callbacks, actual wrapper lifetime and mapped/rebuilt/baked recovery.
 
-Sources: [signature grammar](../../rust/birnam-alien-compiler/src/lib.rs),
-[ABI metadata](../../rust/birnam-alien-compiler/src/abi.rs),
-[source generation](../../rust/birnam-alien-compiler/src/codegen.rs),
+Sources: [signature grammar](../../modules/alien-compiler.birnam),
+[ABI metadata](../../modules/alien-compiler.birnam),
+[source generation](../../modules/alien-compiler.birnam),
 [runtime ownership](../../rust/birnam-alien/src/runtime.rs).
 
 ### Extraction checkpoint: 2026-10-02
@@ -322,6 +322,50 @@ address membership and final wrapper reclamation. The live Id seam test covers
 malformed signatures/identifiers, collecting compiler replacement and exact native
 failure propagation. Source-free foreign wrapper mapped/rebuilt/baked recovery
 passed through the combined Image check.
+
+### Birnam replacement: 2026-10-03
+
+`modules/alien-compiler.birnam` owns the signature grammar, deterministic ABI
+classification and complete wrapper/callback C generation. It preserves the
+`compile:signature:` contract and existing C algorithms. Parsed signatures are
+ordinary vectors and Strings; there is no native compiler IR or Rust state seam.
+The C bridge templates are embedded at compilation time.
+
+Bootstrap loads its compiled artifact before Alien and before the standard
+library. The installer builds it with the existing Lang grammar seed and excludes
+the former Rust compiler library from production. Alien resolves the authored
+compiler through Globals on each request. Foreign resources and mappings remain
+owned by Alien and TCC.
+
+The old pure Rust implementation is retained only as a standalone test oracle in
+`tests/reference/alien-compiler`, outside the production Cargo workspace. Focused
+acceptance is `scripts/alien-compiler-test.py PREFIX`, the native compiler seam,
+the production Alien FFI test, and `scripts/alien-image-test.py PREFIX`.
+
+Validated with a fresh release prefix: 46 native libraries, 3 early authored
+artifacts, 4 source bootstrap modules and 23 authored tools. Workspace compilation,
+17 frozen-reference tests and 4 Alien loader tests pass. Installed authored output
+matches the frozen Rust compiler byte for byte in 64 C/diagnostic cases, with 8
+additional ABI cases, all without stdlib or source loading.
+
+The live compiler seam passes malformed inputs, collection inside the parser,
+replacement and exact native-failure propagation. Production FFI passes scalar,
+unsigned and aggregate calls, collecting/recursive callbacks, memory ownership
+and wrapper reclamation. Its collection hook runs during live FFI conversions;
+the compiler gets a separate bounded collection check rather than collection on
+every Integer allocation. Source-free mapped/rebuilt/baked wrapper recovery,
+startup with compilation/parsing denied, exact install receipt and relocation
+checks also pass. The bundled compiler source recompiles without the Rust grammar
+seed and the newly loaded artifact emits byte-identical aggregate C. No exhaustive
+Image collection suite or performance benchmark was run for this rewrite.
+
+Reproducible commands: `mise exec -- python3 scripts/alien-compiler-test.py PREFIX`,
+`mise exec -- python3 scripts/alien-image-test.py PREFIX`,
+`cargo test -p birnam-host --test native_compilers --offline --locked -- --ignored`,
+and `cargo test -p birnam-siphon --test alien --offline --locked -- --ignored`
+(the native tests require `BIRNAM_TEST_MODULE_DIRECTORY=PREFIX/lib` and the Alien
+fixture built by `scripts/native-message-test.sh`). Local logs are preserved under
+`.cargo-target/measurements/alien-compiler-rewrite-20261003/`.
 
 ## 5 Image format and image restoration
 

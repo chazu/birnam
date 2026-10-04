@@ -42,7 +42,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg tcc codegen-runtime native-backend generation store relational prelude printing system-output system-input environment file-io system-gc storage trace native-loader source-loader block-loop artifact portable-code image image-format alien alien-compiler isolate host-entry host-project project-build host-interaction".split()
+modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg tcc codegen-runtime native-backend generation store relational prelude printing system-output system-input environment file-io system-gc storage trace native-loader source-loader block-loop artifact portable-code image image-format alien isolate host-entry host-project project-build host-interaction".split()
 directory = Path(sys.argv[1])
 for module in modules:
     library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")
