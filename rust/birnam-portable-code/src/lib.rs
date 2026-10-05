@@ -53,7 +53,7 @@ enum Value {
     Statement(Rc<StatementValue>),
     Program(Rc<ValidatedProgram>),
     Binding { program: Oop, index: u32 },
-    Code { program: Oop, provenance: Oop },
+    Code { program: Oop, provenance: Oop, signature: Option<birnam_abi::native_signature::Signature> },
 }
 impl Value {
     fn edges(&self) -> Vec<Oop> {
@@ -72,7 +72,7 @@ impl Value {
             Self::Binding { program, .. } => vec![*program],
             Self::Code {
                 program,
-                provenance,
+                provenance, ..
             } => vec![*program, *provenance],
         }
     }
@@ -83,10 +83,6 @@ struct State {
     roots: Oop,
     gc: Oop,
     nil: Oop,
-    string: Oop,
-    string_vt: Oop,
-    integer: Oop,
-    symbol_vt: Oop,
     families: [(Oop, Oop); 5],
     // Native values belong to this module, never to mutable foreign payloads.
     // Snapshots release the map borrow before any reentrant send.
@@ -134,12 +130,12 @@ impl State {
             _ => None,
         }
     }
-    fn code(&self, o: Oop) -> Option<(Oop, Oop)> {
+    fn code(&self, o: Oop) -> Option<(Oop, Oop, Option<birnam_abi::native_signature::Signature>)> {
         match self.values.borrow().get(&o.addr())? {
             Value::Code {
                 program,
-                provenance,
-            } => Some((*program, *provenance)),
+                provenance, signature,
+            } => Some((*program, *provenance, signature.clone())),
             _ => None,
         }
     }
@@ -188,7 +184,7 @@ impl Scope<'_> {
     }
     fn number(&self, n: i64) -> Result<Oop, Outcome> {
         self.keep(object(self.state.send(
-            self.state.integer,
+            object(self.state.named(b"Integer")?)?,
             b"fromWord:",
             &[Operand::word(n as usize)],
         )?)?)
@@ -196,20 +192,20 @@ impl Scope<'_> {
     fn integer(&self, o: Oop) -> Result<Option<i64>, Outcome> {
         Ok(self
             .state
-            .send(self.state.integer, b"wordOf:", &[Operand::object(o)])?
+            .send(object(self.state.named(b"Integer")?)?, b"wordOf:", &[Operand::object(o)])?
             .as_word()
             .map(|n| n as i64))
     }
     fn string(&self, bytes: &[u8]) -> Result<Oop, Outcome> {
         self.keep(object(self.state.send(
-            self.state.string,
+            object(self.state.named(b"String")?)?,
             b"fromBytes:",
             &[Operand::bytes(bytes)],
         )?)?)
     }
     fn bytes(&self, o: Oop, symbol: bool) -> Result<Option<Vec<u8>>, Outcome> {
         let s = self.state;
-        if s.behavior(o)? != if symbol { s.symbol_vt } else { s.string_vt } {
+        if s.behavior(o)? != if symbol { object(s.named(b"SymbolVt")?)? } else { object(s.named(b"StringVt")?)? } {
             return Ok(None);
         }
         let result = if symbol {
@@ -284,17 +280,23 @@ impl Scope<'_> {
         self.make(vt, Value::Binding { program, index })
     }
     fn code(&self, receiver: Oop, program: Oop, provenance: Oop) -> Result<Oop, Outcome> {
+        self.signed_code(receiver,program,provenance,None)
+    }
+    fn signed_code(&self, receiver: Oop, program: Oop, provenance: Oop, signature: Option<birnam_abi::native_signature::Signature>) -> Result<Oop, Outcome> {
         if self.state.program(program).is_none() {
             return self.fail(
                 Failure::TypeMismatch,
                 b"CodeObject program must be a CodeProgram",
             );
         }
+        if signature.as_ref().is_some_and(|sig|self.state.program(program).is_none_or(|p|p.view().parameter_count as usize != sig.arguments().len()+1)) {
+            return self.fail(Failure::TypeMismatch,b"native signature arity disagrees with CodeObject");
+        }
         self.make(
             self.state.behavior(receiver)?,
             Value::Code {
                 program,
-                provenance,
+                provenance, signature,
             },
         )
     }
@@ -897,7 +899,7 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
             let [value] = a else {
                 return Ok(s.nil);
             };
-            let Some((program, _)) = s.code(*value) else {
+            let Some((program, _, _)) = s.code(*value) else {
                 return Ok(s.nil);
             };
             let bytes = s.program(program).ok_or_else(invalid)?;
@@ -956,28 +958,63 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
             };
             return q.code(r, *p, *provenance);
         }
+        b"nativeSignature:matchesProgram:" => {
+            let [signature,program]=a else {return object(s.named(b"false")?)};
+            let copy=|value|->Result<Vec<u8>,Outcome> {
+                let raw=s.send(value,b"bytes",&[])?.as_bytes().ok_or_else(invalid)?;
+                Ok(unsafe {borrowed_bytes(raw.pointer,raw.length)}.ok_or_else(invalid)?.to_vec())
+            };
+            let signature=copy(*signature)?;let program=copy(*program)?;
+            let valid=birnam_abi::native_signature::Signature::parse(&signature).zip(ValidatedProgram::new(program).ok()).is_some_and(|(signature,program)|signature.arguments().len()+1==program.view().parameter_count as usize);
+            return object(s.named(if valid {b"true"} else {b"false"})?);
+        }
+        b"isNativeSignature:" => {
+            let [input]=a else {return object(s.named(b"false")?)};
+            let raw=s.send(*input,b"bytes",&[])?.as_bytes().ok_or_else(invalid)?;
+            let copied=unsafe {borrowed_bytes(raw.pointer,raw.length)}.ok_or_else(invalid)?.to_vec();
+            return Ok(if birnam_abi::native_signature::Signature::parse(&copied).is_some() {object(s.named(b"true")?)?} else {object(s.named(b"false")?)?});
+        }
+        b"withNativeSignature:" => {
+            let [input] = a else { return Ok(s.nil); };
+            let Some((program, provenance, _)) = s.code(r) else { return Ok(s.nil); };
+            let signature = if *input == s.nil { None } else {
+                let raw=s.send(*input,b"bytes",&[])?.as_bytes().ok_or_else(invalid)?;
+                let copied=unsafe { borrowed_bytes(raw.pointer,raw.length) }.ok_or_else(invalid)?.to_vec();
+                let Some(signature)=birnam_abi::native_signature::Signature::parse(&copied) else {
+                    return q.fail(Failure::TypeMismatch,b"invalid native signature");
+                };
+                Some(signature)
+            };
+            return q.signed_code(r,program,provenance,signature);
+        }
         b"withProgram:" => {
             let [p] = a else {
                 return q.fail(Failure::TypeMismatch, b"withProgram: needs one CodeProgram");
             };
-            let Some((_, provenance)) = s.code(r) else {
+            let Some((_, provenance, signature)) = s.code(r) else {
                 return Ok(s.nil);
             };
-            return q.code(r, *p, provenance);
+            return q.signed_code(r, *p, provenance,signature);
         }
         _ => {}
     }
     if !a.is_empty() {
         return Ok(s.nil);
     }
-    let Some((program, provenance)) = s.code(r) else {
+    let Some((program, provenance, signature)) = s.code(r) else {
         return Ok(s.nil);
     };
     match op {
         b"format" => return s.symbol(b"portableProgramV1"),
         b"program" => return Ok(program),
         b"sourceProvenance" => return Ok(provenance),
-        b"withoutSourceProvenance" => return q.code(r, program, s.nil),
+        b"nativeSignature" => return match signature {
+            None=>Ok(s.nil), Some(signature)=>{
+                let factory=q.keep(object(s.named(b"Bytes")?)?)?;
+                q.keep(object(s.send(factory,b"fromBytes:",&[Operand::bytes(signature.bytes())])?)?)
+            }
+        },
+        b"withoutSourceProvenance" => return q.signed_code(r, program, s.nil,signature),
         _ => {}
     }
     let bytes = s.program(program).ok_or_else(invalid)?;
@@ -1034,10 +1071,6 @@ unsafe extern "C" fn roots(
             s.roots,
             s.gc,
             s.nil,
-            s.string,
-            s.string_vt,
-            s.integer,
-            s.symbol_vt,
         ];
         for (vt, prototype) in s.families {
             roots.extend([vt, prototype]);
@@ -1209,6 +1242,10 @@ entry!(
     code_method,
     b"sourceProvenance"
 );
+entry!(code_object_signature_matches,code_method,b"nativeSignature:matchesProgram:");
+entry!(code_object_is_native_signature, code_method, b"isNativeSignature:");
+entry!(code_object_native_signature, code_method, b"nativeSignature");
+entry!(code_object_with_native_signature, code_method, b"withNativeSignature:");
 entry!(code_object_with_program, code_method, b"withProgram:");
 entry!(
     code_object_without_source_provenance,
@@ -1313,6 +1350,10 @@ const FAMILIES: &[(&[u8], &[u8], &[(&[u8], Method)])] = &[
             (b"program", code_object_program),
             (b"digest", code_object_digest),
             (b"sourceProvenance", code_object_source_provenance),
+            (b"nativeSignature:matchesProgram:",code_object_signature_matches),
+            (b"isNativeSignature:", code_object_is_native_signature),
+            (b"nativeSignature", code_object_native_signature),
+            (b"withNativeSignature:", code_object_with_native_signature),
             (b"withProgram:", code_object_with_program),
             (
                 b"withoutSourceProvenance",
@@ -1345,10 +1386,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             keep(roots)?;
             let gc = keep(named(b"GC")?)?;
             let nil = keep(named(b"nil")?)?;
-            let string = keep(named(b"String")?)?;
-            let string_vt = keep(named(b"StringVt")?)?;
-            let integer = keep(named(b"Integer")?)?;
-            let symbol_vt = keep(named(b"SymbolVt")?)?;
             let parent = keep(named(b"ObjectVt")?)?;
             let mut families = [(ptr::null_mut(), ptr::null_mut()); 5];
             for family in &mut families {
@@ -1366,10 +1403,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 roots,
                 gc,
                 nil,
-                string,
-                string_vt,
-                integer,
-                symbol_vt,
                 families,
                 values: RefCell::new(HashMap::new()),
                 thread: std::thread::current().id(),

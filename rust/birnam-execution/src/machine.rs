@@ -22,7 +22,7 @@ pub(super) struct State {
     active: Vec<MachineCapability>,
     pending: HashSet<u64>,
     block_behavior: Oop,
-    block_codes: HashMap<usize, Oop>,
+    pub(super) block_codes: HashMap<usize, Oop>,
     image_shells: HashSet<usize>,
     pub(super) booleans: [Oop; 2],
 }
@@ -136,13 +136,13 @@ pub(super) fn cap(s: &Execution, object: Oop) -> Result<MachineCapability, Outco
 }
 pub(super) unsafe fn index(s: &Execution, value: Operand) -> Result<usize, Outcome> {
     let value = object(value)?;
-    let n = unsafe { s.send(s.integer, b"wordOf:", &[Operand::object(value)]) }?
+    let n = unsafe { s.send(s.integer_factory()?, b"wordOf:", &[Operand::object(value)]) }?
         .as_word()
         .ok_or_else(invalid)? as i64;
     usize::try_from(n).map_err(|_| invalid())
 }
 pub(super) unsafe fn integer(s: &Execution, value: usize) -> Result<Operand, Outcome> {
-    unsafe { s.send(s.integer, b"fromWord:", &[Operand::word(value)]) }
+    unsafe { s.send(s.integer_factory()?, b"fromWord:", &[Operand::word(value)]) }
 }
 unsafe fn allocate(s: &Execution, behavior: Oop, words: usize) -> Result<Oop, Outcome> {
     let _roots = s.scope(&[behavior]);
@@ -347,6 +347,7 @@ unsafe fn register_descriptor_with_captures(
 ) -> Result<Oop, Outcome> {
     unsafe {
         let roots = s.scope(&[owner]);
+        let signature=if let Some(implementation)=implementation { native_abi::implementation_signature(s,implementation)? } else { None };
         let value = object(s.make(descriptor.step_method(), owner, None)?)?;
         roots.keep(value);
         s.methods
@@ -354,6 +355,7 @@ unsafe fn register_descriptor_with_captures(
             .get_mut(&value.addr())
             .unwrap()
             .implementation = implementation;
+        s.methods.borrow_mut().get_mut(&value.addr()).unwrap().native_signature=signature;
         let key = EntryKey::from_method(s.entry(value, false)?);
         let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
         descriptor.executable_owner.set(value);
@@ -387,7 +389,10 @@ unsafe fn register_descriptor_with_captures(
     }
 }
 
-unsafe fn new_block(s: &Execution, args: &[Operand], portable: bool) -> Result<Operand, Outcome> {
+pub(super) unsafe fn new_block(s: &Execution, args: &[Operand], portable: bool) -> Result<Operand, Outcome> {
+    unsafe {new_block_input(s,args,portable,false)}
+}
+unsafe fn new_block_input(s:&Execution,args:&[Operand],portable:bool,references:bool)->Result<Operand,Outcome> {
     let (method, code, captures) = match (portable, args) {
         (false, [method, captures]) => (*method, None, *captures),
         (true, [method, code, captures]) => (*method, Some(object(*code)?), *captures),
@@ -440,7 +445,20 @@ unsafe fn new_block(s: &Execution, args: &[Operand], portable: bool) -> Result<O
         arity = program.parameter_count as usize;
         expected = Some(program.capture_count as usize);
     }
-    let captures = unsafe { sequence(s, object(captures)?, &roots) }?;
+    let captures = if references {
+        let storage=object(captures)?;
+        let bytes=unsafe {s.id.send_named(s.model,b"imageSizeOf:",&[Operand::object(storage)])}?.as_word().ok_or_else(invalid)?;
+        if bytes%size_of::<Oop>()!=0 || bytes/size_of::<Oop>()>1_048_576 {return Err(invalid())}
+        let count=bytes/size_of::<Oop>();
+        let behavior=object(unsafe {s.id.send_named(s.id.receiver,b"behaviorOf:",&[Operand::object(storage)])}?)?;roots.keep(behavior);
+        if unsafe {s.id.send_named(s.model,b"allOopLayoutOf:words:",&[Operand::object(behavior),Operand::word(count)])}?.as_word()!=Some(1) {return Err(invalid())}
+        let mut values=Vec::with_capacity(count);
+        for i in 0..count {
+            let value=unsafe {s.id.send_named(s.model,b"slotAt:in:",&[Operand::word(i),Operand::object(storage)])}?;
+            let value=if value.kind()==native::UNIT {s.nil} else {object(value)?};roots.keep(value);values.push(value);
+        }
+        values
+    } else {unsafe { sequence(s, object(captures)?, &roots) }?};
     if expected.is_some_and(|n| n != captures.len()) {
         return Err(invalid());
     }
@@ -764,6 +782,7 @@ pub(super) unsafe fn loop_drive(
                             s.methods
                                 .borrow()
                                 .get(&method.addr())
+                                .filter(|m|m.native_signature.is_none())
                                 .and_then(|m| m.resumable.clone().map(|r| (r, m.inline)))
                         });
                     if let Some((registered, inline)) = registered {
@@ -1044,12 +1063,14 @@ enum Op {
     Optimize,
     Recover(bool),
     Block(bool),
+    BlockReferences,
     BlockCode,
     BlockSynchronous,
     RestoreCaptures,
     BlockShell,
     BlockCaptureCount,
     BlockCapture(bool),
+    BlockCaptureWord,
     CloneBlock,
     Prepare,
     New,
@@ -1125,6 +1146,7 @@ unsafe extern "C" fn operation(
             Op::WithNumericPredicate => return crate::numeric_predicate::attach(s, receiver, args),
             Op::Optimize => return crate::native_tier::install(s, receiver, args),
             Op::Block(portable) => return new_block(s, args, portable),
+            Op::BlockReferences => return new_block_input(s,args,true,true),
             Op::BlockSynchronous if args.is_empty() => {
                 let method = {
                     let state = s.machines.borrow();
@@ -1208,15 +1230,15 @@ unsafe extern "C" fn operation(
                 state.image_shells.remove(&target.addr());
                 return Ok(Operand::object(target));
             }
-            Op::BlockCode | Op::BlockCaptureCount | Op::BlockCapture(_) => {
+            Op::BlockCode | Op::BlockCaptureCount | Op::BlockCapture(_) | Op::BlockCaptureWord => {
                 let (target, index) = match (op.kind, args) {
                     (Op::BlockCode | Op::BlockCaptureCount, []) => (receiver, None),
                     (Op::BlockCapture(false), [i]) => (receiver, Some(*i)),
-                    (Op::BlockCapture(true), [i, target]) => (object(*target)?, Some(*i)),
+                    (Op::BlockCapture(true) | Op::BlockCaptureWord, [i, target]) => (object(*target)?, Some(*i)),
                     _ => return Ok(Operand::object(s.nil)),
                 };
                 let index = if let Some(i) = index {
-                    let n = s.send(s.integer, b"wordOf:", &[i])?;
+                    let n = if matches!(op.kind,Op::BlockCaptureWord) { i } else { s.send(s.integer_factory()?, b"wordOf:", &[i])? };
                     let Some(n) = n.as_word().filter(|n| *n <= isize::MAX as usize) else {
                         return Ok(Operand::object(s.nil));
                     };
@@ -1658,6 +1680,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"failed",
     b"fromMethod:captures:",
     b"fromMethod:codeObject:captures:",
+    b"fromMethod:codeObject:referenceSlots:",
     b"codeObject",
     b"isSynchronous",
     b"imageShellFromMethod:codeObject:",
@@ -1665,6 +1688,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"captureCount",
     b"captureAt:",
     b"captureAt:of:",
+    b"captureWord:of:",
     b"invalidRequest",
     b"evaluatePreservingFailures:",
     b"fromStep:descriptor:selection:owner:",
@@ -2207,9 +2231,11 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"restoreImageCaptures:of:",
             Op::RestoreCaptures,
         )?;
+        install_op(s, block_vtable, b"fromMethod:codeObject:referenceSlots:", Op::BlockReferences)?;
         install_op(s, block_vtable, b"captureCount", Op::BlockCaptureCount)?;
         install_op(s, block_vtable, b"captureAt:", Op::BlockCapture(false))?;
         install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;
+        install_op(s, block_vtable, b"captureWord:of:", Op::BlockCaptureWord)?;
         install_op(s, block_vtable, b"clone", Op::CloneBlock)?;
         install_op(s, continuation_vtable, b"clone", Op::Disabled)?;
         install_op(s, continue_action_vtable, b"kind", Op::Kind)?;

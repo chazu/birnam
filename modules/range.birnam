@@ -1,5 +1,6 @@
 // Inclusive ranges use ordinary reference slots; Integer owns all numeric bits.
 [Module named: #range requires: #[]];
+let rangeWasDefined := [Namespace includesKey: #Range];
 let rangePrototype := [ObjectModel newSlots: #[0 0] parent: CollectionVt];
 [Namespace at: #Range put: rangePrototype];
 [Namespace at: #RangeVt put: [Reflect vtableOf: rangePrototype]];
@@ -15,7 +16,10 @@ let rangeVectorVt := VectorVt;
     [ObjectModel slot: 1 in: result put: end]; result
   ]]
 ]];
-[Reflect defineMethod: #to: on: Integer as: [:self :last | [Range from: self to: last]]];
+// Respect replacements installed while the numeric floor was loading.
+[[rangeWasDefined | [[Integer methodFor: #to:] isNil]] ifTrue: [|
+  [Reflect defineMethod: #to: on: Integer as: [:self :last | [Range from: self to: last]]]
+] ifFalse: [| nil]];
 [Reflect defineMethod: #size on: Range as: [:self |
   let start := [self rangeStart]; let end := [self rangeEnd];
   [[[Integer compareInteger: start with: end] > 0] ifTrue: [| 0] ifFalse: [|

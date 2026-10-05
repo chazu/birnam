@@ -10,8 +10,6 @@ pub(crate) struct Number {
     gc: Oop,
     model: Oop,
     namespace: Oop,
-    string: Oop,
-    integer: Oop,
     behavior: Oop,
     prototype: Oop,
     truth: Oop,
@@ -119,27 +117,6 @@ impl Number {
             })
         }
     }
-    unsafe fn binding(&self, name: &'static [u8]) -> Result<Operand, Outcome> {
-        unsafe { self.send(self.namespace, b"at:", &[Operand::object(self.names[name])]) }
-    }
-    unsafe fn error(&self, kind: &'static [u8], message: &[u8]) -> Result<Operand, Outcome> {
-        unsafe {
-            let message =
-                object(self.send(self.string, b"fromBytes:", &[Operand::bytes(message)])?)?;
-            self.rooted(&[message], || {
-                let Some(factory) = self.binding(b"Error")?.as_object() else {
-                    return Ok(Operand::object(self.nil));
-                };
-                self.rooted(&[factory], || {
-                    self.send(
-                        factory,
-                        b"kind:message:",
-                        &[Operand::object(self.names[kind]), Operand::object(message)],
-                    )
-                })
-            })
-        }
-    }
     fn boolean(&self, value: bool) -> Operand {
         Operand::object(if value { self.truth } else { self.falsity })
     }
@@ -161,8 +138,6 @@ unsafe extern "C" fn roots(
             n.gc,
             n.model,
             n.namespace,
-            n.string,
-            n.integer,
             n.behavior,
             n.prototype,
             n.truth,
@@ -247,11 +222,7 @@ const NAMES: &[&[u8]] = &[
     b"behaviorOf:",
     b"allocationSizeOf:",
     b"allocate:bytes:",
-    b"fromBytes:",
     b"at:",
-    b"Error",
-    b"kind:message:",
-    b"overflow",
     b"rootsDo:",
     b"referencesOf:do:",
     b"addMethod",
@@ -261,7 +232,6 @@ const NAMES: &[&[u8]] = &[
     b"at:put:",
     b"Word",
     b"WordVt",
-    b"fromWord:",
 ];
 
 unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
@@ -272,8 +242,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         let roots = named(b"Roots")?;
         let gc = named(b"GC")?;
         let model = named(b"ObjectModel")?;
-        let string = named(b"String")?;
-        let integer = named(b"Integer")?;
         let truth = named(b"true")?;
         let falsity = named(b"false")?;
         let nil = named(b"nil")?;
@@ -321,8 +289,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             gc,
             model,
             namespace,
-            string,
-            integer,
             behavior,
             prototype,
             truth,
@@ -406,6 +372,18 @@ unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Ope
             let [bits] = args else { return Err(invalid()) };
             return n.make(bits.as_word().ok_or_else(invalid)?);
         }
+        if op >= 5 {
+            let value = n.read(r)?.ok_or_else(invalid)?;
+            if op == 5 {
+                if !args.is_empty() { return Err(invalid()); }
+                return n.make(!value as usize);
+            }
+            let [right] = args else { return Err(invalid()); };
+            let right = n.read(object(*right)?)?.ok_or_else(invalid)?;
+            if op == 16 { return Ok(n.boolean(value < right)); }
+            let result = crate::operations::calculate(value, right, op).ok_or_else(invalid)?;
+            return n.make(result as usize);
+        }
         if args.len() != usize::from(op == 2) {
             return Err(invalid());
         }
@@ -415,18 +393,6 @@ unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Ope
         match op {
             1 => Ok(Operand::word(value as usize)),
             2 => Ok(n.boolean(n.read(object(args[0])?)? == Some(value))),
-            3 => {
-                if value > i64::MAX as u64 {
-                    n.error(b"overflow", b"word out of Integer range")
-                } else {
-                    n.send(n.integer, b"fromWord:", &[Operand::word(value as usize)])
-                }
-            }
-            4 => n.send(
-                n.string,
-                b"fromBytes:",
-                &[Operand::bytes(format!("0x{value:x}").as_bytes())],
-            ),
             _ => Err(invalid()),
         }
     }
@@ -434,12 +400,32 @@ unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Ope
 entry!(from_bits, 0);
 entry!(bits, 1);
 entry!(equal, 2);
-entry!(as_integer, 3);
-entry!(print, 4);
+entry!(bit_not, 5);
+entry!(wrapping_add, 6);
+entry!(wrapping_sub, 7);
+entry!(wrapping_mul, 8);
+entry!(unsigned_div, 9);
+entry!(unsigned_rem, 10);
+entry!(bit_and, 11);
+entry!(bit_or, 12);
+entry!(bit_xor, 13);
+entry!(shift_left, 14);
+entry!(shift_right, 15);
+entry!(unsigned_less, 16);
 const METHODS: &[(&[u8], Method)] = &[
+    (b"bitNot", bit_not),
+    (b"wrappingAdd:", wrapping_add),
+    (b"wrappingSubtract:", wrapping_sub),
+    (b"wrappingMultiply:", wrapping_mul),
+    (b"unsignedDivide:", unsigned_div),
+    (b"unsignedRemainder:", unsigned_rem),
+    (b"bitAnd:", bit_and),
+    (b"bitOr:", bit_or),
+    (b"bitXor:", bit_xor),
+    (b"shiftLeft:", shift_left),
+    (b"shiftRight:", shift_right),
+    (b"unsignedLessThan:", unsigned_less),
     (b"fromBits:", from_bits),
     (b"bits", bits),
     (b"=", equal),
-    (b"asInteger", as_integer),
-    (b"printString", print),
 ];

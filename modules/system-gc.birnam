@@ -1,5 +1,5 @@
 // System-level GC policy. Owners provide only native Word conversion bridges.
-[Module named: #systemGc requires: #[]];
+[Module named: #systemGc requires: #[#nativeValues]];
 let gcOwner := GC;
 let gcInteger := Integer;
 let gcId := Vtable;

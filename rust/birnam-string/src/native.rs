@@ -9,17 +9,15 @@ pub(crate) use core::{
 };
 use std::collections::HashMap;
 
-// Byte ownership never depends on mutable payload words or current behavior.
-// Payload mirrors are diagnostic only; all native access uses this owner's map.
+// Text owns only its Bytes reference and kind. Mutable payload mirrors never
+// authorize access to byte storage; that owner is reached through Id messages.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
     String,
     Builder,
-    Bytes,
-    TaggedView,
 }
 struct Buffer {
-    bytes: Vec<u8>,
+    storage: Oop,
     kind: Kind,
 }
 pub(crate) struct Text {
@@ -29,17 +27,13 @@ pub(crate) struct Text {
     gc: Oop,
     behavior: Oop,
     builder_behavior: Oop,
-    pub(crate) bytes_behavior: Oop,
     prototype: Cell<Oop>,
     builder: Cell<Oop>,
-    bytes_prototype: Cell<Oop>,
     truth: Oop,
     falsity: Oop,
     pub(crate) nil: Oop,
     names: HashMap<&'static [u8], Oop>,
     buffers: RefCell<HashMap<usize, Buffer>>,
-    pub(crate) views: RefCell<HashMap<usize, crate::tagged_view::View>>,
-    view_behavior: Oop,
     numeric: Cell<bool>,
     thread: std::thread::ThreadId,
 }
@@ -94,65 +88,35 @@ impl Text {
         }
         result
     }
-    fn length(&self, value: Oop, kind: Kind) -> Result<usize, Outcome> {
-        self.buffers
-            .borrow()
-            .get(&value.addr())
-            .filter(|b| b.kind == kind)
-            .map(|b| b.bytes.len())
-            .ok_or_else(invalid)
+    fn storage(&self, value: Oop, kind: Kind) -> Result<Oop, Outcome> {
+        self.buffers.borrow().get(&value.addr()).filter(|b| b.kind == kind).map(|b| b.storage).ok_or_else(invalid)
     }
-    pub(crate) fn copy(&self, value: Oop, kind: Kind) -> Result<Vec<u8>, Outcome> {
-        self.buffers
-            .borrow()
-            .get(&value.addr())
-            .filter(|b| b.kind == kind)
-            .map(|b| b.bytes.clone())
-            .ok_or_else(invalid)
+    unsafe fn length(&self, value: Oop, kind: Kind) -> Result<usize, Outcome> {
+        unsafe { self.id.send_named(self.storage(value, kind)?, b"length", &[]) }?.as_word().ok_or_else(invalid)
+    }
+    pub(crate) unsafe fn copy(&self, value: Oop, kind: Kind) -> Result<Vec<u8>, Outcome> {
+        let raw = unsafe { self.id.send_named(self.storage(value, kind)?, b"bytes", &[]) }?.as_bytes().ok_or_else(invalid)?;
+        Ok(unsafe { borrowed_bytes(raw.pointer, raw.length) }.ok_or_else(invalid)?.to_vec())
+    }
+    unsafe fn byte_factory(&self) -> Result<Oop, Outcome> {
+        unsafe { object(self.id.send_named(self.namespace, b"at:", &[Operand::object(self.names[b"Bytes".as_slice()])])?) }
     }
     pub(crate) unsafe fn make(&self, bytes: Vec<u8>, kind: Kind) -> Result<Operand, Outcome> {
         unsafe {
-            let behavior = match kind {
-                Kind::String => self.behavior,
-                Kind::Builder => self.builder_behavior,
-                Kind::Bytes => self.bytes_behavior,
-                Kind::TaggedView => self.view_behavior,
-            };
-            let extent = if kind == Kind::Builder { 3 } else { 2 } * size_of::<usize>();
-            let value = object(self.send(behavior, b"allocate", &[Operand::word(extent)])?)?;
-            self.rooted(&[value], || {
-                if self
-                    .send(
-                        self.id.receiver,
-                        b"allocationSizeOf:",
-                        &[Operand::object(value)],
-                    )?
-                    .as_word()
-                    != Some(extent)
-                    || self
-                        .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-                        .as_object()
-                        != Some(behavior)
-                    || self.buffers.borrow().contains_key(&value.addr())
-                {
-                    return Err(invalid());
-                }
-                {
-                    let mut buffers = self.buffers.borrow_mut();
-                    let b = buffers
-                        .entry(value.addr())
-                        .or_insert(Buffer { bytes, kind });
-                    mirror(value, b);
-                }
-                self.send(
-                    self.gc,
-                    b"finalize:with:",
-                    &[
-                        Operand::object(value),
-                        Operand::object(self.prototype.get()),
-                    ],
-                )?;
-                Ok(Operand::object(value))
+            let storage = object(self.id.send_named(self.byte_factory()?, b"fromBytes:", &[Operand::bytes(&bytes)])?)?;
+            self.rooted(&[storage], || {
+                let behavior = if kind == Kind::String { self.behavior } else { self.builder_behavior };
+                let extent = if kind == Kind::Builder { 3 } else { 2 } * size_of::<usize>();
+                let value = object(self.send(behavior, b"allocate", &[Operand::word(extent)])?)?;
+                self.rooted(&[value], || {
+                    if self.send(self.id.receiver,b"allocationSizeOf:",&[Operand::object(value)])?.as_word() != Some(extent)
+                        || self.send(self.id.receiver,b"behaviorOf:",&[Operand::object(value)])?.as_object() != Some(behavior)
+                        || self.buffers.borrow().contains_key(&value.addr()) { return Err(invalid()); }
+                    let b = Buffer { storage, kind }; mirror(value, &b);
+                    self.buffers.borrow_mut().insert(value.addr(),b);
+                    self.send(self.gc,b"finalize:with:",&[Operand::object(value),Operand::object(self.prototype.get())])?;
+                    Ok(Operand::object(value))
+                })
             })
         }
     }
@@ -189,14 +153,8 @@ impl Text {
     }
 }
 unsafe fn mirror(value: Oop, b: &Buffer) {
-    unsafe {
-        let words = value.cast::<usize>();
-        words.write(b.bytes.as_ptr().addr());
-        words.add(1).write(b.bytes.len());
-        if b.kind == Kind::Builder {
-            words.add(2).write(b.bytes.capacity());
-        }
-    }
+    // This payload belongs to String. The Bytes payload is never inspected.
+    unsafe { value.cast::<Oop>().write(b.storage); }
 }
 unsafe extern "C" fn roots(
     context: *mut c_void,
@@ -215,9 +173,6 @@ unsafe extern "C" fn roots(
             t.gc,
             t.behavior,
             t.builder_behavior,
-            t.bytes_behavior,
-            t.view_behavior,
-            t.bytes_prototype.get(),
             t.prototype.get(),
             t.builder.get(),
             t.truth,
@@ -228,7 +183,7 @@ unsafe extern "C" fn roots(
         for value in values.into_iter().filter(|v| !v.is_null()) {
             t.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
-        // Buffer keys are weak, and bytes contain no language references.
+        // Wrapper keys are weak; referencesOf:do: traces each owned Bytes reference.
         Ok(Operand::unit())
     })())
 }
@@ -250,11 +205,11 @@ unsafe extern "C" fn references(
                 .as_word()
                 .ok_or_else(invalid)?
                 != 0;
-        let words = {
-            let buffers = t.buffers.borrow();
-            let b = buffers.get(&value.addr()).ok_or_else(invalid)?;
-            if b.kind == Kind::Builder { 3 } else { 2 }
+        let (storage, words) = {
+            let buffers = t.buffers.borrow(); let b = buffers.get(&value.addr()).ok_or_else(invalid)?;
+            (b.storage, if b.kind == Kind::Builder { 3 } else { 2 })
         };
+        t.id.send_named(visitor,b"visit:",&[Operand::object(storage)])?;
         if !precise {
             // Scan only this owner's payload mirror, never the String's bytes or Rust containers.
             for i in 0..words {
@@ -282,7 +237,6 @@ unsafe extern "C" fn finalize(
         };
         // GC has detached the object; no Id query or send is valid for it now.
         let value = object(*value)?;
-        t.views.borrow_mut().remove(&value.addr());
         t.buffers
             .borrow_mut()
             .remove(&value.addr())
@@ -313,16 +267,8 @@ unsafe fn execute(
                 if !args.is_empty() {
                     return Err(invalid());
                 }
-                let buffers = t.buffers.borrow();
-                let b = buffers
-                    .get(&receiver.addr())
-                    .filter(|b| b.kind == Kind::String)
-                    .ok_or_else(invalid)?;
-                Ok(if operation == 1 {
-                    Operand::bytes(&b.bytes)
-                } else {
-                    Operand::word(b.bytes.len())
-                })
+                let storage = t.storage(receiver,Kind::String)?;
+                t.id.send_named(storage,if operation==1 { b"bytes" } else { b"length" },&[])
             }
             _ => {
                 let expected = match operation {
@@ -379,14 +325,7 @@ unsafe fn execute(
                         11 => {
                             t.length(receiver, Kind::Builder)?;
                             let bytes = t.printable(objects[1])?;
-                            t.send(t.gc, b"prepareAllocation", &[])?;
-                            let mut buffers = t.buffers.borrow_mut();
-                            let b = buffers
-                                .get_mut(&receiver.addr())
-                                .filter(|b| b.kind == Kind::Builder)
-                                .ok_or_else(invalid)?;
-                            b.bytes.extend_from_slice(&bytes);
-                            mirror(receiver, b);
+                            t.id.send_named(t.storage(receiver,Kind::Builder)?,b"appendBytes:",&[Operand::bytes(&bytes)])?;
                             Ok(Operand::object(receiver))
                         }
                         12 => t.string(&t.copy(receiver, Kind::Builder)?),
@@ -500,8 +439,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         }
         let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let builder_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-        let bytes_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-        let view_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let pointer = Box::into_raw(Box::new(Text {
             id,
             roots,
@@ -509,17 +446,13 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             gc,
             behavior,
             builder_behavior,
-            bytes_behavior,
             truth,
             falsity,
             nil,
             names,
             prototype: Cell::new(ptr::null_mut()),
             builder: Cell::new(ptr::null_mut()),
-            bytes_prototype: Cell::new(ptr::null_mut()),
             buffers: RefCell::new(HashMap::new()),
-            views: RefCell::new(HashMap::new()),
-            view_behavior,
             numeric: Cell::new(false),
             thread: std::thread::current().id(),
         }));
@@ -533,15 +466,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"installCollections:", split::install as Method),
             (behavior, b"fromBytes:", from_bytes as Method),
             (behavior, b"asBytes", binary::from_string),
-            (bytes_behavior, b"fromBytes:", binary::from_bytes),
-            (bytes_behavior, b"bytes", binary::bytes),
-            (bytes_behavior, b"length", binary::length),
-            (bytes_behavior, b"clone", binary::clone),
-            (bytes_behavior, b"new", binary::clone),
-            (bytes_behavior, b"asString", binary::as_string),
-            (view_behavior, b"rootsDo:", self::roots),
-            (view_behavior, b"referencesOf:do:", references),
-            (view_behavior, b"finalize:", finalize),
             (behavior, b"bytes", bytes),
             (behavior, b"length", length),
             (behavior, b"clone", clone_string),
@@ -572,6 +496,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
                 ],
             )?;
         }
+        // Complete the Bytes backing before allocating the first String payload.
+        let storage = keep(object(t.id.send_named(t.byte_factory()?,b"fromBytes:",&[Operand::bytes(&[])])?)?)?;
         // No allocating send between allocating this first payload and installing
         // its owner. All selectors above were interned and rooted already.
         let prototype = keep(object(t.send(
@@ -593,12 +519,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             return Err(invalid());
         }
         t.prototype.set(prototype);
-        let b = Buffer {
-            bytes: Vec::new(),
-            kind: Kind::String,
-        };
-        mirror(prototype, &b);
-        t.buffers.borrow_mut().insert(prototype.addr(), b);
+        let b = Buffer { storage,kind:Kind::String };
+        mirror(prototype,&b); t.buffers.borrow_mut().insert(prototype.addr(),b);
         t.send(
             gc,
             b"trace:with:",
@@ -618,21 +540,11 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             &[Operand::object(prototype), Operand::object(prototype)],
         )?;
         t.send(roots, b"register:", &[Operand::object(prototype)])?;
-        t.send(
-            gc,
-            b"trace:with:",
-            &[Operand::object(bytes_behavior), Operand::object(prototype)],
-        )?;
-        t.send(gc, b"trace:with:", &[Operand::object(view_behavior), Operand::object(prototype)])?;
-        let binary = object(t.make(Vec::new(), Kind::Bytes)?)?;
-        t.bytes_prototype.set(binary);
         let builder = object(t.make(Vec::new(), Kind::Builder)?)?;
         t.builder.set(builder);
         for (target, owner) in [
             (behavior, prototype),
             (builder_behavior, builder),
-            (bytes_behavior, binary),
-            (view_behavior, prototype),
         ] {
             t.send(
                 id.receiver,
@@ -645,8 +557,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (b"StringVt", behavior),
             (b"StringBuilder", builder),
             (b"StringBuilderVt", builder_behavior),
-            (b"Bytes", binary),
-            (b"BytesVt", bytes_behavior),
         ] {
             t.send(
                 namespace,

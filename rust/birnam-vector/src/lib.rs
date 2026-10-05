@@ -785,7 +785,20 @@ entry!(sort_by, 8);
 entry!(print, 9);
 entry!(comma, 10);
 entry!(new, 11);
+// Raw index access for generic ABI marshalling. Numeric boxing is language policy.
+unsafe extern "C" fn size_word(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
+    done((||unsafe {let s=state(c)?; if !borrowed_slice(a,n).ok_or_else(invalid)?.is_empty() {return Err(invalid());}
+        Scope::run(s,&[r],|_|Ok(Operand::word(payload(s,r)?.count)))
+    })())
+}
+unsafe extern "C" fn at_word(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
+    done((||unsafe {let s=state(c)?;let [index]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};let index=index.as_word().ok_or_else(invalid)?;
+        Scope::run(s,&[r],|_| {let value=at(s,payload(s,r)?,index)?;Ok(if value.is_null() {s.nil()} else {Operand::object(value)})})
+    })())
+}
 const METHODS: &[(&[u8], Method)] = &[
+    (b"sizeWord", size_word),
+    (b"atWord:", at_word),
     (b"size", size),
     (b"at:", at_method),
     (b"add:", add),

@@ -56,26 +56,6 @@ unsafe extern "C" fn identical(
         state.falsity
     }))
 }
-// Typed native operand bridge; Boolean alone establishes its canonical bits.
-// Setting/operation policy belongs to the message's caller and target owner.
-unsafe extern "C" fn send_word(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    result((|| unsafe {
-        let s = state(c);
-        let [value, target, selector] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let (value, target, selector) = (object(*value)?, object(*target)?, object(*selector)?);
-        if value != s.truth && value != s.falsity { return Ok(Operand::object(s.nil)); }
-        let mut tokens = Vec::new();
-        let answer = (|| {
-            for input in [r, value, target, selector] {
-                tokens.push(s.id.send_named(s.roots, b"retain:", &[Operand::object(input)])?.as_word().ok_or_else(invalid)?);
-            }
-            s.id.send(target, selector, &[Operand::word(usize::from(value == s.truth))])?;
-            Ok(Operand::object(target))
-        })();
-        for token in tokens { s.id.send_named(s.roots, b"release:", &[Operand::word(token)])?; }
-        answer
-    })())
-}
 unsafe extern "C" fn not(
     context: *mut c_void,
     receiver: Oop,
@@ -305,7 +285,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"and:", and_block),
             (behavior, b"or:", or_block),
             (behavior, b"installPrinting:", install_printing),
-            (behavior, b"sendWordOf:to:selector:", send_word),
         ] {
             id.send_named(
                 target,

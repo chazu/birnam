@@ -7,6 +7,7 @@ use core::ffi::c_void;
 use core::mem::align_of;
 
 pub mod id_protocol;
+pub mod native_signature;
 pub mod native_module;
 
 pub type Oop = *mut c_void;

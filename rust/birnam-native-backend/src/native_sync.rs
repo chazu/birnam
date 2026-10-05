@@ -35,7 +35,7 @@ pub(super) fn function(
         let binding = program.parameter_count + i;
         // Ask the Block owner, rather than inspecting its payload or dispatching
         // an overridable inspection method on the particular Block instance.
-        writeln!(out, "A capture_{i}[2]={{obj(integer(&c,{i})),obj(self)}};O b{binding}=call(&c,named(&c,\"Block\"),\"captureAt:of:\",capture_{i},2);").unwrap();
+        writeln!(out, "A capture_{i}[2]={{word({i}),obj(self)}};O b{binding}=call(&c,named(&c,\"Block\"),\"captureWord:of:\",capture_{i},2);").unwrap();
     }
     let mut next = 0;
     let mut result = None;
@@ -81,18 +81,18 @@ pub(super) fn function(
                     let child = portable_function(node.data, source, filename, functions, policy)?;
                     writeln!(
                         out,
-                        "O captures{next}=call(&c,named(&c,\"Vector\"),\"new\",0,0);"
+                        "A count{next}=word({});O captures{next}=call(&c,named(&c,\"ObjectModel\"),\"allocateReferenceSlots:\",&count{next},1);",node.operand_count
                     )
                     .unwrap();
                     for i in 0..node.operand_count as usize {
                         let binding = program
                             .node_operand(next as usize, i)
                             .ok_or(Error::Portable)?;
-                        writeln!(out, "{{A a=obj(b{binding});captures{next}=call(&c,captures{next},\"add:\",&a,1);}}").unwrap();
+                        writeln!(out, "{{A a[3]={{word({i}),obj(captures{next}),obj(b{binding})}};send(&c,named(&c,\"ObjectModel\"),\"slotAt:in:put:\",a,3);}}").unwrap();
                     }
                     writeln!(out,"A a{next}[3]={{obj(methods[{child}]),obj(codes[{child}]),obj(captures{next})}};").unwrap();
                     format!(
-                        "call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:captures:\",a{next},3)"
+                        "call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:referenceSlots:\",a{next},3)"
                     )
                 }
             };

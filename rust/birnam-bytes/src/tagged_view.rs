@@ -19,14 +19,14 @@ pub(crate) enum View {
     Fields(Arc<Table>, usize),
     Field(Arc<Table>, usize, Option<usize>),
 }
-impl Text {
+impl Bytes {
     pub(crate) unsafe fn view(&self, view: View) -> Result<Operand, Outcome> {
         let out = unsafe { self.make(Vec::new(), Kind::TaggedView) }?;
         self.views.borrow_mut().insert(object(out)?.addr(), view);
         Ok(out)
     }
 }
-unsafe fn run(t: &Text, r: Oop, a: &[Operand], at: bool) -> Result<Operand, Outcome> {
+unsafe fn run(t: &Bytes, r: Oop, a: &[Operand], at: bool) -> Result<Operand, Outcome> {
     unsafe {
         if a.len() != usize::from(at) { return Err(invalid()) }
         let view = t.views.borrow().get(&r.addr()).cloned().ok_or_else(invalid)?;

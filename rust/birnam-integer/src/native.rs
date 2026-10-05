@@ -479,11 +479,6 @@ fn comparison(left: i64, right: i64, op: usize) -> Option<bool> {
 
 unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
     unsafe {
-        if op == 34 {
-            let [target, selector] = args else { return Err(invalid()); };
-            let value = n.id.send(object(*target)?, object(*selector)?, &[])?.as_word().ok_or_else(invalid)?;
-            return n.send(r, b"fromWord:", &[Operand::word(value)]);
-        }
         if op == 32 || op == 33 {
             if args.len() != if op == 32 { 1 } else { 2 } { return Err(invalid()); }
             let left = n.send(r, b"wordOf:", &args[..1])?;
@@ -623,11 +618,9 @@ entry!(print, 13);
 entry!(to_do, 14);
 entry!(integer_value, 32);
 entry!(compare_integer, 33);
-entry!(from_word_result, 34);
 const METHODS: &[(&[u8], Method)] = &[
     (b"integerValue:", integer_value),
     (b"compareInteger:with:", compare_integer),
-    (b"fromWordResultOf:selector:", from_word_result),
     (b"collectionEquals:", collection_equal),
     (b"collectionHash", collection_hash),
     (b"+", add),
@@ -756,6 +749,9 @@ unsafe extern "C" fn can_omit_indexing(
             return Err(invalid());
         }
         let n = state(c)?;
+        // Only this owner's canonical factory can authorize omission of the
+        // constructor send. Equivalent family receivers remain observable.
+        if receiver != n.prototype {return Ok(Operand::word(0));}
         let epoch = n
             .send(n.id.receiver, b"behaviorEpoch", &[])?
             .as_word()

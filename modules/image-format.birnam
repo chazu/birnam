@@ -304,11 +304,18 @@ let blockMask := "0000000000001000001";
 ]];
 [Reflect defineMethod: #codeObjectValid:inventory: on: ImageFormat as: [:self :object :inventory |
   let fields := [object at: 1];
-  [[[fields size] = 2] ifTrue: [|
+  [[[[fields size] = 2] | [[fields size] = 3]] ifTrue: [|
     let program := [fields at: 0]; let provenance := [fields at: 1];
     [[[program at: 0] = 11] ifTrue: [|
       [[[provenanceTags at: [provenance at: 0]] notNil] ifTrue: [|
-        [[program at: 1] < [inventory size]]
+        let signatureOk := [[[fields size] = 2] ifTrue: [| true] ifFalse: [|
+          let field := [fields at: 2];
+          [[[field at: 0] = 17] ifTrue: [|
+            let signature := [field at: 2];
+            [CodeObject nativeSignature: signature matchesProgram: [[inventory at: [program at: 1]] at: 0]]
+          ] ifFalse: [| false]]
+        ]];
+        [signatureOk & [[program at: 1] < [inventory size]]]
       ] ifFalse: [| false]]
     ] ifFalse: [| false]]
   ] ifFalse: [| false]]

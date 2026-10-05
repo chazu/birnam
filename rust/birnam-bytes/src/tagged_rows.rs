@@ -4,7 +4,7 @@ use super::native::*;
 use crate::tagged_view::View;
 use std::sync::Arc;
 
-pub(super) unsafe fn run(t: &Text, r: Oop, a: &[Operand], op: usize) -> Result<Operand, Outcome> {
+pub(super) unsafe fn run(t: &Bytes, r: Oop, a: &[Operand], op: usize) -> Result<Operand, Outcome> {
     unsafe {
         let argc = match op { 0 => 0, 8 | 10 | 12 | 14 => 2, _ => 1 };
         if a.len() != argc { return Err(invalid()) }
@@ -36,7 +36,7 @@ pub(super) unsafe fn run(t: &Text, r: Oop, a: &[Operand], op: usize) -> Result<O
                 return t.view(View::Rows(Arc::new(slice.to_vec())));
             }
             let (text, limit) = if op == 7 { (Vec::new(), word(a[0])?) }
-                else { (t.copy(object(a[0])?, Kind::String)?, if matches!(op, 8 | 12 | 14) { word(a[1])? } else { 0 }) };
+                else { (t.input_bytes(object(a[0])?)?, if matches!(op, 8 | 12 | 14) { word(a[1])? } else { 0 }) };
             if matches!(op, 2 | 5 | 6 | 8 | 9 | 11 | 12 | 13 | 14) && (text.len() > 256 || text.iter().any(|v| !matches!(v, b'0' | b'1'))) { return Err(invalid()) }
             let matches = |tag: u8| text.get(tag as usize) == Some(&b'1');
             if matches!(op, 2..=4) {

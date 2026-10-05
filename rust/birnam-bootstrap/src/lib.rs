@@ -235,7 +235,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
-        for name in ["string", "integer", "float"] {
+        for name in ["word", "bytes", "execution", "portable_code", "string", "integer", "float"] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -310,7 +310,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[named(b"StringVt")?, Operand::object(collection)],
         )?;
         release(id, roots, collection_root)?;
-        for name in ["word", "vector", "map", "store", "relational"] {
+        for name in ["vector", "map", "store", "relational"] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -325,17 +325,8 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             b"installCollections:",
             &[named(b"Vector")?],
         )?;
-        id.send_named(
-            receiver,
-            b"loadNative:",
-            &[
-                Operand::bytes(&module_path(directory, "execution")),
-                Operand::object(namespace),
-            ],
-        )?;
         for name in [
             "artifact",
-            "portable_code",
             "peg",
             "tcc",
             "native_backend",
@@ -385,7 +376,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             if result != object(named(b"Error")?)? { return Err(invalid()); }
         }
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "imageFormat"] {
+        for name in ["modules", "lang", "nativeValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "imageFormat"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],

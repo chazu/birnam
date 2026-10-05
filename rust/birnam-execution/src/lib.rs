@@ -7,6 +7,7 @@ mod execution;
 mod image;
 mod machine;
 mod native_tier;
+mod native_abi;
 mod numeric;
 mod numeric_operator;
 mod numeric_predicate;
@@ -34,9 +35,11 @@ struct Callable {
     owner: Oop,
     implementation: Option<Oop>,
     image: Option<Rc<image::Image>>,
+    native_signature: Option<birnam_abi::native_signature::Signature>,
 }
 struct Execution {
     namespace: Oop,
+    native_return_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
@@ -45,9 +48,7 @@ struct Execution {
     roots: Oop,
     gc: Oop,
     model: Oop,
-    integer: Oop,
     word: Oop,
-    float: Oop,
     nil: Oop,
     method_behavior: Oop,
     prototype: Oop,
@@ -151,6 +152,11 @@ unsafe extern "C" fn implementation_of_entry(
     })())
 }
 impl Execution {
+    fn value_factory(&self,name:&[u8])->Result<Oop,Outcome> {
+        unsafe {object(self.id.send_named(self.namespace,b"at:",&[Operand::object(self.id.intern_name(name)?)])?)}
+    }
+    fn integer_factory(&self)->Result<Oop,Outcome> {self.value_factory(b"Integer")}
+    fn float_factory(&self)->Result<Oop,Outcome> {self.value_factory(b"Float")}
     fn scope(&self, values: &[Oop]) -> Scope<'_> {
         let scope = Scope {
             execution: self,
@@ -209,6 +215,7 @@ impl Execution {
             inline: None,
             candidate: None,
             implementation: None,
+            native_signature: None,
             execution: self,
             object: value,
             entry,
@@ -223,7 +230,7 @@ impl Execution {
     unsafe fn capture(&self, entry: NativeEntry) -> Result<Operand, Outcome> {
         if let Some(method) = self.selected(entry) {
             let _roots = self.scope(&[method]);
-            let (entry, owner, image, resumable, inline, implementation) = {
+            let (entry, owner, image, resumable, inline, implementation, native_signature) = {
                 let values = self.methods.borrow();
                 let value = values.get(&method.addr()).ok_or_else(invalid)?;
                 (
@@ -233,6 +240,7 @@ impl Execution {
                     value.resumable.clone(),
                     value.inline,
                     value.implementation,
+                    value.native_signature.clone(),
                 )
             };
             let value = unsafe { self.make(entry, owner, image) }?;
@@ -241,6 +249,7 @@ impl Execution {
             captured.resumable = resumable;
             captured.inline = inline;
             captured.implementation = implementation;
+            captured.native_signature = native_signature;
             return Ok(value);
         }
         let image = image::Image::retain(entry.method.ok_or_else(invalid)? as *const c_void)
@@ -269,6 +278,11 @@ impl Execution {
         receiver: Oop,
         args: &[Operand],
     ) -> Result<Operand, Outcome> {
+        let signature=self.methods.borrow().get(&method.addr()).and_then(|m|m.native_signature.clone());
+        if let Some(signature)=signature {return unsafe {native_abi::incoming(self,method,receiver,args,&signature)}}
+        unsafe {self.invoke_body(method,receiver,args)}
+    }
+    unsafe fn invoke_body(&self,method:Oop,receiver:Oop,args:&[Operand])->Result<Operand,Outcome> {
         if self.machines.borrow().image_pending(receiver) {
             return Err(invalid());
         }
@@ -388,7 +402,9 @@ unsafe extern "C" fn from_native_implementation(c: *mut c_void, _: Oop, a: *cons
         let method=s.make(native_entry(*entry)?,object(*owner)?,None)?;
         let value=object(method)?;
         roots.keep(value);
-        s.methods.borrow_mut().get_mut(&value.addr()).ok_or_else(invalid)?.implementation=Some(implementation);
+        let signature=native_abi::implementation_signature(s,implementation)?;
+        let mut methods=s.methods.borrow_mut();let record=methods.get_mut(&value.addr()).ok_or_else(invalid)?;
+        record.implementation=Some(implementation);record.native_signature=signature;
         Ok(method)
     })())
 }
@@ -429,13 +445,13 @@ unsafe extern "C" fn invoke_arguments(
         let size = object(s.send(source, b"size", &[])?)?;
         roots.keep(size);
         let size = s
-            .send(s.integer, b"wordOf:", &[Operand::object(size)])?
+            .send(s.integer_factory()?, b"wordOf:", &[Operand::object(size)])?
             .as_word()
             .ok_or_else(invalid)? as i64;
         let count = usize::try_from(size).map_err(|_| invalid())?;
         let mut args = Vec::new();
         for index in 0..count {
-            let index = object(s.send(s.integer, b"fromWord:", &[Operand::word(index)])?)?;
+            let index = object(s.send(s.integer_factory()?, b"fromWord:", &[Operand::word(index)])?)?;
             // Keep the index until its at: send returns; returned arguments are
             // retained before reading the next one, including allocating sources.
             let index_scope = s.scope(&[index]);
@@ -503,9 +519,7 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.roots,
             s.gc,
             s.model,
-            s.integer,
             s.word,
-            s.float,
             s.nil,
             s.method_behavior,
             s.prototype,
@@ -739,6 +753,10 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
 }
 
 const NAMES: &[&[u8]] = &[
+    b"sendNativeTo:selector:arguments:signature:resultFactory:",
+    b"wordResultOf:selector:",
+    b"block:withNativeSignature:",
+    b"bytesResultOf:selector:",
     b"numericOperation:left:right:",
     b"commitNumericPredicate:",
     b"visit:",
@@ -820,6 +838,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         )?)?)?;
         let s = Box::into_raw(Box::new(Execution {
             namespace,
+            native_return_bytes: RefCell::new(Vec::new()),
             machines: RefCell::new(machine::State::new()),
             numeric: RefCell::new(numeric::Registry::default()),
             requests: RefCell::new(Vec::new()),
@@ -828,9 +847,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             roots: roots_object,
             gc,
             model: named(b"ObjectModel")?,
-            integer: named(b"Integer")?,
             word: named(b"Word")?,
-            float: named(b"Float")?,
             nil: named(b"nil")?,
             method_behavior,
             prototype,
@@ -852,6 +869,10 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"implementationOfEntry:", implementation_of_entry),
             (behavior, b"methodOfEntry:", method_of_entry),
             (behavior, b"binding:value:weak:", binding),
+            (behavior, b"sendNativeTo:selector:arguments:signature:resultFactory:", native_abi::send),
+            (behavior, b"block:withNativeSignature:", native_abi::block_with_signature),
+            (behavior, b"wordResultOf:selector:", native_abi::word_result),
+            (behavior, b"bytesResultOf:selector:", native_abi::bytes_result),
             (behavior, b"numericOperation:left:right:", numeric::evaluate),
             (behavior, b"commitNumericPredicate:", numeric_predicate::commit),
             (behavior, b"retire:", retire),

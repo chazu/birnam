@@ -52,6 +52,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-bytes"
+version = "0.1.0"
+dependencies = [
+ "birnam-abi",
+ "sha2",
+]
+
+[[package]]
 name = "birnam-cli"
 version = "0.0.0"
 dependencies = [
@@ -349,7 +357,6 @@ name = "birnam-string"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "sha2",
 ]
 
 [[package]]

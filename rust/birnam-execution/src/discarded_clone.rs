@@ -84,7 +84,7 @@ pub(super) unsafe fn try_result(
             )?
             .as_word()
                 != Some(1)
-            || s.send(s.integer, b"canOmitIndexing", &[])?.as_word() != Some(1)
+            || s.send(s.integer_factory()?, b"canOmitIndexing", &[])?.as_word() != Some(1)
         {
             return Ok(Operand::unit());
         }
@@ -105,7 +105,7 @@ pub(super) unsafe fn try_result(
                 &[Operand::object(s.names[b"Integer".as_slice()])],
             )?
             .as_object()
-                != Some(s.integer)
+                != Some(s.integer_factory()?)
             || s.send(s.id.receiver, b"behaviorEpoch", &[])?.as_word() != Some(epoch)
         {
             return Ok(Operand::unit());

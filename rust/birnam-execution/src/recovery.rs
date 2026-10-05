@@ -288,7 +288,7 @@ impl<'a> Reader<'a> {
     unsafe fn integer(&self, value: Oop) -> Result<i64, Outcome> {
         unsafe {
             self.s
-                .send(self.s.integer, b"wordOf:", &[Operand::object(value)])
+                .send(self.s.integer_factory()?, b"wordOf:", &[Operand::object(value)])
         }?
         .as_word()
         .map(|n| n as i64)
@@ -370,7 +370,7 @@ pub(super) unsafe fn recover(
                 parsed.push(match (reader.integer(kind)?, fields.as_slice()) {
                     (0, [_, value]) => Node::Integer(reader.integer(*value)?),
                     (1, [_, value]) => Node::FloatBits(
-                        s.send(s.float, b"bitsOf:", &[Operand::object(*value)])?
+                        s.send(s.float_factory()?, b"bitsOf:", &[Operand::object(*value)])?
                             .as_word()
                             .ok_or_else(invalid)? as u64,
                     ),
@@ -459,10 +459,10 @@ unsafe fn materialize(
             authority(s, cap, pc)?;
             let value = match node {
                 Node::Integer(value) => {
-                    object(s.send(s.integer, b"fromWord:", &[Operand::word(*value as usize)])?)?
+                    object(s.send(s.integer_factory()?, b"fromWord:", &[Operand::word(*value as usize)])?)?
                 }
                 Node::FloatBits(value) => {
-                    object(s.send(s.float, b"fromBits:", &[Operand::word(*value as usize)])?)?
+                    object(s.send(s.float_factory()?, b"fromBits:", &[Operand::word(*value as usize)])?)?
                 }
                 Node::Aggregate {
                     vtable_input,

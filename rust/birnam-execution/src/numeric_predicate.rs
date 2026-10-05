@@ -101,14 +101,14 @@ pub(super) unsafe fn try_result(
                 &[Operand::object(s.names[b"Integer".as_slice()])],
             )?
             .as_object()
-                != Some(s.integer)
+                != Some(s.integer_factory()?)
         {
             return Ok(Operand::unit());
         }
         // The pending recovery request holds the commit target. Integer sends
         // the result to this receiver before running its root-release callbacks.
         s.send(
-            s.integer,
+            s.integer_factory()?,
             b"evaluatePredicate:then:left:right:limit:in:epoch:with:",
             &[
                 Operand::object(plan.first),

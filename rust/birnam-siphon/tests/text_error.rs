@@ -357,7 +357,8 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         assert_eq!(text(id, copied), b"abc");
         let snapshot = keep(object(send(id, copied, b"clone", &[])));
         assert_eq!(text(id, snapshot), b"abc");
-        assert_eq!(alloc.calls.get(), 2);
+        // Each text wrapper has a separate Bytes allocation owned by that module.
+        assert_eq!(alloc.calls.get(), 4);
         restore(id, id.receiver, b"allocate", allocation, alloc.alias);
 
         // A printString callback may collect and reenter String construction.
@@ -470,8 +471,8 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
             ],
         );
 
-        // Native buffers are weak: finalization frees each separately, including
-        // builders. Repeated allocations also exercise address reuse.
+        // Text wrapper keys and Bytes storage keys are weak; both owners finalize
+        // independently, including builders. Repeated allocations also exercise address reuse.
         collect(id, gc);
         let fin = selected(id, svt, b"finalize:");
         let finalizer = Box::leak(Box::new(Finalized {
@@ -491,7 +492,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         for _ in 0..32 {
             let doomed = make(id, string, b"temporary");
             let doomed_builder = object(send(id, sb, b"new", &[]));
-            assert_eq!(collect(id, gc), 2);
+            assert_eq!(collect(id, gc), 4); // two wrappers and their two Bytes backings
             assert!(!present(id, doomed));
             assert!(!present(id, doomed_builder));
         }

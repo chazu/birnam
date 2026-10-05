@@ -30,6 +30,13 @@ unsafe extern "C" fn load_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usi
             s.id.send_named(gc, b"budget:", &[Operand::word(1)])?;
         }
         let loaded = s.entry.method.unwrap()(s.entry.context, r, a, n).into_result()?;
+        if path.ends_with(b"libbirnam_generation.dylib") {
+            // Every value constructor and extension above ran with collection on
+            // each allocation. Authored-tool startup has separate GC coverage;
+            // keeping budget=1 there would make this constructor test quadratic.
+            let gc=s.id.send_named(s.id.receiver,b"memoryManager",&[])?.as_object().unwrap();
+            s.id.send_named(gc,b"budget:",&[Operand::word(1024*1024)])?;
+        }
         for (library, selector, flag) in [
             (
                 b"libbirnam_integer.dylib".as_slice(),

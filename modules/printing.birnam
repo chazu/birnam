@@ -1,5 +1,5 @@
 // Default printing policy over owned Bytes; value-specific printers remain.
-[Module named: #printing requires: #[]];
+[Module named: #printing requires: #[#nativeValues]];
 
 // Byte constants avoid extra String factory calls while rendering each object.
 let objectPrintBytes := ["anObject" asBytes];

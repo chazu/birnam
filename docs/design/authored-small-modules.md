@@ -52,6 +52,8 @@ Count queries execute before current Integer result construction, preserving all
 native Word bits. Setters accept canonical Booleans and return their actual System
 receiver, including aliases. Reload preserves replacement methods and settings.
 
+These helpers are now authored in `native-values.birnam` over Execution's
+[explicit ABI boundary](native-value-foundation.md).
 Integer's `fromWordResultOf:selector:` sends a zero-argument query through Id and
 boxes its Word result through current `fromWord:`. Boolean's
 `sendWordOf:to:selector:` converts a canonical Boolean to Word 1/0 and sends the
@@ -59,8 +61,8 @@ caller-selected operation through Id. These are typed operand bridges, with no
 collection or System policy. GC retains collection, accounting, precision,
 automatic thresholds and finalizers.
 
-Authored capture/argument construction can add real allocations before a query
-or setting change. Memory diagnostics report that actual execution. They do not
+Authored capture/argument construction and Word carriers can add real allocations
+before or after a query or setting change. Memory diagnostics report that actual execution. They do not
 reproduce the preceding Rust wrapper's allocation history or fabricate charges.
 
 ## Acceptance

@@ -119,6 +119,15 @@ the owner boundaries, native failure/result handling, root lifetime, fresh
 bootstrap and image/baked-entry checks. The installed user prefix is unchanged.
 
 
+### Native value foundation (2026-10-05)
+
+The [value foundation](native-value-foundation.md) tracks the agreed Word / Bytes /
+Execution split and the five remaining full value-module ports separately.
+Incoming native ABI adaptation now survives captured Method aliases and
+mapped/rebuilt images. Execution and PortableCode initialize before the native
+value modules; compiler capture storage uses generic Object Model reference
+slots. Compiler/reflection startup still requires the five native value owners.
+
 ## Rules shared by every decomposition
 
 - Each new native owner has the standard module descriptor, explicit completed

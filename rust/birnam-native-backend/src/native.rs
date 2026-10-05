@@ -319,11 +319,11 @@ fn function(
                     let v = operation.result.0;
                     writeln!(
                         out,
-                        "O captures_{v}=call(&c,named(&c,\"Vector\"),\"new\",0,0);"
+                        "A count_{v}=word({});O captures_{v}=call(&c,named(&c,\"ObjectModel\"),\"allocateReferenceSlots:\",&count_{v},1);",captures.len()
                     )
                     .unwrap();
-                    for value in captures {
-                        writeln!(out,"{{A a=obj(get(&c,machine,{}));captures_{v}=call(&c,captures_{v},\"add:\",&a,1);}}",slot(*value)).unwrap();
+                    for (i,value) in captures.iter().enumerate() {
+                        writeln!(out,"{{A a[3]={{word({i}),obj(captures_{v}),obj(get(&c,machine,{}))}};send(&c,named(&c,\"ObjectModel\"),\"slotAt:in:put:\",a,3);}}",slot(*value)).unwrap();
                     }
                     writeln!(
                         out,
@@ -331,7 +331,7 @@ fn function(
                     )
                     .unwrap();
                     format!(
-                        "call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:captures:\",block_args_{v},3)"
+                        "call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:referenceSlots:\",block_args_{v},3)"
                     )
                 }
                 Op::BlockLiteral { .. } => return Err(Error::Unsupported),

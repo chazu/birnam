@@ -521,6 +521,8 @@ impl Graph<'_, '_> {
                         node.fields.push(Value::Program(0));
                         let provenance = self.s.call(self.q, o, b"sourceProvenance", &[])?;
                         node.fields.push(self.reference(provenance)?);
+                        let signature=self.s.call(self.q,o,b"nativeSignature",&[])?;
+                        if signature!=self.s.named(b"nil")? {node.fields.push(Value::Bytes(self.s.bytes(signature)?));}
                     }
                     // Execution's family name is BlockVt; source Blocks have private behaviors.
                     b"BlockVt" => {
@@ -961,8 +963,10 @@ unsafe fn restore_heap(
                 {
                     continue;
                 }
-                let [Value::Program(index), provenance] = node.fields.as_slice() else {
-                    return Err(bad());
+                let (index,provenance,signature)=match node.fields.as_slice() {
+                    [Value::Program(index),provenance]=>(*index,provenance,None),
+                    [Value::Program(index),provenance,Value::Bytes(signature)]=>(*index,provenance,Some(signature)),
+                    _=>return Err(bad()),
                 };
                 if let Value::Heap(index) = provenance {
                     if objects.get(*index as usize).ok_or_else(bad)?.is_null() {
@@ -972,7 +976,7 @@ unsafe fn restore_heap(
                 let bytes = s.text(
                     q,
                     b"Bytes",
-                    inventory.program(*index as usize).ok_or_else(bad)?,
+                    inventory.program(index as usize).ok_or_else(bad)?,
                 )?;
                 let code = s.call(q, s.named(b"CodeObject")?, b"fromCanonicalBytes:", &[bytes])?;
                 if s.is_error(code)? {
@@ -990,6 +994,11 @@ unsafe fn restore_heap(
                         &[program, provenance],
                     )?
                 };
+                if let Some(signature)=signature {
+                    let signature=s.text(q,b"Bytes",signature)?;
+                    objects[i]=s.call(q,objects[i],b"withNativeSignature:",&[signature])?;
+                    if s.is_error(objects[i])? {return Err(bad());}
+                }
                 remaining -= 1;
             }
             // Allocate every Block before wiring captures, including cycles through slots.

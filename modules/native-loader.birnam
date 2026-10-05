@@ -1,5 +1,5 @@
 // Language loading policy. Bootstrap exposes the typed outcome of Id loading.
-[Module named: #nativeLoader requires: #[]];
+[Module named: #nativeLoader requires: #[#nativeValues]];
 [Globals at: #NativeLoader put: [Object clone]];
 let loaderNamespace := Namespace;
 let loaderStringVt := StringVt;

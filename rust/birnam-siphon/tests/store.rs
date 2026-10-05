@@ -41,7 +41,7 @@ impl H {
                 let gc=load(id,"collect",&[Operand::object(roots)]);
                 send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"GC").unwrap()),Operand::object(gc)]);
                 send(id,gc,b"activate",&[]);
-                for name in ["object_model","string","integer","store"] {
+                for name in ["object_model","word","bytes","string","integer","store"] {
                     load(id,name,&[Operand::object(ns)]);
                 }
                 // This deliberately sub-bootstrap budget cannot host compiler
