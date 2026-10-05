@@ -512,7 +512,7 @@ pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
         return Err(Error::Unsupported);
     }
     let mut body = format!(
-        "static R sync_0(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};keep(&c,self);if(n!={arity})return bad();A a[{}];a[0]=obj(self);",
+        "static R sync_0(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};keep(&c,self);if(n!={arity})return finish(&c,obj(named(&c,\"nil\")));A a[{}];a[0]=obj(self);",
         arity + 1
     );
     for i in 0..arity {

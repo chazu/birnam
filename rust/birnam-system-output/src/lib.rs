@@ -120,6 +120,22 @@ unsafe extern "C" fn print(c: *mut c_void, r: Oop, a: *const Operand, n: usize) 
 unsafe extern "C" fn println(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     unsafe { output(c, r, a, n, true) }
 }
+// Generic UTF-8 diagnostic output; message composition belongs to callers.
+unsafe extern "C" fn print_error_text(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() { return Err(invalid()); }
+        let Some([value]) = borrowed_slice(a, n) else { return Ok(Operand::object(s.nil)); };
+        let value = object(*value)?;
+        s.rooted(&[r, value], || {
+            let Some(bytes) = s.bytes(value)? else { return Ok(Operand::object(s.nil)); };
+            let text = String::from_utf8_lossy(&bytes);
+            let mut stderr = io::stderr().lock();
+            let _ = write_system_output_to(&mut stderr, text.as_bytes(), false);
+            Ok(Operand::object(r))
+        })
+    })().map_or_else(|e| e, Outcome::loaded)
+}
 unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
     unsafe {
         let named = |name: &[u8]| {
@@ -145,6 +161,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         for (name, method) in [
             (b"print:".as_slice(), print as native::Method),
             (b"println:", println),
+            (b"printErrorText:", print_error_text),
         ] {
             id.send_named(
                 vt,

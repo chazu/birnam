@@ -32,7 +32,7 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
     unsafe {
         let t = state(n.text.cast_mut().cast())?;
         let expected = match op {
-            1 | 2 | 4 | 9 | 11 | 13 | 14 => 1,
+            1 | 2 | 4 | 9 | 11 | 13 | 14 | 19 => 1,
             12 | 17 | 18 => 2,
             3 => 2,
             _ => 0,
@@ -58,6 +58,14 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
             } else {
                 Vec::new()
             };
+            if op == 19 {
+                let mut bytes = t.copy(r, Kind::Bytes)?;
+                let name = t.id.send_named(t.id.receiver, b"symbolBytesOf:", args)?;
+                let Some(name) = name.as_bytes() else { return Ok(nil) };
+                // Own the borrowed Id name before allocating the result Bytes.
+                bytes.extend_from_slice(borrowed_bytes(name.pointer, name.length).ok_or_else(invalid)?);
+                return t.make(bytes, Kind::Bytes);
+            }
             if op == 18 {
                 let schema = t.copy(object(args[0])?, Kind::String)?;
                 let Some(limit) = n.index(args[1])?.and_then(|i| usize::try_from(i).ok()) else { return Ok(nil) };
@@ -306,6 +314,7 @@ numeric!(sha256, 15);
 numeric!(wyhash64, 16);
 numeric!(tagged_field, 17);
 numeric!(tagged_rows, 18);
+numeric!(with_symbol_name, 19);
 pub(super) unsafe extern "C" fn install(
     c: *mut c_void,
     r: Oop,
@@ -344,6 +353,7 @@ pub(super) unsafe extern "C" fn install(
                 (t.bytes_behavior, b"wyhash64", wyhash64),
                 (t.bytes_behavior, b"readTaggedFieldAt:schema:", tagged_field),
                 (t.bytes_behavior, b"readTaggedRowsWithSchema:limit:", tagged_rows),
+                (t.bytes_behavior, b"withSymbolName:", with_symbol_name),
             ];
             let mut names = HashMap::new();
             for name in [

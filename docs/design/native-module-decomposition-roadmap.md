@@ -1,6 +1,6 @@
 # Native module decomposition roadmap
 
-Updated: 2026-10-03.
+Updated: 2026-10-04.
 
 All five decompositions below are agreed directions. Start with **source compiler
 and native backend**. This document tracks extraction, acceptance and later Birnam
@@ -25,12 +25,47 @@ remain separate milestones.
 | 2 | Compilation and generation publication | Implemented and validated | Existing CompiledUnit policy stays Birnam; remaining bookkeeping can follow |
 | 3 | Project observation and project build | Implemented and validated | Build sequencing and publication construction are initial targets |
 | 4 | Alien wrapper compiler and Alien runtime | Implemented and validated | AlienCompiler rewritten in Birnam |
-| 5 | Image format and image restoration | Implemented and validated | Planned: format implementation with startup/load measurements |
+| 5 | Image format and image restoration | Implemented and validated | ImageFormat authored in Birnam; full-image performance remains open |
 
 Update each row when work starts. An extraction is complete only when production
 callers use the new native owner through Id, its acceptance checks pass, and the
 displaced implementation path is removed. Record the commit and evidence location
 when it is delivered. A Birnam replacement is a separate milestone.
+
+### Small rewrite checkpoint: Printing (2026-10-04)
+
+Default Object/Symbol printing is now in `modules/printing.birnam`, loaded after
+Lang on the primitive floor. The native Printing crate and production inventory
+entry are removed. Bytes owns generic Symbol-name copying; formatting policy
+remains authored. Printing is marked loaded so public Module reload preserves
+replacements. ProjectBuild remains deferred as a larger rewrite.
+
+Validation: cold Lang seed compiles the artifact without a Rust printer; focused
+output/printing, compiler, text/error and memory checks pass, including collecting
+constructors, native failures, one live String factory call per render, root
+printer replacement/reload and wrong arity. Workspace check passes. A full install
+and full-image startup were not rerun; the ImageFormat performance issue remains.
+
+### Small rewrite checkpoint: SourceLoader (2026-10-04)
+
+`modules/source-loader.birnam` now owns System source loading. The native crate
+and production inventory entry are removed. Registration still precedes evaluation;
+nil registration does not prevent execution; exact Error results retain identity;
+notification consults Namespace only. Original filenames remain owned for diagnostics
+while the original path Object is passed to Codegen. Public Module reload preserves
+System method replacements.
+
+Three small reusable owner operations support the policy: File I/O returns a
+bounded owned path/content Bytes snapshot (nil on file/encoding failure), Namespace
+provides nullable language lookup over its live `at:`, and System Output writes
+UTF-8 diagnostic text to stderr. They contain no compiler/loading policy.
+
+Validation passed: cold seed compilation without the Rust source loader; focused
+source-loader, compiler, embedding, system-services and output integration checks;
+six shared-owner unit tests and workspace check. Source-loader checks include
+collecting/reentrant dependencies, source identity, filename mutation, error/failure
+propagation, sealed registration and reloads. Full install/image startup was not
+rerun. Printing and SourceLoader rewrites are currently uncommitted.
 
 ## Rules shared by every decomposition
 

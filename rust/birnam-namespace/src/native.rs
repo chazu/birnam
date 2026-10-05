@@ -57,6 +57,17 @@ unsafe extern "C" fn find(
         Err(error) => error,
     }
 }
+// Language-facing nullable lookup. Keep at:'s native Unit contract intact.
+unsafe extern "C" fn value_at(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let namespace = &*c.cast::<Namespace>();
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if n != 1 { return Err(invalid()); }
+        let result = namespace.id.send_named(r, b"at:", args)?;
+        if result.kind() != native::UNIT { return Ok(result); }
+        namespace.id.send_named(r, b"at:", &[Operand::object(namespace.id.intern_name(b"nil")?)])
+    })().map_or_else(|e| e, Outcome::loaded)
+}
 unsafe extern "C" fn bind(
     context: *mut c_void,
     _: Oop,
@@ -222,6 +233,7 @@ unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
         }));
         for (name, method) in [
             (b"at:".as_slice(), find as Method),
+            (b"valueAt:", value_at),
             (b"at:put:", bind),
             (b"count", count),
             (b"nameAt:", name_at),

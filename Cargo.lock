@@ -307,13 +307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-printing"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-project-build"
 version = "0.0.0"
 dependencies = [
@@ -363,13 +356,6 @@ version = "0.0.0"
 dependencies = [
  "birnam-abi",
  "birnam-artifact-codec",
-]
-
-[[package]]
-name = "birnam-source-loader"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
 ]
 
 [[package]]

@@ -1,0 +1,72 @@
+// Source loading policy on the primitive floor. File I/O and stderr stay with
+// their platform owners; Codegen owns compilation and source registration.
+// Namespace valueAt: maps native absence to nil without consulting Globals.
+[Module named: #sourceLoader requires: #[]];
+[Globals at: #SourceLoader put: [Object clone]];
+let sourceNamespace := Namespace;
+let sourceStringVt := StringVt;
+
+[Reflect defineMethod: #exactError: on: SourceLoader as: [:self :value |
+  let family := [sourceNamespace valueAt: #ErrorVt];
+  [[family notNil] & [[Reflect vtableOf: value] == family]]
+]];
+[Reflect defineMethod: #error:message: on: SourceLoader as: [:self :kind :message |
+  // The message has been constructed before this lazy factory lookup.
+  let factory := [sourceNamespace valueAt: #Error];
+  [[factory isNil] ifTrue: [| nil] ifFalse: [| [factory kind: kind message: message]]]
+]];
+[Reflect defineMethod: #registrationFor:using: on: SourceLoader as: [:self :source :compiler |
+  let revision := [compiler sourceRevisionOf: source];
+  [[[revision isNil] | [self exactError: revision]] ifTrue: [| #[nil nil]] ifFalse: [|
+    let name := [revision at: 1];
+    let recorded := [compiler recordModuleSource: source named: name];
+    #[name recorded]
+  ]]
+]];
+[Reflect defineMethod: #nilResultFor:display: on: SourceLoader as: [:self :compiler :display |
+  let diagnostic := [compiler lastError];
+  [[diagnostic isNil] ifTrue: [| nil] ifFalse: [|
+    [[[Reflect vtableOf: diagnostic] == sourceStringVt] ifTrue: [|
+      [System printErrorText: ["birnam: load " , [display asString] , " failed:\n" , diagnostic , "\n"]]
+    ]];
+    [self error: #syntaxError message: "source file failed to compile"]
+  ]]
+]];
+[Reflect defineMethod: #evaluate:from:display:name:using: on: SourceLoader as: [:self :source :path :display :name :compiler |
+  let result := [compiler evalPersisting: source from: path];
+  [[result isNil] ifTrue: [| [self nilResultFor: compiler display: display]] ifFalse: [|
+    [[self exactError: result] ifTrue: [|
+      let rendered := [result printString];
+      [[[Reflect vtableOf: rendered] == sourceStringVt] ifTrue: [|
+        [System printErrorText: ["birnam: load " , [display asString] , ": " , rendered , "\n"]]
+      ]]
+    ] ifFalse: [|
+      [[name notNil] ifTrue: [|
+        // Preserve the Namespace-only notification; Globals is a separate layer.
+        let manager := [sourceNamespace valueAt: #Module];
+        [[manager notNil] ifTrue: [| [manager markLoaded: name]]]
+      ]]
+    ]]; result
+  ]]
+]];
+[Reflect defineMethod: #load: on: SourceLoader as: [:self :path |
+  [[[[Reflect vtableOf: path] == sourceStringVt] not] ifTrue: [| nil] ifFalse: [|
+    let snapshot := [System readFileSnapshot: path];
+    [[snapshot isNil] ifTrue: [| [self error: #ioError message: "could not read source file"]] ifFalse: [|
+      // Select Codegen after the read and before constructing the source String.
+      let compiler := [sourceNamespace valueAt: #Codegen];
+      [[compiler isNil] ifTrue: [| [self error: #noCodegen message: "Codegen module is not loaded"]] ifFalse: [|
+        let source := [[snapshot at: 1] asString];
+        let registration := [self registrationFor: source using: compiler];
+        let recorded := [registration at: 1];
+        [[self exactError: recorded] ifTrue: [| recorded] ifFalse: [|
+          [self evaluate: source from: path display: [snapshot at: 0] name: [registration at: 0] using: compiler]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #load: on: System as: [:self :path |
+  [SourceLoader load: path]
+]];
+[Module markLoaded: #sourceLoader];

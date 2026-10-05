@@ -131,3 +131,7 @@ caller-supplied tag payload shapes (`0` empty, `1` fixed eight bytes, `2` u32,
 framing answer nil. Row tables expose ordinary read-only indexed views over an
 owned byte snapshot. These temporary views own no language references and are
 collected with their buffers; callers retain all format and reference rules.
+
+`Bytes withSymbolName:` appends an Id-owned Symbol name to an owned byte prefix.
+It copies the borrowed name before result allocation, returns nil for a non-Symbol,
+and leaves formatting policy to authored callers such as `printing.birnam`.

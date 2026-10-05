@@ -741,20 +741,10 @@ unsafe fn exercise_callbacks(h: &H, temp: &std::path::Path) {
         // Reinitialization must not overwrite an installed method replacement.
         let original = binding(id, system_vt, b"load:");
         set(id, system_vt, b"load:", NativeEntry::new(reply, nil));
-        let loader = directory().join("libbirnam_source_loader.dylib");
-        assert_eq!(
-            id.send(
-                id.receiver,
-                id.load,
-                &[
-                    Operand::bytes(loader.as_os_str().as_bytes()),
-                    Operand::object(h.ns)
-                ]
-            )
-            .unwrap()
-            .kind(),
-            native::UNIT
-        );
+        let manager = h.eval(b"Module");
+        let loader = h.string(directory().join("libbirnam_sourceLoader.dylib").as_os_str().as_bytes());
+        let loaded = h.call(manager, b"load:path:", &[id.intern_name(b"sourceLoader").unwrap(), loader]);
+        assert_eq!(h.call(loaded, b"isError", &[]), h.named(b"false"));
         assert_eq!(h.call(system, b"load:", &[path_object]), nil);
         set(id, system_vt, b"load:", original);
         h.call(codegen, b"evalPersisting:", &[h.string(b"nil")]);

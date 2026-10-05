@@ -346,25 +346,28 @@ fn system_construction_printing_and_stdout_use_messages() {
             let result = keep(make(bytes));
             install(id, ordinary_vt, b"printString", answer, result);
             let path = directory().join("libbirnam_printing.dylib");
-            assert_eq!(
-                send(
-                    id,
-                    id.receiver,
-                    b"loadNative:",
-                    &[
-                        Operand::bytes(path.as_os_str().as_bytes()),
-                        Operand::object(ns)
-                    ]
-                )
-                .kind(),
-                native::UNIT
-            );
+            let path = keep(make(path.as_os_str().as_bytes()));
+            let module = keep(eval(b"Module"));
+            let loaded = keep(object(send(id, module, b"load:path:", &[Operand::object(id.intern_name(b"printing").unwrap()), Operand::object(path)])));
+            assert_ne!(loaded, nil);
+            assert_eq!(object(send(id, loaded, b"isError", &[])), named(b"false"));
             assert_eq!(
                 text(id, object(send(id, ordinary, b"asString", &[]))),
                 bytes
             );
             send(id, system, b"println:", &[Operand::object(ordinary)]);
         }
+        // Public module reload must not reset a replacement on the shared root.
+        let root_vt = named(b"ObjectVt");
+        let old = save(id, root_vt, b"printString", b"savedRootPrinter");
+        let replacement = keep(make(b"root printer kept"));
+        install(id, root_vt, b"printString", answer, replacement);
+        let module = keep(eval(b"Module"));
+        let path = keep(make(directory().join("libbirnam_printing.dylib").as_os_str().as_bytes()));
+        let loaded = keep(object(send(id, module, b"load:path:", &[Operand::object(id.intern_name(b"printing").unwrap()), Operand::object(path)])));
+        assert_eq!(object(send(id, loaded, b"isError", &[])), named(b"false"));
+        assert_eq!(object(send(id, named(b"Object"), b"printString", &[])), replacement);
+        restore(id, root_vt, b"printString", b"savedRootPrinter", old);
         // Non-String renderings are refused even if they implement bytes.
         install(id, ordinary_vt, b"printString", answer, ordinary);
         install(id, ordinary_vt, b"bytes", foreign_bytes, ptr::null_mut());

@@ -45,3 +45,8 @@ propagate unchanged. The compiler owns literal-path validation and source-direct
 resolution, then invokes this method by a live send. An ordinary dynamic send to
 this method performs file I/O at that moment; it is the compiler's literal form
 that captures bytes into code. See [embedded files](../../docs/design/56-embedded-files.md).
+
+`readFileSnapshot:` provides reusable bounded binary reads. It returns
+`#[pathBytes contentsBytes]`, or nil for a non-String/invalid UTF-8 path or file
+failure. Both byte values own their data before allocating/sending results. The
+read limit is one GiB. It performs no source registration, evaluation or diagnostics.

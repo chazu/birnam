@@ -42,3 +42,8 @@ Input and environment now use the same prefix; see their [contract](../birnam-sy
 [File I/O](../birnam-file-io/README.md) is also connected. Full Host/CLI startup,
 image round trips and loaders remain separate migration work. Historical image smoke tests
 are not evidence for those unfinished paths.
+
+`printErrorText:` accepts an exact String, copies its bytes, writes UTF-8-lossy text
+to stderr and flushes. It adds no newline or diagnostic formatting; callers own
+those choices. Wrong arity/type returns nil, and native dependency failures
+propagate. No language send crosses the OS output lock.

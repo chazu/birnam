@@ -14,6 +14,8 @@ use sha2::{Digest, Sha256};
 const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
+    ("printing", "modules/printing.birnam"),
+    ("sourceLoader", "modules/source-loader.birnam"),
     ("alienCompiler", "modules/alien-compiler.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
 ];
@@ -75,7 +77,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_store.dylib",
     "libbirnam_relational.dylib",
     "libbirnam_prelude.dylib",
-    "libbirnam_printing.dylib",
     "libbirnam_system_output.dylib",
     "libbirnam_system_input.dylib",
     "libbirnam_environment.dylib",
@@ -84,7 +85,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_storage.dylib",
     "libbirnam_trace.dylib",
     "libbirnam_native_loader.dylib",
-    "libbirnam_source_loader.dylib",
     "libbirnam_block_loop.dylib",
     "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
@@ -685,13 +685,13 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
         compile.env("BIRNAM_NO_STDLIB", "1");
-        if *name == "imageFormat" {
-            // This pure byte-processing module needs synchronous bodies. Select
+        if matches!(*name, "imageFormat" | "printing" | "sourceLoader") {
+            // These small byte-processing policies use synchronous bodies. Select
             // that representation at build time; startup only maps saved objects.
             let source_path = root.join(source);
             let output_path = lib_dir.join(format!("libbirnam_{name}.dylib"));
             let quote = |p: &Path| serde_json::to_string(&p.to_string_lossy()).unwrap();
-            let script = stage.join("compile-image-format.birnam");
+            let script = stage.join(format!("compile-{name}.birnam"));
             fs::write(&script, format!(
                 "let source := [System readFile: {src}]; let answer := [Codegen compile: source output: {out} from: {src} synchronousBodies: true]; [[[answer isNil] | [answer isError]] ifTrue: [| [System println: answer]; [System exit: 1]]];",
                 src = quote(&source_path), out = quote(&output_path)))

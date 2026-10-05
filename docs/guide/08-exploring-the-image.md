@@ -277,7 +277,7 @@ message-based integration and validation.
 `[System load: path]` reads and evaluates a Birnam source file through Codegen.
 Top-level bindings remain in Globals. Source declarations are registered before
 evaluation; registration and successful Module loaded-state notification are
-separate operations. See [Source Loader](../../rust/birnam-source-loader/README.md)
+separate operations. See [Source Loader](native-loading.md#loading-source-files)
 for the preserved errors and registration rules.
 
 This path now runs in the migrated native prefix, including compile-time binary

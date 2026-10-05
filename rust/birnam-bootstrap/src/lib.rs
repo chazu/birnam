@@ -256,10 +256,14 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             )?)?;
             id.send_named(value, b"installPrinting:", &[string])?;
         }
-        // Install default Object printing after Boolean/Nil install their own methods.
+        // Export Id's existing Symbol behavior before Reflect/compiler bootstrap.
+        let symbol = id.intern_name(b"Symbol")?;
+        let token = retain(id, roots, symbol)?;
+        let symbol_behavior = id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(symbol)])?;
+        id.send_named(namespace, b"at:put:", &[Operand::object(id.intern_name(b"SymbolVt")?), symbol_behavior])?;
+        release(id, roots, token)?;
         for name in [
             "prelude",
-            "printing",
             "system_output",
             "system_input",
             "environment",
@@ -354,7 +358,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[Operand::bytes(&module_path(directory, "lang_seed")), Operand::object(namespace)],
         )?;
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang", "alienCompiler", "imageFormat"] {
+        for name in ["modules", "lang", "printing", "sourceLoader", "alienCompiler", "imageFormat"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],
@@ -376,7 +380,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             release(id, roots, path_token)?;
             result?;
         }
-        for name in ["source_loader", "image", "alien", "isolate"] {
+        for name in ["image", "alien", "isolate"] {
             id.send_named(
                 receiver, b"loadNative:",
                 &[Operand::bytes(&module_path(directory, name)), Operand::object(namespace)],

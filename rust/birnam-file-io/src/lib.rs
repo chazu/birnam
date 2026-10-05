@@ -152,6 +152,44 @@ unsafe extern "C" fn read_file(c: *mut c_void, r: Oop, a: *const Operand, n: usi
     })()
     .map_or_else(|e| e, Outcome::loaded)
 }
+// Reusable bounded binary I/O: nil on file/encoding failure. The snapshot
+// carries owned path/content Bytes, with no source evaluation or registration.
+unsafe extern "C" fn read_snapshot(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() { return Err(invalid()); }
+        let Some([path]) = borrowed_slice(a, n) else { return Ok(Operand::object(s.nil)); };
+        let path = object(*path)?;
+        s.rooted(&[r, path], || {
+            let Some(path_bytes) = s.bytes(path)? else { return Ok(Operand::object(s.nil)); };
+            let Some(name) = path_from_bytes(&path_bytes) else { return Ok(Operand::object(s.nil)); };
+            let bytes = match fs::File::open(name).and_then(|file| read_bounded(file, MAX_FILE_BYTES)) {
+                Ok(bytes) => bytes,
+                Err(_) => return Ok(Operand::object(s.nil)),
+            };
+            let named = |name: &[u8]| -> Result<Oop, Outcome> {
+                object(s.id.send_named(s.ns, b"at:", &[Operand::object(s.id.intern_name(name)?)])?)
+            };
+            let factory = named(b"Bytes")?;
+            s.rooted(&[factory], || {
+                let name = object(s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&path_bytes)])?)?;
+                s.rooted(&[name], || {
+                    let contents = object(s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&bytes)])?)?;
+                    s.rooted(&[contents], || {
+                        let vector = named(b"Vector")?;
+                        s.rooted(&[vector], || {
+                            let out = object(s.id.send_named(vector, b"new", &[])?)?;
+                            s.rooted(&[out], || {
+                                let out = object(s.id.send_named(out, b"add:", &[Operand::object(name)])?)?;
+                                s.rooted(&[out], || s.id.send_named(out, b"add:", &[Operand::object(contents)]))
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })().map_or_else(|e| e, Outcome::loaded)
+}
 // The compiler sends this operation with a resolved filename. Source-relative
 // validation belongs to the compilation form; this owner only performs bounded I/O.
 unsafe extern "C" fn embed_file(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -297,6 +335,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         }));
         for (name, method) in [
             (b"readFile:".as_slice(), read_file as native::Method),
+            (b"readFileSnapshot:", read_snapshot),
             (b"embedFile:", embed_file),
             (b"writeFile:contents:", write_file),
             (b"removeFile:ifContents:", remove_matching),

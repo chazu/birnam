@@ -95,7 +95,7 @@ entry address. Top-level Globals writes and Store MOP publication retain their
 existing behavior. The supplied filename reaches generated descriptors, including
 nested Blocks. No GC policy is changed; temporary values remain explicitly rooted.
 
-[Source Loader](../birnam-source-loader/README.md) is wired after Codegen and tested
+[Source Loader](../../docs/guide/native-loading.md#loading-source-files) is wired after Codegen and tested
 with the complete authored Module manager. Compile-time embedding now uses the
 message path [below](#embedding). [Image activation and compensation](../birnam-image/README.md)
 use the same source objects and current Store/Execution owners.

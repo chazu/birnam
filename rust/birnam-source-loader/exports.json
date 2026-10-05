@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "System source loader constructed through Bootstrap",
-  "install_name": "@rpath/libbirnam_source_loader.dylib",
-  "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
-  ]
-}

@@ -41,10 +41,24 @@ entry are checked by `scripts/host-cli-test.sh`.
 
 Source files use the separate `[System load: path]` protocol. Its initializer also
 receives Namespace, installs its method through Id and returns Unit. See the
-[Source Loader contract](../../rust/birnam-source-loader/README.md) for Codegen
+[Source Loader contract](native-loading.md#loading-source-files) for Codegen
 registration/evaluation and the current embedding and Host/Image boundaries.
 
 
 [Block Loop](../../rust/birnam-block-loop/README.md) likewise takes one Namespace and
 returns Unit. Bootstrap loads it after Execution; repeated loading preserves the
 current `whileTrue:`/`whileFalse:` bindings, including authored replacements.
+
+## Loading source files
+
+`[System load: "file.birnam"]` uses the authored
+[SourceLoader](../../modules/source-loader.birnam). It reads a bounded file snapshot,
+selects Codegen, registers declared source metadata, then evaluates persistently
+with the original path. Registration is not rolled back after an evaluation error;
+a duplicate/sealed registration returning nil still permits evaluation. Syntax and
+runtime errors preserve their stderr diagnostic formats and Error results.
+
+Wrong arity/type returns nil. File errors precede the missing-Codegen check.
+Successful declared modules are optionally marked loaded through Namespace's
+Module binding; Globals remains separate. The source loader itself is marked loaded
+at bootstrap, so ordinary Module reload does not reset a replaced System `load:`.
