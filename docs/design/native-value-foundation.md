@@ -12,7 +12,8 @@ new omnibus primitive service or duplicate byte-memory prototype.
 | native-values | Word range conversion and hexadecimal printing; existing Boolean/Integer/Bytes conversion policy | Birnam |
 | Integer | Signed checked arithmetic and language numeric behavior | Rust; full port remains |
 | String/StringBuilder | Text behavior over Bytes references; neither owns byte vectors | Rust; full port remains |
-| Boolean, Vector, Map | Canonical Boolean behavior and persistent collection algorithms | Rust; full ports remain |
+| Boolean | Canonical Boolean policy | Birnam slice in progress; Rust cold-bootstrap seed retained |
+| Vector, Map | Persistent collection algorithms | Rust; rewrites remain |
 
 This checkpoint implements the owner split. The five value-module rewrites
 remain. Rust required for a clean cold bootstrap is retained explicitly; Rust
@@ -190,3 +191,41 @@ only its canonical factory may authorize omission. The discarded-clone fallback
 regression passes after this change. The materialization fixture now observes the
 actual `captureWord:of:` interface; the old Integer-indexed capture operation is
 still available to language callers.
+
+## Boolean slice
+
+Checkpoint commit: `089a5a99` contains the foundation and incoming ABI work.
+`modules/boolean.birnam` is the next slice. It implements canonical Boolean
+`not`, eager `&`/`|`, chosen-branch conditionals, lazy `and:`/`or:` and printing.
+It keeps the existing identities and the native Rust module used by cold bootstrap.
+Its compiled artifact is `booleanValues`, loaded after `nativeValues`. The Rust
+seed is not removed or relabeled as an authored implementation.
+
+Word adds generic `sameObject:with:` (a 0/1 Word over opaque identities) and
+`selectIfZero:ifNonzero:` (select an Object without evaluating it). These provide
+the lower-level branch choice needed to define Boolean conditionals themselves.
+All selection and callback calls remain Id messages.
+
+The incoming ABI adds required non-null Object arguments (`O`) and deferred
+results (`v`). A deferred authored selector returns its chosen thunk; Execution
+sends its current `value` method after the selector body returns. This preserves
+all native result carriers and exact failures, including Unit, Word, Bytes and
+NativeEntry, without adding Boolean-specific behavior to Execution or Word.
+Signatures remain CodeObject metadata and use the existing image recovery path.
+
+The direct compilation/probe and fresh cold-seed build pass. Production
+qualification passes for authored Boolean truth tables, identity/invalid receivers,
+strict arity/null inputs, chosen-only callbacks, all native result carriers and
+exact failures, collecting callbacks, Module reloads, incoming ABI, BlockLoop,
+compiler/deoptimization, numeric loading, SystemGC and text/Error ownership.
+Fresh startup/tool images and source-free mapped/rebuilt images pass. REPL
+arithmetic completes in 5.9 seconds. No exhaustive suite was run.
+
+The BlockLoop fixture retained an unrooted raw Error method entry across replacement
+and collection. Source methods have collectible contexts, so the fixture now keeps
+its corresponding Method until restoration. The debugger reproduction and original
+BlockLoop check both pass after that correction.
+
+Acceptance prefix: `/tmp/birnam-boolean/final-prefix`; logs are in
+`/tmp/birnam-boolean/{units.log,install.log,other-tests.log,loop-compiler.log,image.log}`.
+The user prefix is unchanged. This Boolean slice is not committed.

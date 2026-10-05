@@ -514,6 +514,10 @@ unsafe fn replacements(h: &H, cond: Oop, action: Oop, cvt: Oop, bvt: Oop, c: &Co
         h.bind(b"Error", error_factory);
         let error_vt = behavior_of(h, error_factory);
         let original_error = binding(h, error_vt, b"kind:message:");
+        // A source callable's context is collectible after replacement. Retain
+        // its Method while keeping the raw entry for later restoration.
+        let original_method=send(id,h.named(b"Execution"),b"methodOfEntry:",&[Operand::entry(original_error)]);
+        h.keep(object(original_method));
         let answer = Reply {
             id,
             gc: h.gc,

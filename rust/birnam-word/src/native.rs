@@ -372,6 +372,16 @@ unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Ope
             let [bits] = args else { return Err(invalid()) };
             return n.make(bits.as_word().ok_or_else(invalid)?);
         }
+        if op == 17 {
+            let [left,right]=args else {return Err(invalid())};
+            return n.make(usize::from(object(*left)?==object(*right)?));
+        }
+        if op == 18 {
+            let [zero,nonzero]=args else {return Err(invalid())};
+            let value=n.read(r)?.ok_or_else(invalid)?;
+            let (zero,nonzero)=(object(*zero)?,object(*nonzero)?);
+            return Ok(Operand::object(if value==0 {zero} else {nonzero}));
+        }
         if op >= 5 {
             let value = n.read(r)?.ok_or_else(invalid)?;
             if op == 5 {
@@ -412,7 +422,11 @@ entry!(bit_xor, 13);
 entry!(shift_left, 14);
 entry!(shift_right, 15);
 entry!(unsigned_less, 16);
+entry!(same_object,17);
+entry!(select_object,18);
 const METHODS: &[(&[u8], Method)] = &[
+    (b"sameObject:with:",same_object),
+    (b"selectIfZero:ifNonzero:",select_object),
     (b"bitNot", bit_not),
     (b"wrappingAdd:", wrapping_add),
     (b"wrappingSubtract:", wrapping_sub),

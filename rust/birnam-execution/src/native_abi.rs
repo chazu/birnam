@@ -219,8 +219,10 @@ pub(super) unsafe fn incoming(
     let mut copied = Vec::with_capacity(args.len());
     for (&argument, &kind) in args.iter().zip(signature.arguments()) {
         copied.push(match kind {
-            b'o' => {
-                if argument.kind() != native::OBJECT {
+            b'o' | b'O' => {
+                if argument.kind() != native::OBJECT
+                    || (kind == b'O' && argument.as_object().is_none_or(|o| o.is_null()))
+                {
                     return Err(invalid());
                 }
                 None
@@ -243,7 +245,7 @@ pub(super) unsafe fn incoming(
     let mut converted = Vec::with_capacity(args.len());
     for ((&argument, &kind), copied) in args.iter().zip(signature.arguments()).zip(&copied) {
         let value = match kind {
-            b'o' => argument
+            b'o' | b'O' => argument
                 .as_object()
                 .filter(|v| !v.is_null())
                 .unwrap_or(s.nil),
@@ -273,6 +275,9 @@ pub(super) unsafe fn incoming(
     roots.keep(value);
     match signature.result() {
         b'o' => Ok(result),
+        // A deferred result evaluates the selected thunk after the authored
+        // selector body has returned, preserving every native result carrier.
+        b'v' => unsafe { s.id.send_named(value, b"value", &[]) },
         b'u' if value == s.nil => Ok(Operand::unit()),
         b'x' => Ok(Operand::unit()),
         b'W' | b'B' if value == s.nil => Ok(Operand::unit()),

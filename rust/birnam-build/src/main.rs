@@ -16,6 +16,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
     ("nativeValues", "modules/native-values.birnam"),
+    ("booleanValues", "modules/boolean.birnam"),
     ("blockLoopControl", "modules/block-loop-control.birnam"),
     ("blockLoop", "modules/block-loop.birnam"),
     ("range", "modules/range.birnam"),
@@ -688,7 +689,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
         compile.env("BIRNAM_NO_STDLIB", "1");
-        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues") {
+        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues") {
             // These small byte-processing policies use synchronous bodies. Select
             // that representation at build time; startup only maps saved objects.
             let source_path = root.join(source);

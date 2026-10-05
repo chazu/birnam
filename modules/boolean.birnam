@@ -1,0 +1,70 @@
+// Boolean policy over canonical identities retained by the cold-bootstrap seed.
+// Word selects data; it never invokes a branch or implements Boolean behavior.
+[Module named: #booleanValues requires: #[#nativeValues]];
+let boolWord := Word;
+let boolTrue := true;
+let boolFalse := false;
+let boolNil := nil;
+let boolNilThunk := [| boolNil];
+let boolTrueThunk := [| boolTrue];
+let boolFalseThunk := [| boolFalse];
+let boolTrueBytes := ["true" asBytes];
+let boolFalseBytes := ["false" asBytes];
+let boolString := String;
+let boolExecution := Execution;
+let boolByteSignature := "ob";
+let boolPrintTrue := [| [boolExecution sendNativeTo: boolString selector: #fromBytes:
+  arguments: #[boolTrueBytes] signature: boolByteSignature resultFactory: boolWord]];
+let boolPrintFalse := [| [boolExecution sendNativeTo: boolString selector: #fromBytes:
+  arguments: #[boolFalseBytes] signature: boolByteSignature resultFactory: boolWord]];
+
+[Reflect defineMethod: #not on: Boolean as: [boolExecution block: [:self |
+  let otherwise := [[boolWord sameObject: self with: boolFalse]
+    selectIfZero: boolNil ifNonzero: boolTrue];
+  [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: boolFalse]
+] withNativeSignature: "o"]];
+[Reflect defineMethod: #& on: Boolean as: [boolExecution block: [:self :other |
+  let otherwise := [[boolWord sameObject: self with: boolFalse]
+    selectIfZero: boolNil ifNonzero: self];
+  [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: other]
+] withNativeSignature: "oO"]];
+[Reflect defineMethod: #| on: Boolean as: [boolExecution block: [:self :other |
+  let otherwise := [[boolWord sameObject: self with: boolFalse]
+    selectIfZero: boolNil ifNonzero: other];
+  [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: self]
+] withNativeSignature: "oO"]];
+// The deferred-result ABI invokes only the selected block and preserves raw
+// native Word/Bytes/Unit/Entry results and failures at the existing Id boundary.
+[Reflect defineMethod: #ifTrue:ifFalse: on: Boolean as:
+  [boolExecution block: [:self :yes :no |
+    let otherwise := [[boolWord sameObject: self with: boolFalse]
+      selectIfZero: boolNilThunk ifNonzero: no];
+    [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: yes]
+  ] withNativeSignature: "vOO"]];
+[Reflect defineMethod: #ifTrue: on: Boolean as:
+  [boolExecution block: [:self :yes |
+    [[boolWord sameObject: self with: boolTrue] selectIfZero: boolNilThunk ifNonzero: yes]
+  ] withNativeSignature: "vO"]];
+[Reflect defineMethod: #ifFalse: on: Boolean as:
+  [boolExecution block: [:self :no |
+    [[boolWord sameObject: self with: boolFalse] selectIfZero: boolNilThunk ifNonzero: no]
+  ] withNativeSignature: "vO"]];
+[Reflect defineMethod: #and: on: Boolean as:
+  [boolExecution block: [:self :other |
+    let otherwise := [[boolWord sameObject: self with: boolFalse]
+      selectIfZero: boolNilThunk ifNonzero: boolFalseThunk];
+    [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: other]
+  ] withNativeSignature: "vO"]];
+[Reflect defineMethod: #or: on: Boolean as:
+  [boolExecution block: [:self :other |
+    let otherwise := [[boolWord sameObject: self with: boolFalse]
+      selectIfZero: boolNilThunk ifNonzero: other];
+    [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: boolTrueThunk]
+  ] withNativeSignature: "vO"]];
+[Reflect defineMethod: #printString on: Boolean as:
+  [boolExecution block: [:self |
+    let otherwise := [[boolWord sameObject: self with: boolFalse]
+      selectIfZero: boolNilThunk ifNonzero: boolPrintFalse];
+    [[boolWord sameObject: self with: boolTrue] selectIfZero: otherwise ifNonzero: boolPrintTrue]
+  ] withNativeSignature: "v"]];
+[Module markLoaded: #booleanValues];

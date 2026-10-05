@@ -7,8 +7,13 @@ impl Signature {
     pub fn parse(bytes: &[u8]) -> Option<Self> {
         let (&result, arguments) = bytes.split_first()?;
         if arguments.len() > 128
-            || !matches!(result, b'o' | b'w' | b'b' | b'u' | b'x' | b'W' | b'B')
-            || arguments.iter().any(|k| !matches!(k, b'o' | b'w' | b'b'))
+            || !matches!(
+                result,
+                b'o' | b'w' | b'b' | b'u' | b'x' | b'W' | b'B' | b'v'
+            )
+            || arguments
+                .iter()
+                .any(|k| !matches!(k, b'o' | b'O' | b'w' | b'b'))
         {
             return None;
         }
@@ -33,6 +38,8 @@ mod tests {
     fn signatures_are_explicit_and_bounded() {
         assert!(Signature::parse(b"owb").is_some());
         assert!(Signature::parse(b"Wo").is_some());
+        assert!(Signature::parse(b"vOO").is_some());
+        assert!(Signature::parse(b"O").is_none());
         for invalid in [b"".as_slice(), b"q", b"ou", b"wx"] {
             assert!(Signature::parse(invalid).is_none());
         }

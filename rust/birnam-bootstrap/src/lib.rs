@@ -376,7 +376,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             if result != object(named(b"Error")?)? { return Err(invalid()); }
         }
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang", "nativeValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "imageFormat"] {
+        for name in ["modules", "lang", "nativeValues", "booleanValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "imageFormat"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],
