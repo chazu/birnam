@@ -268,7 +268,6 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "system_input",
             "environment",
             "file_io",
-            "system_gc",
             "storage",
             "trace",
             "native_loader",
@@ -310,7 +309,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[named(b"StringVt")?, Operand::object(collection)],
         )?;
         release(id, roots, collection_root)?;
-        for name in ["word", "vector", "map", "range", "store", "relational"] {
+        for name in ["word", "vector", "map", "store", "relational"] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -334,7 +333,6 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             ],
         )?;
         for name in [
-            "block_loop",
             "artifact",
             "portable_code",
             "peg",
@@ -358,7 +356,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[Operand::bytes(&module_path(directory, "lang_seed")), Operand::object(namespace)],
         )?;
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang", "printing", "sourceLoader", "alienCompiler", "imageFormat"] {
+        for name in ["modules", "lang", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "alienCompiler", "imageFormat"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],

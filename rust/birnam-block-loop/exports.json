@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "Bootstrap Block while methods using Id messages after Execution construction",
-  "install_name": "@rpath/libbirnam_block_loop.dylib",
-  "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
-  ]
-}

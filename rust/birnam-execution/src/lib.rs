@@ -59,6 +59,7 @@ struct Execution {
     scoped: RefCell<Vec<Oop>>,
     binding_visitors: RefCell<Vec<Oop>>,
     depth: Cell<usize>,
+    preserve_native_failures: Cell<bool>,
     draining: Cell<bool>,
     retired_images: RefCell<Vec<Rc<image::Image>>>,
     retired_calls: RefCell<Vec<Box<Callable>>>,
@@ -242,6 +243,7 @@ impl Execution {
     }
     unsafe fn language_result(&self, result: Result<Operand, Outcome>) -> Result<Operand, Outcome> {
         unsafe {
+            if self.preserve_native_failures.get() && result.is_err() { return result; }
             let kind: &'static [u8] = match result {
                 Ok(value) if value.kind() == native::OBJECT => return Ok(value),
                 Ok(value) if value.kind() == native::UNIT => return Ok(Operand::object(self.nil)),
@@ -808,6 +810,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             scoped: RefCell::new(Vec::new()),
             binding_visitors: RefCell::new(Vec::new()),
             depth: Cell::new(0),
+            preserve_native_failures: Cell::new(false),
             draining: Cell::new(false),
             retired_images: RefCell::new(Vec::new()),
             retired_calls: RefCell::new(Vec::new()),

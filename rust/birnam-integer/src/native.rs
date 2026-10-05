@@ -479,6 +479,22 @@ fn comparison(left: i64, right: i64, op: usize) -> Option<bool> {
 
 unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
     unsafe {
+        if op == 34 {
+            let [target, selector] = args else { return Err(invalid()); };
+            let value = n.id.send(object(*target)?, object(*selector)?, &[])?.as_word().ok_or_else(invalid)?;
+            return n.send(r, b"fromWord:", &[Operand::word(value)]);
+        }
+        if op == 32 || op == 33 {
+            if args.len() != if op == 32 { 1 } else { 2 } { return Err(invalid()); }
+            let left = n.send(r, b"wordOf:", &args[..1])?;
+            let Some(left) = left.as_word() else { return Ok(Operand::object(n.nil)); };
+            let value = if op == 32 { left } else {
+                let right = n.send(r, b"wordOf:", &args[1..])?;
+                let Some(right) = right.as_word() else { return Ok(Operand::object(n.nil)); };
+                match (left as i64).cmp(&(right as i64)) { std::cmp::Ordering::Less => -1i64 as usize, std::cmp::Ordering::Equal => 0, std::cmp::Ordering::Greater => 1 }
+            };
+            return n.send(r, b"fromWord:", &[Operand::word(value)]);
+        }
         if op == 31 {
             let [other] = args else { return Err(invalid()) };
             let other = object(*other)?;
@@ -605,7 +621,13 @@ entry!(word_of, 11);
 entry!(word, 12);
 entry!(print, 13);
 entry!(to_do, 14);
+entry!(integer_value, 32);
+entry!(compare_integer, 33);
+entry!(from_word_result, 34);
 const METHODS: &[(&[u8], Method)] = &[
+    (b"integerValue:", integer_value),
+    (b"compareInteger:with:", compare_integer),
+    (b"fromWordResultOf:selector:", from_word_result),
     (b"collectionEquals:", collection_equal),
     (b"collectionHash", collection_hash),
     (b"+", add),

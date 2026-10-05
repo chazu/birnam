@@ -279,7 +279,7 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
         let truth = h.named(b"true");
         let falsity = h.named(b"false");
         send(id, h.gc, b"budget:", &[Operand::word(128 * 1024)]);
-        for name in ["word", "vector", "map", "range"] {
+        for name in ["word", "vector", "map"] {
             let title = match name {
                 "word" => b"Word".as_slice(),
                 "vector" => b"Vector",
@@ -523,6 +523,12 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
         }
         assert_eq!(h.call(h.range(i64::MIN, i64::MAX), b"size", &[]), nil);
         let range = h.range(3, 7);
+        let copied = h.call(range, b"clone", &[]);
+        collect(id, h.gc);
+        assert_eq!(h.size(copied), 5);
+        assert_eq!(h.iv(h.at(copied, 0)), 3);
+        assert_eq!(h.iv(h.at(copied, 4)), 7);
+        assert_eq!(h.call(range, b"at:", &[Operand::object(h.f(1.0))]), nil);
         assert_eq!(
             h.iv(h.call(
                 range,

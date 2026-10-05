@@ -25,7 +25,7 @@ remain separate milestones.
 | 2 | Compilation and generation publication | Implemented and validated | Existing CompiledUnit policy stays Birnam; remaining bookkeeping can follow |
 | 3 | Project observation and project build | Implemented and validated | Build sequencing and publication construction are initial targets |
 | 4 | Alien wrapper compiler and Alien runtime | Implemented and validated | AlienCompiler rewritten in Birnam |
-| 5 | Image format and image restoration | Implemented and validated | ImageFormat authored in Birnam; full-image performance remains open |
+| 5 | Image format and image restoration | Implemented and validated | ImageFormat authored in Birnam; minute-scale admission regression resolved and installed startup verified |
 
 Update each row when work starts. An extraction is complete only when production
 callers use the new native owner through Id, its acceptance checks pass, and the
@@ -65,7 +65,44 @@ source-loader, compiler, embedding, system-services and output integration check
 six shared-owner unit tests and workspace check. Source-loader checks include
 collecting/reentrant dependencies, source identity, filename mutation, error/failure
 propagation, sealed registration and reloads. Full install/image startup was not
-rerun. Printing and SourceLoader rewrites are currently uncommitted.
+rerun at that checkpoint. Printing and SourceLoader were subsequently committed
+and pushed as `81b93307`; a fresh installed startup was verified after the
+ImageFormat performance work in `c59df7ca`.
+
+### Small rewrite checkpoint: BlockLoop, Range and SystemGC (2026-10-04)
+
+All three are now authored, in the requested order. Their Rust crates, workspace
+entries, lockfile packages and native inventory entries are removed. Bootstrap
+loads compiled BlockLoopControl/BlockLoop, Range and SystemGC artifacts after
+Lang. The existing compiler seed builds them without the removed native modules.
+The [authored contracts](authored-small-modules.md) describe the small generic
+owner operations used for typed operands and ordinary reference slots.
+
+BlockLoop retains exact Error-family recognition, live callbacks, constant stack
+depth and the bootstrap suspension barrier. Range retains inclusive signed i64
+bounds, nil for oversized counts/invalid indices, ignored `do:` callback results,
+folding, printing and materialization. Its endpoints now use ordinary reference
+slots. SystemGC retains live count-query/result-constructor order, count bits,
+canonical setter validation, alias receivers and GC's existing policy. Real
+allocation diagnostics include authored capture/argument construction.
+
+Stackless control explicitly requires BlockLoop and Range, because it overrides
+their methods. This gives generation adoption/image recovery the same dependency
+order as actual bootstrap and prevents a managed-source mismatch on Range `do:`.
+
+Validation passed: workspace cargo check; the ordinary-slot layout unit test;
+seven production integration binaries (BlockLoop, collections, SystemGC,
+compiler, Object Model, numbers and tagged tables); all native export/install-name
+and dependency audits; fresh release installation with new startup/tool images;
+exact installed receipt; source-free image recovery of Range aliases, clones,
+both i64 endpoints and SystemGC; REPL arithmetic, FizzBuzz and collections.
+The REPL arithmetic session completed in 6.00 seconds. No exhaustive Image GC
+or whole-language suite was rerun.
+
+The isolated acceptance prefix is `/tmp/birnam-small-ports/final-prefix`, with
+TCC's explicit resource-metrics feature for the compiler tests. Logs are
+`/tmp/birnam-small-ports/install.log`, `focused-tests.log` and `acceptance.log`.
+The installed user prefix was not replaced.
 
 ## Rules shared by every decomposition
 

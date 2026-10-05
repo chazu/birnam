@@ -45,9 +45,9 @@ receives Namespace, installs its method through Id and returns Unit. See the
 registration/evaluation and the current embedding and Host/Image boundaries.
 
 
-[Block Loop](../../rust/birnam-block-loop/README.md) likewise takes one Namespace and
-returns Unit. Bootstrap loads it after Execution; repeated loading preserves the
-current `whileTrue:`/`whileFalse:` bindings, including authored replacements.
+[Block Loop](../design/authored-small-modules.md#block-loops) is authored and loaded
+as compiled artifacts after Lang. Its synchronous entries preserve the bootstrap
+suspension barrier; Module reload preserves later method replacements.
 
 ## Loading source files
 

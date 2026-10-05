@@ -29,13 +29,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-block-loop"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-boolean"
 version = "0.0.0"
 dependencies = [
@@ -330,13 +323,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-range"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-relational"
 version = "0.0.0"
 dependencies = [
@@ -378,13 +364,6 @@ version = "0.0.0"
 dependencies = [
  "birnam-abi",
  "sha2",
-]
-
-[[package]]
-name = "birnam-system-gc"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
 ]
 
 [[package]]

@@ -462,7 +462,7 @@ Integer `to:` after both exist; String receives the completed Vector through
 `installCollections:` and owns `split:`. Both extensions preserve existing
 replacements. See the owning protocols for [Word](../../rust/birnam-word/README.md),
 [Vector](../../rust/birnam-vector/README.md), [Map](../../rust/birnam-map/README.md),
-[Range](../../rust/birnam-range/README.md), and [String](../../rust/birnam-string/README.md).
+[Range](authored-small-modules.md#range), and [String](../../rust/birnam-string/README.md).
 
 The Collection crate contained no shared algorithms: Bootstrap now constructs
 and publishes its existing parent behavior directly. Deleted that installer and
@@ -1253,7 +1253,7 @@ flags; representation owners query precision and enumerate their own payloads.
 The conservative default and live mode/layout changes are restored without native
 settings tables, foreign layout access, or changes to the visitor API. Native root
 capture and the current budget remain unchanged. See the bounded
-[contract and validation](../../rust/birnam-system-gc/README.md).
+[contract and validation](authored-small-modules.md#system-gc).
 
 
 ### Native Loader reconnected (2026-09-26)
@@ -1296,7 +1296,7 @@ Block Loop now loads after Execution and uses Id sends for callbacks, roots and
 errors. The missing Block prototype ownership registration is repaired, allowing
 ordinary Reflect publication to reach compiled Blocks. The existing native
 suspension barrier and authored resumable replacement remain distinct; see the
-[contract and production checks](../../rust/birnam-block-loop/README.md).
+[contract and production checks](authored-small-modules.md#block-loops).
 
 
 ### Artifact inspector reconnected (2026-09-28)

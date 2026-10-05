@@ -4,7 +4,7 @@
 // compilation requires the whole unit to be resumable; no selector or source
 // definition carries an execution-representation annotation.
 
-[Module named: #stacklessControl requires: #[#modules #stdlib]];
+[Module named: #stacklessControl requires: #[#modules #stdlib #blockLoop #range]];
 
 // Boolean is the canonical true/base prototype. False is the canonical false
 // singleton with a private vtable delegating to Boolean.

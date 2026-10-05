@@ -24,4 +24,4 @@ Payload enumeration reads GC `precisePayloads` by message before each object.
 In precise mode, raw bits are not references; in conservative mode the owner
 checks its own payload words through Id `allocationAt:` and sends `visit:` for
 matching allocations. Private behaviors keep the same representation ownership.
-See [System GC controls](../birnam-system-gc/README.md).
+See [System GC controls](../../docs/design/authored-small-modules.md#system-gc).

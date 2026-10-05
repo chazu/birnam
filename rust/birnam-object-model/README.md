@@ -47,6 +47,12 @@ references remain alive. No allocation/state borrow spans a callback.
 
 ## Ordinary storage and slot metadata
 
+Language callers can use `newSlots:parent:` to create an ordinary object with
+private behavior and reference slots initialized from a sequence, then
+`slot:in:`/`slot:in:put:` with Integer indices. Vector reads and numeric conversion
+use live Id messages. Object Model alone allocates/describes/accesses the slots;
+cloning, tracing and image transport use its existing ordinary-storage protocols.
+
 Native operations on the ObjectModel receiver are:
 
 | Selector | Operands | Result |

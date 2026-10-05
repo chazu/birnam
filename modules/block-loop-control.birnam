@@ -1,0 +1,34 @@
+// Bootstrap loop policy. Continuations run outside native Boolean callbacks,
+// so recursive sends are tail calls through the existing Execution owner.
+[Module named: #blockLoopControl requires: #[]];
+[Globals at: #BlockLoop put: [Object clone]];
+let loopNamespace := Namespace;
+
+[Reflect defineMethod: #exactError: on: BlockLoop as: [:self :value |
+  let family := [loopNamespace valueAt: #ErrorVt];
+  [[family notNil] & [[Reflect vtableOf: value] == family]]
+]];
+[Reflect defineMethod: #invalidCondition on: BlockLoop as: [:self |
+  let message := "while loop condition must answer true or false";
+  let factory := [loopNamespace valueAt: #Error];
+  [[factory isNil] ifTrue: [| nil] ifFalse: [| [factory kind: #mustBeBoolean message: message]]]
+]];
+[Reflect defineMethod: #body:condition:expected: on: BlockLoop as: [:self :body :condition :expected |
+  let result := [body value];
+  let next := [[self exactError: result]
+    ifTrue: [| [| result]]
+    ifFalse: [| [| [self condition: condition body: body expected: expected]]]];
+  [next value]
+]];
+[Reflect defineMethod: #condition:body:expected: on: BlockLoop as: [:self :condition :body :expected |
+  let result := [condition value];
+  let next := [[self exactError: result] ifTrue: [| [| result]] ifFalse: [|
+    [[[result == true] | [result == false]] ifTrue: [|
+      [[result == expected]
+        ifTrue: [| [| [self body: body condition: condition expected: expected]]]
+        ifFalse: [| [| nil]]]
+    ] ifFalse: [| [| [self invalidCondition]]]]
+  ]];
+  [next value]
+]];
+[Module markLoaded: #blockLoopControl];

@@ -186,7 +186,7 @@ Every baseline file appears once below. Delete/Archive links are pinned to the r
 | [rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md](../rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-alien/README.md](../rust/birnam-alien/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-artifact/README.md](../rust/birnam-artifact/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-block-loop/README.md](../rust/birnam-block-loop/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [Authored Block Loop contract](design/authored-small-modules.md#block-loops) | Replaces the removed native owner README; preserves bootstrap and control boundaries. |
 | [rust/birnam-collect/README.md](../rust/birnam-collect/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-error/README.md](../rust/birnam-error/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-file-io/README.md](../rust/birnam-file-io/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
@@ -200,12 +200,12 @@ Every baseline file appears once below. Delete/Archive links are pinned to the r
 | [rust/birnam-object-model/README.md](../rust/birnam-object-model/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-peg/README.md](../rust/birnam-peg/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-portable-code/README.md](../rust/birnam-portable-code/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-range/README.md](../rust/birnam-range/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [Authored Range contract](design/authored-small-modules.md#range) | Replaces the removed native owner README; describes ordinary slots and exact numeric bounds. |
 | [rust/birnam-relational/README.md](../rust/birnam-relational/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-root-registry/README.md](../rust/birnam-root-registry/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-storage/README.md](../rust/birnam-storage/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-string/README.md](../rust/birnam-string/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-system-gc/README.md](../rust/birnam-system-gc/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [Authored System GC contract](design/authored-small-modules.md#system-gc) | Replaces the removed native owner README; distinguishes authored policy from native collection. |
 | [rust/birnam-system-input/README.md](../rust/birnam-system-input/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-system-output/README.md](../rust/birnam-system-output/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-tcc/README.md](../rust/birnam-tcc/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |

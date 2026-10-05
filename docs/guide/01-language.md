@@ -133,9 +133,9 @@ keywords.
 [0 to: [[v size] - 1] do: [:i | [v at: i]]];          // inclusive integer loop
 ```
 
-The migrated Bootstrap supplies `whileTrue:` and `whileFalse:` through live Id
-sends. Their native callbacks remain synchronous; the existing authored control
-methods provide resumable loops. See the [Block Loop contract](../../rust/birnam-block-loop/README.md).
+Bootstrap supplies authored `whileTrue:` and `whileFalse:` through live Id sends.
+Their entry methods retain a synchronous suspension barrier; the later stackless
+control methods provide resumable loops. See the [Block Loop contract](../design/authored-small-modules.md#block-loops).
 
 
 `&` and `|` on booleans are **eager** — both sides evaluate, always. For

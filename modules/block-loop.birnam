@@ -1,0 +1,10 @@
+// Compiled with synchronous bodies: retain the bootstrap suspension barrier.
+// Loop policy and constant-depth iteration live in the resumable companion.
+[Module named: #blockLoop requires: #[#blockLoopControl]];
+[Reflect defineMethod: #whileTrue: on: Block as: [:condition :body |
+  [Execution evaluatePreservingFailures: [| [BlockLoop condition: condition body: body expected: true]]]
+]];
+[Reflect defineMethod: #whileFalse: on: Block as: [:condition :body |
+  [Execution evaluatePreservingFailures: [| [BlockLoop condition: condition body: body expected: false]]]
+]];
+[Module markLoaded: #blockLoop];

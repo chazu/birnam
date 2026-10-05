@@ -387,7 +387,9 @@ fn gc_controls_and_payload_policy_use_messages() {
             .as_word()
             .unwrap();
         let answer = object(send(id, system, b"liveObjects", &[]));
-        assert_eq!(send(id, answer, b"word", &[]).as_word(), Some(count));
+        let observed = send(id, answer, b"word", &[]).as_word().unwrap();
+        assert!(observed >= count, "authored capture reads may allocate before the query");
+        assert_eq!(send(id, id.receiver, b"allocationCount", &[]).as_word(), Some(observed + 1), "query reports the actual heap before its result Integer is boxed");
         // Empty family receivers are valid factories, even though numeric value
         // operations require eight bytes. GC must not impose that value restriction.
         for family in [b"Integer".as_slice(), b"Float", b"Word", b"Range"] {
@@ -614,10 +616,9 @@ fn gc_controls_and_payload_policy_use_messages() {
             Some(charge)
         );
         send(id, system, b"autoGc:", &[Operand::object(truth)]);
-        assert_eq!(
-            send(id, h.gc, b"allocationBytes", &[]).as_word(),
-            Some(charge)
-        );
+        // Authored argument/capture construction adds real charges before the
+        // setter. Enabling must retain them, rather than collect immediately.
+        assert!(send(id, h.gc, b"allocationBytes", &[]).as_word().unwrap() >= charge);
         send(id, h.gc, b"prepareAllocation", &[]);
         assert_eq!(send(id, h.gc, b"allocationBytes", &[]).as_word(), Some(0));
         send(id, h.gc, b"budget:", &[Operand::word(1 << 20)]);
@@ -656,20 +657,8 @@ fn gc_controls_and_payload_policy_use_messages() {
         let system_vt = named(b"SystemVt");
         let original = binding(id, system_vt, b"gc");
         install(id, system_vt, b"gc", constant_answer, sentinel);
-        let path = directory().join("libbirnam_system_gc.dylib");
-        assert_eq!(
-            id.send(
-                id.receiver,
-                id.load,
-                &[
-                    Operand::bytes(path.as_os_str().as_encoded_bytes()),
-                    Operand::object(ns)
-                ]
-            )
-            .unwrap()
-            .kind(),
-            native::UNIT
-        );
+        let source = h.keep(object(send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(b"[Module load: #systemGc]")])));
+        send(id, named(b"Codegen"), b"eval:", &[Operand::object(source)]);
         assert_eq!(send(id, h.gc, b"precisePayloads", &[]).as_word(), Some(1));
         assert_eq!(send(id, system, b"gc", &[]).as_object(), Some(sentinel));
         bind(id, system_vt, b"gc", original);

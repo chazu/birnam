@@ -314,6 +314,13 @@ fn bootstrap_loops_use_live_sends_and_preserve_control_boundaries() {
                 .unwrap_err();
             assert_eq!((error.status, error.detail), (status, detail));
         }
+        // Failure passthrough is scoped to the bootstrap loop. Ordinary source
+        // evaluation must retain Execution's normal language-error conversion.
+        h.bind(b"LoopFailureCondition", cond);
+        c.failure.set(1);
+        let ordinary = h.eval(b"[LoopFailureCondition value]");
+        assert_eq!(h.call(ordinary, b"kind", &[]), id.intern_name(b"nativeFailure").unwrap());
+        h.bind(b"LoopFailureCondition", c.nil);
         c.failure.set(0);
         c.condition_result.set(None);
         c.calls.set(0);
@@ -532,10 +539,9 @@ unsafe fn replacements(h: &H, cond: Oop, action: Oop, cvt: Oop, bvt: Oop, c: &Co
             reply,
             (&answer as *const Reply).cast_mut().cast(),
         );
-        assert_eq!(
-            send(id, cond, b"loop:", &[Operand::object(action)]).kind(),
-            birnam_abi::id_protocol::UNIT
-        );
+        // Native Unit from a replaced factory is language nil, as in ordinary
+        // compiled sends. The authored method returns that language value.
+        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
         set(h, error_vt, b"kind:message:", original_error);
         c.condition_result.set(None);
     }
@@ -567,20 +573,7 @@ unsafe fn control(h: &H) {
         assert_ne!(h.call(result, b"isError", &[]), h.named(b"true"));
         let vt = behavior_of(h, h.named(b"Block"));
         let installed = binding(h, vt, b"whileTrue:");
-        let path = directory().join("libbirnam_block_loop.dylib");
-        assert_eq!(
-            id.send(
-                id.receiver,
-                id.load,
-                &[
-                    Operand::bytes(path.as_os_str().as_bytes()),
-                    Operand::object(h.ns)
-                ]
-            )
-            .unwrap()
-            .kind(),
-            birnam_abi::id_protocol::UNIT
-        );
+        h.eval(b"[Module load: #blockLoop]");
         let reloaded = binding(h, vt, b"whileTrue:");
         assert_eq!(installed.context, reloaded.context);
         assert_eq!(

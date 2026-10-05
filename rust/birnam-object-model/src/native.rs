@@ -15,6 +15,7 @@ struct Record<T> {
 }
 struct Model {
     id: Protocol,
+    namespace: Oop,
     roots: Oop,
     gc: Oop,
     receiver: Oop,
@@ -197,7 +198,7 @@ unsafe extern "C" fn enumerate_roots(
             return Err(invalid());
         };
         let visitor = object(*visitor)?;
-        let mut roots = vec![m.receiver, m.roots, m.gc, m.truth, m.falsity];
+        let mut roots = vec![m.receiver, m.namespace, m.roots, m.gc, m.truth, m.falsity];
         roots.extend(m.names.values().copied());
         // Ownership/instance/layout keys are weak. Owners are reached only from
         // their live behaviors, never from the module's own root inventory.
@@ -540,6 +541,62 @@ unsafe extern "C" fn all_oop(
         )))
     })())
 }
+// Language-facing reference storage. Vector/Integer representations remain
+// opaque; this owner alone allocates, describes and accesses ordinary slots.
+unsafe fn named(m: &Model, name: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { object(m.id.send_named(m.namespace, b"at:", &[Operand::object(m.id.intern_name(name)?)])?) }
+}
+unsafe extern "C" fn new_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let [values, parent] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let (values, parent) = (object(*values)?, object(*parent)?);
+        m.rooted(&[r, values, parent], || {
+            let integer = named(m, b"Integer")?;
+            let size = object(m.id.send_named(values, b"size", &[])?)?;
+            m.rooted(&[integer, size], || {
+                let count = m.id.send_named(integer, b"wordOf:", &[Operand::object(size)])?.as_word().filter(|n| *n <= 1_048_576).ok_or_else(invalid)?;
+                let behavior = object(m.id.send_named(parent, b"delegated", &[])?)?;
+                m.rooted(&[behavior], || {
+                    let kinds = vec![OOP; count];
+                    m.send(m.receiver, b"setLayoutOf:to:rest:", &[Operand::object(behavior), Operand::bytes(&kinds), Operand::word(UNKNOWN as usize)])?;
+                    let result = object(m.allocate(behavior, count.checked_mul(size_of::<Oop>()).ok_or_else(invalid)?)?)?;
+                    m.rooted(&[result], || {
+                        for i in 0..count {
+                            let index = object(m.id.send_named(integer, b"fromWord:", &[Operand::word(i)])?)?;
+                            m.rooted(&[index], || {
+                                let value = object(m.id.send_named(values, b"at:", &[Operand::object(index)])?)?;
+                                m.rooted(&[value], || m.send(m.receiver, b"slotAt:in:put:", &[Operand::word(i), Operand::object(result), Operand::object(value)]))
+                            })?;
+                        }
+                        m.send(m.id.receiver, b"ownerOf:put:", &[Operand::object(behavior), Operand::object(result)])?;
+                        Ok(Operand::object(result))
+                    })
+                })
+            })
+        })
+    })())
+}
+unsafe fn language_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize, put: bool) -> Result<Operand, Outcome> {
+    unsafe {
+        let m = model(c)?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if n != if put { 3 } else { 2 } { return Err(invalid()); }
+        let values = args.iter().copied().map(object).collect::<Result<Vec<_>, _>>()?;
+        m.rooted(&values, || {
+            let integer = named(m, b"Integer")?;
+            m.rooted(&[r, integer], || {
+                let index = m.id.send_named(integer, b"wordOf:", &args[..1])?.as_word().ok_or_else(invalid)?;
+                let mut raw = vec![Operand::word(index), args[1]];
+                if put { raw.push(args[2]); }
+                m.send(r, if put { b"slotAt:in:put:" } else { b"slotAt:in:" }, &raw)
+            })
+        })
+    }
+}
+unsafe extern "C" fn boxed_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome { done(unsafe { language_slot(c, r, a, n, false) }) }
+unsafe extern "C" fn boxed_slot_put(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome { done(unsafe { language_slot(c, r, a, n, true) }) }
+
 unsafe extern "C" fn slot_at(
     context: *mut c_void,
     _: Oop,
@@ -671,6 +728,7 @@ unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usi
     })())
 }
 const NAMES: &[&[u8]] = &[
+    b"newSlots:parent:", b"slot:in:", b"slot:in:put:",
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",
     b"usesDefaultLookup:",
@@ -752,6 +810,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         )?)?)?;
         let pointer = Box::into_raw(Box::new(Model {
             id,
+            namespace,
             roots,
             gc,
             receiver,
@@ -773,6 +832,9 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"canOmitAllocationFor:", can_omit_allocation),
             (behavior, b"setLayoutOf:to:rest:", set_layout),
             (behavior, b"slotAt:in:", slot_at),
+            (behavior, b"newSlots:parent:", new_slots),
+            (behavior, b"slot:in:", boxed_slot),
+            (behavior, b"slot:in:put:", boxed_slot_put),
             (behavior, b"imageSizeOf:", image_size),
             (behavior, b"imageSlotAt:in:", image_slot),
             (behavior, b"restoreImageSlotAt:in:put:", image_put),

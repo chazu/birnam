@@ -171,7 +171,7 @@ facts. It does not promise a collection schedule or authorize a later use after
 callbacks/mutation. Execution fences the complete admission and commits directly;
 see [the consumer](../../docs/design/90-discarded-clone.md).
 
-System's existing GC controls now use these messages; see [System GC](../birnam-system-gc/README.md).
+System's existing GC controls now use these messages; see [System GC](../../docs/design/authored-small-modules.md#system-gc).
 Payload precision does not change native-root capture. Reference owners query the
 current precision flag by send; conservative candidates are filtered through Id
 `allocationAt:` before sending `visit:`. GC never decodes another owner's payload.

@@ -1,5 +1,11 @@
 # Integer
 
+Language-facing typed operations include `integerValue:` (normalize through live
+`wordOf:`/`fromWord:`), `compareInteger:with:` (exact signed comparison returning
+-1/0/1 or nil for non-Integers), and `fromWordResultOf:selector:` (send a caller's
+zero-argument query through Id, then box its Word through live `fromWord:`).
+They contain no Range or System policy and read no foreign value representation.
+
 `libbirnam_integer` initializes with Namespace and returns Integer. It requires
 Roots, GC, ObjectModel, ObjectVt, String, true, false and nil; Error must already
 be published. It publishes Integer and IntegerVt. Repeat loading returns the
@@ -99,4 +105,4 @@ Payload enumeration reads GC `precisePayloads` by message before each object.
 In precise mode, raw bits are not references; in conservative mode the owner
 checks its own payload words through Id `allocationAt:` and sends `visit:` for
 matching allocations. Private behaviors keep the same representation ownership.
-See [System GC controls](../birnam-system-gc/README.md).
+See [System GC controls](../../docs/design/authored-small-modules.md#system-gc).

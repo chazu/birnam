@@ -127,8 +127,14 @@ releases native state; it does not run language cancellation or cleanup policy.
 Block's canonical prototype owns its shared behavior through Object Model's
 `ownerOf:put:` protocol. Reflect method replacement therefore reaches existing
 and future compiled Blocks. Bootstrap installs the separate [Block Loop
-module](../birnam-block-loop/README.md) after Execution; authored controls can
-replace those synchronous defaults through normal MOP publication.
+module](../../docs/design/authored-small-modules.md#block-loops) after Lang; later stackless controls
+replace its authored synchronous entries through normal MOP publication.
+
+`Execution evaluatePreservingFailures:` evaluates a Block with native failures
+propagating as their original status/detail. Its scoped policy is restored on
+success or failure; ordinary evaluation still converts failed native sends into
+language Errors. This supports the authored bootstrap loop's existing boundary
+without adding a loop driver or changing suspension/retention rules.
 
 ## Remaining migration and acceptance
 

@@ -1035,6 +1035,7 @@ pub(super) unsafe fn invoke_registered(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
+    PreserveFailures,
     FromStep,
     WithInline,
     WithDiscardedClone,
@@ -1109,6 +1110,13 @@ unsafe extern "C" fn operation(
         // GC owns mutation-phase admission. No engine borrow crosses this send.
         s.send(s.gc, b"prepareAllocation", &[])?;
         match op.kind {
+            Op::PreserveFailures => {
+                let [block] = args else { return Err(invalid()); };
+                struct Restore<'a>(&'a Cell<bool>, bool);
+                impl Drop for Restore<'_> { fn drop(&mut self) { self.0.set(self.1); } }
+                let _restore = Restore(&s.preserve_native_failures, s.preserve_native_failures.replace(true));
+                return s.id.send_named(object(*block)?, b"value", &[]);
+            }
             Op::FromStep => return from_step(s, args),
             Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
             Op::WithDiscardedClone => return crate::discarded_clone::attach(s, receiver, args),
@@ -1655,6 +1663,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"captureCount",
     b"captureAt:",
     b"captureAt:of:",
+    b"evaluatePreservingFailures:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:implementation:",
     b"withDiscardedClone:answer:selector:return:in:",
@@ -2037,6 +2046,8 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             state.engine.install_objects(objects);
             state.block_behavior = block_vtable;
         }
+        let execution_behavior = object(s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(s.receiver)])?)?;
+        install_op(s, execution_behavior, b"evaluatePreservingFailures:", Op::PreserveFailures)?;
         install_op(
             s,
             s.method_behavior,

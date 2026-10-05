@@ -1,0 +1,76 @@
+// Inclusive ranges use ordinary reference slots; Integer owns all numeric bits.
+[Module named: #range requires: #[]];
+let rangePrototype := [ObjectModel newSlots: #[0 0] parent: CollectionVt];
+[Namespace at: #Range put: rangePrototype];
+[Namespace at: #RangeVt put: [Reflect vtableOf: rangePrototype]];
+let rangeVectorVt := VectorVt;
+
+[Reflect defineMethod: #rangeStart on: Range as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #rangeEnd on: Range as: [:self | [ObjectModel slot: 1 in: self]]];
+[Reflect defineMethod: #from:to: on: Range as: [:self :first :last |
+  let start := [Integer integerValue: first]; let end := [Integer integerValue: last];
+  [[[start isNil] | [end isNil]] ifTrue: [| nil] ifFalse: [|
+    let result := [self clone];
+    [ObjectModel slot: 0 in: result put: start];
+    [ObjectModel slot: 1 in: result put: end]; result
+  ]]
+]];
+[Reflect defineMethod: #to: on: Integer as: [:self :last | [Range from: self to: last]]];
+[Reflect defineMethod: #size on: Range as: [:self |
+  let start := [self rangeStart]; let end := [self rangeEnd];
+  [[[Integer compareInteger: start with: end] > 0] ifTrue: [| 0] ifFalse: [|
+    let difference := [end - start];
+    [[[difference isError] | [difference = 9223372036854775807]]
+      ifTrue: [| nil] ifFalse: [| [difference + 1]]]
+  ]]
+]];
+[Reflect defineMethod: #includes: on: Range as: [:self :value |
+  let number := [Integer integerValue: value];
+  [[number isNil] ifTrue: [| false] ifFalse: [|
+    [[[Integer compareInteger: number with: [self rangeStart]] >= 0]
+      & [[Integer compareInteger: number with: [self rangeEnd]] <= 0]]
+  ]]
+]];
+[Reflect defineMethod: #at: on: Range as: [:self :index |
+  let number := [Integer integerValue: index];
+  [[number isNil] ifTrue: [| nil] ifFalse: [|
+    [[number < 0] ifTrue: [| nil] ifFalse: [|
+      let value := [[self rangeStart] + number];
+      [[value isError] ifTrue: [| nil] ifFalse: [|
+        [[[Integer compareInteger: value with: [self rangeEnd]] > 0]
+          ifTrue: [| nil] ifFalse: [| value]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #do: on: Range as: [:self :body |
+  [[self rangeStart] to: [self rangeEnd] do: [:value | [body value: value]; nil]];
+  self
+]];
+[Reflect defineMethod: #inject:into: on: Range as: [:self :initial :body |
+  let state := [ObjectModel newSlots: #[initial] parent: ObjectVt];
+  [[self rangeStart] to: [self rangeEnd] do: [:value |
+    [ObjectModel slot: 0 in: state put: [body value: [ObjectModel slot: 0 in: state] value: value]]; nil
+  ]];
+  [ObjectModel slot: 0 in: state]
+]];
+[Reflect defineMethod: #printString on: Range as: [:self |
+  let text := [StringBuilder new]; [text add: "#["];
+  [self do: [:value |
+    [[[Integer compareInteger: value with: [self rangeStart]] = 0] ifFalse: [| [text add: " "]]];
+    [text add: [value printString]]
+  ]]; [text add: "]"]; [text asString]
+]];
+[Reflect defineMethod: #reversed on: Range as: [:self |
+  let state := [ObjectModel newSlots: #[[Vector new]] parent: ObjectVt];
+  [self do: [:value | [ObjectModel slot: 0 in: state put: [[ObjectModel slot: 0 in: state] add: value]]]];
+  [[ObjectModel slot: 0 in: state] reversed]
+]];
+[Reflect defineMethod: #, on: Range as: [:self :other |
+  [[[[Reflect vtableOf: other] == rangeVectorVt] not] ifTrue: [| nil] ifFalse: [|
+    let state := [ObjectModel newSlots: #[[Vector new]] parent: ObjectVt];
+    [self do: [:value | [ObjectModel slot: 0 in: state put: [[ObjectModel slot: 0 in: state] add: value]]]];
+    [[ObjectModel slot: 0 in: state] , other]
+  ]]
+]];
+[Module markLoaded: #range];
