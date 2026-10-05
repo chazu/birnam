@@ -9,6 +9,8 @@ mod dispatch;
 mod globals;
 #[path = "compiler/numeric_predicate.rs"]
 mod numeric_predicate;
+#[path = "compiler/inline_return.rs"]
+mod inline_return;
 #[path = "compiler/publication.rs"]
 mod publication;
 mod support;
@@ -238,6 +240,7 @@ fn source_compiles_and_runs_on_production_execution() {
         dispatch::check(&mut h);
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
+        inline_return::check(&mut h);
         accounting::check(&mut h);
         globals::check(&mut h);
         publication::check(&mut h);

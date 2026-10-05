@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import selectors
 import subprocess
@@ -17,21 +18,25 @@ import time
 
 
 def instrument(source, object_range):
-    source = source.replace("ImageFormat", "ImageFormatBench")
+    source = source.replace("ImageFormat", "ImageFormatBench").replace("Module named: #imageFormat ", "Module named: #imageFormatBench ")
     start = source.index("[Reflect defineMethod: #validateHeaps:")
     end = source.index("[Reflect defineMethod: #unsignedGreater:", start)
     method = source[start:end]
     if object_range:
         first, count = object_range
-        method = method[:method.index("  [[behaviors notNil]")]
-        method += '  [System println: "bench:end"]; #[count [codes value]]\n  ]]\n]];\n'
-        method = method.replace(
-            "[self each: all do: [:object :i |",
-            f"[self each: [all copyFrom: {first} to: {first + count}] do: [:object :i |",
-        )
+        if "firstLocatorOutside:" in method:
+            method = method[:method.index('    [self checked: [|\n      [[behaviors')]
+            method += '    [System println: "bench:end"]; #[count [codes value]]\n  ]]\n]];\n'
+            method = method.replace('let all := [objects value]; let count := [all size];',
+                f'let whole := [objects value]; let all := [whole copyFrom: {first} to: {first+count}]; let count := [whole size];')
+        else:
+            method = method[:method.index("  [[behaviors notNil]")]
+            method += '  [System println: "bench:end"]; #[count [codes value]]\n  ]]\n]];\n'
+            method = method.replace("[self each: all do: [:object :i |",
+                f"[self each: [all copyFrom: {first} to: {first + count}] do: [:object :i |")
     else:
-        method = method.replace("  ]]; #[count [codes value]]", '  ]]; [System println: "bench:end"]; #[count [codes value]]')
-    method = method.replace("  let all := [objects value];", '  [System println: "bench:begin"];\n  let all := [objects value];')
+        method = method.replace("#[count [codes value]]", '[System println: "bench:end"]; #[count [codes value]]')
+    method = re.sub(r'\blet all :=', '[System println: "bench:begin"]; let all :=', method, count=1)
     source = source[:start] + method + source[end:]
     if object_range:
         start = source.index("  let heapInfo :=")

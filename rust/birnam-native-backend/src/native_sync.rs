@@ -22,6 +22,7 @@ pub(super) fn function(
         named: false,
         discarded: None,
         predicate: None,
+        inline_return: None,
     });
     let mut out = format!(
         "static R sync_{index}(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};keep(&c,self);if(n!={})return finish(&c,obj(named(&c,\"nil\")));\n",

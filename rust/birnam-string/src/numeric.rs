@@ -33,8 +33,9 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
         let t = state(n.text.cast_mut().cast())?;
         let expected = match op {
             1 | 2 | 4 | 9 | 11 | 13 | 14 | 19 => 1,
-            12 | 17 | 18 => 2,
+            12 | 17 | 18 | 20 => 2,
             3 => 2,
+            22 => 5,
             _ => 0,
         };
         if args.len() != expected {
@@ -66,7 +67,21 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
                 bytes.extend_from_slice(borrowed_bytes(name.pointer, name.length).ok_or_else(invalid)?);
                 return t.make(bytes, Kind::Bytes);
             }
-            if op == 18 {
+            if op == 22 {
+                let mut values = Vec::new();
+                for arg in &args[..4] {
+                    let Some(v) = n.index(*arg)?.and_then(|v| usize::try_from(v).ok()) else { return Ok(nil) };
+                    values.push(v);
+                }
+                let bytes = t.copy(r, Kind::Bytes)?;
+                let schema = t.copy(object(args[4])?, Kind::String)?;
+                let Some(rows) = crate::binary_rows::records(&bytes, values[0], values[1], values[2], values[3], &schema) else { return Ok(nil) };
+                let table = std::sync::Arc::new(crate::tagged_view::Table { bytes, rows });
+                let rows = (0..table.rows.len()).map(|i| crate::tagged_view::RowRef { table: table.clone(), row: i, position: i }).collect();
+                return t.view(crate::tagged_view::View::Rows(std::sync::Arc::new(rows)));
+            }
+            if op == 21 { return t.view(crate::tagged_view::View::Rows(std::sync::Arc::new(Vec::new()))) }
+            if op == 18 || op == 20 {
                 let schema = t.copy(object(args[0])?, Kind::String)?;
                 let Some(limit) = n.index(args[1])?.and_then(|i| usize::try_from(i).ok()) else { return Ok(nil) };
                 if limit > 1_048_576 { return Ok(nil) }
@@ -82,10 +97,14 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
                     Ok(out)
                 };
                 let table = std::sync::Arc::new(crate::tagged_view::Table { bytes, rows });
+                if op == 20 {
+                    let rows = (0..table.rows.len()).map(|i| crate::tagged_view::RowRef { table: table.clone(), row: i, position: i }).collect();
+                    return t.view(crate::tagged_view::View::Rows(std::sync::Arc::new(rows)));
+                }
                 let mut out = vector(&[])?;
                 for i in 0..table.rows.len() {
                     out = object(t.rooted(&[out], || {
-                        let row = object(t.view(crate::tagged_view::View::Row(table.clone(), i))?)?;
+                        let row = object(t.view(crate::tagged_view::View::Row(table.clone(), i, i))?)?;
                         t.rooted(&[row], || t.id.send_named(out, b"add:", &[Operand::object(row)]))
                     })?)?;
                 }
@@ -315,6 +334,9 @@ numeric!(wyhash64, 16);
 numeric!(tagged_field, 17);
 numeric!(tagged_rows, 18);
 numeric!(with_symbol_name, 19);
+numeric!(tagged_table, 20);
+numeric!(empty_rows, 21);
+numeric!(tagged_records, 22);
 pub(super) unsafe extern "C" fn install(
     c: *mut c_void,
     r: Oop,
@@ -345,6 +367,21 @@ pub(super) unsafe extern "C" fn install(
                 (t.bytes_behavior, b"size", bytes_size),
                 (t.view_behavior, b"size", crate::tagged_view::size),
                 (t.view_behavior, b"at:", crate::tagged_view::at),
+                (t.view_behavior, b"sourceIndex", crate::tagged_rows::source_index),
+                (t.view_behavior, b"concat:", crate::tagged_rows::concat),
+                (t.view_behavior, b"copyFrom:to:", crate::tagged_rows::slice),
+                (t.view_behavior, b"whereLocatorTags:", crate::tagged_rows::where_tags),
+                (t.view_behavior, b"whereLocatorData:", crate::tagged_rows::where_data),
+                (t.view_behavior, b"withoutLocatorData:", crate::tagged_rows::without_data),
+                (t.view_behavior, b"firstLocatorOutside:", crate::tagged_rows::first_locator_outside),
+                (t.view_behavior, b"firstFieldsOutside:", crate::tagged_rows::first_fields_outside),
+                (t.view_behavior, b"firstFieldCountNot:", crate::tagged_rows::first_count_not),
+                (t.view_behavior, b"firstIndexForTags:atLeast:", crate::tagged_rows::first_index_outside),
+                (t.view_behavior, b"indexedReferencesForTags:", crate::tagged_rows::indices),
+                (t.view_behavior, b"firstFieldOffsetOutside:", crate::tagged_rows::first_field_offset),
+                (t.view_behavior, b"firstReferenceOffsetForTags:atLeast:", crate::tagged_rows::first_reference_offset),
+                (t.view_behavior, b"fieldReferencesWithOffsetsForTags:", crate::tagged_rows::field_references),
+                (t.view_behavior, b"firstPrefixOutside:bytes:", crate::tagged_rows::first_prefix),
                 (t.bytes_behavior, b"at:", bytes_at),
                 (t.bytes_behavior, b"copyFrom:to:", binary_slice),
                 (t.bytes_behavior, b"readU32At:", read_u32),
@@ -354,6 +391,9 @@ pub(super) unsafe extern "C" fn install(
                 (t.bytes_behavior, b"readTaggedFieldAt:schema:", tagged_field),
                 (t.bytes_behavior, b"readTaggedRowsWithSchema:limit:", tagged_rows),
                 (t.bytes_behavior, b"withSymbolName:", with_symbol_name),
+                (t.bytes_behavior, b"readTaggedTableWithSchema:limit:", tagged_table),
+                (t.bytes_behavior, b"emptyTaggedRows", empty_rows),
+                (t.bytes_behavior, b"readTaggedRecordsAt:count:prefixBytes:fields:schema:", tagged_records),
             ];
             let mut names = HashMap::new();
             for name in [

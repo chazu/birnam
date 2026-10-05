@@ -30,6 +30,18 @@ struct Function {
     named: bool,
     discarded: Option<DiscardedClone>,
     predicate: Option<NumericPredicate>,
+    inline_return: Option<InlineReturn>,
+}
+struct InlineReturn { operand: u32, argc: u32, slot: u32 }
+fn inline_return(p: &ir::LogicalProgram<'_>, layout: &ir::PhysicalLayout) -> Option<InlineReturn> {
+    if p.capture_count != 0 { return None; }
+    let plan = birnam_codegen::small_callee::compile(p, layout).ok()?;
+    if plan.has_literal_allocations() { return None; }
+    let source = u32::try_from(plan.return_entry_slot()?).ok()?;
+    let operand = if source == layout.entry_receiver_slot { 0 }
+        else { source.checked_sub(layout.entry_argument_start)?.checked_add(1)? };
+    if operand > layout.entry_argument_count { return None; }
+    Some(InlineReturn { operand, argc: layout.entry_argument_count + 1, slot: plan.return_slot() as u32 })
 }
 struct DiscardedClone {
     source: u32,
@@ -259,6 +271,7 @@ fn function(
         named,
         discarded: None,
         predicate: None,
+        inline_return: None,
     });
     let layout = ir::color_slots(program).map_err(|_| Error::Layout)?;
     let revision = Sha256::digest(source).into();
@@ -389,6 +402,7 @@ fn function(
         descriptor,
         selection: selected,
         named,
+        inline_return: if named { None } else { inline_return(program, &layout) },
         predicate: if named {
             None
         } else {
@@ -411,6 +425,9 @@ fn array(out: &mut String, n: &str, bytes: &[u8]) {
 }
 fn module(functions: Vec<Function>) -> Vec<u8> {
     let mut out = include_str!("native_prelude.c").to_string();
+    if functions.iter().any(|f| f.inline_return.is_some()) {
+        out.push_str(include_str!("native_inline_return.c"));
+    }
     writeln!(
         out,
         "static O methods[{}],codes[{}];",
@@ -423,6 +440,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             writeln!(out, "static O implementation_{i};").unwrap();
         }
         out.push_str(&f.body);
+        if let Some(plan) = &f.inline_return {
+            writeln!(out, "static R inline_return_{i}(void*context,O machine,const A*a,size_t n){{(void)context;(void)machine;return try_inline_return(a,n,{},{});}}", plan.argc, plan.operand).unwrap();
+        }
         if let Some(bytes) = &f.portable {
             array(&mut out, &format!("program_{i}"), bytes);
         }
@@ -451,6 +471,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             ("fromStep:descriptor:selection:owner:", 4)
         };
         writeln!(out,"methods[{i}]=call(&c,named(&c,\"Method\"),\"{name}\",args,{count});A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}").unwrap();
+        if let Some(plan) = &f.inline_return {
+            writeln!(out, "{{A a[3]={{entry(inline_return_{i}),obj(integer(&c,{})),obj(owner)}};methods[{i}]=call(&c,methods[{i}],\"withInline:at:owner:\",a,3);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}", plan.slot).unwrap();
+        }
         if let Some(plan) = &f.predicate {
             writeln!(out, "{{A a[7]={{obj(intern(&c,{})),obj(intern(&c,{})),word({}),word({}),word({}),word({}),obj(ns)}};methods[{i}]=call(&c,methods[{i}],\"withNumericPredicate:then:left:right:limit:return:in:\",a,7);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}", quoted(&plan.selectors[0]), quoted(&plan.selectors[1]), plan.inputs[0], plan.inputs[1], plan.inputs[2], plan.return_slot).unwrap();
         }
@@ -534,6 +557,7 @@ pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
         named: true,
         discarded: None,
         predicate: None,
+        inline_return: None,
     }]))
 }
 /// Exact descriptor emitted by the current named-adapter backend. Generation

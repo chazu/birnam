@@ -725,7 +725,7 @@ impl Number {
 // A replacement must run normally; it is not classified by selector spelling.
 unsafe extern "C" fn can_omit_indexing(
     c: *mut c_void,
-    _: Oop,
+    receiver: Oop,
     _: *const Operand,
     count: usize,
 ) -> Outcome {
@@ -742,7 +742,7 @@ unsafe extern "C" fn can_omit_indexing(
             || n.send(
                 n.id.receiver,
                 b"usesDefaultLookup:",
-                &[Operand::object(n.prototype)],
+                &[Operand::object(receiver)],
             )?
             .as_word()
                 != Some(1)
@@ -756,7 +756,7 @@ unsafe extern "C" fn can_omit_indexing(
             if n.send(
                 n.id.receiver,
                 b"bind:to:",
-                &[Operand::object(n.names[name]), Operand::object(n.prototype)],
+                &[Operand::object(n.names[name]), Operand::object(receiver)],
             )?
             .as_entry()
                 != Some(NativeEntry::new(method, c))

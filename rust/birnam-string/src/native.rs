@@ -102,7 +102,7 @@ impl Text {
             .map(|b| b.bytes.len())
             .ok_or_else(invalid)
     }
-    fn copy(&self, value: Oop, kind: Kind) -> Result<Vec<u8>, Outcome> {
+    pub(crate) fn copy(&self, value: Oop, kind: Kind) -> Result<Vec<u8>, Outcome> {
         self.buffers
             .borrow()
             .get(&value.addr())

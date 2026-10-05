@@ -7,8 +7,15 @@ pub(crate) struct Table {
     pub rows: Vec<(Field, Vec<Field>)>,
 }
 #[derive(Clone)]
+pub(crate) struct RowRef {
+    pub table: Arc<Table>,
+    pub row: usize,
+    pub position: usize,
+}
+#[derive(Clone)]
 pub(crate) enum View {
-    Row(Arc<Table>, usize),
+    Rows(Arc<Vec<RowRef>>),
+    Row(Arc<Table>, usize, usize),
     Fields(Arc<Table>, usize),
     Field(Arc<Table>, usize, Option<usize>),
 }
@@ -28,11 +35,15 @@ unsafe fn run(t: &Text, r: Oop, a: &[Operand], at: bool) -> Result<Operand, Outc
         let number = |n| t.id.send_named(integer, b"fromWord:", &[Operand::word(n)]);
         if !at {
             return number(match &view { View::Row(..) => 2, View::Field(..) => 3,
-                View::Fields(table, row) => table.rows[*row].1.len() });
+                View::Rows(rows) => rows.len(), View::Fields(table, row) => table.rows[*row].1.len() });
         }
         let i = t.id.send_named(integer, b"wordOf:", a)?.as_word().ok_or_else(invalid)?;
         t.rooted(&[r, object(a[0])?], || match view {
-            View::Row(table, row) => match i {
+            View::Rows(rows) => match rows.get(i) {
+                Some(row) => t.view(View::Row(row.table.clone(), row.row, row.position)),
+                None => Ok(Operand::object(t.nil)),
+            },
+            View::Row(table, row, _) => match i {
                 0 => t.view(View::Field(table, row, None)),
                 1 => t.view(View::Fields(table, row)),
                 _ => Ok(Operand::object(t.nil)),

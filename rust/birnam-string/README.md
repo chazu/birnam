@@ -132,6 +132,21 @@ framing answer nil. Row tables expose ordinary read-only indexed views over an
 owned byte snapshot. These temporary views own no language references and are
 collected with their buffers; callers retain all format and reference rules.
 
+`readTaggedTableWithSchema:limit:` returns one compact table rather than eagerly
+allocating a language object for every row. `emptyTaggedRows` supplies an empty
+table. `readTaggedRecordsAt:count:prefixBytes:fields:schema:` decodes fixed-prefix
+records with caller-selected tagged fields, requiring exact framing through the
+end of the buffer. Prefix bytes are opaque; the caller assigns their meaning.
+
+Table views support `concat:`, `copyFrom:to:`, locator filters, membership scans,
+reference bounds and sparse reference projections. Masks are ASCII `0`/`1`
+strings indexed by byte tag. Rows expose `sourceIndex`; filtering and slicing
+preserve original positions, while concatenation assigns new sequence positions.
+Record scans can report byte offsets for ordered errors. All table metadata is
+native-owned bytes and scalars, with no language references. Integer inputs and
+outputs go through live Id messages to their owner. Format policy belongs to the
+authored caller, including accepted tags, reference families and error ordering.
+
 `Bytes withSymbolName:` appends an Id-owned Symbol name to an owned byte prefix.
 It copies the borrowed name before result allocation, returns nil for a non-Symbol,
 and leaves formatting policy to authored callers such as `printing.birnam`.

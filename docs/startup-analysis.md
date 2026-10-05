@@ -320,3 +320,105 @@ By default it runs complete admission; `--range START COUNT` deliberately measur
 only the first heap pass. The original source snapshot, synthetic image, timing
 JSON and native library hashes are retained in the ignored directory
 `.cargo-target/measurements/image-format-optimization-20261004/`.
+
+## October 4: compact tables, fact validation and compiler checkpoint
+
+The next source pass removes the per-field language walk from bulk framing and
+membership checks. ImageFormat now asks Bytes-owned compact tables for invalid
+tags, reference bounds, offsets and sparse projections. It creates row/field
+objects only for checks that need them. Fact records use the same generic framing
+and scanning operations instead of individually boxing and dispatching every
+cell. Image policy remains in `modules/image-format.birnam`: allowed tags,
+CodeObject/System rules, portable inventory, closure checks and rejection order.
+
+The native table operations hold only owned bytes and scalar metadata, with no
+language-object edges. All cross-owner calls use Id messages; numeric conversion
+and result construction still call the live Integer owner. These operations
+introduce no ImageFormat-specific native validator or foreign payload access.
+
+Bounded measurements on the same 110,675,622-byte bootstrap image:
+
+| Workload | Wall time |
+| --- | ---: |
+| Complete admission after compact heap tables, before fact cleanup | 20.156 s |
+| Complete admission after fact cleanup, including process launch | 2.235 s |
+| Heap-validation portion of that final run | 1.614 s |
+| Temporary prefix REPL launch to first prompt | 6.661 s |
+
+These are single-run measurements. Admission compilation is excluded. The REPL
+measurement uses an isolated prefix with updated libraries and ImageFormat and
+the previously built bootstrap image; it is not a fresh installer/image build.
+The installed user binary remains unchanged. The old full-admission run exceeded
+120 seconds; the reported 25-minute startup was never measured to completion.
+
+The first compiler optimization handles uncaptured, allocation-free helpers
+whose result is their receiver or an argument, including local aliases. The
+compiler proves this from its existing small-callee analysis and attaches a
+companion through Method's existing inline protocol. Execution retains current
+method selection, frame admission and baseline fallback. Live Namespace and
+Integer permissions guard omitted indexing; replaced owners and bounded frame
+execution take the ordinary path. This is a limited first pass, not a completed
+general optimization/deoptimization tier.
+
+A focused benchmark of 180 calls measured 9.736 ms and 5,760 allocations for the
+baseline versus 7.787 ms and 4,680 allocations with the companion: about 20% less
+time and 19% fewer allocations. This does not imply a 20% startup improvement.
+
+Validation: 132 ImageFormat admission cases and 16 byte-exact roundtrips; full
+bootstrap admission; REPL prompt and clean quit; production compiler integration
+including the alias-return candidate, replaced Integer/Machine callbacks and
+bounded-frame collection; compact-table tests with live collecting/replaced
+Integer methods; workspace cargo check. Fixed-record framing tests cover byte
+offsets, truncation, unknown tags, trailing records and overflowing bounds.
+Only the checks required for these changes were run. Timing evidence is in
+`/tmp/birnam-imageformat-second-pass/full-bootstrap.json` and the temporary prefix
+is `/tmp/birnam-imageformat-second-pass/prefix`.
+
+## October 4: fresh installed startup confirmed
+
+The normal release installer rebuilt the current native and authored modules,
+generated new bootstrap and tools images, qualified both in fresh processes,
+and atomically published `/Users/chazu/.local/opt/birnam`. Cargo reuse was
+explicitly enabled; no prior Birnam image was used to generate these images.
+The existing `/Users/chazu/.local/bin/birnam` symlink now reaches this build.
+The exact installed manifest, file bytes and executable passed the receipt check.
+
+The new bootstrap image is 139,473,346 bytes; the tools image is 224,129,556 bytes.
+Using the installed launcher from `/tmp`, with no BIRNAM environment overrides,
+three REPL launches reached the first prompt in 6.026, 5.853 and 5.722 seconds
+(median 5.853 seconds). Every session evaluated `[1 + 2]` to `3` and quit with
+status zero. The first timing overlapped a separate admission probe; the later
+two did not. These are ordinary process launches with warm filesystem caches,
+not machine-reboot cold-start measurements.
+
+Complete admission of the fresh bootstrap image took 2.675 seconds including
+process launch, with 1.940 seconds in heap validation. FizzBuzz produced all 20
+expected lines, and the collections example passed its sum and map-lookup checks;
+both exited cleanly with no stderr. The installer's console and `doc stdlib`
+probes also passed. No exhaustive suite was rerun for this installation check.
+
+The minute-scale admission regression is therefore resolved in the actual
+installed build. Startup remains roughly six seconds; this does not establish
+parity with the earlier 2.748-second installed baseline. The working-tree changes
+have not been committed or pushed as part of this installation.
+
+Temporary evidence: `/tmp/birnam-fresh-install-20261004.log`,
+`/tmp/birnam-installed-startup-20261004.json` and
+`/tmp/birnam-fresh-admission-20261004.json`. The bootstrap image SHA-256 is
+`988efd2cde052c4201639c9b9c3b3d6505ccee3de7ebc0d8720806755d4cd999`;
+the installed manifest SHA-256 is
+`1468cc9a8e64ff9532c13592937c41f1941c4bf4d81dc08f6c9278c0cbe2f96e`.
+
+Post-install boundary audit: the changed String, Integer and NativeBackend
+libraries retain their declared exports and have no cross-owner dynamic linkage.
+Generic table scans inspect only their owner's byte snapshot; no foreign Oop
+payload is decoded, and numeric conversion uses current Id messages. The alias
+companion is registered through `Method withInline:at:owner:`; Execution retains
+selection, recovery authority, rooted arguments and baseline fallback. Its local
+scoped-root list updates invoke no external callbacks. Production compiler and
+table replacement/collection checks passed again using copies of the installed
+libraries, with only TCC replaced by its resource-counter build because the
+compiler test requires opt-in diagnostic messages. The ordinary installed TCC
+does not expose those counters; the installed prefix was not changed by this
+audit. This is focused contract evidence, not an exhaustive proof of all language
+invariants.

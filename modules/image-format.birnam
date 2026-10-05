@@ -40,6 +40,15 @@ let booleanTags := {0 -> true, 1 -> true};
 let recordTags := {10 -> true, 11 -> true, 3 -> true, 2 -> true, 4 -> true};
 let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
 
+// Generic row projections use masks; the admission policy stays here.
+let factMask := "1110010111001000000";
+let exportMask := "0000000001000000000";
+let locatorMask := "0000000001001111111";
+let nativePayloadMask := "0000000000000111110";
+let ordinaryFieldMask := "1111010111101000001";
+let referenceMask := "0000000100001000001";
+let blockMask := "0000000000001000001";
+
 [Reflect defineMethod: #require:context: on: ImageFormat as: [:self :condition :context |
   [[condition == true] ifTrue: [| self] ifFalse: [|
     [[condition isError] ifTrue: [| [self reject: condition]] ifFalse: [|
@@ -201,10 +210,10 @@ let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
 // Heap objects are #[locator vectorOfFields]. All loops are bounded by bytes.
 [Reflect defineMethod: #heap:into: on: ImageFormat as: [:self :payload :objects |
   [self checked: [|
-    let rows := [payload readTaggedRowsWithSchema: "0001-4-204-22111332" limit: 1048576];
+    let rows := [payload readTaggedTableWithSchema: "0001-4-204-22111332" limit: 1048576];
     [self require: [rows notNil] context: heapFramingContext];
     [self require: [[[[objects value] size] + [rows size]] <= 1048576] context: heapQuantityContext];
-    [objects set: [[objects value] , rows]]; self
+    [[[self failure] isNil] ifTrue: [| [objects set: [[objects value] concat: rows]]]]; self
   ]]
 ]];
 [Reflect defineMethod: #family: on: ImageFormat as: [:self :object |
@@ -277,56 +286,91 @@ let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
   ]]; self
   ]]
 ]];
+// Choose the earliest row/rule before constructing its Error. Bulk scans
+// preserve the scalar validator's first rejection, including forward targets.
+[Reflect defineMethod: #consider:priority:context:into: on: ImageFormat as: [:self :index :priority :context :first |
+  [[index notNil] ifTrue: [|
+    let prior := [first value];
+    let earlier := [[prior isNil] ifTrue: [| true] ifFalse: [|
+      [[index < [prior at: 0]] | [[index = [prior at: 0]] & [priority < [prior at: 1]]]]
+    ]];
+    [earlier ifTrue: [| [first set: #[index priority context]]]]
+  ]]; self
+]];
+[Reflect defineMethod: #rejectFirst: on: ImageFormat as: [:self :first |
+  [[[first value] notNil] ifTrue: [|
+    [self reject: [Error kind: #imageRejected message: [[first value] at: 2]]]
+  ]]; self
+]];
+[Reflect defineMethod: #codeObjectValid:inventory: on: ImageFormat as: [:self :object :inventory |
+  let fields := [object at: 1];
+  [[[fields size] = 2] ifTrue: [|
+    let program := [fields at: 0]; let provenance := [fields at: 1];
+    [[[program at: 0] = 11] ifTrue: [|
+      [[[provenanceTags at: [provenance at: 0]] notNil] ifTrue: [|
+        [[program at: 1] < [inventory size]]
+      ] ifFalse: [| false]]
+    ] ifFalse: [| false]]
+  ] ifFalse: [| false]]
+]];
+[Reflect defineMethod: #captureValid:codes:inventory: on: ImageFormat as: [:self :object :codes :inventory |
+  let locator := [object at: 0]; let fields := [object at: 1];
+  let codeIndex := [locator at: 1]; let programIndex := [codes at: codeIndex];
+  [[programIndex notNil] ifTrue: [|
+    let captures := [[inventory at: programIndex] at: 1];
+    [[[fields size] = [captures + 1]] ifTrue: [|
+      let first := [fields at: 0];
+      [[[first at: 0] = 7] & [[first at: 1] = codeIndex]]
+    ] ifFalse: [| false]]
+  ] ifFalse: [| false]]
+]];
 [Reflect defineMethod: #validateHeaps:programs:inventory:bindings:behaviors: on: ImageFormat as: [:self :heaps :programs :inventory :bindings :behaviors |
   [self checked: [|
-  let objects := [self cell: #[]]; [self each: heaps do: [:payload :i | [self heap: payload into: objects]]];
-  let all := [objects value]; let count := [all size]; let codes := [self cell: {}]; let roots := [self cell: #[]];
-  [self each: all do: [:object :i |
-    let locator := [object at: 0]; let fields := [object at: 1]; let tag := [locator at: 0];
-    [self require: [[locatorTags at: tag] notNil] context: locatorContext];
-    [[[nativePayloadTags at: tag] notNil] ifTrue: [|
-      [self require: [[fields size] = 0] context: nativePayloadContext]]];
-    let family := [[tag = 9] ifTrue: [| [[locator at: 2] asString]] ifFalse: [| ""]];
-    [[family = "SystemVt"] ifTrue: [| [self require: [[fields size] = 0] context: heapContext]]];
-    [[family = "CodeObjectVt"] ifTrue: [|
-      [self require: [[fields size] = 2] context: heapContext];
-      let program := [fields at: 0]; let provenance := [fields at: 1];
-      [self require: [[program at: 0] = 11] context: heapContext];
-      [self require: [[provenanceTags at: [provenance at: 0]] notNil] context: heapContext];
-      let index := [program at: 1]; [self require: [index < [inventory size]] context: heapContext];
-      [codes set: [[codes value] at: i put: index]];
-      [roots set: [[roots value] add: [[inventory at: index] at: 0]]]]
-    ifFalse: [|
-      [self each: fields do: [:field :j |
-        [self require: [[[forbiddenSlotTags at: [field at: 0]] notNil] not] context: heapContext]]]]];
-    [self reference: locator below: count];
-    [self each: fields do: [:field :j |
-      let fieldTag := [field at: 0];
-      [[[referenceTags at: fieldTag] notNil] ifTrue: [|
-        [self require: [[field at: 1] < count] context: referenceContext]
-      ]]
-    ]]
-  ]];
-  [[behaviors notNil] ifTrue: [| [self behaviors: behaviors objects: all]]];
-  [self require: [CodeObject inventory: programs matchesRoots: [roots value]] context: heapContext];
-  [self require: [CodeObject bindings: bindings referencesBelow: count] context: heapContext];
-  [self each: all do: [:object :i |
-    let locator := [object at: 0]; let fields := [object at: 1];
-    [self blockReference: locator codes: [codes value]];
-    [self each: fields do: [:field :j |
-      let fieldTag := [field at: 0];
-      [[[blockTags at: fieldTag] notNil] ifTrue: [|
-        [self require: [[[codes value] at: [field at: 1]] notNil] context: blockReferenceContext]
-      ]]
+    let objects := [self cell: [Bytes emptyTaggedRows]];
+    [self each: heaps do: [:payload :i | [self heap: payload into: objects]]];
+    let all := [objects value]; let count := [all size];
+    let codes := [self cell: {}]; let roots := [self cell: #[]]; let first := [self cell: nil];
+    [self consider: [all firstLocatorOutside: locatorMask] priority: 0 context: locatorContext into: first];
+    let payloads := [all whereLocatorTags: nativePayloadMask];
+    [self consider: [payloads firstFieldCountNot: 0] priority: 1 context: nativePayloadContext into: first];
+    let exports := [all whereLocatorTags: exportMask];
+    let systems := [exports whereLocatorData: "SystemVt"];
+    [self consider: [systems firstFieldCountNot: 0] priority: 2 context: heapContext into: first];
+    let codeObjects := [exports whereLocatorData: "CodeObjectVt"];
+    [self each: codeObjects do: [:object :j |
+      let i := [object sourceIndex];
+      [[self codeObjectValid: object inventory: inventory] ifTrue: [|
+        let index := [[[object at: 1] at: 0] at: 1];
+        [codes set: [[codes value] at: i put: index]];
+        [roots set: [[roots value] add: [[inventory at: index] at: 0]]]
+      ] ifFalse: [| [self consider: i priority: 3 context: heapContext into: first]]]
     ]];
-    [[[blockTags at: [locator at: 0]] notNil] ifTrue: [|
-      let codeIndex := [locator at: 1]; let programIndex := [[codes value] at: codeIndex];
-      [self require: [programIndex notNil] context: heapContext];
-      let captureCount := [[inventory at: programIndex] at: 1];
-      [self require: [[fields size] = [captureCount + 1]] context: heapContext];
-      let first := [fields at: 0]; [self require: [[[first at: 0] = 7] & [[first at: 1] = codeIndex]] context: heapContext]
+    let ordinary := [all withoutLocatorData: "CodeObjectVt"];
+    [self consider: [ordinary firstFieldsOutside: ordinaryFieldMask] priority: 4 context: heapContext into: first];
+    [self consider: [all firstIndexForTags: referenceMask atLeast: count] priority: 5 context: referenceContext into: first];
+    [self rejectFirst: first];
+    [self checked: [|
+      [[behaviors notNil] ifTrue: [| [self behaviors: behaviors objects: all]]];
+      [self require: [CodeObject inventory: programs matchesRoots: [roots value]] context: heapContext];
+      [self require: [CodeObject bindings: bindings referencesBelow: count] context: heapContext];
+      let second := [self cell: nil];
+      let references := [all indexedReferencesForTags: blockMask];
+      [self repeat: [[references size] / 8] do: [:j |
+        let index := [references readU32At: [j * 8]];
+        let target := [references readU32At: [[j * 8] + 4]];
+        [[[[codes value] at: target] isNil] ifTrue: [|
+          [self consider: index priority: 0 context: blockReferenceContext into: second]
+        ]]
+      ]];
+      let closures := [all whereLocatorTags: blockMask];
+      [self each: closures do: [:object :j |
+        [[[self captureValid: object codes: [codes value] inventory: inventory] not] ifTrue: [|
+          [self consider: [object sourceIndex] priority: 1 context: heapContext into: second]
+        ]]
+      ]];
+      [self rejectFirst: second];
+      #[count [codes value]]
     ]]
-  ]]; #[count [codes value]]
   ]]
 ]];
 [Reflect defineMethod: #unsignedGreater:than: on: ImageFormat as: [:self :a :b |
@@ -345,13 +389,24 @@ let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
   [[policy = 0] ifTrue: [| [self require: [argument = 0] context: factsContext]]];
   [[policy = 1] ifTrue: [| [self require: [[self unsignedGreater: argument than: basis] not] context: factsContext]]];
   [self require: [count <= [[[bytes size] - 36] / 13]] context: factsContext];
-  [self repeat: count do: [:i |
-    [self require: [[booleanTags at: [self byte: p]] notNil] context: factsContext];
-    [self require: [[booleanTags at: [self byte: p]] notNil] context: factsContext]; [self advance: p by: 8];
-    [self repeat: 3 do: [:j |
-      let field := [self field: p]; [self require: [[factTags at: [field at: 0]] notNil] context: factsContext];
-      [self reference: field below: heapCount]; [self blockReference: field codes: codes]]]
-  ]]; [self finished: p]
+  let records := [bytes readTaggedRecordsAt: [self position: p] count: count prefixBytes: 10 fields: 3 schema: "0001-4-204-22111332"];
+  [self require: [records notNil] context: factsContext];
+  [self checked: [|
+    let first := [self cell: nil];
+    [self consider: [records firstPrefixOutside: "11" bytes: 2] priority: 0 context: factsContext into: first];
+    [self consider: [records firstFieldOffsetOutside: factMask] priority: 0 context: factsContext into: first];
+    [self consider: [records firstReferenceOffsetForTags: referenceMask atLeast: heapCount] priority: 1 context: referenceContext into: first];
+    let refs := [records fieldReferencesWithOffsetsForTags: blockMask];
+    [self repeat: [[refs size] / 8] do: [:i |
+      let target := [refs readU32At: [[i * 8] + 4]];
+      [[[codes at: target] isNil] ifTrue: [|
+        [self consider: [refs readU32At: [i * 8]] priority: 2 context: blockReferenceContext into: first]
+      ]]
+    ]];
+    [self rejectFirst: first]
+  ]];
+  [[p at: 1] set: [bytes size]]; [self finished: p]
+
   ]]
 ]];
 [Reflect defineMethod: #nativeCode:authority: on: ImageFormat as: [:self :payload :authority |
