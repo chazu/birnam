@@ -1,5 +1,7 @@
 # Authored BlockLoop, Range and SystemGC
 
+NativeLoader and Error are now authored too. Their contracts follow below.
+
 These replace the native Block Loop, Range and System GC crates. Bootstrap loads
 compiled artifacts after Module and Lang. The build-only Rust grammar seed can
 compile this floor without any of the three removed native modules. Every owner
@@ -77,3 +79,69 @@ A fresh installer run generates and qualifies both startup images with no remove
 native crates. A separate source-free saved-image check restores Range aliases,
 clones and both i64 endpoints and invokes the authored System GC controls. See
 the [roadmap checkpoint](native-module-decomposition-roadmap.md#small-rewrite-checkpoint-blockloop-range-and-systemgc-2026-10-04).
+
+## Native Loader
+
+`modules/native-loader.birnam` owns exact-String path recognition, an owned path
+snapshot before sequence callbacks, argument validation/order, Unit-versus-Object
+results, and mapping/descriptor/initializer error translation. Error construction
+still consults the live factory after constructing the diagnostic String.
+Reload through Module preserves replacements.
+
+Bootstrap's generic `loadResultAt:arguments:` accepts owned Bytes and a sequence
+of Objects and sends Id's existing descriptor-load message. It returns a Vector
+of status metadata Bytes (u32 status, u32 operand kind, u64 detail) and a language
+Object or nil. It contains no System or error-mapping policy and does not retain
+loaded Objects permanently. Id still owns native mapping, validation and pinning.
+Bytes `fromByteResultOf:selector:` copies a native byte borrow immediately after
+the caller-selected Id send, before further callbacks or result construction.
+
+## Error
+
+`modules/error.birnam` owns constructors, ordinary kind/message slots,
+`isError`, propagation on unknown messages, and Object's missing-message
+diagnostic. It has no Module-manager dependency: Bootstrap loads its compiled
+artifact after the compiler floor and before Module/Lang. It preserves any
+existing Namespace Error binding on reload, including nil.
+
+ErrorPrototype is a canonical Namespace export. This preserves its identity when
+an image restores captured constructors and methods on ErrorVt. Namespace's
+language-facing includesKey: distinguishes an absent binding from a bound nil.
+
+The existing Rust grammar seed can compile this same source into an empty build
+prefix. Production initialization loads the artifact and never parses or compiles
+Error source. Store and Execution resolve Error through live Namespace messages
+when needed; PortableCode no longer requires it merely to initialize. Before
+Error is installed, generated initializers and compiler guards do not send its
+unavailable predicate. Failures still propagate as native protocol outcomes.
+
+Execution adapts Id's variadic doesNotUnderstand convention to source handlers:
+the declared selector is forwarded, extra Object operands remain rooted, and
+Word/Bytes/Entry carriers are not inspected. Native implementations keep their
+original convention. Native nullable Object inputs normalize to language nil at
+the source Method boundary. Ordinary slot reads likewise map null references to
+nil. The generic `Execution invalidRequest` operation preserves refusal of an
+invalid missing-message selector.
+
+Saved native entries do not root their callable contexts. Fixtures that replace
+an authored binding across collection retain its Method/Unit before restoring it,
+matching the existing ownership contract.
+
+Acceptance for these two ports: 74 compiler/backend unit tests; production
+compiler, loader, text/error, numbers, method observation and source-loader
+integration; Store history/limit and local-cell checks in isolated processes;
+workspace check; native export/install-name/dependency audit; fresh installation
+with both startup images; exact installation receipt; source-free compiled loader
+artifact; mapped/rebuilt image and baked executable; REPL arithmetic/Error
+printing, FizzBuzz and collections. The REPL session completed in 6.23 seconds.
+
+Store's deliberately tiny 256-byte fixture floor uses a fixture-only kind sink;
+it cannot host compiler metadata. It checks Store's requested limit error and
+unchanged basis/accounting, while production Error semantics use the separate
+full-floor checks. Process isolation preserves Id's owning-thread invariant.
+
+Evidence is under /tmp/birnam-loader-error/: install.log, final-tests.log,
+store-final.log, compiler-units.log and image-smoke.log. The fresh prefix is
+/tmp/birnam-loader-error/final-prefix, with opt-in TCC resource metrics for the
+compiler checks. The installed user prefix was not replaced. Exhaustive Image GC
+and the complete language suite were not rerun.

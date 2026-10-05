@@ -115,7 +115,7 @@ impl State {
     unsafe fn error(&self, kind: &'static [u8]) -> Result<Operand, Outcome> {
         unsafe {
             self.send(
-                self.values[b"Error".as_slice()],
+                object(self.id.send_named(self.namespace, b"at:", &[Operand::object(self.id.intern_name(b"Error")?)])?)?,
                 b"kind:",
                 &[Operand::object(self.names[kind])],
             )
@@ -1329,7 +1329,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             let mut values = HashMap::new();
             for n in [
                 b"Integer".as_slice(),
-                b"Error",
                 b"true",
                 b"false",
                 b"nil",

@@ -68,6 +68,14 @@ unsafe extern "C" fn value_at(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
         namespace.id.send_named(r, b"at:", &[Operand::object(namespace.id.intern_name(b"nil")?)])
     })().map_or_else(|e| e, Outcome::loaded)
 }
+unsafe extern "C" fn includes_key(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let namespace = &*c.cast::<Namespace>();
+        let [key] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let value = namespace.id.send_named(r, b"at:", &[*key])?;
+        namespace.id.send_named(namespace.receiver, b"at:", &[Operand::object(namespace.id.intern_name(if value.kind() == native::UNIT { b"false" } else { b"true" })?)])
+    })().map_or_else(|e| e, Outcome::loaded)
+}
 unsafe extern "C" fn bind(
     context: *mut c_void,
     _: Oop,
@@ -234,6 +242,7 @@ unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
         for (name, method) in [
             (b"at:".as_slice(), find as Method),
             (b"valueAt:", value_at),
+            (b"includesKey:", includes_key),
             (b"at:put:", bind),
             (b"count", count),
             (b"nameAt:", name_at),

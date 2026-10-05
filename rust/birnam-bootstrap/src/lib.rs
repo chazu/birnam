@@ -16,6 +16,7 @@ use std::{
     path::Path,
     sync::atomic::{AtomicPtr, Ordering},
 };
+mod load_result;
 struct State {
     id: Protocol,
     roots: Oop,
@@ -172,6 +173,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
         for (name, method) in [
             (b"loadNative:".as_slice(), load_native as Method),
             (b"release:", release_result),
+            (b"loadResultAt:arguments:", load_result::entry),
         ] {
             id.send_named(
                 behavior,
@@ -233,7 +235,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
-        for name in ["string", "error", "integer", "float"] {
+        for name in ["string", "integer", "float"] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -270,7 +272,6 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "file_io",
             "storage",
             "trace",
-            "native_loader",
         ] {
             id.send_named(
                 receiver,
@@ -355,8 +356,36 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             receiver, b"loadNative:",
             &[Operand::bytes(&module_path(directory, "lang_seed")), Operand::object(namespace)],
         )?;
+        // Error is authored and requires Method/TCC rather than an earlier
+        // native value implementation. The existing compiler seed constructs
+        // its artifact when bootstrapping an empty build prefix.
+        #[cfg(feature = "lang-seed")]
+        {
+            let path = module_path(directory, "error");
+            if !Path::new(std::ffi::OsStr::from_bytes(&path)).is_file() {
+                let source = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(include_bytes!("../../../modules/error.birnam"))])?)?;
+                let source_token = retain(id, roots, source)?;
+                let output = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(&path)])?)?;
+                let output_token = retain(id, roots, output)?;
+                let filename = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(b"modules/error.birnam")])?)?;
+                let filename_token = retain(id, roots, filename)?;
+                let answer = id.send_named(object(named(b"Codegen")?)?, b"compile:output:from:synchronousBodies:", &[Operand::object(source), Operand::object(output), Operand::object(filename), named(b"true")?]);
+                release(id, roots, filename_token)?;
+                release(id, roots, output_token)?;
+                release(id, roots, source_token)?;
+                answer?;
+            }
+        }
+        {
+            let path = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(&module_path(directory, "error"))])?)?;
+            let token = retain(id, roots, path)?;
+            let result = id.send_named(object(named(b"Codegen")?)?, b"load:", &[Operand::object(path)]);
+            release(id, roots, token)?;
+            let result = object(result?)?;
+            if result != object(named(b"Error")?)? { return Err(invalid()); }
+        }
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["modules", "lang", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "alienCompiler", "imageFormat"] {
+        for name in ["modules", "lang", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "imageFormat"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],

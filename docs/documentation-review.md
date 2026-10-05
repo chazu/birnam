@@ -188,7 +188,7 @@ Every baseline file appears once below. Delete/Archive links are pinned to the r
 | [rust/birnam-artifact/README.md](../rust/birnam-artifact/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [Authored Block Loop contract](design/authored-small-modules.md#block-loops) | Replaces the removed native owner README; preserves bootstrap and control boundaries. |
 | [rust/birnam-collect/README.md](../rust/birnam-collect/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-error/README.md](../rust/birnam-error/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [Authored Error contract](design/authored-small-modules.md#error) | Replaces the removed native owner README; documents early bootstrap and message adaptation. |
 | [rust/birnam-file-io/README.md](../rust/birnam-file-io/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-float/README.md](../rust/birnam-float/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-image/README.md](../rust/birnam-image/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
@@ -196,7 +196,7 @@ Every baseline file appears once below. Delete/Archive links are pinned to the r
 | [rust/birnam-isolate/README.md](../rust/birnam-isolate/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-lang-seed/README.md](../rust/birnam-lang-seed/README.md) | Build-only grammar seed; production Lang is authored in `modules/lang.birnam`. |
 | [rust/birnam-map/README.md](../rust/birnam-map/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-native-loader/README.md](../rust/birnam-native-loader/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [Authored Native Loader contract](design/authored-small-modules.md#native-loader) | Replaces the removed native owner README; separates policy from Id descriptor loading. |
 | [rust/birnam-object-model/README.md](../rust/birnam-object-model/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-peg/README.md](../rust/birnam-peg/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-portable-code/README.md](../rust/birnam-portable-code/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |

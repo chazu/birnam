@@ -1,0 +1,35 @@
+// Foundational Error policy, loaded from its compiled artifact before Lang.
+// Reload preserves the existing factory and method replacements, including nil.
+[[Namespace includesKey: #Error] ifTrue: [| [Namespace valueAt: #Error]] ifFalse: [|
+let errorPrototype := [ObjectModel newSlots: #[nil nil] parent: ObjectVt];
+let errorFactory := [Object clone];
+let errorPrefix := ["does not understand #" asBytes];
+
+[Reflect defineMethod: #isError on: ObjectVt as: [:self | false]];
+[Reflect defineMethod: #kind:message: on: errorFactory as: [:self :kind :message |
+  let result := [errorPrototype clone];
+  [ObjectModel slot: 0 in: result put: kind];
+  [ObjectModel slot: 1 in: result put: message]; result
+]];
+[Reflect defineMethod: #kind: on: errorFactory as: [:self :kind |
+  [self kind: kind message: nil]
+]];
+[Reflect defineMethod: #message: on: errorFactory as: [:self :message |
+  [self kind: #error message: message]
+]];
+[Reflect defineMethod: #isError on: errorPrototype as: [:self | true]];
+[Reflect defineMethod: #kind on: errorPrototype as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #message on: errorPrototype as: [:self | [ObjectModel slot: 1 in: self]]];
+[Reflect defineMethod: #doesNotUnderstand: on: errorPrototype as: [:self :selector | self]];
+[Reflect defineMethod: #doesNotUnderstand: on: ObjectVt as: [:self :selector |
+  let bytes := [errorPrefix withSymbolName: selector];
+  [[bytes isNil] ifTrue: [| [Execution invalidRequest]] ifFalse: [|
+    [errorFactory kind: #doesNotUnderstand message: [bytes asString]]
+  ]]
+]];
+[Namespace at: #Error put: errorFactory];
+[Namespace at: #ErrorPrototype put: errorPrototype];
+[Namespace at: #ErrorVt put: [Reflect vtableOf: errorPrototype]];
+[Namespace at: #ErrorFactoryVt put: [Reflect vtableOf: errorFactory]];
+errorFactory
+]]

@@ -521,7 +521,7 @@ fn native_loader_uses_messages() {
         assert_eq!(h.call(h.named(b"Codegen"), b"eval:", &[source]), system);
         let original = binding(id, system_vt, b"loadModule:");
         install(id, system_vt, b"loadModule:", answer, sentinel);
-        assert_eq!(load(id, "native_loader", &[Operand::object(ns)]), system);
+        h.call(h.named(b"Codegen"), b"eval:", &[h.string(b"[Module load: #nativeLoader]")]);
         assert_eq!(h.call(system, b"loadModule:", &[path]), sentinel);
         set(id, system_vt, b"loadModule:", original);
         for name in [b"size".as_slice(), b"at:"] {

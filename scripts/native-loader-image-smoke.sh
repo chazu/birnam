@@ -26,7 +26,10 @@ BIRNAM
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/probe.birnam" >"$scratch/startup.out" 2>"$scratch/startup.err"
 printf 'true\n#native-load-1\n#native-load-2\n#ioError\n#notAModule\nnative-loader-startup-ok\n' >"$scratch/startup-expected.out"
 cmp "$scratch/startup-expected.out" "$scratch/startup.out"
-grep -Fq '/libbirnam_native_loader.dylib' "$scratch/startup.err"
+if grep -Fq '/libbirnam_native_loader.dylib' "$scratch/startup.err"; then
+  echo 'removed native loader was loaded' >&2; exit 1
+fi
+test -f "$prefix/lib/libbirnam_nativeLoader.dylib"
 "$bin" --compile-module "$scratch/probe.birnam" "$scratch/probe.dylib"
 rm "$scratch/probe.birnam"
 "$bin" "$scratch/probe.dylib" >"$scratch/compiled.out" 2>"$scratch/compiled.err"
@@ -67,9 +70,11 @@ test -s "$scratch/app.image"
 rm "$scratch/save.birnam"
 printf 'true\ntrue\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\n#notAModule\n#generationNotQuiescent\ntrue\n#native-load-3\nnative-loader-image-ok\n' >"$scratch/expected.out"
 for mode in mapped rebuilt; do
-  arguments=()
-  if [[ $mode == rebuilt ]]; then arguments+=(--rebuild); fi
-  "$bin" "${arguments[@]}" "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
+  if [[ $mode == rebuilt ]]; then
+    "$bin" --rebuild "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
+  else
+    "$bin" "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
+  fi
   cmp "$scratch/expected.out" "$scratch/$mode.out"
   test ! -s "$scratch/$mode.err"
 done

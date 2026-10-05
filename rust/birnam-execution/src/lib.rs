@@ -48,7 +48,6 @@ struct Execution {
     integer: Oop,
     word: Oop,
     float: Oop,
-    error: Oop,
     nil: Oop,
     method_behavior: Oop,
     prototype: Oop,
@@ -172,7 +171,7 @@ impl Execution {
     }
     fn selected(&self, entry: NativeEntry) -> Option<Oop> {
         let address = entry.method? as usize;
-        if address != call as Method as usize && address != lookup as Method as usize {
+        if address != call as Method as usize && address != lookup as Method as usize && address != call_dnu as Method as usize {
             return None;
         }
         self.entries.borrow().get(&entry.context.addr()).copied()
@@ -184,6 +183,13 @@ impl Execution {
             if adapt_lookup { lookup } else { call },
             ptr::from_ref(&**callable).cast_mut().cast(),
         ))
+    }
+    fn message_entry(&self, method: Oop, selector: Oop) -> Result<NativeEntry, Outcome> {
+        let mut entry = self.entry(method, selector == self.names[b"lookup".as_slice()])?;
+        if selector == self.names[b"doesNotUnderstand:".as_slice()] && self.methods.borrow().get(&method.addr()).is_some_and(|m| m.implementation.is_some()) {
+            entry.method = Some(call_dnu);
+        }
+        Ok(entry)
     }
     unsafe fn make(
         &self,
@@ -254,7 +260,7 @@ impl Execution {
                 Err(error) if error.status == native::INVALID_REQUEST => b"nativeInvalidRequest",
                 Err(_) => b"nativeFailure",
             };
-            self.send(self.error, b"kind:", &[Operand::object(self.names[kind])])
+            self.send(self.error_factory()?, b"kind:", &[Operand::object(self.names[kind])])
         }
     }
     unsafe fn invoke(
@@ -266,6 +272,13 @@ impl Execution {
         if self.machines.borrow().image_pending(receiver) {
             return Err(invalid());
         }
+        // Native nullable Objects become language nil at the source boundary.
+        // Captured native implementations retain their original carrier contract.
+        let normalized;
+        let args = if self.methods.borrow().get(&method.addr()).is_some_and(|m| m.implementation.is_some()) {
+            normalized = args.iter().map(|a| if a.as_object().is_some_and(|o| o.is_null()) { Operand::object(self.nil) } else { *a }).collect::<Vec<_>>();
+            normalized.as_slice()
+        } else { args };
         let roots = self.scope(&[method, receiver]);
         for argument in args {
             if let Some(value) = argument.as_object() {
@@ -297,6 +310,11 @@ impl Execution {
         .into_result()
     }
 }
+impl Execution {
+    unsafe fn error_factory(&self) -> Result<Oop, Outcome> {
+        unsafe { object(self.id.send_named(self.namespace, b"at:", &[Operand::object(self.id.intern_name(b"Error")?)])?) }
+    }
+}
 
 unsafe extern "C" fn call(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
@@ -307,6 +325,20 @@ unsafe extern "C" fn call(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -
             r,
             borrowed_slice(a, n).ok_or_else(invalid)?,
         )
+    })())
+}
+// Id's DNU convention includes the original native operands after the selector.
+// Source handlers receive the declared selector; extra Object operands remain
+// rooted while the handler runs, without decoding Word/Bytes/Entry payloads.
+unsafe extern "C" fn call_dnu(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let callable = &*c.cast::<Callable>();
+        let s = state(callable.execution.cast_mut().cast())?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let selector = args.first().ok_or_else(invalid)?.as_object().filter(|o| !o.is_null()).unwrap_or(s.nil);
+        let roots = s.scope(&[callable.object, r]);
+        for arg in args { if let Some(value) = arg.as_object() { roots.keep(value); } }
+        s.invoke(callable.object, r, &[Operand::object(selector)])
     })())
 }
 unsafe extern "C" fn lookup(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -334,7 +366,8 @@ unsafe extern "C" fn lookup(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         }
         // No send, allocation or shared lookup slot between the owned result
         // and its exact entry. Nested lookups cannot overwrite this selection.
-        Ok(Operand::entry(s.entry(selected, false)?))
+        let selector = borrowed_slice(a, n).ok_or_else(invalid)?.first().and_then(|v| v.as_object()).unwrap_or(ptr::null_mut());
+        Ok(Operand::entry(s.message_entry(selected, selector)?))
     })())
 }
 unsafe extern "C" fn from_native(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -449,7 +482,7 @@ unsafe extern "C" fn install(c: *mut c_void, r: Oop, a: *const Operand, n: usize
         let selector = object(*selector)?;
         let _roots = s.scope(&[r, method, selector]);
         s.send(s.gc, b"prepareAllocation", &[])?;
-        let entry = s.entry(method, selector == s.names[b"lookup".as_slice()])?;
+        let entry = s.message_entry(method, selector)?;
         s.send(
             r,
             b"addMethod",
@@ -473,7 +506,6 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.integer,
             s.word,
             s.float,
-            s.error,
             s.nil,
             s.method_behavior,
             s.prototype,
@@ -799,7 +831,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             integer: named(b"Integer")?,
             word: named(b"Word")?,
             float: named(b"Float")?,
-            error: named(b"Error")?,
             nil: named(b"nil")?,
             method_behavior,
             prototype,

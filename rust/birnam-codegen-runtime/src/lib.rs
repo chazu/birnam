@@ -112,6 +112,9 @@ impl State {
         }
     }
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Outcome> {
+        // Before the authored Error artifact is installed, valid compiler values
+        // are ordinary Objects. Actual failures remain native protocol outcomes.
+        if unsafe { self.id.send_named(self.ns, b"at:", &[Operand::object(self.id.intern_name(b"Error")?)]) }?.kind() == native::UNIT { return Ok(false); }
         unsafe { Ok(self.send(o, b"isError", &[])?.as_object() == Some(self.named(b"true")?)) }
     }
     unsafe fn index(&self, scope: &Scope<'_>, o: Oop, n: &[u8]) -> Result<usize, Outcome> {

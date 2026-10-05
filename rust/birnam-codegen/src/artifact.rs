@@ -99,7 +99,7 @@ pub fn emit(
         );
     }
     out.push_str("static R artifact_initialize(const P*p,const A*a,size_t n){\nR r=artifact_code_module.initialize(p,a,n);if(r.status||r.value.kind!=1)return r;Call c={0};O method=keep(&c,r.value.data.object);\n");
-    out.push_str("if(method==named(&c,\"nil\")||call(&c,method,\"isError\",0,0)==named(&c,\"true\"))return finish(&c,obj(method));\n");
+    out.push_str("if(method==named(&c,\"nil\")||is_error(&c,method))return finish(&c,obj(method));\n");
     writeln!(out, "O source=string(&c,__birnam_artifact_source,{});O metadata=string(&c,__birnam_artifact_metadata,{});O adapters=call(&c,named(&c,\"Vector\"),\"new\",0,0);A v;", source.len(), encoded_metadata.len()).unwrap();
     for (arity, bytes) in adapters {
         writeln!(out, "O row_{arity}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(integer(&c,{arity}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(string(&c,__birnam_artifact_adapter_{arity},{}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(row_{arity});adapters=call(&c,adapters,\"add:\",&v,1);", bytes.len()).unwrap();

@@ -23,12 +23,11 @@ process lifetime, even after initialization failure, because their effects may
 already have escaped. There is no fallback to `module_init`. Generated code uses
 the separate artifact/Execution lifetime rules.
 
-The Native Loader constructor receives one completed Namespace Object. It resolves
-and retains its dependencies through messages, registers both methods through Id,
-and returns System. Bootstrap loads it after the System and value prerequisites.
-Its only exported symbol remains the common descriptor. The old Runtime, root,
-Integer, Error and Text View service-table inputs are removed. See the
-[Native Loader contract and tests](../../rust/birnam-native-loader/README.md).
+Native Loader is authored in `modules/native-loader.birnam` and loaded as a
+compiled artifact after Lang. A typed Bootstrap operation exposes Id's load
+outcome; path/argument checks and error mapping stay authored. The retired native
+descriptor and service-table inputs are removed. See the
+[Native Loader contract and tests](../design/authored-small-modules.md#native-loader).
 
 The aggregate `module_init` entry and exported dependency setters are retired.
 Every native module is constructed through `birnam_native_module_v1` with its

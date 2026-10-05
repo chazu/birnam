@@ -41,9 +41,17 @@ impl H {
                 let gc=load(id,"collect",&[Operand::object(roots)]);
                 send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"GC").unwrap()),Operand::object(gc)]);
                 send(id,gc,b"activate",&[]);
-                for name in ["object_model","string","error","integer","store"] {
+                for name in ["object_model","string","integer","store"] {
                     load(id,name,&[Operand::object(ns)]);
                 }
+                // This deliberately sub-bootstrap budget cannot host compiler
+                // metadata. A fixture-only error sink isolates Store's refusal
+                // semantics; the production Error artifact is checked separately.
+                let factory_vt=behavior(id);
+                let factory=allocate(id,factory_vt,0);
+                install(id,factory_vt,b"kind:",limit_error,core::ptr::null_mut());
+                send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"Error").unwrap()),Operand::object(factory)]);
+                send(id,roots,b"retain:",&[Operand::object(factory)]);
                 ns
             } else {
                 load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())])
@@ -166,6 +174,22 @@ impl H {
     unsafe fn read(&self, st: Oop, e: Oop, a: Oop) -> Oop {
         unsafe { self.call(st, b"currentValue:attr:", &[e, a]) }
     }
+}
+// Limit errors are Symbols in this minimal fixture, carrying their own kind.
+// No production Error implementation or foreign value layout is involved.
+unsafe extern "C" fn limit_error(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    let _ = c;
+    let Some([kind]) = (unsafe { borrowed_slice(a,n) }) else { return Outcome::failed(native::INVALID_REQUEST,0); };
+    Outcome::loaded(*kind)
+}
+fn isolated_case(name: &str) -> bool {
+    if std::env::var("BIRNAM_STORE_CASE").as_deref() == Ok(name) { return false; }
+    let result = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--ignored", "--nocapture"])
+        .env("BIRNAM_STORE_CASE", name)
+        .output().unwrap();
+    assert!(result.status.success(), "{}\n{}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+    true
 }
 
 struct Visitor {
@@ -896,7 +920,7 @@ unsafe fn resource_limit(h: &H) {
             let result = h.call(st, b"rawAssert:attr:value:", &[e, a, value]);
             if result != st {
                 assert_eq!(
-                    h.call(result, b"kind", &[]),
+                    result,
                     h.symbol(b"historyResourceLimit")
                 );
                 assert_eq!(h.metric(st, b"basis"), before);
@@ -969,6 +993,7 @@ unsafe fn phase_safety(h: &H) {
 #[test]
 #[ignore = "requires production module directory"]
 fn store_history_cells_snapshots_and_source_use_id_messages() {
+    if isolated_case("store_history_cells_snapshots_and_source_use_id_messages") { return; }
     unsafe {
         let h = H::new();
         if std::env::var_os("BIRNAM_STORE_TEST_LIMIT").is_some() {
@@ -1097,6 +1122,7 @@ unsafe fn history_plateaus(h: &H) {
 #[test]
 #[ignore = "requires production modules"]
 fn local_cells_keep_values_without_facts_and_restore_their_image_fields() {
+    if isolated_case("local_cells_keep_values_without_facts_and_restore_their_image_fields") { return; }
     unsafe {
         let h = H::new();
         let _floor = CompiledFloor::pin(h.id, h.ns, h.roots);

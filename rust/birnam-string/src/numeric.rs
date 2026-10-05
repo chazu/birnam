@@ -33,7 +33,7 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
         let t = state(n.text.cast_mut().cast())?;
         let expected = match op {
             1 | 2 | 4 | 9 | 11 | 13 | 14 | 19 => 1,
-            12 | 17 | 18 | 20 => 2,
+            12 | 17 | 18 | 20 | 23 => 2,
             3 => 2,
             22 => 5,
             _ => 0,
@@ -47,6 +47,11 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
         }
         t.rooted(&values, || {
             let nil = Operand::object(t.nil);
+            if op == 23 {
+                let raw = t.id.send(object(args[0])?, object(args[1])?, &[])?.as_bytes().ok_or_else(invalid)?;
+                let bytes = borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?.to_vec();
+                return t.id.send_named(r, b"fromBytes:", &[Operand::bytes(&bytes)]);
+            }
             let indices = if matches!(op, 1 | 2 | 3 | 9 | 11 | 12 | 13 | 14) {
                 let mut indices = Vec::new();
                 for arg in args {
@@ -337,6 +342,7 @@ numeric!(with_symbol_name, 19);
 numeric!(tagged_table, 20);
 numeric!(empty_rows, 21);
 numeric!(tagged_records, 22);
+numeric!(from_byte_result, 23);
 pub(super) unsafe extern "C" fn install(
     c: *mut c_void,
     r: Oop,
@@ -391,6 +397,7 @@ pub(super) unsafe extern "C" fn install(
                 (t.bytes_behavior, b"readTaggedFieldAt:schema:", tagged_field),
                 (t.bytes_behavior, b"readTaggedRowsWithSchema:limit:", tagged_rows),
                 (t.bytes_behavior, b"withSymbolName:", with_symbol_name),
+                (t.bytes_behavior, b"fromByteResultOf:selector:", from_byte_result),
                 (t.bytes_behavior, b"readTaggedTableWithSchema:limit:", tagged_table),
                 (t.bytes_behavior, b"emptyTaggedRows", empty_rows),
                 (t.bytes_behavior, b"readTaggedRecordsAt:count:prefixBytes:fields:schema:", tagged_records),

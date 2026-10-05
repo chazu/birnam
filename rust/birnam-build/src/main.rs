@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 
 // Bootstrap artifacts are admitted before the source parser exists.
 const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
+    ("error", "modules/error.birnam"),
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
     ("blockLoopControl", "modules/block-loop-control.birnam"),
@@ -20,6 +21,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("systemGc", "modules/system-gc.birnam"),
     ("printing", "modules/printing.birnam"),
     ("sourceLoader", "modules/source-loader.birnam"),
+    ("nativeLoader", "modules/native-loader.birnam"),
     ("alienCompiler", "modules/alien-compiler.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
 ];
@@ -65,7 +67,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_collect.dylib",
     "libbirnam_object_model.dylib",
     "libbirnam_string.dylib",
-    "libbirnam_error.dylib",
     "libbirnam_integer.dylib",
     "libbirnam_float.dylib",
     "libbirnam_word.dylib",
@@ -86,7 +87,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_file_io.dylib",
     "libbirnam_storage.dylib",
     "libbirnam_trace.dylib",
-    "libbirnam_native_loader.dylib",
     "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
     "libbirnam_image.dylib",
@@ -686,7 +686,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
         compile.env("BIRNAM_NO_STDLIB", "1");
-        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc") {
+        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error") {
             // These small byte-processing policies use synchronous bodies. Select
             // that representation at build time; startup only maps saved objects.
             let source_path = root.join(source);

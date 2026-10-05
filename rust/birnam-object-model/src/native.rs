@@ -589,7 +589,8 @@ unsafe fn language_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize, put
                 let index = m.id.send_named(integer, b"wordOf:", &args[..1])?.as_word().ok_or_else(invalid)?;
                 let mut raw = vec![Operand::word(index), args[1]];
                 if put { raw.push(args[2]); }
-                m.send(r, if put { b"slotAt:in:put:" } else { b"slotAt:in:" }, &raw)
+                let value = m.send(r, if put { b"slotAt:in:put:" } else { b"slotAt:in:" }, &raw)?;
+                if value.kind() == native::UNIT { Ok(Operand::object(named(m, b"nil")?)) } else { Ok(value) }
             })
         })
     }

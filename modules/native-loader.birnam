@@ -1,0 +1,51 @@
+// Language loading policy. Bootstrap exposes the typed outcome of Id loading.
+[Module named: #nativeLoader requires: #[]];
+[Globals at: #NativeLoader put: [Object clone]];
+let loaderNamespace := Namespace;
+let loaderStringVt := StringVt;
+[Reflect defineMethod: #error:message: on: NativeLoader as: [:self :kind :message |
+  let factory := [loaderNamespace valueAt: #Error];
+  [[factory isNil] ifTrue: [| nil] ifFalse: [| [factory kind: kind message: message]]]
+]];
+[Reflect defineMethod: #finish:for: on: NativeLoader as: [:self :result :receiver |
+  let bits := [result at: 0]; let status := [bits readU32At: 0];
+  [[status = 0] ifTrue: [|
+    let kind := [bits readU32At: 4];
+    [[kind = 0] ifTrue: [| receiver] ifFalse: [|
+      [[kind = 1] ifTrue: [| [result at: 1]] ifFalse: [|
+        [self error: #typeError message: "native module returned a non-language value"]
+      ]]
+    ]]
+  ] ifFalse: [|
+    [[status = 2] ifTrue: [| [self error: #ioError message: "could not load module dylib"]] ifFalse: [|
+      [[[status = 3] | [status = 4]] ifTrue: [|
+        [self error: #notAModule message: "missing or incompatible birnam_native_module_v1"]
+      ] ifFalse: [| [self error: #moduleError message: "native module initialization failed"]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #arguments:count: on: NativeLoader as: [:self :sequence :count |
+  let state := [ObjectModel newSlots: #[[Vector new]] parent: ObjectVt];
+  [0 to: [count - 1] do: [:i |
+    [ObjectModel slot: 0 in: state put: [[ObjectModel slot: 0 in: state] add: [sequence at: i]]]; nil
+  ]]; [ObjectModel slot: 0 in: state]
+]];
+[Reflect defineMethod: #load:arguments:for: on: NativeLoader as: [:self :path :sequence :receiver |
+  [[[[Reflect vtableOf: path] == loaderStringVt] not] ifTrue: [| nil] ifFalse: [|
+    let snapshot := [Bytes fromByteResultOf: path selector: #bytes];
+    let length := [Integer integerValue: [sequence size]];
+    [[length isNil] ifTrue: [| [self error: #typeError message: "module arguments need an Integer size"]] ifFalse: [|
+      [[length < 0] ifTrue: [| [self error: #typeError message: "module argument count must be nonnegative"]] ifFalse: [|
+        let arguments := [self arguments: sequence count: length];
+        [self finish: [Bootstrap loadResultAt: snapshot arguments: arguments] for: receiver]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #loadModule: on: System as: [:self :path |
+  [NativeLoader load: path arguments: #[] for: self]
+]];
+[Reflect defineMethod: #loadModule:arguments: on: System as: [:self :path :arguments |
+  [NativeLoader load: path arguments: arguments for: self]
+]];
+[Module markLoaded: #nativeLoader];

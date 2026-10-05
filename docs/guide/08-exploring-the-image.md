@@ -268,7 +268,7 @@ to pass a sequence of explicit Objects to its initializer. `inputs` supplies
 returns an Object, or Unit to return the receiving System object. It must export
 `birnam_native_module_v1`; the former `module_init` entry is no longer loaded.
 See [native loading](native-loading.md) for the native contract and errors,
-and [Native Loader](../../rust/birnam-native-loader/README.md) for the current
+and [Native Loader](../design/authored-small-modules.md#native-loader) for the current
 message-based integration and validation.
 
 

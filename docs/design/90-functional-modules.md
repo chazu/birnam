@@ -384,7 +384,7 @@ layout copy/boundary semantics are also retained in local unit tests.
 Bootstrap now loads String and Error after Object Model and connects Boolean/Nil
 printing to the completed String object. Initializers take Namespace and return
 opaque completed objects. The [String protocol](../../rust/birnam-string/README.md)
-and [Error protocol](../../rust/birnam-error/README.md) document their messages.
+and [Error protocol](authored-small-modules.md#error) document their messages.
 
 String owns its byte buffers and String Builder's text construction. Buffer keys
 are weak; GC finalization releases each buffer through a fresh message. Raw
@@ -1258,7 +1258,7 @@ capture and the current budget remain unchanged. See the bounded
 
 ### Native Loader reconnected (2026-09-26)
 
-[Native Loader](../../rust/birnam-native-loader/README.md) now loads through
+[Native Loader](authored-small-modules.md#native-loader) now loads through
 Bootstrap and uses Id sends for String, Integer, Error, roots and registration.
 The existing System methods, path snapshot, sequence order, initializer results
 and error mapping are preserved. Id retains sole ownership of native loading.

@@ -1350,7 +1350,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             let integer = keep(named(b"Integer")?)?;
             let symbol_vt = keep(named(b"SymbolVt")?)?;
             let parent = keep(named(b"ObjectVt")?)?;
-            keep(named(b"Error")?)?;
             let mut families = [(ptr::null_mut(), ptr::null_mut()); 5];
             for family in &mut families {
                 let vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;

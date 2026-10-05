@@ -90,13 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-error"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-execution"
 version = "0.0.0"
 dependencies = [
@@ -253,13 +246,6 @@ name = "birnam-native-compiler"
 version = "0.0.0"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "birnam-native-loader"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
 ]
 
 [[package]]

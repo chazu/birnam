@@ -181,7 +181,11 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         let truth = named(b"true");
         let nil = named(b"nil");
         assert_eq!(load(id, "string", &[Operand::object(ns)]), string);
-        assert_eq!(load(id, "error", &[Operand::object(ns)]), error);
+        let error_path = directory().join("libbirnam_error.dylib");
+        let path = make(id, string, error_path.as_os_str().as_bytes());
+        let path_token = retain(id, roots, path);
+        assert_eq!(object(send(id, named(b"Codegen"), b"load:", &[Operand::object(path)])), error);
+        release(id, roots, path_token);
         let mut tokens = Vec::new();
         let mut keep = |value| {
             tokens.push(retain(id, roots, value));
@@ -394,6 +398,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         assert_eq!(object(send(id, fault, b"kind", &[])), kind);
         assert_eq!(object(send(id, fault, b"message", &[])), message);
         assert_eq!(object(send(id, fault, b"isError", &[])), truth);
+        assert_eq!(object(send(id, fault, b"unknownNativeOperand:", &[Operand::word(7)])), fault);
         assert_eq!(object(send(id, source, b"isError", &[])), named(b"false"));
         assert_eq!(
             object(send(
@@ -428,6 +433,9 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         )));
         assert_eq!(object(send(id, null, b"kind", &[])), nil);
         let dnu = keep(object(send(id, source, b"missingTextMethod", &[])));
+        let raw_dnu = keep(object(send(id, source, b"missingNativeOperand:", &[Operand::word(9)])));
+        assert_eq!(object(send(id, raw_dnu, b"kind", &[])), id.intern_name(b"doesNotUnderstand").unwrap());
+        assert_eq!(text(id, object(send(id, raw_dnu, b"message", &[]))), b"does not understand #missingNativeOperand:");
         assert_eq!(
             object(send(id, dnu, b"kind", &[])),
             id.intern_name(b"doesNotUnderstand").unwrap()
@@ -437,6 +445,9 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
             b"does not understand #missingTextMethod"
         );
         let factory = selected(id, evt, b"kind:message:");
+        // An authored entry's context belongs to a collectible Method/Unit.
+        // Pin that owner while the binding is replaced and collection runs.
+        keep(object(send(id, named(b"Execution"), b"methodOfEntry:", &[Operand::entry(factory)])));
         replacement.value = fault;
         install(
             id,

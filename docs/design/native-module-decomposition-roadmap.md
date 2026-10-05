@@ -104,6 +104,21 @@ TCC's explicit resource-metrics feature for the compiler tests. Logs are
 `/tmp/birnam-small-ports/install.log`, `focused-tests.log` and `acceptance.log`.
 The installed user prefix was not replaced.
 
+### Small rewrite checkpoint: NativeLoader and Error (2026-10-05)
+
+Both are authored and their Rust crates, lockfile/workspace entries and native
+inventory entries are removed. Native Loader uses typed Bytes/Bootstrap operations
+over current Id sends. Error uses ordinary reference slots and loads before Lang;
+the existing grammar seed compiles its source into an empty build prefix.
+Execution adapts source nullable arguments and Id's variadic DNU convention.
+Canonical ErrorPrototype publication preserves owner identity during image
+recovery. No native Error implementation or loader policy remains in production.
+
+The [contracts and acceptance](authored-small-modules.md#native-loader) document
+the owner boundaries, native failure/result handling, root lifetime, fresh
+bootstrap and image/baked-entry checks. The installed user prefix is unchanged.
+
+
 ## Rules shared by every decomposition
 
 - Each new native owner has the standard module descriptor, explicit completed

@@ -1035,6 +1035,7 @@ pub(super) unsafe fn invoke_registered(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
+    InvalidRequest,
     PreserveFailures,
     FromStep,
     WithInline,
@@ -1110,6 +1111,7 @@ unsafe extern "C" fn operation(
         // GC owns mutation-phase admission. No engine borrow crosses this send.
         s.send(s.gc, b"prepareAllocation", &[])?;
         match op.kind {
+            Op::InvalidRequest if args.is_empty() => return Err(invalid()),
             Op::PreserveFailures => {
                 let [block] = args else { return Err(invalid()); };
                 struct Restore<'a>(&'a Cell<bool>, bool);
@@ -1596,7 +1598,7 @@ unsafe fn view_error(s: &Execution, error: FrameViewError) -> Result<Operand, Ou
         FrameViewError::InvalidFrameSlot => b"invalidFrameSlot",
         _ => b"staleFrameView",
     };
-    unsafe { s.send(s.error, b"kind:", &[Operand::object(s.names[kind])]) }
+    unsafe { s.send(s.error_factory()?, b"kind:", &[Operand::object(s.names[kind])]) }
 }
 unsafe fn install_op(
     s: &Execution,
@@ -1663,6 +1665,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"captureCount",
     b"captureAt:",
     b"captureAt:of:",
+    b"invalidRequest",
     b"evaluatePreservingFailures:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:implementation:",
@@ -2047,6 +2050,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             state.block_behavior = block_vtable;
         }
         let execution_behavior = object(s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(s.receiver)])?)?;
+        install_op(s, execution_behavior, b"invalidRequest", Op::InvalidRequest)?;
         install_op(s, execution_behavior, b"evaluatePreservingFailures:", Op::PreserveFailures)?;
         install_op(
             s,

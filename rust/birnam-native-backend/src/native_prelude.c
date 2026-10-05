@@ -48,6 +48,9 @@ static O selector(Call*c,const char*n){
  return intern(c,n);
 }
 static O named(Call*c,const char*n){A a=obj(selector(c,n));return call(c,ns,"at:",&a,1);}
+/* Error is installed from authored code after the compiler floor exists.
+   Before that, native failures propagate and no Error family is available. */
+static int is_error(Call*c,O value){A key=obj(selector(c,"Error"));A factory=send(c,ns,"at:",&key,1);if(!c->failure.status&&factory.kind==0)return 0;object(c,factory);return call(c,value,"isError",0,0)==named(c,"true");}
 /* Preserve source lookup: Globals first, then bootstrap exports on nil. */
 static O global(Call*c,const char*n){A key=obj(keep(c,selector(c,n)));O nil=named(c,"nil");O value=call(c,named(c,"Globals"),"at:",&key,1);if(c->failure.status||value!=nil)return value;A fallback=send(c,ns,"at:",&key,1);return fallback.kind==0?nil:object(c,fallback);}
 static O global_put(Call*c,const char*n,O value){A a[2]={obj(keep(c,selector(c,n))),obj(value)};return call(c,named(c,"Globals"),"at:put:",a,2);}

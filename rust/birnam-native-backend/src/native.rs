@@ -452,7 +452,7 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
     out.push_str("static R initialize(const P*p,const A*a,size_t n){if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||n>3||a[0].kind!=1||a[1].kind!=1)return bad();id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};A key=obj(intern(&c,\"Roots\"));R root=raw(&c,ns,\"at:\",&key,1);if(root.status||root.value.kind!=1)return bad();roots=root.value.data.object;cache_selectors=1;keep(&c,owner);keep(&c,ns);A root_arg=obj(roots);call(&c,owner,\"retain:\",&root_arg,1);\n");
     for (i, f) in functions.iter().enumerate() {
         if f.portable.is_some() {
-            writeln!(out, "{{A b=bytes(program_{i},sizeof(program_{i}));O encoded=call(&c,named(&c,\"Bytes\"),\"fromBytes:\",&b,1);A a=obj(encoded);codes[{i}]=call(&c,named(&c,\"CodeObject\"),\"fromCanonicalBytes:\",&a,1);if(c.failure.status)return finish(&c,(A){{0}});if(codes[{i}]==named(&c,\"nil\")||call(&c,codes[{i}],\"isError\",0,0)==named(&c,\"true\"))return finish(&c,obj(codes[{i}]));A co=obj(codes[{i}]);call(&c,owner,\"retain:\",&co,1);}} ").unwrap();
+            writeln!(out, "{{A b=bytes(program_{i},sizeof(program_{i}));O encoded=call(&c,named(&c,\"Bytes\"),\"fromBytes:\",&b,1);A a=obj(encoded);codes[{i}]=call(&c,named(&c,\"CodeObject\"),\"fromCanonicalBytes:\",&a,1);if(c.failure.status)return finish(&c,(A){{0}});if(codes[{i}]==named(&c,\"nil\")||is_error(&c,codes[{i}]))return finish(&c,obj(codes[{i}]));A co=obj(codes[{i}]);call(&c,owner,\"retain:\",&co,1);}} ").unwrap();
         }
     }
     for (i, f) in functions.iter().enumerate() {
