@@ -110,8 +110,17 @@ fn complete_extensions_preserve_replacements_during_collecting_bootstrap() {
                 &[Operand::object(id.intern_name(name).unwrap())],
             ))
         };
+        // Explicit Integer policy admission must preserve the replacement +
+        // installed by the load hook, while migrating untouched arithmetic.
         let roots = named(b"Roots");
         let gc = named(b"GC");
+        let module = object(send(id, named(b"Globals"), b"at:",
+            &[Operand::object(id.intern_name(b"Module").unwrap())]));
+        let path = object(send(id, named(b"String"), b"fromBytes:",
+            &[Operand::bytes(directory().join("libbirnam_integerValues.dylib").as_os_str().as_bytes())]));
+        let path_token = retain(id, roots, path);
+        assert_eq!(send(id, named(b"Codegen"), b"load:", &[Operand::object(path)]).as_object(), Some(module));
+        release(id, roots, path_token);
         let integer = named(b"Integer");
         let float = named(b"Float");
         let string = named(b"String");

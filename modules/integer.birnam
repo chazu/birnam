@@ -1,0 +1,124 @@
+// Signed Integer policy over opaque native bit access and generic Word operations.
+// Representation/constructors remain with the retained cold-bootstrap owner.
+[Module named: #integerValues requires: #[#nativeValues #booleanValues]];
+let intWord := Word;
+let intExecution := Execution;
+let intFactory := Integer;
+let intNamespace := Namespace;
+let intFloat := Float;
+let intZero := [intExecution wordResultOf: 0 selector: #word];
+let intSign := [intExecution wordResultOf: -9223372036854775808 selector: #word];
+let intMax := [intExecution wordResultOf: 9223372036854775807 selector: #word];
+let intOptionalBits := "Wo";
+let intObjectBits := "ow";
+
+[Reflect defineMethod: #integerBitsOf: on: Integer as: [:self :value |
+  [intExecution sendNativeTo: intFactory selector: #wordOf: arguments: #[value]
+    signature: intOptionalBits resultFactory: intWord]
+]];
+[Reflect defineMethod: #integerFromBits: on: Integer as: [:self :bits |
+  [intExecution sendNativeTo: self selector: #fromWord: arguments: #[bits]
+    signature: intObjectBits resultFactory: intWord]
+]];
+[Reflect defineMethod: #integerNegativeBits: on: Integer as: [:self :bits |
+  [[bits unsignedLessThan: intSign] not]
+]];
+[Reflect defineMethod: #integerMagnitude: on: Integer as: [:self :bits |
+  [[self integerNegativeBits: bits] ifTrue: [| [intZero wrappingSubtract: bits]] ifFalse: [| bits]]
+]];
+[Reflect defineMethod: #integerExactError: on: Integer as: [:self :value |
+  let family := [intNamespace valueAt: #ErrorVt];
+  [[family notNil] & [[Reflect vtableOf: value] == family]]
+]];
+[Reflect defineMethod: #integerFailure:message: on: Integer as: [:self :kind :message |
+  let factory := [intNamespace valueAt: #Error];
+  [[factory isNil] ifTrue: [| nil] ifFalse: [| [factory kind: kind message: message]]]
+]];
+[Reflect defineMethod: #integerOverflow on: Integer as: [:self |
+  [self integerFailure: #overflow message: "integer overflow"]
+]];
+[Reflect defineMethod: #integerZeroDivide on: Integer as: [:self |
+  [self integerFailure: #zeroDivide message: "division by zero"]
+]];
+[Reflect defineMethod: #integerSignedMagnitude:negative: on: Integer as: [:self :magnitude :negative |
+  let limit := [negative ifTrue: [| intSign] ifFalse: [| intMax]];
+  [[limit unsignedLessThan: magnitude] ifTrue: [| [self integerOverflow]] ifFalse: [|
+    [self integerFromBits: [negative ifTrue: [| [intZero wrappingSubtract: magnitude]] ifFalse: [| magnitude]]]
+  ]]
+]];
+[Reflect defineMethod: #integerAddBits:with:subtract: on: Integer as: [:self :left :right :subtract |
+  let result := [subtract ifTrue: [| [left wrappingSubtract: right]] ifFalse: [| [left wrappingAdd: right]]];
+  let leftNegative := [self integerNegativeBits: left];
+  let rightNegative := [self integerNegativeBits: right];
+  let sameSign := [leftNegative == rightNegative];
+  let check := [subtract ifTrue: [| [sameSign not]] ifFalse: [| sameSign]];
+  [[check & [[self integerNegativeBits: result] == [leftNegative not]]] ifTrue: [|
+    [self integerOverflow]
+  ] ifFalse: [| [self integerFromBits: result]]]
+]];
+[Reflect defineMethod: #integerMagnitudeBits:with:operation: on: Integer as: [:self :left :right :operation |
+  let leftNegative := [self integerNegativeBits: left];
+  let rightNegative := [self integerNegativeBits: right];
+  let negative := [[leftNegative == rightNegative] not];
+  let a := [self integerMagnitude: left]; let b := [self integerMagnitude: right];
+  [[operation == #multiply] ifTrue: [|
+    let limit := [negative ifTrue: [| intSign] ifFalse: [| intMax]];
+    [[[b = intZero] not] ifTrue: [|
+      [[[limit unsignedDivide: b] unsignedLessThan: a] ifTrue: [| [self integerOverflow]]
+        ifFalse: [| [self integerSignedMagnitude: [a wrappingMultiply: b] negative: negative]]]
+    ] ifFalse: [| [self integerFromBits: intZero]]]
+  ] ifFalse: [|
+    [[b = intZero] ifTrue: [| [self integerZeroDivide]] ifFalse: [|
+      [[operation == #remainder] ifTrue: [|
+        [self integerSignedMagnitude: [a unsignedRemainder: b] negative: leftNegative]
+      ] ifFalse: [|
+        [self integerSignedMagnitude: [a unsignedDivide: b] negative: negative]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #integerBinary:operation: on: Integer as: [:self :other :operation |
+  let left := [intFactory integerBitsOf: self];
+  [[left isNil] ifTrue: [| nil] ifFalse: [|
+    [[intFactory integerExactError: other] ifTrue: [| other] ifFalse: [|
+      let right := [intFactory integerBitsOf: other];
+      [[[right isNil] not] ifTrue: [|
+        [[operation == #add] ifTrue: [| [intFactory integerAddBits: left with: right subtract: false]] ifFalse: [|
+          [[operation == #subtract] ifTrue: [| [intFactory integerAddBits: left with: right subtract: true]] ifFalse: [|
+            [intFactory integerMagnitudeBits: left with: right operation: operation]
+          ]]
+        ]]
+      ] ifFalse: [|
+        let floating := [intExecution sendNativeTo: intFloat selector: #bitsOf: arguments: #[other]
+          signature: intOptionalBits resultFactory: intWord];
+        [[[floating notNil] & [[operation == #remainder] not]] ifTrue: [|
+          let value := [self asFloat];
+          [[operation == #add] ifTrue: [| [value + other]] ifFalse: [|
+            [[operation == #subtract] ifTrue: [| [value - other]] ifFalse: [|
+              [[operation == #multiply] ifTrue: [| [value * other]] ifFalse: [| [value / other]]]
+            ]]
+          ]]
+        ] ifFalse: [|
+          [intFactory integerFailure: #typeMismatch message: [[operation == #remainder]
+            ifTrue: [| "mod: needs an Integer"] ifFalse: [| "Integer arithmetic needs a number"]]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[[intFactory hasBootstrapArithmetic: #+] ifTrue: [|
+  [Reflect defineMethod: #+ on: Integer as: [:self :other | [self integerBinary: other operation: #add]]]
+]];
+[[intFactory hasBootstrapArithmetic: #-] ifTrue: [|
+  [Reflect defineMethod: #- on: Integer as: [:self :other | [self integerBinary: other operation: #subtract]]]
+]];
+[[intFactory hasBootstrapArithmetic: #*] ifTrue: [|
+  [Reflect defineMethod: #* on: Integer as: [:self :other | [self integerBinary: other operation: #multiply]]]
+]];
+[[intFactory hasBootstrapArithmetic: #/] ifTrue: [|
+  [Reflect defineMethod: #/ on: Integer as: [:self :other | [self integerBinary: other operation: #divide]]]
+]];
+[[intFactory hasBootstrapArithmetic: #mod:] ifTrue: [|
+  [Reflect defineMethod: #mod: on: Integer as: [:self :other | [self integerBinary: other operation: #remainder]]]
+]];
+[Module markLoaded: #integerValues];

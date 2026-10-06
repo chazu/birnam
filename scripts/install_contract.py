@@ -36,6 +36,7 @@ def verify(prefix):
     required = {'lib/birnam-bootstrap.image', 'lib/birnam-tools.image', 'bin/birnam', 'share/birnam/src/Cargo.toml', 'share/birnam/src/Cargo.lock'}
     required.update('lib/' + name for name in receipt['dynamic_libraries'])
     required.update('lib/libbirnam_' + name + '.dylib' for name in receipt.get('bootstrap_modules', []))
+    required.update('lib/libbirnam_' + name + '.dylib' for name in receipt.get('optional_modules', []))
     if (prefix / 'lib/libbirnam_lang_seed.dylib').exists():
         raise ValueError('build-only Lang seed is present in the installation')
     if not required <= actual.keys():

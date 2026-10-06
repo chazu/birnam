@@ -28,6 +28,11 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("imageFormat", "modules/image-format.birnam"),
 ];
 
+// Migration candidates installed for explicit loading, outside startup images.
+const OPTIONAL_MODULES: &[(&str, &str)] = &[
+    ("integerValues", "modules/integer.birnam"),
+];
+
 // Authored production tools, compiled through the installed Id artifact path.
 const TOOL_MODULES: &[(&str, &str)] = &[
     ("stdlib", "modules/stdlib.birnam"),
@@ -682,15 +687,15 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     // without evaluating source bootstrap, then remove the seed from the prefix.
     let seed = lib_dir.join("libbirnam_lang_seed.dylib");
     copy_file(&profile_dir.join("libbirnam_lang_seed.dylib"), &seed)?;
-    for (name, source) in BOOTSTRAP_MODULES {
+    for (name, source) in BOOTSTRAP_MODULES.iter().chain(OPTIONAL_MODULES) {
         let mut compile = Command::new(&host_destination);
         compile.current_dir(&root);
         for (key, _) in env::vars_os() {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
         compile.env("BIRNAM_NO_STDLIB", "1");
-        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues") {
-            // These small byte-processing policies use synchronous bodies. Select
+        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues" | "integerValues") {
+            // These authored policies use synchronous bodies. Select
             // that representation at build time; startup only maps saved objects.
             let source_path = root.join(source);
             let output_path = lib_dir.join(format!("libbirnam_{name}.dylib"));
@@ -848,9 +853,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             ));
         }
     }
-    for (name, _) in BOOTSTRAP_MODULES {
+    for (name, _) in BOOTSTRAP_MODULES.iter().chain(OPTIONAL_MODULES) {
         if !staged_manifest.contains_key(&format!("lib/libbirnam_{name}.dylib")) {
-            return Err(format!("missing compiled bootstrap module: {name}"));
+            return Err(format!("missing compiled authored module: {name}"));
         }
     }
     if lib_dir.join("libbirnam_lang_seed.dylib").exists() {
@@ -895,6 +900,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
         "bootstrap_modules": BOOTSTRAP_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+        "optional_modules": OPTIONAL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "build_seed": { "grammar": "birnam-lang-seed", "published": false },
         "production_bootstrap_invocation": std::iter::once("cargo".to_owned()).chain(production_arguments).collect::<Vec<_>>(),
         "stage1_modules": TOOL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),

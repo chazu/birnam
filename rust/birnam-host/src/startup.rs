@@ -12,6 +12,10 @@ impl HostRuntime {
 mod lifecycle_test;
 
 #[cfg(test)]
+#[path = "image_loading_test.rs"]
+mod image_loading_test;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use birnam_abi::id_protocol::{self as native, NativeEntry};

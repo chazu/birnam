@@ -616,9 +616,41 @@ entry!(word_of, 11);
 entry!(word, 12);
 entry!(print, 13);
 entry!(to_do, 14);
+// The seed owns the identity of its completed methods. Authored installation
+// can preserve replacements without inspecting a foreign executable/context.
+unsafe extern "C" fn has_bootstrap_arithmetic(
+    c: *mut c_void, r: Oop, a: *const Operand, count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let n = state(c)?;
+        let [selector] = borrowed_slice(a, count).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let selector = object(*selector)?;
+        n.rooted(&[r, selector], || {
+            let selected = n.id.send_named(n.id.receiver, b"bind:to:", &[
+                Operand::object(selector), Operand::object(r),
+            ])?.as_entry();
+            let mut matches = false;
+            for (name, method) in [
+                (b"+".as_slice(), add as Method), (b"-", sub), (b"*", mul),
+                (b"/", div), (b"mod:", modulo),
+            ] {
+                matches |= selector == n.names[name]
+                    && selected == Some(NativeEntry::new(method, c));
+            }
+            if let Some(op) = selected.and_then(|entry| mixed::operation(n, entry)) {
+                matches |= op < 4
+                    && selector == n.names[[b"+".as_slice(), b"-", b"*", b"/"][op]];
+            }
+            Ok(n.boolean(matches))
+        })
+    })())
+}
 entry!(integer_value, 32);
 entry!(compare_integer, 33);
 const METHODS: &[(&[u8], Method)] = &[
+    (b"hasBootstrapArithmetic:", has_bootstrap_arithmetic),
     (b"integerValue:", integer_value),
     (b"compareInteger:with:", compare_integer),
     (b"collectionEquals:", collection_equal),

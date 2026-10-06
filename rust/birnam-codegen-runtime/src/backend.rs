@@ -100,17 +100,9 @@ pub(super) unsafe fn all(
     requests: &[Request],
 ) -> Result<Vec<Vec<u8>>, Failure> {
     unsafe {
-        let mut total = 0usize;
         let mut output = vec![];
         for request in requests {
-            let c = emit(s, q, request)?;
-            total = total.checked_add(c.len()).ok_or_else(invalid)?;
-            if total > 128 << 20 {
-                return Err(Failure::Rejected(
-                    b"generated source exceeds bundle bound".to_vec(),
-                ));
-            }
-            output.push(c);
+            output.push(emit(s, q, request)?);
         }
         Ok(output)
     }

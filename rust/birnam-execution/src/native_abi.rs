@@ -1,6 +1,6 @@
 //! Explicit carrier conversion for authored callers. Id remains the dispatcher.
 //! Signature: result kind followed by one kind per argument (o=Object,
-//! w=Word, b=Bytes, u=Unit result, x=discard result). Word and byte values cross their owners'
+//! w=Word, W=optional Word result, b=Bytes, u=Unit result, x=discard result). Word and byte values cross their owners'
 //! current messages; this module never reads their payloads.
 use super::*;
 
@@ -50,7 +50,7 @@ pub(super) unsafe extern "C" fn send(
         let roots = s.scope(&[r, target, selector, arguments, signature, factory]);
         let signature = snapshot(s, signature)?;
         let (result_kind, kinds) = signature.split_first().ok_or_else(invalid)?;
-        if !matches!(result_kind, b'o' | b'w' | b'b' | b'u' | b'x')
+        if !matches!(result_kind, b'o' | b'w' | b'b' | b'u' | b'x' | b'W')
             || kinds.len() > 128
             || kinds.iter().any(|k| !matches!(k, b'o' | b'w' | b'b'))
         {
@@ -107,7 +107,8 @@ pub(super) unsafe extern "C" fn send(
             )),
             b'x' => Ok(Operand::object(s.nil)),
             b'u' if result.kind() == native::UNIT => Ok(Operand::object(s.nil)),
-            b'w' => s.id.send_named(
+            b'W' if result.kind() == native::UNIT => Ok(Operand::object(s.nil)),
+            b'w' | b'W' => s.id.send_named(
                 factory,
                 b"fromBits:",
                 &[Operand::word(result.as_word().ok_or_else(invalid)?)],

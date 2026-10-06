@@ -10,13 +10,14 @@ new omnibus primitive service or duplicate byte-memory prototype.
 | Bytes | Owned buffers, bounded access and slicing, append, hashing, generic caller-schema framing and indexed views | Rust |
 | Execution | Explicit Object/Word/Bytes carrier conversion and synchronous calls through current Id messages | Rust |
 | native-values | Word range conversion and hexadecimal printing; existing Boolean/Integer/Bytes conversion policy | Birnam |
-| Integer | Signed checked arithmetic and language numeric behavior | Rust; full port remains |
+| Integer | Signed checked arithmetic and language numeric behavior | Rust cold seed; opt-in Birnam arithmetic pilot |
 | String/StringBuilder | Text behavior over Bytes references; neither owns byte vectors | Rust; full port remains |
-| Boolean | Canonical Boolean policy | Birnam slice in progress; Rust cold-bootstrap seed retained |
+| Boolean | Canonical Boolean policy | Birnam production policy; Rust cold-bootstrap seed retained |
 | Vector, Map | Persistent collection algorithms | Rust; rewrites remain |
 
-This checkpoint implements the owner split. The five value-module rewrites
-remain. Rust required for a clean cold bootstrap is retained explicitly; Rust
+This checkpoint implements the owner split and production Boolean policy.
+Integer, String, Vector and Map still have production rewrites remaining.
+Rust required for a clean cold bootstrap is retained explicitly; Rust
 that is no longer needed for that bootstrap can be removed. A production Birnam
 implementation and a retained Rust bootstrap implementation are tracked separately.
 This supersedes the earlier crate-deletion criterion.
@@ -61,6 +62,7 @@ whose first byte describes the result and remaining bytes describe arguments:
 - `o`: Object; nullable Object results become canonical nil.
 - `w`: native Word. Arguments are obtained by the value's current `bits` method;
   results go to the explicit result factory's current `fromBits:` method.
+- `W`: optional native Word result; Unit becomes nil, otherwise it boxes like `w`.
 - `b`: native Bytes. Argument borrows are copied and owned through the target
   callback; result borrows are copied immediately before `fromBytes:`.
 - `u`: require a Unit result, represented as language nil.
@@ -228,4 +230,109 @@ BlockLoop check both pass after that correction.
 
 Acceptance prefix: `/tmp/birnam-boolean/final-prefix`; logs are in
 `/tmp/birnam-boolean/{units.log,install.log,other-tests.log,loop-compiler.log,image.log}`.
-The user prefix is unchanged. This Boolean slice is not committed.
+The user prefix is unchanged. Boolean is committed as `804de64a`.
+
+## Integer arithmetic slice
+
+Boolean checkpoint commit: `804de64a`. `modules/integer.birnam` now defines signed
+checked `+`, `-`, `*`, `/` and `mod:` policy with generic Word operations. Addition
+and subtraction test signed overflow; multiplication bounds unsigned magnitudes;
+division truncates toward zero, remainder follows the dividend's sign, and the
+MIN / -1 overflow and MIN mod -1 zero cases are explicit. It preserves exact
+Error-family propagation and Float dispatch.
+
+Integer's existing native representation, constructors, conversion, comparison,
+printing, collection hashing and optimization support remain required by the
+cold bootstrap. They are retained, not renamed. This is an arithmetic-policy
+slice, not a completed rewrite of all Integer responsibilities. Public arithmetic
+installation consults the seed owner's `hasBootstrapArithmetic:` proof, so a
+replacement installed while native dependencies load is preserved. Optional
+Word results are now available at the outgoing Execution boundary as well.
+
+The arithmetic boundary matrix passes all 500 cases, plus exact Error propagation,
+mixed Float addition, repeated module loading and collecting execution. All native
+representation accesses and calls go through current Id messages; there are no
+foreign payload reads or retained foreign executable entries.
+
+Default admission is blocked by performance qualification: in separate runs the
+numbers fixture rose from roughly 1.2 seconds to 93 seconds with authored arithmetic enabled, and
+a fresh installation failed to publish its tools image after a long preparation.
+The image failure was the compiler's aggregate generated-source limit, now
+removed and verified against the failing tools snapshot (see below).
+Therefore the installer
+compiles and publishes `integerValues` as an **optional** artifact, records it in
+`optional_modules`, and excludes it from default bootstrap and tool images.
+Explicit admission is `[Module load: #integerValues]`. Normal startup retains the
+native arithmetic seed. This is a correctness-qualified pilot, not a completed
+production Integer migration. Further source/compiler optimization and performance
+qualification are required before default admission.
+
+No bootstrap-required Rust is removed. The native owner adds only a seed-method
+identity proof used to preserve replacements during source policy admission.
+
+The optional configuration qualifies in a fresh installation at
+`/tmp/birnam-integer-optional/final-prefix`: both default startup/tool images,
+console/CLI startup probes, exact install receipt, workspace compilation and four
+installer tests pass. Focused runtime checks pass for the 500-case Integer matrix,
+repeated artifact admission, precise collection, earlier arithmetic replacements,
+default numbers and incoming ABI. A separate full-host probe confirms ordinary
+`Module load:` admission from the saved default image and the transition from the
+native seed to authored arithmetic. The subsequent cap-removal check qualifies
+saving and mapping the tools snapshot with the Integer candidate enabled.
+No exhaustive suite was run.
+
+### Tools-image failure diagnosis
+
+`birnam-tools.image` is a saved runtime snapshot containing the standard library,
+console dependencies and all 23 authored tools. CLI tooling restores it to avoid
+reloading and recompiling those modules. It is separate from the smaller
+`birnam-bootstrap.image` used for normal source/console startup.
+
+Replaying the original early Integer load order reproduces the failure: the
+bootstrap image saves, all tools load, and the tools save answers nil with a
+generic rejected report. Native Image tracing confirms that graph construction
+and the first ImageFormat structural composition pass. Codegen then refuses the
+native-emission batch before TCC compilation or file publication.
+
+The exact refusal is `generated source exceeds bundle bound`.
+`rust/birnam-codegen-runtime/src/backend.rs` previously limited the combined generated C
+source in `backend::all` to 128 MiB. The failing tools snapshot has 5,636 emission
+requests. `Plan::new` requests both resumable and synchronous implementations of
+each portable program plus a named-method adapter for every binding. Adding the
+authored Integer policy pushes this larger snapshot over that aggregate limit;
+the bare and normal-startup snapshots remain below it and save successfully.
+This limit concerns temporary generated C, not the final executable's size.
+
+Error reporting obscures the cause: `image::operation` maps
+`backend::Failure::Rejected(message)` to nil, discarding the message. Image then
+cannot read a byte result and supplies its generic rejection. The installer only
+observes that the expected file was never published. This is separate from the
+arithmetic runtime slowdown, and does not demonstrate an invalid Integer policy
+or broken Id dispatch.
+
+The user chose to remove the arbitrary aggregate 128 MiB limit. `backend::all`
+now emits the requests without that aggregate refusal. The same tools-only
+replay saves a 235 MiB image successfully in about 147 seconds. Loading that
+exact image with compiler routes replaced by rejecting callbacks succeeds in
+about 7 seconds with zero compiler calls. The runtime arithmetic performance
+gate remains separate; Integer is still an optional production artifact.
+
+User-image load policy is explicit: use existing machine code unless rebuilding
+was requested; compile an image without machine code; and propagate any mapping
+failure without attempting a rebuild. The existing loader already implements
+this policy. A new fresh-process regression check covers successful mapping,
+failed mapping with no compiler fallback, code-free image compilation and an
+explicit rebuild of a compiled image. All four cases pass. Workspace compilation
+also passes. No streaming-emission change was needed for this fix. Other backend
+rejections still lose their diagnostic message and remain a separate follow-up.
+
+Evidence: `/tmp/birnam-integer-image-diagnosis/{bare.log,minimal.log,early.log,
+instrumented.log,backend-refusal.log}`. The original-order replay failed in about
+140 seconds; the tools-only replay failed in about 78 seconds with the precise
+backend refusal captured. Temporary native tracing and bootstrap wiring have
+been removed from the working tree. No full installer or exhaustive test suite
+was rerun for this diagnosis.
+
+Cap-removal evidence: `/tmp/birnam-integer-image-diagnosis/{cap-removed.log,
+load-policy.log,tools-mapped-policy.log,cap-check.log}`. Qualification used a
+temporary prefix; the user installation was not changed.
