@@ -615,3 +615,14 @@ retain both versions for old artifacts; rebuild explicitly when needed. Stop or
 change direction if the real gain is small or the replacement introduces more
 machinery than it removes. Removing a conceptual layer is valuable, but its costs
 and remaining protection must be reported honestly.
+
+## Boolean selection follow-up (2026-10-07)
+
+The [identity-selection slice](boolean-selection-simplification.md) replaces
+Boolean's comparison-Word allocation/unboxing with one generic data-selection
+message. Policy remains in Birnam; the native operation never invokes a branch.
+Total addition sends fall another 20.8%, to 1,083.375; allocations fall from thirty
+to twenty. Replacement/GC/carrier, bounded-task and formal checks pass.
+ABI bridges (281 sends) are now the largest measured category. This completes the
+specific Boolean intermediate-box removal, not W12's branch virtualization or
+all typed/unboxed compiler-local work.

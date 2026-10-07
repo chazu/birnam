@@ -23,7 +23,7 @@ constructors_selectors={'fromMethod:codeObject:referenceSlots:','fromMethod:code
 construct={'fromMethod:codeObject:captureOperands:','allocateReferenceSlots:','slotAt:in:put:','fromMethod:codeObject:referenceSlots:'}
 abi={'tryNativeArguments:','sendNativeTo:selector:arguments:signature:resultFactory:','wordResultOf:selector:','bytesResultOf:selector:'}
 word={'tryPrimitiveExpression:','tryPrimitiveExpressionAtEpoch:','wrappingAdd:','bitXor:','bitAnd:','unsignedLessThan:'}
-controlwords={'sameObject:with:','selectIfZero:ifNonzero:'}
+controlwords={'selectIfSameObject:with:ifEqual:ifDifferent:','sameObject:with:','selectIfZero:ifNonzero:'}
 root={'retain:','release:','tryRetainMany:','tryReleaseMany:','tryReleaseManyForward:'}
 for r in trace:
  sel=r['selector']

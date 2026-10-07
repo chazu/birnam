@@ -25,3 +25,14 @@ In precise mode, raw bits are not references; in conservative mode the owner
 checks its own payload words through Id `allocationAt:` and sends `visit:` for
 matching allocations. Private behaviors keep the same representation ownership.
 See [System GC controls](../../docs/design/authored-small-modules.md#system-gc).
+
+## Opaque identity selection
+
+`Word selectIfSameObject:with:ifEqual:ifDifferent:` takes four native Object
+operands and returns the supplied equal or different Object by opaque identity.
+The default method has no allocation, payload inspection, outgoing message or
+branch invocation. The caller keeps all inputs live under the existing Id ABI;
+invalid count/kind/null carriers fail with `INVALID_REQUEST`. The operation remains
+an ordinary replaceable Id method. It replaces Boolean's temporary comparison-Word
+round trip while Boolean policy and branch invocation remain above this owner.
+See [the measured result](../../docs/design/boolean-selection-simplification.md).

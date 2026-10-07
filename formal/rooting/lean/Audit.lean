@@ -6,6 +6,7 @@ import Borrow
 import Registration
 import Invocation
 import Capture
+import Selection
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -66,3 +67,8 @@ import Capture
 #print axioms Birnam.Capture.capture_edge_covers_result
 #print axioms Birnam.Capture.borrowed_needed_survives
 #print axioms Birnam.Capture.fresh_result_requires_coverage
+
+#print axioms Birnam.Selection.removes_comparison_box
+#print axioms Birnam.Selection.result_is_supplied
+#print axioms Birnam.Selection.live_arguments_cover_result
+#print axioms Birnam.Selection.selection_survives_collection

@@ -1,5 +1,9 @@
 # Capture access simplification
 
+Follow-up: [Boolean selection simplification](boolean-selection-simplification.md)
+reduces addition further to 1,083.375 sends. The measurements below describe the
+preceding capture-access slice.
+
 Implemented 2026-10-07, following [closure construction](closure-construction-simplification.md).
 The successful Integer addition census falls from **1,728.375 to 1,367.375 sends**,
 20.9% fewer. Capture access falls from **544 to 181** sends/addition, 66.7% fewer.

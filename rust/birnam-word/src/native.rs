@@ -533,7 +533,25 @@ entry!(shift_right, 15);
 entry!(unsigned_less, 16);
 entry!(same_object, 17);
 entry!(select_object, 18);
+// Pure data selection: native callers keep Object operands live throughout the
+// synchronous Id call. No allocation, payload read, dependency send or callback
+// occurs here, so no additional root registrations or allocator checks are needed.
+unsafe extern "C" fn select_same_object(
+    context: *mut c_void, _: Oop, args: *const Operand, count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        state(context)?;
+        let [left, right, equal, different] = borrowed_slice(args, count).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let (left, right, equal, different) =
+            (object(*left)?, object(*right)?, object(*equal)?, object(*different)?);
+        Ok(Operand::object(if left == right { equal } else { different }))
+    })())
+}
+
 const METHODS: &[(&[u8], Method)] = &[
+    (b"selectIfSameObject:with:ifEqual:ifDifferent:", select_same_object),
     (b"tryPrimitiveExpression:", crate::expression::evaluate),
     (
         b"tryPrimitiveExpressionAtEpoch:",
