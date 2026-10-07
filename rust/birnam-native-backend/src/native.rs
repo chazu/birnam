@@ -37,6 +37,7 @@ struct Function {
     inline_return: Option<InlineReturn>,
     word_helpers: bool,
     batch_cleanup: bool,
+    batch_inputs: bool,
 }
 struct InlineReturn { operand: u32, argc: u32, slot: u32 }
 fn inline_return(p: &ir::LogicalProgram<'_>, layout: &ir::PhysicalLayout) -> Option<InlineReturn> {
@@ -235,16 +236,17 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
     })
 }
 /// Synchronous emission switches, supplied explicitly to the compiler.
-/// 1 = Word expressions/locals, 2 = ABI literals, 4 = authored helper plans, 8 = owner-batched root cleanup.
+/// 1 = Word expressions/locals, 2 = ABI literals, 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = incoming-root batches.
 #[derive(Clone, Copy)]
 pub struct Optimizations(u8);
-impl Default for Optimizations { fn default()->Self {Self(15)} }
+impl Default for Optimizations { fn default()->Self {Self(31)} }
 impl Optimizations {
-    pub fn from_bits(bits:usize)->Option<Self> {(bits<=15).then_some(Self(bits as u8))}
+    pub fn from_bits(bits:usize)->Option<Self> {(bits<=31).then_some(Self(bits as u8))}
     fn words(self)->bool {self.0&1!=0}
     fn abi(self)->bool {self.0&2!=0}
     fn helpers(self)->bool {self.0&4!=0}
     fn roots(self)->bool {self.0&8!=0}
+    fn inputs(self)->bool {self.0&16!=0}
 }
 #[derive(Clone, Copy, Default)]
 struct Policy<'a> {
@@ -293,6 +295,7 @@ fn function(
         inline_return: None,
         word_helpers: policy.optimizations.helpers(),
         batch_cleanup: policy.optimizations.roots(),
+        batch_inputs: policy.optimizations.inputs(),
     });
     let layout = ir::color_slots(program).map_err(|_| Error::Layout)?;
     let revision = Sha256::digest(source).into();
@@ -426,6 +429,7 @@ fn function(
         inline_return: if named { None } else { inline_return(program, &layout) },
         word_helpers: policy.optimizations.helpers(),
         batch_cleanup: policy.optimizations.roots(),
+        batch_inputs: policy.optimizations.inputs(),
         predicate: if named {
             None
         } else {
@@ -449,6 +453,7 @@ fn array(out: &mut String, n: &str, bytes: &[u8]) {
 fn module(functions: Vec<Function>) -> Vec<u8> {
     let mut out = include_str!("native_prelude.c").to_string();
     let batch_cleanup = functions.iter().all(|f| f.batch_cleanup) as u8;
+    let batch_inputs = functions.iter().all(|f| f.batch_inputs) as u8;
     if functions.iter().any(|f| f.inline_return.is_some()) {
         out.push_str(include_str!("native_inline_return.c"));
     }
@@ -473,7 +478,7 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
         array(&mut out, &format!("descriptor_{i}"), &f.descriptor);
         array(&mut out, &format!("selection_{i}"), &f.selection);
     }
-    out.push_str("static R initialize(const P*p,const A*a,size_t n){if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||n>3||a[0].kind!=1||a[1].kind!=1)return bad();id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};A key=obj(intern(&c,\"Roots\"));R root=raw(&c,ns,\"at:\",&key,1);if(root.status||root.value.kind!=1)return bad();roots=root.value.data.object;cache_selectors=1;batch_cleanup=ROOT_BATCH_POLICY;keep(&c,owner);keep(&c,ns);A root_arg=obj(roots);call(&c,owner,\"retain:\",&root_arg,1);\n");
+    out.push_str("static R initialize(const P*p,const A*a,size_t n){if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||n>3||a[0].kind!=1||a[1].kind!=1)return bad();id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};A key=obj(intern(&c,\"Roots\"));R root=raw(&c,ns,\"at:\",&key,1);if(root.status||root.value.kind!=1)return bad();roots=root.value.data.object;cache_selectors=1;batch_cleanup=ROOT_BATCH_POLICY;batch_inputs=ROOT_INPUT_POLICY;keep(&c,owner);keep(&c,ns);A root_arg=obj(roots);call(&c,owner,\"retain:\",&root_arg,1);\n");
     for (i, f) in functions.iter().enumerate() {
         if f.portable.is_some() {
             writeln!(out, "{{A b=bytes(program_{i},sizeof(program_{i}));O encoded=call(&c,named(&c,\"Bytes\"),\"fromBytes:\",&b,1);A a=obj(encoded);codes[{i}]=call(&c,named(&c,\"CodeObject\"),\"fromCanonicalBytes:\",&a,1);if(c.failure.status)return finish(&c,(A){{0}});if(codes[{i}]==named(&c,\"nil\")||is_error(&c,codes[{i}]))return finish(&c,obj(codes[{i}]));A co=obj(codes[{i}]);call(&c,owner,\"retain:\",&co,1);}} ").unwrap();
@@ -515,7 +520,7 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
         }
     }
     out.push_str("return finish(&c,obj(methods[0]));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n");
-    out.replace("ROOT_BATCH_POLICY", &batch_cleanup.to_string()).into_bytes()
+    out.replace("ROOT_BATCH_POLICY", &batch_cleanup.to_string()).replace("ROOT_INPUT_POLICY", &batch_inputs.to_string()).into_bytes()
 }
 /// Compile an inert candidate factory with an exact preorder disposition for
 /// its factory and each nested Block. Its lexical lets never publish Globals.
@@ -600,6 +605,7 @@ pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
         inline_return: None,
         word_helpers: true,
         batch_cleanup: true,
+        batch_inputs: true,
     }]))
 }
 /// Exact descriptor emitted by the current named-adapter backend. Generation

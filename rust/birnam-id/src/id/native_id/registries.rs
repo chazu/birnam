@@ -16,6 +16,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             symbol_name_bytes as native::Method,
         ),
         (b"behaviorEpoch".as_slice(), epoch as native::Method),
+        (b"nativeBindingsMatch:".as_slice(), native_bindings_match as native::Method),
         (b"isBehavior:".as_slice(), is_behavior as native::Method),
         (b"behaviorView".as_slice(), behaviors as native::Method),
         (b"selectorsIn:".as_slice(), selectors as native::Method),
@@ -407,6 +408,41 @@ unsafe extern "C" fn bindings(
 }
 
 // Concrete execution guard: Id compares its own lookup entry and context.
+// One callback-free owner query. The native Word quadruples (receiver, selector, method, context) are caller-owned
+// ABI data, never a portable format. Id reads only its own heap/dictionaries;
+// expected NativeEntry contexts are opaque equality witnesses, never invoked.
+unsafe extern "C" fn native_bindings_match(
+    context: *mut c_void, _: Oop, args: *const Operand, count: usize,
+) -> Outcome {
+    arguments!(args,count,[request]);
+    let Some(bytes)=request.as_bytes() else {return invalid();};
+    let Some(bytes)=(unsafe {crate::abi::borrowed_bytes(bytes.pointer,bytes.length)}) else {return invalid();};
+    let row_bytes=4*size_of::<usize>();
+    if bytes.is_empty() || bytes.len()%row_bytes!=0 || bytes.len()/row_bytes>32 {return invalid();}
+    let state=unsafe {&*context.cast::<State>()};
+    let memory=unsafe {&*state.memory};
+    let dictionaries=unsafe {&*state.dictionaries};
+    if dictionaries.mutation_epoch()>=usize::MAX as u64 {return done(Operand::word(0));}
+    let default=NativeEntry::new(id_dispatch::vtable_lookup_method,state.dictionaries.cast());
+    for row in bytes.chunks_exact(row_bytes) {
+        let words:[usize;4]=std::array::from_fn(|i|usize::from_ne_bytes(row[i*size_of::<usize>()..(i+1)*size_of::<usize>()].try_into().unwrap()));
+        let receiver=core::ptr::with_exposed_provenance_mut(words[0]);
+        let selector=core::ptr::with_exposed_provenance_mut(words[1]);
+        if memory.get(words[0]).is_none() || memory.get(words[1]).is_none() || words[2]==0 {
+            return done(Operand::word(0));
+        }
+        let behavior=unsafe {crate::id::object_memory::ObjectMemory::vtable_of_valid_object(receiver)};
+        if !dictionaries.is_registered(behavior) {return done(Operand::word(0));}
+        let meta=unsafe {crate::id::object_memory::ObjectMemory::vtable_of_valid_object(behavior)};
+        // Decline custom metabehaviors before invoking any lookup callback.
+        if meta!=state.protocol.receiver || dictionaries.lookup(meta,state.lookup)!=Some(default) {
+            return done(Operand::word(0));
+        }
+        let actual=dictionaries.lookup(behavior,selector);
+        if actual.and_then(|e|e.method.map(|f|(f as usize,e.context as usize)))!=Some((words[2],words[3])) {return done(Operand::word(0));}
+    }
+    done(Operand::word(1))
+}
 unsafe extern "C" fn uses_default_lookup(
     context: *mut c_void,
     _: Oop,

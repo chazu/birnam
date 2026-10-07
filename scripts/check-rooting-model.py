@@ -24,6 +24,9 @@ CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
     "Safe": None,
+    "RegistrationSafe": None,
+    "RegistrationUnrooted": "Invariant InputsAlive is violated.",
+    "RegistrationPartial": "Invariant ExactRegistrations is violated.",
     "BatchSafe": None,
     "BorrowSafe": None,
     "BorrowCallback": "Invariant SameInspection is violated.",
@@ -121,7 +124,7 @@ def check_tla(jar, java, out):
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
                "-config", str(FORMAL / f"tla/{name}.cfg"),
-               str(FORMAL / ("tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               str(FORMAL / ("tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -143,7 +146,7 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow")]:
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration")]:
         text = (FORMAL / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
@@ -158,7 +161,7 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow"]:
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration"]:
         result, _ = run([str(lean), "-DwarningAsError=true", str(FORMAL / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:

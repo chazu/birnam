@@ -147,6 +147,55 @@ fn bulk_release_is_exact_or_declines_before_any_mutation() {
         );
         assert_eq!(bulk(id, roots, &tokens), 1);
         assert_eq!(snapshot(), baseline);
+        // Bulk acquisition has the exact ordinary ids and enumeration order.
+        let before = snapshot();
+        let values = [objects[0], objects[1], objects[0]];
+        let data: Vec<_> = values.iter().flat_map(|o| o.addr().to_ne_bytes()).collect();
+        let result = send(id, roots, b"tryRetainMany:", &[Operand::bytes(&data)])
+            .as_bytes()
+            .unwrap();
+        let bytes = birnam_abi::borrowed_bytes(result.pointer, result.length)
+            .unwrap()
+            .to_vec();
+        let acquired: Vec<_> = bytes
+            .chunks_exact(size_of::<usize>())
+            .map(|b| usize::from_ne_bytes(b.try_into().unwrap()))
+            .collect();
+        assert_eq!(acquired.len(), 3);
+        assert_eq!(acquired[1], acquired[0] + 1);
+        assert_eq!(acquired[2], acquired[1] + 1);
+        let mut expected = before.clone();
+        expected.extend(values.iter().map(|o| o.addr()));
+        assert_eq!(snapshot(), expected);
+        let tokens: Vec<_> = acquired.iter().flat_map(|t| t.to_ne_bytes()).collect();
+        assert_eq!(
+            send(
+                id,
+                roots,
+                b"tryReleaseManyForward:",
+                &[Operand::bytes(&tokens)]
+            )
+            .as_word(),
+            Some(1)
+        );
+        assert_eq!(snapshot(), before);
+        // A forward checked cleanup must decline before any release if a token
+        // repeats or is absent; its ordinary caller stops on the first failure.
+        let t = retain(id, roots, objects[0]);
+        let before = snapshot();
+        let invalid: Vec<_> = [t, t].iter().flat_map(|t| t.to_ne_bytes()).collect();
+        assert_eq!(
+            send(
+                id,
+                roots,
+                b"tryReleaseManyForward:",
+                &[Operand::bytes(&invalid)]
+            )
+            .as_word(),
+            Some(0)
+        );
+        assert_eq!(snapshot(), before);
+        release(id, roots, t);
         let rb = object(send(
             id,
             id.receiver,

@@ -25,13 +25,14 @@ pub(super) fn function(
         inline_return: None,
         word_helpers: policy.optimizations.helpers(),
         batch_cleanup: policy.optimizations.roots(),
+        batch_inputs: policy.optimizations.inputs(),
     });
     let mut out = format!(
-        "static R sync_{index}(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};keep(&c,self);if(n!={})return finish(&c,obj(named(&c,\"nil\")));\n",
+        "static R sync_{index}(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};if(n!={}){{keep(&c,self);return finish(&c,obj(named(&c,\"nil\")));}}keep_entry(&c,self,args,n);\n",
         program.parameter_count
     );
     for i in 0..program.parameter_count {
-        writeln!(out, "O b{i}=keep(&c,object(&c,args[{i}]));").unwrap();
+        writeln!(out, "O b{i}=object(&c,args[{i}]);").unwrap();
     }
     for i in 0..program.capture_count {
         let binding = program.parameter_count + i;

@@ -17,7 +17,7 @@ pub(crate) struct Number {
     nil: Oop,
     names: HashMap<&'static [u8], Oop>,
     thread: std::thread::ThreadId,
-    pub(super) expression_meanings: core::cell::Cell<(usize,u32)>,
+    pub(super) expression_meanings: core::cell::Cell<(usize, u32)>,
 }
 pub(crate) fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -44,6 +44,55 @@ impl Number {
     ) -> Result<Operand, Outcome> {
         unsafe { self.id.send(r, self.names[name], args) }
     }
+    unsafe fn retain_group(&self, values: &[Oop], tokens: &mut [usize]) -> Result<bool, Outcome> {
+        if values.len() < 3 || values.len() > 33 {
+            return Ok(false);
+        }
+        let bytes = unsafe {
+            core::slice::from_raw_parts(values.as_ptr().cast::<u8>(), size_of_val(values))
+        };
+        let result = unsafe { self.send(self.roots, b"tryRetainMany:", &[Operand::bytes(bytes)]) }?;
+        if result.as_word() == Some(0) {
+            return Ok(false);
+        }
+        let bytes = result.as_bytes().ok_or_else(invalid)?;
+        let bytes = unsafe { birnam_abi::borrowed_bytes(bytes.pointer, bytes.length) }
+            .ok_or_else(invalid)?;
+        if bytes.len() != values.len() * size_of::<usize>() {
+            return Err(invalid());
+        }
+        for (slot, chunk) in tokens
+            .iter_mut()
+            .zip(bytes.chunks_exact(size_of::<usize>()))
+        {
+            *slot = usize::from_ne_bytes(chunk.try_into().unwrap());
+            if *slot == 0 {
+                return Err(invalid());
+            }
+        }
+        Ok(true)
+    }
+    unsafe fn release_group(&self, tokens: &[usize]) -> Result<bool, Outcome> {
+        if tokens.len() < 3 {
+            return Ok(false);
+        }
+        let bytes = unsafe {
+            core::slice::from_raw_parts(tokens.as_ptr().cast::<u8>(), size_of_val(tokens))
+        };
+        match unsafe {
+            self.send(
+                self.roots,
+                b"tryReleaseManyForward:",
+                &[Operand::bytes(bytes)],
+            )
+        }?
+        .as_word()
+        {
+            Some(1) => Ok(true),
+            Some(0) => Ok(false),
+            _ => Err(invalid()),
+        }
+    }
     pub(super) unsafe fn rooted(
         &self,
         values: &[Oop],
@@ -51,16 +100,24 @@ impl Number {
     ) -> Result<Operand, Outcome> {
         let mut tokens = Vec::new();
         let result = (|| unsafe {
-            for value in values {
-                tokens.push(
-                    self.send(self.roots, b"retain:", &[Operand::object(*value)])?
-                        .as_word()
-                        .filter(|n| *n != 0)
-                        .ok_or_else(invalid)?,
-                );
+            let mut grouped = [0usize; 33];
+            if self.retain_group(values, &mut grouped)? {
+                tokens.extend_from_slice(&grouped[..values.len()]);
+            } else {
+                for value in values {
+                    tokens.push(
+                        self.send(self.roots, b"retain:", &[Operand::object(*value)])?
+                            .as_word()
+                            .filter(|n| *n != 0)
+                            .ok_or_else(invalid)?,
+                    );
+                }
             }
             f()
         })();
+        if unsafe { self.release_group(&tokens) }? {
+            return result;
+        }
         for token in tokens {
             if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
                 != Some(1)
@@ -82,16 +139,23 @@ impl Number {
         let mut tokens = [0usize; 33];
         let mut count = 0;
         let result = (|| unsafe {
-            for value in values {
-                tokens[count] = self
-                    .send(self.roots, b"retain:", &[Operand::object(*value)])?
-                    .as_word()
-                    .filter(|n| *n != 0)
-                    .ok_or_else(invalid)?;
-                count += 1;
+            if self.retain_group(values, &mut tokens)? {
+                count = values.len();
+            } else {
+                for value in values {
+                    tokens[count] = self
+                        .send(self.roots, b"retain:", &[Operand::object(*value)])?
+                        .as_word()
+                        .filter(|n| *n != 0)
+                        .ok_or_else(invalid)?;
+                    count += 1;
+                }
             }
             f()
         })();
+        if unsafe { self.release_group(&tokens[..count]) }? {
+            return result;
+        }
         for &token in &tokens[..count] {
             if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
                 != Some(1)
@@ -250,6 +314,8 @@ macro_rules! entry {
 
 const NAMES: &[&[u8]] = &[
     b"retain:",
+    b"tryRetainMany:",
+    b"tryReleaseManyForward:",
     b"release:",
     b"behaviorOf:",
     b"allocationSizeOf:",
@@ -328,7 +394,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             nil,
             names,
             thread: std::thread::current().id(),
-            expression_meanings: core::cell::Cell::new((usize::MAX,0)),
+            expression_meanings: core::cell::Cell::new((usize::MAX, 0)),
         }));
         let n = &*pointer;
         for (name, method) in METHODS.iter().copied().chain([
@@ -406,24 +472,34 @@ unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Ope
             return n.make(bits.as_word().ok_or_else(invalid)?);
         }
         if op == 17 {
-            let [left,right]=args else {return Err(invalid())};
-            return n.make(usize::from(object(*left)?==object(*right)?));
+            let [left, right] = args else {
+                return Err(invalid());
+            };
+            return n.make(usize::from(object(*left)? == object(*right)?));
         }
         if op == 18 {
-            let [zero,nonzero]=args else {return Err(invalid())};
-            let value=n.read(r)?.ok_or_else(invalid)?;
-            let (zero,nonzero)=(object(*zero)?,object(*nonzero)?);
-            return Ok(Operand::object(if value==0 {zero} else {nonzero}));
+            let [zero, nonzero] = args else {
+                return Err(invalid());
+            };
+            let value = n.read(r)?.ok_or_else(invalid)?;
+            let (zero, nonzero) = (object(*zero)?, object(*nonzero)?);
+            return Ok(Operand::object(if value == 0 { zero } else { nonzero }));
         }
         if op >= 5 {
             let value = n.read(r)?.ok_or_else(invalid)?;
             if op == 5 {
-                if !args.is_empty() { return Err(invalid()); }
+                if !args.is_empty() {
+                    return Err(invalid());
+                }
                 return n.make(!value as usize);
             }
-            let [right] = args else { return Err(invalid()); };
+            let [right] = args else {
+                return Err(invalid());
+            };
             let right = n.read(object(*right)?)?.ok_or_else(invalid)?;
-            if op == 16 { return Ok(n.boolean(value < right)); }
+            if op == 16 {
+                return Ok(n.boolean(value < right));
+            }
             let result = crate::operations::calculate(value, right, op).ok_or_else(invalid)?;
             return n.make(result as usize);
         }
@@ -455,13 +531,16 @@ entry!(bit_xor, 13);
 entry!(shift_left, 14);
 entry!(shift_right, 15);
 entry!(unsigned_less, 16);
-entry!(same_object,17);
-entry!(select_object,18);
+entry!(same_object, 17);
+entry!(select_object, 18);
 const METHODS: &[(&[u8], Method)] = &[
-    (b"tryPrimitiveExpression:",crate::expression::evaluate),
-    (b"tryPrimitiveExpressionAtEpoch:",crate::expression::evaluate_at_epoch),
-    (b"sameObject:with:",same_object),
-    (b"selectIfZero:ifNonzero:",select_object),
+    (b"tryPrimitiveExpression:", crate::expression::evaluate),
+    (
+        b"tryPrimitiveExpressionAtEpoch:",
+        crate::expression::evaluate_at_epoch,
+    ),
+    (b"sameObject:with:", same_object),
+    (b"selectIfZero:ifNonzero:", select_object),
     (b"bitNot", bit_not),
     (b"wrappingAdd:", wrapping_add),
     (b"wrappingSubtract:", wrapping_sub),

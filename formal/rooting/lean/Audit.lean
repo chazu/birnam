@@ -3,6 +3,7 @@ import Examples
 import GC
 import Memo
 import Borrow
+import Registration
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -49,3 +50,6 @@ import Borrow
 #print axioms Birnam.Memo.eviction_preserves
 #print axioms Birnam.Borrow.copy_contents
 #print axioms Birnam.Borrow.pure_inspection_equivalent
+#print axioms Birnam.Registration.loop_accumulator
+#print axioms Birnam.Registration.exact_batch_registration
+#print axioms Birnam.Registration.successful_prefix_fits

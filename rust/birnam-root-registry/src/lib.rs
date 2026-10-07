@@ -8,11 +8,7 @@ use birnam_abi::id_protocol::{
     self as native, Method, Module, NativeEntry, Operand, Outcome, Protocol,
 };
 use birnam_abi::{Oop, borrowed_slice};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-    ptr,
-};
+use core::{cell::RefCell, ffi::c_void, ptr};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicPtr, Ordering},
@@ -59,9 +55,9 @@ struct Registry {
     id: Protocol,
     receiver: Oop,
     roots: RefCell<Roots>,
-    selectors: [Oop; 5],
+    selectors: [Oop; 7],
     proof_services: [Option<NativeEntry>; 3],
-    release_epoch: Cell<usize>,
+    output: RefCell<Vec<usize>>,
 }
 static INSTANCE: AtomicPtr<Registry> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome {
@@ -110,93 +106,54 @@ unsafe extern "C" fn release(
 }
 // Bulk cleanup preserves the complete logical token list. It does not
 // coalesce roots or change the callback-visible rootsDo: snapshot.
-unsafe fn can_batch_release(registry: &Registry, context: *mut c_void) -> bool {
-    unsafe {
-        let id = registry.id;
-        let [
-            epoch_name,
-            lookup_name,
-            bind_name,
-            release_name,
-            _binding_name,
-        ] = registry.selectors;
-        // An overridden epoch/lookup/bind service is not a pure proof. Check
-        // its current ordinary binding, rather than trusting a cached verdict
-        // from a service whose implementation may itself have changed.
-        for (name, expected) in [epoch_name, lookup_name, bind_name]
-            .into_iter()
-            .zip(registry.proof_services)
-        {
-            let Some(expected) = expected else {
-                return false;
-            };
-            if id
-                .send(
-                    id.receiver,
-                    bind_name,
-                    &[Operand::object(name), Operand::object(id.receiver)],
-                )
-                .ok()
-                .and_then(|v| v.as_entry())
-                != Some(expected)
-            {
-                return false;
-            }
-        }
-        let epoch = match id
-            .send(id.receiver, epoch_name, &[])
-            .ok()
-            .and_then(|v| v.as_word())
-        {
-            Some(epoch) if epoch != usize::MAX => epoch,
-            _ => return false,
-        };
-        if registry.release_epoch.get() != epoch {
-            for receiver in [registry.receiver, id.receiver] {
-                if id
-                    .send(id.receiver, lookup_name, &[Operand::object(receiver)])
-                    .ok()
-                    .and_then(|v| v.as_word())
-                    != Some(1)
-                {
-                    return false;
-                }
-            }
-            if id
-                .send(
-                    id.receiver,
-                    bind_name,
-                    &[
-                        Operand::object(release_name),
-                        Operand::object(registry.receiver),
-                    ],
-                )
-                .ok()
-                .and_then(|v| v.as_entry())
-                != Some(NativeEntry::new(release, context))
-            {
-                return false;
-            }
-        }
-        // No callback or foreign message occurs between this fence and the
-        // ordered mutation of this owner's registry. Reentry cannot revoke it.
-        if id
-            .send(id.receiver, epoch_name, &[])
-            .ok()
-            .and_then(|v| v.as_word())
-            != Some(epoch)
-        {
+unsafe fn can_batch(
+    registry: &Registry,
+    context: *mut c_void,
+    method: Method,
+    selector: Oop,
+) -> bool {
+    // Explicit Words have no uninitialized ABI-union padding.
+    let mut request = [0usize; 16];
+    for (i, (name, expected)) in registry.selectors[..3]
+        .iter()
+        .zip(registry.proof_services)
+        .enumerate()
+    {
+        let Some(expected) = expected else {
             return false;
-        }
-        registry.release_epoch.set(epoch);
-        true
+        };
+        let Some(method) = expected.method else {
+            return false;
+        };
+        request[i * 4] = registry.id.receiver.addr();
+        request[i * 4 + 1] = name.addr();
+        request[i * 4 + 2] = method as usize;
+        request[i * 4 + 3] = expected.context as usize;
     }
+    request[12] = registry.receiver.addr();
+    request[13] = selector.addr();
+    request[14] = method as usize;
+    request[15] = context as usize;
+    let bytes = unsafe {
+        core::slice::from_raw_parts(request.as_ptr().cast::<u8>(), size_of_val(&request))
+    };
+    unsafe {
+        registry.id.send(
+            registry.id.receiver,
+            registry.selectors[5],
+            &[Operand::bytes(bytes)],
+        )
+    }
+    .ok()
+    .and_then(|v| v.as_word())
+        == Some(1)
 }
-unsafe extern "C" fn try_release_many(
+unsafe fn release_many(
     context: *mut c_void,
     receiver: Oop,
     args: *const Operand,
     count: usize,
+    forward: bool,
 ) -> Outcome {
     let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
@@ -216,16 +173,109 @@ unsafe extern "C" fn try_release_many(
         .map(|chunk| usize::from_ne_bytes(chunk.try_into().unwrap()))
         .collect();
     let registry = unsafe { &*context.cast::<Registry>() };
-    if receiver != registry.receiver || !unsafe { can_batch_release(registry, context) } {
+    if receiver != registry.receiver
+        || !unsafe { can_batch(registry, context, release, registry.selectors[3]) }
+    {
         return Outcome::loaded(Operand::word(0));
     }
     let mut roots = registry.roots.borrow_mut();
-    for token in tokens.into_iter().rev() {
+    if forward
+        && (tokens.iter().any(|t| !roots.positions.contains_key(t))
+            || tokens
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != tokens.len())
+    {
+        return Outcome::loaded(Operand::word(0));
+    }
+    let tokens: Vec<_> = if forward {
+        tokens
+    } else {
+        tokens.into_iter().rev().collect()
+    };
+    for token in tokens {
         // Ordinary generated finish ignores release's 0/1 result. Preserve
         // that behavior for unknown/repeated tokens as well as exact order.
         roots.release(token);
     }
     Outcome::loaded(Operand::word(1))
+}
+unsafe extern "C" fn try_release_many(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe { release_many(c, r, a, n, false) }
+}
+unsafe extern "C" fn try_release_forward(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe { release_many(c, r, a, n, true) }
+}
+unsafe extern "C" fn try_retain_many(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(bytes) = argument
+        .as_bytes()
+        .and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer, b.length) })
+    else {
+        return invalid();
+    };
+    if bytes.is_empty()
+        || bytes.len() % size_of::<usize>() != 0
+        || bytes.len() / size_of::<usize>() > 33
+    {
+        return invalid();
+    }
+    let values: Vec<Oop> = bytes
+        .chunks_exact(size_of::<usize>())
+        .map(|b| {
+            core::ptr::with_exposed_provenance_mut(usize::from_ne_bytes(b.try_into().unwrap()))
+        })
+        .collect();
+    let registry = unsafe { &*context.cast::<Registry>() };
+    if receiver != registry.receiver
+        || values.iter().any(|o| o.is_null())
+        || !unsafe { can_batch(registry, context, retain, registry.selectors[6]) }
+    {
+        return Outcome::loaded(Operand::word(0));
+    }
+    // Proof-message dispatch may have reentered before the pure Id query ran.
+    // Recheck capacity after it returns, then perform no further sends.
+    if registry
+        .roots
+        .borrow()
+        .next
+        .checked_add(values.len())
+        .is_none()
+    {
+        return Outcome::loaded(Operand::word(0));
+    }
+    let mut roots = registry.roots.borrow_mut();
+    let mut output = registry.output.borrow_mut();
+    output.clear();
+    for value in values {
+        output.push(roots.retain(value).unwrap());
+    }
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            output.as_ptr().cast::<u8>(),
+            output.len() * size_of::<usize>(),
+        )
+    };
+    Outcome::loaded(Operand::bytes(bytes))
 }
 unsafe extern "C" fn register(
     context: *mut c_void,
@@ -298,6 +348,8 @@ unsafe fn construct(id: Protocol) -> Result<Operand, Outcome> {
                 b"bind:to:",
                 b"release:",
                 b"bindingOf:in:",
+                b"nativeBindingsMatch:",
+                b"retain:",
             ]
             .map(|name| id.intern_name(name))
             .into_iter()
@@ -321,13 +373,15 @@ unsafe fn construct(id: Protocol) -> Result<Operand, Outcome> {
                 .ok()
                 .and_then(|v| v.as_entry())
             }),
-            release_epoch: Cell::new(usize::MAX),
+            output: RefCell::new(Vec::new()),
         }));
         // Id pins this library and the installed native contexts for process life.
         for (name, method) in [
             (b"retain:".as_slice(), retain as Method),
             (b"release:", release),
             (b"tryReleaseMany:", try_release_many),
+            (b"tryRetainMany:", try_retain_many),
+            (b"tryReleaseManyForward:", try_release_forward),
             (b"register:", register),
             (b"rootsDo:", roots),
         ] {
@@ -440,5 +494,63 @@ mod tests {
             roots.providers.iter().map(|p| p.addr()).collect::<Vec<_>>(),
             (0..128).map(|i| i % 2 + 1).collect::<Vec<_>>()
         );
+    }
+}
+
+#[cfg(test)]
+mod batch_reentry_tests {
+    use super::*;
+    struct Reentry {
+        registry: *mut Registry,
+    }
+    unsafe extern "C" fn proof(
+        c: *mut c_void,
+        _: Oop,
+        _: Oop,
+        _: *const Operand,
+        _: usize,
+    ) -> Outcome {
+        let r = unsafe { &*(*c.cast::<Reentry>()).registry };
+        // Simulate lookup dispatch reentry before the callback-free Id query.
+        r.roots.borrow_mut().next = usize::MAX;
+        Outcome::loaded(Operand::word(1))
+    }
+    unsafe extern "C" fn dummy(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+        Outcome::loaded(Operand::unit())
+    }
+    #[test]
+    fn reentrant_proof_cannot_invalidate_a_cached_capacity_check() {
+        unsafe {
+            let mut reentry = Reentry {
+                registry: ptr::null_mut(),
+            };
+            let id = Protocol {
+                version: native::VERSION,
+                byte_size: size_of::<Protocol>() as u32,
+                message: Some(proof),
+                context: (&raw mut reentry).cast(),
+                receiver: ptr::without_provenance_mut(8),
+                intern: ptr::without_provenance_mut(16),
+                load: ptr::without_provenance_mut(24),
+            };
+            let mut r = Registry {
+                id,
+                receiver: ptr::without_provenance_mut(32),
+                roots: RefCell::new(Roots::default()),
+                selectors: [ptr::without_provenance_mut(40); 7],
+                proof_services: [Some(NativeEntry::new(dummy, ptr::null_mut())); 3],
+                output: RefCell::new(Vec::new()),
+            };
+            reentry.registry = &raw mut r;
+            let values = [48usize, 56, 64];
+            let bytes =
+                core::slice::from_raw_parts(values.as_ptr().cast::<u8>(), size_of_val(&values));
+            let result =
+                try_retain_many((&raw mut r).cast(), r.receiver, &Operand::bytes(bytes), 1);
+            assert_eq!(result.status, native::LOADED);
+            assert_eq!(result.value.as_word(), Some(0));
+            assert!(r.roots.borrow().retained.is_empty());
+            assert!(r.output.borrow().is_empty());
+        }
     }
 }

@@ -237,3 +237,21 @@ logical root registrations.
 These proofs still do not verify all Rust, the standard library allocator, Id
 introspection or generated C machine code. Implementation-side differential tests
 and current-owner replacement/precise-GC tests bridge those boundaries.
+
+## Exact registration batches
+
+`RegistrationBatch.tla` / `Registration.lean` cover acquisition in input order,
+exact sequential ids, null/capacity rejection before mutation and ordinary
+prefix failure on fallback. Required failures demonstrate unrooted incoming
+values and partial mutation on a declined batch. The caller must protect input
+Oop owners for the invocation extent; the compiler uses incoming receiver and
+arguments, and Word uses its invocation inputs. No interim message result is
+queued unprotected across another send. Capacity is rechecked after any proof
+dispatch can reenter.
+
+Id `nativeBindingsMatch:` consumes native-endian Word quadruples (receiver,
+selector, method address, opaque context address), not a portable descriptor.
+It reads only Id-owned metadata and declines custom lookup without calling it.
+A successful proof and the immediate Root mutation have no intervening foreign
+send. Root owner APIs keep the complete logical token sequence; physical root
+coalescing and its stronger observer lease remain unimplemented.

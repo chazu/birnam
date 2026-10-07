@@ -1,0 +1,2618 @@
+{
+  "preceding_commit": "41d2e007",
+  "scope": "Exact root batches; no logical token coalescing; diagnostic prefixes",
+  "measurements": {
+    "delivery-counts": {
+      "build_seconds": 1.6212004180000001,
+      "dirty_status": " M docs/design/microbenchmarks.md\n M formal/rooting/README.md\n M formal/rooting/lean/Audit.lean\n M formal/rooting/lean/lakefile.toml\n M rust/birnam-id/src/id/native_id/metrics.rs\n M rust/birnam-id/src/id/native_id/registries.rs\n M rust/birnam-native-backend/src/native.rs\n M rust/birnam-native-backend/src/native_prelude.c\n M rust/birnam-native-backend/src/native_sync.rs\n M rust/birnam-native-backend/src/word_expression.rs\n M rust/birnam-native-backend/tests/root_cleanup.rs\n M rust/birnam-root-registry/src/lib.rs\n M rust/birnam-siphon/examples/microbench.rs\n M rust/birnam-siphon/tests/root_batches.rs\n M rust/birnam-word/src/native.rs\n M scripts/check-rooting-model.py\n M scripts/microbench.py\n?? docs/design/root-send-reduction.md\n?? formal/rooting/lean/Registration.lean\n?? formal/rooting/tla/RegistrationBatch.tla\n?? formal/rooting/tla/RegistrationPartial.cfg\n?? formal/rooting/tla/RegistrationSafe.cfg\n?? formal/rooting/tla/RegistrationUnrooted.cfg\n?? rust/birnam-siphon/tests/binding_proof.rs\n",
+      "inputs_changed_during_run": false,
+      "library_sha256": {
+        "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "libbirnam_alienCompiler.dylib": "b979421d9b7c213b82bbbcb4ed3c627a504fd52bb53e7c9a1701e2cf1e5aee7f",
+        "libbirnam_artifact.dylib": "4a606de2ad04ce6e003221245312827d900712b1af65ec1c9b362b2b8312a1e5",
+        "libbirnam_blockLoop.dylib": "73f38dcd81d194868c1d4aa6bcca884ad1eea83f4557e3587066523603a1fd36",
+        "libbirnam_blockLoopControl.dylib": "cdf1e46d7df4a1beab5ec30b08a60d857b8b5ffb51f13d31ee52f358bee9a58d",
+        "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "libbirnam_booleanValues.dylib": "3d1554d31b0bd6565953e5740c4248d1b8bc5e00625bcbd07575c2d641ca47cd",
+        "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+        "libbirnam_bytes.dylib": "485df046e88f953f0056e74eafd9814c1c43f23d59aa7fc6941c3c9d68ba89a0",
+        "libbirnam_cli.dylib": "b3ef30b96b0e0f7b65e5d917fbc0c8c9eee1f090ff72de9631c6188094748336",
+        "libbirnam_codegen_runtime.dylib": "46fed0cbe1d25c07a093be93a0070ba403aba8ddebec97209c39f00f84547698",
+        "libbirnam_collect.dylib": "dd0365538aa0e10456de307596c000ce3fda529ef127443799fab0fc58760b4b",
+        "libbirnam_compiledUnit.dylib": "a73759d7b843ce5df32cfe5c3d6e74b3046cf53c94886413ffd0b263a44cdabd",
+        "libbirnam_compiledUnitDocs.dylib": "b9acb11ad4105cc29c60664bf319f8701083c19fdd534b7e558025dd4d8dcc07",
+        "libbirnam_concurrencyDocs.dylib": "b49561e53c8223035d417eb8c54f181f5f1ff77d896dcbcddda445ef159ab62f",
+        "libbirnam_config.dylib": "bf0cc9f0356ae0de5771e560fce788a4b15095c551bc2c0184163db7b1dc8912",
+        "libbirnam_doc.dylib": "11b75ba083a885633e6bf2f8df96061c4008800315f1252d2ff0015c8d43d341",
+        "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "libbirnam_error.dylib": "87b863fc81068382d27756f8036516e30185b82ba8890a83388fe63cf882fba0",
+        "libbirnam_execution.dylib": "be5444c556ab96cf3a21e65df7a4652e41a3523b1031fdae7067f3d297f5d5a5",
+        "libbirnam_file.dylib": "9b8ac76cd8f7d8d00750a9161b125553da7d972d4cf23b34ab23f8e84a09a315",
+        "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "libbirnam_generation.dylib": "e40b688403d36be8a0cca9a1db96819a3d49b4cc9334cae7bbd791df6dfbe773",
+        "libbirnam_host_entry.dylib": "ef659f3edad2ff55cd623a4ecf50227e35e464811f61882010a576de50a0e6ef",
+        "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+        "libbirnam_html.dylib": "dc947f8c781cb3fa1cd9bcef32ec56787b7ff5123c116b9f62d728c5188006af",
+        "libbirnam_http.dylib": "7c49ada171d685f48f7fa1179704fb1607b541362e1126f451f8526557cdaa3a",
+        "libbirnam_id.dylib": "c7a8556a071498d07085c410d206a5f50ffe9d8c5fc74cd59e87ae857dca5438",
+        "libbirnam_image.dylib": "d3cd47b893ad53880bd9ce11e108cba1265faa756d269e4c8bc5ffc313a960f2",
+        "libbirnam_imageFormat.dylib": "2aaf743fc902bf936be83f616777cc9f41efa8c9cee6fd41b1546b379241b3e8",
+        "libbirnam_integer.dylib": "8b37b294bd0902729d9b9c16933e36d35bdea4d535cdc570780c4b132db1a20e",
+        "libbirnam_integerValues.dylib": "09ea43c6a46ac57b1b088a9166145c61b18b475b215d9538336610a0428e6811",
+        "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "libbirnam_json.dylib": "f67594cbeb56076c07f76415d5abddeb9cd4f7b8faaf285f18b47b9b79190e26",
+        "libbirnam_lang.dylib": "4fbb57eb70caab3c5764d39c410a18698fab847d33a40d1b1cb6976d68d2d870",
+        "libbirnam_log.dylib": "c89b584f24e2e6b30e4ab85a862b99d19a5518ea3ebee3628705b701cf063623",
+        "libbirnam_lsp.dylib": "17bd90c101b66c97d272e42bdac2e7183f487b08cfc7a5fd2936c8fff805378f",
+        "libbirnam_map.dylib": "6ab97ca0ce3a21e5aad911c911d23696bd0849b479a9bdca335b0452b68acfa3",
+        "libbirnam_markdown.dylib": "ae667f74c392152c82a54d2f4f3bd19682d3edb3976c854a7ecb9b0257963b21",
+        "libbirnam_modules.dylib": "81a86ab60e2de6b919f4b2eb10d3448ec19bff5aace4428b092564c988776197",
+        "libbirnam_namespace.dylib": "11df3fd0f546a781a20cf26c2541e838827ebf863e83cdc0c3cdbb735a7724d0",
+        "libbirnam_nativeLoader.dylib": "c357d8d0d30456d47b4c0dbf31fb3573467dd632db621e29ce3971a1c0083746",
+        "libbirnam_nativeValues.dylib": "2d7260f06daf711bf46221be870e27dfefe546814ecc75e037362dd86dd62339",
+        "libbirnam_native_backend.dylib": "81a5bf129bbad74bb1b8d1c12150b61a1ff5d1aab4889155990ae0da95710371",
+        "libbirnam_nativedoc.dylib": "d86afbfae17fb97b3207f4c62ffaf4119f09d7c7532e7aad4d70920d04b52cdb",
+        "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "libbirnam_object_model.dylib": "752f715d8e83c23c11d9f7113ed3455aa4bb1ade04686d1deedd867104830b5e",
+        "libbirnam_os.dylib": "878204a8d202a7465d45054f666937a35151a3e2437e20fab1205e74c29dfe75",
+        "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "libbirnam_portable_code.dylib": "04df675b45903dd9b7e26244fb50610a2be22652cc3d2e90c6a8af74848ff021",
+        "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "libbirnam_printing.dylib": "c677320de8297051205615fb18ff61a5694bc35701cba76f831bad6706a3044e",
+        "libbirnam_process.dylib": "d3faeb337830a7829a0ddf619c0d30a57001bdf3cefa9769ed2ea468bb3ae74d",
+        "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "libbirnam_random.dylib": "ac465fb2626a3e91f045227ec01ba42a30bbc937438155b525a16aa762c159e5",
+        "libbirnam_range.dylib": "7f699ed1f8567ce3544cd6ea045de0cf44acbd5a1da9f67a68505b5d78feeb73",
+        "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "libbirnam_repl.dylib": "0733bcae3b24e8007676f4dcd260172e8c67f5db05d573ab118fa494310bd776",
+        "libbirnam_root_registry.dylib": "77eab7375ca6567b867b3e738b05c8a62c009c2ca84bd69fcf77466dff1d7f43",
+        "libbirnam_socket.dylib": "379826b3a85130f31c726eacdef6e2cd8b0d13bf587842301221ca5c3f1a9846",
+        "libbirnam_sourceLoader.dylib": "57d7f89ee9673b0601707f09e25640b3fe6d8e9a55c5d76a444f5beaf3f57cf0",
+        "libbirnam_stacklessControl.dylib": "12b51fd3cd49574d494a91d3cc66ad849421ff588aa1c051956325cd4917459a",
+        "libbirnam_stdlib.dylib": "4393e82e7d6f6d72f14756b7e3307b38225cfc7494646df05618fd3877391a1c",
+        "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+        "libbirnam_string.dylib": "5ea2d5059ab4262ebfc0fcca5df11087621dfa05526942eb8c1dde340225fa14",
+        "libbirnam_systemGc.dylib": "cd84c5876f0847b1f522a39a656424c7bf6b5d37089ddf2edbe78a557ef53ffc",
+        "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+        "libbirnam_time.dylib": "a22f55b26f77447a5491d023c03ac86d8e1f5b562890410a0af298f107c2002e",
+        "libbirnam_toml.dylib": "aa53e34a838c0f6525961c04a4a431cb09e5ef9465e8a2db170e4afd3764897b",
+        "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+        "libbirnam_vector.dylib": "1aa94d103a458e3bc7ac512d6626d5c6f0134172f96701d6e966e5d1442a8b9a",
+        "libbirnam_word.dylib": "7fefa144cb06b29a4cb86e2214bbfe7ba77bd6313f216aaa7b92f24d040dfcd7",
+        "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+      },
+      "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/microbench/counts-prefix",
+      "process_seconds": 1.4542562079999999,
+      "raw": {
+        "budget_seconds": 10.0,
+        "cases": [
+          {
+            "candidate_mask": 31,
+            "case": "public-integer-retains",
+            "compiled_sources": {
+              "baseline": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+              "candidate": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true"
+            },
+            "operations_per_invocation": 16,
+            "samples": [],
+            "source": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+            "work_counts": {
+              "baseline": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8,
+                "messages": {
+                  "invocations": 1,
+                  "operations": 16,
+                  "root_summary": {
+                    "distinct_object_addresses": 790,
+                    "max_live_tokens_observed": 262,
+                    "other_activation_live_duplicates": 5251,
+                    "remaining_tokens_observed": 0,
+                    "retains": 11816,
+                    "same_message_activation_live_duplicates": 3072
+                  },
+                  "selectors": {
+                    "&": 16,
+                    "+": 16,
+                    "==": 16,
+                    "addMethod": 128,
+                    "allOopLayoutOf:words:": 128,
+                    "allocate": 608,
+                    "allocate:bytes:": 832,
+                    "allocateReferenceSlots:": 128,
+                    "allocationAt:": 624,
+                    "allocationChargeFor:": 864,
+                    "allocationSizeOf:": 1904,
+                    "at:": 2688,
+                    "behaviorEpoch": 448,
+                    "behaviorOf:": 2400,
+                    "bind:to:": 660,
+                    "bits": 16,
+                    "bytes": 128,
+                    "canOmitAllocationFor:": 224,
+                    "canOmitNativeArguments": 48,
+                    "canonicalBytesOf:": 128,
+                    "captureWord:of:": 1104,
+                    "collectionHash": 16,
+                    "currentValue:attr:": 64,
+                    "delegated": 256,
+                    "finalize:with:": 128,
+                    "fromBits:": 32,
+                    "fromBytes:": 128,
+                    "fromMethod:codeObject:referenceSlots:": 128,
+                    "fromWord:": 16,
+                    "identityOf:": 4368,
+                    "ifTrue:ifFalse:": 64,
+                    "imageSizeOf:": 128,
+                    "integerAddBits:with:": 16,
+                    "integerBinary:operation:": 16,
+                    "integerBitsOf:": 32,
+                    "integerExactError:": 16,
+                    "integerFromBits:": 16,
+                    "intern:": 8528,
+                    "isBehavior:": 384,
+                    "isNil": 16,
+                    "methodChanged:on:": 128,
+                    "nativeBindingsMatch:": 882,
+                    "newBehaviorWithParent:": 256,
+                    "notNil": 32,
+                    "ownerOf:put:": 128,
+                    "prepareAllocation": 1984,
+                    "release:": 6096,
+                    "retain:": 10776,
+                    "run:with:": 1,
+                    "sameObject:with:": 160,
+                    "selectIfZero:ifNonzero:": 160,
+                    "setLayoutOf:to:rest:": 128,
+                    "slotAt:in:": 624,
+                    "slotAt:in:put:": 624,
+                    "symbolBytesOf:": 2624,
+                    "symbolNamed:": 8528,
+                    "tryNativeArguments:": 48,
+                    "tryPrimitiveBytes": 96,
+                    "tryPrimitiveExpression:": 16,
+                    "tryReleaseMany:": 210,
+                    "tryReleaseManyForward:": 336,
+                    "tryRetainMany:": 336,
+                    "usesDefaultAllocation": 176,
+                    "usesDefaultLookup:": 561,
+                    "value": 64,
+                    "value:value:": 112,
+                    "value:value:value:": 97,
+                    "valueAt:": 16,
+                    "vtableOf:": 16,
+                    "wordOf:": 32,
+                    "wrappingAdd:": 16
+                  }
+                }
+              },
+              "candidate": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8,
+                "messages": {
+                  "invocations": 1,
+                  "operations": 16,
+                  "root_summary": {
+                    "distinct_object_addresses": 790,
+                    "max_live_tokens_observed": 262,
+                    "other_activation_live_duplicates": 5251,
+                    "remaining_tokens_observed": 0,
+                    "retains": 11816,
+                    "same_message_activation_live_duplicates": 3072
+                  },
+                  "selectors": {
+                    "&": 16,
+                    "+": 16,
+                    "==": 16,
+                    "addMethod": 128,
+                    "allOopLayoutOf:words:": 128,
+                    "allocate": 608,
+                    "allocate:bytes:": 832,
+                    "allocateReferenceSlots:": 128,
+                    "allocationAt:": 624,
+                    "allocationChargeFor:": 864,
+                    "allocationSizeOf:": 1904,
+                    "at:": 2688,
+                    "behaviorEpoch": 448,
+                    "behaviorOf:": 2400,
+                    "bind:to:": 660,
+                    "bits": 16,
+                    "bytes": 128,
+                    "canOmitAllocationFor:": 224,
+                    "canOmitNativeArguments": 48,
+                    "canonicalBytesOf:": 128,
+                    "captureWord:of:": 1104,
+                    "collectionHash": 16,
+                    "currentValue:attr:": 64,
+                    "delegated": 256,
+                    "finalize:with:": 128,
+                    "fromBits:": 32,
+                    "fromBytes:": 128,
+                    "fromMethod:codeObject:referenceSlots:": 128,
+                    "fromWord:": 16,
+                    "identityOf:": 4368,
+                    "ifTrue:ifFalse:": 64,
+                    "imageSizeOf:": 128,
+                    "integerAddBits:with:": 16,
+                    "integerBinary:operation:": 16,
+                    "integerBitsOf:": 32,
+                    "integerExactError:": 16,
+                    "integerFromBits:": 16,
+                    "intern:": 8528,
+                    "isBehavior:": 384,
+                    "isNil": 16,
+                    "methodChanged:on:": 128,
+                    "nativeBindingsMatch:": 995,
+                    "newBehaviorWithParent:": 256,
+                    "notNil": 32,
+                    "ownerOf:put:": 128,
+                    "prepareAllocation": 1984,
+                    "release:": 6096,
+                    "retain:": 10404,
+                    "run:with:": 1,
+                    "sameObject:with:": 160,
+                    "selectIfZero:ifNonzero:": 160,
+                    "setLayoutOf:to:rest:": 128,
+                    "slotAt:in:": 624,
+                    "slotAt:in:put:": 624,
+                    "symbolBytesOf:": 2624,
+                    "symbolNamed:": 8528,
+                    "tryNativeArguments:": 48,
+                    "tryPrimitiveBytes": 96,
+                    "tryPrimitiveExpression:": 16,
+                    "tryReleaseMany:": 210,
+                    "tryReleaseManyForward:": 336,
+                    "tryRetainMany:": 449,
+                    "usesDefaultAllocation": 176,
+                    "usesDefaultLookup:": 561,
+                    "value": 64,
+                    "value:value:": 112,
+                    "value:value:value:": 97,
+                    "valueAt:": 16,
+                    "vtableOf:": 16,
+                    "wordOf:": 32,
+                    "wrappingAdd:": 16
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "event": "result",
+        "gc": "normal",
+        "measurement_ms": 0.029750000000000002,
+        "profile": "counts-only",
+        "schema": 1
+      },
+      "ready": {
+        "event": "ready",
+        "pid": 68351,
+        "setup_ms": 1383.620458
+      },
+      "runner_sha256": "f4cb2f19ab164cbbf5c188698c7ced2e780d8e4307d6ff5d83d9e5e98876c019",
+      "schema": 1,
+      "settings": {
+        "batch_ms": 25,
+        "case": "public-integer-retains",
+        "counts_only": true,
+        "gc": "normal",
+        "nice": 5,
+        "profile": null,
+        "seconds": 10
+      },
+      "source_revision": "41d2e00701972a2e2c75dacbd62d0d3f1d84ed2c",
+      "source_sha256": "ffd4395a88d104335a3cec2e8c3229015e1bf81e688d5c1758512211e84222fb",
+      "summary": []
+    },
+    "entry-timing": {
+      "build_seconds": 1.2275228740000002,
+      "dirty_status": " M rust/birnam-id/src/id/native_id/metrics.rs\n M rust/birnam-id/src/id/native_id/registries.rs\n M rust/birnam-native-backend/src/native.rs\n M rust/birnam-native-backend/src/native_prelude.c\n M rust/birnam-native-backend/src/native_sync.rs\n M rust/birnam-native-backend/src/word_expression.rs\n M rust/birnam-root-registry/src/lib.rs\n M rust/birnam-siphon/examples/microbench.rs\n M rust/birnam-word/src/native.rs\n M scripts/microbench.py\n",
+      "inputs_changed_during_run": false,
+      "library_sha256": {
+        "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "libbirnam_alienCompiler.dylib": "b979421d9b7c213b82bbbcb4ed3c627a504fd52bb53e7c9a1701e2cf1e5aee7f",
+        "libbirnam_artifact.dylib": "4a606de2ad04ce6e003221245312827d900712b1af65ec1c9b362b2b8312a1e5",
+        "libbirnam_blockLoop.dylib": "73f38dcd81d194868c1d4aa6bcca884ad1eea83f4557e3587066523603a1fd36",
+        "libbirnam_blockLoopControl.dylib": "cdf1e46d7df4a1beab5ec30b08a60d857b8b5ffb51f13d31ee52f358bee9a58d",
+        "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "libbirnam_booleanValues.dylib": "3d1554d31b0bd6565953e5740c4248d1b8bc5e00625bcbd07575c2d641ca47cd",
+        "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+        "libbirnam_bytes.dylib": "485df046e88f953f0056e74eafd9814c1c43f23d59aa7fc6941c3c9d68ba89a0",
+        "libbirnam_cli.dylib": "b3ef30b96b0e0f7b65e5d917fbc0c8c9eee1f090ff72de9631c6188094748336",
+        "libbirnam_codegen_runtime.dylib": "46fed0cbe1d25c07a093be93a0070ba403aba8ddebec97209c39f00f84547698",
+        "libbirnam_collect.dylib": "dd0365538aa0e10456de307596c000ce3fda529ef127443799fab0fc58760b4b",
+        "libbirnam_compiledUnit.dylib": "a73759d7b843ce5df32cfe5c3d6e74b3046cf53c94886413ffd0b263a44cdabd",
+        "libbirnam_compiledUnitDocs.dylib": "b9acb11ad4105cc29c60664bf319f8701083c19fdd534b7e558025dd4d8dcc07",
+        "libbirnam_concurrencyDocs.dylib": "b49561e53c8223035d417eb8c54f181f5f1ff77d896dcbcddda445ef159ab62f",
+        "libbirnam_config.dylib": "bf0cc9f0356ae0de5771e560fce788a4b15095c551bc2c0184163db7b1dc8912",
+        "libbirnam_doc.dylib": "11b75ba083a885633e6bf2f8df96061c4008800315f1252d2ff0015c8d43d341",
+        "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "libbirnam_error.dylib": "87b863fc81068382d27756f8036516e30185b82ba8890a83388fe63cf882fba0",
+        "libbirnam_execution.dylib": "be5444c556ab96cf3a21e65df7a4652e41a3523b1031fdae7067f3d297f5d5a5",
+        "libbirnam_file.dylib": "9b8ac76cd8f7d8d00750a9161b125553da7d972d4cf23b34ab23f8e84a09a315",
+        "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "libbirnam_generation.dylib": "e40b688403d36be8a0cca9a1db96819a3d49b4cc9334cae7bbd791df6dfbe773",
+        "libbirnam_host_entry.dylib": "ef659f3edad2ff55cd623a4ecf50227e35e464811f61882010a576de50a0e6ef",
+        "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+        "libbirnam_html.dylib": "dc947f8c781cb3fa1cd9bcef32ec56787b7ff5123c116b9f62d728c5188006af",
+        "libbirnam_http.dylib": "7c49ada171d685f48f7fa1179704fb1607b541362e1126f451f8526557cdaa3a",
+        "libbirnam_id.dylib": "228a2ce346753c15952c80447223e24c8af92397bb76ba96bdc1f8ab3ab23457",
+        "libbirnam_image.dylib": "d3cd47b893ad53880bd9ce11e108cba1265faa756d269e4c8bc5ffc313a960f2",
+        "libbirnam_imageFormat.dylib": "2aaf743fc902bf936be83f616777cc9f41efa8c9cee6fd41b1546b379241b3e8",
+        "libbirnam_integer.dylib": "8b37b294bd0902729d9b9c16933e36d35bdea4d535cdc570780c4b132db1a20e",
+        "libbirnam_integerValues.dylib": "09ea43c6a46ac57b1b088a9166145c61b18b475b215d9538336610a0428e6811",
+        "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "libbirnam_json.dylib": "f67594cbeb56076c07f76415d5abddeb9cd4f7b8faaf285f18b47b9b79190e26",
+        "libbirnam_lang.dylib": "4fbb57eb70caab3c5764d39c410a18698fab847d33a40d1b1cb6976d68d2d870",
+        "libbirnam_log.dylib": "c89b584f24e2e6b30e4ab85a862b99d19a5518ea3ebee3628705b701cf063623",
+        "libbirnam_lsp.dylib": "17bd90c101b66c97d272e42bdac2e7183f487b08cfc7a5fd2936c8fff805378f",
+        "libbirnam_map.dylib": "6ab97ca0ce3a21e5aad911c911d23696bd0849b479a9bdca335b0452b68acfa3",
+        "libbirnam_markdown.dylib": "ae667f74c392152c82a54d2f4f3bd19682d3edb3976c854a7ecb9b0257963b21",
+        "libbirnam_modules.dylib": "81a86ab60e2de6b919f4b2eb10d3448ec19bff5aace4428b092564c988776197",
+        "libbirnam_namespace.dylib": "11df3fd0f546a781a20cf26c2541e838827ebf863e83cdc0c3cdbb735a7724d0",
+        "libbirnam_nativeLoader.dylib": "c357d8d0d30456d47b4c0dbf31fb3573467dd632db621e29ce3971a1c0083746",
+        "libbirnam_nativeValues.dylib": "2d7260f06daf711bf46221be870e27dfefe546814ecc75e037362dd86dd62339",
+        "libbirnam_native_backend.dylib": "aa7af0c19a97a0584d1f726901a24f6c9342d702a14f3f61e0721708227e41ce",
+        "libbirnam_nativedoc.dylib": "d86afbfae17fb97b3207f4c62ffaf4119f09d7c7532e7aad4d70920d04b52cdb",
+        "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "libbirnam_object_model.dylib": "752f715d8e83c23c11d9f7113ed3455aa4bb1ade04686d1deedd867104830b5e",
+        "libbirnam_os.dylib": "878204a8d202a7465d45054f666937a35151a3e2437e20fab1205e74c29dfe75",
+        "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "libbirnam_portable_code.dylib": "04df675b45903dd9b7e26244fb50610a2be22652cc3d2e90c6a8af74848ff021",
+        "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "libbirnam_printing.dylib": "c677320de8297051205615fb18ff61a5694bc35701cba76f831bad6706a3044e",
+        "libbirnam_process.dylib": "d3faeb337830a7829a0ddf619c0d30a57001bdf3cefa9769ed2ea468bb3ae74d",
+        "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "libbirnam_random.dylib": "ac465fb2626a3e91f045227ec01ba42a30bbc937438155b525a16aa762c159e5",
+        "libbirnam_range.dylib": "7f699ed1f8567ce3544cd6ea045de0cf44acbd5a1da9f67a68505b5d78feeb73",
+        "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "libbirnam_repl.dylib": "0733bcae3b24e8007676f4dcd260172e8c67f5db05d573ab118fa494310bd776",
+        "libbirnam_root_registry.dylib": "6d89dc438f015e75b2cd93f5a32185e60dfeb1ec717fe95fe06242f31e6d23b7",
+        "libbirnam_socket.dylib": "379826b3a85130f31c726eacdef6e2cd8b0d13bf587842301221ca5c3f1a9846",
+        "libbirnam_sourceLoader.dylib": "57d7f89ee9673b0601707f09e25640b3fe6d8e9a55c5d76a444f5beaf3f57cf0",
+        "libbirnam_stacklessControl.dylib": "12b51fd3cd49574d494a91d3cc66ad849421ff588aa1c051956325cd4917459a",
+        "libbirnam_stdlib.dylib": "4393e82e7d6f6d72f14756b7e3307b38225cfc7494646df05618fd3877391a1c",
+        "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+        "libbirnam_string.dylib": "5ea2d5059ab4262ebfc0fcca5df11087621dfa05526942eb8c1dde340225fa14",
+        "libbirnam_systemGc.dylib": "cd84c5876f0847b1f522a39a656424c7bf6b5d37089ddf2edbe78a557ef53ffc",
+        "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+        "libbirnam_time.dylib": "a22f55b26f77447a5491d023c03ac86d8e1f5b562890410a0af298f107c2002e",
+        "libbirnam_toml.dylib": "aa53e34a838c0f6525961c04a4a431cb09e5ef9465e8a2db170e4afd3764897b",
+        "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+        "libbirnam_vector.dylib": "1aa94d103a458e3bc7ac512d6626d5c6f0134172f96701d6e966e5d1442a8b9a",
+        "libbirnam_word.dylib": "7fefa144cb06b29a4cb86e2214bbfe7ba77bd6313f216aaa7b92f24d040dfcd7",
+        "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+      },
+      "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/microbench/prefix",
+      "process_seconds": 5.132656459000001,
+      "raw": {
+        "budget_seconds": 4.0,
+        "cases": [
+          {
+            "candidate_mask": 31,
+            "case": "public-integer-retains",
+            "compiled_sources": {
+              "baseline": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+              "candidate": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true"
+            },
+            "operations_per_invocation": 16,
+            "samples": [
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 34885041,
+                    "iterations": 8,
+                    "variant": "baseline",
+                    "wall_ns": 34885833
+                  },
+                  {
+                    "cpu_ns": 35034292,
+                    "iterations": 8,
+                    "variant": "candidate",
+                    "wall_ns": 35034916
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 0
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21853500,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21854208
+                  },
+                  {
+                    "cpu_ns": 21673041,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21684291
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 1
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22130917,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22131541
+                  },
+                  {
+                    "cpu_ns": 21797250,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21798042
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 2
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22322250,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 22322875
+                  },
+                  {
+                    "cpu_ns": 22260958,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22263709
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 3
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22146625,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22147125
+                  },
+                  {
+                    "cpu_ns": 22043375,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 22068625
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 4
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21853000,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21853625
+                  },
+                  {
+                    "cpu_ns": 22019583,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22020375
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 5
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21912875,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21913459
+                  },
+                  {
+                    "cpu_ns": 21653750,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21659917
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 6
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21759959,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21760833
+                  },
+                  {
+                    "cpu_ns": 22389541,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22390167
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 7
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21175875,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21176584
+                  },
+                  {
+                    "cpu_ns": 22220709,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 22221542
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 8
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 23266125,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 23266750
+                  },
+                  {
+                    "cpu_ns": 21474334,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21487084
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 9
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21428750,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21429292
+                  },
+                  {
+                    "cpu_ns": 20621042,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20621917
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 10
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20739250,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20739875
+                  },
+                  {
+                    "cpu_ns": 21016458,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21017000
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 11
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20936250,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20936792
+                  },
+                  {
+                    "cpu_ns": 20849416,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20850000
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 12
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20851042,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20851500
+                  },
+                  {
+                    "cpu_ns": 20798000,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20798625
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 13
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20833792,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20834500
+                  },
+                  {
+                    "cpu_ns": 20854958,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20855416
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 14
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20548041,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20548583
+                  },
+                  {
+                    "cpu_ns": 19739959,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 19743792
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 15
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20242500,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20243125
+                  },
+                  {
+                    "cpu_ns": 20137250,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20137833
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 16
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20355667,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20356500
+                  },
+                  {
+                    "cpu_ns": 20495416,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20499000
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 17
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20142875,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20146500
+                  },
+                  {
+                    "cpu_ns": 20418041,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20418875
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 18
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20096959,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20100708
+                  },
+                  {
+                    "cpu_ns": 20286833,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20290834
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 19
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20827625,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20828250
+                  },
+                  {
+                    "cpu_ns": 20682208,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20685625
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 20
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20793167,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20793709
+                  },
+                  {
+                    "cpu_ns": 19939667,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 19940125
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 21
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20251208,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20251917
+                  },
+                  {
+                    "cpu_ns": 20432292,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20432958
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 22
+              }
+            ],
+            "source": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+            "work_counts": {
+              "baseline": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8
+              },
+              "candidate": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8
+              }
+            }
+          }
+        ],
+        "event": "result",
+        "gc": "normal",
+        "measurement_ms": 4012.0340419999998,
+        "profile": "none",
+        "schema": 1
+      },
+      "ready": {
+        "event": "ready",
+        "pid": 6961,
+        "setup_ms": 1055.1708330000001
+      },
+      "runner_sha256": "f68c3b0d645ed25065a40dcfd047a2e8f3c43ed4b0a7c6af79da905aa341fe33",
+      "schema": 1,
+      "settings": {
+        "batch_ms": 25,
+        "case": "public-integer-retains",
+        "counts_only": false,
+        "gc": "normal",
+        "nice": 5,
+        "profile": null,
+        "seconds": 4.0
+      },
+      "source_revision": "41d2e00701972a2e2c75dacbd62d0d3f1d84ed2c",
+      "source_sha256": "2c2e2a4b1a3661f711c481f9006bfffeebd5c272ef02141a7db63ff6ea3a8eff",
+      "summary": [
+        {
+          "allocation_counts": {
+            "baseline": {
+              "allocation_objects": {
+                "block": 1024,
+                "integer": 128,
+                "other": 4096,
+                "vector": 0,
+                "word": 1664
+              },
+              "gc_charge_bytes": 256000,
+              "iterations": 8
+            },
+            "candidate": {
+              "allocation_objects": {
+                "block": 1024,
+                "integer": 128,
+                "other": 4096,
+                "vector": 0,
+                "word": 1664
+              },
+              "gc_charge_bytes": 256000,
+              "iterations": 8
+            }
+          },
+          "bootstrap_interval_95": [
+            0.9924347795323827,
+            1.0042783667647115
+          ],
+          "candidate_over_baseline": 0.9958524568630963,
+          "case": "public-integer-retains",
+          "interval_note": "Within-run uncertainty only; does not cover drift, thermal changes or systematic bias.",
+          "median_baseline_cpu_ns_per_language_operation": 262705.725,
+          "median_baseline_cpu_ns_per_op": 4203291.6,
+          "median_candidate_cpu_ns_per_language_operation": 260638.025,
+          "median_candidate_cpu_ns_per_op": 4170208.4,
+          "operations_per_invocation": 16,
+          "pairs": 23,
+          "pairs_with_scheduling_delay": 0,
+          "verdict": "no meaningful difference"
+        }
+      ]
+    },
+    "committed-reference": {
+      "build_seconds": 0.041574833,
+      "dirty_status": " M rust/birnam-id/src/id/native_id/metrics.rs\n M rust/birnam-id/src/id/native_id/registries.rs\n M rust/birnam-native-backend/src/native.rs\n M rust/birnam-native-backend/src/native_prelude.c\n M rust/birnam-native-backend/src/native_sync.rs\n M rust/birnam-native-backend/src/word_expression.rs\n M rust/birnam-root-registry/src/lib.rs\n M rust/birnam-siphon/examples/microbench.rs\n M rust/birnam-siphon/tests/root_batches.rs\n M rust/birnam-word/src/native.rs\n M scripts/microbench.py\n?? rust/birnam-siphon/tests/binding_proof.rs\n",
+      "inputs_changed_during_run": false,
+      "library_sha256": {
+        "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "libbirnam_alienCompiler.dylib": "b979421d9b7c213b82bbbcb4ed3c627a504fd52bb53e7c9a1701e2cf1e5aee7f",
+        "libbirnam_artifact.dylib": "4a606de2ad04ce6e003221245312827d900712b1af65ec1c9b362b2b8312a1e5",
+        "libbirnam_blockLoop.dylib": "73f38dcd81d194868c1d4aa6bcca884ad1eea83f4557e3587066523603a1fd36",
+        "libbirnam_blockLoopControl.dylib": "cdf1e46d7df4a1beab5ec30b08a60d857b8b5ffb51f13d31ee52f358bee9a58d",
+        "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "libbirnam_booleanValues.dylib": "3d1554d31b0bd6565953e5740c4248d1b8bc5e00625bcbd07575c2d641ca47cd",
+        "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+        "libbirnam_bytes.dylib": "485df046e88f953f0056e74eafd9814c1c43f23d59aa7fc6941c3c9d68ba89a0",
+        "libbirnam_cli.dylib": "b3ef30b96b0e0f7b65e5d917fbc0c8c9eee1f090ff72de9631c6188094748336",
+        "libbirnam_codegen_runtime.dylib": "46fed0cbe1d25c07a093be93a0070ba403aba8ddebec97209c39f00f84547698",
+        "libbirnam_collect.dylib": "dd0365538aa0e10456de307596c000ce3fda529ef127443799fab0fc58760b4b",
+        "libbirnam_compiledUnit.dylib": "a73759d7b843ce5df32cfe5c3d6e74b3046cf53c94886413ffd0b263a44cdabd",
+        "libbirnam_compiledUnitDocs.dylib": "b9acb11ad4105cc29c60664bf319f8701083c19fdd534b7e558025dd4d8dcc07",
+        "libbirnam_concurrencyDocs.dylib": "b49561e53c8223035d417eb8c54f181f5f1ff77d896dcbcddda445ef159ab62f",
+        "libbirnam_config.dylib": "bf0cc9f0356ae0de5771e560fce788a4b15095c551bc2c0184163db7b1dc8912",
+        "libbirnam_doc.dylib": "11b75ba083a885633e6bf2f8df96061c4008800315f1252d2ff0015c8d43d341",
+        "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "libbirnam_error.dylib": "87b863fc81068382d27756f8036516e30185b82ba8890a83388fe63cf882fba0",
+        "libbirnam_execution.dylib": "be5444c556ab96cf3a21e65df7a4652e41a3523b1031fdae7067f3d297f5d5a5",
+        "libbirnam_file.dylib": "9b8ac76cd8f7d8d00750a9161b125553da7d972d4cf23b34ab23f8e84a09a315",
+        "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "libbirnam_generation.dylib": "e40b688403d36be8a0cca9a1db96819a3d49b4cc9334cae7bbd791df6dfbe773",
+        "libbirnam_host_entry.dylib": "ef659f3edad2ff55cd623a4ecf50227e35e464811f61882010a576de50a0e6ef",
+        "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+        "libbirnam_html.dylib": "dc947f8c781cb3fa1cd9bcef32ec56787b7ff5123c116b9f62d728c5188006af",
+        "libbirnam_http.dylib": "7c49ada171d685f48f7fa1179704fb1607b541362e1126f451f8526557cdaa3a",
+        "libbirnam_id.dylib": "228a2ce346753c15952c80447223e24c8af92397bb76ba96bdc1f8ab3ab23457",
+        "libbirnam_image.dylib": "d3cd47b893ad53880bd9ce11e108cba1265faa756d269e4c8bc5ffc313a960f2",
+        "libbirnam_imageFormat.dylib": "2aaf743fc902bf936be83f616777cc9f41efa8c9cee6fd41b1546b379241b3e8",
+        "libbirnam_integer.dylib": "8b37b294bd0902729d9b9c16933e36d35bdea4d535cdc570780c4b132db1a20e",
+        "libbirnam_integerValues.dylib": "09ea43c6a46ac57b1b088a9166145c61b18b475b215d9538336610a0428e6811",
+        "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "libbirnam_json.dylib": "f67594cbeb56076c07f76415d5abddeb9cd4f7b8faaf285f18b47b9b79190e26",
+        "libbirnam_lang.dylib": "4fbb57eb70caab3c5764d39c410a18698fab847d33a40d1b1cb6976d68d2d870",
+        "libbirnam_log.dylib": "c89b584f24e2e6b30e4ab85a862b99d19a5518ea3ebee3628705b701cf063623",
+        "libbirnam_lsp.dylib": "17bd90c101b66c97d272e42bdac2e7183f487b08cfc7a5fd2936c8fff805378f",
+        "libbirnam_map.dylib": "6ab97ca0ce3a21e5aad911c911d23696bd0849b479a9bdca335b0452b68acfa3",
+        "libbirnam_markdown.dylib": "ae667f74c392152c82a54d2f4f3bd19682d3edb3976c854a7ecb9b0257963b21",
+        "libbirnam_modules.dylib": "81a86ab60e2de6b919f4b2eb10d3448ec19bff5aace4428b092564c988776197",
+        "libbirnam_namespace.dylib": "11df3fd0f546a781a20cf26c2541e838827ebf863e83cdc0c3cdbb735a7724d0",
+        "libbirnam_nativeLoader.dylib": "c357d8d0d30456d47b4c0dbf31fb3573467dd632db621e29ce3971a1c0083746",
+        "libbirnam_nativeValues.dylib": "2d7260f06daf711bf46221be870e27dfefe546814ecc75e037362dd86dd62339",
+        "libbirnam_native_backend.dylib": "aa7af0c19a97a0584d1f726901a24f6c9342d702a14f3f61e0721708227e41ce",
+        "libbirnam_nativedoc.dylib": "d86afbfae17fb97b3207f4c62ffaf4119f09d7c7532e7aad4d70920d04b52cdb",
+        "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "libbirnam_object_model.dylib": "752f715d8e83c23c11d9f7113ed3455aa4bb1ade04686d1deedd867104830b5e",
+        "libbirnam_os.dylib": "878204a8d202a7465d45054f666937a35151a3e2437e20fab1205e74c29dfe75",
+        "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "libbirnam_portable_code.dylib": "04df675b45903dd9b7e26244fb50610a2be22652cc3d2e90c6a8af74848ff021",
+        "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "libbirnam_printing.dylib": "c677320de8297051205615fb18ff61a5694bc35701cba76f831bad6706a3044e",
+        "libbirnam_process.dylib": "d3faeb337830a7829a0ddf619c0d30a57001bdf3cefa9769ed2ea468bb3ae74d",
+        "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "libbirnam_random.dylib": "ac465fb2626a3e91f045227ec01ba42a30bbc937438155b525a16aa762c159e5",
+        "libbirnam_range.dylib": "7f699ed1f8567ce3544cd6ea045de0cf44acbd5a1da9f67a68505b5d78feeb73",
+        "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "libbirnam_repl.dylib": "0733bcae3b24e8007676f4dcd260172e8c67f5db05d573ab118fa494310bd776",
+        "libbirnam_root_registry.dylib": "e50d12fba7c7f2dee0f95905bbbb97fe5d57b01cf163da8ea74f69e8a1f2e06b",
+        "libbirnam_socket.dylib": "379826b3a85130f31c726eacdef6e2cd8b0d13bf587842301221ca5c3f1a9846",
+        "libbirnam_sourceLoader.dylib": "57d7f89ee9673b0601707f09e25640b3fe6d8e9a55c5d76a444f5beaf3f57cf0",
+        "libbirnam_stacklessControl.dylib": "12b51fd3cd49574d494a91d3cc66ad849421ff588aa1c051956325cd4917459a",
+        "libbirnam_stdlib.dylib": "4393e82e7d6f6d72f14756b7e3307b38225cfc7494646df05618fd3877391a1c",
+        "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+        "libbirnam_string.dylib": "5ea2d5059ab4262ebfc0fcca5df11087621dfa05526942eb8c1dde340225fa14",
+        "libbirnam_systemGc.dylib": "cd84c5876f0847b1f522a39a656424c7bf6b5d37089ddf2edbe78a557ef53ffc",
+        "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+        "libbirnam_time.dylib": "a22f55b26f77447a5491d023c03ac86d8e1f5b562890410a0af298f107c2002e",
+        "libbirnam_toml.dylib": "aa53e34a838c0f6525961c04a4a431cb09e5ef9465e8a2db170e4afd3764897b",
+        "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+        "libbirnam_vector.dylib": "1aa94d103a458e3bc7ac512d6626d5c6f0134172f96701d6e966e5d1442a8b9a",
+        "libbirnam_word.dylib": "8a7d41fcd886c9df6a9d5083b19cb9401edadb4362edac51929028f7d50d1439",
+        "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+      },
+      "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/retain-reference-prefix",
+      "process_seconds": 5.147659458,
+      "raw": {
+        "budget_seconds": 4.0,
+        "cases": [
+          {
+            "candidate_mask": 15,
+            "case": "public-integer-roots",
+            "compiled_sources": {
+              "baseline": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+              "candidate": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true"
+            },
+            "operations_per_invocation": 16,
+            "samples": [
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 36411500,
+                    "iterations": 8,
+                    "variant": "baseline",
+                    "wall_ns": 36412375
+                  },
+                  {
+                    "cpu_ns": 34672625,
+                    "iterations": 8,
+                    "variant": "candidate",
+                    "wall_ns": 34675584
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 0
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21640375,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21640958
+                  },
+                  {
+                    "cpu_ns": 22625458,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22625916
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 1
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22677292,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22695792
+                  },
+                  {
+                    "cpu_ns": 21817750,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21818375
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 2
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21868458,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21887292
+                  },
+                  {
+                    "cpu_ns": 22771167,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22771792
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 3
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22912167,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22912625
+                  },
+                  {
+                    "cpu_ns": 21950459,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21951250
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 4
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22250333,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 22253084
+                  },
+                  {
+                    "cpu_ns": 23280417,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 23281041
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 5
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22765250,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22765917
+                  },
+                  {
+                    "cpu_ns": 20066584,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20070375
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 6
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20343833,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20344375
+                  },
+                  {
+                    "cpu_ns": 21375792,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21376500
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 7
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21206334,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21207041
+                  },
+                  {
+                    "cpu_ns": 20289792,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20310292
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 8
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20562542,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20563208
+                  },
+                  {
+                    "cpu_ns": 21580292,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21580791
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 9
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21759958,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21760583
+                  },
+                  {
+                    "cpu_ns": 20667791,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20668458
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 10
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20965167,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20968583
+                  },
+                  {
+                    "cpu_ns": 21854834,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21858166
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 11
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21670125,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21673750
+                  },
+                  {
+                    "cpu_ns": 20706208,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20707000
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 12
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20708833,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20709541
+                  },
+                  {
+                    "cpu_ns": 21610208,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21610667
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 13
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21806375,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21809792
+                  },
+                  {
+                    "cpu_ns": 20704250,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20710875
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 14
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20562750,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20566250
+                  },
+                  {
+                    "cpu_ns": 21577542,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21578125
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 15
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21681541,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21682291
+                  },
+                  {
+                    "cpu_ns": 20313833,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20314417
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 16
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20410000,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20413542
+                  },
+                  {
+                    "cpu_ns": 21934916,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21935584
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 17
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20638375,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20639042
+                  },
+                  {
+                    "cpu_ns": 20608166,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20608833
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 18
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20420125,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20420667
+                  },
+                  {
+                    "cpu_ns": 21377209,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21377792
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 19
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21342000,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21342583
+                  },
+                  {
+                    "cpu_ns": 20618250,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20618666
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 20
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20668666,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20669334
+                  },
+                  {
+                    "cpu_ns": 21531500,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21532042
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 21
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21389083,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21389708
+                  },
+                  {
+                    "cpu_ns": 20342166,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20342583
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 22
+              }
+            ],
+            "source": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+            "work_counts": {
+              "baseline": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8
+              },
+              "candidate": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8
+              }
+            }
+          }
+        ],
+        "event": "result",
+        "gc": "normal",
+        "measurement_ms": 4006.1935000000003,
+        "profile": "none",
+        "schema": 1
+      },
+      "ready": {
+        "event": "ready",
+        "pid": 80465,
+        "setup_ms": 1075.458042
+      },
+      "runner_sha256": "f68c3b0d645ed25065a40dcfd047a2e8f3c43ed4b0a7c6af79da905aa341fe33",
+      "schema": 1,
+      "settings": {
+        "batch_ms": 25,
+        "case": "public-integer-roots",
+        "counts_only": false,
+        "gc": "normal",
+        "nice": 5,
+        "profile": null,
+        "seconds": 4.0
+      },
+      "source_revision": "41d2e00701972a2e2c75dacbd62d0d3f1d84ed2c",
+      "source_sha256": "501fddb86fffa5c31311f5af2f9f2231c024ce33190b3e10f868cffe9456ed35",
+      "summary": [
+        {
+          "allocation_counts": {
+            "baseline": {
+              "allocation_objects": {
+                "block": 1024,
+                "integer": 128,
+                "other": 4096,
+                "vector": 0,
+                "word": 1664
+              },
+              "gc_charge_bytes": 256000,
+              "iterations": 8
+            },
+            "candidate": {
+              "allocation_objects": {
+                "block": 1024,
+                "integer": 128,
+                "other": 4096,
+                "vector": 0,
+                "word": 1664
+              },
+              "gc_charge_bytes": 256000,
+              "iterations": 8
+            }
+          },
+          "bootstrap_interval_95": [
+            0.9517230051639723,
+            0.9582893880521651
+          ],
+          "candidate_over_baseline": 0.9555186229890229,
+          "case": "public-integer-roots",
+          "interval_note": "Within-run uncertainty only; does not cover drift, thermal changes or systematic bias.",
+          "median_baseline_cpu_ns_per_language_operation": 271019.2625,
+          "median_baseline_cpu_ns_per_op": 4336308.2,
+          "median_candidate_cpu_ns_per_language_operation": 258347.3875,
+          "median_candidate_cpu_ns_per_op": 4133558.2,
+          "operations_per_invocation": 16,
+          "pairs": 23,
+          "pairs_with_scheduling_delay": 0,
+          "verdict": "faster"
+        }
+      ]
+    },
+    "after-owners": {
+      "build_seconds": 0.591331207,
+      "dirty_status": " M formal/rooting/lean/Audit.lean\n M formal/rooting/lean/lakefile.toml\n M rust/birnam-id/src/id/native_id/metrics.rs\n M rust/birnam-id/src/id/native_id/registries.rs\n M rust/birnam-native-backend/src/native.rs\n M rust/birnam-native-backend/src/native_prelude.c\n M rust/birnam-native-backend/src/native_sync.rs\n M rust/birnam-native-backend/src/word_expression.rs\n M rust/birnam-root-registry/src/lib.rs\n M rust/birnam-siphon/examples/microbench.rs\n M rust/birnam-siphon/tests/root_batches.rs\n M rust/birnam-word/src/native.rs\n M scripts/check-rooting-model.py\n M scripts/microbench.py\n?? formal/rooting/lean/Registration.lean\n?? formal/rooting/tla/RegistrationBatch.tla\n?? formal/rooting/tla/RegistrationPartial.cfg\n?? formal/rooting/tla/RegistrationSafe.cfg\n?? formal/rooting/tla/RegistrationUnrooted.cfg\n?? rust/birnam-siphon/tests/binding_proof.rs\n",
+      "inputs_changed_during_run": false,
+      "library_sha256": {
+        "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "libbirnam_alienCompiler.dylib": "b979421d9b7c213b82bbbcb4ed3c627a504fd52bb53e7c9a1701e2cf1e5aee7f",
+        "libbirnam_artifact.dylib": "4a606de2ad04ce6e003221245312827d900712b1af65ec1c9b362b2b8312a1e5",
+        "libbirnam_blockLoop.dylib": "73f38dcd81d194868c1d4aa6bcca884ad1eea83f4557e3587066523603a1fd36",
+        "libbirnam_blockLoopControl.dylib": "cdf1e46d7df4a1beab5ec30b08a60d857b8b5ffb51f13d31ee52f358bee9a58d",
+        "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "libbirnam_booleanValues.dylib": "3d1554d31b0bd6565953e5740c4248d1b8bc5e00625bcbd07575c2d641ca47cd",
+        "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+        "libbirnam_bytes.dylib": "485df046e88f953f0056e74eafd9814c1c43f23d59aa7fc6941c3c9d68ba89a0",
+        "libbirnam_cli.dylib": "b3ef30b96b0e0f7b65e5d917fbc0c8c9eee1f090ff72de9631c6188094748336",
+        "libbirnam_codegen_runtime.dylib": "46fed0cbe1d25c07a093be93a0070ba403aba8ddebec97209c39f00f84547698",
+        "libbirnam_collect.dylib": "dd0365538aa0e10456de307596c000ce3fda529ef127443799fab0fc58760b4b",
+        "libbirnam_compiledUnit.dylib": "a73759d7b843ce5df32cfe5c3d6e74b3046cf53c94886413ffd0b263a44cdabd",
+        "libbirnam_compiledUnitDocs.dylib": "b9acb11ad4105cc29c60664bf319f8701083c19fdd534b7e558025dd4d8dcc07",
+        "libbirnam_concurrencyDocs.dylib": "b49561e53c8223035d417eb8c54f181f5f1ff77d896dcbcddda445ef159ab62f",
+        "libbirnam_config.dylib": "bf0cc9f0356ae0de5771e560fce788a4b15095c551bc2c0184163db7b1dc8912",
+        "libbirnam_doc.dylib": "11b75ba083a885633e6bf2f8df96061c4008800315f1252d2ff0015c8d43d341",
+        "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "libbirnam_error.dylib": "87b863fc81068382d27756f8036516e30185b82ba8890a83388fe63cf882fba0",
+        "libbirnam_execution.dylib": "be5444c556ab96cf3a21e65df7a4652e41a3523b1031fdae7067f3d297f5d5a5",
+        "libbirnam_file.dylib": "9b8ac76cd8f7d8d00750a9161b125553da7d972d4cf23b34ab23f8e84a09a315",
+        "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "libbirnam_generation.dylib": "e40b688403d36be8a0cca9a1db96819a3d49b4cc9334cae7bbd791df6dfbe773",
+        "libbirnam_host_entry.dylib": "ef659f3edad2ff55cd623a4ecf50227e35e464811f61882010a576de50a0e6ef",
+        "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+        "libbirnam_html.dylib": "dc947f8c781cb3fa1cd9bcef32ec56787b7ff5123c116b9f62d728c5188006af",
+        "libbirnam_http.dylib": "7c49ada171d685f48f7fa1179704fb1607b541362e1126f451f8526557cdaa3a",
+        "libbirnam_id.dylib": "97738c29fa202aa118cf322ff772cf19b0edb12af366fcfe0bbf0a63774a4eeb",
+        "libbirnam_image.dylib": "d3cd47b893ad53880bd9ce11e108cba1265faa756d269e4c8bc5ffc313a960f2",
+        "libbirnam_imageFormat.dylib": "2aaf743fc902bf936be83f616777cc9f41efa8c9cee6fd41b1546b379241b3e8",
+        "libbirnam_integer.dylib": "8b37b294bd0902729d9b9c16933e36d35bdea4d535cdc570780c4b132db1a20e",
+        "libbirnam_integerValues.dylib": "09ea43c6a46ac57b1b088a9166145c61b18b475b215d9538336610a0428e6811",
+        "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "libbirnam_json.dylib": "f67594cbeb56076c07f76415d5abddeb9cd4f7b8faaf285f18b47b9b79190e26",
+        "libbirnam_lang.dylib": "4fbb57eb70caab3c5764d39c410a18698fab847d33a40d1b1cb6976d68d2d870",
+        "libbirnam_log.dylib": "c89b584f24e2e6b30e4ab85a862b99d19a5518ea3ebee3628705b701cf063623",
+        "libbirnam_lsp.dylib": "17bd90c101b66c97d272e42bdac2e7183f487b08cfc7a5fd2936c8fff805378f",
+        "libbirnam_map.dylib": "6ab97ca0ce3a21e5aad911c911d23696bd0849b479a9bdca335b0452b68acfa3",
+        "libbirnam_markdown.dylib": "ae667f74c392152c82a54d2f4f3bd19682d3edb3976c854a7ecb9b0257963b21",
+        "libbirnam_modules.dylib": "81a86ab60e2de6b919f4b2eb10d3448ec19bff5aace4428b092564c988776197",
+        "libbirnam_namespace.dylib": "11df3fd0f546a781a20cf26c2541e838827ebf863e83cdc0c3cdbb735a7724d0",
+        "libbirnam_nativeLoader.dylib": "c357d8d0d30456d47b4c0dbf31fb3573467dd632db621e29ce3971a1c0083746",
+        "libbirnam_nativeValues.dylib": "2d7260f06daf711bf46221be870e27dfefe546814ecc75e037362dd86dd62339",
+        "libbirnam_native_backend.dylib": "aa7af0c19a97a0584d1f726901a24f6c9342d702a14f3f61e0721708227e41ce",
+        "libbirnam_nativedoc.dylib": "d86afbfae17fb97b3207f4c62ffaf4119f09d7c7532e7aad4d70920d04b52cdb",
+        "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "libbirnam_object_model.dylib": "752f715d8e83c23c11d9f7113ed3455aa4bb1ade04686d1deedd867104830b5e",
+        "libbirnam_os.dylib": "878204a8d202a7465d45054f666937a35151a3e2437e20fab1205e74c29dfe75",
+        "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "libbirnam_portable_code.dylib": "04df675b45903dd9b7e26244fb50610a2be22652cc3d2e90c6a8af74848ff021",
+        "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "libbirnam_printing.dylib": "c677320de8297051205615fb18ff61a5694bc35701cba76f831bad6706a3044e",
+        "libbirnam_process.dylib": "d3faeb337830a7829a0ddf619c0d30a57001bdf3cefa9769ed2ea468bb3ae74d",
+        "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "libbirnam_random.dylib": "ac465fb2626a3e91f045227ec01ba42a30bbc937438155b525a16aa762c159e5",
+        "libbirnam_range.dylib": "7f699ed1f8567ce3544cd6ea045de0cf44acbd5a1da9f67a68505b5d78feeb73",
+        "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "libbirnam_repl.dylib": "0733bcae3b24e8007676f4dcd260172e8c67f5db05d573ab118fa494310bd776",
+        "libbirnam_root_registry.dylib": "9f91e74c9690fa09977b726bb5ecc8cc8a5d8b17550f90c7eb5171725aaa4a9e",
+        "libbirnam_socket.dylib": "379826b3a85130f31c726eacdef6e2cd8b0d13bf587842301221ca5c3f1a9846",
+        "libbirnam_sourceLoader.dylib": "57d7f89ee9673b0601707f09e25640b3fe6d8e9a55c5d76a444f5beaf3f57cf0",
+        "libbirnam_stacklessControl.dylib": "12b51fd3cd49574d494a91d3cc66ad849421ff588aa1c051956325cd4917459a",
+        "libbirnam_stdlib.dylib": "4393e82e7d6f6d72f14756b7e3307b38225cfc7494646df05618fd3877391a1c",
+        "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+        "libbirnam_string.dylib": "5ea2d5059ab4262ebfc0fcca5df11087621dfa05526942eb8c1dde340225fa14",
+        "libbirnam_systemGc.dylib": "cd84c5876f0847b1f522a39a656424c7bf6b5d37089ddf2edbe78a557ef53ffc",
+        "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+        "libbirnam_time.dylib": "a22f55b26f77447a5491d023c03ac86d8e1f5b562890410a0af298f107c2002e",
+        "libbirnam_toml.dylib": "aa53e34a838c0f6525961c04a4a431cb09e5ef9465e8a2db170e4afd3764897b",
+        "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+        "libbirnam_vector.dylib": "1aa94d103a458e3bc7ac512d6626d5c6f0134172f96701d6e966e5d1442a8b9a",
+        "libbirnam_word.dylib": "7fefa144cb06b29a4cb86e2214bbfe7ba77bd6313f216aaa7b92f24d040dfcd7",
+        "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+      },
+      "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/microbench/prefix",
+      "process_seconds": 5.173482,
+      "raw": {
+        "budget_seconds": 4.0,
+        "cases": [
+          {
+            "candidate_mask": 15,
+            "case": "public-integer-roots",
+            "compiled_sources": {
+              "baseline": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+              "candidate": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true"
+            },
+            "operations_per_invocation": 16,
+            "samples": [
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 36096209,
+                    "iterations": 8,
+                    "variant": "baseline",
+                    "wall_ns": 36096958
+                  },
+                  {
+                    "cpu_ns": 34391000,
+                    "iterations": 8,
+                    "variant": "candidate",
+                    "wall_ns": 34391792
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 0
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21547458,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21548208
+                  },
+                  {
+                    "cpu_ns": 22515459,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22518709
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 1
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22450250,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 22453916
+                  },
+                  {
+                    "cpu_ns": 21497417,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 21501000
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 2
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 22012458,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 22013125
+                  },
+                  {
+                    "cpu_ns": 21228833,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21232250
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 3
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21263542,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21264083
+                  },
+                  {
+                    "cpu_ns": 20384291,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20385292
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 4
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20436833,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20437584
+                  },
+                  {
+                    "cpu_ns": 21194417,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21195208
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 5
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21304375,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21304875
+                  },
+                  {
+                    "cpu_ns": 20505958,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20509667
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 6
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20306208,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20306875
+                  },
+                  {
+                    "cpu_ns": 21257834,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21258459
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 7
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21090625,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21094125
+                  },
+                  {
+                    "cpu_ns": 20331000,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20334583
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 8
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20168125,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20168792
+                  },
+                  {
+                    "cpu_ns": 20958875,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20959500
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 9
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21113750,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21114375
+                  },
+                  {
+                    "cpu_ns": 20338667,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20342000
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 10
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20317542,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20321000
+                  },
+                  {
+                    "cpu_ns": 21168541,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21169041
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 11
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21286375,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21286959
+                  },
+                  {
+                    "cpu_ns": 20454500,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20455083
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 12
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20351500,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20352000
+                  },
+                  {
+                    "cpu_ns": 21222708,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21226042
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 13
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20462917,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20466666
+                  },
+                  {
+                    "cpu_ns": 20132625,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20133125
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 14
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 19852916,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 19856292
+                  },
+                  {
+                    "cpu_ns": 20805667,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20809041
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 15
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20984375,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 20985000
+                  },
+                  {
+                    "cpu_ns": 20244541,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20244958
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 16
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 19699042,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 19699625
+                  },
+                  {
+                    "cpu_ns": 21392916,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21393666
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 17
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21270417,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21270916
+                  },
+                  {
+                    "cpu_ns": 20197459,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20200917
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 18
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20333375,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20334084
+                  },
+                  {
+                    "cpu_ns": 21572875,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21573375
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 19
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21744917,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21745916
+                  },
+                  {
+                    "cpu_ns": 20675958,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20676583
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 20
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 20578417,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20579209
+                  },
+                  {
+                    "cpu_ns": 21530250,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21533416
+                  }
+                ],
+                "order": [
+                  1,
+                  0
+                ],
+                "pair": 21
+              },
+              {
+                "batches": [
+                  {
+                    "cpu_ns": 21712792,
+                    "iterations": 5,
+                    "variant": "baseline",
+                    "wall_ns": 21713583
+                  },
+                  {
+                    "cpu_ns": 20273167,
+                    "iterations": 5,
+                    "variant": "candidate",
+                    "wall_ns": 20273958
+                  }
+                ],
+                "order": [
+                  0,
+                  1
+                ],
+                "pair": 22
+              }
+            ],
+            "source": "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | let x0 := a; let x1 := [x0 + b]; let x2 := [x1 + b]; let x3 := [x2 + b]; let x4 := [x3 + b]; let x5 := [x4 + b]; let x6 := [x5 + b]; let x7 := [x6 + b]; let x8 := [x7 + b]; let x9 := [x8 + b]; let x10 := [x9 + b]; let x11 := [x10 + b]; let x12 := [x11 + b]; let x13 := [x12 + b]; let x14 := [x13 + b]; let x15 := [x14 + b]; let x16 := [x15 + b]; x16] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true",
+            "work_counts": {
+              "baseline": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8
+              },
+              "candidate": {
+                "allocation_objects": {
+                  "block": 1024,
+                  "integer": 128,
+                  "other": 4096,
+                  "vector": 0,
+                  "word": 1664
+                },
+                "gc_charge_bytes": 256000,
+                "iterations": 8
+              }
+            }
+          }
+        ],
+        "event": "result",
+        "gc": "normal",
+        "measurement_ms": 4020.120458,
+        "profile": "none",
+        "schema": 1
+      },
+      "ready": {
+        "event": "ready",
+        "pid": 35882,
+        "setup_ms": 1086.90375
+      },
+      "runner_sha256": "f68c3b0d645ed25065a40dcfd047a2e8f3c43ed4b0a7c6af79da905aa341fe33",
+      "schema": 1,
+      "settings": {
+        "batch_ms": 25,
+        "case": "public-integer-roots",
+        "counts_only": false,
+        "gc": "normal",
+        "nice": 5,
+        "profile": null,
+        "seconds": 4.0
+      },
+      "source_revision": "41d2e00701972a2e2c75dacbd62d0d3f1d84ed2c",
+      "source_sha256": "2f475a8a61fbd7d235c6069268500af4ab21f03858bc10993cec74bc2aff6803",
+      "summary": [
+        {
+          "allocation_counts": {
+            "baseline": {
+              "allocation_objects": {
+                "block": 1024,
+                "integer": 128,
+                "other": 4096,
+                "vector": 0,
+                "word": 1664
+              },
+              "gc_charge_bytes": 256000,
+              "iterations": 8
+            },
+            "candidate": {
+              "allocation_objects": {
+                "block": 1024,
+                "integer": 128,
+                "other": 4096,
+                "vector": 0,
+                "word": 1664
+              },
+              "gc_charge_bytes": 256000,
+              "iterations": 8
+            }
+          },
+          "bootstrap_interval_95": [
+            0.9542071398143593,
+            0.9625233314753425
+          ],
+          "candidate_over_baseline": 0.9586498335978079,
+          "case": "public-integer-roots",
+          "interval_note": "Within-run uncertainty only; does not cover drift, thermal changes or systematic bias.",
+          "median_baseline_cpu_ns_per_language_operation": 265794.275,
+          "median_baseline_cpu_ns_per_op": 4252708.4,
+          "median_candidate_cpu_ns_per_language_operation": 254233.3375,
+          "median_candidate_cpu_ns_per_op": 4067733.4,
+          "operations_per_invocation": 16,
+          "pairs": 23,
+          "pairs_with_scheduling_delay": 0,
+          "verdict": "faster"
+        }
+      ]
+    }
+  },
+  "formal_verification": {
+    "scope": "Abstract duplicate-root owner contract; no production compiler verification",
+    "lean_version": "Lean (version 4.24.0, arm64-apple-darwin23.6.0, commit 797c613eb9b6d4ec95db23e3e00af9ac6657f24b, Release)",
+    "tla_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "lean_binary_sha256": "9544be237d91099efe1db8cb97d0c359fa13aa94f565e9972bfb8b63abbcb437",
+    "seconds": 16.77,
+    "source_sha256": {
+      "formal/rooting/README.md": "35f9f3e9f0a6237483448bafc933496bc3e0514d92af7eb3c8cddfd8bcf8a6ce",
+      "formal/rooting/lean/.gitignore": "fde850d24186b6e99c8c0debd641fb3ab85198b109eb66f71a1fea02bd6ea1b3",
+      "formal/rooting/lean/Audit.lean": "7f79c49107b814c11d12e966d39e397411e1776cad985c02ab30d0fd360e576a",
+      "formal/rooting/lean/Borrow.lean": "71c7030153af5460f0ab5e46b50f8ae7fa0e18bff3ffc67336191447360dd159",
+      "formal/rooting/lean/Examples.lean": "c9f7a900f24697465151b22e518b86d3c8d50972ebfce28cc6dc00e9aab62288",
+      "formal/rooting/lean/GC.lean": "0fd56b0b4d2f62ae80efcc802cce7ec625de7cb3af43bcf9783f977d9674a27d",
+      "formal/rooting/lean/Memo.lean": "f9eff188403c5df4f1c7255829a0722834a79eb368dea8b9315ddad100eca3b9",
+      "formal/rooting/lean/Registration.lean": "ab3cc965c48ac659866e98016d5d23e01eab7a9c8380392e57c9d507ae4f70bb",
+      "formal/rooting/lean/Rooting.lean": "02f36d0df39d9dc95ba0939476ad928d45df4d375e492a8a2a93d1935cb12931",
+      "formal/rooting/lean/lake-manifest.json": "43963def0613e4ced3f91375628fc2d9e3d226fc75967f5eedffc50b8bde8692",
+      "formal/rooting/lean/lakefile.toml": "f21722ea09accaf88a1489732205a335e75076e3e6a0ce5a8d86f2b70e372dd7",
+      "formal/rooting/lean/lean-toolchain": "42779d67b81608af8a12aa4328d2ab47ca201925b3b2bd68369587b5340bb434",
+      "formal/rooting/tla/BadRevoke.cfg": "835f56116408003edef02b54ae21d00941669b09e57e3ad4bbf89b05aeae2e09",
+      "formal/rooting/tla/BatchCleanup.tla": "96eb43362f82dc10653a4ce40f563e5b8783006a4c457551c15a11b5dcea3857",
+      "formal/rooting/tla/BatchOrder.cfg": "7b22e9b05092ca3067ca12cf1050a3effc36f9aaed51e8ad2bcb471ac28c5523",
+      "formal/rooting/tla/BatchSafe.cfg": "bf9ee7ff5e0f8c32844bc0733ba2ea2a7115cb97673cd7775b183271d1b2aa27",
+      "formal/rooting/tla/BatchStale.cfg": "16bf07575424956a197e75ec5bf977e3351945f1414b959d6595e589a9538f49",
+      "formal/rooting/tla/BorrowCallback.cfg": "0791ed04a3a9e7c28ac5fd19d237e620936b0a961a6153fda19f7b4e643c18a5",
+      "formal/rooting/tla/BorrowInspection.tla": "9af0ca7fea30d95a349a21aa3be96e6460ad400ea18b859d4753f5ba2d292fa9",
+      "formal/rooting/tla/BorrowSafe.cfg": "8c25205cf828f218260f3e2c33b796425f9e8e9bc0604740902a14a02b655a5a",
+      "formal/rooting/tla/Canonical.cfg": "465b1c103afb84edc9a5d254716f6a52dc4459d4e0a24baad3cbb7453abeb59a",
+      "formal/rooting/tla/DuplicateRoots.tla": "81802082b0fee3fd120c49af612fac2b52c72b5377a3b98f34415dc7acd5f759",
+      "formal/rooting/tla/EarlyRelease.cfg": "648e8d118068ebf9db31e8c5e8b1abf3d45bfde42af2913ea5d9359640747457",
+      "formal/rooting/tla/Graph.cfg": "3a614379962ae258700129111bc450ac09fa892c4a633577dc6f2b131e111f3b",
+      "formal/rooting/tla/IgnorePermission.cfg": "6569196d95b0bfa3b9ab8ba6739a299b31697ff24c27731d808b05feb57fde0d",
+      "formal/rooting/tla/LeakExit.cfg": "c7024a389055a85132b68d299ce70dd961f46f7e657fd7a34cf6701e3e7af5f3",
+      "formal/rooting/tla/Nested.cfg": "9e98881b405740e5aa51a34707e019a5b8ea3f30f002d702094cd2e4c2c9968c",
+      "formal/rooting/tla/OmitFirst.cfg": "824a28510b78bba341556c772eb2af7fdb35f465aeba81ce136ba2795fba563a",
+      "formal/rooting/tla/Recovery.cfg": "ffb2645fe44770b76eaa7bb355b0fe3faa27b2d3e273321db42d644e3cf8e4d3",
+      "formal/rooting/tla/RegistrationBatch.tla": "4c9ebf6d24d0d25a66500131169cfa15c93423c662eb8ea011e3a36ed52625e8",
+      "formal/rooting/tla/RegistrationPartial.cfg": "7ed5b4d6bfd2faa45c907ec4d885cd12e6f55794b0558667d4714bcfc6127865",
+      "formal/rooting/tla/RegistrationSafe.cfg": "378170fcb147bab9a8a4eeaa4d1174974860d173afed3a45bb4b3ba96185e0bd",
+      "formal/rooting/tla/RegistrationUnrooted.cfg": "53cd05c8eab61883be911a31e4fec139e207144769e7962a8af8208590f86d6f",
+      "formal/rooting/tla/Safe.cfg": "93c720b3c776599b0d7354e5ee98c3e87033f93f204fabe621e30dff3cb1a1a0",
+      "formal/rooting/tla/UnfairRecovery.cfg": "ca1527e88287c3c80fbd2082898d81bc80fa36d181ed6c66eb45f6165b1fcefa",
+      "formal/rooting/tools.json": "148f7819870e61322ee1aaf162d1197ef5ce7e2f56d0df9581d1c36b70f9de8d",
+      "scripts/check-rooting-model.py": "2ffdd6c6a0c35a55addd2bd8880984f02b2f3748d03aad677082b1da908d3361",
+      "mise.toml": "5d9021781384b5193e8720409268e03487a9421eda6f7110cd7bdf993dae1eca"
+    },
+    "tla": {
+      "Safe": {
+        "expected_violation": null,
+        "seconds": 0.687,
+        "generated_states": 6099,
+        "distinct_states": 1748,
+        "log": "tlc-Safe.log"
+      },
+      "RegistrationSafe": {
+        "expected_violation": null,
+        "seconds": 0.62,
+        "generated_states": 4118,
+        "distinct_states": 1924,
+        "log": "tlc-RegistrationSafe.log"
+      },
+      "RegistrationUnrooted": {
+        "expected_violation": "Invariant InputsAlive is violated.",
+        "seconds": 0.587,
+        "generated_states": 303,
+        "distinct_states": 292,
+        "log": "tlc-RegistrationUnrooted.log"
+      },
+      "RegistrationPartial": {
+        "expected_violation": "Invariant ExactRegistrations is violated.",
+        "seconds": 0.592,
+        "generated_states": 1082,
+        "distinct_states": 692,
+        "log": "tlc-RegistrationPartial.log"
+      },
+      "BatchSafe": {
+        "expected_violation": null,
+        "seconds": 0.678,
+        "generated_states": 10600,
+        "distinct_states": 9825,
+        "log": "tlc-BatchSafe.log"
+      },
+      "BorrowSafe": {
+        "expected_violation": null,
+        "seconds": 0.543,
+        "generated_states": 12,
+        "distinct_states": 8,
+        "log": "tlc-BorrowSafe.log"
+      },
+      "BorrowCallback": {
+        "expected_violation": "Invariant SameInspection is violated.",
+        "seconds": 0.543,
+        "generated_states": 14,
+        "distinct_states": 9,
+        "log": "tlc-BorrowCallback.log"
+      },
+      "BatchStale": {
+        "expected_violation": "Invariant ExactCustomCallbacks is violated.",
+        "seconds": 0.584,
+        "generated_states": 752,
+        "distinct_states": 752,
+        "log": "tlc-BatchStale.log"
+      },
+      "BatchOrder": {
+        "expected_violation": "Invariant ExactRetainedOrder is violated.",
+        "seconds": 0.608,
+        "generated_states": 812,
+        "distinct_states": 812,
+        "log": "tlc-BatchOrder.log"
+      },
+      "Canonical": {
+        "expected_violation": null,
+        "seconds": 0.635,
+        "generated_states": 449,
+        "distinct_states": 116,
+        "log": "tlc-Canonical.log"
+      },
+      "Graph": {
+        "expected_violation": null,
+        "seconds": 0.706,
+        "generated_states": 5153,
+        "distinct_states": 1444,
+        "log": "tlc-Graph.log"
+      },
+      "Nested": {
+        "expected_violation": null,
+        "seconds": 1.533,
+        "generated_states": 107956,
+        "distinct_states": 31395,
+        "log": "tlc-Nested.log"
+      },
+      "Recovery": {
+        "expected_violation": null,
+        "seconds": 0.832,
+        "generated_states": 6099,
+        "distinct_states": 1748,
+        "log": "tlc-Recovery.log"
+      },
+      "OmitFirst": {
+        "expected_violation": "Invariant RootCoverage is violated.",
+        "seconds": 0.599,
+        "generated_states": 3,
+        "distinct_states": 3,
+        "log": "tlc-OmitFirst.log"
+      },
+      "EarlyRelease": {
+        "expected_violation": "Invariant RootCoverage is violated.",
+        "seconds": 0.602,
+        "generated_states": 18,
+        "distinct_states": 18,
+        "log": "tlc-EarlyRelease.log"
+      },
+      "IgnorePermission": {
+        "expected_violation": "Invariant ObservableEquality is violated.",
+        "seconds": 0.588,
+        "generated_states": 40,
+        "distinct_states": 30,
+        "log": "tlc-IgnorePermission.log"
+      },
+      "BadRevoke": {
+        "expected_violation": "Invariant ObservableEquality is violated.",
+        "seconds": 0.619,
+        "generated_states": 176,
+        "distinct_states": 109,
+        "log": "tlc-BadRevoke.log"
+      },
+      "LeakExit": {
+        "expected_violation": "Invariant ReachabilityEquality is violated.",
+        "seconds": 0.61,
+        "generated_states": 101,
+        "distinct_states": 74,
+        "log": "tlc-LeakExit.log"
+      },
+      "UnfairRecovery": {
+        "expected_violation": "Temporal properties were violated.",
+        "seconds": 0.75,
+        "generated_states": 6099,
+        "distinct_states": 1748,
+        "log": "tlc-UnfairRecovery.log"
+      }
+    },
+    "lean": {
+      "theorems": [
+        "Birnam.Rooting.reach_congr",
+        "Birnam.Rooting.positive_iff_of_bounds",
+        "Birnam.Rooting.root_equivalence",
+        "Birnam.Rooting.reachability_equivalence",
+        "Birnam.Rooting.collector_equivalence",
+        "Birnam.Rooting.needed_survives",
+        "Birnam.Rooting.keep_bounds",
+        "Birnam.Rooting.keepRaw_preserves",
+        "Birnam.Rooting.deopt_preserves",
+        "Birnam.Rooting.deopt_restores_exact",
+        "Birnam.Rooting.deopt_preserves_reachability",
+        "Birnam.Rooting.guardedKeep_preserves",
+        "Birnam.Rooting.guard_failure_restores_exact",
+        "Birnam.Rooting.changePermission_preserves",
+        "Birnam.Rooting.revocation_restores_exact",
+        "Birnam.Rooting.unpermitted_exact",
+        "Birnam.Rooting.acquire_preserves",
+        "Birnam.Rooting.clearScope_preserves",
+        "Birnam.Rooting.materializeOne_preserves",
+        "Birnam.Rooting.materialization_progress",
+        "Birnam.Rooting.step_preserves",
+        "Birnam.Rooting.run_preserves",
+        "Birnam.Rooting.compiler_gc_equivalence",
+        "Birnam.Rooting.nonessential_iff_coverage",
+        "Birnam.Rooting.Examples.duplicate_valid",
+        "Birnam.Rooting.Examples.duplicate_keep_reuses_token",
+        "Birnam.Rooting.Examples.deoptimization_materializes_duplicate",
+        "Birnam.Rooting.Examples.stale_guard_falls_back",
+        "Birnam.Rooting.Examples.partial_materialization_safe",
+        "Birnam.Rooting.Examples.parent_protection_survives_child_exit",
+        "Birnam.Rooting.Examples.omitted_first_root_is_invalid",
+        "Birnam.Rooting.Examples.omitted_first_root_changes_collection",
+        "Birnam.Rooting.Examples.bare_revocation_changes_observable_counts",
+        "Birnam.GC.releaseLoop_eq_foldl",
+        "Birnam.GC.bulk_cleanup_equivalent",
+        "Birnam.GC.emitPair_preserves",
+        "Birnam.GC.emitAll_preserves",
+        "Birnam.GC.dead_inventory_equivalent",
+        "Birnam.Memo.lookup_sound",
+        "Birnam.Memo.memoization_equivalent",
+        "Birnam.Memo.insert_preserves",
+        "Birnam.Memo.eviction_preserves",
+        "Birnam.Borrow.copy_contents",
+        "Birnam.Borrow.pure_inspection_equivalent",
+        "Birnam.Registration.loop_accumulator",
+        "Birnam.Registration.exact_batch_registration",
+        "Birnam.Registration.successful_prefix_fits"
+      ],
+      "allowed_axioms": [
+        "Classical.choice",
+        "Quot.sound",
+        "propext"
+      ],
+      "rejected_mutations": [
+        "omit-first",
+        "leak-on-exit",
+        "skip-materialization",
+        "wrong-release-order",
+        "lost-index-mark",
+        "wrong-memo-key",
+        "truncated-borrow"
+      ]
+    }
+  },
+  "validation": {
+    "workspace_test": "passed",
+    "all_targets_check": "passed",
+    "production_owner_tests": "passed",
+    "mapped_rebuilt_image_smoke": "passed",
+    "metrics_feature_test": "passed with isolated instrumented Id",
+    "installed_prefix_modified": false,
+    "follow_up_committed": false
+  }
+}

@@ -47,23 +47,27 @@ pub(super) fn leave(
     }
     if name == Some(b"retain:".as_slice()) && args.len() == 1 {
         if let (Some(object), Some(token)) = (args[0].as_object(), result.value.as_word()) {
-            let owner = receiver.addr();
-            let object = object.addr();
-            let key = (parent, owner, object);
-            m.total_roots += 1;
-            m.objects.insert(object);
-            if m.live.get(&key).copied().unwrap_or(0) > 0 {
-                m.same_call_duplicates += 1;
-            } else if m
-                .live
-                .iter()
-                .any(|(&(p, r, o), &n)| p != parent && r == owner && o == object && n > 0)
-            {
-                m.other_call_duplicates += 1;
+            track(&mut m, parent, receiver.addr(), object.addr(), token);
+        }
+    } else if name == Some(b"tryRetainMany:".as_slice()) && args.len() == 1 {
+        if let (Some(input), Some(output)) = (args[0].as_bytes(), result.value.as_bytes()) {
+            if let (Some(objects), Some(tokens)) = (
+                unsafe { crate::abi::borrowed_bytes(input.pointer, input.length) },
+                unsafe { crate::abi::borrowed_bytes(output.pointer, output.length) },
+            ) {
+                for (object, token) in objects
+                    .chunks_exact(size_of::<usize>())
+                    .zip(tokens.chunks_exact(size_of::<usize>()))
+                {
+                    track(
+                        &mut m,
+                        parent,
+                        receiver.addr(),
+                        usize::from_ne_bytes(object.try_into().unwrap()),
+                        usize::from_ne_bytes(token.try_into().unwrap()),
+                    );
+                }
             }
-            *m.live.entry(key).or_default() += 1;
-            m.tokens.insert((owner, token), (parent, object));
-            m.max_live_tokens = m.max_live_tokens.max(m.tokens.len());
         }
     } else if name == Some(b"release:".as_slice())
         && args.len() == 1
@@ -72,20 +76,50 @@ pub(super) fn leave(
         if let Some(token) = args[0].as_word() {
             untrack(&mut m, receiver.addr(), token);
         }
-    } else if name == Some(b"tryReleaseMany:".as_slice()) && args.len() == 1 && result.value.as_word() == Some(1) {
-        if let Some(bytes) = args[0].as_bytes().and_then(|b| unsafe { crate::abi::borrowed_bytes(b.pointer, b.length) }) {
+    } else if (name == Some(b"tryReleaseMany:".as_slice())
+        || name == Some(b"tryReleaseManyForward:".as_slice()))
+        && args.len() == 1
+        && result.value.as_word() == Some(1)
+    {
+        if let Some(bytes) = args[0]
+            .as_bytes()
+            .and_then(|b| unsafe { crate::abi::borrowed_bytes(b.pointer, b.length) })
+        {
             for chunk in bytes.chunks_exact(size_of::<usize>()) {
-                untrack(&mut m, receiver.addr(), usize::from_ne_bytes(chunk.try_into().unwrap()));
+                untrack(
+                    &mut m,
+                    receiver.addr(),
+                    usize::from_ne_bytes(chunk.try_into().unwrap()),
+                );
             }
         }
     }
+}
+fn track(m: &mut Metrics, parent: usize, owner: usize, object: usize, token: usize) {
+    let key = (parent, owner, object);
+    m.total_roots += 1;
+    m.objects.insert(object);
+    if m.live.get(&key).copied().unwrap_or(0) > 0 {
+        m.same_call_duplicates += 1;
+    } else if m
+        .live
+        .iter()
+        .any(|(&(p, r, o), &n)| p != parent && r == owner && o == object && n > 0)
+    {
+        m.other_call_duplicates += 1;
+    }
+    *m.live.entry(key).or_default() += 1;
+    m.tokens.insert((owner, token), (parent, object));
+    m.max_live_tokens = m.max_live_tokens.max(m.tokens.len());
 }
 fn untrack(m: &mut Metrics, owner: usize, token: usize) {
     if let Some((parent, object)) = m.tokens.remove(&(owner, token)) {
         let key = (parent, owner, object);
         if let Some(n) = m.live.get_mut(&key) {
             *n -= 1;
-            if *n == 0 { m.live.remove(&key); }
+            if *n == 0 {
+                m.live.remove(&key);
+            }
         }
     }
 }

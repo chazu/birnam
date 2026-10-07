@@ -190,6 +190,18 @@ fn cases() -> Vec<Case> {
         result_selector: b"word",
         integer_inputs: true,
     });
+    let public = cases
+        .iter()
+        .find(|c| c.name == "public-integer-roots")
+        .unwrap();
+    cases.push(Case {
+        name: "public-integer-retains".into(),
+        source: public.source.clone(),
+        mask: 31,
+        expected: public.expected,
+        result_selector: b"word",
+        integer_inputs: true,
+    });
     let body = (0..256)
         .map(|i| format!("let ignored{i} := x; "))
         .collect::<String>();
@@ -606,7 +618,10 @@ fn main() {
         for case in cases {
             let baseline_mask = if case.name == "public-integer-roots" {
                 7
-            } else if case.name == "public-integer-shape" || case.name == "block-shape-large" {
+            } else if case.name == "public-integer-shape"
+                || case.name == "block-shape-large"
+                || case.name == "public-integer-retains"
+            {
                 15
             } else {
                 0
@@ -627,9 +642,14 @@ fn main() {
                     case.mask,
                 ));
             }
-            if case.name == "public-integer-shape" || case.name == "block-shape-large" {
-                baseline.borrow_shape = Some(false);
-                candidate.borrow_shape = Some(true);
+            if case.name == "public-integer-shape"
+                || case.name == "block-shape-large"
+                || case.name == "public-integer-retains"
+            {
+                if case.name != "public-integer-retains" {
+                    baseline.borrow_shape = Some(false);
+                    candidate.borrow_shape = Some(true);
+                }
             }
             let make = |value| {
                 object(send(
@@ -671,7 +691,9 @@ fn main() {
                 "word"
             };
             if case.name == "public-integer-roots"
-                || (case.name == "public-integer-shape" || case.name == "block-shape-large")
+                || (case.name == "public-integer-shape"
+                    || case.name == "block-shape-large"
+                    || case.name == "public-integer-retains")
             {
                 assert_eq!(work[0]["allocation_objects"], work[1]["allocation_objects"]);
                 if counts_only && case.name == "public-integer-roots" {
@@ -804,7 +826,7 @@ fn main() {
                     break;
                 }
             }
-            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name == "public-integer-roots" {7} else if case.name == "public-integer-shape" || case.name == "block-shape-large" {15} else {0}),"candidate":compilation_source(&case,case.mask)},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
+            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name == "public-integer-roots" {7} else if case.name == "public-integer-shape" || case.name == "block-shape-large" || case.name == "public-integer-retains" {15} else {0}),"candidate":compilation_source(&case,case.mask)},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
         }
         println!(
             "{}",

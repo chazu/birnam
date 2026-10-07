@@ -46,12 +46,13 @@ messages: `emit:source:filename:persistent:synchronous:optimizations:` and
 `factory:source:dispositions:optimizations:`. The final argument is an Integer
 bitmask: 1 enables Word expression/local fusion, 2 ABI literal elimination and
 4 authored Word helper candidates; 8 enables guarded owner-batched root cleanup.
-Existing messages retain all four by default (mask 15).
+Bit 16 enables batched incoming roots. Existing messages retain all five
+by default (mask 31).
 The runner temporarily forwards compiler requests to these options interfaces
 while compiling/loading fixtures, then restores the original compiler methods
 before measurement. Runtime lookup and allocation methods are not replaced.
 Typed bodies use the factory route as well as the initial program emitter, so
-both routes are controlled. Unit tests exercise all sixteen mask combinations.
+both routes are controlled. Unit tests exercise all thirty-two mask combinations.
 
 Each fixture uses the same source body for baseline and candidate. Integer
 fixtures derive their arithmetic policy from `modules/integer.birnam`; the
@@ -207,3 +208,8 @@ collections reclaim zero objects, and emits thread CPU plus wall samples. It is
 useful for comparing compatible collector dylibs in separate diagnostic prefixes;
 separate-process ratios are descriptive, not the paired reporter's confidence
 verdict. No startup images are involved.
+
+`public-integer-retains` compares masks 15 and 31 with identical input roots and
+physical allocations; Word's owner-level root batching is enabled for both.
+This isolates compiler incoming-root grouping, not the full before/after change.
+Untimed counts include grouped acquisition/release via the native Root protocols.

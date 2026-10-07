@@ -14,7 +14,7 @@ import time
 from validation_support import ROOT, clean_environment, command, save_json, sha
 from microbench_report import summarize
 
-OWNERS = ('native_backend', 'execution', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect')
+OWNERS = ('native_backend', 'execution', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id')
 TARGET = ROOT / '.cargo-target/decomposition-install/target'
 WORK = ROOT / '.cargo-target/microbench'
 
@@ -23,7 +23,7 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prefix', type=Path, default=WORK / 'prefix')
     p.add_argument('--prepare-from', type=Path, help='copy a compatible installed prefix; rebuild changed release owners')
-    p.add_argument('--case', choices=['all','word-nested','word-locals','abi','abi-captured','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-shape','block-shape-large'], default='all')
+    p.add_argument('--case', choices=['all','word-nested','word-locals','abi','abi-captured','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-shape','block-shape-large','public-integer-retains'], default='all')
     p.add_argument('--seconds', type=float, default=10, help='total measurement budget, at most 10 seconds')
     p.add_argument('--batch-ms', type=float, default=25)
     p.add_argument('--gc', choices=['normal','off'], default='normal')
