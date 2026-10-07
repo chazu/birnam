@@ -1,0 +1,43 @@
+import Semantics
+import SemanticsExamples
+import Admission
+#print axioms Birnam.Semantics.capture_valid
+#print axioms Birnam.Semantics.unchanged_dependencies_preserve
+#print axioms Birnam.Semantics.permission_revocation_invalidates
+#print axioms Birnam.Semantics.replacement_invalidates
+#print axioms Birnam.Semantics.certified_dispatch
+#print axioms Birnam.Semantics.mutation_does_not_rewrite_entered
+#print axioms Birnam.Semantics.protected_inputs_survive
+#print axioms Birnam.Semantics.visible_effect_cannot_be_erased
+#print axioms Birnam.Semantics.compose_refinement
+#print axioms Birnam.Semantics.sequence_refinement
+#print axioms Birnam.Semantics.recovery_preserves_prefix
+#print axioms Birnam.Semantics.cons_run_bound
+#print axioms Birnam.Semantics.repeated_owner_collapse
+#print axioms Birnam.Semantics.owner_boundary_lower_bound
+#print axioms Birnam.Semantics.bounded_schedule_forget
+#print axioms Birnam.Semantics.bounded_owner_lower_bound
+#print axioms Birnam.SemanticsExamples.addition_owner_floor
+#print axioms Birnam.SemanticsExamples.string_owner_floor
+#print axioms Birnam.SemanticsExamples.collection_owner_floor
+#print axioms Birnam.SemanticsExamples.addition_abstract_schedule
+#print axioms Birnam.SemanticsExamples.string_abstract_schedule
+#print axioms Birnam.SemanticsExamples.collection_abstract_schedule
+#print axioms Birnam.SemanticsExamples.valid_initial
+#print axioms Birnam.SemanticsExamples.epoch_change_alone_is_not_invalidation
+#print axioms Birnam.SemanticsExamples.same_epoch_revoked_permission_is_invalid
+#print axioms Birnam.SemanticsExamples.changed_dependency_is_invalid
+#print axioms Birnam.SemanticsExamples.first_refines
+#print axioms Birnam.SemanticsExamples.second_refines
+#print axioms Birnam.SemanticsExamples.composed_example_refines
+#print axioms Birnam.SemanticsExamples.dropping_visible_effect_is_invalid
+#print axioms Birnam.SemanticsExamples.unary_integer_access_schedule
+#print axioms Birnam.Admission.packed_sound
+#print axioms Birnam.Admission.selected_equivalent
+#print axioms Birnam.Admission.changed_service_uses_fallback
+#print axioms Birnam.Admission.changed_context_declines
+#print axioms Birnam.Admission.custom_lookup_declines
+#print axioms Birnam.Admission.guard_behavior_equivalent
+#print axioms Birnam.Admission.successful_guard_saves_one
+#print axioms Birnam.Admission.declined_guard_cost_is_explicit
+#print axioms Birnam.Admission.admitted_guard_refines

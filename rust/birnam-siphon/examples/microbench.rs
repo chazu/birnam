@@ -15,6 +15,13 @@ use std::{
     time::{Duration, Instant},
 };
 use support::*;
+// Echo an ABI carrier without inspecting an Object payload. The caller owns
+// any byte borrow for this complete Id invocation.
+unsafe extern "C" fn native_echo(_: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    let args = unsafe { borrowed_slice(a,n) }.unwrap();
+    assert_eq!(args.len(),1);
+    Outcome::loaded(args[0])
+}
 struct Compiler {
     id: Protocol,
     integer: Oop,
@@ -121,6 +128,19 @@ fn cases() -> Vec<Case> {
         Case{name:"helper".into(),source:r#"let mask := [Execution wordResultOf: 15 selector: #word]; let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | let x := [a bitXor: b]; let sum := [x wrappingAdd: a]; [[sum bitXor: mask] wrappingSubtract: sum]]]; [Globals at: #MicroProbe put: probe]; true"#.into(),mask:4,expected:3,result_selector:b"bits",integer_inputs:false},
     ];
     cases.push(Case{name:"abi-captured".into(),source:r#"let bridge := Execution; let target := Integer; let signature := "Wo"; let factory := Word; let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | [bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]] withNativeSignature: "oOO"]]; [Globals at: #MicroProbe put: probe]; true"#.into(),mask:2,expected:12345,result_selector:b"bits",integer_inputs:true});
+    cases.push(Case{name:"abi-audit-object-incoming".into(),source:wrapper("a"),mask:31,expected:12345,result_selector:b"word",integer_inputs:true});
+    let captured = |body: &str| format!(r#"let bridge := Execution; let target := Integer; let factory := Word; let signature := "Wo"; let resultSignature := "ow"; {}"#, wrapper(body));
+    cases.push(Case{name:"abi-audit-read".into(),source:captured("[bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]"),mask:31,expected:12345,result_selector:b"bits",integer_inputs:true});
+    cases.push(Case{name:"abi-audit-roundtrip".into(),source:captured("let bits := [bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]; [bridge sendNativeTo: target selector: #fromWord: arguments: #[bits] signature: resultSignature resultFactory: factory]"),mask:31,expected:12345,result_selector:b"word",integer_inputs:true});
+    for (name, signature, preamble, argument, result, expected) in [
+        ("abi-audit-word-incoming","ww","","a","result",10),
+        ("abi-audit-bytes-incoming","bb","let payload := [\"hello\" asBytes];","payload","[result size]",5),
+    ] {
+        let source = format!(r#"let bridge := Execution; let target := [Object clone]; let factory := {factory}; let signature := "{signature}"; {preamble} [Reflect defineMethod: #echo: on: target as: [Execution block: [:self :value | value] withNativeSignature: "{signature}"]]; [Globals at: #MicroAbiTarget put: target]; {wrapper}"#,
+            factory=if signature=="bb" {"Bytes"}else{"Word"},
+            wrapper=wrapper(&format!("let result := [bridge sendNativeTo: target selector: #echo: arguments: #[{argument}] signature: signature resultFactory: factory]; {result}")));
+        cases.push(Case{name:name.into(),source,mask:31,expected,result_selector:if signature=="bb" {b"word"}else{b"bits"},integer_inputs:false});
+    }
     // Isolate the real arithmetic policy in two private factories. Only the
     // receiver/constructor bridge is adapted; no arithmetic is reimplemented.
     let original =
@@ -181,15 +201,6 @@ fn cases() -> Vec<Case> {
         result_selector: b"word",
         integer_inputs: true,
     });
-    let public = cases.last().unwrap();
-    cases.push(Case {
-        name: "public-integer-shape".into(),
-        source: public.source.clone(),
-        mask: 15,
-        expected: public.expected,
-        result_selector: b"word",
-        integer_inputs: true,
-    });
     let public = cases
         .iter()
         .find(|c| c.name == "public-integer-roots")
@@ -202,26 +213,45 @@ fn cases() -> Vec<Case> {
         result_selector: b"word",
         integer_inputs: true,
     });
-    let body = (0..256)
-        .map(|i| format!("let ignored{i} := x; "))
-        .collect::<String>();
+    let public = cases.iter().find(|c| c.name == "public-integer-retains").unwrap();
     cases.push(Case {
-        name: "block-shape-large".into(),
-        source: wrapper(&format!(
-            "let unused := [:x | {body} x]; [Execution wordResultOf: 16 selector: #word]"
-        )),
-        mask: 15,
-        expected: 16,
-        result_selector: b"bits",
-        integer_inputs: false,
+        name: "public-integer-bindings".into(), source: public.source.clone(), mask: 31,
+        expected: public.expected, result_selector: b"word", integer_inputs: true,
     });
+    for (name, preamble, expression, expected) in [
+        (
+            "semantic-string-length",
+            "let text := \"hello\";",
+            "[text size]",
+            5,
+        ),
+        (
+            "semantic-vector-access",
+            "let values := #[11 22 33]; let index := 1;",
+            "[values at: index]",
+            22,
+        ),
+    ] {
+        let source = format!(
+            "{preamble} let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | {expression}] withNativeSignature: \"oOO\"]]; [Globals at: #MicroProbe put: probe]; true"
+        );
+        cases.push(Case {
+            name: name.into(),
+            source,
+            mask: 31,
+            expected,
+            result_selector: b"word",
+            integer_inputs: false,
+        });
+    }
     cases
 }
 #[derive(Clone, Copy)]
 struct Variant {
     receiver: Oop,
     arithmetic: Option<usize>,
-    borrow_shape: Option<bool>,
+    binding_proofs: Option<bool>,
+    native_read: Option<(Oop, Oop, Option<Oop>)>,
 }
 struct Runtime {
     id: Protocol,
@@ -234,16 +264,8 @@ struct Runtime {
 }
 impl Runtime {
     unsafe fn activate(&self, v: Variant) {
-        if let Some(enabled) = v.borrow_shape {
-            unsafe {
-                send(
-                    self.id,
-                    self.named(b"Execution"),
-                    b"programShapeBorrowing:",
-                    &[Operand::word(enabled as usize)],
-                )
-            };
-        }
+        unsafe { send(self.id, self.named(b"Execution"), b"bindingProofBatches:",
+            &[Operand::word(v.binding_proofs.unwrap_or(true) as usize)]) };
         if let Some(index) = v.arithmetic {
             unsafe {
                 let vt = self.named(b"IntegerVt");
@@ -282,23 +304,31 @@ impl Runtime {
             if i % 8 == 0 && Instant::now() >= deadline {
                 break;
             }
-            last = unsafe { self.id.send(v.receiver, self.selector, args) }.unwrap();
+            last = if let Some((receiver, selector, roundtrip)) = v.native_read {
+                let result = unsafe { self.id.send(receiver, selector, &args[..1]) }.unwrap();
+                if let Some(constructor) = roundtrip { unsafe { self.id.send(receiver, constructor, &[result]) }.unwrap() } else { result }
+            } else { unsafe { self.id.send(v.receiver, self.selector, args) }.unwrap() };
             done += 1;
             std::hint::black_box(last);
         }
         (done, last)
     }
     unsafe fn check(&self, case: &Case, value: Operand) {
+        let result = if value.as_word().is_some() { value.as_word() }
+            else { unsafe { send(self.id, object(value), case.result_selector, &[]) }.as_word() };
         assert_eq!(
-            unsafe { send(self.id, object(value), case.result_selector, &[]) }.as_word(),
+            result,
             Some(case.expected),
             "{} result",
             case.name
         );
     }
 }
-fn compilation_source(case: &Case, mask: usize) -> String {
-    case.source.replace(
+fn compilation_source(case: &Case, mask: usize, baseline: bool) -> String {
+    let source = if case.name == "abi-audit-object-incoming" && baseline {
+        case.source.replace("[Execution block: [:self :a :b | a] withNativeSignature: \"oOO\"]", "[:self :a :b | a]")
+    } else { case.source.clone() };
+    source.replace(
         "#microInteger",
         &format!("#microInteger{}{}", case.name.replace('-', ""), mask),
     )
@@ -309,11 +339,12 @@ unsafe fn compile_case(
     mask: usize,
     compiler: &mut Compiler,
     scratch: &std::path::Path,
+    baseline: bool,
 ) -> Variant {
     unsafe {
         compiler.mask = mask;
-        let path = scratch.join(format!("{}-{mask}.dylib", case.name));
-        let source = compilation_source(case, mask);
+        let path = scratch.join(format!("{}-{mask}-{}.dylib", case.name, if baseline {"baseline"} else {"candidate"}));
+        let source = compilation_source(case, mask, baseline);
         let text = object(send(
             rt.id,
             rt.named(b"String"),
@@ -364,20 +395,39 @@ unsafe fn compile_case(
         retain(rt.id, rt.roots, receiver);
         release(rt.id, rt.roots, ot);
         release(rt.id, rt.roots, tt);
+        if case.name == "abi-audit-object-incoming" {
+            let selected = send(rt.id, rt.id.receiver, b"bind:to:", &[
+                Operand::object(rt.selector), Operand::object(receiver),
+            ]).as_entry().unwrap();
+            let implementation = object(send(rt.id, rt.named(b"Execution"), b"implementationOfEntry:", &[Operand::entry(selected)]));
+            let code = object(send(rt.id, implementation, b"codeObject", &[]));
+            let signature = object(send(rt.id, code, b"nativeSignature", &[]));
+            assert_eq!(signature == rt.named(b"nil"), baseline, "the control really has an untyped/typed incoming ABI");
+        }
+        if baseline && matches!(case.name.as_str(), "abi-audit-word-incoming" | "abi-audit-bytes-incoming") {
+            let target = object(send(rt.id, rt.named(b"Globals"), b"at:", &[Operand::object(rt.id.intern_name(b"MicroAbiTarget").unwrap())]));
+            let behavior = object(send(rt.id, rt.id.receiver, b"behaviorOf:", &[Operand::object(target)]));
+            install(rt.id, behavior, b"echo:", native_echo, std::ptr::null_mut());
+        }
         Variant {
             receiver,
             arithmetic: None,
-            borrow_shape: None,
+            binding_proofs: None,
+            native_read: None,
         }
     }
 }
-unsafe fn messages(rt: &Runtime, case: &Case, v: Variant, args: &[Operand]) -> Value {
+unsafe fn messages(rt: &Runtime, case: &Case, v: Variant, args: &[Operand], warm_after_gc: bool, include_trace: bool) -> Value {
     unsafe {
         rt.activate(v);
         let (_, warm) = rt.run(v, args, 8, Instant::now() + Duration::from_secs(2));
         rt.check(case, warm);
         collect(rt.id, rt.gc);
         send(rt.id, rt.gc, b"budget:", &[Operand::word(usize::MAX)]);
+        if warm_after_gc {
+            let (_, result) = rt.run(v, args, 8, Instant::now() + Duration::from_secs(2));
+            rt.check(case, result);
+        }
         let begin = rt.id.intern_name(b"dispatchCountsBegin").unwrap();
         let end = rt.id.intern_name(b"dispatchCountsEnd").unwrap();
         rt.id.send(rt.id.receiver, begin, &[]).unwrap();
@@ -416,7 +466,74 @@ unsafe fn messages(rt: &Runtime, case: &Case, v: Variant, args: &[Operand]) -> V
             .unwrap()
             .to_vec();
         let root_summary: Value = serde_json::from_slice(&root_owned).unwrap();
-        json!({"invocations":n,"operations":if case.name.starts_with("public-integer-"){16}else{1},"selectors":counts,"root_summary":root_summary})
+        let raw_edges = rt
+            .id
+            .send_named(rt.id.receiver, b"dispatchEdges", &[])
+            .unwrap()
+            .as_bytes()
+            .unwrap();
+        let edge_bytes = birnam_abi::borrowed_bytes(raw_edges.pointer, raw_edges.length)
+            .unwrap()
+            .to_vec();
+        let decode = |text: &str| {
+            if text == "-" {
+                "<entry>".to_owned()
+            } else {
+                String::from_utf8(
+                    (0..text.len())
+                        .step_by(2)
+                        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+                        .collect(),
+                )
+                .unwrap()
+            }
+        };
+        let mut edges = Vec::new();
+        for line in std::str::from_utf8(&edge_bytes).unwrap().lines() {
+            let fields: Vec<_> = line.split('\t').collect();
+            let child = decode(fields[4]);
+            if child == "dispatchCountsEnd" {
+                continue;
+            }
+            edges.push(json!({"count":fields[0].parse::<usize>().unwrap(),"parent_behavior":fields[1],"parent_selector":decode(fields[2]),"behavior":fields[3],"selector":child}));
+        }
+        assert_eq!(
+            edges
+                .iter()
+                .map(|e| e["count"].as_u64().unwrap())
+                .sum::<u64>(),
+            counts.values().copied().sum::<usize>() as u64
+        );
+        let region_result = rt.id.send_named(rt.id.receiver, b"dispatchRegions", &[]).unwrap().as_bytes().unwrap();
+        let region_bytes = birnam_abi::borrowed_bytes(region_result.pointer, region_result.length).unwrap().to_vec();
+        let regions: Vec<Value> = std::str::from_utf8(&region_bytes).unwrap().lines().filter_map(|line| {
+            let fields: Vec<_> = line.split('\t').collect();
+            let selector = decode(fields[2]);
+            if selector == "dispatchCountsEnd" { return None; }
+            Some(json!({"region":decode(fields[1]),"selector":selector,"count":fields[0].parse::<usize>().unwrap()}))
+        }).collect();
+        assert_eq!(regions.iter().map(|r|r["count"].as_u64().unwrap()).sum::<u64>(), counts.values().copied().sum::<usize>() as u64);
+        let subtree_result = rt.id.send_named(rt.id.receiver, b"dispatchSubtrees", &[]).unwrap().as_bytes().unwrap();
+        let subtree_bytes = birnam_abi::borrowed_bytes(subtree_result.pointer, subtree_result.length).unwrap().to_vec();
+        let subtrees: Vec<Value> = std::str::from_utf8(&subtree_bytes).unwrap().lines().filter_map(|line| {
+            let fields: Vec<_> = line.split('\t').collect();
+            let selector = decode(fields[4]);
+            if selector == "dispatchCountsEnd" { return None; }
+            Some(json!({"region":decode(fields[2]),"parent_selector":decode(fields[3]),"selector":selector,"calls":fields[0].parse::<usize>().unwrap(),"inclusive_sends":fields[1].parse::<usize>().unwrap()}))
+        }).collect();
+        assert_eq!(subtrees.iter().map(|r|r["calls"].as_u64().unwrap()).sum::<u64>(), counts.values().copied().sum::<usize>() as u64);
+        let mut trace_rows=Vec::new();
+        if include_trace {
+            let raw=rt.id.send_named(rt.id.receiver,b"dispatchTrace",&[]).unwrap().as_bytes().unwrap();
+            let copied=birnam_abi::borrowed_bytes(raw.pointer,raw.length).unwrap().to_vec();
+            for line in std::str::from_utf8(&copied).unwrap().lines() {
+                let f:Vec<_>=line.split('\t').collect();let selector=decode(f[4]);
+                if selector=="dispatchCountsEnd" {continue;}
+                trace_rows.push(json!({"id":f[0].parse::<usize>().unwrap(),"parent":f[1].parse::<usize>().unwrap(),"receiver":f[2],"behavior":f[3],"selector":selector,"key":decode(f[5]),"argument":f[6],"result":f[7],"inclusive":f[8].parse::<usize>().unwrap(),"status":f[9].parse::<usize>().unwrap()}));
+            }
+            assert_eq!(trace_rows.len(),counts.values().copied().sum::<usize>());
+        }
+        json!({"trace":trace_rows,"subtrees":subtrees,"regions":regions,"invocations":n,"operations":if case.name.starts_with("public-integer-"){16}else{1},"selectors":counts,"root_summary":root_summary,"edges":edges})
     }
 }
 unsafe fn work(rt: &Runtime, case: &Case, v: Variant, args: &[Operand]) -> Value {
@@ -470,7 +587,7 @@ unsafe fn public_arithmetic(
             result_selector: b"word",
             integer_inputs: true,
         };
-        compile_case(rt, &case, mask, compiler, scratch);
+        compile_case(rt, &case, mask, compiler, scratch, false);
         let integer = rt.named(b"Integer");
         let mut entries = vec![];
         for name in names {
@@ -516,6 +633,8 @@ fn main() {
         let batch_ms: f64 = get("--batch-ms", "25").parse().unwrap();
         assert!((1.0..=100.0).contains(&batch_ms));
         let counts_only = args.iter().any(|a| a == "--counts-only");
+        let trace = args.iter().any(|a| a == "--trace");
+        assert!(!trace || counts_only);
         let selected = get("--case", "all");
         let gc_mode = get("--gc", "normal");
         assert!(matches!(gc_mode.as_str(), "normal" | "off"));
@@ -526,7 +645,7 @@ fn main() {
         ));
         let cases: Vec<_> = cases()
             .into_iter()
-            .filter(|c| selected == "all" || c.name == selected)
+            .filter(|c| (selected == "all" && !c.name.starts_with("abi-audit-")) || (selected == "abi-audit" && c.name.starts_with("abi-audit-")) || c.name == selected)
             .collect();
         assert!(!cases.is_empty(), "unknown case");
         let setup = Instant::now();
@@ -616,18 +735,18 @@ fn main() {
         std::fs::create_dir_all(&scratch).unwrap();
         let mut prepared = vec![];
         for case in cases {
-            let baseline_mask = if case.name == "public-integer-roots" {
+            let baseline_mask = if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-bindings" {
+                31
+            } else if case.name == "public-integer-roots" {
                 7
-            } else if case.name == "public-integer-shape"
-                || case.name == "block-shape-large"
-                || case.name == "public-integer-retains"
+            } else if case.name == "public-integer-retains"
             {
                 15
             } else {
                 0
             };
-            let mut baseline = compile_case(&rt, &case, baseline_mask, &mut compiler, &scratch);
-            let mut candidate = compile_case(&rt, &case, case.mask, &mut compiler, &scratch);
+            let mut baseline = compile_case(&rt, &case, baseline_mask, &mut compiler, &scratch, true);
+            let mut candidate = compile_case(&rt, &case, case.mask, &mut compiler, &scratch, false);
             if case.name.starts_with("public-integer-") {
                 baseline.arithmetic = Some(public_arithmetic(
                     &mut rt,
@@ -642,14 +761,12 @@ fn main() {
                     case.mask,
                 ));
             }
-            if case.name == "public-integer-shape"
-                || case.name == "block-shape-large"
-                || case.name == "public-integer-retains"
-            {
-                if case.name != "public-integer-retains" {
-                    baseline.borrow_shape = Some(false);
-                    candidate.borrow_shape = Some(true);
-                }
+            if matches!(case.name.as_str(), "abi-audit-read" | "abi-audit-roundtrip") {
+                baseline.native_read = Some((rt.named(b"Integer"), rt.id.intern_name(b"wordOf:").unwrap(), if case.name == "abi-audit-roundtrip" { Some(rt.id.intern_name(b"fromWord:").unwrap()) } else { None }));
+            }
+            if case.name == "public-integer-bindings" {
+                baseline.binding_proofs = Some(false);
+                candidate.binding_proofs = Some(true);
             }
             let make = |value| {
                 object(send(
@@ -682,18 +799,23 @@ fn main() {
                 work(&rt, &case, candidate, &inputs),
             ];
             if counts_only {
-                work[0]["messages"] = messages(&rt, &case, baseline, &inputs);
-                work[1]["messages"] = messages(&rt, &case, candidate, &inputs);
+                work[0]["messages"] = messages(&rt, &case, baseline, &inputs, false, false);
+                work[1]["messages"] = messages(&rt, &case, candidate, &inputs, false, false);
+                if case.name.starts_with("abi-audit-") || case.name == "public-integer-bindings" {
+                    work[0]["steady_messages"] = messages(&rt, &case, baseline, &inputs, true, false);
+                    work[1]["steady_messages"] = messages(&rt, &case, candidate, &inputs, true, trace);
+                }
             }
             let key = if case.name.starts_with("abi") {
                 "vector"
             } else {
                 "word"
             };
-            if case.name == "public-integer-roots"
-                || (case.name == "public-integer-shape"
-                    || case.name == "block-shape-large"
-                    || case.name == "public-integer-retains")
+            if case.name.starts_with("abi-audit-") {
+                // Deliberate cost contrasts; each result was checked above.
+            } else if case.name.starts_with("semantic-") || case.name == "public-integer-bindings"
+                || case.name == "public-integer-roots"
+                || case.name == "public-integer-retains"
             {
                 assert_eq!(work[0]["allocation_objects"], work[1]["allocation_objects"]);
                 if counts_only && case.name == "public-integer-roots" {
@@ -826,7 +948,7 @@ fn main() {
                     break;
                 }
             }
-            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name == "public-integer-roots" {7} else if case.name == "public-integer-shape" || case.name == "block-shape-large" || case.name == "public-integer-retains" {15} else {0}),"candidate":compilation_source(&case,case.mask)},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
+            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-bindings" {31} else if case.name == "public-integer-roots" {7} else if case.name == "public-integer-retains" {15} else {0},true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
         }
         println!(
             "{}",

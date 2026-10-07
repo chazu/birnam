@@ -161,7 +161,7 @@ unsafe extern "C" fn message(
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };
     #[cfg(feature="dispatch-metrics")]
-    let tracked=metrics::enter(state,selector);
+    let tracked=metrics::enter(state,receiver,selector,args);
     // No registry reference spans a callback or nested message.
     let result=unsafe { id_dispatch::send(state.dispatch_context(), receiver, selector, args) };
     #[cfg(feature="dispatch-metrics")]

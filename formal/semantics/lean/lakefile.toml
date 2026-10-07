@@ -1,0 +1,19 @@
+name = "birnam_semantics"
+version = "0.1.0"
+defaultTargets = ["Semantics", "SemanticsExamples", "SemanticsAudit", "Admission"]
+
+[[require]]
+name = "birnam_rooting"
+path = "../../rooting/lean"
+
+[[lean_lib]]
+name = "Semantics"
+
+[[lean_lib]]
+name = "SemanticsExamples"
+
+[[lean_lib]]
+name = "SemanticsAudit"
+
+[[lean_lib]]
+name = "Admission"

@@ -389,77 +389,70 @@ unsafe fn register_descriptor_with_captures(
     }
 }
 
+// Collection-based construction remains for current language/materialization callers.
+// Generated literals use direct Object operands and never construct capture storage.
 pub(super) unsafe fn new_block(s: &Execution, args: &[Operand], portable: bool) -> Result<Operand, Outcome> {
-    unsafe {new_block_input(s,args,portable,false)}
-}
-unsafe fn new_block_input(s:&Execution,args:&[Operand],portable:bool,references:bool)->Result<Operand,Outcome> {
     let (method, code, captures) = match (portable, args) {
-        (false, [method, captures]) => (*method, None, *captures),
-        (true, [method, code, captures]) => (*method, Some(object(*code)?), *captures),
+        (false, [method, captures]) => (object(*method)?, None, object(*captures)?),
+        (true, [method, code, captures]) => (object(*method)?, Some(object(*code)?), object(*captures)?),
         _ => return Err(invalid()),
     };
-    let method = object(method)?;
-    let roots = s.scope(&[method, object(captures)?]);
-    if let Some(code) = code {
-        roots.keep(code);
+    unsafe { new_block_values(s, method, code, BlockCaptures::Sequence(captures)) }
+}
+unsafe fn new_block_operands(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome> {
+    let [method, code, captures @ ..] = args else { return Err(invalid()); };
+    if captures.len() > 4096 { return Err(invalid()); }
+    let captures = captures.iter().copied().map(object).collect::<Result<Vec<_>, _>>()?;
+    unsafe { new_block_values(s, object(*method)?, Some(object(*code)?), BlockCaptures::Values(&captures)) }
+}
+unsafe fn code_shape(s: &Execution, code: Oop, roots: &Scope<'_>) -> Result<(usize, usize), Outcome> {
+    let factory = object(unsafe { s.id.send_named(s.namespace, b"at:",
+        &[Operand::object(s.id.intern_name(b"CodeObject")?)]) }?)?;
+    roots.keep(factory);
+    let parameters = unsafe { s.id.send_named(factory, b"parameterCountOf:", &[Operand::object(code)]) }?
+        .as_word().filter(|n| *n <= 4096).ok_or_else(invalid)?;
+    let captures = unsafe { s.id.send_named(factory, b"captureCountOf:", &[Operand::object(code)]) }?
+        .as_word().filter(|n| *n <= 4096).ok_or_else(invalid)?;
+    Ok((parameters, captures))
+}
+enum BlockCaptures<'a> {
+    Values(&'a [Oop]),
+    Sequence(Oop),
+    Shell,
+}
+unsafe fn new_block_values(s: &Execution, method: Oop, code: Option<Oop>, input: BlockCaptures<'_>) -> Result<Operand, Outcome> {
+    let roots = s.scope(&[method]);
+    if let Some(code) = code { roots.keep(code); }
+    match &input {
+        BlockCaptures::Values(values) => { for &value in *values { roots.keep(value); } }
+        BlockCaptures::Sequence(value) => roots.keep(*value),
+        BlockCaptures::Shell => {}
     }
     let (mut arity, mut expected) = {
         let methods = s.methods.borrow();
         let m = methods.get(&method.addr()).ok_or_else(invalid)?;
         match &m.resumable {
-            Some(r) => (
-                r.descriptor.v2_entry_binding().unwrap().argument_count,
-                Some(r.descriptor.entry_capture_slots().len()),
-            ),
+            Some(r) => (r.descriptor.v2_entry_binding().unwrap().argument_count,
+                Some(r.descriptor.entry_capture_slots().len())),
             None => (0, None),
         }
     };
     if let Some(code) = code {
-        // Canonical meaning comes from its owner through a message, never through
-        // replaceable inspection fields or foreign payload words.
-        let factory = object(unsafe {
-            s.id.send_named(
-                s.namespace,
-                b"at:",
-                &[Operand::object(s.id.intern_name(b"CodeObject")?)],
-            )
-        }?)?;
-        roots.keep(factory);
-        let bytes = object(unsafe {
-            s.id.send_named(factory, b"canonicalBytesOf:", &[Operand::object(code)])
-        }?)?;
-        roots.keep(bytes);
-        let raw = unsafe { s.id.send_named(bytes, b"bytes", &[]) }?
-            .as_bytes()
-            .ok_or_else(invalid)?;
-        // Current owner messages above remain mandatory. The parser is callback-free;
-        // only owned shape scalars survive into the next send.
-        let shape = program_shape::inspect(
-            unsafe { borrowed_bytes(raw.pointer, raw.length) }.ok_or_else(invalid)?, s.copy_program_shape_bytes.get()
-        ).map_err(|_| invalid())?;
-        if expected.is_some_and(|n| n != shape.captures || arity != shape.parameters) {
-            return Err(invalid());
-        }
-        arity = shape.parameters;
-        expected = Some(shape.captures);
+        let (parameters, captures) = unsafe { code_shape(s, code, &roots) }?;
+        if expected.is_some_and(|n| n != captures || arity != parameters) { return Err(invalid()); }
+        arity = parameters;
+        expected = Some(captures);
     }
-    let captures = if references {
-        let storage=object(captures)?;
-        let bytes=unsafe {s.id.send_named(s.model,b"imageSizeOf:",&[Operand::object(storage)])}?.as_word().ok_or_else(invalid)?;
-        if bytes%size_of::<Oop>()!=0 || bytes/size_of::<Oop>()>1_048_576 {return Err(invalid())}
-        let count=bytes/size_of::<Oop>();
-        let behavior=object(unsafe {s.id.send_named(s.id.receiver,b"behaviorOf:",&[Operand::object(storage)])}?)?;roots.keep(behavior);
-        if unsafe {s.id.send_named(s.model,b"allOopLayoutOf:words:",&[Operand::object(behavior),Operand::word(count)])}?.as_word()!=Some(1) {return Err(invalid())}
-        let mut values=Vec::with_capacity(count);
-        for i in 0..count {
-            let value=unsafe {s.id.send_named(s.model,b"slotAt:in:",&[Operand::word(i),Operand::object(storage)])}?;
-            let value=if value.kind()==native::UNIT {s.nil} else {object(value)?};roots.keep(value);values.push(value);
+    let owned;
+    let captures = match input {
+        BlockCaptures::Values(values) => values,
+        BlockCaptures::Sequence(sequence_value) => {
+            owned = unsafe { sequence(s, sequence_value, &roots) }?;
+            &owned
         }
-        values
-    } else {unsafe { sequence(s, object(captures)?, &roots) }?};
-    if expected.is_some_and(|n| n != captures.len()) {
-        return Err(invalid());
-    }
+        BlockCaptures::Shell => { owned = vec![s.nil; expected.ok_or_else(invalid)?]; &owned }
+    };
+    if expected.is_some_and(|n| n != captures.len()) { return Err(invalid()); }
     let base = s.machines.borrow().block_behavior;
     let b = object(unsafe { s.send(base, b"delegated", &[]) }?)?;
     roots.keep(b);
@@ -1061,7 +1054,7 @@ enum Op {
     Optimize,
     Recover(bool),
     Block(bool),
-    BlockReferences,
+    BlockOperands,
     BlockCode,
     BlockSynchronous,
     RestoreCaptures,
@@ -1144,7 +1137,7 @@ unsafe extern "C" fn operation(
             Op::WithNumericPredicate => return crate::numeric_predicate::attach(s, receiver, args),
             Op::Optimize => return crate::native_tier::install(s, receiver, args),
             Op::Block(portable) => return new_block(s, args, portable),
-            Op::BlockReferences => return new_block_input(s,args,true,true),
+            Op::BlockOperands => return new_block_operands(s,args),
             Op::BlockSynchronous if args.is_empty() => {
                 let method = {
                     let state = s.machines.borrow();
@@ -1169,35 +1162,7 @@ unsafe extern "C" fn operation(
                 let [method, code] = args else {
                     return Err(invalid());
                 };
-                let factory = object(s.id.send_named(
-                    s.namespace,
-                    b"at:",
-                    &[Operand::object(s.id.intern_name(b"CodeObject")?)],
-                )?)?;
-                roots.keep(factory);
-                let encoded = object(s.id.send_named(factory, b"canonicalBytesOf:", &[*code])?)?;
-                roots.keep(encoded);
-                let raw =
-                    s.id.send_named(encoded, b"bytes", &[])?
-                        .as_bytes()
-                        .ok_or_else(invalid)?;
-                let count = program_shape::inspect(
-                    borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?, s.copy_program_shape_bytes.get()
-                ).map_err(|_| invalid())?.captures;
-                let vector = object(s.id.send_named(
-                    s.namespace,
-                    b"at:",
-                    &[Operand::object(s.id.intern_name(b"Vector")?)],
-                )?)?;
-                roots.keep(vector);
-                let mut captures = object(s.id.send_named(vector, b"new", &[])?)?;
-                roots.keep(captures);
-                for _ in 0..count {
-                    captures =
-                        object(s.id.send_named(captures, b"add:", &[Operand::object(s.nil)])?)?;
-                    roots.keep(captures);
-                }
-                let value = new_block(s, &[*method, *code, Operand::object(captures)], true)?;
+                let value = new_block_values(s, object(*method)?, Some(object(*code)?), BlockCaptures::Shell)?;
                 s.machines
                     .borrow_mut()
                     .image_shells
@@ -1675,7 +1640,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"failed",
     b"fromMethod:captures:",
     b"fromMethod:codeObject:captures:",
-    b"fromMethod:codeObject:referenceSlots:",
+    b"fromMethod:codeObject:captureOperands:",
     b"codeObject",
     b"isSynchronous",
     b"imageShellFromMethod:codeObject:",
@@ -2226,7 +2191,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"restoreImageCaptures:of:",
             Op::RestoreCaptures,
         )?;
-        install_op(s, block_vtable, b"fromMethod:codeObject:referenceSlots:", Op::BlockReferences)?;
+        install_op(s, block_vtable, b"fromMethod:codeObject:captureOperands:", Op::BlockOperands)?;
         install_op(s, block_vtable, b"captureCount", Op::BlockCaptureCount)?;
         install_op(s, block_vtable, b"captureAt:", Op::BlockCapture(false))?;
         install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;

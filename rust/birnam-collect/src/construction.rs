@@ -112,6 +112,17 @@ unsafe extern "C" fn intern(
         })
     })())
 }
+// Existing-name interning calls only Id symbolNamed:, whose meaning must be
+// fenced separately. With that canonical query and a rooted existing Symbol,
+// this entry neither allocates nor collects. This is a code description, not
+// an allocation permission or a declaration about a foreign implementation.
+pub(super) unsafe extern "C" fn intern_query_semantics(
+    context: *mut c_void, _: Oop, args: *const Operand, count: usize,
+) -> Outcome {
+    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else { return invalid() };
+    let Some(entry) = argument.as_entry() else { return invalid() };
+    Outcome::loaded(Operand::word(usize::from(entry == NativeEntry::new(intern, context))))
+}
 pub(super) unsafe extern "C" fn activate(
     context: *mut c_void,
     _: Oop,

@@ -17,7 +17,7 @@ static A bytes(const void*p,size_t n){A a={0};a.kind=3;a.data.bytes.pointer=p;a.
 static A entry(Entry f){A a={0};a.kind=4;a.data.entry.method=f;return a;}
 static R bad(void){R r={0};r.status=1;return r;}
 static R ok(A a){R r={0};r.value=a;return r;}
-typedef struct{R failure;size_t *tokens,count,capacity;} Call;
+typedef struct{R failure;size_t *tokens,count,capacity;O inputs[9];size_t input_count;} Call;
 static O intern(Call*c,const char*n){if(c->failure.status)return 0;A a=bytes(n,strlen(n));R r=id.message(id.context,id.receiver,id.intern,&a,1);if(r.status||r.value.kind!=1){c->failure=r.status?r:bad();return 0;}return r.value.data.object;}
 /* Selector spellings in generated code are static for the Unit's lifetime.
    TCC may store identical literals at different addresses: cache by spelling.
@@ -26,36 +26,22 @@ typedef struct {const char *name;O symbol;} Selector;
 static Selector selectors[512];
 static int cache_selectors;
 static int batch_cleanup=1;
-static int batch_inputs=1;
 static O selector(Call*c,const char*n);
 static R raw(Call*c,O receiver,const char*n,const A*a,size_t count){O sel=selector(c,n);if(c->failure.status)return c->failure;R r=id.message(id.context,receiver,sel,a,count);if(r.status)c->failure=r;return r;}
-static O keep(Call*c,O o){if(c->failure.status)return 0;if(!o){c->failure=bad();return 0;}if(c->count==c->capacity){size_t cap=c->capacity?c->capacity*2:32;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return 0;}c->tokens=t;c->capacity=cap;}A a=obj(o);R r=raw(c,roots,"retain:",&a,1);if(r.status||r.value.kind!=2){c->failure=r.status?r:bad();return 0;}c->tokens[c->count++]=r.value.data.word;return o;}
+static O keep(Call*c,O o){if(c->failure.status)return 0;if(!o){c->failure=bad();return 0;}for(size_t i=0;i<c->input_count;i++)if(c->inputs[i]==o)return o;if(c->count==c->capacity){size_t cap=c->capacity?c->capacity*2:32;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return 0;}c->tokens=t;c->capacity=cap;}A a=obj(o);R r=raw(c,roots,"retain:",&a,1);if(r.status||r.value.kind!=2){c->failure=r.status?r:bad();return 0;}c->tokens[c->count++]=r.value.data.word;return o;}
 static O object(Call*c,A a);
-/* Function parameters remain protected by the invocation's caller while
-   entering the scope. Offer self and validated parameter Oops in their original order as
-   a single owner operation. Output token Words are copied before another send. */
-static void keep_arguments(Call*c,const A*args,size_t n){
- if(batch_inputs&&n>=3&&n<=9&&!c->failure.status){
-  O values[9];int valid=1;
-  for(size_t i=0;i<n;i++){if(args[i].kind!=1||!args[i].data.object){valid=0;break;}values[i]=args[i].data.object;}
-  if(valid){
-   O sel=selector(c,"tryRetainMany:");if(c->failure.status)return;
-   size_t needed=c->count+n;
-   if(needed>c->capacity){size_t cap=c->capacity?c->capacity*2:32;if(cap<needed)cap=needed;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return;}c->tokens=t;c->capacity=cap;}
-   A a=bytes(values,n*sizeof(O));R r=id.message(id.context,roots,sel,&a,1);
-   if(r.status){c->failure=r;return;}
-   if(r.value.kind==3){
-    if(r.value.data.bytes.length!=n*sizeof(size_t)||!r.value.data.bytes.pointer){c->failure=bad();return;}
-    memcpy(c->tokens+c->count,r.value.data.bytes.pointer,n*sizeof(size_t));c->count+=n;return;
-   }
-   if(r.value.kind!=2||r.value.data.word!=0){c->failure=bad();return;}
-  }
- }
- for(size_t i=0;i<n;i++)keep(c,object(c,args[i]));
+/* Execution owns the covering invocation scope; native callers likewise keep
+   receiver/arguments live throughout the call under the Id ABI contract.
+   Validate the Object carriers without registering the same inputs again.
+   Fresh message results still use keep(): input coverage says nothing about them. */
+static void check_entry(Call*c,O self,const A*args,size_t n){
+ object(c,obj(self));
+ if(n<=8&&!c->failure.status){c->inputs[0]=self;for(size_t i=0;i<n&&!c->failure.status;i++)c->inputs[i+1]=object(c,args[i]);if(!c->failure.status)c->input_count=n+1;}
+ else for(size_t i=0;i<n&&!c->failure.status;i++)object(c,args[i]);
 }
+/* Diagnostic compiler control: independent registrations, no batching layer. */
 static void keep_entry(Call*c,O self,const A*args,size_t n){
- if(n<=8){A values[9];values[0]=obj(self);for(size_t i=0;i<n;i++)values[i+1]=args[i];keep_arguments(c,values,n+1);}
- else {keep(c,self);keep_arguments(c,args,n);}
+ keep(c,self);for(size_t i=0;i<n&&!c->failure.status;i++)keep(c,object(c,args[i]));
 }
 static A send(Call*c,O receiver,const char*n,const A*a,size_t count){if(c->failure.status)return (A){0};R r=raw(c,receiver,n,a,count);if(!r.status&&r.value.kind==1)keep(c,r.value.data.object);return r.value;}
 static O object(Call*c,A a){if(a.kind!=1||!a.data.object){if(!c->failure.status)c->failure=bad();return 0;}return a.data.object;}

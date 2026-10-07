@@ -1,0 +1,1666 @@
+{
+  "schema": 1,
+  "source_revision": "9dae3b984b05e34f34450a79102106ef8290024f",
+  "source_sha256": "69506eaf4ab569b292dd0f6b1f3c72b7bc26cc20af67b43c29c515921e1a6ad2",
+  "dirty_status": " M docs/design/microbenchmarks.md\n M docs/design/native-module-decomposition-roadmap.md\n M formal/rooting/lean/Audit.lean\n M formal/rooting/lean/lakefile.toml\n M rust/birnam-collect/README.md\n M rust/birnam-collect/src/construction.rs\n M rust/birnam-collect/src/lib.rs\n M rust/birnam-execution/README.md\n M rust/birnam-execution/src/lib.rs\n M rust/birnam-execution/src/native_abi.rs\n M rust/birnam-id/src/id/native_id.rs\n M rust/birnam-id/src/id/native_id/metrics.rs\n M rust/birnam-id/src/id/native_id/registries.rs\n M rust/birnam-native-backend/src/native.rs\n M rust/birnam-native-backend/src/native_prelude.c\n M rust/birnam-native-backend/src/native_sync.rs\n M rust/birnam-native-backend/tests/root_cleanup.rs\n M rust/birnam-siphon/examples/microbench.rs\n M rust/birnam-siphon/tests/abi_arguments.rs\n M rust/birnam-siphon/tests/dispatch_metrics.rs\n M scripts/check-rooting-model.py\n M scripts/microbench.py\n?? docs/design/abi-overhead-investigation.md\n?? docs/design/execution-region-semantics.md\n?? docs/design/runtime-and-abi-simplification.md\n?? docs/measurements/abi-binding-admission-20261007.json\n?? docs/measurements/abi-overhead-20261007.json\n?? docs/measurements/execution-semantics-20261007.json\n?? formal/rooting/lean/Invocation.lean\n?? formal/rooting/tla/InvocationEarlyExit.cfg\n?? formal/rooting/tla/InvocationInputs.tla\n?? formal/rooting/tla/InvocationLostCode.cfg\n?? formal/rooting/tla/InvocationMissingResult.cfg\n?? formal/rooting/tla/InvocationReturnGap.cfg\n?? formal/rooting/tla/InvocationSafe.cfg\n?? formal/rooting/tla/InvocationUncovered.cfg\n?? formal/semantics/\n?? rust/birnam-execution/src/binding_proof.rs\n?? rust/birnam-siphon/tests/invocation_inputs.rs\n",
+  "runner_sha256": "bd1a80d46af80617a7c93e967379157d88ecd91ff7198e3a4162f21b8eb3ae9c",
+  "library_sha256": {
+    "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+    "libbirnam_alienCompiler.dylib": "b979421d9b7c213b82bbbcb4ed3c627a504fd52bb53e7c9a1701e2cf1e5aee7f",
+    "libbirnam_artifact.dylib": "4a606de2ad04ce6e003221245312827d900712b1af65ec1c9b362b2b8312a1e5",
+    "libbirnam_blockLoop.dylib": "73f38dcd81d194868c1d4aa6bcca884ad1eea83f4557e3587066523603a1fd36",
+    "libbirnam_blockLoopControl.dylib": "cdf1e46d7df4a1beab5ec30b08a60d857b8b5ffb51f13d31ee52f358bee9a58d",
+    "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+    "libbirnam_booleanValues.dylib": "3d1554d31b0bd6565953e5740c4248d1b8bc5e00625bcbd07575c2d641ca47cd",
+    "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+    "libbirnam_bytes.dylib": "485df046e88f953f0056e74eafd9814c1c43f23d59aa7fc6941c3c9d68ba89a0",
+    "libbirnam_cli.dylib": "b3ef30b96b0e0f7b65e5d917fbc0c8c9eee1f090ff72de9631c6188094748336",
+    "libbirnam_codegen_runtime.dylib": "46fed0cbe1d25c07a093be93a0070ba403aba8ddebec97209c39f00f84547698",
+    "libbirnam_collect.dylib": "61b5dc82965ac45bbb338a27c6d2408b51ebc58e129ecde2197f88bb19bbad5b",
+    "libbirnam_compiledUnit.dylib": "a73759d7b843ce5df32cfe5c3d6e74b3046cf53c94886413ffd0b263a44cdabd",
+    "libbirnam_compiledUnitDocs.dylib": "b9acb11ad4105cc29c60664bf319f8701083c19fdd534b7e558025dd4d8dcc07",
+    "libbirnam_concurrencyDocs.dylib": "b49561e53c8223035d417eb8c54f181f5f1ff77d896dcbcddda445ef159ab62f",
+    "libbirnam_config.dylib": "bf0cc9f0356ae0de5771e560fce788a4b15095c551bc2c0184163db7b1dc8912",
+    "libbirnam_doc.dylib": "11b75ba083a885633e6bf2f8df96061c4008800315f1252d2ff0015c8d43d341",
+    "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+    "libbirnam_error.dylib": "87b863fc81068382d27756f8036516e30185b82ba8890a83388fe63cf882fba0",
+    "libbirnam_execution.dylib": "9c93d265fca3b7f2cf6c34a174fb71f6d75004348855da982dac055dd43e170c",
+    "libbirnam_file.dylib": "9b8ac76cd8f7d8d00750a9161b125553da7d972d4cf23b34ab23f8e84a09a315",
+    "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+    "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+    "libbirnam_generation.dylib": "e40b688403d36be8a0cca9a1db96819a3d49b4cc9334cae7bbd791df6dfbe773",
+    "libbirnam_host_entry.dylib": "ef659f3edad2ff55cd623a4ecf50227e35e464811f61882010a576de50a0e6ef",
+    "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+    "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+    "libbirnam_html.dylib": "dc947f8c781cb3fa1cd9bcef32ec56787b7ff5123c116b9f62d728c5188006af",
+    "libbirnam_http.dylib": "7c49ada171d685f48f7fa1179704fb1607b541362e1126f451f8526557cdaa3a",
+    "libbirnam_id.dylib": "e499a6cadae8e20d776401d8211621c47e64656402ade71d31e772cc25e227fd",
+    "libbirnam_image.dylib": "d3cd47b893ad53880bd9ce11e108cba1265faa756d269e4c8bc5ffc313a960f2",
+    "libbirnam_imageFormat.dylib": "2aaf743fc902bf936be83f616777cc9f41efa8c9cee6fd41b1546b379241b3e8",
+    "libbirnam_integer.dylib": "8b37b294bd0902729d9b9c16933e36d35bdea4d535cdc570780c4b132db1a20e",
+    "libbirnam_integerValues.dylib": "09ea43c6a46ac57b1b088a9166145c61b18b475b215d9538336610a0428e6811",
+    "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+    "libbirnam_json.dylib": "f67594cbeb56076c07f76415d5abddeb9cd4f7b8faaf285f18b47b9b79190e26",
+    "libbirnam_lang.dylib": "4fbb57eb70caab3c5764d39c410a18698fab847d33a40d1b1cb6976d68d2d870",
+    "libbirnam_log.dylib": "c89b584f24e2e6b30e4ab85a862b99d19a5518ea3ebee3628705b701cf063623",
+    "libbirnam_lsp.dylib": "17bd90c101b66c97d272e42bdac2e7183f487b08cfc7a5fd2936c8fff805378f",
+    "libbirnam_map.dylib": "6ab97ca0ce3a21e5aad911c911d23696bd0849b479a9bdca335b0452b68acfa3",
+    "libbirnam_markdown.dylib": "ae667f74c392152c82a54d2f4f3bd19682d3edb3976c854a7ecb9b0257963b21",
+    "libbirnam_modules.dylib": "81a86ab60e2de6b919f4b2eb10d3448ec19bff5aace4428b092564c988776197",
+    "libbirnam_namespace.dylib": "11df3fd0f546a781a20cf26c2541e838827ebf863e83cdc0c3cdbb735a7724d0",
+    "libbirnam_nativeLoader.dylib": "c357d8d0d30456d47b4c0dbf31fb3573467dd632db621e29ce3971a1c0083746",
+    "libbirnam_nativeValues.dylib": "2d7260f06daf711bf46221be870e27dfefe546814ecc75e037362dd86dd62339",
+    "libbirnam_native_backend.dylib": "4618837c70d8e02752391c09bfe367b4540c1c9147502976af5badf230cef88a",
+    "libbirnam_nativedoc.dylib": "d86afbfae17fb97b3207f4c62ffaf4119f09d7c7532e7aad4d70920d04b52cdb",
+    "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+    "libbirnam_object_model.dylib": "752f715d8e83c23c11d9f7113ed3455aa4bb1ade04686d1deedd867104830b5e",
+    "libbirnam_os.dylib": "878204a8d202a7465d45054f666937a35151a3e2437e20fab1205e74c29dfe75",
+    "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+    "libbirnam_portable_code.dylib": "04df675b45903dd9b7e26244fb50610a2be22652cc3d2e90c6a8af74848ff021",
+    "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+    "libbirnam_printing.dylib": "c677320de8297051205615fb18ff61a5694bc35701cba76f831bad6706a3044e",
+    "libbirnam_process.dylib": "d3faeb337830a7829a0ddf619c0d30a57001bdf3cefa9769ed2ea468bb3ae74d",
+    "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+    "libbirnam_random.dylib": "ac465fb2626a3e91f045227ec01ba42a30bbc937438155b525a16aa762c159e5",
+    "libbirnam_range.dylib": "7f699ed1f8567ce3544cd6ea045de0cf44acbd5a1da9f67a68505b5d78feeb73",
+    "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+    "libbirnam_repl.dylib": "0733bcae3b24e8007676f4dcd260172e8c67f5db05d573ab118fa494310bd776",
+    "libbirnam_root_registry.dylib": "77eab7375ca6567b867b3e738b05c8a62c009c2ca84bd69fcf77466dff1d7f43",
+    "libbirnam_socket.dylib": "379826b3a85130f31c726eacdef6e2cd8b0d13bf587842301221ca5c3f1a9846",
+    "libbirnam_sourceLoader.dylib": "57d7f89ee9673b0601707f09e25640b3fe6d8e9a55c5d76a444f5beaf3f57cf0",
+    "libbirnam_stacklessControl.dylib": "12b51fd3cd49574d494a91d3cc66ad849421ff588aa1c051956325cd4917459a",
+    "libbirnam_stdlib.dylib": "4393e82e7d6f6d72f14756b7e3307b38225cfc7494646df05618fd3877391a1c",
+    "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+    "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+    "libbirnam_string.dylib": "5ea2d5059ab4262ebfc0fcca5df11087621dfa05526942eb8c1dde340225fa14",
+    "libbirnam_systemGc.dylib": "cd84c5876f0847b1f522a39a656424c7bf6b5d37089ddf2edbe78a557ef53ffc",
+    "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+    "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+    "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+    "libbirnam_time.dylib": "a22f55b26f77447a5491d023c03ac86d8e1f5b562890410a0af298f107c2002e",
+    "libbirnam_toml.dylib": "aa53e34a838c0f6525961c04a4a431cb09e5ef9465e8a2db170e4afd3764897b",
+    "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+    "libbirnam_vector.dylib": "1aa94d103a458e3bc7ac512d6626d5c6f0134172f96701d6e966e5d1442a8b9a",
+    "libbirnam_word.dylib": "7fefa144cb06b29a4cb86e2214bbfe7ba77bd6313f216aaa7b92f24d040dfcd7",
+    "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+  },
+  "settings": {
+    "batch_ms": 25,
+    "case": "public-integer-bindings",
+    "counts_only": true,
+    "gc": "normal",
+    "nice": 5,
+    "profile": null,
+    "seconds": 10,
+    "trace": true
+  },
+  "inputs_changed_during_run": false,
+  "ready": {
+    "event": "ready",
+    "pid": 43331,
+    "setup_ms": 1713.213666
+  },
+  "build_seconds": 2.1663327499999996,
+  "process_seconds": 2.006839083,
+  "analysis_schema": 1,
+  "raw_trace": {
+    "path": "/tmp/birnam-send-totality/trace.json",
+    "sha256": "f13611708de78daeacbf87ab9e335d004ffbd4f1ed1cf1a21eb1d74c2135a6db",
+    "reproduction": "python3 scripts/microbench.py --case public-integer-bindings --counts-only --trace --output /tmp/birnam-send-totality/trace.json"
+  },
+  "analyzer": {
+    "path": "scripts/analyze-send-tree.py",
+    "sha256": "b850ec74c509272720975591855d763ef579ee9ec0ad64bc9f9b65166995d154"
+  },
+  "analysis": {
+    "total": 61542,
+    "operations": 16,
+    "sends_per_addition": 3846.375,
+    "partition": [
+      {
+        "category": "closure construction",
+        "count": 35856,
+        "per_addition": 2241.0,
+        "percent": 58.26264989763089
+      },
+      {
+        "category": "capture access",
+        "count": 8800,
+        "per_addition": 550.0,
+        "percent": 14.299177797276657
+      },
+      {
+        "category": "Boolean selection primitives",
+        "count": 4800,
+        "per_addition": 300.0,
+        "percent": 7.799551525787267
+      },
+      {
+        "category": "ABI bridges",
+        "count": 4496,
+        "per_addition": 281.0,
+        "percent": 7.3055799291540735
+      },
+      {
+        "category": "other lifetime/cleanup",
+        "count": 3892,
+        "per_addition": 243.25,
+        "percent": 6.324136362159176
+      },
+      {
+        "category": "validation/other binding lookup",
+        "count": 1632,
+        "per_addition": 102.0,
+        "percent": 2.6518475187676707
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "count": 1408,
+        "per_addition": 88.0,
+        "percent": 2.287868447564265
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "count": 402,
+        "per_addition": 25.125,
+        "percent": 0.6532124402846836
+      },
+      {
+        "category": "other name handling",
+        "count": 256,
+        "per_addition": 16.0,
+        "percent": 0.41597608137532094
+      }
+    ],
+    "category_selectors": [
+      {
+        "category": "closure construction",
+        "selector": "intern:",
+        "count": 5984,
+        "per_addition": 374.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "symbolNamed:",
+        "count": 5984,
+        "per_addition": 374.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "retain:",
+        "count": 4928,
+        "per_addition": 308.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "identityOf:",
+        "count": 4144,
+        "per_addition": 259.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "release:",
+        "count": 3168,
+        "per_addition": 198.0
+      },
+      {
+        "category": "capture access",
+        "selector": "retain:",
+        "count": 2176,
+        "per_addition": 136.0
+      },
+      {
+        "category": "other lifetime/cleanup",
+        "selector": "release:",
+        "count": 1937,
+        "per_addition": 121.0625
+      },
+      {
+        "category": "other lifetime/cleanup",
+        "selector": "retain:",
+        "count": 1633,
+        "per_addition": 102.0625
+      },
+      {
+        "category": "closure construction",
+        "selector": "behaviorOf:",
+        "count": 1632,
+        "per_addition": 102.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "at:",
+        "count": 1264,
+        "per_addition": 79.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "symbolBytesOf:",
+        "count": 1264,
+        "per_addition": 79.0
+      },
+      {
+        "category": "capture access",
+        "selector": "at:",
+        "count": 1104,
+        "per_addition": 69.0
+      },
+      {
+        "category": "capture access",
+        "selector": "intern:",
+        "count": 1104,
+        "per_addition": 69.0
+      },
+      {
+        "category": "capture access",
+        "selector": "symbolNamed:",
+        "count": 1104,
+        "per_addition": 69.0
+      },
+      {
+        "category": "capture access",
+        "selector": "symbolBytesOf:",
+        "count": 1104,
+        "per_addition": 69.0
+      },
+      {
+        "category": "capture access",
+        "selector": "captureWord:of:",
+        "count": 1104,
+        "per_addition": 69.0
+      },
+      {
+        "category": "capture access",
+        "selector": "prepareAllocation",
+        "count": 1104,
+        "per_addition": 69.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allocationSizeOf:",
+        "count": 896,
+        "per_addition": 56.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "prepareAllocation",
+        "count": 880,
+        "per_addition": 55.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "retain:",
+        "count": 800,
+        "per_addition": 50.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allocationChargeFor:",
+        "count": 640,
+        "per_addition": 40.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "nativeBindingsMatch:",
+        "count": 640,
+        "per_addition": 40.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "allocationSizeOf:",
+        "count": 640,
+        "per_addition": 40.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "slotAt:in:put:",
+        "count": 624,
+        "per_addition": 39.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "slotAt:in:",
+        "count": 624,
+        "per_addition": 39.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allocationAt:",
+        "count": 624,
+        "per_addition": 39.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "intern:",
+        "count": 576,
+        "per_addition": 36.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "symbolNamed:",
+        "count": 576,
+        "per_addition": 36.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "bind:to:",
+        "count": 512,
+        "per_addition": 32.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "behaviorOf:",
+        "count": 480,
+        "per_addition": 30.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "release:",
+        "count": 480,
+        "per_addition": 30.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "retain:",
+        "count": 416,
+        "per_addition": 26.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "usesDefaultLookup:",
+        "count": 416,
+        "per_addition": 26.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "intern:",
+        "count": 384,
+        "per_addition": 24.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "symbolNamed:",
+        "count": 384,
+        "per_addition": 24.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "behaviorEpoch",
+        "count": 384,
+        "per_addition": 24.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "isBehavior:",
+        "count": 384,
+        "per_addition": 24.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allocate",
+        "count": 384,
+        "per_addition": 24.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allocate:bytes:",
+        "count": 384,
+        "per_addition": 24.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "release:",
+        "count": 368,
+        "per_addition": 23.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "at:",
+        "count": 320,
+        "per_addition": 20.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "tryRetainMany:",
+        "count": 320,
+        "per_addition": 20.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "allocate:bytes:",
+        "count": 320,
+        "per_addition": 20.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "tryReleaseManyForward:",
+        "count": 320,
+        "per_addition": 20.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "symbolBytesOf:",
+        "count": 256,
+        "per_addition": 16.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "delegated",
+        "count": 256,
+        "per_addition": 16.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "newBehaviorWithParent:",
+        "count": 256,
+        "per_addition": 16.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "intern:",
+        "count": 208,
+        "per_addition": 13.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "symbolNamed:",
+        "count": 208,
+        "per_addition": 13.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "canOmitAllocationFor:",
+        "count": 192,
+        "per_addition": 12.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "allocationSizeOf:",
+        "count": 192,
+        "per_addition": 12.0
+      },
+      {
+        "category": "other lifetime/cleanup",
+        "selector": "tryReleaseMany:",
+        "count": 161,
+        "per_addition": 10.0625
+      },
+      {
+        "category": "other lifetime/cleanup",
+        "selector": "nativeBindingsMatch:",
+        "count": 161,
+        "per_addition": 10.0625
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "sameObject:with:",
+        "count": 160,
+        "per_addition": 10.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "allocate",
+        "count": 160,
+        "per_addition": 10.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "allocationChargeFor:",
+        "count": 160,
+        "per_addition": 10.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "identityOf:",
+        "count": 160,
+        "per_addition": 10.0
+      },
+      {
+        "category": "Boolean selection primitives",
+        "selector": "selectIfZero:ifNonzero:",
+        "count": 160,
+        "per_addition": 10.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "usesDefaultAllocation",
+        "count": 144,
+        "per_addition": 9.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "behaviorOf:",
+        "count": 144,
+        "per_addition": 9.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "allocationSizeOf:",
+        "count": 144,
+        "per_addition": 9.0
+      },
+      {
+        "category": "other name handling",
+        "selector": "intern:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "other name handling",
+        "selector": "symbolNamed:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allocateReferenceSlots:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "setLayoutOf:to:rest:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "ownerOf:put:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "fromMethod:codeObject:referenceSlots:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "canonicalBytesOf:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "fromBytes:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "finalize:with:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "bytes",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "imageSizeOf:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "allOopLayoutOf:words:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "addMethod",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "closure construction",
+        "selector": "methodChanged:on:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "retain:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "behaviorOf:",
+        "count": 128,
+        "per_addition": 8.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "value:value:value:",
+        "count": 97,
+        "per_addition": 6.0625
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "tryPrimitiveBytes",
+        "count": 96,
+        "per_addition": 6.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "allocate:bytes:",
+        "count": 96,
+        "per_addition": 6.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "release:",
+        "count": 96,
+        "per_addition": 6.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "usesDefaultLookup:",
+        "count": 96,
+        "per_addition": 6.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "bind:to:",
+        "count": 96,
+        "per_addition": 6.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "value:value:",
+        "count": 80,
+        "per_addition": 5.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "currentValue:attr:",
+        "count": 64,
+        "per_addition": 4.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "ifTrue:ifFalse:",
+        "count": 64,
+        "per_addition": 4.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "value",
+        "count": 64,
+        "per_addition": 4.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "behaviorEpoch",
+        "count": 64,
+        "per_addition": 4.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "tryNativeArguments:",
+        "count": 48,
+        "per_addition": 3.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "nativeBindingsMatch:",
+        "count": 48,
+        "per_addition": 3.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "canOmitNativeArguments",
+        "count": 48,
+        "per_addition": 3.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "allocate",
+        "count": 48,
+        "per_addition": 3.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "allocationChargeFor:",
+        "count": 48,
+        "per_addition": 3.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "identityOf:",
+        "count": 48,
+        "per_addition": 3.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "integerBitsOf:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "wordOf:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "fromBits:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "value:value:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "notNil",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "allocationSizeOf:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "allocate:bytes:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "nativeBindingsMatch:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "usesDefaultAllocation",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "canOmitAllocationFor:",
+        "count": 32,
+        "per_addition": 2.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "+",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "integerBinary:operation:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "isNil",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "integerExactError:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "valueAt:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "vtableOf:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "behaviorOf:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "==",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "&",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "validation/other binding lookup",
+        "selector": "collectionHash",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "integerAddBits:with:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "wrappingAdd:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "allocate",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "allocationChargeFor:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "identityOf:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "tryPrimitiveExpression:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "tryRetainMany:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "selector": "tryReleaseManyForward:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "integerFromBits:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "bits",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "ABI bridges",
+        "selector": "fromWord:",
+        "count": 16,
+        "per_addition": 1.0
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "selector": "run:with:",
+        "count": 1,
+        "per_addition": 0.0625
+      }
+    ],
+    "application_envelopes": [
+      {
+        "selector": "+",
+        "calls": 1.0,
+        "inclusive_mean": 3845.0
+      },
+      {
+        "selector": "integerBinary:operation:",
+        "calls": 1.0,
+        "inclusive_mean": 3825.0
+      },
+      {
+        "selector": "integerBitsOf:",
+        "calls": 2.0,
+        "inclusive_mean": 152.5
+      },
+      {
+        "selector": "integerExactError:",
+        "calls": 1.0,
+        "inclusive_mean": 192.0
+      },
+      {
+        "selector": "integerAddBits:with:",
+        "calls": 1.0,
+        "inclusive_mean": 803.0
+      },
+      {
+        "selector": "integerFromBits:",
+        "calls": 1.0,
+        "inclusive_mean": 146.0
+      },
+      {
+        "selector": "ifTrue:ifFalse:",
+        "calls": 4.0,
+        "inclusive_mean": 1574.75
+      }
+    ],
+    "leaf_selectors": [
+      {
+        "selector": "retain:",
+        "per_addition": 630.0625,
+        "percent": 16.380683110721133
+      },
+      {
+        "selector": "intern:",
+        "per_addition": 524.0,
+        "percent": 13.62321666504176
+      },
+      {
+        "selector": "symbolNamed:",
+        "per_addition": 524.0,
+        "percent": 13.62321666504176
+      },
+      {
+        "selector": "release:",
+        "per_addition": 378.0625,
+        "percent": 9.82905982905983
+      },
+      {
+        "selector": "identityOf:",
+        "per_addition": 273.0,
+        "percent": 7.097591888466413
+      },
+      {
+        "selector": "at:",
+        "per_addition": 168.0,
+        "percent": 4.36774885444087
+      },
+      {
+        "selector": "symbolBytesOf:",
+        "per_addition": 164.0,
+        "percent": 4.263754834097039
+      },
+      {
+        "selector": "behaviorOf:",
+        "per_addition": 150.0,
+        "percent": 3.8997757628936336
+      },
+      {
+        "selector": "prepareAllocation",
+        "per_addition": 124.0,
+        "percent": 3.223814630658737
+      },
+      {
+        "selector": "allocationSizeOf:",
+        "per_addition": 119.0,
+        "percent": 3.0938221052289494
+      },
+      {
+        "selector": "captureWord:of:",
+        "per_addition": 69.0,
+        "percent": 1.7938968509310715
+      },
+      {
+        "selector": "nativeBindingsMatch:",
+        "per_addition": 55.0625,
+        "percent": 1.431542686295538
+      },
+      {
+        "selector": "allocationChargeFor:",
+        "per_addition": 54.0,
+        "percent": 1.4039192746417082
+      },
+      {
+        "selector": "allocate:bytes:",
+        "per_addition": 52.0,
+        "percent": 1.351922264469793
+      },
+      {
+        "selector": "allocationAt:",
+        "per_addition": 39.0,
+        "percent": 1.0139416983523448
+      },
+      {
+        "selector": "slotAt:in:",
+        "per_addition": 39.0,
+        "percent": 1.0139416983523448
+      },
+      {
+        "selector": "slotAt:in:put:",
+        "per_addition": 39.0,
+        "percent": 1.0139416983523448
+      },
+      {
+        "selector": "allocate",
+        "per_addition": 38.0,
+        "percent": 0.9879431932663871
+      },
+      {
+        "selector": "bind:to:",
+        "per_addition": 38.0,
+        "percent": 0.9879431932663871
+      },
+      {
+        "selector": "usesDefaultLookup:",
+        "per_addition": 32.0,
+        "percent": 0.8319521627506419
+      },
+      {
+        "selector": "behaviorEpoch",
+        "per_addition": 28.0,
+        "percent": 0.7279581424068116
+      },
+      {
+        "selector": "isBehavior:",
+        "per_addition": 24.0,
+        "percent": 0.6239641220629814
+      },
+      {
+        "selector": "tryReleaseManyForward:",
+        "per_addition": 21.0,
+        "percent": 0.5459686068051087
+      },
+      {
+        "selector": "tryRetainMany:",
+        "per_addition": 21.0,
+        "percent": 0.5459686068051087
+      },
+      {
+        "selector": "delegated",
+        "per_addition": 16.0,
+        "percent": 0.41597608137532094
+      },
+      {
+        "selector": "newBehaviorWithParent:",
+        "per_addition": 16.0,
+        "percent": 0.41597608137532094
+      },
+      {
+        "selector": "canOmitAllocationFor:",
+        "per_addition": 14.0,
+        "percent": 0.3639790712034058
+      },
+      {
+        "selector": "usesDefaultAllocation",
+        "per_addition": 11.0,
+        "percent": 0.28598355594553315
+      },
+      {
+        "selector": "tryReleaseMany:",
+        "per_addition": 10.0625,
+        "percent": 0.2616099574274479
+      },
+      {
+        "selector": "sameObject:with:",
+        "per_addition": 10.0,
+        "percent": 0.2599850508595756
+      },
+      {
+        "selector": "selectIfZero:ifNonzero:",
+        "per_addition": 10.0,
+        "percent": 0.2599850508595756
+      },
+      {
+        "selector": "addMethod",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "allOopLayoutOf:words:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "allocateReferenceSlots:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "bytes",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "canonicalBytesOf:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "finalize:with:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "fromBytes:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "fromMethod:codeObject:referenceSlots:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "imageSizeOf:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "methodChanged:on:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "ownerOf:put:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "setLayoutOf:to:rest:",
+        "per_addition": 8.0,
+        "percent": 0.20798804068766047
+      },
+      {
+        "selector": "value:value:",
+        "per_addition": 7.0,
+        "percent": 0.1819895356017029
+      },
+      {
+        "selector": "value:value:value:",
+        "per_addition": 6.0625,
+        "percent": 0.15761593708361768
+      },
+      {
+        "selector": "tryPrimitiveBytes",
+        "per_addition": 6.0,
+        "percent": 0.15599103051574534
+      },
+      {
+        "selector": "currentValue:attr:",
+        "per_addition": 4.0,
+        "percent": 0.10399402034383023
+      },
+      {
+        "selector": "ifTrue:ifFalse:",
+        "per_addition": 4.0,
+        "percent": 0.10399402034383023
+      },
+      {
+        "selector": "value",
+        "per_addition": 4.0,
+        "percent": 0.10399402034383023
+      },
+      {
+        "selector": "canOmitNativeArguments",
+        "per_addition": 3.0,
+        "percent": 0.07799551525787267
+      },
+      {
+        "selector": "tryNativeArguments:",
+        "per_addition": 3.0,
+        "percent": 0.07799551525787267
+      },
+      {
+        "selector": "fromBits:",
+        "per_addition": 2.0,
+        "percent": 0.05199701017191512
+      },
+      {
+        "selector": "integerBitsOf:",
+        "per_addition": 2.0,
+        "percent": 0.05199701017191512
+      },
+      {
+        "selector": "notNil",
+        "per_addition": 2.0,
+        "percent": 0.05199701017191512
+      },
+      {
+        "selector": "wordOf:",
+        "per_addition": 2.0,
+        "percent": 0.05199701017191512
+      },
+      {
+        "selector": "&",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "+",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "==",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "bits",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "collectionHash",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "fromWord:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "integerAddBits:with:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "integerBinary:operation:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "integerExactError:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "integerFromBits:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "isNil",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "tryPrimitiveExpression:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "valueAt:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "vtableOf:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "wrappingAdd:",
+        "per_addition": 1.0,
+        "percent": 0.02599850508595756
+      },
+      {
+        "selector": "run:with:",
+        "per_addition": 0.0625,
+        "percent": 0.0016249065678723474
+      }
+    ],
+    "scope": "Current worktree, successful positive Integer chain, untimed after warmup; includes unfinished input-scope changes; grouping is causal classification, not CPU share or proof of owner semantics.",
+    "closure_summary": {
+      "constructed_per_addition": 8.0,
+      "invoked_per_addition": 4.0,
+      "unused_per_addition": 4.0,
+      "unused_construction_sends_per_addition": 925.0,
+      "canonical_export_calls_per_addition": 8.0,
+      "canonical_export_sends_per_addition": 568.0
+    },
+    "construction_cut": [
+      {
+        "selector": "fromMethod:codeObject:referenceSlots:",
+        "sends_per_addition": 1153.0
+      },
+      {
+        "selector": "allocateReferenceSlots:",
+        "sends_per_addition": 368.0
+      },
+      {
+        "selector": "slotAt:in:put:",
+        "sends_per_addition": 390.0
+      },
+      {
+        "selector": "at:",
+        "sends_per_addition": 220.0
+      },
+      {
+        "selector": "retain:",
+        "sends_per_addition": 110.0
+      }
+    ],
+    "first_addition_closure_groups": [
+      {
+        "ctor_id": 281,
+        "block": "600000485a58",
+        "invoked": false,
+        "sends": 168,
+        "capture_count": 0,
+        "cut_ids": [
+          224,
+          228,
+          229,
+          275,
+          276,
+          280,
+          281,
+          391
+        ]
+      },
+      {
+        "ctor_id": 625,
+        "block": "600002d39038",
+        "invoked": true,
+        "sends": 421,
+        "capture_count": 11,
+        "cut_ids": [
+          392,
+          396,
+          397,
+          443,
+          444,
+          448,
+          449,
+          459,
+          460,
+          464,
+          465,
+          475,
+          476,
+          480,
+          481,
+          491,
+          492,
+          496,
+          497,
+          507,
+          508,
+          512,
+          513,
+          523,
+          524,
+          528,
+          529,
+          539,
+          540,
+          544,
+          545,
+          555,
+          556,
+          560,
+          561,
+          571,
+          572,
+          576,
+          577,
+          587,
+          588,
+          592,
+          593,
+          603,
+          604,
+          608,
+          609,
+          619,
+          620,
+          624,
+          625,
+          812
+        ]
+      },
+      {
+        "ctor_id": 1292,
+        "block": "600000675208",
+        "invoked": false,
+        "sends": 191,
+        "capture_count": 1,
+        "cut_ids": [
+          1219,
+          1223,
+          1224,
+          1270,
+          1271,
+          1275,
+          1276,
+          1286,
+          1287,
+          1291,
+          1292,
+          1409
+        ]
+      },
+      {
+        "ctor_id": 1643,
+        "block": "600002d38e78",
+        "invoked": true,
+        "sends": 421,
+        "capture_count": 11,
+        "cut_ids": [
+          1410,
+          1414,
+          1415,
+          1461,
+          1462,
+          1466,
+          1467,
+          1477,
+          1478,
+          1482,
+          1483,
+          1493,
+          1494,
+          1498,
+          1499,
+          1509,
+          1510,
+          1514,
+          1515,
+          1525,
+          1526,
+          1530,
+          1531,
+          1541,
+          1542,
+          1546,
+          1547,
+          1557,
+          1558,
+          1562,
+          1563,
+          1573,
+          1574,
+          1578,
+          1579,
+          1589,
+          1590,
+          1594,
+          1595,
+          1605,
+          1606,
+          1610,
+          1611,
+          1621,
+          1622,
+          1626,
+          1627,
+          1637,
+          1638,
+          1642,
+          1643,
+          1830
+        ]
+      },
+      {
+        "ctor_id": 2323,
+        "block": "600000819e98",
+        "invoked": true,
+        "sends": 260,
+        "capture_count": 4,
+        "cut_ids": [
+          2202,
+          2206,
+          2207,
+          2253,
+          2254,
+          2258,
+          2259,
+          2269,
+          2270,
+          2274,
+          2275,
+          2285,
+          2286,
+          2290,
+          2291,
+          2301,
+          2302,
+          2306,
+          2307,
+          2317,
+          2318,
+          2322,
+          2323,
+          2461
+        ]
+      },
+      {
+        "ctor_id": 2663,
+        "block": "600002227a28",
+        "invoked": false,
+        "sends": 375,
+        "capture_count": 9,
+        "cut_ids": [
+          2462,
+          2466,
+          2467,
+          2513,
+          2514,
+          2518,
+          2519,
+          2529,
+          2530,
+          2534,
+          2535,
+          2545,
+          2546,
+          2550,
+          2551,
+          2561,
+          2562,
+          2566,
+          2567,
+          2577,
+          2578,
+          2582,
+          2583,
+          2593,
+          2594,
+          2598,
+          2599,
+          2609,
+          2610,
+          2614,
+          2615,
+          2625,
+          2626,
+          2630,
+          2631,
+          2641,
+          2642,
+          2646,
+          2647,
+          2657,
+          2658,
+          2662,
+          2663,
+          2836
+        ]
+      },
+      {
+        "ctor_id": 3209,
+        "block": "600000676968",
+        "invoked": true,
+        "sends": 214,
+        "capture_count": 2,
+        "cut_ids": [
+          3120,
+          3124,
+          3125,
+          3171,
+          3172,
+          3176,
+          3177,
+          3187,
+          3188,
+          3192,
+          3193,
+          3203,
+          3204,
+          3208,
+          3209,
+          3333
+        ]
+      },
+      {
+        "ctor_id": 3407,
+        "block": "600000676c68",
+        "invoked": false,
+        "sends": 191,
+        "capture_count": 1,
+        "cut_ids": [
+          3334,
+          3338,
+          3339,
+          3385,
+          3386,
+          3390,
+          3391,
+          3401,
+          3402,
+          3406,
+          3407,
+          3524
+        ]
+      }
+    ]
+  },
+  "validation": {
+    "selector_census_matches_trace": true,
+    "every_subtree_size_checked": true,
+    "partition_covers_all_sends": true,
+    "construction_groups_cover_category": true,
+    "dispatch_metrics_regression": "passed: 1 test, 0 failed; instrumented microbench counts-prefix",
+    "workspace_all_targets_check": "passed: cargo check --workspace --all-targets --offline --locked",
+    "logs": [
+      "/tmp/birnam-send-totality/metrics-test.log",
+      "/tmp/birnam-send-totality/workspace-check.log"
+    ]
+  }
+}

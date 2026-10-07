@@ -1,6 +1,17 @@
 //! Optional untimed message census. No dispatch/lookup replacements.
 use super::*;
 use std::collections::BTreeMap;
+struct Trace {
+    parent: usize,
+    receiver: usize,
+    behavior: usize,
+    selector: usize,
+    key: Vec<u8>,
+    argument: usize,
+    result: usize,
+    inclusive: usize,
+    status: u32,
+}
 #[derive(Default)]
 pub(super) struct Metrics {
     pub enabled: bool,
@@ -8,6 +19,14 @@ pub(super) struct Metrics {
     snapshot: Vec<u8>,
     next: usize,
     stack: Vec<usize>,
+    frames: Vec<(usize, usize)>,
+    edges: BTreeMap<(usize, usize, usize, usize), usize>,
+    // Every send belongs to one nearest named ABI subtree, or the outside
+    // bucket. Selector labels are diagnostic, never inferred foreign owners.
+    regions: BTreeMap<(usize, usize), usize>,
+    region_stack: Vec<usize>,
+    subtrees: BTreeMap<(usize, usize, usize), (usize, usize)>,
+    trace: Vec<Trace>,
     tokens: BTreeMap<(usize, usize), (usize, usize)>,
     live: BTreeMap<(usize, usize, usize), usize>,
     objects: std::collections::BTreeSet<usize>,
@@ -16,12 +35,47 @@ pub(super) struct Metrics {
     other_call_duplicates: usize,
     max_live_tokens: usize,
 }
-pub(super) fn enter(s: &State, selector: Oop) -> bool {
+pub(super) fn enter(s: &State, receiver: Oop, selector: Oop, args: &[Operand]) -> bool {
     let mut m = s.metrics.borrow_mut();
     if !m.enabled {
         return false;
     }
     *m.counts.entry(selector.addr()).or_default() += 1;
+    let behavior = if unsafe { (&*s.memory).get(receiver.addr()) }.is_some() {
+        unsafe { super::super::object_memory::ObjectMemory::vtable_of_valid_object(receiver) }
+            .addr()
+    } else {
+        0
+    };
+    let (parent_behavior, parent_selector) = m.frames.last().copied().unwrap_or((0, 0));
+    let argument = args.first().and_then(|v|v.as_object()).map_or(0, |v|v.addr());
+    // Names supplied through the ABI or already owned by Id's Symbol table.
+    // No foreign payload/context inspection and no diagnostic sends.
+    let key = args.first().and_then(|value| {
+        if let Some(object) = value.as_object() {
+            unsafe { (&*s.symbols).bytes_of(object) }.map(|v|v.to_vec())
+        } else if matches!(unsafe { (&*s.symbols).bytes_of(selector) }, Some(b"intern:" | b"symbolNamed:")) {
+            let bytes=value.as_bytes()?;
+            if bytes.length>256 {return None;}
+            unsafe {crate::abi::borrowed_bytes(bytes.pointer,bytes.length)}.map(|v|v.to_vec())
+        } else {None}
+    }).unwrap_or_default();
+    let parent = m.stack.last().copied().unwrap_or(0);
+    m.trace.push(Trace {parent,receiver:receiver.addr(),behavior,selector:selector.addr(),key,
+        argument,result:0,inclusive:0,status:0});
+    *m.edges
+        .entry((parent_behavior, parent_selector, behavior, selector.addr()))
+        .or_default() += 1;
+    m.frames.push((behavior, selector.addr()));
+    let region = m.frames.iter().rev().find_map(|&(_, selector)| {
+        let name = unsafe { (&*s.symbols).bytes_of(core::ptr::with_exposed_provenance_mut(selector)) }?;
+        matches!(name,
+            b"tryNativeArguments:" | b"sendNativeTo:selector:arguments:signature:resultFactory:"
+            | b"wordResultOf:selector:" | b"bytesResultOf:selector:" | b"block:withNativeSignature:"
+        ).then_some(selector)
+    }).unwrap_or(0);
+    *m.regions.entry((region, selector.addr())).or_default() += 1;
+    m.region_stack.push(region);
     m.next += 1;
     let id = m.next;
     m.stack.push(id);
@@ -40,7 +94,18 @@ pub(super) fn leave(
     }
     let name = unsafe { (&*s.symbols).bytes_of(selector) };
     let mut m = s.metrics.borrow_mut();
-    m.stack.pop();
+    let start = m.stack.pop().unwrap();
+    m.frames.pop();
+    let region = m.region_stack.pop().unwrap();
+    let parent_selector = m.frames.last().map_or(0, |f|f.1);
+    let inclusive = m.next-start+1;
+    let row = &mut m.trace[start-1];
+    row.inclusive = inclusive;
+    row.status = result.status;
+    row.result = result.value.as_object().map_or(0, |v|v.addr());
+    let stats = m.subtrees.entry((region,parent_selector,selector.addr())).or_default();
+    stats.0 += 1;
+    stats.1 += inclusive;
     let parent = m.stack.last().copied().unwrap_or(0);
     if result.status != native::LOADED {
         return;
@@ -129,6 +194,10 @@ pub(super) unsafe fn install(s: &State, c: *mut c_void, add: Oop) {
             (b"dispatchCountsBegin".as_slice(), begin as native::Method),
             (b"dispatchCountsEnd", end as native::Method),
             (b"dispatchRootSummary", root_summary as native::Method),
+            (b"dispatchEdges", edges as native::Method),
+            (b"dispatchRegions", regions as native::Method),
+            (b"dispatchSubtrees", subtrees as native::Method),
+            (b"dispatchTrace", trace as native::Method),
         ] {
             let selector = (&mut *s.symbols)
                 .intern(&mut *s.memory, s.symbol_vtable, name)
@@ -188,5 +257,86 @@ unsafe extern "C" fn root_summary(c: *mut c_void, _: Oop, _: *const Operand, n: 
     let s = unsafe { &*c.cast::<State>() };
     let mut m = s.metrics.borrow_mut();
     m.snapshot=format!("{{\"retains\":{},\"distinct_object_addresses\":{},\"same_message_activation_live_duplicates\":{},\"other_activation_live_duplicates\":{},\"max_live_tokens_observed\":{},\"remaining_tokens_observed\":{}}}",m.total_roots,m.objects.len(),m.same_call_duplicates,m.other_call_duplicates,m.max_live_tokens,m.tokens.len()).into_bytes();
+    Outcome::loaded(Operand::bytes(&m.snapshot))
+}
+
+unsafe extern "C" fn edges(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 {
+        return Outcome::failed(native::INVALID_REQUEST, 0);
+    }
+    let s = unsafe { &*c.cast::<State>() };
+    let mut m = s.metrics.borrow_mut();
+    let mut bytes = Vec::new();
+    for (&(parent_behavior, parent_selector, behavior, selector), count) in &m.edges {
+        let names = [parent_selector, selector].map(|address| {
+            if address == 0 {
+                return "-".to_owned();
+            }
+            let symbol = core::ptr::with_exposed_provenance_mut(address);
+            unsafe { (&*s.symbols).bytes_of(symbol) }
+                .unwrap_or(b"?")
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        });
+        bytes.extend_from_slice(
+            format!(
+                "{count}\t{parent_behavior:x}\t{}\t{behavior:x}\t{}\n",
+                names[0], names[1]
+            )
+            .as_bytes(),
+        );
+    }
+    m.snapshot = bytes;
+    Outcome::loaded(Operand::bytes(&m.snapshot))
+}
+
+unsafe extern "C" fn regions(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    let s = unsafe { &*c.cast::<State>() };
+    let mut m = s.metrics.borrow_mut();
+    let mut bytes = Vec::new();
+    for (&(region, selector), count) in &m.regions {
+        let names = [region, selector].map(|address| {
+            if address == 0 { return "-".to_owned(); }
+            unsafe { (&*s.symbols).bytes_of(core::ptr::with_exposed_provenance_mut(address)) }
+                .unwrap_or(b"?").iter().map(|b| format!("{b:02x}")).collect::<String>()
+        });
+        bytes.extend_from_slice(format!("{count}\t{}\t{}\n", names[0], names[1]).as_bytes());
+    }
+    m.snapshot = bytes;
+    Outcome::loaded(Operand::bytes(&m.snapshot))
+}
+
+unsafe extern "C" fn subtrees(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    let s = unsafe { &*c.cast::<State>() };
+    let mut m = s.metrics.borrow_mut();
+    let mut bytes = Vec::new();
+    for (&(region, parent, selector), &(calls, inclusive)) in &m.subtrees {
+        let names = [region,parent,selector].map(|address| {
+            if address == 0 { return "-".to_owned(); }
+            unsafe { (&*s.symbols).bytes_of(core::ptr::with_exposed_provenance_mut(address)) }
+                .unwrap_or(b"?").iter().map(|b| format!("{b:02x}")).collect::<String>()
+        });
+        bytes.extend_from_slice(format!("{calls}\t{inclusive}\t{}\t{}\t{}\n", names[0],names[1],names[2]).as_bytes());
+    }
+    m.snapshot = bytes;
+    Outcome::loaded(Operand::bytes(&m.snapshot))
+}
+
+unsafe extern "C" fn trace(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    let s = unsafe { &*c.cast::<State>() };
+    let mut m = s.metrics.borrow_mut();
+    let mut bytes = Vec::new();
+    for (i,row) in m.trace.iter().enumerate() {
+        let name=unsafe{(&*s.symbols).bytes_of(core::ptr::with_exposed_provenance_mut(row.selector))}.unwrap_or(b"?");
+        let hex=|v:&[u8]| v.iter().map(|b|format!("{b:02x}")).collect::<String>();
+        bytes.extend_from_slice(format!("{}\t{}\t{:x}\t{:x}\t{}\t{}\t{:x}\t{:x}\t{}\t{}\n",
+            i+1,row.parent,row.receiver,row.behavior,hex(name),if row.key.is_empty(){"-".into()}else{hex(&row.key)},
+            row.argument,row.result,row.inclusive,row.status).as_bytes());
+    }
+    m.snapshot=bytes;
     Outcome::loaded(Operand::bytes(&m.snapshot))
 }

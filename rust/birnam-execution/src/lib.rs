@@ -1,5 +1,6 @@
 //! Execution-owned callable objects. See the local protocol and migration ledger.
 mod control;
+mod binding_proof;
 mod discarded_clone;
 mod entry;
 mod entry_plan;
@@ -10,7 +11,6 @@ mod native_tier;
 mod native_abi;
 mod word_helper;
 mod numeric;
-mod program_shape;
 mod numeric_operator;
 mod numeric_predicate;
 mod objects;
@@ -45,7 +45,8 @@ struct Execution {
     namespace: Oop,
     native_return_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
-    copy_program_shape_bytes: Cell<bool>,
+    batch_binding_proofs: Cell<bool>,
+    binding_proof_services: [Option<NativeEntry>; 4],
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
     id: Protocol,
@@ -766,20 +767,20 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
     })())
 }
 
-// Owner policy switch for paired diagnostics. It changes only pure byte
-// validation work; code-owner and Bytes messages remain live in both modes.
-unsafe extern "C" fn program_shape_borrowing(c:*mut c_void,_:Oop,a:*const Operand,n:usize)->Outcome {
+unsafe extern "C" fn binding_proof_batches(c:*mut c_void,_:Oop,a:*const Operand,n:usize)->Outcome {
     done((|| unsafe {
         let s=state(c)?;
-        let [enabled]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
-        let enabled=enabled.as_word().ok_or_else(invalid)?;
-        if enabled>1 {return Err(invalid());}
-        s.copy_program_shape_bytes.set(enabled==0);
+        let [enabled]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid())};
+        let enabled=enabled.as_word().filter(|v|*v<=1).ok_or_else(invalid)?;
+        s.batch_binding_proofs.set(enabled==1);
         Ok(Operand::unit())
     })())
 }
 const NAMES: &[&[u8]] = &[
-    b"programShapeBorrowing:",
+    b"bindingProofBatches:",
+    b"nativeBindingsMatch:",
+    b"intern:",
+    b"symbolNamed:",
     b"sendNativeTo:selector:arguments:signature:resultFactory:",
     b"tryNativeArguments:",
     b"wordResultOf:selector:",
@@ -870,7 +871,20 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             namespace,
             native_return_bytes: RefCell::new(Vec::new()),
             machines: RefCell::new(machine::State::new()),
-            copy_program_shape_bytes: Cell::new(false),
+            batch_binding_proofs: Cell::new(true),
+            binding_proof_services: (*binding_proof::SERVICES).map(|name| {
+                let entry = id.send_named(id.receiver, b"bind:to:", &[
+                    Operand::object(names[name]), Operand::object(id.receiver),
+                ]).ok().and_then(|v|v.as_entry())?;
+                let declaration = if name == b"intern:" {
+                    id.send_named(gc, b"internQuerySemantics:", &[Operand::entry(entry)])
+                } else {
+                    id.send_named(id.receiver, b"nativeBindingQuerySemantics:for:", &[
+                        Operand::entry(entry), Operand::bytes(name),
+                    ])
+                };
+                (declaration.ok()?.as_word() == Some(1)).then_some(entry)
+            }),
             numeric: RefCell::new(numeric::Registry::default()),
             requests: RefCell::new(Vec::new()),
             id,
@@ -896,7 +910,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         }));
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), roots as Method),
-            (behavior,b"programShapeBorrowing:",program_shape_borrowing),
+            (behavior,b"bindingProofBatches:",binding_proof_batches),
             (behavior, b"referencesOf:do:", references),
             (behavior, b"implementationOfEntry:", implementation_of_entry),
             (behavior, b"methodOfEntry:", method_of_entry),

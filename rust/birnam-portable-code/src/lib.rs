@@ -1128,6 +1128,28 @@ unsafe extern "C" fn finalize(
     })()
     .map_or_else(|e| e, Outcome::loaded)
 }
+// Native shape queries read admitted immutable state without exporting bytes,
+// allocating language Objects, or crossing a dependency callback. Callers keep
+// the CodeObject live under the ordinary Id ABI lifetime contract.
+unsafe fn code_count(context: *mut c_void, args: *const Operand, count: usize, parameters: bool) -> Outcome {
+    (|| unsafe {
+        let s = state(context)?;
+        let [code] = borrowed_slice(args, count).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let (program, _, _) = s.code(object(*code)?).ok_or_else(invalid)?;
+        let program = s.program(program).ok_or_else(invalid)?;
+        let view = program.view();
+        Ok(Operand::word(if parameters { view.parameter_count } else { view.capture_count } as usize))
+    })().map_or_else(|e| e, Outcome::loaded)
+}
+unsafe extern "C" fn parameter_count_of(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { code_count(c, a, n, true) }
+}
+unsafe extern "C" fn capture_count_of(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { code_count(c, a, n, false) }
+}
+
 macro_rules! entry {
     ($name:ident, $family:ident, $selector:literal) => {
         unsafe extern "C" fn $name(
@@ -1335,6 +1357,8 @@ const FAMILIES: &[(&[u8], &[u8], &[(&[u8], Method)])] = &[
         b"CodeObjectVt",
         &[
             (b"canonicalBytesOf:", canonical_bytes),
+            (b"parameterCountOf:", parameter_count_of),
+            (b"captureCountOf:", capture_count_of),
             (b"inspectInventory:bindings:selection:", inventory_inspect),
             (b"inventory:matchesRoots:", inventory_closure),
             (b"bindings:referencesBelow:", inventory_references),

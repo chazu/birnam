@@ -407,6 +407,7 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"allocation:bytes:identity:", collection::allocation),
             (b"roots", root_registry),
             (b"activate", construction::activate),
+            (b"internQuerySemantics:", construction::intern_query_semantics),
             (b"prepareAllocation", construction::prepare),
             (b"registerRetirement:", register_retirement),
             (b"collect", collection::collect),

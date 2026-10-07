@@ -25,10 +25,10 @@ pub(super) fn function(
         inline_return: None,
         word_helpers: policy.optimizations.helpers(),
         batch_cleanup: policy.optimizations.roots(),
-        batch_inputs: policy.optimizations.inputs(),
     });
+    let entry = if policy.optimizations.inputs() { "check_entry" } else { "keep_entry" };
     let mut out = format!(
-        "static R sync_{index}(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};if(n!={}){{keep(&c,self);return finish(&c,obj(named(&c,\"nil\")));}}keep_entry(&c,self,args,n);\n",
+        "static R sync_{index}(void*context,O self,const A*args,size_t n){{(void)context;Call c={{0}};if(n!={}){{object(&c,obj(self));return finish(&c,obj(named(&c,\"nil\")));}}{entry}(&c,self,args,n);\n",
         program.parameter_count
     );
     for i in 0..program.parameter_count {
@@ -104,21 +104,14 @@ pub(super) fn function(
                 }
                 NodeKind::BlockLiteral => {
                     let child = portable_function(node.data, source, filename, functions, policy)?;
-                    writeln!(
-                        out,
-                        "A count{next}=word({});O captures{next}=call(&c,named(&c,\"ObjectModel\"),\"allocateReferenceSlots:\",&count{next},1);",node.operand_count
-                    )
-                    .unwrap();
-                    for i in 0..node.operand_count as usize {
-                        let binding = program
-                            .node_operand(next as usize, i)
-                            .ok_or(Error::Portable)?;
-                        writeln!(out, "{{A a[3]={{word({i}),obj(captures{next}),obj(b{binding})}};send(&c,named(&c,\"ObjectModel\"),\"slotAt:in:put:\",a,3);}}").unwrap();
-                    }
-                    writeln!(out,"A a{next}[3]={{obj(methods[{child}]),obj(codes[{child}]),obj(captures{next})}};").unwrap();
-                    format!(
-                        "call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:referenceSlots:\",a{next},3)"
-                    )
+                    let captures = (0..node.operand_count as usize).map(|i| {
+                        program.node_operand(next as usize, i).map(|binding| format!("obj(b{binding})"))
+                            .ok_or(Error::Portable)
+                    }).collect::<Result<Vec<_>, _>>()?;
+                    let suffix = if captures.is_empty() { String::new() } else { format!(",{}", captures.join(",")) };
+                    writeln!(out, "A a{next}[]={{obj(methods[{child}]),obj(codes[{child}]){suffix}}};").unwrap();
+                    format!("call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:captureOperands:\",a{next},{})",captures.len()+2)
+
                 }
             };
             writeln!(

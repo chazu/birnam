@@ -10,7 +10,7 @@ fn generated_cleanup_batches_or_uses_ordered_live_sends_and_leaks_no_temporary_r
     c.push_str(r#"
 #include <assert.h>
 static size_t next_token,live[256],order[256],released,batches,individual;
-static int mode;static size_t returned[9],input_batches;
+static int mode;
 static R message(void*ctx,O r,O sel,const A*a,size_t n){
  (void)ctx; (void)n;
  if(sel==id.intern){size_t len=a[0].data.bytes.length;char*p=malloc(len+1);memcpy(p,a[0].data.bytes.pointer,len);p[len]=0;return ok(obj(p));}
@@ -18,12 +18,6 @@ static R message(void*ctx,O r,O sel,const A*a,size_t n){
  if(r==owner)return ok(obj(owner));
  assert(r==roots);
  if(!strcmp(name,"retain:")){live[++next_token]=1;return ok(word(next_token));}
- if(!strcmp(name,"tryRetainMany:")){
-  input_batches++; if(mode==1)return ok(word(0));
-  size_t count=a[0].data.bytes.length/sizeof(O);assert(count<=9);
-  for(size_t i=0;i<count;i++){live[++next_token]=1;returned[i]=next_token;}
-  return ok(bytes(returned,count*sizeof(size_t)));
- }
  if(!strcmp(name,"tryReleaseMany:")){
   batches++; if(mode==1)return ok(word(0));if(mode==2){R e=bad();e.detail=902;return e;}
   const size_t*t=(const size_t*)a[0].data.bytes.pointer;size_t count=a[0].data.bytes.length/sizeof(size_t);
@@ -37,7 +31,7 @@ int main(void){
  for(mode=0;mode<3;mode++){
   size_t previous=next_token;released=batches=individual=0;Call c={0};
   for(size_t i=0;i<16;i++)keep(&c,(O)(100+i));
-  if(mode<2){A input[3]={obj((O)201),obj((O)202),obj((O)203)};keep_entry(&c,(O)200,input,3);assert(input_batches>0);}
+  if(mode<2){A input[3]={obj((O)201),obj((O)202),obj((O)203)};size_t old=next_token;check_entry(&c,(O)200,input,3);assert(next_token==old);keep(&c,(O)201);assert(next_token==old);c.input_count=0;keep_entry(&c,(O)200,input,3);assert(next_token>old);}
   if(mode==2){c.failure=bad();c.failure.detail=901;}
   R result=finish(&c,word(77));assert(batches==1);
   if(mode==2){assert(result.status&&result.detail==901);}else assert(!result.status&&result.value.data.word==77);

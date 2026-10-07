@@ -32,3 +32,12 @@ and `captureAt:`; [Codegen](../birnam-codegen-runtime/README.md) materializes bo
 synchronous and resumable Blocks. The `materialization` production test exercises
 these connections. Image and optimization remain separate; the retired native
 Block admission hook is not restored.
+
+`CodeObject parameterCountOf:` and `captureCountOf:` accept one admitted CodeObject
+Object and return native Words. They read checked immutable state without exporting
+canonical bytes, allocating Objects or sending dependency messages. Invalid arity,
+carriers or non-admitted Objects produce native `INVALID_REQUEST`. Both remain
+ordinary replaceable Id methods; the caller keeps the supplied Object live under
+the native ABI contract. Execution uses these queries for Block construction and
+pending image shells. Canonical export remains for compilation, images and other
+real byte consumers.

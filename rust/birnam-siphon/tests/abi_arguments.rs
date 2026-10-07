@@ -24,6 +24,11 @@ unsafe extern "C" fn many(_: *mut c_void, _: Oop, a: *const Operand, n: usize) -
     assert!(args.iter().all(|a| a.as_object() == args[0].as_object()));
     Outcome::loaded(args[0])
 }
+unsafe extern "C" fn deny_lookup(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    let calls = unsafe { &*c.cast::<Cell<usize>>() };
+    calls.set(calls.get()+1);
+    Outcome::loaded(Operand::word(0))
+}
 struct Permission {
     entry: NativeEntry,
     allow: Cell<bool>,
@@ -371,6 +376,58 @@ fn literal_abi_arguments_preserve_replacements_and_allocation_hooks() {
             original.method.unwrap(),
             original.context,
         );
+        // A replaced guard service is not a pure dictionary fact. It must run
+        // through the original path, and may deny admission without mutation.
+        let uses = id.intern_name(b"usesDefaultLookup:").unwrap();
+        let binding = id.intern_name(b"bind:to:").unwrap();
+        let query = id.send(id.receiver, binding, &[
+            Operand::object(uses), Operand::object(id.receiver),
+        ]).unwrap().as_entry().unwrap();
+        let declaration = |entry, role: &[u8]| send(id, id.receiver,
+            b"nativeBindingQuerySemantics:for:", &[Operand::entry(entry), Operand::bytes(role)]).as_word();
+        assert_eq!(declaration(query, b"usesDefaultLookup:"), Some(1));
+        assert_eq!(declaration(query, b"bind:to:"), Some(0), "query roles are distinct");
+        assert_eq!(declaration(NativeEntry::new(query.method.unwrap(), std::ptr::null_mut()),
+            b"usesDefaultLookup:"), Some(0), "a foreign context is not canonical");
+        let mut row = [id.receiver.addr(), uses.addr(), query.method.unwrap() as usize, query.context.addr()];
+        let matches = |row: &[usize; 4]| {
+            let bytes = std::slice::from_raw_parts(row.as_ptr().cast::<u8>(), std::mem::size_of_val(row));
+            send(id, id.receiver, b"nativeBindingsMatch:", &[Operand::bytes(bytes)]).as_word()
+        };
+        assert_eq!(matches(&row), Some(1));
+        row[3] = 0;
+        assert_eq!(matches(&row), Some(0), "same method with another context must decline");
+        let calls = Cell::new(0usize);
+        assert_eq!(declaration(NativeEntry::new(deny_lookup, (&raw const calls).cast_mut().cast()),
+            b"usesDefaultLookup:"), Some(0), "an override present at startup cannot be admitted");
+        install(id, id.receiver, b"usesDefaultLookup:", deny_lookup, (&raw const calls).cast_mut().cast());
+        let before = count(id, family);
+        run();
+        assert_eq!(calls.get(), 1, "the current guard executes exactly once");
+        assert_eq!(count(id, family)-before, 2, "denial restores literal Vector construction");
+        install(id, id.receiver, b"usesDefaultLookup:", query.method.unwrap(), query.context);
+
+        // Changed interning remains observable. Compare the complete forwarding
+        // callback count on the ordinary and declined-batch paths.
+        let intern = id.send(id.receiver, binding, &[
+            Operand::object(id.intern), Operand::object(id.receiver),
+        ]).unwrap().as_entry().unwrap();
+        assert_eq!(send(id, gc, b"internQuerySemantics:", &[Operand::entry(intern)]).as_word(), Some(1));
+        assert_eq!(send(id, gc, b"internQuerySemantics:", &[Operand::entry(query)]).as_word(), Some(0));
+        let mut interning = Hook { original: intern, calls: Cell::new(0), family: None };
+        let batches = id.intern_name(b"bindingProofBatches:").unwrap();
+        let execution = named(b"Execution");
+        install(id, id.receiver, b"intern:", hook, (&raw mut interning).cast());
+        id.send(execution, batches, &[Operand::word(0)]).unwrap();
+        interning.calls.set(0);
+        run();
+        let ordinary_interns = interning.calls.get();
+        id.send(execution, batches, &[Operand::word(1)]).unwrap();
+        interning.calls.set(0);
+        run();
+        assert_eq!(interning.calls.get(), ordinary_interns);
+        assert!(ordinary_interns > 0);
+        install(id, id.receiver, b"intern:", intern.method.unwrap(), intern.context);
         send(id, gc, b"budget:", &[Operand::word(1)]);
         run();
         assert!(present(id, value));

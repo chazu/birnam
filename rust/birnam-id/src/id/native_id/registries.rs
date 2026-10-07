@@ -17,6 +17,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         ),
         (b"behaviorEpoch".as_slice(), epoch as native::Method),
         (b"nativeBindingsMatch:".as_slice(), native_bindings_match as native::Method),
+        (b"nativeBindingQuerySemantics:for:".as_slice(), binding_query_semantics as native::Method),
         (b"isBehavior:".as_slice(), is_behavior as native::Method),
         (b"behaviorView".as_slice(), behaviors as native::Method),
         (b"selectorsIn:".as_slice(), selectors as native::Method),
@@ -407,6 +408,24 @@ unsafe extern "C" fn bindings(
     done(Operand::unit())
 }
 
+// Describe only this owner's implementations. A saved entry's immutable
+// semantics are distinct from whether it is currently selected for a message.
+unsafe extern "C" fn binding_query_semantics(
+    context: *mut c_void, _: Oop, args: *const Operand, count: usize,
+) -> Outcome {
+    arguments!(args, count, [argument, name]);
+    let Some(entry) = argument.as_entry() else { return invalid(); };
+    let Some(name) = name.as_bytes() else { return invalid(); };
+    let Some(name) = (unsafe { crate::abi::borrowed_bytes(name.pointer, name.length) }) else { return invalid(); };
+    let expected = match name {
+        b"usesDefaultLookup:" => Some(uses_default_lookup as native::Method),
+        b"bind:to:" => Some(bind as native::Method),
+        b"symbolNamed:" => Some(symbol_named as native::Method),
+        _ => None,
+    };
+    let admitted = expected.is_some_and(|method| entry == NativeEntry::new(method, context));
+    done(Operand::word(usize::from(admitted)))
+}
 // Concrete execution guard: Id compares its own lookup entry and context.
 // One callback-free owner query. The native Word quadruples (receiver, selector, method, context) are caller-owned
 // ABI data, never a portable format. Id reads only its own heap/dictionaries;

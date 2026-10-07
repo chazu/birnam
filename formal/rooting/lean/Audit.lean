@@ -4,6 +4,7 @@ import GC
 import Memo
 import Borrow
 import Registration
+import Invocation
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -53,3 +54,9 @@ import Registration
 #print axioms Birnam.Registration.loop_accumulator
 #print axioms Birnam.Registration.exact_batch_registration
 #print axioms Birnam.Registration.successful_prefix_fits
+#print axioms Birnam.Invocation.input_root_equivalence
+#print axioms Birnam.Invocation.reachable_equivalence
+#print axioms Birnam.Invocation.needed_survives
+#print axioms Birnam.Invocation.input_survives_child_exit
+#print axioms Birnam.Invocation.unprotected_result_can_be_collected
+#print axioms Birnam.Invocation.uncovered_input_is_not_equivalent

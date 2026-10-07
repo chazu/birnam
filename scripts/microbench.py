@@ -14,7 +14,7 @@ import time
 from validation_support import ROOT, clean_environment, command, save_json, sha
 from microbench_report import summarize
 
-OWNERS = ('native_backend', 'execution', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id')
+OWNERS = ('native_backend', 'execution', 'portable_code', 'object_model', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id')
 TARGET = ROOT / '.cargo-target/decomposition-install/target'
 WORK = ROOT / '.cargo-target/microbench'
 
@@ -23,11 +23,12 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prefix', type=Path, default=WORK / 'prefix')
     p.add_argument('--prepare-from', type=Path, help='copy a compatible installed prefix; rebuild changed release owners')
-    p.add_argument('--case', choices=['all','word-nested','word-locals','abi','abi-captured','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-shape','block-shape-large','public-integer-retains'], default='all')
+    p.add_argument('--case', choices=['all','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','abi','abi-captured','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-bindings','semantic-string-length','semantic-vector-access'], default='all')
     p.add_argument('--seconds', type=float, default=10, help='total measurement budget, at most 10 seconds')
     p.add_argument('--batch-ms', type=float, default=25)
     p.add_argument('--gc', choices=['normal','off'], default='normal')
     p.add_argument('--counts-only', action='store_true', help='untimed selector census using an isolated metrics Id build')
+    p.add_argument('--trace', action='store_true', help='full warmed candidate message tree; requires counts-only')
     p.add_argument('--profile', choices=['baseline','candidate'], help='sample one fixture; profiling timings are not comparison evidence')
     p.add_argument('--setup-timeout', type=float, default=60)
     p.add_argument('--output', type=Path, default=WORK / 'latest.json')
@@ -46,7 +47,9 @@ def main():
     p = parser(); args = p.parse_args()
     if not .1 <= args.seconds <= 10 or not 1 <= args.batch_ms <= 100 or not 1 <= args.setup_timeout <= 120:
         p.error('seconds must be 0.1..10; batch-ms 1..100; setup-timeout 1..120')
-    if args.profile and (args.case == 'all' or not 2 <= args.seconds <= 5):
+    if args.trace and (not args.counts_only or args.case != 'public-integer-bindings'):
+        p.error('trace currently requires --counts-only --case public-integer-bindings')
+    if args.profile and (args.case in ('all','abi-audit') or not 2 <= args.seconds <= 5):
         p.error('profiling requires one --case and --seconds between 2 and 5')
     env = clean_environment(); env['CARGO_TARGET_DIR'] = str(TARGET)
     build_seconds = 0
@@ -91,6 +94,7 @@ def main():
     argv = [str(binary),'--case',args.case,'--seconds',str(args.seconds),'--batch-ms',str(args.batch_ms),'--gc',args.gc,'--scratch',str(scratch)]
     if args.profile: argv += ['--profile',args.profile]
     if args.counts_only: argv += ['--counts-only']
+    if args.trace: argv += ['--trace']
     revision = command(['git','rev-parse','HEAD'],cwd=ROOT,env=env)['stdout'].strip()
     status = command(['git','status','--porcelain'],cwd=ROOT,env=env)['stdout']
     def source_digest():
@@ -136,19 +140,23 @@ def main():
             if sampler is not None and sampler.poll() is None: sampler.terminate(); sampler.wait(timeout=2)
     changed = source_digest() != source_hash or libraries != {path.name: sha(path) for path in sorted((prefix/'lib').glob('*.dylib'))}
     summaries = [] if args.profile or args.counts_only else [summarize(case) for case in result['cases']]
+    for summary in summaries:
+        if summary['case'].startswith('abi-audit-'):
+            summary['comparison_kind'] = 'ABI cost contrast; different carrier or leaf contract, not a regression verdict'
     if changed:
         for summary in summaries: summary['verdict'] = 'inconclusive'; summary['reason'] = 'sources or libraries changed during run' 
     evidence = {'schema':1,'source_revision':revision,'dirty_status':status,'source_sha256':source_hash,
                 'prefix':str(prefix),'library_sha256':libraries,'runner_sha256':sha(binary),
                 'build_seconds':build_seconds,'process_seconds':time.monotonic()-started,'ready':ready,
-                'settings':{'seconds':args.seconds,'batch_ms':args.batch_ms,'gc':args.gc,'case':args.case,'profile':args.profile,'counts_only':args.counts_only,'nice':5},
+                'settings':{'seconds':args.seconds,'batch_ms':args.batch_ms,'gc':args.gc,'case':args.case,'profile':args.profile,'counts_only':args.counts_only,'trace':args.trace,'nice':5},
                 'raw':result,'summary':summaries,'inputs_changed_during_run':changed}
     if args.profile: evidence['profile_path'] = str(sample_path)
     save_json(output,evidence)
     print(f"setup {ready['setup_ms']/1000:.2f}s; measurement {result['measurement_ms']/1000:.2f}s; build {build_seconds:.2f}s")
     for s in summaries:
         ratio = s.get('candidate_over_baseline')
-        print(f"{s['case']}: {s['verdict']}; {s['pairs']} pairs" + (f"; candidate/baseline CPU {ratio:.3f}" if ratio else ''))
+        label = 'ABI cost contrast' if s.get('comparison_kind') else s['verdict']
+        print(f"{s['case']}: {label}; {s['pairs']} pairs" + (f"; candidate/baseline CPU {ratio:.3f}" if ratio else ''))
     print(output)
 
 

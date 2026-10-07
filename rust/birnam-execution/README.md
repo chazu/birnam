@@ -80,7 +80,8 @@ exact entry. Ordinary future sends perform current lookup.
 | Method instance `optimizeWith:` | Sequence of plain native Methods, one per baseline PC; empty sequence removes the candidate | Same Method. Attach candidate metadata to the shared baseline registration; see hot selection below. |
 | Machine `recoverAt:with:` / `recoverAt:withGraph:` | Integer baseline PC, recipe sequence Object | Machine Object after one atomic pending-call recovery; typed failure for missing/stale authority or invalid recipe. |
 | Block `fromMethod:captures:` | Method Object, capture sequence Object | Block with `value` / `value:…` matching descriptor arity. Reads captures through current `size`/`at:`; validates descriptor capture count. Clone copies this owned representation shallowly. |
-| Block `fromMethod:codeObject:captures:` | Method, admitted CodeObject, capture sequence | As above, retaining the supplied CodeObject. Canonical bytes are obtained through its owner; arity/capture count must agree with a resumable descriptor. For native Methods the canonical program supplies arity. |
+| Block `fromMethod:codeObject:captures:` | Method, admitted CodeObject, capture sequence | As above, retaining the supplied CodeObject. Native Word parameter/capture counts are queried from the current CodeObject owner; counts must agree with a resumable descriptor. For native Methods the admitted program supplies arity. |
+| Block `fromMethod:codeObject:captureOperands:` | Native variadic Object operands: Method, admitted CodeObject, then zero or more captures | Copies the ordered references directly into owned Block storage. All inputs are scoped before dependency sends; no intermediate ObjectModel container. Wrong carriers/counts or descriptor mismatch fail before publication. |
 | Block instance `codeObject`, `captureCount`, `captureAt:` | none, none, zero-based Integer index | Supplied CodeObject, capture count, captured Object (or nil outside bounds). All return nil for Blocks without a CodeObject. Clone preserves these references. |
 | Block `captureAt:of:` | Integer index, Block | Owner projection used by synchronous generated code; reads the same owned captures through a send. |
 | Machine `new` | none | New Machine and its own scratch actions, allocated through Id. |
@@ -339,3 +340,36 @@ repeated commits fail. The scalar evaluator similarly receives
 `numericOperation:left:right:` through fresh dispatch. A refusal leaves the ordinary call pending;
 bounded, tail and protected calls use the baseline. No new virtual Frame or
 identity representation is introduced. See [scope and tests](../../docs/design/90-numeric-predicate.md).
+
+### Fixed ABI binding proofs
+
+`binding_proof.rs` coalesces the ABI adapter's default-lookup and exact-entry
+admission through current Id `nativeBindingsMatch:`. Initialization asks Id
+`nativeBindingQuerySemantics:for:` and GC `internQuerySemantics:` to describe
+only their own implementations in the requested roles. This caches code meaning,
+not dispatch selection or allocation permission. Every attempt fences the four
+query/interning entries and the ABI entry, including opaque context equality.
+Unknown or changed services execute the original guard path. Native payloads
+remain with their owners; all target operations still use current Id messages.
+`Execution bindingProofBatches:` takes native Word 0/1 (default 1) and returns Unit;
+it is a diagnostic comparison control. Signature callbacks, allocation permissions,
+input roots, byte copies and the final epoch fence remain intact. The dynamically
+named Word-helper guard is outside this rule. Scoped proofs, limits and negative
+checks live in `formal/semantics`; `public-integer-bindings` is the paired probe.
+
+## Compact closure construction (2026-10-07)
+
+Generated synchronous and resumable literals use `fromMethod:codeObject:captureOperands:`.
+The native operand count determines capture count, independent of the selector's
+colon count. This uses the existing Id ABI; it adds no floor API or foreign layout.
+Language/materialization callers still use their live capture-sequence constructor.
+`imageShellFromMethod:codeObject:` creates pending nil captures directly in this
+owner, and restoration continues through the existing owner protocol.
+
+CodeObject's current `parameterCountOf:` and `captureCountOf:` messages return
+native Words from admitted immutable state. Blocks no longer export/reparse the
+portable program to obtain shape. The obsolete `referenceSlots:` constructor,
+compiler-only `ObjectModel allocateReferenceSlots:`, copied/borrowed shape parser
+and `programShapeBorrowing:` diagnostic switch are removed. Existing compiled
+artifacts containing those removed calls must be explicitly rebuilt; no shim is
+installed and image startup does not silently recompile supplied machine code.

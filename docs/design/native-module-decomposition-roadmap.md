@@ -1,5 +1,9 @@
 # Native module decomposition roadmap
 
+The follow-on [runtime and ABI simplification plan](runtime-and-abi-simplification.md)
+tracks interface, rooting, representation and bootstrap cleanup separately from
+the completed extractions recorded here.
+
 Updated: 2026-10-04.
 
 All five decompositions below are agreed directions. Start with **source compiler

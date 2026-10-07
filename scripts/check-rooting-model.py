@@ -20,10 +20,32 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMAL = ROOT / "formal/rooting"
+SEMANTICS = ROOT / "formal/semantics"
 CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
     "Safe": None,
+    "InvocationSafe": None,
+    "InvocationUncovered": "Invariant NeededAlive is violated.",
+    "InvocationEarlyExit": "Invariant NeededAlive is violated.",
+    "InvocationMissingResult": "Invariant NeededAlive is violated.",
+    "InvocationReturnGap": "Invariant NeededAlive is violated.",
+    "InvocationLostCode": "Invariant NeededAlive is violated.",
+
+    "AdmissionSafe": None,
+    "AdmissionContext": "Invariant SameGuard is violated.",
+    "AdmissionServices": "Invariant SameGuardCallbacks is violated.",
+    "AdmissionPermission": "Invariant CurrentPermission is violated.",
+    "AdmissionEpoch": "Invariant CurrentEntry is violated.",
+    "RegionAddition": None,
+    "RegionString": None,
+    "RegionCollection": None,
+    "RegionStale": "Invariant CurrentMeaning is violated.",
+    "RegionPermission": "Invariant CurrentMeaning is violated.",
+    "RegionExposure": "Invariant RecoveredBeforeExposure is violated.",
+    "RegionReplay": "Invariant RecoveredBeforeExposure is violated.",
+    "RegionCodeLease": "Invariant EnteredCodeAlive is violated.",
+    "RegionOwner": "Invariant OwnerBoundary is violated.",
     "RegistrationSafe": None,
     "RegistrationUnrooted": "Invariant InputsAlive is violated.",
     "RegistrationPartial": "Invariant ExactRegistrations is violated.",
@@ -123,8 +145,8 @@ def check_tla(jar, java, out):
         cmd = [java, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC", "-Xmx512m",
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
-               "-config", str(FORMAL / f"tla/{name}.cfg"),
-               str(FORMAL / ("tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               "-config", str((SEMANTICS if name.startswith(("Region", "Admission")) else FORMAL) / f"tla/{name}.cfg"),
+               str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -146,8 +168,8 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration")]:
-        text = (FORMAL / f"lean/{module}.lean").read_text()
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission")]:
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
         # accidental proof holes or unsafe evaluator shortcuts in source.
@@ -161,17 +183,20 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration"]:
-        result, _ = run([str(lean), "-DwarningAsError=true", str(FORMAL / f"lean/{module}.lean"),
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Semantics", "SemanticsExamples", "Admission"]:
+        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:
             raise RuntimeError(f"Lean {module} failed; see {out / f'lean-{module}.log'}")
     names = lean_theorems()
     # Ensure the tracked audit lists every theorem, including counterexamples.
-    audit = (FORMAL / "lean/Audit.lean").read_text()
+    audit = (FORMAL / "lean/Audit.lean").read_text() + (SEMANTICS / "lean/SemanticsAudit.lean").read_text()
     if set(re.findall(r"^#print axioms (\S+)$", audit, re.M)) != set(names):
         raise RuntimeError("Audit.lean must list every theorem")
-    result, _ = run([str(lean), "-DwarningAsError=true", str(FORMAL / "lean/Audit.lean")],
+    audit_file=build/"CombinedAudit.lean"
+    audit_lines=audit.splitlines()
+    audit_file.write_text("\n".join(line for line in audit_lines if line.startswith("import "))+"\n"+"\n".join(line for line in audit_lines if not line.startswith("import "))+"\n")
+    result, _ = run([str(lean), "-DwarningAsError=true", str(audit_file)],
                      out / "lean-axioms.log", env=env)
     if result.returncode:
         raise RuntimeError("Lean axiom audit failed")
@@ -192,13 +217,18 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "drop-uncovered-locals": ("Invocation", "fun o => parent o ∨ locals o", "fun o => parent o"),
+        "ignore-entry-context": ("Admission", "(f.method == f.expectedMethod) && (f.context == f.expectedContext)\n\n/-- A declined", "(f.method == f.expectedMethod) && true\n\n/-- A declined"),
         "wrong-release-order": ("GC", "callerTokens.reverse.foldl release st", "callerTokens.foldl release st"),
         "lost-index-mark": ("GC", "indexed := if st.indexed (index o) then st.indexed else fun i => if i = index o then true else st.indexed i", "indexed := st.indexed"),
         "wrong-memo-key": ("Memo", "if key = k then some v else lookup rest key", "some v"),
         "truncated-borrow": ("Borrow", "bytes.map id", "[]"),
+        "ignore-observation": ("Semantics", "(reference a).observations = (optimized b).observations", "True"),
+        "ignore-permission": ("Semantics", "(∀ k, k ∈ c.permissions → w.grants k = true)", "True"),
+        "free-owner-batch": ("Semantics", "OwnerSchedule (List.replicate (n+1) owner ++ tail) (cost+1)", "OwnerSchedule (List.replicate (n+1) owner ++ tail) cost"),
     }
     for name, (module, before, after) in extra_mutations.items():
-        text = (FORMAL / f"lean/{module}.lean").read_text()
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean").read_text()
         if text.count(before) != 1: raise RuntimeError(f"mutation {name} is stale")
         changed = build / f"Broken_{name.replace('-', '_')}.lean"
         changed.write_text(text.replace(before, after))
@@ -222,7 +252,7 @@ def check_lean(lean, out):
 
 
 def source_hashes():
-    files = sorted(p for p in FORMAL.rglob("*") if p.is_file() and ".lake" not in p.parts)
+    files = sorted(p for root in [FORMAL,SEMANTICS] for p in root.rglob("*") if p.is_file() and ".lake" not in p.parts)
     files.extend([Path(__file__).resolve(), ROOT / "mise.toml"])
     return {str(p.relative_to(ROOT)): digest(p) for p in files}
 
@@ -247,7 +277,7 @@ def main():
         after = source_hashes()
         if before != after:
             raise RuntimeError("formal inputs changed during verification; rerun on stable sources")
-        summary = {"scope": "Abstract duplicate-root owner contract; no production compiler verification",
+        summary = {"scope": "Abstract rooting and costed behavioral semantics; no production compiler verification",
                    "lean_version": version, "tla_jar_sha256": digest(jar),
                    "lean_binary_sha256": digest(lean), "seconds": round(time.monotonic()-start, 3),
                    "source_sha256": after,

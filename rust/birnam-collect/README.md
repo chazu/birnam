@@ -190,3 +190,10 @@ remain current owner messages. Dense flags trade a byte per inventoried object
 for fewer hash operations and no mark-set growth. An almost entirely dead heap
 can use more mark bytes than a sparse set, although the allocation index remains
 necessary in either representation. See `formal/rooting/lean/GC.lean`.
+
+`GC internQuerySemantics:` accepts a NativeEntry and returns native Word 1 only
+for this owner's interning wrapper with its own context. It describes immutable
+code semantics, not allocation permission. Existing rooted Symbol interning is
+nonallocating only while Id's canonical `symbolNamed:` entry remains selected.
+Execution fences both bindings on every fixed ABI guard batch; unknown entries
+or changed meanings retain ordinary query execution.

@@ -188,18 +188,22 @@ semantics. See [public-path investigation](integer-performance-investigation.md)
 
 `public-integer-roots` compares masks 7 and 15 on the same public sixteen-addition
 chain. Physical allocations must match; counts-only verifies fewer individual
-release messages. `public-integer-shape` and `block-shape-large` compile both
-variants with mask 15, then toggle Execution `programShapeBorrowing:` outside
-timed batches. Baseline copies canonical bytes before pure inspection; candidate
-inspects the rooted native borrow and keeps only scalar counts before the next
-send. The large fixture constructs a Block containing 256 let statements without
-invoking its body. This isolates construction work, not body execution.
+release messages. The former `public-integer-shape`/`block-shape-large` controls
+and `programShapeBorrowing:` switch were retired when closure construction stopped
+exporting/reparsing program bytes. Their historical measurements remain in the
+receipts; they are no longer selectable benchmark cases.
 
 ```sh
 python3 scripts/microbench.py --case public-integer-roots --seconds 4
-python3 scripts/microbench.py --case public-integer-roots --counts-only
-python3 scripts/microbench.py --case block-shape-large --seconds 4
+python3 scripts/microbench.py --case public-integer-bindings --counts-only --trace
 ```
+
+Microbenchmark owner refresh includes PortableCode and ObjectModel. After deleting
+native constructor APIs, explicitly rebuild the diagnostic prefix's authored
+bootstrap artifacts; copying new owners over old generated artifacts is insufficient.
+The [closure-construction result](closure-construction-simplification.md) records
+the rebuilt-prefix measurements. No runtime compatibility shim or implicit image
+recompilation is used.
 
 `gc_microbench` is a separate short release example: 512 zero-payload objects,
 four explicit root registrations each, three warm precise collections and six
@@ -213,3 +217,56 @@ verdict. No startup images are involved.
 physical allocations; Word's owner-level root batching is enabled for both.
 This isolates compiler incoming-root grouping, not the full before/after change.
 Untimed counts include grouped acquisition/release via the native Root protocols.
+
+## Causal edges and semantic acceptance probes
+
+Untimed message records include `edges`: parent/child selectors, receiver
+behavior addresses at ingress, and counts. The edge total equals the selector
+total after excluding the census stop endpoint. No ownership queries run inside
+the census. Receiver behavior is a diagnostic label, not inspection of a foreign
+context or an assertion that aliases cannot resolve to another implementation.
+
+```sh
+python3 scripts/microbench.py --case public-integer-retains --counts-only
+python3 scripts/microbench.py --case semantic-string-length --counts-only
+python3 scripts/microbench.py --case semantic-vector-access --counts-only
+```
+
+The latter probes use captured `"hello" size` and `#[11 22 33] at: 1`; expected
+results are 5 and 22. Both variants use mask 31 and identical physical work.
+They are reference probes for `formal/semantics`, not optimization comparisons.
+
+`public-integer-bindings` compares the same mask-31 public addition chain with
+Execution `bindingProofBatches:` disabled/enabled outside each measured batch.
+Other cases restore the default enabled mode when activated. This isolates fixed
+ABI guard query coalescing; it does not change compilation masks or arithmetic.
+Counts-only must show identical allocations/charge, balanced observed roots and
+fewer candidate messages. A declined query retains ordinary guard order and costs
+an extra admission query. Run a separate short timing probe; fewer messages alone
+is not a throughput verdict. See [execution semantics](execution-region-semantics.md)
+for contracts and evidence.
+
+## ABI cost controls and message ancestry
+
+`--case abi-audit` selects five diagnostic contrasts: Object-only incoming
+adaptation, a raw versus boxed Integer read, a read/construction round trip, and
+native versus authored Word/Bytes echo leaves under the same outgoing wrapper.
+They all use mask 31 and validate results. Different carrier/leaf contracts are
+labelled as cost contrasts, not optimizer regressions. Default `all` excludes
+this diagnostic group; profiling requires an individual case.
+
+`messages` records the first invocation after collection; these cases and
+`public-integer-bindings` additionally report `steady_messages` after eight warm
+calls following collection. The optional Id `dispatchRegions` inventory assigns
+every send to its nearest named ABI ancestor, or the outside bucket. These buckets
+are disjoint and must sum to the census. `dispatchSubtrees` records call counts and
+inclusive sends by region/parent/child selector. Call counts must also sum to the
+census; inclusive sends overlap and must not be summed across arbitrary ancestors.
+Selector labels do not prove semantic ownership. All borrowed snapshots are copied
+before another Id message. Normal timing builds omit this tracing state.
+
+Generated baseline/candidate units use distinct filenames even at the same mask,
+so different controls cannot accidentally reuse one loaded dylib pathname.
+The Object-only control also inspects its actual native signature before timing.
+See [ABI overhead investigation](abi-overhead-investigation.md) for costs, limits
+and the next owner-level opportunities.

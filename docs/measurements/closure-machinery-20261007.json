@@ -1,0 +1,348 @@
+{
+  "schema": 1,
+  "scope": "Current worktree, successful positive Integer chain, untimed after warmup; includes unfinished input-scope changes; grouping is causal classification, not CPU share or proof of owner semantics.",
+  "trace_sha256": "f13611708de78daeacbf87ab9e335d004ffbd4f1ed1cf1a21eb1d74c2135a6db",
+  "source_revision": "9dae3b984b05e34f34450a79102106ef8290024f",
+  "source_sha256": "69506eaf4ab569b292dd0f6b1f3c72b7bc26cc20af67b43c29c515921e1a6ad2",
+  "operations": 16,
+  "closure_sends_per_addition": 2791.0,
+  "construction_formula": "168 + 23 * captures",
+  "constructors_checked": 128,
+  "purpose_partition": [
+    {
+      "purpose": "entry/admission",
+      "sends_per_addition": 16.0
+    },
+    {
+      "purpose": "program shape export",
+      "sends_per_addition": 672.0
+    },
+    {
+      "purpose": "capture storage validation",
+      "sends_per_addition": 96.0
+    },
+    {
+      "purpose": "Block behavior/method/allocation",
+      "sends_per_addition": 96.0
+    },
+    {
+      "purpose": "generated factory lookup",
+      "sends_per_addition": 220.0
+    },
+    {
+      "purpose": "generated returned-object roots",
+      "sends_per_addition": 110.0
+    },
+    {
+      "purpose": "temporary capture storage",
+      "sends_per_addition": 368.0
+    },
+    {
+      "purpose": "capture reread/copy",
+      "sends_per_addition": 273.0
+    },
+    {
+      "purpose": "temporary capture writes",
+      "sends_per_addition": 390.0
+    },
+    {
+      "purpose": "capture access",
+      "sends_per_addition": 550.0
+    }
+  ],
+  "first_addition_capture_activations": [
+    {
+      "activation_id": 14,
+      "selector": "value:value:value:",
+      "capture_projections": 7,
+      "ancestors": [
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 72,
+      "selector": "value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "integerBitsOf:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 817,
+      "selector": "value:value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 937,
+      "selector": "value",
+      "capture_projections": 11,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 1027,
+      "selector": "value:value:",
+      "capture_projections": 1,
+      "ancestors": [
+        "integerExactError:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 1098,
+      "selector": "value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "&",
+        "value:value:",
+        "integerExactError:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 1835,
+      "selector": "value:value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 1955,
+      "selector": "value",
+      "capture_projections": 11,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 2045,
+      "selector": "value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "integerBitsOf:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 2841,
+      "selector": "value:value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 2961,
+      "selector": "value",
+      "capture_projections": 4,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 3008,
+      "selector": "value:value:",
+      "capture_projections": 1,
+      "ancestors": [
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 3018,
+      "selector": "value:value:value:",
+      "capture_projections": 1,
+      "ancestors": [
+        "integerAddBits:with:",
+        "value:value:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 3529,
+      "selector": "value:value:value:",
+      "capture_projections": 4,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerAddBits:with:",
+        "value:value:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 3649,
+      "selector": "value",
+      "capture_projections": 2,
+      "ancestors": [
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerAddBits:with:",
+        "value:value:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    },
+    {
+      "activation_id": 3667,
+      "selector": "value:value:",
+      "capture_projections": 3,
+      "ancestors": [
+        "integerFromBits:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerAddBits:with:",
+        "value:value:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value",
+        "ifTrue:ifFalse:",
+        "value:value:value:",
+        "integerBinary:operation:",
+        "value:value:",
+        "+",
+        "value:value:value:",
+        "run:with:"
+      ]
+    }
+  ],
+  "checks": [
+    "raw trace hash matches accounting",
+    "each constructor subtree fully partitioned",
+    "fixed and per-capture costs match every constructor",
+    "all closure construction/access sends accounted for"
+  ],
+  "limits": "Source-dependent classification of current protocol. No CPU estimate, elision proof or optimal send-count bound.",
+  "analyzer_sha256": "9ed3194ac724df84638646df94b60054be9008841991aa5eb40ee0bcca5bf050"
+}

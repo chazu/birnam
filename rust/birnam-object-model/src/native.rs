@@ -546,25 +546,6 @@ unsafe extern "C" fn all_oop(
 unsafe fn named(m: &Model, name: &[u8]) -> Result<Oop, Outcome> {
     unsafe { object(m.id.send_named(m.namespace, b"at:", &[Operand::object(m.id.intern_name(name)?)])?) }
 }
-// Generic ordinary reference storage, usable before language value factories.
-unsafe extern "C" fn allocate_reference_slots(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
-    done((||unsafe {
-        let m=model(c)?;let [count]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid())};
-        let count=count.as_word().filter(|v|*v<=1_048_576).ok_or_else(invalid)?;
-        m.rooted(&[r],|| {
-            let parent=named(m,b"ObjectVt")?;
-            let behavior=object(m.id.send_named(parent,b"delegated",&[])?)?;
-            m.rooted(&[behavior],|| {
-                m.send(m.receiver,b"setLayoutOf:to:rest:",&[Operand::object(behavior),Operand::bytes(&vec![OOP;count]),Operand::word(UNKNOWN as usize)])?;
-                let result=object(m.allocate(behavior,count.checked_mul(size_of::<Oop>()).ok_or_else(invalid)?)?)?;
-                m.rooted(&[result],|| {
-                    m.send(m.id.receiver,b"ownerOf:put:",&[Operand::object(behavior),Operand::object(result)])?;
-                    Ok(Operand::object(result))
-                })
-            })
-        })
-    })())
-}
 unsafe extern "C" fn new_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
         let m = model(c)?;
@@ -748,7 +729,6 @@ unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usi
     })())
 }
 const NAMES: &[&[u8]] = &[
-    b"allocateReferenceSlots:",
     b"newSlots:parent:", b"slot:in:", b"slot:in:put:",
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",
@@ -853,7 +833,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"canOmitAllocationFor:", can_omit_allocation),
             (behavior, b"setLayoutOf:to:rest:", set_layout),
             (behavior, b"slotAt:in:", slot_at),
-            (behavior, b"allocateReferenceSlots:", allocate_reference_slots),
             (behavior, b"newSlots:parent:", new_slots),
             (behavior, b"slot:in:", boxed_slot),
             (behavior, b"slot:in:put:", boxed_slot_put),

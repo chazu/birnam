@@ -180,23 +180,11 @@ pub(super) unsafe extern "C" fn try_send(
                 .as_word()
                 .ok_or_else(invalid)?;
         if epoch == usize::MAX
-            || s.id
-                .send_named(s.id.receiver, b"usesDefaultLookup:", &[Operand::object(r)])?
-                .as_word()
-                != Some(1)
-            || s.id
-                .send_named(
-                    s.id.receiver,
-                    b"bind:to:",
-                    &[
-                        Operand::object(s.id.intern_name(
-                            b"sendNativeTo:selector:arguments:signature:resultFactory:",
-                        )?),
-                        Operand::object(r),
-                    ],
-                )?
-                .as_entry()
-                != Some(NativeEntry::new(send, c))
+            || !binding_proof::matches(
+                s, r,
+                b"sendNativeTo:selector:arguments:signature:resultFactory:",
+                NativeEntry::new(send, c),
+            )?
         {
             return refuse();
         }
