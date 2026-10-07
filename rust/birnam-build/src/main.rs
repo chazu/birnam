@@ -17,6 +17,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("lang", "modules/lang.birnam"),
     ("nativeValues", "modules/native-values.birnam"),
     ("booleanValues", "modules/boolean.birnam"),
+    ("integerValues", "modules/integer.birnam"),
     ("blockLoopControl", "modules/block-loop-control.birnam"),
     ("blockLoop", "modules/block-loop.birnam"),
     ("range", "modules/range.birnam"),
@@ -29,9 +30,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
 ];
 
 // Migration candidates installed for explicit loading, outside startup images.
-const OPTIONAL_MODULES: &[(&str, &str)] = &[
-    ("integerValues", "modules/integer.birnam"),
-];
+const OPTIONAL_MODULES: &[(&str, &str)] = &[];
 
 // Authored production tools, compiled through the installed Id artifact path.
 const TOOL_MODULES: &[(&str, &str)] = &[

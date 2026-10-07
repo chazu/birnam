@@ -20,10 +20,12 @@ static R ok(A a){R r={0};r.value=a;return r;}
 typedef struct{R failure;size_t *tokens,count,capacity;} Call;
 static O intern(Call*c,const char*n){if(c->failure.status)return 0;A a=bytes(n,strlen(n));R r=id.message(id.context,id.receiver,id.intern,&a,1);if(r.status||r.value.kind!=1){c->failure=r.status?r:bad();return 0;}return r.value.data.object;}
 /* Selector spellings in generated code are static for the Unit's lifetime.
+   TCC may store identical literals at different addresses: cache by spelling.
    Root their Symbols in that Unit; retain live lookup on every actual send. */
 typedef struct {const char *name;O symbol;} Selector;
 static Selector selectors[512];
 static int cache_selectors;
+static int batch_cleanup=1;
 static O selector(Call*c,const char*n);
 static R raw(Call*c,O receiver,const char*n,const A*a,size_t count){O sel=selector(c,n);if(c->failure.status)return c->failure;R r=id.message(id.context,receiver,sel,a,count);if(r.status)c->failure=r;return r;}
 static O keep(Call*c,O o){if(c->failure.status)return 0;if(!o){c->failure=bad();return 0;}if(c->count==c->capacity){size_t cap=c->capacity?c->capacity*2:32;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return 0;}c->tokens=t;c->capacity=cap;}A a=obj(o);R r=raw(c,roots,"retain:",&a,1);if(r.status||r.value.kind!=2){c->failure=r.status?r:bad();return 0;}c->tokens[c->count++]=r.value.data.word;return o;}
@@ -32,10 +34,11 @@ static O object(Call*c,A a){if(a.kind!=1||!a.data.object){if(!c->failure.status)
 static O call(Call*c,O receiver,const char*n,const A*a,size_t count){return object(c,send(c,receiver,n,a,count));}
 static O selector(Call*c,const char*n){
  if(!cache_selectors||c->failure.status)return intern(c,n);
- uintptr_t hash=(uintptr_t)n;hash^=hash>>17;hash*=UINT64_C(0x9e3779b97f4a7c15);
- size_t slot=(hash>>9)&511;
+ uint32_t hash=UINT32_C(2166136261);
+ for(const unsigned char*p=(const unsigned char*)n;*p;p++){hash^=*p;hash*=UINT32_C(16777619);}
+ size_t slot=hash&511;
  for(size_t probe=0;probe<512;probe++,slot=(slot+1)&511){
-  if(selectors[slot].name==n)return selectors[slot].symbol;
+  if(selectors[slot].name&&(selectors[slot].name==n||!strcmp(selectors[slot].name,n)))return selectors[slot].symbol;
   if(!selectors[slot].name){
    O symbol=intern(c,n);if(c->failure.status)return 0;
    selectors[slot]=(Selector){n,symbol};
@@ -60,4 +63,26 @@ static O float_bits(Call*c,uint64_t w){A a=word(w);return call(c,named(c,"Float"
 static O get(Call*c,O m,size_t slot){A a=obj(integer(c,slot));return call(c,m,"oopAt:",&a,1);}
 static void put(Call*c,O m,size_t slot,O value){A a[2]={obj(integer(c,slot)),obj(value)};send(c,m,"oopAt:put:",a,2);}
 static O action(Call*c,O m,const char*n,size_t slot){A a=obj(integer(c,slot));return call(c,m,n,&a,1);}
-static R finish(Call*c,A result){R failure=c->failure;c->failure=(R){0};for(size_t i=c->count;i>0;i--){A a=word(c->tokens[i-1]);raw(c,roots,"release:",&a,1);}free(c->tokens);return failure.status?failure:c->failure.status?c->failure:ok(result);}
+static R finish(Call*c,A result){
+ R failure=c->failure;c->failure=(R){0};int handled=0;
+ /* First-use selector caching can append temporary roots. Prepare cleanup
+    before taking the final token count, so fallback does not leak them. */
+ selector(c,"release:");
+ if(batch_cleanup&&c->count>=8){
+  /* Interning a selector may append/reallocate tokens. Resolve it before
+     borrowing the final token array for the owner message. */
+  O sel=selector(c,"tryReleaseMany:");
+  if(!c->failure.status){
+   A a=bytes(c->tokens,c->count*sizeof(size_t));
+   R r=id.message(id.context,roots,sel,&a,1);
+   if(r.status)c->failure=r;
+   else if(r.value.kind!=2||r.value.data.word>1)c->failure=bad();
+   else handled=r.value.data.word==1;
+  }
+  /* Declined or failed optimization still performs canonical cleanup.
+     Preserve the original body failure before any cleanup failure. */
+  if(c->failure.status){if(!failure.status)failure=c->failure;c->failure=(R){0};}
+ }
+ if(!handled)for(size_t i=c->count;i>0;i--){A a=word(c->tokens[i-1]);raw(c,roots,"release:",&a,1);}
+ free(c->tokens);return failure.status?failure:c->failure.status?c->failure:ok(result);
+}

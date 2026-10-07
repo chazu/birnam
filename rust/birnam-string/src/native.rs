@@ -368,6 +368,47 @@ entry!(as_symbol, 9);
 entry!(new_builder, 10);
 entry!(add, 11);
 entry!(as_string, 12);
+// Delegate the byte borrow to its owner only after proving the ordinary
+// String accessor. No callback occurs after receiving that borrow.
+unsafe extern "C" fn try_primitive_bytes(
+    c: *mut c_void,
+    r: Oop,
+    _: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let t = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let Ok(storage) = t.storage(r, Kind::String) else {
+            return Ok(Operand::unit());
+        };
+        if t.id
+            .send_named(t.id.receiver, b"usesDefaultLookup:", &[Operand::object(r)])?
+            .as_word()
+            != Some(1)
+            || t.id
+                .send_named(
+                    t.id.receiver,
+                    b"bind:to:",
+                    &[
+                        Operand::object(t.id.intern_name(b"bytes")?),
+                        Operand::object(r),
+                    ],
+                )?
+                .as_entry()
+                != Some(NativeEntry::new(bytes, c))
+        {
+            return Ok(Operand::unit());
+        }
+        match t.id.send_named(storage, b"tryPrimitiveBytes", &[]) {
+            Err(e) if e.status == native::UNBOUND => Ok(Operand::unit()),
+            answer => answer,
+        }
+    })())
+}
+
 const NAMES: &[&[u8]] = &[
     b"collectionEquals:",
     b"collectionHash",
@@ -381,6 +422,7 @@ const NAMES: &[&[u8]] = &[
     b"behaviorOf:",
     b"fromBytes:",
     b"bytes",
+    b"tryPrimitiveBytes",
     b"length",
     b"printString",
     b"clone",
@@ -467,6 +509,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"fromBytes:", from_bytes as Method),
             (behavior, b"asBytes", binary::from_string),
             (behavior, b"bytes", bytes),
+            (behavior, b"tryPrimitiveBytes", try_primitive_bytes),
             (behavior, b"length", length),
             (behavior, b"clone", clone_string),
             (behavior, b"new", clone_string),

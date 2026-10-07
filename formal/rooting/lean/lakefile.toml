@@ -1,0 +1,21 @@
+name = "birnam_rooting"
+version = "0.1.0"
+defaultTargets = ["Rooting", "Examples", "GC", "Memo", "Borrow", "Audit"]
+
+[[lean_lib]]
+name = "Rooting"
+
+[[lean_lib]]
+name = "Examples"
+
+[[lean_lib]]
+name = "Audit"
+
+[[lean_lib]]
+name = "GC"
+
+[[lean_lib]]
+name = "Memo"
+
+[[lean_lib]]
+name = "Borrow"

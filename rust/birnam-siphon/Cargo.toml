@@ -13,3 +13,4 @@ workspace = true
 
 [dev-dependencies]
 birnam-artifact-codec = { path = "../birnam-artifact-codec" }
+serde_json.workspace = true

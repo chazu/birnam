@@ -19,6 +19,7 @@ struct State {
     values: HashMap<&'static [u8], Oop>,
     names: HashMap<&'static [u8], Oop>,
     thread: std::thread::ThreadId,
+    native_argument_meanings: Cell<usize>,
 }
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -254,6 +255,11 @@ const NAMES: &[&[u8]] = &[
     b"Vector",
     b"VectorVt",
     b"VectorNode",
+    b"behaviorEpoch",
+    b"usesDefaultAllocation",
+    b"usesDefaultLookup:",
+    b"bind:to:",
+    b"canOmitAllocationFor:",
 ];
 
 unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
@@ -307,6 +313,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             values,
             names,
             thread: std::thread::current().id(),
+            native_argument_meanings: Cell::new(usize::MAX),
         }));
         let s = &*p;
         for (name, method) in METHODS
@@ -796,7 +803,73 @@ unsafe extern "C" fn at_word(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outc
         Scope::run(s,&[r],|_| {let value=at(s,payload(s,r)?,index)?;Ok(if value.is_null() {s.nil()} else {Operand::object(value)})})
     })())
 }
+// Proof belongs to Vector: callers do not know its payload or backing nodes.
+unsafe extern "C" fn can_omit_native_arguments(
+    c: *mut c_void,
+    r: Oop,
+    _: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        if n != 0 || r != s.prototype.get() {
+            return Ok(Operand::word(0));
+        }
+        let epoch = s
+            .send(s.id.receiver, b"behaviorEpoch", &[])?
+            .as_word()
+            .ok_or_else(invalid)?;
+        if epoch == usize::MAX
+            || s.send(s.id.receiver, b"usesDefaultAllocation", &[])?
+                .as_word()
+                != Some(1)
+        {
+            return Ok(Operand::word(0));
+        }
+        // Cache only this owner's method meanings, never allocator/GC permission.
+        if s.native_argument_meanings.get() != epoch {
+            if s.send(s.id.receiver, b"usesDefaultLookup:", &[Operand::object(r)])?
+                .as_word()
+                != Some(1)
+            {
+                return Ok(Operand::word(0));
+            }
+            for name in [b"new".as_slice(), b"add:", b"sizeWord", b"atWord:"] {
+                let method = METHODS.iter().find(|(key, _)| *key == name).unwrap().1;
+                if s.send(
+                    s.id.receiver,
+                    b"bind:to:",
+                    &[Operand::object(s.names[name]), Operand::object(r)],
+                )?
+                .as_entry()
+                    != Some(NativeEntry::new(method, c))
+                {
+                    return Ok(Operand::word(0));
+                }
+            }
+        }
+        for behavior in [s.behavior, s.node] {
+            if s.send(
+                s.model,
+                b"canOmitAllocationFor:",
+                &[Operand::object(behavior)],
+            )?
+            .as_word()
+                != Some(1)
+            {
+                return Ok(Operand::word(0));
+            }
+        }
+        if s.send(s.id.receiver, b"behaviorEpoch", &[])?.as_word() != Some(epoch) {
+            return Ok(Operand::word(0));
+        }
+        s.native_argument_meanings.set(epoch);
+        Ok(Operand::word(1))
+    })())
+}
+
 const METHODS: &[(&[u8], Method)] = &[
+    (b"canOmitNativeArguments", can_omit_native_arguments),
     (b"sizeWord", size_word),
     (b"atWord:", at_word),
     (b"size", size),

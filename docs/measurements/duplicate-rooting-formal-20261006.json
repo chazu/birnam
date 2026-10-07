@@ -1,0 +1,160 @@
+{
+  "scope": "Abstract duplicate-root owner contract; no production compiler verification",
+  "lean_version": "Lean (version 4.24.0, arm64-apple-darwin23.6.0, commit 797c613eb9b6d4ec95db23e3e00af9ac6657f24b, Release)",
+  "tla_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+  "lean_binary_sha256": "9544be237d91099efe1db8cb97d0c359fa13aa94f565e9972bfb8b63abbcb437",
+  "seconds": 10.126,
+  "source_sha256": {
+    "formal/rooting/README.md": "2ed8dd1cddb76a3ca32bb95a959214f97e6d487787795ab8af40504bcf9fe7e5",
+    "formal/rooting/lean/.gitignore": "fde850d24186b6e99c8c0debd641fb3ab85198b109eb66f71a1fea02bd6ea1b3",
+    "formal/rooting/lean/Audit.lean": "47a396e77d45cfc8968e8e0f26e8679824554613301af9d29342a581178de5d6",
+    "formal/rooting/lean/Examples.lean": "c9f7a900f24697465151b22e518b86d3c8d50972ebfce28cc6dc00e9aab62288",
+    "formal/rooting/lean/Rooting.lean": "02f36d0df39d9dc95ba0939476ad928d45df4d375e492a8a2a93d1935cb12931",
+    "formal/rooting/lean/lake-manifest.json": "43963def0613e4ced3f91375628fc2d9e3d226fc75967f5eedffc50b8bde8692",
+    "formal/rooting/lean/lakefile.toml": "3953b4c716fb5c03589e6272fc46494f11ce3e1b09014f16292f980e361ec9a9",
+    "formal/rooting/lean/lean-toolchain": "42779d67b81608af8a12aa4328d2ab47ca201925b3b2bd68369587b5340bb434",
+    "formal/rooting/tla/BadRevoke.cfg": "835f56116408003edef02b54ae21d00941669b09e57e3ad4bbf89b05aeae2e09",
+    "formal/rooting/tla/Canonical.cfg": "465b1c103afb84edc9a5d254716f6a52dc4459d4e0a24baad3cbb7453abeb59a",
+    "formal/rooting/tla/DuplicateRoots.tla": "81802082b0fee3fd120c49af612fac2b52c72b5377a3b98f34415dc7acd5f759",
+    "formal/rooting/tla/EarlyRelease.cfg": "648e8d118068ebf9db31e8c5e8b1abf3d45bfde42af2913ea5d9359640747457",
+    "formal/rooting/tla/Graph.cfg": "3a614379962ae258700129111bc450ac09fa892c4a633577dc6f2b131e111f3b",
+    "formal/rooting/tla/IgnorePermission.cfg": "6569196d95b0bfa3b9ab8ba6739a299b31697ff24c27731d808b05feb57fde0d",
+    "formal/rooting/tla/LeakExit.cfg": "c7024a389055a85132b68d299ce70dd961f46f7e657fd7a34cf6701e3e7af5f3",
+    "formal/rooting/tla/Nested.cfg": "9e98881b405740e5aa51a34707e019a5b8ea3f30f002d702094cd2e4c2c9968c",
+    "formal/rooting/tla/OmitFirst.cfg": "824a28510b78bba341556c772eb2af7fdb35f465aeba81ce136ba2795fba563a",
+    "formal/rooting/tla/Recovery.cfg": "ffb2645fe44770b76eaa7bb355b0fe3faa27b2d3e273321db42d644e3cf8e4d3",
+    "formal/rooting/tla/Safe.cfg": "93c720b3c776599b0d7354e5ee98c3e87033f93f204fabe621e30dff3cb1a1a0",
+    "formal/rooting/tla/UnfairRecovery.cfg": "ca1527e88287c3c80fbd2082898d81bc80fa36d181ed6c66eb45f6165b1fcefa",
+    "formal/rooting/tools.json": "148f7819870e61322ee1aaf162d1197ef5ce7e2f56d0df9581d1c36b70f9de8d",
+    "scripts/check-rooting-model.py": "a0e36d19c1bb6bcaafce74708783fd4c31a35f5496fb30b81c566d89a93a0ac2",
+    "mise.toml": "5d9021781384b5193e8720409268e03487a9421eda6f7110cd7bdf993dae1eca"
+  },
+  "tla": {
+    "Safe": {
+      "expected_violation": null,
+      "seconds": 0.709,
+      "generated_states": 6099,
+      "distinct_states": 1748,
+      "log": "tlc-Safe.log"
+    },
+    "Canonical": {
+      "expected_violation": null,
+      "seconds": 0.618,
+      "generated_states": 449,
+      "distinct_states": 116,
+      "log": "tlc-Canonical.log"
+    },
+    "Graph": {
+      "expected_violation": null,
+      "seconds": 0.712,
+      "generated_states": 5153,
+      "distinct_states": 1444,
+      "log": "tlc-Graph.log"
+    },
+    "Nested": {
+      "expected_violation": null,
+      "seconds": 1.506,
+      "generated_states": 107956,
+      "distinct_states": 31395,
+      "log": "tlc-Nested.log"
+    },
+    "Recovery": {
+      "expected_violation": null,
+      "seconds": 0.831,
+      "generated_states": 6099,
+      "distinct_states": 1748,
+      "log": "tlc-Recovery.log"
+    },
+    "OmitFirst": {
+      "expected_violation": "Invariant RootCoverage is violated.",
+      "seconds": 0.582,
+      "generated_states": 3,
+      "distinct_states": 3,
+      "log": "tlc-OmitFirst.log"
+    },
+    "EarlyRelease": {
+      "expected_violation": "Invariant RootCoverage is violated.",
+      "seconds": 0.59,
+      "generated_states": 18,
+      "distinct_states": 18,
+      "log": "tlc-EarlyRelease.log"
+    },
+    "IgnorePermission": {
+      "expected_violation": "Invariant ObservableEquality is violated.",
+      "seconds": 0.584,
+      "generated_states": 40,
+      "distinct_states": 30,
+      "log": "tlc-IgnorePermission.log"
+    },
+    "BadRevoke": {
+      "expected_violation": "Invariant ObservableEquality is violated.",
+      "seconds": 0.604,
+      "generated_states": 176,
+      "distinct_states": 109,
+      "log": "tlc-BadRevoke.log"
+    },
+    "LeakExit": {
+      "expected_violation": "Invariant ReachabilityEquality is violated.",
+      "seconds": 0.607,
+      "generated_states": 101,
+      "distinct_states": 74,
+      "log": "tlc-LeakExit.log"
+    },
+    "UnfairRecovery": {
+      "expected_violation": "Temporal properties were violated.",
+      "seconds": 0.743,
+      "generated_states": 6099,
+      "distinct_states": 1748,
+      "log": "tlc-UnfairRecovery.log"
+    }
+  },
+  "lean": {
+    "theorems": [
+      "Birnam.Rooting.reach_congr",
+      "Birnam.Rooting.positive_iff_of_bounds",
+      "Birnam.Rooting.root_equivalence",
+      "Birnam.Rooting.reachability_equivalence",
+      "Birnam.Rooting.collector_equivalence",
+      "Birnam.Rooting.needed_survives",
+      "Birnam.Rooting.keep_bounds",
+      "Birnam.Rooting.keepRaw_preserves",
+      "Birnam.Rooting.deopt_preserves",
+      "Birnam.Rooting.deopt_restores_exact",
+      "Birnam.Rooting.deopt_preserves_reachability",
+      "Birnam.Rooting.guardedKeep_preserves",
+      "Birnam.Rooting.guard_failure_restores_exact",
+      "Birnam.Rooting.changePermission_preserves",
+      "Birnam.Rooting.revocation_restores_exact",
+      "Birnam.Rooting.unpermitted_exact",
+      "Birnam.Rooting.acquire_preserves",
+      "Birnam.Rooting.clearScope_preserves",
+      "Birnam.Rooting.materializeOne_preserves",
+      "Birnam.Rooting.materialization_progress",
+      "Birnam.Rooting.step_preserves",
+      "Birnam.Rooting.run_preserves",
+      "Birnam.Rooting.compiler_gc_equivalence",
+      "Birnam.Rooting.nonessential_iff_coverage",
+      "Birnam.Rooting.Examples.duplicate_valid",
+      "Birnam.Rooting.Examples.duplicate_keep_reuses_token",
+      "Birnam.Rooting.Examples.deoptimization_materializes_duplicate",
+      "Birnam.Rooting.Examples.stale_guard_falls_back",
+      "Birnam.Rooting.Examples.partial_materialization_safe",
+      "Birnam.Rooting.Examples.parent_protection_survives_child_exit",
+      "Birnam.Rooting.Examples.omitted_first_root_is_invalid",
+      "Birnam.Rooting.Examples.omitted_first_root_changes_collection",
+      "Birnam.Rooting.Examples.bare_revocation_changes_observable_counts"
+    ],
+    "allowed_axioms": [
+      "Classical.choice",
+      "Quot.sound",
+      "propext"
+    ],
+    "rejected_mutations": [
+      "omit-first",
+      "leak-on-exit",
+      "skip-materialization"
+    ]
+  },
+  "checked_at_utc": "2026-10-07T01:41:03.501573+00:00",
+  "raw_run_directory": ".cargo-target/formal/results/rooting-5jw4la4y"
+}

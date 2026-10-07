@@ -8,7 +8,11 @@ use birnam_abi::id_protocol::{
     self as native, Method, Module, NativeEntry, Operand, Outcome, Protocol,
 };
 use birnam_abi::{Oop, borrowed_slice};
-use core::{cell::RefCell, ffi::c_void, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    ptr,
+};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicPtr, Ordering},
@@ -55,6 +59,9 @@ struct Registry {
     id: Protocol,
     receiver: Oop,
     roots: RefCell<Roots>,
+    selectors: [Oop; 5],
+    proof_services: [Option<NativeEntry>; 3],
+    release_epoch: Cell<usize>,
 }
 static INSTANCE: AtomicPtr<Registry> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome {
@@ -101,6 +108,125 @@ unsafe extern "C" fn release(
         registry.roots.borrow_mut().release(token),
     )))
 }
+// Bulk cleanup preserves the complete logical token list. It does not
+// coalesce roots or change the callback-visible rootsDo: snapshot.
+unsafe fn can_batch_release(registry: &Registry, context: *mut c_void) -> bool {
+    unsafe {
+        let id = registry.id;
+        let [
+            epoch_name,
+            lookup_name,
+            bind_name,
+            release_name,
+            _binding_name,
+        ] = registry.selectors;
+        // An overridden epoch/lookup/bind service is not a pure proof. Check
+        // its current ordinary binding, rather than trusting a cached verdict
+        // from a service whose implementation may itself have changed.
+        for (name, expected) in [epoch_name, lookup_name, bind_name]
+            .into_iter()
+            .zip(registry.proof_services)
+        {
+            let Some(expected) = expected else {
+                return false;
+            };
+            if id
+                .send(
+                    id.receiver,
+                    bind_name,
+                    &[Operand::object(name), Operand::object(id.receiver)],
+                )
+                .ok()
+                .and_then(|v| v.as_entry())
+                != Some(expected)
+            {
+                return false;
+            }
+        }
+        let epoch = match id
+            .send(id.receiver, epoch_name, &[])
+            .ok()
+            .and_then(|v| v.as_word())
+        {
+            Some(epoch) if epoch != usize::MAX => epoch,
+            _ => return false,
+        };
+        if registry.release_epoch.get() != epoch {
+            for receiver in [registry.receiver, id.receiver] {
+                if id
+                    .send(id.receiver, lookup_name, &[Operand::object(receiver)])
+                    .ok()
+                    .and_then(|v| v.as_word())
+                    != Some(1)
+                {
+                    return false;
+                }
+            }
+            if id
+                .send(
+                    id.receiver,
+                    bind_name,
+                    &[
+                        Operand::object(release_name),
+                        Operand::object(registry.receiver),
+                    ],
+                )
+                .ok()
+                .and_then(|v| v.as_entry())
+                != Some(NativeEntry::new(release, context))
+            {
+                return false;
+            }
+        }
+        // No callback or foreign message occurs between this fence and the
+        // ordered mutation of this owner's registry. Reentry cannot revoke it.
+        if id
+            .send(id.receiver, epoch_name, &[])
+            .ok()
+            .and_then(|v| v.as_word())
+            != Some(epoch)
+        {
+            return false;
+        }
+        registry.release_epoch.set(epoch);
+        true
+    }
+}
+unsafe extern "C" fn try_release_many(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(bytes) = argument.as_bytes() else {
+        return invalid();
+    };
+    let Some(bytes) = (unsafe { birnam_abi::borrowed_bytes(bytes.pointer, bytes.length) }) else {
+        return invalid();
+    };
+    if bytes.len() % size_of::<usize>() != 0 {
+        return invalid();
+    }
+    // Copy ABI bytes before permission messages can reenter the caller.
+    let tokens: Vec<usize> = bytes
+        .chunks_exact(size_of::<usize>())
+        .map(|chunk| usize::from_ne_bytes(chunk.try_into().unwrap()))
+        .collect();
+    let registry = unsafe { &*context.cast::<Registry>() };
+    if receiver != registry.receiver || !unsafe { can_batch_release(registry, context) } {
+        return Outcome::loaded(Operand::word(0));
+    }
+    let mut roots = registry.roots.borrow_mut();
+    for token in tokens.into_iter().rev() {
+        // Ordinary generated finish ignores release's 0/1 result. Preserve
+        // that behavior for unknown/repeated tokens as well as exact order.
+        roots.release(token);
+    }
+    Outcome::loaded(Operand::word(1))
+}
 unsafe extern "C" fn register(
     context: *mut c_void,
     _: Oop,
@@ -140,6 +266,7 @@ unsafe extern "C" fn roots(
     // Snapshot retains callback order; providers themselves are also roots.
     for object in [receiver]
         .into_iter()
+        .chain(unsafe { (&*context.cast::<Registry>()).selectors }.into_iter())
         .chain(providers.iter().copied())
         .chain(retained.into_iter().map(|(_, o)| o))
     {
@@ -165,11 +292,42 @@ unsafe fn construct(id: Protocol) -> Result<Operand, Outcome> {
             id,
             receiver,
             roots: RefCell::new(Roots::default()),
+            selectors: [
+                b"behaviorEpoch".as_slice(),
+                b"usesDefaultLookup:",
+                b"bind:to:",
+                b"release:",
+                b"bindingOf:in:",
+            ]
+            .map(|name| id.intern_name(name))
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .unwrap(),
+            proof_services: [
+                b"behaviorEpoch".as_slice(),
+                b"usesDefaultLookup:",
+                b"bind:to:",
+            ]
+            .map(|name| {
+                id.send_named(
+                    id.receiver,
+                    b"bindingOf:in:",
+                    &[
+                        Operand::object(id.intern_name(name).unwrap()),
+                        Operand::object(id.receiver),
+                    ],
+                )
+                .ok()
+                .and_then(|v| v.as_entry())
+            }),
+            release_epoch: Cell::new(usize::MAX),
         }));
         // Id pins this library and the installed native contexts for process life.
         for (name, method) in [
             (b"retain:".as_slice(), retain as Method),
             (b"release:", release),
+            (b"tryReleaseMany:", try_release_many),
             (b"register:", register),
             (b"rootsDo:", roots),
         ] {

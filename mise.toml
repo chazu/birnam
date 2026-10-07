@@ -146,3 +146,7 @@ run = "./scripts/bench.sh --release --floor=rust"
 [tasks.bench-compare]
 description = "Diff two benchmark results; exits 1 on regression past threshold"
 run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"
+
+[tasks.formal-rooting]
+description = "Check duplicate-root TLA+ models and Lean optimization/recovery proofs"
+run = "python3 scripts/check-rooting-model.py"

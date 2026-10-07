@@ -71,12 +71,37 @@ pub(super) unsafe extern "C" fn send(
             roots.keep(value);
             values.push(value);
         }
+        invoke_values(s, &roots, target, selector, factory, *result_kind, kinds, &values)
+    })())
+}
+// Shared carrier adaptation: both paths issue the target's current Id message.
+unsafe fn invoke_values(
+    s: &Execution,
+    roots: &Scope<'_>,
+    target: Oop,
+    selector: Oop,
+    factory: Oop,
+    result_kind: u8,
+    kinds: &[u8],
+    values: &[Oop],
+) -> Result<Operand, Outcome> {
+    unsafe {
         // Own every byte argument before issuing the target callback. The owned
         // vectors stay alive throughout that call, including reentrant collection.
-        let mut bytes = Vec::with_capacity(values.len());
-        let mut operands = Vec::with_capacity(values.len());
-        for (&value, &kind) in values.iter().zip(kinds) {
-            operands.push(match kind {
+        let mut bytes = Vec::new();
+        let mut small = [Operand::unit(); 8];
+        let mut large = if values.len() > 8 {
+            vec![Operand::unit(); values.len()]
+        } else {
+            Vec::new()
+        };
+        let operands = if values.len() > 8 {
+            large.as_mut_slice()
+        } else {
+            &mut small[..values.len()]
+        };
+        for (i, (&value, &kind)) in values.iter().zip(kinds).enumerate() {
+            operands[i] = match kind {
                 b'o' => Operand::object(value),
                 b'w' => Operand::word(word(s, value)?),
                 b'b' => {
@@ -84,11 +109,11 @@ pub(super) unsafe extern "C" fn send(
                     Operand::bytes(bytes.last().unwrap())
                 }
                 _ => return Err(invalid()),
-            });
+            };
         }
-        let result = s.id.send(target, selector, &operands)?;
+        let result = s.id.send(target, selector, operands)?;
         // No callback between receiving a native borrow and copying its bytes.
-        let copied = if *result_kind == b'b' {
+        let copied = if result_kind == b'b' {
             let raw = result.as_bytes().ok_or_else(invalid)?;
             Some(
                 borrowed_bytes(raw.pointer, raw.length)
@@ -101,7 +126,7 @@ pub(super) unsafe extern "C" fn send(
         if let Some(value) = result.as_object() {
             roots.keep(value);
         }
-        match result_kind {
+        match &result_kind {
             b'o' if result.kind() == native::OBJECT => Ok(Operand::object(
                 result.as_object().filter(|v| !v.is_null()).unwrap_or(s.nil),
             )),
@@ -120,8 +145,108 @@ pub(super) unsafe extern "C" fn send(
             ),
             _ => Err(invalid()),
         }
+    }
+}
+
+// Native variadic compiler protocol: target, selector, signature, factory,
+// Vector factory, followed by nonescaping literal Object arguments.
+pub(super) unsafe extern "C" fn try_send(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if args.len() < 5 || args.len() > 13 {
+            return Err(invalid());
+        }
+        let mut owned_values = [ptr::null_mut(); 13];
+        for (i, arg) in args.iter().enumerate() {
+            owned_values[i] = object(*arg)?;
+        }
+        let values = &owned_values[..args.len()];
+        let roots = s.scope(&[r]);
+        for &v in values {
+            roots.keep(v);
+        }
+        let refuse = || Ok(Operand::unit());
+        if r != s.receiver {
+            return refuse();
+        }
+        let epoch =
+            s.id.send_named(s.id.receiver, b"behaviorEpoch", &[])?
+                .as_word()
+                .ok_or_else(invalid)?;
+        if epoch == usize::MAX
+            || s.id
+                .send_named(s.id.receiver, b"usesDefaultLookup:", &[Operand::object(r)])?
+                .as_word()
+                != Some(1)
+            || s.id
+                .send_named(
+                    s.id.receiver,
+                    b"bind:to:",
+                    &[
+                        Operand::object(s.id.intern_name(
+                            b"sendNativeTo:selector:arguments:signature:resultFactory:",
+                        )?),
+                        Operand::object(r),
+                    ],
+                )?
+                .as_entry()
+                != Some(NativeEntry::new(send, c))
+        {
+            return refuse();
+        }
+        match s.id.send_named(values[4], b"canOmitNativeArguments", &[]) {
+            Ok(v) if v.as_word() == Some(1) => {}
+            Ok(_) => return refuse(),
+            Err(e) if e.status == native::UNBOUND => return refuse(),
+            Err(e) => return Err(e),
+        }
+        let mut owned_signature = [0u8; 9];
+        let signature = match s.id.send_named(values[2], b"tryPrimitiveBytes", &[]) {
+            Ok(v) if v.kind() == native::UNIT => return refuse(),
+            Ok(v) => {
+                let raw = v.as_bytes().ok_or_else(invalid)?;
+                if raw.length > owned_signature.len() {
+                    return refuse();
+                }
+                owned_signature[..raw.length]
+                    .copy_from_slice(borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?);
+                &owned_signature[..raw.length]
+            }
+            Err(e) if e.status == native::UNBOUND => return refuse(),
+            Err(e) => return Err(e),
+        };
+        let Some((&result_kind, kinds)) = signature.split_first() else {
+            return refuse();
+        };
+        if !matches!(result_kind, b'o' | b'w' | b'b' | b'u' | b'x' | b'W')
+            || kinds.len() != values.len() - 5
+            || kinds.iter().any(|k| !matches!(k, b'o' | b'w' | b'b'))
+            || s.id
+                .send_named(s.id.receiver, b"behaviorEpoch", &[])?
+                .as_word()
+                != Some(epoch)
+        {
+            return refuse();
+        }
+        invoke_values(
+            s,
+            &roots,
+            values[0],
+            values[1],
+            values[3],
+            result_kind,
+            kinds,
+            &values[5..],
+        )
     })())
 }
+
 // Small zero-argument forms for existing native query surfaces.
 pub(super) unsafe extern "C" fn word_result(
     c: *mut c_void,

@@ -10,13 +10,14 @@ new omnibus primitive service or duplicate byte-memory prototype.
 | Bytes | Owned buffers, bounded access and slicing, append, hashing, generic caller-schema framing and indexed views | Rust |
 | Execution | Explicit Object/Word/Bytes carrier conversion and synchronous calls through current Id messages | Rust |
 | native-values | Word range conversion and hexadecimal printing; existing Boolean/Integer/Bytes conversion policy | Birnam |
-| Integer | Signed checked arithmetic and language numeric behavior | Rust cold seed; opt-in Birnam arithmetic pilot |
+| Integer | Signed checked arithmetic and language numeric behavior | Birnam checked arithmetic by default; Rust cold-bootstrap seed retained |
 | String/StringBuilder | Text behavior over Bytes references; neither owns byte vectors | Rust; full port remains |
 | Boolean | Canonical Boolean policy | Birnam production policy; Rust cold-bootstrap seed retained |
 | Vector, Map | Persistent collection algorithms | Rust; rewrites remain |
 
-This checkpoint implements the owner split and production Boolean policy.
-Integer, String, Vector and Map still have production rewrites remaining.
+The current implementation includes the owner split, production Boolean policy
+and default Birnam Integer arithmetic. Integer responsibilities beyond arithmetic,
+String, Vector and Map still have production rewrites remaining.
 Rust required for a clean cold bootstrap is retained explicitly; Rust
 that is no longer needed for that bootstrap can be removed. A production Birnam
 implementation and a retained Rust bootstrap implementation are tracked separately.
@@ -254,18 +255,17 @@ mixed Float addition, repeated module loading and collecting execution. All nati
 representation accesses and calls go through current Id messages; there are no
 foreign payload reads or retained foreign executable entries.
 
-Default admission is blocked by performance qualification: in separate runs the
+At the initial arithmetic checkpoint, default admission was blocked by performance qualification: in separate runs the
 numbers fixture rose from roughly 1.2 seconds to 93 seconds with authored arithmetic enabled, and
 a fresh installation failed to publish its tools image after a long preparation.
 The image failure was the compiler's aggregate generated-source limit, now
 removed and verified against the failing tools snapshot (see below).
-Therefore the installer
-compiles and publishes `integerValues` as an **optional** artifact, records it in
-`optional_modules`, and excludes it from default bootstrap and tool images.
-Explicit admission is `[Module load: #integerValues]`. Normal startup retains the
-native arithmetic seed. This is a correctness-qualified pilot, not a completed
-production Integer migration. Further source/compiler optimization and performance
-qualification are required before default admission.
+That checkpoint published `integerValues` as an **optional** artifact, recorded
+it in `optional_modules`, and excluded it from default bootstrap and tool images.
+Explicit admission was `[Module load: #integerValues]`. The later source cleanup
+and guarded Word pass described below supersede this optional configuration:
+Integer arithmetic is now admitted by default. This remains an arithmetic slice,
+not a completed rewrite of every Integer responsibility.
 
 No bootstrap-required Rust is removed. The native owner adds only a seed-method
 identity proof used to preserve replacements during source policy admission.
@@ -315,7 +315,7 @@ now emits the requests without that aggregate refusal. The same tools-only
 replay saves a 235 MiB image successfully in about 147 seconds. Loading that
 exact image with compiler routes replaced by rejecting callbacks succeeds in
 about 7 seconds with zero compiler calls. The runtime arithmetic performance
-gate remains separate; Integer is still an optional production artifact.
+gate remained separate at that checkpoint; Integer was still optional then.
 
 User-image load policy is explicit: use existing machine code unless rebuilding
 was requested; compile an image without machine code; and propagate any mapping
@@ -336,3 +336,299 @@ was rerun for this diagnosis.
 Cap-removal evidence: `/tmp/birnam-integer-image-diagnosis/{cap-removed.log,
 load-policy.log,tools-mapped-policy.log,cap-check.log}`. Qualification used a
 temporary prefix; the user installation was not changed.
+
+### Integer arithmetic benchmark, 2026-10-06
+
+The [measurement artifact](../measurements/integer-arithmetic-20261006.json)
+records matched native/authored runs on Apple M3 with release native libraries.
+The benchmark calls current Id selectors on fixed Integers 12345 and 37, checks
+each result through the Integer owner, excludes bootstrap/module admission,
+warms each operation, and reports medians of three 500-operation trials. It runs
+the two variants sequentially in separate processes. It measures ordinary
+dispatch, not compiled Birnam loop optimizations. The driver itself is a dev
+build; these numbers describe this boundary and are not pure CPU instruction
+throughput or a whole-startup benchmark.
+
+| Operation | Native, GC off | Authored, GC off | Authored, normal GC |
+| --- | ---: | ---: | ---: |
+| `+` | 2.51 us | 1100 us | 1248 us |
+| `-` | 2.44 us | 1216 us | 1463 us |
+| `*` | 2.56 us | 1894 us | 2257 us |
+| `/` | 2.35 us | 1867 us | 2250 us |
+| `mod:` | 2.45 us | 1918 us | 2264 us |
+
+There are two concrete sources of cost:
+
+1. Generated C's selector cache keys its 512 entries by C-string pointer rather
+   than spelling. TCC retains repeated literal strings at distinct addresses.
+   A diagnostic records all 512 slots occupied with only 13 unique spellings.
+   Misses then scan the entire table, including frequently used root operations.
+   macOS sampling attributes approximately 47% of worker samples to PCs inside
+   the emitted `_selector` function, identified through ELF symbols. Increasing
+   only cache capacity to 8192 reduces addition to 429 us and the selector-like
+   sampled leaf count from 1993/4227 to 17/3343. Keying the original 512-slot
+   cache by spelling instead reduces addition to 465 us. These are temporary
+   diagnostic variants, not a shipped cache fix.
+2. Source control flow and generic ABI conversion produce large allocation and
+   message workloads even after that cache cost disappears. One addition creates
+   117 objects: one Integer result, 31 Words, six Vectors, 14 Blocks, 28 behavior
+   objects, and approximately 37 other/capture-storage objects. GC charge is
+   5944 bytes versus 16 bytes and one result object natively. Ordinary collection
+   adds roughly 14% to addition here; GC is not the primary steady-state cause.
+   With budget 1, addition takes approximately 2.42 seconds versus 9.08 ms
+   natively, explaining why collection-stress fixtures amplify the regression.
+
+The captured control-flow count follows the source: nested `ifTrue:ifFalse:`
+expressions construct both branch Blocks before selection. Synchronous lowering
+constructs reference-slot capture storage and invokes Block's constructor for
+each literal; Block construction delegates a behavior and admits its CodeObject.
+All these operations remain messages. Residual profiles are led by Id lookup,
+dispatch, root bookkeeping, copying and allocation, rather than integer machine
+arithmetic. This ordinary-send benchmark does not exercise the fused native
+predicate path, so losing that optimization is not needed to explain this gap.
+
+Next work is specific: fix the spelling cache, simplify repeated operation/sign
+dispatch and branch nesting in Integer source, then profile again before adding
+guarded compiler optimization of closure/Word temporaries. Preserve observable
+method and allocation replacement behavior and deoptimize when the relevant
+assumptions change; do not substitute native signed-Integer policy for the port.
+
+Reproduce with `BIRNAM_TEST_MODULE_DIRECTORY=PREFIX/lib`,
+`CARGO_TARGET_DIR=.cargo-target/decomposition` and `BIRNAM_INTEGER_BENCH_MODE`
+set to `native` or `authored`, then run
+`mise exec -- cargo test -p birnam-siphon --test integer_performance --offline --locked -- --ignored --nocapture`.
+Optional `BIRNAM_INTEGER_BENCH_OP`, `_GC`, `_COUNT` and `_TRIALS` variables narrow
+the run. Prefixes for cache probes and raw logs/profiles are under
+`/tmp/birnam-integer-benchmark/`. Production compiler/source changes were not
+made; temporary tracing was removed from the working tree.
+
+### Selector cache fix and Integer source cleanup
+
+The spelling-keyed selector cache is now implemented in the compiler prelude.
+The cache still roots its Symbols in their Unit and every actual send calls Id.
+A generated-C regression exercises 700 distinct literal addresses with one
+spelling, fresh dispatch results, and a genuinely full cache's intern fallback.
+It failed on the old pointer-keyed cache and passes on the new implementation.
+
+Integer now reuses persistent operation Blocks instead of building nested
+operator-selection branches. Addition and subtraction use Word XOR/AND sign
+tests for overflow. Magnitudes and sign restoration use unsigned Word masks;
+Word only supplies generic unsigned operations. Error precedence, Float
+dispatch, zero division, overflow and cold-bootstrap method replacement remain
+covered by the focused tests. No foreign representation or method context is
+read, and no primitive operation bypasses its current Id message.
+
+| Operation | Original authored | Fresh optimized | Improvement |
+| --- | ---: | ---: | ---: |
+| `+` | 1100 us | 279 us | 3.94x |
+| `-` | 1216 us | 279 us | 4.35x |
+| `*` | 1894 us | 410 us | 4.62x |
+| `/` | 1867 us | 362 us | 5.16x |
+| `mod:` | 1918 us | 363 us | 5.28x |
+
+These are the same fixed-input GC-disabled median measurements as above.
+The preliminary hybrid prefix measured addition at 265 us and remainder at
+356 us; the table reports the fresh release installation instead. Addition
+now creates 72 objects versus 117: closures 14->8, behaviors 28->16 and Words
+31->16. GC charge falls from 5944 to 4712 bytes. It remains much slower than
+the native seed. This source-cleanup checkpoint retained opt-in admission and
+did not yet implement guarded Word allocation elimination; the following section
+records that subsequent work.
+
+Qualification prefix: `/tmp/birnam-integer-optimized/final-prefix`. Fresh
+startup/tool images, exact receipt, workspace compilation, backend tests,
+Integer matrix/GC/type errors/all mixed Float operators, native replacement
+preservation, Boolean and incoming ABI checks, compiler/deoptimization checks
+and source-free mapped/rebuilt typed-image smoke all pass. No exhaustive suite
+was run. The user installation is unchanged. Logs are under
+`/tmp/birnam-integer-optimized/` and `/tmp/birnam-integer-benchmark/`.
+
+
+### Guarded Word temporary elimination and default Integer
+
+Integer arithmetic is now loaded from `integerValues` by default, after
+`booleanValues`, in both artifact installation and bootstrap admission. The Rust
+Integer representation and native arithmetic seed remain available for a cold
+bootstrap. Source installation still preserves earlier method replacements.
+
+The synchronous compiler recognizes trees of 4–32 known unsigned Word
+operations whose inputs are lexical reads and whose intermediate results have
+one use. It emits a bounded version-1 byte plan and sends
+`tryPrimitiveExpression:` to the current Word owner through Id. This native ABI
+message receives the plan as Bytes and inputs as Objects. Only Word reads its
+own storage; signed overflow, Float dispatch and other Integer policy remain in
+Birnam. No resumable Frame slots or branch Blocks are removed.
+
+Word accepts a plan only with current default lookup and allocation permissions,
+Object Model's allocation-omission permission, recognized Word inputs and the
+owner's original primitive entries. Primitive meanings are cached by Id's
+behavior epoch; a final epoch fence detects changes made during guard callbacks.
+A refusal returns Unit and executes the original message tree once. An older
+Word owner lacking the protocol also takes that fallback. Errors propagate
+normally. The pass does not cache operation results or substitute native signed
+Integer arithmetic.
+
+The focused generated-method regression reduces four Word allocations to one
+escaping result. Replacing `bitXor:` or the allocator forces the original tree;
+collection during permission checks preserves inputs; changing a method during
+a positive permission check triggers fallback with one replacement invocation.
+The authored addition probe reduces Word allocations from 16 to 13, total
+objects from 72 to 69 and GC charge from 4712 to 4664 bytes. Eight branch Blocks
+remain: eliminating them would require preserving observable resumable Frames.
+This is a bounded Word-temporary optimization, not general closure elimination.
+
+The existing native Integer predicate optimizer correctly declines authored
+arithmetic. Its regression now verifies that refusal and retained semantics,
+while still requiring allocation savings when native arithmetic is selected.
+The benchmark defaults to authored arithmetic; `BIRNAM_INTEGER_BENCH_MODE=native`
+restores the retained five native seed entries after bootstrap for its control.
+
+Qualification used `/tmp/birnam-integer-default/final-prefix`: a fresh release
+installation published startup and tools images and passed its exact receipt.
+Workspace compilation, four backend unit tests, selector-cache regression, Word
+unit test, Integer boundary/type/Float/GC/reload checks, earlier replacement
+preservation, compiler/deoptimization checks, guarded Word mutation tests and
+source-free mapped/rebuilt typed-image smoke pass. FizzBuzz produces the expected
+20 lines. Logs are under `/tmp/birnam-integer-default/`, notably `tests.log`,
+`guard-mutation-final.log`, `unit-final.log`, `final-check.log` and `image.log`.
+No exhaustive suite was run; the user installation remains unchanged.
+
+New arithmetic timing runs were noisy and do not establish another CPU-speed
+improvement beyond the earlier cache/source measurements. A matched console
+startup pair measured old/new wall times of 35.39/34.64 seconds and user CPU of
+7.92/12.69 seconds; this is not evidence of a startup speedup. Sampling the slow
+fresh installer found temporary-file I/O dominating TCC work. Allocation savings,
+correct fallback and default admission are the verified outcomes of this slice.
+
+
+### ABI literal elimination, local fusion and authored helpers
+
+The three follow-up optimizations are implemented, enabled in synchronous
+emission, and exercised with freshly rebuilt release owners and freshly compiled
+Integer artifacts. They keep cross-owner operations on current Id messages.
+
+1. **ABI argument literals.** `abi_arguments.rs` recognizes nonescaping Vector
+   literals of up to eight lexical values consumed by Execution's native adapter.
+   Generated code sends `tryNativeArguments:` with a temporary operand array.
+   Execution checks its selected ordinary adapter; Vector's
+   `canOmitNativeArguments` checks its own factory, constructor/add/read methods,
+   lookup and allocation permissions, including backing-node allocations. Both
+   fence the behavior epoch. Signature inspection uses String/Bytes owner
+   `tryPrimitiveBytes` queries: they prove the original accessors and return a
+   borrow for immediate copying, subject to the caller epoch fence. Custom
+   `bytes` accessors are never run speculatively. Refusal reconstructs the literal and performs the
+   original call once. Target dispatch, Word/Bytes adaptation, borrowed-byte
+   copying and result construction share the ordinary adapter's implementation.
+2. **Word fusion across locals.** The producer follows single-use local bindings
+   through a contiguous pure region. Calls, construction, unused expression
+   statements and captured/escaping locals prevent admission. On refusal, the
+   original producers and lexical aliases are evaluated in source order. A
+   generated four-operation method using three locals allocates one Word with
+   default permissions and four when the allocator is replaced.
+3. **Authored helper candidates.** The compiler derives whole-body Word plans
+   from actual synchronous PortablePrograms, with 4–32 primitive operations.
+   Within that complete pure body, shared locals are allowed only when every use
+   is inside the plan; each producer is evaluated once. Generated Methods attach
+   the plan through `withWordExpression:bindings:parameters:`. Named synchronous
+   adapters opt into selection through `withWordHelperAdapter`. Execution validates
+   the current Block invocation and owner capture accessor, then sends the plan
+   and expected epoch to Word's `tryPrimitiveExpressionAtEpoch:`. Word fences
+   that earlier epoch as well as its own primitive/allocation assumptions. No
+   Integer helper names or signed policy are recognized in Rust. Resumable and
+   typed carrier adapters keep their ordinary boundaries; one-operation helpers
+   are excluded because their guard overhead was not worthwhile.
+
+Execution keeps the entered synchronous invocation active while checking a
+helper candidate, so guard callbacks cannot report the runtime idle or drain
+entered code. Candidate metadata contains only owned plan bytes and indices;
+method capture retains candidate metadata and the original implementation/owner.
+Replacements of Block invocation, capture access, Word primitives, Vector
+construction/read methods or allocation hooks restore ordinary execution.
+A regression replaces a signature byte accessor that changes Vector construction;
+it runs once, after the original literal construction. Another regression changes
+Block invocation after a positive allocation grant and
+collects during that callback: the new invocation runs exactly once.
+
+The following are sequential fixed-input, GC-disabled medians of three trials
+of 500 sends per operation. They exclude bootstrap, artifact loading and the
+allocation census. The timings below are diagnostic: repeated baseline/final runs varied
+substantially, including large baseline spikes. These runs do not establish a
+reliable throughput improvement for the three passes; allocation savings are
+the repeatable outcome. Guard overhead remains a performance target.
+
+| Operation | Before these three | ABI literals | Across locals | Helper candidates |
+| --- | ---: | ---: | ---: | ---: |
+| `+` | 778.97 us | 277.93 us | 282.98 us | 287.14 us |
+| `-` | 906.06 us | 277.98 us | 284.96 us | 285.52 us |
+| `*` | 1089.99 us | 421.88 us | 420.10 us | 415.97 us |
+| `/` | 488.30 us | 360.11 us | 368.55 us | 366.99 us |
+| `mod:` | 372.79 us | 357.33 us | 366.19 us | 363.78 us |
+
+The allocation savings are deterministic in this fixture. ABI literal elimination
+removes all six temporary Vectors and their nine backing allocations per
+operation. Addition falls from 69 to 54 objects and 4664 to 2000 charged bytes.
+The helper pass additionally removes nine Words from each multiply/divide/
+remainder operation (33->24, 30->21 and 29->20 respectively). Final GC charges
+are 2960, 2528 and 2496 bytes for those operations. Branch Blocks still exist;
+this work does not implement arbitrary call-site inlining, resumable helper
+inlining, branch elimination or authored Integer predicate fusion.
+
+Validation passes: 27 owner/backend unit tests; seven focused runtime tests
+covering ABI literals, local fusion, authored helpers, Integer's 500-case matrix,
+incoming carriers, collecting bootstrap replacements and compiler/deoptimization
+semantics; and source-free mapped/rebuilt image checks with helper source and
+compiled helper artifact deleted. The latter is reproducible with
+`scripts/word-optimization-image-smoke.sh PREFIX`. Workspace compilation also
+passes. The final example check runs FizzBuzz through an explicitly requested
+source bootstrap and compares all 20 output lines.
+
+Diagnostic prefixes are `/tmp/birnam-integer-three/{abi,locals,helpers}-prefix`;
+these copy the previous qualified installation and replace changed release owners
+and Integer artifacts. They are not fresh full installations and their old install
+receipts do not qualify the modified contents. Raw timings, test logs and image
+checks are under `/tmp/birnam-integer-three/`; the measurement JSON includes all
+60 per-step trials plus 60 baseline/final repeats with GC disabled and normal GC. No exhaustive suite or new startup timing was run. The user
+installation remains unchanged, and the changes are uncommitted.
+
+
+### Bounded paired microbenchmark tooling
+
+The next performance work uses [short paired microbenchmarks](microbenchmarks.md)
+through `scripts/microbench.py`. The runner controls program and typed-body
+factory emission explicitly, alternates baseline/candidate batches in one
+process, records thread CPU and elapsed time, and asserts allocation differences
+before timing. Six fixtures cover nested/local Word fusion, ABI literals,
+authored helpers and isolated Integer add/multiply policy. Measurement is capped
+at ten seconds; a busy machine yields uncertainty rather than an idle-host wait.
+A separate two-to-five-second macOS sampling mode runs one selected variant.
+The first full acceptance run needed 1.26 seconds of setup and 6.01 seconds of
+measurement. Detailed message/lookup/guard counters remain a later addition;
+physical allocation counts already work without changing runtime dispatch hooks.
+
+
+### First microbenchmark-guided optimization slice
+
+Word-plan and small ABI marshalling scratch buffers now avoid unnecessary native
+heap allocations. Vector caches unchanged native method meanings by Id epoch,
+while checking live allocator/GC permissions and fencing callbacks each time.
+The new public Integer fixture uses real source policy and public operator sends,
+with source methods switched through Id between untimed warmups.
+
+The runner now fixes its batch size after one calibration: the previous adaptive
+count oscillated across GC thresholds and created an order-dependent ABI result.
+Corrected ABI measurements verify the earlier allocation-elimination benefit;
+they do not establish an additional CPU gain from these small changes. Public
+Integer arithmetic still gives an inconclusive roughly 3% difference.
+See [microbenchmark details](microbenchmarks.md) for limits and measurements.
+
+
+### Public Integer path diagnosis
+
+The [complete Integer investigation](integer-performance-investigation.md) finds
+roughly 4232 Id messages per optimized addition. Eight branch Blocks still need
+capture storage, behavior delegation, CodeObject shape inspection and entry
+installation. Root/name traffic dominates message counts; Block construction
+accounts for about 27–30% of sampled path time, and normal GC also matters.
+The next targets are admitted CodeObject shape reuse in Block construction and
+root/name work, ahead of further Word scratch-buffer tuning. No arithmetic
+implementation or Id semantics were changed by this investigation.

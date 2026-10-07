@@ -170,10 +170,12 @@ pub(super) unsafe fn check(h: &mut H) {
         let before = instances(h, integer_vt);
         assert_eq!(run(h, block, false), truth);
         let ordinary = instances(h, integer_vt) - before;
-        assert!(
-            optimized < ordinary,
-            "real source must remove Integer allocations: {optimized} vs {ordinary}"
-        );
+        let native_arithmetic = object(send(h.id,integer,b"hasBootstrapArithmetic:",&[Operand::object(h.id.intern_name(b"+").unwrap())])) == truth;
+        if native_arithmetic {
+            assert!(optimized < ordinary, "native predicate must remove Integer allocations: {optimized} vs {ordinary}");
+        } else {
+            assert_eq!(optimized,ordinary,"authored arithmetic must use its actual messages, not the Rust numeric shortcut");
+        }
         h.bind(b"NumericPredicate", candidate);
         paused(h, block, 9, truth);
 
@@ -343,7 +345,7 @@ pub(super) unsafe fn check(h: &mut H) {
             object(send(h.id, machine, b"runBlock:", &[Operand::object(block)])),
             truth
         );
-        assert_eq!(probe.calls.get(), 1);
+        assert_eq!(probe.calls.get(), usize::from(native_arithmetic), "authored arithmetic must not publish through the Rust predicate consumer");
         restore(h, execution_vt, b"commitNumericPredicate:", commit);
         send(h.id, execution_vt, b"removeMethod:", &[Operand::object(h.id.intern_name(b"savedPredicateCommit:").unwrap())]);
 
@@ -393,7 +395,8 @@ pub(super) unsafe fn check(h: &mut H) {
                     - before;
             }
         }
-        assert!(allocations[1] < allocations[0]);
+        if native_arithmetic { assert!(allocations[1] < allocations[0]); }
+        else { assert!(allocations[1] >= allocations[0],"refused native predicate must not elide authored arithmetic"); }
         eprintln!(
             "numeric-predicate: 180 runs baseline={}ns/{} allocations optimized={}ns/{} allocations; Integer boxes/run {ordinary}->{optimized}",
             elapsed[0], allocations[0], elapsed[1], allocations[1]

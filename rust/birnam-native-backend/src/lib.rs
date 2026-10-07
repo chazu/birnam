@@ -139,7 +139,9 @@ fn object(a: Operand) -> Result<Oop, Outcome> {
 #[derive(Clone, Copy)]
 enum Op {
     Program,
+    ProgramOptions,
     Factory,
+    FactoryOptions,
     Named,
     Descriptor,
 }
@@ -157,7 +159,9 @@ unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         if n != match e.op {
             Op::Program => 5,
+            Op::ProgramOptions => 6,
             Op::Factory => 3,
+            Op::FactoryOptions => 4,
             Op::Named => 2,
             Op::Descriptor => 1,
         } {
@@ -180,7 +184,12 @@ unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                 q.boolean(arg(3)?)?,
                 q.boolean(arg(4)?)?,
             ),
-            Op::Factory => {
+            Op::ProgramOptions => native::compile_portable_with_optimizations(
+                &q.bytes(arg(0)?)?, &q.bytes(arg(1)?)?, &q.bytes(arg(2)?)?,
+                q.boolean(arg(3)?)?, q.boolean(arg(4)?)?,
+                native::Optimizations::from_bits(q.word(arg(5)?)?).ok_or_else(invalid)?,
+            ),
+            Op::Factory | Op::FactoryOptions => {
                 let program = q.bytes(arg(0)?)?;
                 let source = q.bytes(arg(1)?)?;
                 let v = arg(2)?;
@@ -199,7 +208,12 @@ unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                     let index = q.call(s.named(b"Integer")?, b"fromWord:", &[Operand::word(i)])?;
                     flags.push(q.boolean(q.call(v, b"at:", &[Operand::object(index)])?)?);
                 }
-                native::compile_factory(&program, &source, &flags)
+                if matches!(e.op, Op::FactoryOptions) {
+                    let options = native::Optimizations::from_bits(q.word(arg(3)?)?).ok_or_else(invalid)?;
+                    native::compile_factory_with_optimizations(&program, &source, &flags, options)
+                } else {
+                    native::compile_factory(&program, &source, &flags)
+                }
             }
             Op::Named => {
                 let arity = u32::try_from(q.word(arg(0)?)?).map_err(|_| invalid())?;
@@ -250,7 +264,9 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         let state = Box::into_raw(state);
         for (name, op) in [
             ("emit:source:filename:persistent:synchronous:", Op::Program),
+            ("emit:source:filename:persistent:synchronous:optimizations:", Op::ProgramOptions),
             ("factory:source:dispositions:", Op::Factory),
+            ("factory:source:dispositions:optimizations:", Op::FactoryOptions),
             ("named:synchronous:", Op::Named),
             ("descriptorFor:", Op::Descriptor),
         ] {

@@ -1,0 +1,17 @@
+{
+  "tla": {
+    "version": "1.7.4",
+    "url": "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar",
+    "sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
+  },
+  "lean": {
+    "version": "4.24.0",
+    "base_url": "https://github.com/leanprover/lean4/releases/download/v4.24.0/",
+    "archives": {
+      "Darwin-arm64": {"name": "lean-4.24.0-darwin_aarch64.tar.zst", "sha256": "17ee554702c199fc03f37b1c3708245671c93f5d932dcff55a03fa6cdb5e5adf"},
+      "Darwin-x86_64": {"name": "lean-4.24.0-darwin.tar.zst", "sha256": "a5ef0fb0e14645eaa0e60bc6ba39a07e7deeeec73dc93ce7195b837eb9de2c9f"},
+      "Linux-x86_64": {"name": "lean-4.24.0-linux.tar.zst", "sha256": "b14f5e5159219dd1a1956c3b806813319f5e94ccd5bdfd56f54520609a5bb5ec"},
+      "Linux-aarch64": {"name": "lean-4.24.0-linux_aarch64.tar.zst", "sha256": "237f8ef43fb40d16681871fb04b2c56f023afc02a5a3877831d35dd493823c23"}
+    }
+  }
+}

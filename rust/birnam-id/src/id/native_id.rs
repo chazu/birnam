@@ -2,6 +2,8 @@
 pub(crate) mod objects;
 mod storage;
 mod registries;
+#[cfg(feature="dispatch-metrics")]
+mod metrics;
 
 use crate::abi::{
     Oop,
@@ -31,6 +33,8 @@ pub(crate) struct State {
     detached: RefCell<std::collections::HashMap<usize, super::object_memory::Allocation>>,
     visits: [Oop; 3],
     owner: std::thread::ThreadId,
+    #[cfg(feature="dispatch-metrics")]
+    metrics: RefCell<metrics::Metrics>,
 }
 impl State {
     pub(crate) unsafe fn new(
@@ -79,6 +83,8 @@ impl State {
             detached: RefCell::new(std::collections::HashMap::new()),
             visits,
             owner: std::thread::current().id(),
+            #[cfg(feature="dispatch-metrics")]
+            metrics: RefCell::new(metrics::Metrics::default()),
         });
         let context = core::ptr::from_mut(state.as_mut()).cast();
         state.protocol.context = context;
@@ -98,6 +104,8 @@ impl State {
             objects::install(&state, context, add);
             storage::install(&state, context, add);
             registries::install(&state, context, add);
+            #[cfg(feature="dispatch-metrics")]
+            metrics::install(&state, context, add);
         }
         state
     }
@@ -152,8 +160,13 @@ unsafe extern "C" fn message(
     let Some(args) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };
+    #[cfg(feature="dispatch-metrics")]
+    let tracked=metrics::enter(state,selector);
     // No registry reference spans a callback or nested message.
-    unsafe { id_dispatch::send(state.dispatch_context(), receiver, selector, args) }
+    let result=unsafe { id_dispatch::send(state.dispatch_context(), receiver, selector, args) };
+    #[cfg(feature="dispatch-metrics")]
+    metrics::leave(state,receiver,selector,args,&result,tracked);
+    result
 }
 unsafe extern "C" fn intern_bytes(
     context: *mut c_void,

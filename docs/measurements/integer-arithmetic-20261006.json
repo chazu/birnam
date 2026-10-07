@@ -1,0 +1,3611 @@
+{
+  "date": "2026-10-06",
+  "source_commit": "295104f9",
+  "hardware": "Apple M3",
+  "native_library_profile": "release",
+  "driver_profile": "dev",
+  "prefix": "/tmp/birnam-integer-optional/final-prefix",
+  "operands": [
+    12345,
+    37
+  ],
+  "method": "fresh processes; untimed bootstrap/admission; 20 warmups; median of 3 trials x 500 current Id sends per operation; result word read and assertion included; sequential variants; allocation census outside timing",
+  "scope": "fixed positive Integer/Integer inputs, not compiled Birnam loops, mixed floats, errors, or whole startup",
+  "normal_gc_budget_bytes": 1048576,
+  "gc_off_budget": "usize::MAX; precise collection before each trial",
+  "stress_scope": "2 operations per case at allocation budget 1; diagnostic only",
+  "runs": {
+    "native": [
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2505.3,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2552.1,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2325.9,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2321.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2311.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2266.7,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "+",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 9076687.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2436.8,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2752.7,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2395.4,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2325.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2315.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2330.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "-",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 9047250.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2412.2,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2555.6,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2565.2,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2372.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2683.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2334.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "*",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 9482520.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2786.6,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2351.1,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2284.3,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2478.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2325.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2290.7,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "/",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 8903958.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2385.7,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2662.8,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2445.9,
+        "gc_charge_bytes_per_op": 16,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 0, \"vector\": 0, \"word\": 0}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2331.7,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2265.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2262.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "native",
+        "operation": "mod:",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 9104187.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      }
+    ],
+    "authored": [
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1099980.2,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 39501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1111344.8,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 39501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1099296.7,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 39501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1247351.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1248247.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1252382.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 2417315146.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1244736.2,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 44502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1215799.2,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 44502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1202885.3,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 44502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1463148.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1463190.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1463632.9,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 2790452146.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1893855.8,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 74503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1897053.4,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 74503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1859488.3,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 74503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2239138.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2257371.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2261257.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 4388529562.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1866805.3,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1869817.2,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1867157.9,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2223063.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2249968.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2256009.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 4043342270.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 1907249.3,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 1935424.6,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 1918292.5,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 2239353.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 2263855.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 2274570.9,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 4146645167.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      }
+    ],
+    "cache8192": [
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 444869.8,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 39501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 429260.8,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 39501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 428751.7,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 39501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 477805.8,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 44502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 482301.8,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 44502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 481444.8,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 44502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 763017.7,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 74503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 750269.9,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 74503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 751086.8,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 74503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 711080.7,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 693573.3,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 716372.1,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 722002.8,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 727709.2,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 730980.2,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"block\": 0, \"integer\": 500, \"method\": 0, \"other\": 69504, \"vector\": 3000, \"word\": 21500}"
+      }
+    ],
+    "spelling512": [
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 480085.2,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"behavior\": 14000, \"block\": 7000, \"integer\": 500, \"method\": 0, \"other\": 18501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 465395.2,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"behavior\": 14000, \"block\": 7000, \"integer\": 500, \"method\": 0, \"other\": 18501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 458960.8,
+        "gc_charge_bytes_per_op": 5944,
+        "allocation_census": "{\"behavior\": 14000, \"block\": 7000, \"integer\": 500, \"method\": 0, \"other\": 18501, \"vector\": 3000, \"word\": 15500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 507447.8,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"behavior\": 16000, \"block\": 8000, \"integer\": 500, \"method\": 0, \"other\": 20502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 512930.9,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"behavior\": 16000, \"block\": 8000, \"integer\": 500, \"method\": 0, \"other\": 20502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 525231.0,
+        "gc_charge_bytes_per_op": 6408,
+        "allocation_census": "{\"behavior\": 16000, \"block\": 8000, \"integer\": 500, \"method\": 0, \"other\": 20502, \"vector\": 3000, \"word\": 17500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 814498.7,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"behavior\": 28000, \"block\": 14000, \"integer\": 500, \"method\": 0, \"other\": 32503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 827356.2,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"behavior\": 28000, \"block\": 14000, \"integer\": 500, \"method\": 0, \"other\": 32503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 899590.0,
+        "gc_charge_bytes_per_op": 8904,
+        "allocation_census": "{\"behavior\": 28000, \"block\": 14000, \"integer\": 500, \"method\": 0, \"other\": 32503, \"vector\": 3000, \"word\": 24000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 800891.5,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"behavior\": 26000, \"block\": 13000, \"integer\": 500, \"method\": 0, \"other\": 30505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 803092.5,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"behavior\": 26000, \"block\": 13000, \"integer\": 500, \"method\": 0, \"other\": 30505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 790351.5,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"behavior\": 26000, \"block\": 13000, \"integer\": 500, \"method\": 0, \"other\": 30505, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 754275.2,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"behavior\": 26000, \"block\": 13000, \"integer\": 500, \"method\": 0, \"other\": 30504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 780265.2,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"behavior\": 26000, \"block\": 13000, \"integer\": 500, \"method\": 0, \"other\": 30504, \"vector\": 3000, \"word\": 21500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 793728.0,
+        "gc_charge_bytes_per_op": 8552,
+        "allocation_census": "{\"behavior\": 26000, \"block\": 13000, \"integer\": 500, \"method\": 0, \"other\": 30504, \"vector\": 3000, \"word\": 21500}"
+      }
+    ],
+    "source_cleanup": [
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 270711.3,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 265361.2,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 265090.7,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 388746.2,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 379939.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 383437.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 1302280146.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 279748.9,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 270808.3,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 275044.6,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 399120.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 398245.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 394203.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 1304695437.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 406990.7,
+        "gc_charge_bytes_per_op": 5768,
+        "allocation_census": "{\"behavior\": 12000, \"block\": 6000, \"integer\": 500, \"method\": 0, \"other\": 16500, \"vector\": 3000, \"word\": 16500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 402293.4,
+        "gc_charge_bytes_per_op": 5768,
+        "allocation_census": "{\"behavior\": 12000, \"block\": 6000, \"integer\": 500, \"method\": 0, \"other\": 16500, \"vector\": 3000, \"word\": 16500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 401275.5,
+        "gc_charge_bytes_per_op": 5768,
+        "allocation_census": "{\"behavior\": 12000, \"block\": 6000, \"integer\": 500, \"method\": 0, \"other\": 16500, \"vector\": 3000, \"word\": 16500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 535369.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 535710.3,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 537806.2,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 2043889500.0,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 359962.3,
+        "gc_charge_bytes_per_op": 5336,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 15000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 363443.1,
+        "gc_charge_bytes_per_op": 5336,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 15000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 357229.4,
+        "gc_charge_bytes_per_op": 5336,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 15000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 486850.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 490408.4,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 496815.8,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 1789721562.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 355783.9,
+        "gc_charge_bytes_per_op": 5304,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 14500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 356097.2,
+        "gc_charge_bytes_per_op": 5304,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 14500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 356548.2,
+        "gc_charge_bytes_per_op": 5304,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 14500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 498846.2,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 487830.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "normal",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 487179.1,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "stress",
+        "trial": 0,
+        "iterations": 2,
+        "ns_per_op": 1771884958.5,
+        "gc_charge_bytes_per_op": 0,
+        "allocation_census": "{}"
+      }
+    ],
+    "fresh_optimized": [
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 287812.4,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 279079.8,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "+",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 276435.7,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 281394.7,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 279427.3,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "-",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 278275.8,
+        "gc_charge_bytes_per_op": 4712,
+        "allocation_census": "{\"behavior\": 8000, \"block\": 4000, \"integer\": 500, \"method\": 0, \"other\": 12500, \"vector\": 3000, \"word\": 8000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 409628.9,
+        "gc_charge_bytes_per_op": 5768,
+        "allocation_census": "{\"behavior\": 12000, \"block\": 6000, \"integer\": 500, \"method\": 0, \"other\": 16500, \"vector\": 3000, \"word\": 16500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 411186.6,
+        "gc_charge_bytes_per_op": 5768,
+        "allocation_census": "{\"behavior\": 12000, \"block\": 6000, \"integer\": 500, \"method\": 0, \"other\": 16500, \"vector\": 3000, \"word\": 16500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "*",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 403128.1,
+        "gc_charge_bytes_per_op": 5768,
+        "allocation_census": "{\"behavior\": 12000, \"block\": 6000, \"integer\": 500, \"method\": 0, \"other\": 16500, \"vector\": 3000, \"word\": 16500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 359624.4,
+        "gc_charge_bytes_per_op": 5336,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 15000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 362004.8,
+        "gc_charge_bytes_per_op": 5336,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 15000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "/",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 362911.4,
+        "gc_charge_bytes_per_op": 5336,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 15000}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 0,
+        "iterations": 500,
+        "ns_per_op": 357845.0,
+        "gc_charge_bytes_per_op": 5304,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 14500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 1,
+        "iterations": 500,
+        "ns_per_op": 363178.2,
+        "gc_charge_bytes_per_op": 5304,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 14500}"
+      },
+      {
+        "mode": "authored",
+        "operation": "mod:",
+        "gc": "off",
+        "trial": 2,
+        "iterations": 500,
+        "ns_per_op": 367763.7,
+        "gc_charge_bytes_per_op": 5304,
+        "allocation_census": "{\"behavior\": 10000, \"block\": 5000, \"integer\": 500, \"method\": 0, \"other\": 14500, \"vector\": 3000, \"word\": 14500}"
+      }
+    ]
+  },
+  "summary": [
+    {
+      "operation": "+",
+      "native_gc_off_us": 2.5053,
+      "authored_gc_off_us": 1099.9802,
+      "slowdown": 439.06127010737237,
+      "authored_normal_gc_us": 1248.2478,
+      "native_normal_gc_us": 2.311,
+      "spelling_cache_probe_us": 465.3952,
+      "cache_probe_speedup": 2.3635400622954426,
+      "optimized_fresh_us": 279.0798,
+      "combined_speedup": 3.941454021394598
+    },
+    {
+      "operation": "-",
+      "native_gc_off_us": 2.4368000000000003,
+      "authored_gc_off_us": 1215.7992,
+      "slowdown": 498.9326986211424,
+      "authored_normal_gc_us": 1463.19,
+      "native_normal_gc_us": 2.3258,
+      "spelling_cache_probe_us": 512.9309000000001,
+      "cache_probe_speedup": 2.37029822145634,
+      "optimized_fresh_us": 279.4273,
+      "combined_speedup": 4.3510394295761365
+    },
+    {
+      "operation": "*",
+      "native_gc_off_us": 2.5556,
+      "authored_gc_off_us": 1893.8558,
+      "slowdown": 741.0611206761621,
+      "authored_normal_gc_us": 2257.3713,
+      "native_normal_gc_us": 2.3728000000000002,
+      "spelling_cache_probe_us": 827.3562,
+      "cache_probe_speedup": 2.289045274574603,
+      "optimized_fresh_us": 409.62890000000004,
+      "combined_speedup": 4.623345179014469
+    },
+    {
+      "operation": "/",
+      "native_gc_off_us": 2.3510999999999997,
+      "authored_gc_off_us": 1867.1579,
+      "slowdown": 794.1635404704182,
+      "authored_normal_gc_us": 2249.9685,
+      "native_normal_gc_us": 2.325,
+      "spelling_cache_probe_us": 800.8915,
+      "cache_probe_speedup": 2.331349377537407,
+      "optimized_fresh_us": 362.0048,
+      "combined_speedup": 5.157826360313455
+    },
+    {
+      "operation": "mod:",
+      "native_gc_off_us": 2.4459,
+      "authored_gc_off_us": 1918.2925,
+      "slowdown": 784.2890142687763,
+      "authored_normal_gc_us": 2263.8554,
+      "native_normal_gc_us": 2.2658,
+      "spelling_cache_probe_us": 780.2651999999999,
+      "cache_probe_speedup": 2.4585134643964643,
+      "optimized_fresh_us": 363.1782,
+      "combined_speedup": 5.281959379720479
+    }
+  ],
+  "allocation_addition_per_operation": {
+    "integer": 1,
+    "word": 31,
+    "vector": 6,
+    "block": 14,
+    "behavior": 28,
+    "other": 37,
+    "total": 117,
+    "gc_charge_bytes": 5944
+  },
+  "profiling": {
+    "tool": "macOS sample, 1ms sampling",
+    "baseline_duration_seconds": 5,
+    "baseline_worker_samples": 4227,
+    "selector_address_range_leaf_samples": 1993,
+    "large_cache_worker_samples": 3343,
+    "large_cache_selector_address_range_leaf_samples": 17,
+    "interpretation": "ELF symbol table identifies dominant PCs as _selector; cache-full diagnostic recorded 512 occupied slots with only 13 unique spellings"
+  },
+  "status": "Integer arithmetic default; guarded Word expressions, ABI literal elimination, local fusion and authored synchronous helper candidates implemented; cold-bootstrap Rust retained; no general closure elimination or authored predicate fusion",
+  "optimized_addition_allocations_per_operation": {
+    "integer": 1,
+    "word": 16,
+    "vector": 6,
+    "block": 8,
+    "behavior": 16,
+    "other": 25,
+    "total": 72,
+    "gc_charge_bytes": 4712
+  },
+  "optimized_prefix": "/tmp/birnam-integer-optimized/final-prefix",
+  "validation": [
+    "selector duplicate-address test fails before and passes after cache fix",
+    "native-backend 3 unit tests and selector-cache regression pass",
+    "Integer 500-case matrix, all mixed Float operators, type errors and forced GC pass",
+    "bootstrap arithmetic replacement preservation passes",
+    "Boolean, incoming ABI and compiler/deoptimization checks pass",
+    "fresh startup/tool images, exact receipt and source-free mapped/rebuilt typed-image smoke pass",
+    "workspace check passes; no exhaustive suite",
+    "default-admission fresh release installation publishes startup/tools images and passes receipt",
+    "backend 4 unit tests, selector cache regression and Word unit test pass",
+    "guarded Word test verifies method/allocator replacement, collecting permission callback and mutation after permission grant",
+    "default source Integer compiler refusal and arithmetic/GC/reload checks pass; FizzBuzz 20 lines match"
+  ],
+  "default_prefix": "/tmp/birnam-integer-default/final-prefix",
+  "guarded_word_pass": {
+    "scope": "synchronous nonescaping trees of 4-32 unsigned Word operations on lexical inputs; branch Blocks and resumable Frames retained",
+    "message": "current Word owner tryPrimitiveExpression: via Id; bounded version-1 native ABI plan",
+    "addition_allocations_per_operation": {
+      "integer": 1,
+      "word": 13,
+      "vector": 6,
+      "block": 8,
+      "behavior": 16,
+      "other": 25,
+      "total": 69,
+      "gc_charge_bytes": 4664
+    },
+    "generated_method_word_allocations": {
+      "ordinary": 4,
+      "guarded": 1
+    },
+    "timing_conclusion": "later runs noisy; no additional CPU-speed improvement demonstrated",
+    "logs": [
+      "/tmp/birnam-integer-optimized/expression-benchmark.log",
+      "/tmp/birnam-integer-default/benchmark-solo.log",
+      "/tmp/birnam-integer-default/native-benchmark.log",
+      "/tmp/birnam-integer-default/guard-mutation-final.log"
+    ]
+  },
+  "default_admission_startup_pair": {
+    "old_wall_seconds": 35.39,
+    "new_wall_seconds": 34.64,
+    "old_user_cpu_seconds": 7.92,
+    "new_user_cpu_seconds": 12.69,
+    "interpretation": "no startup speedup established; timings noisy",
+    "logs": [
+      "/tmp/birnam-integer-default/old-repl-time.log",
+      "/tmp/birnam-integer-default/new-repl-time.log"
+    ]
+  },
+  "three_followup_passes": {
+    "method": "sequential variants; 20 warmups; median of 3 trials x 500 current Id sends; fixed Integer inputs 12345 and 37; GC disabled; bootstrap and admission untimed; allocation census outside timing",
+    "prefix_kind": "diagnostic copies of previous qualified installation with changed release owners and rebuilt Integer artifact; copied install receipts are stale",
+    "variants": {
+      "baseline": {
+        "log": "/tmp/birnam-integer-three/baseline-final-benchmark.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 805605.8,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 778971.9,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 730747.7,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 906058.6,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 818079.9,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 1024781.3,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 1089988.8,
+            "gc_charge_bytes_per_op": 5768,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 16500,
+              "vector": 3000,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 1355529.3,
+            "gc_charge_bytes_per_op": 5768,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 16500,
+              "vector": 3000,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 821083.3,
+            "gc_charge_bytes_per_op": 5768,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 16500,
+              "vector": 3000,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 550193.7,
+            "gc_charge_bytes_per_op": 5336,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 488304.9,
+            "gc_charge_bytes_per_op": 5336,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 381287.4,
+            "gc_charge_bytes_per_op": 5336,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 372787.3,
+            "gc_charge_bytes_per_op": 5304,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 377846.8,
+            "gc_charge_bytes_per_op": 5304,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 367897.8,
+            "gc_charge_bytes_per_op": 5304,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 14500
+            }
+          }
+        ]
+      },
+      "abi": {
+        "log": "/tmp/birnam-integer-three/abi-final-benchmark.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 287482.2,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 277933.1,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 276604.1,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 276873.9,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 277976.7,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 281978.6,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 418244.8,
+            "gc_charge_bytes_per_op": 3104,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 426919.5,
+            "gc_charge_bytes_per_op": 3104,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 421884.0,
+            "gc_charge_bytes_per_op": 3104,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 360106.1,
+            "gc_charge_bytes_per_op": 2672,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 359030.9,
+            "gc_charge_bytes_per_op": 2672,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 362179.9,
+            "gc_charge_bytes_per_op": 2672,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 355332.8,
+            "gc_charge_bytes_per_op": 2640,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 357333.8,
+            "gc_charge_bytes_per_op": 2640,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 358288.4,
+            "gc_charge_bytes_per_op": 2640,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 14500
+            }
+          }
+        ]
+      },
+      "locals": {
+        "log": "/tmp/birnam-integer-three/locals-final-benchmark.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 301799.6,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 282213.1,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 282979.7,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 282508.6,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 284958.7,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 285122.6,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 420098.3,
+            "gc_charge_bytes_per_op": 3104,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 421920.9,
+            "gc_charge_bytes_per_op": 3104,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 415498.2,
+            "gc_charge_bytes_per_op": 3104,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 366313.1,
+            "gc_charge_bytes_per_op": 2672,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 368630.9,
+            "gc_charge_bytes_per_op": 2672,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 368550.9,
+            "gc_charge_bytes_per_op": 2672,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 366192.6,
+            "gc_charge_bytes_per_op": 2640,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 365393.8,
+            "gc_charge_bytes_per_op": 2640,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 367015.8,
+            "gc_charge_bytes_per_op": 2640,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 14500
+            }
+          }
+        ]
+      },
+      "helpers": {
+        "log": "/tmp/birnam-integer-three/helpers-final-benchmark.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 300465.9,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 286251.8,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 287135.6,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 285985.5,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 284182.1,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 285523.1,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 415970.9,
+            "gc_charge_bytes_per_op": 2960,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 12000
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 416376.9,
+            "gc_charge_bytes_per_op": 2960,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 12000
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 414723.3,
+            "gc_charge_bytes_per_op": 2960,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 12000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 369456.5,
+            "gc_charge_bytes_per_op": 2528,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 366988.5,
+            "gc_charge_bytes_per_op": 2528,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 366032.1,
+            "gc_charge_bytes_per_op": 2528,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 363783.4,
+            "gc_charge_bytes_per_op": 2496,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 363571.1,
+            "gc_charge_bytes_per_op": 2496,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 365227.8,
+            "gc_charge_bytes_per_op": 2496,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10000
+            }
+          }
+        ]
+      }
+    },
+    "summary": [
+      {
+        "operation": "+",
+        "baseline_median_us": 778.9719,
+        "baseline_gc_charge_bytes_per_op": 4664,
+        "baseline_objects_per_op": 69.0,
+        "abi_median_us": 277.93309999999997,
+        "abi_gc_charge_bytes_per_op": 2000,
+        "abi_objects_per_op": 54.0,
+        "locals_median_us": 282.97970000000004,
+        "locals_gc_charge_bytes_per_op": 2000,
+        "locals_objects_per_op": 54.0,
+        "helpers_median_us": 287.13559999999995,
+        "helpers_gc_charge_bytes_per_op": 2000,
+        "helpers_objects_per_op": 54.0
+      },
+      {
+        "operation": "-",
+        "baseline_median_us": 906.0586,
+        "baseline_gc_charge_bytes_per_op": 4664,
+        "baseline_objects_per_op": 69.0,
+        "abi_median_us": 277.9767,
+        "abi_gc_charge_bytes_per_op": 2000,
+        "abi_objects_per_op": 54.0,
+        "locals_median_us": 284.9587,
+        "locals_gc_charge_bytes_per_op": 2000,
+        "locals_objects_per_op": 54.0,
+        "helpers_median_us": 285.5231,
+        "helpers_gc_charge_bytes_per_op": 2000,
+        "helpers_objects_per_op": 54.0
+      },
+      {
+        "operation": "*",
+        "baseline_median_us": 1089.9888,
+        "baseline_gc_charge_bytes_per_op": 5768,
+        "baseline_objects_per_op": 109.0,
+        "abi_median_us": 421.884,
+        "abi_gc_charge_bytes_per_op": 3104,
+        "abi_objects_per_op": 94.0,
+        "locals_median_us": 420.0983,
+        "locals_gc_charge_bytes_per_op": 3104,
+        "locals_objects_per_op": 94.0,
+        "helpers_median_us": 415.97090000000003,
+        "helpers_gc_charge_bytes_per_op": 2960,
+        "helpers_objects_per_op": 85.0
+      },
+      {
+        "operation": "/",
+        "baseline_median_us": 488.30490000000003,
+        "baseline_gc_charge_bytes_per_op": 5336,
+        "baseline_objects_per_op": 96.0,
+        "abi_median_us": 360.10609999999997,
+        "abi_gc_charge_bytes_per_op": 2672,
+        "abi_objects_per_op": 81.0,
+        "locals_median_us": 368.5509,
+        "locals_gc_charge_bytes_per_op": 2672,
+        "locals_objects_per_op": 81.0,
+        "helpers_median_us": 366.9885,
+        "helpers_gc_charge_bytes_per_op": 2528,
+        "helpers_objects_per_op": 72.0
+      },
+      {
+        "operation": "mod:",
+        "baseline_median_us": 372.7873,
+        "baseline_gc_charge_bytes_per_op": 5304,
+        "baseline_objects_per_op": 95.0,
+        "abi_median_us": 357.3338,
+        "abi_gc_charge_bytes_per_op": 2640,
+        "abi_objects_per_op": 80.0,
+        "locals_median_us": 366.19259999999997,
+        "locals_gc_charge_bytes_per_op": 2640,
+        "locals_objects_per_op": 80.0,
+        "helpers_median_us": 363.78340000000003,
+        "helpers_gc_charge_bytes_per_op": 2496,
+        "helpers_objects_per_op": 71.0
+      }
+    ],
+    "timing_limit": "Substantial run-to-run variation, including baseline spikes; no reliable throughput gain established for these three passes. Allocation savings are deterministic.",
+    "addition_total_objects_before": 69,
+    "addition_total_objects_after": 54,
+    "default_enabled": true,
+    "helper_scope": "whole synchronous pure Word bodies, 4-32 ops; shared locals must have all uses inside; typed/resumable adapters retain ordinary execution",
+    "validation_logs": [
+      "/tmp/birnam-integer-three/focused-tests.log",
+      "/tmp/birnam-integer-three/units-final.log",
+      "/tmp/birnam-integer-three/workspace-check.log",
+      "/tmp/birnam-integer-three/image-smoke.log"
+    ],
+    "signature_guard": "String/Bytes tryPrimitiveBytes proves native accessors, avoids speculative custom bytes calls; mutating signature accessor runs once in original order",
+    "repeat_runs": {
+      "baseline-off": {
+        "log": "/tmp/birnam-integer-three/baseline-off-repeat.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 287189.6,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 280514.6,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 279641.3,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 283597.7,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 281398.3,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 277272.9,
+            "gc_charge_bytes_per_op": 4664,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 12500,
+              "vector": 3000,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 405891.6,
+            "gc_charge_bytes_per_op": 5768,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 16500,
+              "vector": 3000,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 407957.6,
+            "gc_charge_bytes_per_op": 5768,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 16500,
+              "vector": 3000,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 406794.5,
+            "gc_charge_bytes_per_op": 5768,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 16500,
+              "vector": 3000,
+              "word": 16500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 363748.4,
+            "gc_charge_bytes_per_op": 5336,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 360906.0,
+            "gc_charge_bytes_per_op": 5336,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 374035.6,
+            "gc_charge_bytes_per_op": 5336,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 15000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 362546.7,
+            "gc_charge_bytes_per_op": 5304,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 363817.6,
+            "gc_charge_bytes_per_op": 5304,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 14500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 361393.5,
+            "gc_charge_bytes_per_op": 5304,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 14500,
+              "vector": 3000,
+              "word": 14500
+            }
+          }
+        ]
+      },
+      "helpers-off": {
+        "log": "/tmp/birnam-integer-three/helpers-off-repeat.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 281429.8,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 282975.3,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "+",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 323626.4,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 404042.1,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 391570.2,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "-",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 313638.5,
+            "gc_charge_bytes_per_op": 2000,
+            "allocation_census": {
+              "behavior": 8000,
+              "block": 4000,
+              "integer": 500,
+              "method": 0,
+              "other": 8000,
+              "vector": 0,
+              "word": 6500
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 432341.8,
+            "gc_charge_bytes_per_op": 2960,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 12000
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 513416.2,
+            "gc_charge_bytes_per_op": 2960,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 12000
+            }
+          },
+          {
+            "operation": "*",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 764398.7,
+            "gc_charge_bytes_per_op": 2960,
+            "allocation_census": {
+              "behavior": 12000,
+              "block": 6000,
+              "integer": 500,
+              "method": 0,
+              "other": 12000,
+              "vector": 0,
+              "word": 12000
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 634864.9,
+            "gc_charge_bytes_per_op": 2528,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 805492.2,
+            "gc_charge_bytes_per_op": 2528,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10500
+            }
+          },
+          {
+            "operation": "/",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 887712.7,
+            "gc_charge_bytes_per_op": 2528,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10500
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 714033.2,
+            "gc_charge_bytes_per_op": 2496,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 710242.7,
+            "gc_charge_bytes_per_op": 2496,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10000
+            }
+          },
+          {
+            "operation": "mod:",
+            "gc": "off",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 937829.2,
+            "gc_charge_bytes_per_op": 2496,
+            "allocation_census": {
+              "behavior": 10000,
+              "block": 5000,
+              "integer": 500,
+              "method": 0,
+              "other": 10000,
+              "vector": 0,
+              "word": 10000
+            }
+          }
+        ]
+      },
+      "baseline-normal": {
+        "log": "/tmp/birnam-integer-three/baseline-normal-repeat.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 1179490.3,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "+",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 1018293.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "+",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 1566115.6,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "-",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 684027.1,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "-",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 680905.2,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "-",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 565173.2,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "*",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 678639.4,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "*",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 635839.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "*",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 609566.2,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "/",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 528014.6,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "/",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 500308.0,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "/",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 502247.0,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "mod:",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 588025.9,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "mod:",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 748220.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "mod:",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 999499.4,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          }
+        ]
+      },
+      "helpers-normal": {
+        "log": "/tmp/birnam-integer-three/helpers-normal-repeat.log",
+        "runs": [
+          {
+            "operation": "+",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 561125.9,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "+",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 501008.1,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "+",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 491194.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "-",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 490339.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "-",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 437827.7,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "-",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 404847.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "*",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 677280.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "*",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 731322.6,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "*",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 659817.6,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "/",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 576529.4,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "/",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 534513.4,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "/",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 556092.2,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "mod:",
+            "gc": "normal",
+            "trial": 0,
+            "iterations": 500,
+            "ns_per_op": 478437.8,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "mod:",
+            "gc": "normal",
+            "trial": 1,
+            "iterations": 500,
+            "ns_per_op": 489659.9,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          },
+          {
+            "operation": "mod:",
+            "gc": "normal",
+            "trial": 2,
+            "iterations": 500,
+            "ns_per_op": 494910.2,
+            "gc_charge_bytes_per_op": 0,
+            "allocation_census": {}
+          }
+        ]
+      }
+    }
+  }
+}

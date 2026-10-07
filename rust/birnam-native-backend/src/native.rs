@@ -20,6 +20,10 @@ pub enum Error {
 }
 #[path = "native_sync.rs"]
 mod synchronous;
+#[path = "word_expression.rs"]
+mod word_expression;
+#[path = "abi_arguments.rs"]
+mod abi_arguments;
 
 struct Function {
     portable: Option<Vec<u8>>,
@@ -31,6 +35,8 @@ struct Function {
     discarded: Option<DiscardedClone>,
     predicate: Option<NumericPredicate>,
     inline_return: Option<InlineReturn>,
+    word_helpers: bool,
+    batch_cleanup: bool,
 }
 struct InlineReturn { operand: u32, argc: u32, slot: u32 }
 fn inline_return(p: &ir::LogicalProgram<'_>, layout: &ir::PhysicalLayout) -> Option<InlineReturn> {
@@ -228,11 +234,24 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
         Literal::False => "named(&c,\"false\")".into(),
     })
 }
+/// Synchronous emission switches, supplied explicitly to the compiler.
+/// 1 = Word expressions/locals, 2 = ABI literals, 4 = authored helper plans, 8 = owner-batched root cleanup.
+#[derive(Clone, Copy)]
+pub struct Optimizations(u8);
+impl Default for Optimizations { fn default()->Self {Self(15)} }
+impl Optimizations {
+    pub fn from_bits(bits:usize)->Option<Self> {(bits<=15).then_some(Self(bits as u8))}
+    fn words(self)->bool {self.0&1!=0}
+    fn abi(self)->bool {self.0&2!=0}
+    fn helpers(self)->bool {self.0&4!=0}
+    fn roots(self)->bool {self.0&8!=0}
+}
 #[derive(Clone, Copy, Default)]
 struct Policy<'a> {
     synchronous: bool,
     dispositions: Option<&'a [bool]>,
     persist_root: bool,
+    optimizations: Optimizations,
 }
 fn portable_function(
     bytes: &[u8],
@@ -272,6 +291,8 @@ fn function(
         discarded: None,
         predicate: None,
         inline_return: None,
+        word_helpers: policy.optimizations.helpers(),
+        batch_cleanup: policy.optimizations.roots(),
     });
     let layout = ir::color_slots(program).map_err(|_| Error::Layout)?;
     let revision = Sha256::digest(source).into();
@@ -403,6 +424,8 @@ fn function(
         selection: selected,
         named,
         inline_return: if named { None } else { inline_return(program, &layout) },
+        word_helpers: policy.optimizations.helpers(),
+        batch_cleanup: policy.optimizations.roots(),
         predicate: if named {
             None
         } else {
@@ -425,6 +448,7 @@ fn array(out: &mut String, n: &str, bytes: &[u8]) {
 }
 fn module(functions: Vec<Function>) -> Vec<u8> {
     let mut out = include_str!("native_prelude.c").to_string();
+    let batch_cleanup = functions.iter().all(|f| f.batch_cleanup) as u8;
     if functions.iter().any(|f| f.inline_return.is_some()) {
         out.push_str(include_str!("native_inline_return.c"));
     }
@@ -449,7 +473,7 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
         array(&mut out, &format!("descriptor_{i}"), &f.descriptor);
         array(&mut out, &format!("selection_{i}"), &f.selection);
     }
-    out.push_str("static R initialize(const P*p,const A*a,size_t n){if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||n>3||a[0].kind!=1||a[1].kind!=1)return bad();id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};A key=obj(intern(&c,\"Roots\"));R root=raw(&c,ns,\"at:\",&key,1);if(root.status||root.value.kind!=1)return bad();roots=root.value.data.object;cache_selectors=1;keep(&c,owner);keep(&c,ns);A root_arg=obj(roots);call(&c,owner,\"retain:\",&root_arg,1);\n");
+    out.push_str("static R initialize(const P*p,const A*a,size_t n){if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||n>3||a[0].kind!=1||a[1].kind!=1)return bad();id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};A key=obj(intern(&c,\"Roots\"));R root=raw(&c,ns,\"at:\",&key,1);if(root.status||root.value.kind!=1)return bad();roots=root.value.data.object;cache_selectors=1;batch_cleanup=ROOT_BATCH_POLICY;keep(&c,owner);keep(&c,ns);A root_arg=obj(roots);call(&c,owner,\"retain:\",&root_arg,1);\n");
     for (i, f) in functions.iter().enumerate() {
         if f.portable.is_some() {
             writeln!(out, "{{A b=bytes(program_{i},sizeof(program_{i}));O encoded=call(&c,named(&c,\"Bytes\"),\"fromBytes:\",&b,1);A a=obj(encoded);codes[{i}]=call(&c,named(&c,\"CodeObject\"),\"fromCanonicalBytes:\",&a,1);if(c.failure.status)return finish(&c,(A){{0}});if(codes[{i}]==named(&c,\"nil\")||is_error(&c,codes[{i}]))return finish(&c,obj(codes[{i}]));A co=obj(codes[{i}]);call(&c,owner,\"retain:\",&co,1);}} ").unwrap();
@@ -461,6 +485,15 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
                 writeln!(out,"if(n!=3||a[2].kind!=1)return bad();implementation_{i}=keep(&c,a[2].data.object);{{A a[3]={{entry(sync_{i}),obj(owner),obj(implementation_{i})}};methods[{i}]=call(&c,named(&c,\"Method\"),\"fromNative:owner:implementation:\",a,3);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);A impl=obj(implementation_{i});call(&c,owner,\"retain:\",&impl,1);}}").unwrap();
             } else {
                 writeln!(out, "{{A a[2]={{entry(sync_{i}),obj(owner)}};methods[{i}]=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",a,2);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}} ").unwrap();
+            }
+            if f.named {
+                writeln!(out,"{{methods[{i}]=call(&c,methods[{i}],\"withWordHelperAdapter\",0,0);}}").unwrap();
+            } else if let Some(plan) = f.portable.as_deref().filter(|_|f.word_helpers).and_then(|b|birnam_artifact::portable_program::inspect(b).ok()).and_then(|p|word_expression::helper(&p).map(|plan|(plan,p.parameter_count))) {
+                let (plan,parameters)=plan;
+                array(&mut out,&format!("helper_plan_{i}"),&plan.bytes);
+                let bindings=plan.bindings.iter().flat_map(|b|b.to_le_bytes()).collect::<Vec<_>>();
+                array(&mut out,&format!("helper_bindings_{i}"),&bindings);
+                writeln!(out,"{{A a[3]={{bytes(helper_plan_{i},sizeof(helper_plan_{i})),bytes(helper_bindings_{i},sizeof(helper_bindings_{i})),word({parameters})}};methods[{i}]=call(&c,methods[{i}],\"withWordExpression:bindings:parameters:\",a,3);}}").unwrap();
             }
             continue;
         }
@@ -482,7 +515,7 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
         }
     }
     out.push_str("return finish(&c,obj(methods[0]));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n");
-    out.into_bytes()
+    out.replace("ROOT_BATCH_POLICY", &batch_cleanup.to_string()).into_bytes()
 }
 /// Compile an inert candidate factory with an exact preorder disposition for
 /// its factory and each nested Block. Its lexical lets never publish Globals.
@@ -491,6 +524,9 @@ pub fn compile_factory(
     source: &[u8],
     dispositions: &[bool],
 ) -> Result<Vec<u8>, Error> {
+    compile_factory_with_optimizations(bytes,source,dispositions,Optimizations::default())
+}
+pub fn compile_factory_with_optimizations(bytes:&[u8],source:&[u8],dispositions:&[bool],optimizations:Optimizations)->Result<Vec<u8>,Error> {
     let mut functions = Vec::new();
     portable_function(
         bytes,
@@ -499,6 +535,7 @@ pub fn compile_factory(
         &mut functions,
         Policy {
             dispositions: Some(dispositions),
+            optimizations,
             ..Policy::default()
         },
     )?;
@@ -508,9 +545,12 @@ pub fn compile_factory(
     Ok(module(functions))
 }
 pub fn compile_portable_from(bytes:&[u8],source:&[u8],filename:&[u8],persistent:bool,synchronous:bool)->Result<Vec<u8>,Error>{
+    compile_portable_with_optimizations(bytes,source,filename,persistent,synchronous,Optimizations::default())
+}
+pub fn compile_portable_with_optimizations(bytes:&[u8],source:&[u8],filename:&[u8],persistent:bool,synchronous:bool,optimizations:Optimizations)->Result<Vec<u8>,Error> {
     if persistent && synchronous{return Err(Error::Unsupported);}
     let mut functions=vec![];
-    portable_function(bytes,source,filename,&mut functions,Policy{persist_root:persistent,synchronous,..Policy::default()})?;
+    portable_function(bytes,source,filename,&mut functions,Policy{persist_root:persistent,synchronous,optimizations,..Policy::default()})?;
     Ok(module(functions))
 }
 fn named_functions(arity: u32) -> Result<Vec<Function>, Error> {
@@ -558,6 +598,8 @@ pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
         discarded: None,
         predicate: None,
         inline_return: None,
+        word_helpers: true,
+        batch_cleanup: true,
     }]))
 }
 /// Exact descriptor emitted by the current named-adapter backend. Generation

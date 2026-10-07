@@ -5,18 +5,19 @@ use birnam_abi::{
 use core::ffi::c_void;
 use std::collections::HashMap;
 pub(crate) struct Number {
-    id: Protocol,
+    pub(super) id: Protocol,
     roots: Oop,
     gc: Oop,
-    model: Oop,
+    pub(super) model: Oop,
     namespace: Oop,
-    behavior: Oop,
-    prototype: Oop,
+    pub(super) behavior: Oop,
+    pub(super) prototype: Oop,
     truth: Oop,
     falsity: Oop,
     nil: Oop,
     names: HashMap<&'static [u8], Oop>,
     thread: std::thread::ThreadId,
+    pub(super) expression_meanings: core::cell::Cell<(usize,u32)>,
 }
 pub(crate) fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -43,7 +44,7 @@ impl Number {
     ) -> Result<Operand, Outcome> {
         unsafe { self.id.send(r, self.names[name], args) }
     }
-    unsafe fn rooted(
+    pub(super) unsafe fn rooted(
         &self,
         values: &[Oop],
         f: impl FnOnce() -> Result<Operand, Outcome>,
@@ -69,7 +70,38 @@ impl Number {
         }
         result
     }
-    unsafe fn read(&self, value: Oop) -> Result<Option<u64>, Outcome> {
+    // Bounded expression roots. Retain/release order and failures match rooted.
+    pub(super) unsafe fn rooted_inline(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<Operand, Outcome>,
+    ) -> Result<Operand, Outcome> {
+        if values.len() > 33 {
+            return Err(invalid());
+        }
+        let mut tokens = [0usize; 33];
+        let mut count = 0;
+        let result = (|| unsafe {
+            for value in values {
+                tokens[count] = self
+                    .send(self.roots, b"retain:", &[Operand::object(*value)])?
+                    .as_word()
+                    .filter(|n| *n != 0)
+                    .ok_or_else(invalid)?;
+                count += 1;
+            }
+            f()
+        })();
+        for &token in &tokens[..count] {
+            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
+                != Some(1)
+            {
+                return Err(invalid());
+            }
+        }
+        result
+    }
+    pub(super) unsafe fn read(&self, value: Oop) -> Result<Option<u64>, Outcome> {
         unsafe {
             if self
                 .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
@@ -89,7 +121,7 @@ impl Number {
             Ok(Some(value.cast::<u64>().read()))
         }
     }
-    unsafe fn make(&self, bits: usize) -> Result<Operand, Outcome> {
+    pub(super) unsafe fn make(&self, bits: usize) -> Result<Operand, Outcome> {
         unsafe {
             let value = object(self.send(
                 self.model,
@@ -117,7 +149,7 @@ impl Number {
             })
         }
     }
-    fn boolean(&self, value: bool) -> Operand {
+    pub(super) fn boolean(&self, value: bool) -> Operand {
         Operand::object(if value { self.truth } else { self.falsity })
     }
 }
@@ -195,7 +227,7 @@ unsafe extern "C" fn references(
 }
 macro_rules! entry {
     ($name:ident,$op:expr) => {
-        unsafe extern "C" fn $name(
+        pub(super) unsafe extern "C" fn $name(
             context: *mut c_void,
             receiver: Oop,
             args: *const Operand,
@@ -296,6 +328,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             nil,
             names,
             thread: std::thread::current().id(),
+            expression_meanings: core::cell::Cell::new((usize::MAX,0)),
         }));
         let n = &*pointer;
         for (name, method) in METHODS.iter().copied().chain([
@@ -425,6 +458,8 @@ entry!(unsigned_less, 16);
 entry!(same_object,17);
 entry!(select_object,18);
 const METHODS: &[(&[u8], Method)] = &[
+    (b"tryPrimitiveExpression:",crate::expression::evaluate),
+    (b"tryPrimitiveExpressionAtEpoch:",crate::expression::evaluate_at_epoch),
     (b"sameObject:with:",same_object),
     (b"selectIfZero:ifNonzero:",select_object),
     (b"bitNot", bit_not),

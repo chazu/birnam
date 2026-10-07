@@ -5,7 +5,7 @@ use super::*;
 pub(super) struct Walk {
     allocations: Vec<Allocation>,
     indices: HashMap<usize, usize>,
-    marked: HashSet<usize>,
+    marked: Vec<u8>,
     pending: Vec<Oop>,
     failure: Option<Outcome>,
 }
@@ -14,16 +14,21 @@ impl Walk {
         if value.is_null() {
             return Ok(());
         }
-        if !self.indices.contains_key(&value.addr()) {
-            return Err(invalid());
-        }
-        if self.marked.insert(value.addr()) {
+        let index = self
+            .indices
+            .get(&value.addr())
+            .copied()
+            .ok_or_else(invalid)?;
+        if self.marked[index] == 0 {
+            self.marked[index] = 1;
             self.pending.push(value);
         }
         Ok(())
     }
     pub(super) fn marked(&self, value: Oop) -> bool {
-        self.marked.contains(&value.addr())
+        self.indices
+            .get(&value.addr())
+            .is_some_and(|i| self.marked[*i] != 0)
     }
 }
 pub(super) struct Inventory {
@@ -106,7 +111,7 @@ pub(super) unsafe fn validate(memory: &Memory) -> Result<usize, Outcome> {
         *memory.walk.borrow_mut() = Some(Walk {
             allocations: allocations.clone(),
             indices,
-            marked: HashSet::new(),
+            marked: vec![0; allocations.len()],
             pending: Vec::new(),
             failure: None,
         });
@@ -220,9 +225,9 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
             return Err(invalid());
         }
         *memory.walk.borrow_mut() = Some(Walk {
+            marked: vec![0; allocations.len()],
             allocations,
             indices,
-            marked: HashSet::new(),
             pending: Vec::new(),
             failure: None,
         });
@@ -306,8 +311,9 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
         Ok(walk
             .allocations
             .iter()
-            .filter(|a| !walk.marked.contains(&a.object.addr()))
-            .copied()
+            .enumerate()
+            .filter(|(i, _)| walk.marked[*i] == 0)
+            .map(|(_, a)| *a)
             .collect())
     }
 }
@@ -430,4 +436,86 @@ pub(super) unsafe extern "C" fn collect_precisely(
         }
         run(memory(context)?, &[])
     })())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn fixture(n: usize) -> Walk {
+        let allocations: Vec<_> = (0..n)
+            .map(|i| Allocation {
+                object: ptr::without_provenance_mut((i + 1) * 16),
+                size: i,
+                identity: i + 1,
+            })
+            .collect();
+        Walk {
+            indices: allocations
+                .iter()
+                .enumerate()
+                .map(|(i, a)| (a.object.addr(), i))
+                .collect(),
+            marked: vec![0; n],
+            allocations,
+            pending: Vec::new(),
+            failure: None,
+        }
+    }
+    #[test]
+    fn indexed_marks_match_hash_set_admission_pending_order_and_retirement() {
+        let mut walk = fixture(257);
+        let mut expected = HashSet::new();
+        let mut pending = Vec::new();
+        let mut seed = 73usize;
+        for _ in 0..8192 {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            let value = walk.allocations[seed % walk.allocations.len()].object;
+            if expected.insert(value.addr()) {
+                pending.push(value);
+            }
+            walk.emit(value).unwrap();
+            assert_eq!(walk.pending, pending);
+            assert!(walk.marked(value));
+        }
+        let before = walk.pending.clone();
+        walk.emit(ptr::null_mut()).unwrap();
+        assert_eq!(walk.pending, before);
+        assert!(walk.emit(ptr::without_provenance_mut(7)).is_err());
+        assert_eq!(walk.pending, before);
+        assert!(!walk.marked(ptr::without_provenance_mut(7)));
+        let dead: Vec<_> = walk
+            .allocations
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| walk.marked[*i] == 0)
+            .map(|(_, a)| a.identity)
+            .collect();
+        let reference: Vec<_> = walk
+            .allocations
+            .iter()
+            .filter(|a| !expected.contains(&a.object.addr()))
+            .map(|a| a.identity)
+            .collect();
+        assert_eq!(dead, reference);
+    }
+    #[test]
+    fn sparse_inventory_keeps_creation_order_for_unmarked_objects() {
+        let mut walk = fixture(9);
+        for i in [8, 1, 3, 1, 8] {
+            walk.emit(walk.allocations[i].object).unwrap();
+        }
+        assert_eq!(
+            walk.pending.iter().map(|o| o.addr()).collect::<Vec<_>>(),
+            vec![144, 32, 64]
+        );
+        assert_eq!(
+            walk.allocations
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| walk.marked[*i] == 0)
+                .map(|(_, a)| a.identity)
+                .collect::<Vec<_>>(),
+            vec![1, 3, 5, 6, 7, 8]
+        );
+    }
 }

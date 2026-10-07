@@ -178,3 +178,15 @@ current precision flag by send; conservative candidates are filtered through Id
 The default threshold remains one MiB. Turning automatic collection back on does
 not collect until a subsequent allocation admission; explicit collection is
 available while it is off.
+
+## Indexed mark state
+
+A collection owns an immutable creation-ordered allocation inventory and an
+address-to-index map. Marks are one byte per inventory element rather than a
+second address hash set. Admission still rejects unknown non-null Oops and
+schedules each newly marked object once, in the same LIFO order. Sweeping scans
+the same creation-ordered inventory; root, edge, retirement and finalizer sends
+remain current owner messages. Dense flags trade a byte per inventoried object
+for fewer hash operations and no mark-set growth. An almost entirely dead heap
+can use more mark bytes than a sparse set, although the allocation index remains
+necessary in either representation. See `formal/rooting/lean/GC.lean`.

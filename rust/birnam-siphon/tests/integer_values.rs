@@ -31,8 +31,8 @@ fn signed_integer_policy_preserves_bounds_errors_and_float_dispatch() {
         let policy = id.intern_name(b"integerValues").unwrap();
         assert_eq!(
             send(id, module, b"isLoaded:", &[Operand::object(policy)]).as_object(),
-            Some(named(b"false")),
-            "Integer policy must be opt-in until performance qualification"
+            Some(named(b"true")),
+            "Integer policy must be installed by the production bootstrap"
         );
         // Raw bootstrap has no stdlib Module planning helpers. Admit through
         // Codegen's current Id artifact interface, as bootstrap itself does.
@@ -142,6 +142,24 @@ fn signed_integer_policy_preserves_bounds_errors_and_float_dispatch() {
             f64::from_bits(send(id, result, b"bits", &[]).as_word().unwrap() as u64),
             2.5
         );
+        for (selector, expected) in [(b"-".as_slice(), 1.5), (b"*", 1.0), (b"/", 4.0)] {
+            let value = object(send(id, a, selector, &[Operand::object(half)]));
+            let token = retain(id, roots, value);
+            assert_eq!(
+                f64::from_bits(send(id, value, b"bits", &[]).as_word().unwrap() as u64),
+                expected
+            );
+            release(id, roots, token);
+        }
+        for (selector, other) in [(b"mod:".as_slice(), half), (b"+", named(b"nil"))] {
+            let error = object(send(id, a, selector, &[Operand::object(other)]));
+            let token = retain(id, roots, error);
+            assert_eq!(
+                object(send(id, error, b"kind", &[])),
+                id.intern_name(b"typeMismatch").unwrap()
+            );
+            release(id, roots, token);
+        }
         let error = object(send(
             id,
             named(b"Error"),

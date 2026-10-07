@@ -8,7 +8,9 @@ mod image;
 mod machine;
 mod native_tier;
 mod native_abi;
+mod word_helper;
 mod numeric;
+mod program_shape;
 mod numeric_operator;
 mod numeric_predicate;
 mod objects;
@@ -36,11 +38,14 @@ struct Callable {
     implementation: Option<Oop>,
     image: Option<Rc<image::Image>>,
     native_signature: Option<birnam_abi::native_signature::Signature>,
+    word_expression: Option<Rc<word_helper::Plan>>,
+    word_helper_adapter: bool,
 }
 struct Execution {
     namespace: Oop,
     native_return_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
+    copy_program_shape_bytes: Cell<bool>,
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
     id: Protocol,
@@ -216,6 +221,8 @@ impl Execution {
             candidate: None,
             implementation: None,
             native_signature: None,
+            word_expression: None,
+            word_helper_adapter: false,
             execution: self,
             object: value,
             entry,
@@ -230,7 +237,7 @@ impl Execution {
     unsafe fn capture(&self, entry: NativeEntry) -> Result<Operand, Outcome> {
         if let Some(method) = self.selected(entry) {
             let _roots = self.scope(&[method]);
-            let (entry, owner, image, resumable, inline, implementation, native_signature) = {
+            let (entry, owner, image, resumable, inline, implementation, native_signature, word_expression, word_helper_adapter) = {
                 let values = self.methods.borrow();
                 let value = values.get(&method.addr()).ok_or_else(invalid)?;
                 (
@@ -241,6 +248,8 @@ impl Execution {
                     value.inline,
                     value.implementation,
                     value.native_signature.clone(),
+                    value.word_expression.clone(),
+                    value.word_helper_adapter,
                 )
             };
             let value = unsafe { self.make(entry, owner, image) }?;
@@ -250,6 +259,8 @@ impl Execution {
             captured.inline = inline;
             captured.implementation = implementation;
             captured.native_signature = native_signature;
+            captured.word_expression = word_expression;
+            captured.word_helper_adapter = word_helper_adapter;
             return Ok(value);
         }
         let image = image::Image::retain(entry.method.ok_or_else(invalid)? as *const c_void)
@@ -318,6 +329,9 @@ impl Execution {
         self.depth
             .set(self.depth.get().checked_add(1).ok_or_else(invalid)?);
         let _invocation = Invocation(self);
+        if let Some(result) = unsafe {word_helper::try_result(self, method, receiver, args)}? {
+            return Ok(result);
+        }
         unsafe {
             entry.method.ok_or_else(invalid)?(entry.context, receiver, args.as_ptr(), args.len())
         }
@@ -752,8 +766,22 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
     })())
 }
 
+// Owner policy switch for paired diagnostics. It changes only pure byte
+// validation work; code-owner and Bytes messages remain live in both modes.
+unsafe extern "C" fn program_shape_borrowing(c:*mut c_void,_:Oop,a:*const Operand,n:usize)->Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [enabled]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        let enabled=enabled.as_word().ok_or_else(invalid)?;
+        if enabled>1 {return Err(invalid());}
+        s.copy_program_shape_bytes.set(enabled==0);
+        Ok(Operand::unit())
+    })())
+}
 const NAMES: &[&[u8]] = &[
+    b"programShapeBorrowing:",
     b"sendNativeTo:selector:arguments:signature:resultFactory:",
+    b"tryNativeArguments:",
     b"wordResultOf:selector:",
     b"block:withNativeSignature:",
     b"bytesResultOf:selector:",
@@ -772,6 +800,8 @@ const NAMES: &[&[u8]] = &[
     b"invokeOn:",
     b"invokeOn:arguments:",
     b"methodFor:",
+    b"withWordExpression:bindings:parameters:",
+    b"withWordHelperAdapter",
     b"addMethod:as:",
     b"checkpoint",
     b"retirementReady",
@@ -840,6 +870,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             namespace,
             native_return_bytes: RefCell::new(Vec::new()),
             machines: RefCell::new(machine::State::new()),
+            copy_program_shape_bytes: Cell::new(false),
             numeric: RefCell::new(numeric::Registry::default()),
             requests: RefCell::new(Vec::new()),
             id,
@@ -865,11 +896,13 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         }));
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), roots as Method),
+            (behavior,b"programShapeBorrowing:",program_shape_borrowing),
             (behavior, b"referencesOf:do:", references),
             (behavior, b"implementationOfEntry:", implementation_of_entry),
             (behavior, b"methodOfEntry:", method_of_entry),
             (behavior, b"binding:value:weak:", binding),
             (behavior, b"sendNativeTo:selector:arguments:signature:resultFactory:", native_abi::send),
+            (behavior, b"tryNativeArguments:", native_abi::try_send),
             (behavior, b"block:withNativeSignature:", native_abi::block_with_signature),
             (behavior, b"wordResultOf:selector:", native_abi::word_result),
             (behavior, b"bytesResultOf:selector:", native_abi::bytes_result),
@@ -880,6 +913,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"retirementReady", retirement_ready),
             (method_behavior, b"fromNative:owner:", from_native),
             (method_behavior,b"fromNative:owner:implementation:",from_native_implementation),
+            (method_behavior,b"withWordExpression:bindings:parameters:",word_helper::attach),
+            (method_behavior,b"withWordHelperAdapter",word_helper::adapter),
             (method_behavior, b"clone", identity),
             (method_behavior, b"invokeOn:", invoke),
             (method_behavior, b"invokeOn:arguments:", invoke_arguments),

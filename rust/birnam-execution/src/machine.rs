@@ -432,18 +432,16 @@ unsafe fn new_block_input(s:&Execution,args:&[Operand],portable:bool,references:
         let raw = unsafe { s.id.send_named(bytes, b"bytes", &[]) }?
             .as_bytes()
             .ok_or_else(invalid)?;
-        let owned = unsafe { borrowed_bytes(raw.pointer, raw.length) }
-            .ok_or_else(invalid)?
-            .to_vec();
-        let program =
-            birnam_artifact_codec::portable_program::inspect(&owned).map_err(|_| invalid())?;
-        if expected.is_some_and(|n| {
-            n != program.capture_count as usize || arity != program.parameter_count as usize
-        }) {
+        // Current owner messages above remain mandatory. The parser is callback-free;
+        // only owned shape scalars survive into the next send.
+        let shape = program_shape::inspect(
+            unsafe { borrowed_bytes(raw.pointer, raw.length) }.ok_or_else(invalid)?, s.copy_program_shape_bytes.get()
+        ).map_err(|_| invalid())?;
+        if expected.is_some_and(|n| n != shape.captures || arity != shape.parameters) {
             return Err(invalid());
         }
-        arity = program.parameter_count as usize;
-        expected = Some(program.capture_count as usize);
+        arity = shape.parameters;
+        expected = Some(shape.captures);
     }
     let captures = if references {
         let storage=object(captures)?;
@@ -1183,12 +1181,9 @@ unsafe extern "C" fn operation(
                     s.id.send_named(encoded, b"bytes", &[])?
                         .as_bytes()
                         .ok_or_else(invalid)?;
-                let bytes = borrowed_bytes(raw.pointer, raw.length)
-                    .ok_or_else(invalid)?
-                    .to_vec();
-                let count = birnam_artifact_codec::portable_program::inspect(&bytes)
-                    .map_err(|_| invalid())?
-                    .capture_count;
+                let count = program_shape::inspect(
+                    borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?, s.copy_program_shape_bytes.get()
+                ).map_err(|_| invalid())?.captures;
                 let vector = object(s.id.send_named(
                     s.namespace,
                     b"at:",
@@ -2541,4 +2536,15 @@ unsafe fn controls_current(s: &Execution, machine: Oop, tier: bool) -> Result<bo
         }
         Ok(s.send(s.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch))
     }
+}
+
+// Internal queries inspect only Execution-owned Block storage and operations.
+pub(super) fn helper_body(s:&Execution,block:Oop)->Option<Oop> {
+    let state=s.machines.borrow();
+    if state.storage.family_of(block)!=Some(state.block_behavior) || !state.block_codes.contains_key(&block.addr()) || state.image_shells.contains(&block.addr()) {return None;}
+    state.storage.read_payload_word(block,0).map(|v|ptr::with_exposed_provenance_mut(v))
+}
+pub(super) fn default_capture_entry(s:&Execution)->Option<NativeEntry> {
+    let state=s.machines.borrow();
+    state.contexts.iter().find(|o|o.kind==Op::BlockCaptureWord).map(|o|NativeEntry::new(operation,ptr::from_ref(&**o).cast_mut().cast()))
 }
