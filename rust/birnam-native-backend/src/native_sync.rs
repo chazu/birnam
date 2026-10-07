@@ -34,11 +34,12 @@ pub(super) fn function(
     for i in 0..program.parameter_count {
         writeln!(out, "O b{i}=object(&c,args[{i}]);").unwrap();
     }
-    for i in 0..program.capture_count {
-        let binding = program.parameter_count + i;
-        // Ask the Block owner, rather than inspecting its payload or dispatching
-        // an overridable inspection method on the particular Block instance.
-        writeln!(out, "A capture_{i}[2]={{word({i}),obj(self)}};O b{binding}=call(&c,named(&c,\"Block\"),\"captureWord:of:\",capture_{i},2);").unwrap();
+    if program.capture_count != 0 {
+        writeln!(out, "O captures[{}];load_captures(&c,self,captures,{});if(c.failure.status)return finish(&c,(A){{0}});",program.capture_count,program.capture_count).unwrap();
+        for i in 0..program.capture_count {
+            let binding = program.parameter_count + i;
+            writeln!(out, "O b{binding}=captures[{i}];").unwrap();
+        }
     }
     let mut next = 0;
     let word_plans = if policy.optimizations.words() {super::word_expression::plans(&program)} else {Default::default()};

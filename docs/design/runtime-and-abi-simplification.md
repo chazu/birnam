@@ -314,18 +314,15 @@ These are independent simplification candidates, not instructions to run concurr
   invalid-carrier, precise-GC and synchronous/resumable tests pass. See the
   [combined construction result](closure-construction-simplification.md).
 
-- [ ] **W08 — Simplify capture construction/access** (C18, C13).
-  **Construction complete 2026-10-07:** both emitters pass capture Object operands
-  directly to the current Block owner; the temporary reference-container route and
-  its unused allocator are deleted. Capture access remains pending. Combined W07
-  and construction work reduces total addition sends by 55.1%; no virtual Blocks
-  or shared Block behaviors are introduced. See the result linked above.
-  ObjectModel validates and fills/snapshots its own reference storage; Execution
-  consumes only message results. Protect input captures before dependency sends;
-  copy native snapshots before another callback. Acceptance: capture order/aliases,
-  nil slots, bounds/layout errors, overridden slot/constructor methods, collection,
-  CodeObject consistency and image/continuation reachability. These are generic
-  slot operations, not a new compiler-specific foreign-layout API.
+- [x] **W08 — Simplify capture construction/access** (C18, C13).
+  Construction passes ordered Object operands directly to the owner. Access now
+  uses direct Id reader messages with one current-owner resolution per invocation;
+  pure reads omit allocation admission, and the canonical reader borrows captures
+  under live Block coverage. Replacement/custom readers retain fresh results.
+  The [access result](capture-access-simplification.md) records callback/mutation/GC,
+  bounded task and formal evidence: total sends fall another 20.9%, to 1,367.375
+  per addition. Path-specific liveness/unused binding reads are optional later work,
+  not part of this completed protocol simplification.
 
 - [ ] **W09 — Replace duplicated invocation protection with one covering scope** (C11–C13).
   **Paused scoped work.** `Execution::invoke_body` already installs an Execution scope

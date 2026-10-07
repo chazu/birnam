@@ -1,5 +1,9 @@
 # Closure construction simplification
 
+Follow-up: [capture access simplification](capture-access-simplification.md)
+reduces addition further to 1,367.375 sends. The measurements below describe the
+preceding construction slice.
+
 Implemented 2026-10-07. CodeObject now answers checked parameter/capture counts
 through native Word messages, and generated Block literals pass captures directly
 to the current Block owner. All cross-owner operations continue through Id.

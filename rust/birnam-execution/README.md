@@ -347,7 +347,7 @@ identity representation is introduced. See [scope and tests](../../docs/design/9
 admission through current Id `nativeBindingsMatch:`. Initialization asks Id
 `nativeBindingQuerySemantics:for:` and GC `internQuerySemantics:` to describe
 only their own implementations in the requested roles. This caches code meaning,
-not dispatch selection or allocation permission. Every attempt fences the four
+not dispatch selection or allocation permission. Every attempt fences the five
 query/interning entries and the ABI entry, including opaque context equality.
 Unknown or changed services execute the original guard path. Native payloads
 remain with their owners; all target operations still use current Id messages.
@@ -373,3 +373,23 @@ compiler-only `ObjectModel allocateReferenceSlots:`, copied/borrowed shape parse
 and `programShapeBorrowing:` diagnostic switch are removed. Existing compiled
 artifacts containing those removed calls must be explicitly rebuilt; no shim is
 installed and image startup does not silently recompile supplied machine code.
+
+## Direct capture reads (2026-10-07)
+
+`captureWordAt:` receives a native Word index on a Block and answers the captured
+Object (nil for an invalid index). It is an ordinary Id send reading only this
+owner's storage, with no allocation admission. The factory `captureWord:of:`
+remains for inspection/type fallback and also needs no allocation admission.
+
+`Block captureReadModeOf:` accepts a Block Object and returns native Word 0 for
+ordinary protected reads, 1 for canonical pure borrowing, or 2 for an unsupported
+nonportable receiver. Generated synchronous bodies resolve the owner once, then
+read through the Block receiver. Mode 1 requires an atomic current-binding check
+of the reader, the mode query and canonical Id query services (including that
+check's own binding). It covers only the initialized Block's immutable capture
+references while the caller keeps the Block live. Custom/replaced readers use
+normal result roots; native grant/query providers must honor their contracts.
+No selector lookup or arbitrary callback occurs between positive admission and
+these pure projections. Word-helper admission tracks the new direct reader.
+
+See [measurement and proof limits](../../docs/design/capture-access-simplification.md).

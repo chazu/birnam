@@ -580,7 +580,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
             (b"CodeObjectVt", b"fromCanonicalBytes:"),
             (b"CodeObjectVt", b"canonicalBytesOf:"),
             (b"BlockVt", b"fromMethod:codeObject:captures:"),
-            (b"BlockVt", b"captureWord:of:"),
+            (b"BlockVt", b"captureWordAt:"),
             (b"IntegerVt", b"fromWord:"),
         ] {
             let vt = if family == b"BlockVt" {

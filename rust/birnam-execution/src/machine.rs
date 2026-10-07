@@ -1062,6 +1062,8 @@ enum Op {
     BlockCaptureCount,
     BlockCapture(bool),
     BlockCaptureWord,
+    BlockReadWord,
+    BorrowCaptures,
     CloneBlock,
     Prepare,
     New,
@@ -1120,9 +1122,25 @@ unsafe extern "C" fn operation(
                 roots.keep(v);
             }
         }
-        // GC owns mutation-phase admission. No engine borrow crosses this send.
-        s.send(s.gc, b"prepareAllocation", &[])?;
+        // Word-indexed capture reads are owner-local, nonallocating inspection.
+        // The borrowing query only describes the current reader; it neither
+        // allocates nor changes collector phase. Mutation admission remains below.
+        if !matches!(op.kind, Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures) {
+            s.send(s.gc, b"prepareAllocation", &[])?;
+        }
         match op.kind {
+            Op::BorrowCaptures => {
+                let [target] = args else { return Err(invalid()); };
+                let target = object(*target)?;
+                if helper_body(s, target).is_none() { return Ok(Operand::word(2)); }
+                let entry = default_capture_entry(s).ok_or_else(invalid)?;
+                let grant = { let state = s.machines.borrow();
+                    state.contexts.iter().find(|o| o.kind == Op::BorrowCaptures)
+                        .map(|o| NativeEntry::new(operation, ptr::from_ref(&**o).cast_mut().cast()))
+                        .ok_or_else(invalid)? };
+                return Ok(Operand::word(usize::from(crate::binding_proof::matches_all(
+                    s, &[(receiver, b"captureReadModeOf:", grant), (target, b"captureWordAt:", entry)], true)?)));
+            }
             Op::InvalidRequest if args.is_empty() => return Err(invalid()),
             Op::PreserveFailures => {
                 let [block] = args else { return Err(invalid()); };
@@ -1190,15 +1208,15 @@ unsafe extern "C" fn operation(
                 state.image_shells.remove(&target.addr());
                 return Ok(Operand::object(target));
             }
-            Op::BlockCode | Op::BlockCaptureCount | Op::BlockCapture(_) | Op::BlockCaptureWord => {
+            Op::BlockCode | Op::BlockCaptureCount | Op::BlockCapture(_) | Op::BlockCaptureWord | Op::BlockReadWord => {
                 let (target, index) = match (op.kind, args) {
                     (Op::BlockCode | Op::BlockCaptureCount, []) => (receiver, None),
-                    (Op::BlockCapture(false), [i]) => (receiver, Some(*i)),
+                    (Op::BlockCapture(false) | Op::BlockReadWord, [i]) => (receiver, Some(*i)),
                     (Op::BlockCapture(true) | Op::BlockCaptureWord, [i, target]) => (object(*target)?, Some(*i)),
                     _ => return Ok(Operand::object(s.nil)),
                 };
                 let index = if let Some(i) = index {
-                    let n = if matches!(op.kind,Op::BlockCaptureWord) { i } else { s.send(s.integer_factory()?, b"wordOf:", &[i])? };
+                    let n = if matches!(op.kind,Op::BlockCaptureWord | Op::BlockReadWord) { i } else { s.send(s.integer_factory()?, b"wordOf:", &[i])? };
                     let Some(n) = n.as_word().filter(|n| *n <= isize::MAX as usize) else {
                         return Ok(Operand::object(s.nil));
                     };
@@ -1649,6 +1667,8 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"captureAt:",
     b"captureAt:of:",
     b"captureWord:of:",
+    b"captureWordAt:",
+    b"captureReadModeOf:",
     b"invalidRequest",
     b"evaluatePreservingFailures:",
     b"fromStep:descriptor:selection:owner:",
@@ -2196,6 +2216,8 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         install_op(s, block_vtable, b"captureAt:", Op::BlockCapture(false))?;
         install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;
         install_op(s, block_vtable, b"captureWord:of:", Op::BlockCaptureWord)?;
+        install_op(s, block_vtable, b"captureWordAt:", Op::BlockReadWord)?;
+        install_op(s, block_vtable, b"captureReadModeOf:", Op::BorrowCaptures)?;
         install_op(s, block_vtable, b"clone", Op::CloneBlock)?;
         install_op(s, continuation_vtable, b"clone", Op::Disabled)?;
         install_op(s, continue_action_vtable, b"kind", Op::Kind)?;
@@ -2511,5 +2533,5 @@ pub(super) fn helper_body(s:&Execution,block:Oop)->Option<Oop> {
 }
 pub(super) fn default_capture_entry(s:&Execution)->Option<NativeEntry> {
     let state=s.machines.borrow();
-    state.contexts.iter().find(|o|o.kind==Op::BlockCaptureWord).map(|o|NativeEntry::new(operation,ptr::from_ref(&**o).cast_mut().cast()))
+    state.contexts.iter().find(|o|o.kind==Op::BlockReadWord).map(|o|NativeEntry::new(operation,ptr::from_ref(&**o).cast_mut().cast()))
 }

@@ -140,28 +140,8 @@ pub(super) unsafe fn try_result(
         {
             return Ok(None);
         }
-        let block = s.value_factory(b"Block")?;
-        roots.keep(block);
-        if s.id
-            .send_named(
-                s.id.receiver,
-                b"usesDefaultLookup:",
-                &[Operand::object(block)],
-            )?
-            .as_word()
-            != Some(1)
-            || s.id
-                .send_named(
-                    s.id.receiver,
-                    b"bind:to:",
-                    &[
-                        Operand::object(s.id.intern_name(b"captureWord:of:")?),
-                        Operand::object(block),
-                    ],
-                )?
-                .as_entry()
-                != machine::default_capture_entry(s)
-        {
+        let capture_entry = machine::default_capture_entry(s).ok_or_else(invalid)?;
+        if !crate::binding_proof::matches_all(s, &[(implementation, b"captureWordAt:", capture_entry)], true)? {
             return Ok(None);
         }
         let mut operands = vec![Operand::word(epoch), Operand::bytes(&plan.bytes)];
@@ -175,12 +155,9 @@ pub(super) unsafe fn try_result(
                 v
             } else {
                 object(s.id.send_named(
-                    block,
-                    b"captureWord:of:",
-                    &[
-                        Operand::word(b as usize - plan.parameters),
-                        Operand::object(implementation),
-                    ],
+                    implementation,
+                    b"captureWordAt:",
+                    &[Operand::word(b as usize - plan.parameters)],
                 )?)?
             };
             roots.keep(value);

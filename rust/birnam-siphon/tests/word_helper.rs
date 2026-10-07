@@ -201,13 +201,13 @@ fn authored_word_helpers_guard_body_invocation_captures_and_primitives() {
             b"behaviorOf:",
             &[Operand::object(block)],
         ));
-        let capture = bind(block, b"captureWord:of:");
+        let capture = bind(block, b"captureWordAt:");
         h.entry = capture;
         h.calls.set(0);
         install(
             id,
             block_vt,
-            b"captureWord:of:",
+            b"captureWordAt:",
             forward,
             (&raw mut h).cast(),
         );
@@ -218,7 +218,7 @@ fn authored_word_helpers_guard_body_invocation_captures_and_primitives() {
         install(
             id,
             block_vt,
-            b"captureWord:of:",
+            b"captureWordAt:",
             capture.method.unwrap(),
             capture.context,
         );

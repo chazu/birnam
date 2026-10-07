@@ -46,7 +46,7 @@ struct Execution {
     native_return_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
     batch_binding_proofs: Cell<bool>,
-    binding_proof_services: [Option<NativeEntry>; 4],
+    binding_proof_services: [Option<NativeEntry>; 5],
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
     id: Protocol,

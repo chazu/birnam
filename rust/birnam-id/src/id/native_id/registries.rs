@@ -421,6 +421,7 @@ unsafe extern "C" fn binding_query_semantics(
         b"usesDefaultLookup:" => Some(uses_default_lookup as native::Method),
         b"bind:to:" => Some(bind as native::Method),
         b"symbolNamed:" => Some(symbol_named as native::Method),
+        b"nativeBindingsMatch:" => Some(native_bindings_match as native::Method),
         _ => None,
     };
     let admitted = expected.is_some_and(|method| entry == NativeEntry::new(method, context));

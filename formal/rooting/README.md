@@ -255,3 +255,14 @@ It reads only Id-owned metadata and declines custom lookup without calling it.
 A successful proof and the immediate Root mutation have no intervening foreign
 send. Root owner APIs keep the complete logical token sequence; physical root
 coalescing and its stronger observer lease remain unimplemented.
+
+## Capture-result coverage
+
+`Capture.lean` proves reachability equivalence when additional result roots are
+already reachable from covering roots, including a live Block's capture edge.
+Fresh results need a separate coverage premise. `CaptureReads.tla` checks pure
+borrowed reads, protected replacement results and cleanup, with required failures
+for invalid grants, missing fresh roots, early scope exit and broken edges.
+The runtime correspondence and limits are recorded in
+[the capture-access result](../../docs/design/capture-access-simplification.md).
+These are abstract models, not a proof of native providers or the emitted ABI.

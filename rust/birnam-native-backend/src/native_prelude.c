@@ -65,6 +65,28 @@ static O selector(Call*c,const char*n){
  return intern(c,n);
 }
 static O named(Call*c,const char*n){A a=obj(selector(c,n));return call(c,ns,"at:",&a,1);}
+/* Resolve the owner once, then dispatch capture reads on the actual Block.
+   All selector identities are resolved BEFORE checking the borrowing mode.
+   1 = canonical callback-free reads covered by this live Block; 0 = retain
+   replaced/custom results; 2 = nonportable receiver, use owner inspection to
+   preserve Method invokeOn: behavior for receivers that have no Block messages.
+   Every read is an Id message, never a call to a remembered executable. */
+static void load_captures(Call*c,O self,O*out,size_t count){
+ O factory=named(c,"Block");
+ O read=selector(c,"captureWordAt:"),permit=selector(c,"captureReadModeOf:"),inspect=selector(c,"captureWord:of:");
+ if(c->failure.status)return;
+ A target=obj(self);R grant=id.message(id.context,factory,permit,&target,1);
+ size_t mode=0;
+ if(grant.status){if(grant.status!=6){c->failure=grant;return;}}
+ else if(grant.value.kind==2&&grant.value.data.word<=2)mode=grant.value.data.word;
+ else {c->failure=bad();return;}
+ for(size_t i=0;i<count&&!c->failure.status;i++){
+  A arguments[2]={word(i),obj(self)};
+  R result=id.message(id.context,mode==2?factory:self,mode==2?inspect:read,arguments,mode==2?2:1);
+  if(result.status){c->failure=result;return;}
+  O value=object(c,result.value);if(!c->failure.status)out[i]=mode==1?value:keep(c,value);
+ }
+}
 /* Error is installed from authored code after the compiler floor exists.
    Before that, native failures propagate and no Error family is available. */
 static int is_error(Call*c,O value){A key=obj(selector(c,"Error"));A factory=send(c,ns,"at:",&key,1);if(!c->failure.status&&factory.kind==0)return 0;object(c,factory);return call(c,value,"isError",0,0)==named(c,"true");}

@@ -5,6 +5,7 @@ import Memo
 import Borrow
 import Registration
 import Invocation
+import Capture
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -60,3 +61,8 @@ import Invocation
 #print axioms Birnam.Invocation.input_survives_child_exit
 #print axioms Birnam.Invocation.unprotected_result_can_be_collected
 #print axioms Birnam.Invocation.uncovered_input_is_not_equivalent
+
+#print axioms Birnam.Capture.reachable_results_do_not_need_separate_roots
+#print axioms Birnam.Capture.capture_edge_covers_result
+#print axioms Birnam.Capture.borrowed_needed_survives
+#print axioms Birnam.Capture.fresh_result_requires_coverage
