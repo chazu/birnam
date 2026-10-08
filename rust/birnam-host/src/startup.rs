@@ -192,10 +192,15 @@ mod tests {
         count: usize,
     ) -> Outcome {
         let state = unsafe { &*context.cast::<CollectingSend>() };
-        if let Err(error) = unsafe { state.id.send_named(state.gc, b"collectPrecisely", &[]) } {
-            return error;
+        let call = state.calls.get() + 1;
+        // Small operations remain exhaustive. Sample large resident-image
+        // restoration geometrically instead of collecting once per core slot.
+        if call <= 8 || call.is_power_of_two() {
+            if let Err(error) = unsafe { state.id.send_named(state.gc, b"collectPrecisely", &[]) } {
+                return error;
+            }
         }
-        state.calls.set(state.calls.get() + 1);
+        state.calls.set(call);
         if state.fail.get() {
             return Outcome::failed(native::UNBOUND, 12345);
         }

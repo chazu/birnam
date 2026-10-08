@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "Fresh release install and targeted/broad regression gates for runtime repair; optional Miri and release-archive gates not run",
+  "base_commit": "172a43fc7bdbcd4df4799db2dd4d157764439273",
+  "changes_uncommitted": true,
+  "evidence": {
+    "workspace-final.log": {
+      "path": ".cargo-target/fixes/20261008/workspace-final.log",
+      "sha256": "bda6949fcf5873a37995327a03681c77f834445765c2b96c5b2a562da971c7ac",
+      "bytes": 68514
+    },
+    "birnam-final.log": {
+      "path": ".cargo-target/fixes/20261008/birnam-final.log",
+      "sha256": "cc5dbb6fcdce4ce601530679bb4fe21f62796c3056bf5026bd920cc9fe84b9d8",
+      "bytes": 22237
+    },
+    "native-all-final.log": {
+      "path": ".cargo-target/fixes/20261008/native-all-final.log",
+      "sha256": "ef1261bd0aaf482af1ddc15a032ab9484ad1a429cc4b4a41fb871bfcb3d95159",
+      "bytes": 19339
+    },
+    "image-installed.log": {
+      "path": ".cargo-target/fixes/20261008/image-installed.log",
+      "sha256": "a96b4e7e294470276ae4b4e9d630e3358d7b7fafa583ead39bd9eb6c1e6fa23e",
+      "bytes": 162
+    },
+    "compiled-unit.log": {
+      "path": ".cargo-target/fixes/20261008/compiled-unit.log",
+      "sha256": "c5b2a19f0af308ff0cbfcbe6dd183042152c87662751d8c2b8df50df9f5d2db7",
+      "bytes": 68
+    },
+    "host-generation-final.log": {
+      "path": ".cargo-target/fixes/20261008/host-generation-final.log",
+      "sha256": "73e3613f624a46362a9b7cf9c7ca69c04364e3bea642e32b7ae9637538cd918b",
+      "bytes": 3708
+    },
+    "host-image-final-recheck.log": {
+      "path": ".cargo-target/fixes/20261008/host-image-final-recheck.log",
+      "sha256": "834c9a52317ae800b7f7dd15e23d219c2b6645732d30d82b4b24fc63ce316949",
+      "bytes": 1540
+    },
+    "image-policy-final.log": {
+      "path": ".cargo-target/fixes/20261008/image-policy-final.log",
+      "sha256": "4a687a8cfb2e77c83b6ed80086b30f7f855e4e86c5998c329dd4d5f783e70b6c",
+      "bytes": 1007
+    },
+    "native-compilers.log": {
+      "path": ".cargo-target/fixes/20261008/native-compilers.log",
+      "sha256": "c0f39218a3ca35998736af8118165487182d1ddac134c66f638a8ece6218b977",
+      "bytes": 335
+    },
+    "multicore.log": {
+      "path": ".cargo-target/fixes/20261008/multicore.log",
+      "sha256": "fc7e762c10cc1de250aac3130d6c72d8865e60c04de75181b651557f7df850d2",
+      "bytes": 148
+    },
+    "formal.log": {
+      "path": ".cargo-target/fixes/20261008/formal.log",
+      "sha256": "ed102e4f68b496a1afb7958e2b105811ff384f16de1e602289f0634cd8e8f32f",
+      "bytes": 2665
+    },
+    "docgen-final.log": {
+      "path": ".cargo-target/fixes/20261008/docgen-final.log",
+      "sha256": "54100b31713cb503aa129266e5e1121472931676d006787cf74f7f9ecfb9a9ec",
+      "bytes": 56
+    },
+    "install-final.log": {
+      "path": ".cargo-target/fixes/20261008/install-final.log",
+      "sha256": "4ae6af4dafe4021946f9fd1da94841f369c110a8b33e566268b38959d9d2df99",
+      "bytes": 835
+    }
+  },
+  "rust_tests": 318,
+  "birnam_checks": 535,
+  "native_test_binaries": 42,
+  "compiled_unit_checks": 57,
+  "image_admission_cases": 132,
+  "image_byte_identical_roundtrips": 16,
+  "lean_theorems": 101,
+  "validation_prefix": "/tmp/birnam-fixed-final-20261008/prefix",
+  "production_files": {
+    "modules/image-format.birnam": "c1ef5097acb0dfe55585f5143b9323e9e09b2656810171f05925adaefe1f87c1",
+    "modules/stdlib.birnam": "2c6bcb55c6cd781fbcea320802cb3e77cde800e3fbd6598a0d2c432d1a35a26e",
+    "modules/doc.birnam": "54f467c2f736e2711941f329107489d5d4a4c1f752dc988a862140d51e5b665f",
+    "rust/birnam-id/src/id/vtable.rs": "a2a3aac0b4ebcd9018e49744d4c9e672f982dd22265e3c265c761dcb331c9c66",
+    "rust/birnam-id/src/id/native_id/registries.rs": "7f61befd685391033591f01c653acc05d4d7c89e812bd408a4afdf41b482b5c5",
+    "rust/birnam-generation/src/candidate_preparation.rs": "02de0d4fe3711e0cfd1532a82f1a41459391ac1dc1ffb64ba74b4b41e9ecf5d7",
+    "rust/birnam-vector/src/lib.rs": "4e80243ade3439895a195cdf95115058102a9fd67f38e8021ad6a092e956d5dc"
+  }
+}

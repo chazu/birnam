@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "source_commit": "172a43fc7bdbcd4df4799db2dd4d157764439273",
+  "scope": "Diagnosis and bounded controlled experiments; no production fixes or full-suite pass claimed",
+  "evidence": {
+    "epoch.birnam": {
+      "path": ".cargo-target/diagnosis/20261008/epoch.birnam",
+      "sha256": "d9501e6c8e32834ad451c8e52d367b3f94d13f246f92c46bdc309a3b05db19a3",
+      "bytes": 377
+    },
+    "epoch-five.birnam": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-five.birnam",
+      "sha256": "df5f6bb1b7432a1d3f86ef0d81f2c0a2d73c1d2241833b4b23d387d8b17c8cf0",
+      "bytes": 1908
+    },
+    "epoch-no-auto.birnam": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-no-auto.birnam",
+      "sha256": "074a3d356c8f6655da1c20eef04a85a79596d1aee26386285cd81bbadd359d70",
+      "bytes": 1932
+    },
+    "epoch-repro.log": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-repro.log",
+      "sha256": "745763b5ca9780cf3f2a5ad462ceb4d9e82ab6edf2c892caf071c6eec26a1855",
+      "bytes": 8
+    },
+    "epoch-five.log": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-five.log",
+      "sha256": "100b05163b44c7743c6f867fe999e61a6b5f9f0d7747233d0a34cc703313ec79",
+      "bytes": 118
+    },
+    "epoch-precise.log": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-precise.log",
+      "sha256": "100b05163b44c7743c6f867fe999e61a6b5f9f0d7747233d0a34cc703313ec79",
+      "bytes": 118
+    },
+    "epoch-trace-parents.log": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-trace-parents.log",
+      "sha256": "064dd152c0042c24f5e5fa9800cebd5ea0a50ab2f44df2ec7a73433f2e3b1f44",
+      "bytes": 1987
+    },
+    "epoch-no-auto.log": {
+      "path": ".cargo-target/diagnosis/20261008/epoch-no-auto.log",
+      "sha256": "745763b5ca9780cf3f2a5ad462ceb4d9e82ab6edf2c892caf071c6eec26a1855",
+      "bytes": 8
+    },
+    "floor-no-image.log": {
+      "path": ".cargo-target/diagnosis/20261008/floor-no-image.log",
+      "sha256": "25c0980402a0392709458d3ebb6ef3a18614c4cc0ca36d3fe4bec92a1792a12c",
+      "bytes": 869
+    },
+    "floor-matrix.log": {
+      "path": ".cargo-target/diagnosis/20261008/floor-matrix.log",
+      "sha256": "7848de2480d755053036217a6ee45dfce7f26881516be02a61faedd6752f9d33",
+      "bytes": 2388
+    },
+    "image-error.birnam": {
+      "path": ".cargo-target/diagnosis/20261008/image-error.birnam",
+      "sha256": "cd6f79843a7f8decbc42ff8e631adc3d84287d55d96d9328ae435b10d9f1d0b0",
+      "bytes": 147
+    },
+    "image-error.log": {
+      "path": ".cargo-target/diagnosis/20261008/image-error.log",
+      "sha256": "3afd268cd9213d21c53c760efb20390cae9820d567733aa792a131dc9336a362",
+      "bytes": 26
+    },
+    "image-prefailed.birnam": {
+      "path": ".cargo-target/diagnosis/20261008/image-prefailed.birnam",
+      "sha256": "b3d3c86126ae2c5ad63212be2195617b2d21400ff0377af69fe8864b248628cd",
+      "bytes": 317
+    },
+    "image-prefailed.log": {
+      "path": ".cargo-target/diagnosis/20261008/image-prefailed.log",
+      "sha256": "4138863bb4868050c7cc1ca9b52889c472395185f64480f23e42c2e60742d0d4",
+      "bytes": 48
+    },
+    "multicore-no-ticker-gc.log": {
+      "path": ".cargo-target/diagnosis/20261008/multicore-no-ticker-gc.log",
+      "sha256": "635942ff64749adc74fb9bd4ad694d61b3f8faec94546c4d6f03f96de0594473",
+      "bytes": 148
+    },
+    "multicore-gc-duration.log": {
+      "path": ".cargo-target/diagnosis/20261008/multicore-gc-duration.log",
+      "sha256": "897e0c31bc7fee7da25de0b518b502b9a8673dc8572b66b3893afe7bea1a8ffb",
+      "bytes": 173
+    },
+    "multicore-chunk100.log": {
+      "path": ".cargo-target/diagnosis/20261008/multicore-chunk100.log",
+      "sha256": "a44ed2e31acf79a2eea9882cecd98b832cbb3135a20d7b29228d0f2522f6c251",
+      "bytes": 249
+    },
+    "multicore-original.log": {
+      "path": ".cargo-target/diagnosis/20261008/multicore-original.log",
+      "sha256": "e05d9ac888f6438b1a57256bdb43efa63f4dd6fd2278eb40c3c588a8b3ff3ea0",
+      "bytes": 148
+    },
+    "retire-linear-scan.log": {
+      "path": ".cargo-target/diagnosis/20261008/retire-linear-scan.log",
+      "sha256": "103a7992b2c93a0b9df9b006dc067b06218a0400d9857231eab9950e6d17f444",
+      "bytes": 672
+    },
+    "retire-indexed.log": {
+      "path": ".cargo-target/diagnosis/20261008/retire-indexed.log",
+      "sha256": "9aeb036f93ea3ea0a8d2cd859197c4559c7a9947a6104c46ac9aa03153cab0d4",
+      "bytes": 588
+    },
+    "docgen-sample.txt": {
+      "path": ".cargo-target/diagnosis/20261008/docgen-sample.txt",
+      "sha256": "cce4394d57b410bb2e577855e7d855de17643a85e4a199130b6de1e045060e83",
+      "bytes": 1690236
+    },
+    "image-error-trace.log": {
+      "path": ".cargo-target/diagnosis/20261008/image-error-trace.log",
+      "sha256": "1d504b6a8f297bad9f4c6e209666a97fa6c5f446c428e7a604a236f1813911b4",
+      "bytes": 617
+    },
+    "image-error-conversion.birnam": {
+      "path": ".cargo-target/diagnosis/20261008/image-error-conversion.birnam",
+      "sha256": "8937c01a06d9a05dda17b139229040e53f03ab4c4dc13462999c770f49744cd4",
+      "bytes": 360
+    },
+    "image-error-conversion.log": {
+      "path": ".cargo-target/diagnosis/20261008/image-error-conversion.log",
+      "sha256": "59423fa6e4a6babe2d4f0d1b135be07b8551d801b048eba7bc26265a90afc7b2",
+      "bytes": 38
+    }
+  },
+  "epoch": {
+    "confirmed": true,
+    "change": "48503->48504",
+    "retired_private_block_behaviors": 7,
+    "managed_bindings_match": true,
+    "automatic_gc_disabled_adoption": "passes"
+  },
+  "image_error": {
+    "actual_kind": "nativeInvalidRequest",
+    "actual_message": null,
+    "expected_kind": "imageRejected",
+    "prefailed_worker_preserves_kind_and_message": true,
+    "first_native_failure": {
+      "selector": "inspectInventory:bindings:selection:",
+      "status": 1,
+      "detail": 0
+    }
+  },
+  "floor": {
+    "no_image_or_fixture": true,
+    "recorded_baseline": 192,
+    "before_cleanup": 214,
+    "after": {
+      "none": 214,
+      "store": 85,
+      "cache": 214,
+      "both": 85
+    }
+  },
+  "multicore": {
+    "prior_failure_checks": 5,
+    "total_checks": 27,
+    "current_original": "27 passed",
+    "original_seconds": [
+      5.404622,
+      4.045358
+    ],
+    "no_ticker_gc_seconds": [
+      5.369648,
+      4.009597
+    ],
+    "gc_instrumented_seconds": [
+      5.411105,
+      4.002927
+    ],
+    "gc_seconds": 0.080731,
+    "chunk100_seconds": [
+      1.132587,
+      1.920161
+    ],
+    "chunk100_worker_increment_counts": [
+      200,
+      200
+    ],
+    "attribution": "Batch overshoot and deadline sensitivity; prior exact pause split unmeasured"
+  },
+  "retirement_probe": {
+    "trials_per_size": 3,
+    "survivor_order_verified": true,
+    "sizes": [
+      1000,
+      2000,
+      4000,
+      8000
+    ],
+    "original_median_ns": [
+      142167,
+      451209,
+      1673417,
+      6687208
+    ],
+    "indexed_median_ns": [
+      6125,
+      12792,
+      23834,
+      53542
+    ],
+    "implementation_retained": false
+  },
+  "docgen": {
+    "sample_seconds": 1,
+    "stacks": 742,
+    "all_under_vector_sort": true,
+    "full_completion": false
+  },
+  "temporary_production_instrumentation_removed": true
+}

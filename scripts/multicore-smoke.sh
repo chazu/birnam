@@ -27,7 +27,7 @@ fixture=f'''
   let cpu := [MulticoreClock cpu];
   let count := [0 asCell];
   [[| [[[MulticoreClock now] - start] < duration]] whileTrue: [|
-    [1000 timesRepeat: [| [count inc]]]]];
+    [100 timesRepeat: [| [count inc]]]]];
   #[start [MulticoreClock now] [[MulticoreClock cpu] - cpu] [count value]]]];
 '''
 (w/'worker.birnam').write_text(fixture)

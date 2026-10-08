@@ -624,7 +624,7 @@ unsafe fn execute(
 ) -> Result<Operand, Outcome> {
     unsafe {
         let arity = match op {
-            1 | 2 | 3 | 5 | 8 | 10 => 1,
+            1 | 2 | 3 | 5 | 8 | 10 | 12 => 1,
             4 | 6 => 2,
             _ => 0,
         };
@@ -705,7 +705,7 @@ unsafe fn execute(
                     .map(|i| scope.keep(at(s, v, i)?))
                     .collect::<Result<Vec<_>, _>>()?,
             )?)),
-            8 => {
+            8 | 12 => {
                 if v.count < 2 {
                     return Ok(Operand::object(r));
                 }
@@ -722,6 +722,28 @@ unsafe fn execute(
                 }
                 // Stable insertion sort; evaluate each key exactly once.
                 let mut order: Vec<usize> = (0..v.count).collect();
+                if op == 12 {
+                    // Explicit stable merge ordering. Keep all keys/elements
+                    // rooted across each current, possibly reentrant < send.
+                    let mut scratch=vec![0usize; v.count];
+                    let mut width=1usize;
+                    while width < v.count {
+                        for start in (0..v.count).step_by(width.saturating_mul(2)) {
+                            let middle=(start+width).min(v.count);
+                            let end=start.saturating_add(width.saturating_mul(2)).min(v.count);
+                            let (mut left,mut right)=(start,middle);
+                            for slot in &mut scratch[start..end] {
+                                let take_right = left==middle || (right<end && s.send(
+                                    keys[order[right]], b"<", &[Operand::object(keys[order[left]])])?
+                                    .as_object()==Some(s.value(b"true")));
+                                if take_right { *slot=order[right];right+=1; }
+                                else { *slot=order[left];left+=1; }
+                            }
+                        }
+                        core::mem::swap(&mut order,&mut scratch);
+                        width=width.saturating_mul(2);
+                    }
+                } else {
                 for i in 1..v.count {
                     let candidate = order[i];
                     let mut position = i;
@@ -740,6 +762,7 @@ unsafe fn execute(
                         position -= 1;
                     }
                     order[position] = candidate;
+                }
                 }
                 Ok(Operand::object(build(
                     s,
@@ -787,6 +810,7 @@ entry!(index_of, 5);
 entry!(copy, 6);
 entry!(reversed, 7);
 entry!(sort_by, 8);
+entry!(merge_sort_by, 12);
 entry!(print, 9);
 entry!(comma, 10);
 entry!(new, 11);
@@ -813,6 +837,7 @@ const METHODS: &[(&[u8], Method)] = &[
     (b"copyFrom:to:", copy),
     (b"reversed", reversed),
     (b"sortBy:", sort_by),
+    (b"mergeSortBy:", merge_sort_by),
     (b"printString", print),
     (b",", comma),
     (b"new", new),

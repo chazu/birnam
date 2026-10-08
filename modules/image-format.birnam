@@ -144,7 +144,9 @@ let blockMask := "0000000000001000001";
   let p := [self parser: payload offset: 0];
   let digest := [self take: p count: 32]; let count := [self u64: p];
   let bytes := [self take: p count: count]; [self finished: p];
+  [self checked: [|
   [self require: [self bytesEqual: digest with: [bytes sha256]] context: hashedContext]; #[digest bytes]
+  ]]
   ]]
 ]];
 [Reflect defineMethod: #write:width:on: on: ImageFormat as: [:self :value :width :builder |
@@ -212,8 +214,10 @@ let blockMask := "0000000000001000001";
   [self checked: [|
     let rows := [payload readTaggedTableWithSchema: "0001-4-204-22111332" limit: 1048576];
     [self require: [rows notNil] context: heapFramingContext];
+  [self checked: [|
     [self require: [[[[objects value] size] + [rows size]] <= 1048576] context: heapQuantityContext];
     [[[self failure] isNil] ifTrue: [| [objects set: [[objects value] concat: rows]]]]; self
+  ]]
   ]]
 ]];
 [Reflect defineMethod: #family: on: ImageFormat as: [:self :object |
@@ -391,11 +395,13 @@ let blockMask := "0000000000001000001";
   let policy := [self byte: p];
   [self repeat: 7 do: [:i | [self require: [[self byte: p] = 0] context: factsContext]]];
   let argument := [self u64: p]; let count := [self u32: p];
+  [self checked: [|
   [self require: [[self unsignedGreater: floor than: basis] not] context: factsContext];
   [self require: [[retentionPolicies at: policy] notNil] context: factsContext];
   [[policy = 0] ifTrue: [| [self require: [argument = 0] context: factsContext]]];
   [[policy = 1] ifTrue: [| [self require: [[self unsignedGreater: argument than: basis] not] context: factsContext]]];
   [self require: [count <= [[[bytes size] - 36] / 13]] context: factsContext];
+  [self checked: [|
   let records := [bytes readTaggedRecordsAt: [self position: p] count: count prefixBytes: 10 fields: 3 schema: "0001-4-204-22111332"];
   [self require: [records notNil] context: factsContext];
   [self checked: [|
@@ -415,11 +421,15 @@ let blockMask := "0000000000001000001";
   [[p at: 1] set: [bytes size]]; [self finished: p]
 
   ]]
+  ]]
+  ]]
 ]];
 [Reflect defineMethod: #nativeCode:authority: on: ImageFormat as: [:self :payload :authority |
   [self checked: [|
   [self require: [[payload size] >= 73] context: nativeCodeContext];
+  [self checked: [|
   [self require: [self bytesEqual: [self slice: payload from: 8 to: 72] with: authority] context: nativeCodeContext];
+  [self checked: [|
   let unit := [self slice: payload from: 72 to: [payload size]];
   [self require: [self bytesEqual: [self slice: payload from: 0 to: 8] with: [unit wyhash64]] context: nativeCodeContext];
   [[[[self slice: unit from: 0 to: [[[unit size] < 8] ifTrue: [| [unit size]] ifFalse: [| 8]]] asString] = "BIRNAMIC"] ifTrue: [|
@@ -429,13 +439,17 @@ let blockMask := "0000000000001000001";
     [self finished: p]
   ]]; self
   ]]
+  ]]
+  ]]
 ]];
 [Reflect defineMethod: #inspectBytes:architecture:abi: on: ImageFormat as: [:self :bytes :architecture :abi |
   [self checked: [|
   [self argument: [self isBytes: bytes]];
   [self argument: [[[Vtable behaviorOf: architecture] == IntegerVt] & [[Vtable behaviorOf: abi] == IntegerVt]]];
+  [self checked: [|
   [self argument: [[architecture >= 0] & [architecture <= 4294967295]]];
   [self require: [[[bytes size] >= 28] & [[bytes size] <= 1073741824]] context: inspectContext];
+  [self checked: [|
   let p := [self parser: bytes offset: 0];
   [self require: [[[self take: p count: 8] asString] = "BIRNAMIM"] context: inspectContext];
   [self require: [[self u32: p] = 8] context: inspectContext]; [self require: [[self u32: p] = 16909060] context: inspectContext];
@@ -444,9 +458,12 @@ let blockMask := "0000000000001000001";
   let programs := [self hashed: [self record: p kind: 7]];
   let bindings := [self hashed: [self record: p kind: 8]];
   let selection := [self hashed: [self record: p kind: 9]];
+  [self checked: [|
   let inventory := [CodeObject inspectInventory: [programs at: 1] bindings: [bindings at: 1] selection: [selection at: 1]];
   [self require: [inventory notNil] context: inspectContext];
+  [self checked: [|
   [self require: [self bytesEqual: authority with: [self authority: [programs at: 0] binding: [inventory at: 1] selection: [selection at: 0]]] context: inspectContext];
+  [self checked: [|
   let heaps := [self cell: #[]]; let facts := [self cell: #[]]; let code := [self cell: nil];
   let sources := [self cell: nil]; let behaviors := [self cell: nil];
   [[| [[[self position: p] < [bytes size]] & [[self failure] isNil]]] whileTrue: [|
@@ -470,7 +487,9 @@ let blockMask := "0000000000001000001";
       [self require: [[code value] isNil] context: inspectContext];
       [code set: [self record: p kind: 4]]; [self finished: p]]]
   ]];
+  [self checked: [|
   let heapInfo := [self validateHeaps: [heaps value] programs: [programs at: 1] inventory: [inventory at: 0] bindings: [bindings at: 1] behaviors: [behaviors value]];
+  [self checked: [|
   [[[sources value] notNil] ifTrue: [|
     let sourceParser := [self parser: [sources value] offset: 0]; let field := [self field: sourceParser];
     [self require: [[field at: 0] = 7] context: inspectContext]; [self reference: field below: [heapInfo at: 0]]; [self finished: sourceParser]
@@ -479,12 +498,23 @@ let blockMask := "0000000000001000001";
   [[[code value] notNil] ifTrue: [| [self nativeCode: [code value] authority: authority]]];
   #[[programs at: 1] [bindings at: 1] [selection at: 1] [heaps value] [facts value] [code value] [sources value] [behaviors value]]
   ]]
+  ]]
+  ]]
+  ]]
+  ]]
+  ]]
+  ]]
+  ]]
 ]];
 [Reflect defineMethod: #composeFields: on: ImageFormat as: [:self :fields |
   [self checked: [|
-  [self argument: [self isVector: fields]]; [self argument: [[fields size] = 10]];
+  [self argument: [self isVector: fields]];
+  [self checked: [|
+  [self argument: [[fields size] = 10]];
+  [self checked: [|
   let arch := [fields at: 0]; let abi := [fields at: 1];
   [self argument: [[[Vtable behaviorOf: arch] == IntegerVt] & [[Vtable behaviorOf: abi] == IntegerVt]]];
+  [self checked: [|
   [self argument: [[arch >= 0] & [arch <= 4294967295]]];
   let programs := [fields at: 2]; let bindings := [fields at: 3]; let selection := [fields at: 4];
   [self each: #[programs bindings selection] do: [:bytes :i | [self argument: [self isBytes: bytes]]]];
@@ -504,8 +534,10 @@ let blockMask := "0000000000001000001";
     [[payload notNil] ifTrue: [| [total set: [[total value] + [12 + [payload size]]]]]]]];
   [[code notNil] ifTrue: [| [total set: [[total value] + [84 + [code size]]]]]];
   [self require: [[total value] <= 1073741824] context: composeContext];
+  [self checked: [|
   let inventory := [CodeObject inspectInventory: programs bindings: bindings selection: selection];
   [self require: [inventory notNil] context: composeContext];
+  [self checked: [|
   let authority := [self authority: [programs sha256] binding: [inventory at: 1] selection: [selection sha256]];
   let builder := [StringBuilder new]; [builder add: "BIRNAMIM"];
   [self write: 8 width: 4 on: builder]; [self write: 16909060 width: 4 on: builder];
@@ -524,6 +556,11 @@ let blockMask := "0000000000001000001";
     [self appendRecord: [[payload asString] asBytes] kind: 4 on: builder]]];
   let bytes := [[builder asString] asBytes];
   [self inspectBytes: bytes architecture: arch abi: abi]; bytes
+  ]]
+  ]]
+  ]]
+  ]]
+  ]]
   ]]
 ]];
 

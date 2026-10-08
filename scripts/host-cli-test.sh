@@ -58,7 +58,9 @@ if selected image; then
   python3 scripts/alien-image-test.py "$scratch/relocated"
   BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
     host_test startup::tests::image_entry_uses_saved_code_and_roots
-  cargo test --offline --locked -p birnam-siphon --test image repeated_image_resaves_keep_a_fixed_live_set -- --ignored
+  # Native image lifetime/resave tests run in native-message-test.sh with the
+  # resource-metrics TCC build they require; the ordinary installed host keeps
+  # those diagnostic counters disabled. Do not duplicate that gate here.
 fi
 if selected interaction; then
   host_test startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse

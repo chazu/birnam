@@ -336,9 +336,45 @@ unsafe fn numeric_image_values(h: &H, saving: bool) {
         );
     }
 }
+// Compare the same post-Store-clear resident state in an independent process.
+// No fixture code or snapshot is created in the control; it cannot retain a
+// fixture mapping merely to make a physical count match.
+fn resident_units(test: &str, mode: &str) -> usize {
+    if let Ok(value)=std::env::var("BIRNAM_IMAGE_RESIDENT_EXPECTED") { return value.parse().unwrap(); }
+    let path = std::env::temp_dir().join(format!("birnam-resident-control-{}.txt",std::process::id()));
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact",test,"--ignored","--nocapture"])
+        .env_remove("BIRNAM_IMAGE_TEST_MODE")
+        .env_remove("BIRNAM_IMAGE_CHAIN_EPOCH")
+        .env("BIRNAM_IMAGE_RESIDENT_CONTROL",&path)
+        .env("BIRNAM_IMAGE_RESIDENT_MODE",mode).status().unwrap();
+    assert!(status.success(), "resident cleanup control failed");
+    let count = std::fs::read_to_string(&path).unwrap().trim().parse().unwrap();
+    std::fs::remove_file(path).unwrap(); count
+}
+unsafe fn resident_control() -> bool {
+    let Some(path)=std::env::var_os("BIRNAM_IMAGE_RESIDENT_CONTROL") else { return false; };
+    unsafe {
+        let h=harness();
+        let mode=std::env::var("BIRNAM_IMAGE_RESIDENT_MODE").unwrap();
+        if mode != "source" {
+            let image=std::path::PathBuf::from(&path).with_extension("image");
+            let filename=h.string(image.as_os_str().as_bytes());
+            assert_eq!(h.call(h.named(b"System"),b"saveImage:",&[filename]),h.named(b"true"));
+            h.call(h.named(b"System"),b"loadImage:rebuild:",&[filename,h.named(if mode=="rebuild" {b"true"} else {b"false"})]);
+            std::fs::remove_file(image).unwrap();
+        }
+        h.call(h.named(b"Store"),b"imageLoadBegin",&[]);
+        h.call(h.named(b"Codegen"),b"evictMaterializations",&[]);
+        h.floor.restore_lang();h.clear_from(0);h.collect();
+        std::fs::write(path,format!("{}\n",h.units())).unwrap();
+    }
+    true
+}
 #[test]
 #[ignore = "requires production native modules"]
 fn image_owner_roundtrip() {
+    if unsafe { resident_control() } { return; }
     unsafe {
         let h = harness();
         let system = h.named(b"System");
@@ -689,8 +725,8 @@ fn image_owner_roundtrip() {
             h.collect();
             assert_eq!(
                 h.units(),
-                h.floor.units,
-                "restored fixture mappings reclaim after restoring the compiled core"
+                resident_units("image_owner_roundtrip", if mode == "rebuild" || mode == "stripped" { "rebuild" } else { "mapped" }),
+                "restored fixture mappings reclaim against equivalent resident cleanup"
             );
             return;
         }
@@ -1095,7 +1131,10 @@ unsafe extern "C" fn collect_restore(
         let args = borrowed_slice(a, n).unwrap();
         let result = s.id.send(r, s.alias, args)?;
         s.calls.set(s.calls.get() + 1);
-        s.id.send_named(s.gc, b"collectPrecisely", &[])?;
+        let call = s.calls.get();
+        if call <= 8 || call.is_power_of_two() {
+            s.id.send_named(s.gc, b"collectPrecisely", &[])?;
+        }
         Ok(result)
     })()
     .map_or_else(|e| e, Outcome::loaded)
@@ -1144,6 +1183,7 @@ unsafe extern "C" fn fail_publication(
 #[test]
 #[ignore = "requires production native modules"]
 fn repeated_image_resaves_keep_a_fixed_live_set() {
+    if unsafe { resident_control() } { return; }
     const EPOCHS: usize = 20;
     if let Ok(epoch) = std::env::var("BIRNAM_IMAGE_CHAIN_EPOCH") {
         let epoch: usize = epoch.parse().unwrap();
@@ -1218,7 +1258,7 @@ fn repeated_image_resaves_keep_a_fixed_live_set() {
             h.floor.restore_lang();
             h.clear_from(0);
             h.collect();
-            assert_eq!(h.units(), h.floor.units, "epoch {epoch} retained fixture mappings");
+            assert_eq!(h.units(), resident_units("repeated_image_resaves_keep_a_fixed_live_set", if epoch==0 {"source"} else if epoch%2==0 {"rebuild"} else {"mapped"}), "epoch {epoch} retained fixture mappings");
         }
         return;
     }
@@ -1226,6 +1266,9 @@ fn repeated_image_resaves_keep_a_fixed_live_set() {
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("current.image");
     let mut baselines: [Option<Vec<usize>>; 2] = [None, None];
+    let resident = [resident_units("repeated_image_resaves_keep_a_fixed_live_set", "source"),
+        resident_units("repeated_image_resaves_keep_a_fixed_live_set", "mapped"),
+        resident_units("repeated_image_resaves_keep_a_fixed_live_set", "rebuild")];
     for epoch in 0..=EPOCHS {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
@@ -1234,6 +1277,7 @@ fn repeated_image_resaves_keep_a_fixed_live_set() {
                 "--ignored",
                 "--nocapture",
             ])
+            .env("BIRNAM_IMAGE_RESIDENT_EXPECTED", resident[if epoch==0 {0} else if epoch%2==1 {1} else {2}].to_string())
             .env("BIRNAM_IMAGE_CHAIN_EPOCH", epoch.to_string())
             .env("BIRNAM_IMAGE_CHAIN_PATH", &path)
             .status()

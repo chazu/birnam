@@ -16,6 +16,11 @@ unchanged paths and returns a new Vector. Its public messages are:
 - `do:` callable: send `value:` to each element, return the original Vector.
 - `inject:into:` initial value and callable: fold using `value:value:`.
 - `sortBy:` callable: compute each key once, stable insertion sort with live `<`.
+- `mergeSortBy:` callable: compute each key once in input order, stable bottom-up
+  merge ordering with live `<` (strict, consistent ordering required). Comparisons
+  follow merge order, rather than insertion order; failures propagate unchanged.
+  This explicit operation lets Doc avoid quadratic work without changing the
+  comparison sequence of existing `sortBy:` callers.
 - `printString`: String in `#[a b c]` form, using live element printing.
 
 Iteration keeps the existing language-result behavior: `do:` ignores callback

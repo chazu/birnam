@@ -33,3 +33,13 @@ entry or forward-filled dependency bundle is part of this protocol.
 The independent C root enumerator in `entry.c` receives an Object and sends
 `visit:` through the real Id carrier. The Id test replaces that visitor method,
 checks exact failure propagation and rejects an old NativeEntry visitor operand.
+
+### Id mutation epochs
+
+`behaviorEpoch` returns a Word counting all dictionary/parent/association changes and
+retirement of dead behavior records. `bindingEpoch` returns a Word counting explicit
+mutations, including change-and-restore and weak-binding removal, but not retirement
+of unreachable behaviors. Generation snapshots use `bindingEpoch` so collection of
+private dead Blocks cannot falsely reject unchanged live bindings. Saturated counters
+are unsuitable as stable guard witnesses and must be rejected. Both queries remain
+current Id messages; neither exports an invoker or authorizes foreign payload access.

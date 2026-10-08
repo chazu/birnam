@@ -16,6 +16,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             symbol_name_bytes as native::Method,
         ),
         (b"behaviorEpoch".as_slice(), epoch as native::Method),
+        (b"bindingEpoch".as_slice(), binding_epoch as native::Method),
         (b"nativeBindingsMatch:".as_slice(), native_bindings_match as native::Method),
         (b"nativeBindingQuerySemantics:for:".as_slice(), binding_query_semantics as native::Method),
         (b"isBehavior:".as_slice(), is_behavior as native::Method),
@@ -152,6 +153,14 @@ unsafe extern "C" fn epoch(
     }
     done(Operand::word(unsafe {
         (&*(*context.cast::<State>()).dictionaries).mutation_epoch() as usize
+    }))
+}
+unsafe extern "C" fn binding_epoch(
+    context: *mut c_void, _: Oop, _: *const Operand, count: usize,
+) -> Outcome {
+    if count != 0 { return invalid(); }
+    done(Operand::word(unsafe {
+        (&*(*context.cast::<State>()).dictionaries).binding_epoch() as usize
     }))
 }
 unsafe extern "C" fn is_behavior(

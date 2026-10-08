@@ -112,11 +112,11 @@
   [[db findAll: ?m where: #[ #[?m #docKind #nativeRust] ]] includes: mod]] doc:
   "True iff `mod` belongs to a native Rust crate above or alongside the Rust floor, recorded as #nativeRust."];
 
-// Every documented module, ordered by display name (String `<` under sortBy:).
+// Every documented module, ordered by display name (String `<` under mergeSortBy:).
 [Reflect defineMethod: #sortedModules on: Doc as: [:self |
   let me := self;
-  [[self modules] sortBy: [:m | [me nameOf: m]]]] doc:
-  "Every documented module, ordered by display name (String `<` under sortBy:)."];
+  [[self modules] mergeSortBy: [:m | [me nameOf: m]]]] doc:
+  "Every documented module, ordered by display name (String `<` under mergeSortBy:)."];
 
 // The Globals name whose binding IS `obj` (identity), or "" if it has none —
 // the reverse of `Globals at:`, for showing a prototype (prototypes print as
@@ -182,7 +182,7 @@
       [a2 at: [me nameOf: [[db cellFor: e attr: #sel] value]] put: true]]]]];
   [[[[self sourceIndex] keys] inject: #[] into: [:acc :k |
     [[documented includesKey: k] ifTrue: [| acc] ifFalse: [| [acc add: k]]]]]
-    sortBy: [:x | x]]] doc:
+    mergeSortBy: [:x | x]]] doc:
   "Every recorded-but-undocumented selector name, sorted — the doc-gap worklist (documented anywhere counts)."];
 
 // Coverage needs only a count; use the page's existing index and never sort.
@@ -341,7 +341,7 @@
   let me := self;
   let gs := [[File isDir: dir]
     ifTrue: [|
-      let names := [[File listDir: dir] sortBy: [:x | x]];
+      let names := [[File listDir: dir] mergeSortBy: [:x | x]];
       [names inject: #[] into: [:acc :nm |
         [[nm endsWith: ".md"]
           ifTrue: [|

@@ -54,8 +54,9 @@ pub(super) unsafe fn basis(s: &State, q: &Scope<'_>) -> Result<usize, Outcome> {
 }
 pub(super) unsafe fn epoch(s: &State) -> Result<usize, Outcome> {
     unsafe {
-        s.send(s.id.receiver, b"behaviorEpoch", &[])?
+        s.send(s.id.receiver, b"bindingEpoch", &[])?
             .as_word()
+            .filter(|epoch| *epoch < usize::MAX)
             .ok_or_else(invalid)
     }
 }
@@ -127,7 +128,7 @@ pub(super) unsafe fn target(
     }
 }
 /// Numeric Store basis catches callbacks/finalizers even if they restore facts;
-/// the behavior epoch also catches raw dictionary mutation without a Store write.
+/// the binding epoch also catches raw dictionary mutation/ABA without a Store write.
 pub(super) unsafe fn current_snapshot(
     s: &State,
     q: &Scope<'_>,

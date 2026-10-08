@@ -129,6 +129,9 @@ pub(crate) struct Vtables {
     // §3.2: a reader that cached a verification against one epoch re-verifies
     // when the epoch moved. Over-counting is harmless; never skip a mutator.
     mutation_epoch: u64,
+    // Explicit binding/parent/association changes, including ABA. Retiring an
+    // unreachable behavior cannot change a live lookup and does not advance it.
+    binding_epoch: u64,
 
 }
 
@@ -138,6 +141,7 @@ impl Vtables {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
             mutation_epoch: 0,
+            binding_epoch: 0,
         }
     }
     pub(crate) fn mutation_epoch(&self) -> u64 {
@@ -146,7 +150,9 @@ impl Vtables {
 
     pub(crate) fn note_mutation(&mut self) {
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
+        self.binding_epoch = self.binding_epoch.saturating_add(1);
     }
+    pub(crate) fn binding_epoch(&self) -> u64 { self.binding_epoch }
     pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();
 
     /// Construct a behavior using Id allocation alone.
@@ -355,8 +361,10 @@ impl Vtables {
         for vtable in dead {
             self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant("dead vtable registry record disappeared"));
         }
-        self.ordered.retain(|vtable| !dead.contains(vtable));
-        if !dead.is_empty() { self.note_mutation(); }
+        self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));
+        if !dead.is_empty() {
+            self.mutation_epoch = self.mutation_epoch.saturating_add(1);
+        }
     }
     pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {
         self.record(vtable).values.iter().filter_map(|value| value.as_entry())
@@ -393,6 +401,37 @@ impl Vtables {
 #[cfg(test)]
 mod core_tests {
     use super::*;
+    #[test]
+    fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
+        memory.set_vtable(meta, meta);
+        let live = tables.create(&mut memory, core::ptr::null_mut(), meta);
+        let dead = tables.create(&mut memory, live, meta);
+        let survivor = tables.create(&mut memory, live, meta);
+        let before = tables.binding_epoch();
+        let global = tables.mutation_epoch();
+        tables.remove_objects(&[dead]);
+        assert_eq!(tables.binding_epoch(), before);
+        assert_eq!(tables.mutation_epoch(), global + 1);
+        assert_eq!(tables.ordered, vec![meta, live, survivor]);
+        tables.set_parent(survivor, meta);
+        tables.set_parent(survivor, live);
+        assert_eq!(tables.parent_of(survivor), live);
+        assert_eq!(tables.binding_epoch(), before + 2, "ABA must invalidate snapshots");
+        unsafe extern "C" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {
+            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))
+        }
+        let key = memory.allocate(0);
+        let entry = NativeEntry::new(method, core::ptr::null_mut());
+        tables.add_method(live, key, entry);
+        let bound = tables.binding_epoch();
+        tables.remove_method(live, key);
+        tables.add_method(live, key, entry);
+        assert_eq!(tables.direct_lookup(live, key), Some(entry));
+        assert_eq!(tables.binding_epoch(), bound + 2);
+    }
     #[test]
     fn behavior_graph_and_dictionary_need_only_id_allocation() {
         let mut memory = ObjectMemory::new();

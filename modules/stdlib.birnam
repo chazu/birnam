@@ -586,21 +586,20 @@
    [[self indexOf: sub] notNil]] doc:
    "True iff `sub` occurs in the receiver (empty `sub` is everywhere; a non-String answers false)."];
 
-// < — lexicographic byte order, folded over the shared prefix: the accumulator
-// is nil while undecided, then latches the first unequal byte's verdict; a fully
-// shared prefix defers to length (shorter first — plain strcmp order). This is
-// what makes a String a `sortBy:` key (the sort comparator sends `<`).
+// Lexicographic byte order. Stop iteration when the first unequal byte
+// decides the result; no later byte reads are needed.
 [Reflect defineMethod: #< on: String as: [:self :other |
    let lim := [[[self size] < [other size]] ifTrue: [| [self size]] ifFalse: [| [other size]]];
-   let verdict := [[0 to: [lim - 1]] inject: nil into: [:acc :i |
-      [[acc isNil]
-         ifTrue:  [| let ba := [self byteAt: i];
-                     let bb := [other byteAt: i];
-                     [[ba = bb] ifTrue: [| nil] ifFalse: [| [ba < bb]]]]
-         ifFalse: [| acc]]]];
-   [[verdict isNil]
-      ifTrue:  [| [[self size] < [other size]]]
-      ifFalse: [| verdict]]] doc:
+   let index := [0 asCell];
+   let verdict := [nil asCell];
+   [[| [[[index value] < lim] & [[verdict value] isNil]]] whileTrue: [|
+      let ba := [self byteAt: [index value]];
+      let bb := [other byteAt: [index value]];
+      [[ba = bb] ifTrue: [| [index inc]] ifFalse: [| [verdict set: [ba < bb]]]]
+   ]];
+   [[[verdict value] isNil]
+      ifTrue: [| [[self size] < [other size]]]
+      ifFalse: [| [verdict value]]] ] doc:
    "True iff the receiver sorts strictly before `other` in byte order (shared prefix: shorter first)."];
 
 // Internal: the six ASCII whitespace bytes (space \t \n \v \f \r), as trimmed/

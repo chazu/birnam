@@ -66,7 +66,7 @@ for name, body, diagnostic in [
     assert os.fsencode(path) in result.stderr, result
 bad = work / 'corrupt.image'
 bad.write_bytes(b'not an image')
-for path, diagnostic in [(bad, b'loadImage:rebuild:: native status=1 detail=0'), (work / 'absent.image', b'No such file')]:
+for path, diagnostic in [(bad, b'image load #rejected'), (work / 'absent.image', b'No such file')]:
     result = run(path)
     assert result.returncode == 1 and diagnostic in result.stderr and not result.stdout, result
 # The current format is exact: reject prior/future versions and invalid magic
@@ -77,13 +77,13 @@ for version in (4, 5, 6, 7, 9):
     rejected = work / f'version-{version}.image'
     rejected.write_bytes(changed)
     result = run(rejected)
-    assert result.returncode == 1 and b'loadImage:rebuild:: native status=1 detail=0' in result.stderr and not result.stdout, result
+    assert result.returncode == 1 and b'image load #rejected' in result.stderr and not result.stdout, result
 changed = bytearray(image.read_bytes())
 changed[0] ^= 1
 rejected = work / 'invalid-magic.image'
 rejected.write_bytes(changed)
 result = run(rejected)
-assert result.returncode == 1 and b'loadImage:rebuild:: native status=1 detail=0' in result.stderr and not result.stdout, result
+assert result.returncode == 1 and b'image load #rejected' in result.stderr and not result.stdout, result
 result = run(image, extra=['extra'])
 assert result.returncode == 1 and b'one file' in result.stderr, result
 # The native Host fixture consumes this exact artifact in a separate process.

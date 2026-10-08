@@ -175,6 +175,13 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: [[#[ "peg" "cli" "alien" ] sortBy: [:x | x]] printString]
      equals: "#[alien cli peg]" describes: "String keys drive sortBy:"]]];
 
+[s test: "mergeSortBy keeps stable ties and evaluates keys once" do: [:t |
+  let calls := [0 asCell];
+  let rows := #[#[2 "a"] #[1 "b"] #[2 "c"] #[1 "d"]];
+  let sorted := [rows mergeSortBy: [:row | [calls inc]; [System gc]; [row at: 0]]];
+  [t expect: [calls value] equals: 4 describes: "one key call per element"];
+  [t expect: sorted equals: #[#[1 "b"] #[1 "d"] #[2 "a"] #[2 "c"]] describes: "stable ties with collection during key evaluation"]]];
+
 [s test: "Reflect explores effective methods and live facts" do: [:t |
   let methods := [Reflect allMethodsOf: String];
   [t expect: [[methods size] > 0] equals: true describes: "method enumeration is non-empty"];

@@ -68,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-image-format-') as temporary:
              '  [System println: i];',
              '  let bytes := [[System readFile: path] asBytes];',
              f'  let answer := [{receiver} inspect: bytes architecture: 1 abi: -3623637935742366395];',
-             '  [System println: [[answer isError] ifTrue: [| "err"] ifFalse: [| "ok"]]];',
+             '  [System println: [[answer isError] ifTrue: [| [[[answer kind] == #imageRejected] ifTrue: [| "err"] ifFalse: [| "wrongError"]]] ifFalse: [| "ok"]]];',
              '  [[answer isError] ifFalse: [|',
              '    let all := [db localCell: nil];',
              '    [all set: #[1 [bytes readU64At: 20]]];',
@@ -78,6 +78,17 @@ with tempfile.TemporaryDirectory(prefix='birnam-image-format-') as temporary:
              f'    let encoded := [{receiver} compose: [all value]];',
              '    [System writeFile: [path , ".out"] contents: [encoded asString]]',
              '  ]]', ']];']
+    # Business validation must preserve its refusal, not merely return any Error.
+    error_probe = work / 'error-contract.birnam'
+    error_probe.write_text(load + f'''
+let answer := [{receiver} inspect: ["short" asBytes] architecture: 1 abi: 0];
+[System println: [answer kind]];
+[System println: [answer message]]
+''')
+    probe = subprocess.run([prefix/'bin/birnam', error_probe], cwd=work,
+        env={**{k:v for k,v in os.environ.items() if not k.startswith('BIRNAM_')},
+             'BIRNAM_NO_STDLIB':'1'}, capture_output=True, timeout=30)
+    assert probe.returncode == 0 and probe.stdout == b'#imageRejected\ninspectBytes:architecture:abi:\n' and not probe.stderr, probe
     # Use the fixed ABI bit pattern as an Integer, matching the native boundary.
     abi = struct.unpack('<q', struct.pack('<Q', 0xcdb641f978540d45))[0]
     text = '\n'.join(forms).replace('-3623637935742366395', str(abi))
