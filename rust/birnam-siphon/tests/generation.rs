@@ -87,7 +87,7 @@ fn initial_projection_is_canonical_inert_rooted_and_rejects_mixed_sources() {
         let core_selection = inspect_generation_selection(&core_selection).unwrap();
         let core_revisions = core_selection.revision_count();
         let core_rows = core_selection.row_count();
-        assert_eq!(core_revisions, 2, "Module and Lang are compiled core modules");
+        assert!(core_revisions >= 2, "Module, Lang and migrated modules form the compiled core");
         let source_a=text(b"[Module named: #a requires: #[]]; [Reflect defineMethod: #generationAnswer on: Integer as: [:self | 42]]");
         let source_b = text(b"[Module named: #b requires: #[#a]]; let projected := [| 99]");
         for (name, source) in [(b"b".as_slice(), source_b), (b"a".as_slice(), source_a)] {
@@ -109,11 +109,19 @@ fn initial_projection_is_canonical_inert_rooted_and_rejects_mixed_sources() {
             id.intern_name(b"generationProjection").unwrap()
         );
         let map = at(projection, 1);
-        assert_eq!(at(at(map, 0), 0), id.intern_name(b"a").unwrap());
-        assert_eq!(at(at(map, 1), 0), id.intern_name(b"b").unwrap());
-        assert_eq!(at(at(at(map, 0), 1), 3), source_a);
-        assert_eq!(at(at(at(map, 1), 1), 3), source_b);
-        assert_eq!(at(at(map, 0), 2), named(b"nil"));
+        let count = send(id, named(b"Integer"), b"wordOf:",
+            &[Operand::object(call(map, b"size", &[]))]).as_word().unwrap();
+        // Migrated bootstrap modules also occupy the canonical source map.
+        // Find fixture rows by identity rather than assuming they come first.
+        let row = |name: &[u8]| {
+            let name = id.intern_name(name).unwrap();
+            (0..count).map(|i| at(map, i)).find(|&row| at(row, 0) == name).unwrap()
+        };
+        let a = row(b"a");
+        let b = row(b"b");
+        assert_eq!(at(at(a, 1), 3), source_a);
+        assert_eq!(at(at(b, 1), 3), source_b);
+        assert_eq!(at(a, 2), named(b"nil"));
         let digest = bytes(at(projection, 2));
         assert_eq!(digest.len(), 64);
         let selection = bytes(at(projection, 3));
