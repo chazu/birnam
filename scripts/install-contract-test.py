@@ -14,6 +14,7 @@ class InstalledContract(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.prefix = Path(self.directory.name) / 'relocated'
         for name in ('bin/birnam', 'lib/libbirnam_id.dylib',
+                     'lib/birnam-bootstrap.image', 'lib/birnam-tools.image',
                      'share/birnam/src/Cargo.toml', 'share/birnam/src/Cargo.lock'):
             path = self.prefix / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -21,7 +22,7 @@ class InstalledContract(unittest.TestCase):
         (self.prefix / 'bin/birnam').chmod(0o755)
         self.receipt = dict(schema=4, authority='rust',
                             admission_contract=dict(target='aarch64-macos', id_protocol_version=1,
-                                                    stdlib_loading='source'),
+                                                    stdlib_loading='compiled-image'),
                             dynamic_libraries=['libbirnam_id.dylib'])
         self.publish()
 

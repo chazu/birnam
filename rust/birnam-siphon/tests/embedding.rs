@@ -404,7 +404,9 @@ unsafe fn exercise_replacement(h: &H, block: Oop, temp: &std::path::Path) {
             );
             assert_eq!(
                 f.calls.get(),
-                1,
+                // String construction allocates Bytes-owned storage, then
+                // asBytes constructs the returned binary value separately.
+                if name == b"fromBytes:" { 2 } else { 1 },
                 "runtime constructors must use fresh sends"
             );
             set(id, vt, name, old);

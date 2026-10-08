@@ -76,7 +76,8 @@ class CandidateIdentity(unittest.TestCase):
             with self.subTest(identity=identity, mode=mode), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 prefix = root / 'prefix'
-                for relative in ('bin/birnam', 'share/birnam/src/Cargo.toml', 'share/birnam/src/Cargo.lock'):
+                for relative in ('bin/birnam', 'lib/birnam-bootstrap.image', 'lib/birnam-tools.image',
+                                 'share/birnam/src/Cargo.toml', 'share/birnam/src/Cargo.lock'):
                     path = prefix / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(b'must never execute')
@@ -86,7 +87,7 @@ class CandidateIdentity(unittest.TestCase):
                 encoded = json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()
                 receipt = dict(schema=4, authority='rust', profile='release', build_mode=mode,
                     source_identity=dict(git_commit=identity, git_clean=True), dynamic_libraries=[],
-                    admission_contract=dict(target='aarch64-macos', id_protocol_version=1, stdlib_loading='source'),
+                    admission_contract=dict(target='aarch64-macos', id_protocol_version=1, stdlib_loading='compiled-image'),
                     staged_manifest=manifest, staged_manifest_files=len(manifest),
                     staged_manifest_sha256=hashlib.sha256(encoded).hexdigest())
                 (prefix / acceptance.RECEIPT).write_text(json.dumps(receipt))
