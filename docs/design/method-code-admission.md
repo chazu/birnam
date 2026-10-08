@@ -1,5 +1,8 @@
 # Admit closure code shape once per Method
 
+Follow-up: [receiver capture query](capture-receiver-query.md) removes the ordinary
+capture-loading factory lookup. The measurements below describe this admission slice.
+
 Implemented 2026-10-07. Integer addition falls from **829.375 to 717.375 sends**,
 13.5% fewer. Closure construction falls from **272 to 160** sends/addition. The
 112 removed sends are precisely the eight repeated CodeObject owner/count queries.

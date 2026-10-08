@@ -30,6 +30,39 @@ theorem capture_edge_covers_result
     (block result : Object) (live : base block) (capture : edges block result) :
     Reach edges base result := Reach.edge (Reach.root live) capture
 
+/-- The receiver can itself be covered transitively by an invocation scope.
+    The factory is not needed to keep a receiver-owned capture alive. -/
+theorem receiver_covers_capture_results
+    (edges : Object → Object → Prop) (base results : Object → Prop)
+    (block : Object) (live : Reach edges base block)
+    (captures : ∀ o, results o → edges block o) :
+    ∀ o, results o → Reach edges base o := by
+  intro o h
+  exact Reach.edge live (captures o h)
+
+/-- A batch of pure receiver reads survives precise GC without an extra
+    factory root or per-result roots. Stable edges, current pure-reader meaning
+    and an unchanged covering scope are concrete implementation obligations. -/
+theorem receiver_read_batch_survives
+    (edges : Object → Object → Prop) (heap base results : Object → Prop)
+    (block : Object) (live : Reach edges base block)
+    (captures : ∀ o, results o → edges block o)
+    (alive : ∀ o, results o → heap o) :
+    ∀ o, results o → collect heap base edges o := by
+  intro o h
+  exact ⟨alive o h, receiver_covers_capture_results edges base results block live captures o h⟩
+
+def admitBorrow (readerCurrent queryCurrent servicesCurrent : Bool) : Bool :=
+  readerCurrent && queryCurrent && servicesCurrent
+
+/-- A query's forwarding wrapper is not a canonical grant, even if it calls
+    the canonical query before replacing the reader. Admission is per batch. -/
+theorem borrow_admission_requires_current_bindings
+    (reader query services : Bool) :
+    admitBorrow reader query services = true ↔
+      reader = true ∧ query = true ∧ services = true := by
+  simp [admitBorrow, and_assoc]
+
 theorem borrowed_needed_survives
     (edges : Object → Object → Prop) (heap base results needed : Object → Prop)
     (covered : ∀ o, results o → Reach edges base o)

@@ -15,7 +15,7 @@ pub(crate) struct Number {
     truth: Oop,
     falsity: Oop,
     nil: Oop,
-    names: HashMap<&'static [u8], Oop>,
+    pub(super) names: HashMap<&'static [u8], Oop>,
     thread: std::thread::ThreadId,
     pub(super) expression_meanings: core::cell::Cell<(usize, u32)>,
 }
@@ -36,7 +36,7 @@ pub(crate) unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Number, Outco
     Ok(n)
 }
 impl Number {
-    unsafe fn send(
+    pub(super) unsafe fn send(
         &self,
         r: Oop,
         name: &'static [u8],
@@ -313,6 +313,11 @@ macro_rules! entry {
 }
 
 const NAMES: &[&[u8]] = &[
+    b"behaviorEpoch",
+    b"usesDefaultAllocation",
+    b"canOmitAllocationFor:",
+    b"usesDefaultLookup:",
+    b"bind:to:",
     b"retain:",
     b"tryRetainMany:",
     b"tryReleaseManyForward:",

@@ -17,6 +17,7 @@ struct Namespace {
     receiver: Oop,
     registry: Oop,
     storage: RefCell<Environment>,
+    names: std::collections::HashMap<&'static [u8], Oop>,
 }
 static INSTANCE: AtomicPtr<Namespace> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome {
@@ -35,9 +36,9 @@ fn value(object: Oop) -> Operand {
         Operand::object(object)
     }
 }
-unsafe fn symbol(id: Protocol, key: Operand) -> Result<Oop, Outcome> {
+unsafe fn symbol(namespace: &Namespace, key: Operand) -> Result<Oop, Outcome> {
     let object = object(key)?;
-    if unsafe { id.send_named(id.receiver, b"symbolBytesOf:", &[key]) }?.kind() != native::BYTES {
+    if unsafe { namespace.id.send(namespace.id.receiver, namespace.names[b"symbolBytesOf:".as_slice()], &[key]) }?.kind() != native::BYTES {
         return Err(invalid());
     }
     Ok(object)
@@ -52,7 +53,7 @@ unsafe extern "C" fn find(
         return invalid();
     };
     let namespace = unsafe { &*context.cast::<Namespace>() };
-    match unsafe { symbol(namespace.id, *key) } {
+    match unsafe { symbol(namespace, *key) } {
         Ok(key) => Outcome::loaded(value(namespace.storage.borrow().import(key))),
         Err(error) => error,
     }
@@ -63,17 +64,17 @@ unsafe extern "C" fn value_at(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
         let namespace = &*c.cast::<Namespace>();
         let args = borrowed_slice(a, n).ok_or_else(invalid)?;
         if n != 1 { return Err(invalid()); }
-        let result = namespace.id.send_named(r, b"at:", args)?;
+        let result = namespace.id.send(r, namespace.names[b"at:".as_slice()], args)?;
         if result.kind() != native::UNIT { return Ok(result); }
-        namespace.id.send_named(r, b"at:", &[Operand::object(namespace.id.intern_name(b"nil")?)])
+        namespace.id.send(r, namespace.names[b"at:".as_slice()], &[Operand::object(namespace.names[b"nil".as_slice()])])
     })().map_or_else(|e| e, Outcome::loaded)
 }
 unsafe extern "C" fn includes_key(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     (|| unsafe {
         let namespace = &*c.cast::<Namespace>();
         let [key] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let value = namespace.id.send_named(r, b"at:", &[*key])?;
-        namespace.id.send_named(namespace.receiver, b"at:", &[Operand::object(namespace.id.intern_name(if value.kind() == native::UNIT { b"false" } else { b"true" })?)])
+        let value = namespace.id.send(r, namespace.names[b"at:".as_slice()], &[*key])?;
+        namespace.id.send(namespace.receiver, namespace.names[b"at:".as_slice()], &[Operand::object(namespace.names[if value.kind() == native::UNIT { b"false".as_slice() } else { b"true".as_slice() }])])
     })().map_or_else(|e| e, Outcome::loaded)
 }
 unsafe extern "C" fn bind(
@@ -94,7 +95,7 @@ unsafe extern "C" fn bind(
         _ => return invalid(),
     };
     let namespace = unsafe { &*context.cast::<Namespace>() };
-    match unsafe { symbol(namespace.id, *key) } {
+    match unsafe { symbol(namespace, *key) } {
         Ok(key) => Outcome::loaded(value(namespace.storage.borrow_mut().export(key, object))),
         Err(error) => error,
     }
@@ -169,6 +170,7 @@ unsafe extern "C" fn roots(
         let namespace = unsafe { &*context.cast::<Namespace>() };
         let mut snapshot = namespace.storage.borrow().roots();
         snapshot.extend([receiver, namespace.registry]);
+        snapshot.extend(namespace.names.values().copied());
         snapshot
     };
     for object in snapshot.into_iter().filter(|o| !o.is_null()) {
@@ -229,50 +231,66 @@ unsafe extern "C" fn lookup_semantics(
 }
 unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        let prototype = id.send_named(id.receiver, b"objectPrototype", &[])?;
-        let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
-        let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
-        let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
-        let namespace = Box::into_raw(Box::new(Namespace {
-            id,
-            receiver,
-            registry,
-            storage: RefCell::new(Environment::new()),
-        }));
-        for (name, method) in [
-            (b"at:".as_slice(), find as Method),
-            (b"valueAt:", value_at),
-            (b"includesKey:", includes_key),
-            (b"at:put:", bind),
-            (b"count", count),
-            (b"nameAt:", name_at),
-            (b"nameOf:", reverse),
-            (b"rootsDo:", roots),
-            (b"bindingsDo:", bindings),
-            (b"isCanonicalLookup:", lookup_semantics),
-        ] {
-            id.send_named(
-                behavior,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(method, namespace.cast())),
-                ],
-            )?;
-        }
-        id.send_named(registry, b"register:", &[Operand::object(receiver)])?;
-        for (name, object) in [(b"Namespace".as_slice(), receiver), (b"Roots", registry)] {
-            id.send_named(
+        let mut tokens = Vec::new();
+        let result = (|| {
+            let prototype = id.send_named(id.receiver, b"objectPrototype", &[])?;
+            let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
+            let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
+            let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
+            let retain = id.intern_name(b"retain:")?;
+            tokens.push(id.send(registry, retain, &[Operand::object(receiver)])?.as_word().ok_or_else(invalid)?);
+            let mut names = std::collections::HashMap::new();
+            for name in [b"symbolBytesOf:".as_slice(), b"at:", b"nil", b"true", b"false"] {
+                let symbol = id.intern_name(name)?;
+                tokens.push(id.send(registry, retain, &[Operand::object(symbol)])?.as_word().ok_or_else(invalid)?);
+                names.insert(name, symbol);
+            }
+            let namespace = Box::into_raw(Box::new(Namespace {
+                id,
                 receiver,
-                b"at:put:",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::object(object),
-                ],
-            )?;
+                registry,
+                storage: RefCell::new(Environment::new()),
+                names,
+            }));
+            for (name, method) in [
+                (b"at:".as_slice(), find as Method),
+                (b"valueAt:", value_at),
+                (b"includesKey:", includes_key),
+                (b"at:put:", bind),
+                (b"count", count),
+                (b"nameAt:", name_at),
+                (b"nameOf:", reverse),
+                (b"rootsDo:", roots),
+                (b"bindingsDo:", bindings),
+                (b"isCanonicalLookup:", lookup_semantics),
+            ] {
+                id.send_named(
+                    behavior,
+                    b"addMethod",
+                    &[
+                        Operand::object(id.intern_name(name)?),
+                        Operand::entry(NativeEntry::new(method, namespace.cast())),
+                    ],
+                )?;
+            }
+            id.send_named(registry, b"register:", &[Operand::object(receiver)])?;
+            for (name, object) in [(b"Namespace".as_slice(), receiver), (b"Roots", registry)] {
+                id.send_named(
+                    receiver,
+                    b"at:put:",
+                    &[
+                        Operand::object(id.intern_name(name)?),
+                        Operand::object(object),
+                    ],
+                )?;
+            }
+            INSTANCE.store(namespace, Ordering::Release);
+            Ok(Operand::object(receiver))
+        })();
+        for token in tokens.into_iter().rev() {
+            id.send_named(registry, b"release:", &[Operand::word(token)])?;
         }
-        INSTANCE.store(namespace, Ordering::Release);
-        Ok(Operand::object(receiver))
+        result
     }
 }
 unsafe extern "C" fn initialize(

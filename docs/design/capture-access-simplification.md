@@ -1,5 +1,9 @@
 # Capture access simplification
 
+The [receiver-query slice](capture-receiver-query.md) subsequently removes the
+factory lookup from ordinary compiled capture loading. The costs and API below
+describe this earlier checkpoint.
+
 Follow-up: [Boolean selection simplification](boolean-selection-simplification.md)
 reduces addition further to 1,083.375 sends. The measurements below describe the
 preceding capture-access slice.

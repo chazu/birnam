@@ -7,6 +7,8 @@ import Registration
 import Invocation
 import Capture
 import Selection
+import LocalReuse
+import SymbolNames
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -65,6 +67,9 @@ import Selection
 
 #print axioms Birnam.Capture.reachable_results_do_not_need_separate_roots
 #print axioms Birnam.Capture.capture_edge_covers_result
+#print axioms Birnam.Capture.receiver_covers_capture_results
+#print axioms Birnam.Capture.receiver_read_batch_survives
+#print axioms Birnam.Capture.borrow_admission_requires_current_bindings
 #print axioms Birnam.Capture.borrowed_needed_survives
 #print axioms Birnam.Capture.fresh_result_requires_coverage
 
@@ -72,3 +77,11 @@ import Selection
 #print axioms Birnam.Selection.result_is_supplied
 #print axioms Birnam.Selection.live_arguments_cover_result
 #print axioms Birnam.Selection.selection_survives_collection
+#print axioms Birnam.LocalReuse.alias_root_is_redundant
+#print axioms Birnam.LocalReuse.successful_retain_covers_hint
+#print axioms Birnam.LocalReuse.hint_eviction_preserves_coverage
+#print axioms Birnam.LocalReuse.covered_aliases_survive
+#print axioms Birnam.LocalReuse.stale_hint_is_not_coverage
+#print axioms Birnam.SymbolNames.retained_name_uses_current_dispatch
+#print axioms Birnam.SymbolNames.owner_edge_preserves_symbol
+#print axioms Birnam.SymbolNames.stale_entry_changes_behavior

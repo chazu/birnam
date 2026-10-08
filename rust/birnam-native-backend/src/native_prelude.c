@@ -17,7 +17,7 @@ static A bytes(const void*p,size_t n){A a={0};a.kind=3;a.data.bytes.pointer=p;a.
 static A entry(Entry f){A a={0};a.kind=4;a.data.entry.method=f;return a;}
 static R bad(void){R r={0};r.status=1;return r;}
 static R ok(A a){R r={0};r.value=a;return r;}
-typedef struct{R failure;size_t *tokens,count,capacity;O inputs[9];size_t input_count;} Call;
+typedef struct{R failure;size_t *tokens,count,capacity;O inputs[9];size_t input_count;O covered[32];size_t covered_count,covered_next;int reuse;} Call;
 static O intern(Call*c,const char*n){if(c->failure.status)return 0;A a=bytes(n,strlen(n));R r=id.message(id.context,id.receiver,id.intern,&a,1);if(r.status||r.value.kind!=1){c->failure=r.status?r:bad();return 0;}return r.value.data.object;}
 /* Selector spellings in generated code are static for the Unit's lifetime.
    TCC may store identical literals at different addresses: cache by spelling.
@@ -28,13 +28,18 @@ static int cache_selectors;
 static int batch_cleanup=1;
 static O selector(Call*c,const char*n);
 static R raw(Call*c,O receiver,const char*n,const A*a,size_t count){O sel=selector(c,n);if(c->failure.status)return c->failure;R r=id.message(id.context,receiver,sel,a,count);if(r.status)c->failure=r;return r;}
-static O keep(Call*c,O o){if(c->failure.status)return 0;if(!o){c->failure=bad();return 0;}for(size_t i=0;i<c->input_count;i++)if(c->inputs[i]==o)return o;if(c->count==c->capacity){size_t cap=c->capacity?c->capacity*2:32;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return 0;}c->tokens=t;c->capacity=cap;}A a=obj(o);R r=raw(c,roots,"retain:",&a,1);if(r.status||r.value.kind!=2){c->failure=r.status?r:bad();return 0;}c->tokens[c->count++]=r.value.data.word;return o;}
+/* Bounded hints contain only opaque references whose protection lasts until
+   this Call exits. Eviction loses an optimization, never the covering token.
+   Entries are added AFTER successful retain or pure capture admission. */
+static void cover(Call*c,O o){if(!c->reuse)return;if(c->covered_count<32)c->covered[c->covered_count++]=o;else{c->covered[c->covered_next]=o;c->covered_next=(c->covered_next+1)&31;}}
+static O keep(Call*c,O o){if(c->failure.status)return 0;if(!o){c->failure=bad();return 0;}for(size_t i=0;i<c->input_count;i++)if(c->inputs[i]==o)return o;if(c->reuse)for(size_t i=0;i<c->covered_count;i++)if(c->covered[i]==o)return o;if(c->count==c->capacity){size_t cap=c->capacity?c->capacity*2:32;size_t*t=realloc(c->tokens,cap*sizeof(size_t));if(!t){c->failure=bad();return 0;}c->tokens=t;c->capacity=cap;}A a=obj(o);R r=raw(c,roots,"retain:",&a,1);if(r.status||r.value.kind!=2||!r.value.data.word){c->failure=r.status?r:bad();return 0;}c->tokens[c->count++]=r.value.data.word;cover(c,o);return o;}
 static O object(Call*c,A a);
 /* Execution owns the covering invocation scope; native callers likewise keep
    receiver/arguments live throughout the call under the Id ABI contract.
    Validate the Object carriers without registering the same inputs again.
    Fresh message results still use keep(): input coverage says nothing about them. */
 static void check_entry(Call*c,O self,const A*args,size_t n){
+ c->reuse=1;
  object(c,obj(self));
  if(n<=8&&!c->failure.status){c->inputs[0]=self;for(size_t i=0;i<n&&!c->failure.status;i++)c->inputs[i+1]=object(c,args[i]);if(!c->failure.status)c->input_count=n+1;}
  else for(size_t i=0;i<n&&!c->failure.status;i++)object(c,args[i]);
@@ -65,27 +70,35 @@ static O selector(Call*c,const char*n){
  return intern(c,n);
 }
 static O named(Call*c,const char*n){A a=obj(selector(c,n));return call(c,ns,"at:",&a,1);}
-/* Resolve the owner once, then dispatch capture reads on the actual Block.
+/* Ask the actual Block, then dispatch capture reads on that same receiver.
    All selector identities are resolved BEFORE checking the borrowing mode.
    1 = canonical callback-free reads covered by this live Block; 0 = retain
    replaced/custom results; 2 = nonportable receiver, use owner inspection to
    preserve Method invokeOn: behavior for receivers that have no Block messages.
    Every read is an Id message, never a call to a remembered executable. */
 static void load_captures(Call*c,O self,O*out,size_t count){
- O factory=named(c,"Block");
- O read=selector(c,"captureWordAt:"),permit=selector(c,"captureReadModeOf:"),inspect=selector(c,"captureWord:of:");
+ O read=selector(c,"captureWordAt:"),permit=selector(c,"captureReadMode"),fallback=selector(c,"captureReadModeOf:"),inspect=selector(c,"captureWord:of:");
  if(c->failure.status)return;
- A target=obj(self);R grant=id.message(id.context,factory,permit,&target,1);
+ R grant=id.message(id.context,self,permit,0,0);
+ O factory=0;
+ /* Non-Block Method receivers need owner inspection. If a Block's direct
+    query is absent, this fallback still admits its CURRENT reader instead of
+    bypassing it through inspection. Resolve the factory before its query. */
+ if(grant.status==6){factory=named(c,"Block");if(c->failure.status)return;A target=obj(self);grant=id.message(id.context,factory,fallback,&target,1);}
  size_t mode=0;
  if(grant.status){if(grant.status!=6){c->failure=grant;return;}}
  else if(grant.value.kind==2&&grant.value.data.word<=2)mode=grant.value.data.word;
  else {c->failure=bad();return;}
+ if(mode==2&&!factory)factory=named(c,"Block");
  for(size_t i=0;i<count&&!c->failure.status;i++){
   A arguments[2]={word(i),obj(self)};
   R result=id.message(id.context,mode==2?factory:self,mode==2?inspect:read,arguments,mode==2?2:1);
   if(result.status){c->failure=result;return;}
   O value=object(c,result.value);if(!c->failure.status)out[i]=mode==1?value:keep(c,value);
  }
+ /* Only a completely successful pure batch proves the immutable-edge cover.
+    Replacement/fallback results above have their own ordinary registrations. */
+ if(mode==1&&!c->failure.status)for(size_t i=0;i<count;i++)cover(c,out[i]);
 }
 /* Error is installed from authored code after the compiler floor exists.
    Before that, native failures propagate and no Error family is available. */

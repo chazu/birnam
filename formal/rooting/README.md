@@ -263,6 +263,39 @@ already reachable from covering roots, including a live Block's capture edge.
 Fresh results need a separate coverage premise. `CaptureReads.tla` checks pure
 borrowed reads, protected replacement results and cleanup, with required failures
 for invalid grants, missing fresh roots, early scope exit and broken edges.
+The receiver-query slice adds transitive receiver coverage and pure read-batch
+survival theorems. The bounded model includes direct and factory-fallback routes,
+roots the factory only through the fallback query, and checks two invocations
+with changed reader/query bindings. `CaptureCached` must lose a fresh result when
+the second invocation reuses an earlier positive grant. The factory result and
+Id result handoff remain ABI premises; actual query failures/type fallback are
+covered by native integration tests rather than encoded as a full dispatch model.
 The runtime correspondence and limits are recorded in
-[the capture-access result](../../docs/design/capture-access-simplification.md).
+[the capture-access result](../../docs/design/capture-access-simplification.md) and
+[the receiver-query slice](../../docs/design/capture-receiver-query.md).
 These are abstract models, not a proof of native providers or the emitted ABI.
+
+## Fixed names and protection within a call
+
+`SymbolNames.lean` proves that retaining the correct Symbol identity permits
+dispatch in any current world, and that an owner root/edge keeps the Symbol alive.
+It does not preserve repeated internal interning hooks or authorize caching a
+selected executable. Namespace, Execution, Word and Codegen retain fixed helper
+Symbols; every actual operation still uses current Id dispatch. Explicit source
+`intern:` operations and dynamic-name fallbacks remain operations.
+
+`LocalReuse.lean` proves reachability equivalence for already-covered aliases,
+coverage after a successful first acquisition, safe eviction of a hint without
+dropping its root, and collection survival. It rejects treating a stale pointer
+after scope exit as protection. `LocalReuse.tla` checks two activations with a
+one-slot cache to exercise eviction: unrooted hints, dropping roots on eviction,
+stale hints in the next call, broken capture edges, early release and leaked
+cleanup all require counterexamples. The generated cache has 32 entries; bounded
+eviction changes only optimization opportunities, not lifetime coverage.
+
+This models compiler-private lifetime protection, not changes to explicit program
+Root operations or a general permission lease for public token coalescing.
+First-result acquisition/handoff, collector contracts and immutable admitted
+capture edges remain premises. Integration tests force precise GC with fresh
+locals and capture aliases, exceed the cache capacity, check cleanup across calls,
+and verify failure/zero-token acquisition prevents later body operations.

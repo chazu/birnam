@@ -374,10 +374,14 @@ Object (nil for an invalid index). It is an ordinary Id send reading only this
 owner's storage, with no allocation admission. The factory `captureWord:of:`
 remains for inspection/type fallback and also needs no allocation admission.
 
-`Block captureReadModeOf:` accepts a Block Object and returns native Word 0 for
+`block captureReadMode` returns native Word 0 for
 ordinary protected reads, 1 for canonical pure borrowing, or 2 for an unsupported
-nonportable receiver. Generated synchronous bodies resolve the owner once, then
-read through the Block receiver. Mode 1 requires an atomic current-binding check
+nonportable receiver. Generated synchronous bodies query and read through the
+actual Block receiver without a Namespace factory lookup. If the direct query is
+unbound, the current factory `captureReadModeOf:` query supplies inspection/type
+fallback and still checks the current direct reader for initialized Blocks. Mode
+2 uses `captureWord:of:` inspection. Other query failures propagate unchanged.
+Mode 1 requires an atomic current-binding check
 of the reader, the mode query and canonical Id query services (including that
 check's own binding). It covers only the initialized Block's immutable capture
 references while the caller keeps the Block live. Custom/replaced readers use
@@ -385,7 +389,7 @@ normal result roots; native grant/query providers must honor their contracts.
 No selector lookup or arbitrary callback occurs between positive admission and
 these pure projections. Word-helper admission tracks the new direct reader.
 
-See [measurement and proof limits](../../docs/design/capture-access-simplification.md).
+See [measurement and proof limits](../../docs/design/capture-receiver-query.md).
 
 ## Fixed one-argument native calls (2026-10-07)
 

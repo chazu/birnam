@@ -166,7 +166,10 @@ unsafe extern "C" fn implementation_of_entry(
 }
 impl Execution {
     fn value_factory(&self,name:&[u8])->Result<Oop,Outcome> {
-        unsafe {object(self.id.send_named(self.namespace,b"at:",&[Operand::object(self.id.intern_name(name)?)])?)}
+        unsafe {
+            let key = match self.names.get(name) { Some(&key) => key, None => self.id.intern_name(name)? };
+            object(self.send(self.namespace,b"at:",&[Operand::object(key)])?)
+        }
     }
     fn integer_factory(&self)->Result<Oop,Outcome> {self.value_factory(b"Integer")}
     fn float_factory(&self)->Result<Oop,Outcome> {self.value_factory(b"Float")}
@@ -780,6 +783,24 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
 }
 
 const NAMES: &[&[u8]] = &[
+    b"CodeObject",
+    b"Word",
+    b"value:",
+    b"value:value:",
+    b"value:value:value:",
+
+    b"Bytes",
+    b"Codegen",
+    b"Vector",
+    b"add:",
+    b"bits",
+    b"bytes",
+    b"canonicalBytesOf:",
+    b"fromBytes:",
+    b"materializeSynchronous:captures:",
+    b"nativeSignature",
+    b"withNativeSignature:",
+
     b"nativeBindingsMatch:",
     b"intern:",
     b"symbolNamed:",

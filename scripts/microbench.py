@@ -14,7 +14,7 @@ import time
 from validation_support import ROOT, clean_environment, command, save_json, sha
 from microbench_report import summarize
 
-OWNERS = ('native_backend', 'execution', 'portable_code', 'object_model', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id')
+OWNERS = ('native_backend', 'execution', 'portable_code', 'object_model', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id', 'namespace', 'codegen_runtime')
 TARGET = ROOT / '.cargo-target/decomposition-install/target'
 WORK = ROOT / '.cargo-target/microbench'
 

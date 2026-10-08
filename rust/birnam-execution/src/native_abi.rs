@@ -5,16 +5,10 @@
 use super::*;
 
 unsafe fn binding(s: &Execution, name: &[u8]) -> Result<Oop, Outcome> {
-    unsafe {
-        object(s.id.send_named(
-            s.namespace,
-            b"at:",
-            &[Operand::object(s.id.intern_name(name)?)],
-        )?)
-    }
+    s.value_factory(name)
 }
 unsafe fn snapshot(s: &Execution, value: Oop) -> Result<Vec<u8>, Outcome> {
-    let raw = unsafe { s.id.send_named(value, b"bytes", &[]) }?
+    let raw = unsafe { s.send(value, b"bytes", &[]) }?
         .as_bytes()
         .ok_or_else(invalid)?;
     Ok(unsafe { borrowed_bytes(raw.pointer, raw.length) }
@@ -22,7 +16,7 @@ unsafe fn snapshot(s: &Execution, value: Oop) -> Result<Vec<u8>, Outcome> {
         .to_vec())
 }
 unsafe fn word(s: &Execution, value: Oop) -> Result<usize, Outcome> {
-    unsafe { s.id.send_named(value, b"bits", &[]) }?
+    unsafe { s.send(value, b"bits", &[]) }?
         .as_word()
         .ok_or_else(invalid)
 }
@@ -37,7 +31,7 @@ unsafe fn bytes_result_with_factory(s: &Execution, factory: Oop, result: Operand
     let raw = result.as_bytes().ok_or_else(invalid)?;
     // Copy the returned borrow before any outgoing message or factory callback.
     let copied = unsafe { borrowed_bytes(raw.pointer, raw.length) }.ok_or_else(invalid)?.to_vec();
-    unsafe { s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&copied)]) }
+    unsafe { s.send(factory, b"fromBytes:", &[Operand::bytes(&copied)]) }
 }
 pub(super) unsafe extern "C" fn optional_word_argument(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
@@ -48,7 +42,7 @@ pub(super) unsafe extern "C" fn optional_word_argument(c: *mut c_void, r: Oop, a
         let result=s.id.send(target,selector,&[Operand::object(argument)])?;
         if result.kind()==native::UNIT {return Ok(Operand::object(s.nil));}
         let bits=result.as_word().ok_or_else(invalid)?;
-        s.id.send_named(factory,b"fromBits:",&[Operand::word(bits)])
+        s.send(factory,b"fromBits:",&[Operand::word(bits)])
     })())
 }
 pub(super) unsafe extern "C" fn object_word_argument(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -123,7 +117,7 @@ fn query(c: *mut c_void, r: Oop, a: *const Operand, n: usize, is_word: bool) -> 
             let value = result.as_word().ok_or_else(invalid)?;
             let factory = binding(s, b"Word")?;
             roots.keep(factory);
-            s.id.send_named(factory, b"fromBits:", &[Operand::word(value)])
+            s.send(factory, b"fromBits:", &[Operand::word(value)])
         } else {
             let raw = result.as_bytes().ok_or_else(invalid)?;
             let bytes = borrowed_bytes(raw.pointer, raw.length)
@@ -131,7 +125,7 @@ fn query(c: *mut c_void, r: Oop, a: *const Operand, n: usize, is_word: bool) -> 
                 .to_vec();
             let factory = binding(s, b"Bytes")?;
             roots.keep(factory);
-            s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&bytes)])
+            s.send(factory, b"fromBytes:", &[Operand::bytes(&bytes)])
         }
     })())
 }
@@ -149,7 +143,7 @@ pub(super) unsafe fn implementation_signature(
         .copied();
     let Some(code) = code else { return Ok(None) };
     let roots = s.scope(&[implementation, code]);
-    let signature = object(unsafe { s.id.send_named(code, b"nativeSignature", &[]) }?)?;
+    let signature = object(unsafe { s.send(code, b"nativeSignature", &[]) }?)?;
     roots.keep(signature);
     if signature == s.nil {
         return Ok(None);
@@ -159,7 +153,7 @@ pub(super) unsafe fn implementation_signature(
     let factory = unsafe { binding(s, b"CodeObject") }?;
     roots.keep(factory);
     let canonical = object(unsafe {
-        s.id.send_named(factory, b"canonicalBytesOf:", &[Operand::object(code)])
+        s.send(factory, b"canonicalBytesOf:", &[Operand::object(code)])
     }?)?;
     roots.keep(canonical);
     let bytes = unsafe { snapshot(s, canonical) }?;
@@ -224,13 +218,13 @@ pub(super) unsafe fn incoming(
             b'w' => {
                 let factory = unsafe { binding(s, b"Word") }?;
                 roots.keep(factory);
-                object(unsafe { s.id.send_named(factory, b"fromBits:", &[argument]) }?)?
+                object(unsafe { s.send(factory, b"fromBits:", &[argument]) }?)?
             }
             b'b' => {
                 let factory = unsafe { binding(s, b"Bytes") }?;
                 roots.keep(factory);
                 object(unsafe {
-                    s.id.send_named(
+                    s.send(
                         factory,
                         b"fromBytes:",
                         &[Operand::bytes(copied.as_deref().unwrap())],
@@ -249,7 +243,7 @@ pub(super) unsafe fn incoming(
         b'o' => Ok(result),
         // A deferred result evaluates the selected thunk after the authored
         // selector body has returned, preserving every native result carrier.
-        b'v' => unsafe { s.id.send_named(value, b"value", &[]) },
+        b'v' => unsafe { s.send(value, b"value", &[]) },
         b'u' if value == s.nil => Ok(Operand::unit()),
         b'x' => Ok(Operand::unit()),
         b'W' | b'B' if value == s.nil => Ok(Operand::unit()),
@@ -309,7 +303,7 @@ pub(super) unsafe extern "C" fn block_with_signature(
         for &v in &captures {
             roots.keep(v)
         }
-        let code = object(s.id.send_named(
+        let code = object(s.send(
             code,
             b"withNativeSignature:",
             &[Operand::object(signature)],
@@ -317,10 +311,10 @@ pub(super) unsafe extern "C" fn block_with_signature(
         roots.keep(code);
         let vector = binding(s, b"Vector")?;
         roots.keep(vector);
-        let mut values = object(s.id.send_named(vector, b"new", &[])?)?;
+        let mut values = object(s.send(vector, b"new", &[])?)?;
         roots.keep(values);
         for value in captures {
-            values = object(s.id.send_named(values, b"add:", &[Operand::object(value)])?)?;
+            values = object(s.send(values, b"add:", &[Operand::object(value)])?)?;
             roots.keep(values)
         }
         if s.methods
@@ -330,7 +324,7 @@ pub(super) unsafe extern "C" fn block_with_signature(
         {
             let codegen = binding(s, b"Codegen")?;
             roots.keep(codegen);
-            s.id.send_named(
+            s.send(
                 codegen,
                 b"materializeSynchronous:captures:",
                 &[Operand::object(code), Operand::object(values)],

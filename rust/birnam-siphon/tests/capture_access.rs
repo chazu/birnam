@@ -161,6 +161,12 @@ unsafe extern "C" fn grant_wrapper(c: *mut c_void, r: Oop, a: *const Operand, n:
     };
     answer
 }
+unsafe extern "C" fn unbound(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::failed(6, 0)
+}
+unsafe extern "C" fn bad_mode(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::loaded(Operand::word(3))
+}
 unsafe extern "C" fn fail(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::failed(812, 19)
 }
@@ -222,18 +228,24 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
         let factory = h.named(b"Block");
         let factory_vt = vtable(&h, factory);
         let reader = binding(&h, block, b"captureWordAt:");
-        let grant = binding(&h, factory, b"captureReadModeOf:");
+        let grant = binding(&h, block, b"captureReadMode");
         assert_eq!(
             send(
                 id,
-                factory,
-                b"captureReadModeOf:",
-                &[Operand::object(block)]
+                block,
+                b"captureReadMode",
+                &[]
             )
             .as_word(),
             Some(1)
         );
         assert_eq!(h.call(block, b"value", &[]), a);
+        assert_eq!(id.send_named(block, b"captureReadMode", &[Operand::word(0)]).unwrap_err().status, 1);
+        // The normal route does not consult the factory query at all.
+        let fallback_grant = binding(&h, factory, b"captureReadModeOf:");
+        set(&h, factory_vt, b"captureReadModeOf:", NativeEntry::new(fail, std::ptr::null_mut()));
+        assert_eq!(h.call(block, b"value", &[]), a);
+        set(&h, factory_vt, b"captureReadModeOf:", fallback_grant);
         let mut hook = Hook {
             id,
             gc: h.gc,
@@ -279,8 +291,8 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
             if mutate_after_grant {
                 set(
                     &h,
-                    factory_vt,
-                    b"captureReadModeOf:",
+                    vt,
+                    b"captureReadMode",
                     NativeEntry::new(grant_wrapper, context),
                 );
             } else {
@@ -291,9 +303,25 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
             assert_eq!(hook.calls.get(), 2);
             collect(id, h.gc);
             assert!(present(id, result));
-            set(&h, factory_vt, b"captureReadModeOf:", grant);
+            set(&h, vt, b"captureReadMode", grant);
             set(&h, vt, b"captureWordAt:", reader);
         }
+        // Removing the direct query must not bypass a replaced direct reader.
+        set(&h, vt, b"captureReadMode", NativeEntry::new(unbound, std::ptr::null_mut()));
+        hook.calls.set(0);
+        hook.first.set(std::ptr::null_mut());
+        set(&h, vt, b"captureWordAt:", NativeEntry::new(fresh, context));
+        assert_eq!(h.bits(h.call(block, b"value", &[])), 101);
+        assert_eq!(hook.calls.get(), 2);
+        set(&h, vt, b"captureWordAt:", reader);
+        set(&h, vt, b"captureReadMode", grant);
+        set(&h, vt, b"captureReadMode", NativeEntry::new(fail, std::ptr::null_mut()));
+        let failure = id.send_named(block, b"value", &[]).unwrap_err();
+        assert_eq!((failure.status, failure.detail), (812, 19));
+        set(&h, vt, b"captureReadMode", grant);
+        set(&h, vt, b"captureReadMode", NativeEntry::new(bad_mode, std::ptr::null_mut()));
+        assert_eq!(id.send_named(block, b"value", &[]).unwrap_err().status, 1);
+        set(&h, vt, b"captureReadMode", grant);
         // A forwarding Id proof query cannot grant borrowing from an old
         // answer and then replace the reader. The request fences that query's
         // own binding, so its canonical implementation returns zero.
@@ -328,6 +356,9 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
         let fresh_b = allocate(id, behavior(id), 0);
         let tb = retain(id, roots, fresh_b);
         let method = h.call(block, b"methodFor:", &[id.intern_name(b"value").unwrap()]);
+        let nil = h.named(b"nil");
+        assert_eq!(send(id, nil, b"captureReadMode", &[]).as_word(), Some(2));
+        assert_eq!(h.call(method, b"invokeOn:", &[nil]), nil);
         let only_owner = h.keep(object(send(
             id,
             h.named(b"Block"),

@@ -79,17 +79,17 @@ fn evaluate_inner(
                 return refuse();
             }
             let epoch =
-                n.id.send_named(n.id.receiver, b"behaviorEpoch", &[])?
+                n.send(n.id.receiver, b"behaviorEpoch", &[])?
                     .as_word()
                     .ok_or_else(invalid)?;
             if expected.is_some_and(|e| e != epoch)
                 || epoch == usize::MAX
-                || n.id
-                    .send_named(n.id.receiver, b"usesDefaultAllocation", &[])?
+                || n
+                    .send(n.id.receiver, b"usesDefaultAllocation", &[])?
                     .as_word()
                     != Some(1)
-                || n.id
-                    .send_named(
+                || n
+                    .send(
                         n.model,
                         b"canOmitAllocationFor:",
                         &[Operand::object(n.behavior)],
@@ -117,17 +117,17 @@ fn evaluate_inner(
                     return Err(invalid());
                 };
                 if meanings & (1u32 << op[0]) == 0 {
-                    let selector = n.id.intern_name(name)?;
-                    if n.id
-                        .send_named(
+                    let selector = n.names[name];
+                    if n
+                        .send(
                             n.id.receiver,
                             b"usesDefaultLookup:",
                             &[Operand::object(n.prototype)],
                         )?
                         .as_word()
                         != Some(1)
-                        || n.id
-                            .send_named(
+                        || n
+                            .send(
                                 n.id.receiver,
                                 b"bind:to:",
                                 &[Operand::object(selector), Operand::object(n.prototype)],
@@ -165,8 +165,8 @@ fn evaluate_inner(
                 return Err(invalid());
             }
             // Guards and input reads may callback. Fence all dependencies before commit.
-            if n.id
-                .send_named(n.id.receiver, b"behaviorEpoch", &[])?
+            if n
+                .send(n.id.receiver, b"behaviorEpoch", &[])?
                 .as_word()
                 != Some(epoch)
             {

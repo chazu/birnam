@@ -27,7 +27,7 @@ controlwords={'selectIfSameObject:with:ifEqual:ifDifferent:','sameObject:with:',
 root={'retain:','release:','tryRetainMany:','tryReleaseMany:','tryReleaseManyForward:'}
 for r in trace:
  sel=r['selector']
- cat='closure construction' if sel in construct else 'capture access' if sel in {'captureWord:of:','captureWordAt:','captureReadModeOf:'} else 'ABI bridges' if sel in abi else 'Boolean selection primitives' if sel in controlwords else 'Word arithmetic/guards' if sel in word else None
+ cat='closure construction' if sel in construct else 'capture access' if sel in {'captureWord:of:','captureWordAt:','captureReadModeOf:','captureReadMode'} else 'ABI bridges' if sel in abi else 'Boolean selection primitives' if sel in controlwords else 'Word arithmetic/guards' if sel in word else None
  if cat:seeds[r['id']]=cat;reasons[r['id']]='semantic operation '+sel
 # Namespace factory lookups are preparation for the following generated owner call.
 # Skip lifetime operations when finding that call; retain those preparation roots later.
@@ -37,7 +37,7 @@ for rows in children.values():
   nextop=next((q for q in rows[i+1:] if q['selector'] not in root),None)
   if nextop and nextop['selector'] in construct:
    seeds[r['id']]='closure construction';reasons[r['id']]='adjacent factory lookup '+r['key']+' for '+nextop['selector']
-  elif nextop and r['key']=='Block' and nextop['selector'] in {'captureWord:of:','captureWordAt:','captureReadModeOf:'}:
+  elif nextop and r['key']=='Block' and nextop['selector'] in {'captureWord:of:','captureWordAt:','captureReadModeOf:','captureReadMode'}:
    seeds[r['id']]='capture access';reasons[r['id']]='adjacent Block factory lookup for capture projection'
 # A generated retain of a sibling operation's exact returned Object is attributed
 # to that producer. Addresses are opaque Id references; no payload is read.

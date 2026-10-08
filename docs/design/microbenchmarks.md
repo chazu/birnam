@@ -45,7 +45,8 @@ NativeBackend exposes explicit compiler options on its existing program/factory
 messages: `emit:source:filename:persistent:synchronous:optimizations:` and
 `factory:source:dispositions:optimizations:`. The final argument is an Integer
 bitmask: 1 enables Word expression/local fusion, 4 authored Word helper candidates,
-8 owner-batched cleanup, and 16 invocation-covered input roots. Bit 2 is retired
+8 owner-batched cleanup, and 16 invocation-covered input roots plus protection
+reuse for already-covered captures/locals within the current generated call. Bit 2 is retired
 and rejected; default mask is 29. Tests cover all sixteen valid masks and reject
 retired/out-of-range bits. No compatibility alias accepts old mask 29.
 The runner temporarily forwards compiler requests to these options interfaces

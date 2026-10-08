@@ -491,12 +491,13 @@ unsafe fn new_block_values(s: &Execution, method: Oop, code: Option<Oop>, input:
     let base = s.machines.borrow().block_behavior;
     let b = object(unsafe { s.send(base, b"delegated", &[]) }?)?;
     roots.keep(b);
-    let selector = if arity == 0 {
-        b"value".to_vec()
-    } else {
-        b"value:".repeat(arity)
+    let selector = match arity {
+        0 => s.names[b"value".as_slice()],
+        1 => s.names[b"value:".as_slice()],
+        2 => s.names[b"value:value:".as_slice()],
+        3 => s.names[b"value:value:value:".as_slice()],
+        _ => unsafe { s.id.intern_name(&b"value:".repeat(arity)) }?,
     };
-    let selector = unsafe { s.id.intern_name(&selector) }?;
     roots.keep(selector);
     unsafe {
         s.send(
@@ -1098,7 +1099,7 @@ enum Op {
     BlockCapture(bool),
     BlockCaptureWord,
     BlockReadWord,
-    BorrowCaptures,
+    BorrowCaptures(bool),
     CloneBlock,
     Prepare,
     New,
@@ -1160,21 +1161,24 @@ unsafe extern "C" fn operation(
         // Word-indexed capture reads are owner-local, nonallocating inspection.
         // The borrowing query only describes the current reader; it neither
         // allocates nor changes collector phase. Mutation admission remains below.
-        if !matches!(op.kind, Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures) {
+        if !matches!(op.kind, Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_)) {
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op.kind {
-            Op::BorrowCaptures => {
-                let [target] = args else { return Err(invalid()); };
-                let target = object(*target)?;
+            Op::BorrowCaptures(direct) => {
+                let (target, query) = match (direct, args) {
+                    (true, []) => (receiver, b"captureReadMode".as_slice()),
+                    (false, [target]) => (object(*target)?, b"captureReadModeOf:".as_slice()),
+                    _ => return Err(invalid()),
+                };
                 if helper_body(s, target).is_none() { return Ok(Operand::word(2)); }
                 let entry = default_capture_entry(s).ok_or_else(invalid)?;
-                let grant = { let state = s.machines.borrow();
-                    state.contexts.iter().find(|o| o.kind == Op::BorrowCaptures)
-                        .map(|o| NativeEntry::new(operation, ptr::from_ref(&**o).cast_mut().cast()))
-                        .ok_or_else(invalid)? };
+                // This entered owner-local operation already has its exact
+                // context. Compare that witness; do not search every operation
+                // to rediscover it. Forwarding wrappers still fail the fence.
+                let grant = NativeEntry::new(operation, context);
                 return Ok(Operand::word(usize::from(crate::binding_proof::matches_all(
-                    s, &[(receiver, b"captureReadModeOf:", grant), (target, b"captureWordAt:", entry)])?)));
+                    s, &[(receiver, query, grant), (target, b"captureWordAt:", entry)])?)));
             }
             Op::InvalidRequest if args.is_empty() => return Err(invalid()),
             Op::PreserveFailures => {
@@ -1703,6 +1707,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"captureAt:of:",
     b"captureWord:of:",
     b"captureWordAt:",
+    b"captureReadMode",
     b"captureReadModeOf:",
     b"invalidRequest",
     b"evaluatePreservingFailures:",
@@ -2252,7 +2257,12 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;
         install_op(s, block_vtable, b"captureWord:of:", Op::BlockCaptureWord)?;
         install_op(s, block_vtable, b"captureWordAt:", Op::BlockReadWord)?;
-        install_op(s, block_vtable, b"captureReadModeOf:", Op::BorrowCaptures)?;
+        // Execution's owner query is defined for every ordinary Object. Unknown
+        // receivers answer inspection mode before touching any representation.
+        // Otherwise a non-Block Method receiver could run its DNU handler merely
+        // to ask this query. Blocks inherit the same current query binding.
+        install_op(s, object_behavior, b"captureReadMode", Op::BorrowCaptures(true))?;
+        install_op(s, block_vtable, b"captureReadModeOf:", Op::BorrowCaptures(false))?;
         install_op(s, block_vtable, b"clone", Op::CloneBlock)?;
         install_op(s, continuation_vtable, b"clone", Op::Disabled)?;
         install_op(s, continue_action_vtable, b"kind", Op::Kind)?;

@@ -30,6 +30,7 @@ struct State {
     ns: Oop,
     roots: Oop,
     permanent: Vec<Oop>,
+    names: std::collections::HashMap<&'static [u8], Oop>,
     sources: source::Sources,
     compiled_adapters: RefCell<Vec<Option<Vec<(u32, Oop)>>>>,
     materializations: RefCell<Vec<materialization::Cached>>,
@@ -50,9 +51,7 @@ impl Drop for AdapterScope<'_> {
 impl Scope<'_> {
     unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
         let t = unsafe {
-            self.s
-                .id
-                .send_named(self.s.roots, b"retain:", &[Operand::object(o)])
+            self.s.send(self.s.roots, b"retain:", &[Operand::object(o)])
         }?
         .as_word()
         .ok_or_else(invalid)?;
@@ -64,9 +63,7 @@ impl Drop for Scope<'_> {
     fn drop(&mut self) {
         for t in self.tokens.get_mut().drain(..) {
             unsafe {
-                self.s
-                    .id
-                    .send_named(self.s.roots, b"release:", &[Operand::word(t)])
+                self.s.send(self.s.roots, b"release:", &[Operand::word(t)])
                     .expect("release Codegen root");
             }
         }
@@ -78,10 +75,18 @@ impl State {
         AdapterScope(self)
     }
     unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Operand, Outcome> {
-        unsafe { self.id.send_named(r, n, a) }
+        unsafe {
+            match self.names.get(n) {
+                Some(&symbol) => self.id.send(r, symbol, a),
+                None => self.id.send_named(r, n, a),
+            }
+        }
     }
     unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { object(self.send(self.ns, b"at:", &[Operand::object(self.id.intern_name(n)?)])?) }
+        unsafe {
+            let key = match self.names.get(n) { Some(&key) => key, None => self.id.intern_name(n)? };
+            object(self.send(self.ns, b"at:", &[Operand::object(key)])?)
+        }
     }
     unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Outcome> {
         unsafe {
@@ -542,11 +547,19 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             b"allocate:bytes:",
             &[Operand::object(reflect_vt), Operand::word(0)],
         )?)?)?;
+        let mut names = std::collections::HashMap::new();
+        let mut permanent = vec![ns, root, vt, reflect_vt, receiver, reflect];
+        for name in [b"retain:".as_slice(), b"release:", b"at:", b"nil", b"behaviorOf:"] {
+            let symbol = pin(id.intern_name(name)?)?;
+            names.insert(name, symbol);
+            permanent.push(symbol);
+        }
         let s = Box::into_raw(Box::new(State {
             id,
             ns,
             roots: root,
-            permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
+            permanent,
+            names,
             sources: source::Sources::default(),
             compiled_adapters: RefCell::new(Vec::new()),
             materializations: RefCell::new(Vec::new()),
