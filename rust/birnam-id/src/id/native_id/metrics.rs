@@ -70,7 +70,9 @@ pub(super) fn enter(s: &State, receiver: Oop, selector: Oop, args: &[Operand]) -
     let region = m.frames.iter().rev().find_map(|&(_, selector)| {
         let name = unsafe { (&*s.symbols).bytes_of(core::ptr::with_exposed_provenance_mut(selector)) }?;
         matches!(name,
-            b"tryNativeArguments:" | b"sendNativeTo:selector:arguments:signature:resultFactory:"
+            b"optionalWordResultOf:selector:argument:resultFactory:" | b"objectResultOf:selector:wordArgument:"
+            | b"discardResultOf:selector:wordArgument:" | b"objectResultOf:selector:byteArgument:"
+            | b"bytesResultOf:selector:resultFactory:"
             | b"wordResultOf:selector:" | b"bytesResultOf:selector:" | b"block:withNativeSignature:"
         ).then_some(selector)
     }).unwrap_or(0);

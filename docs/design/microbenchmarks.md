@@ -34,9 +34,9 @@ Preparation refuses an existing destination without that marker. Re-run
 
 ## Fixtures and controls
 
-The fixtures are `word-nested`, `word-locals`, `abi`, `helper`, `integer-add` and
-`integer-multiply`, plus `abi-captured` and `public-integer-loop`. `all` shares
-the total measurement budget among the eight.
+The fixtures are `word-nested`, `word-locals`, `helper`, `integer-add` and
+`integer-multiply`, plus `public-integer-loop`. `all` shares
+the total measurement budget among the selected current fixtures.
 Every operation runs through Id. Results are checked before measurement and
 at batch boundaries; assertions and allocation census are outside timed batches.
 Both variants share one process and rooted inputs, and their order alternates.
@@ -44,15 +44,15 @@ Both variants share one process and rooted inputs, and their order alternates.
 NativeBackend exposes explicit compiler options on its existing program/factory
 messages: `emit:source:filename:persistent:synchronous:optimizations:` and
 `factory:source:dispositions:optimizations:`. The final argument is an Integer
-bitmask: 1 enables Word expression/local fusion, 2 ABI literal elimination and
-4 authored Word helper candidates; 8 enables guarded owner-batched root cleanup.
-Bit 16 enables batched incoming roots. Existing messages retain all five
-by default (mask 31).
+bitmask: 1 enables Word expression/local fusion, 4 authored Word helper candidates,
+8 owner-batched cleanup, and 16 invocation-covered input roots. Bit 2 is retired
+and rejected; default mask is 29. Tests cover all sixteen valid masks and reject
+retired/out-of-range bits. No compatibility alias accepts old mask 29.
 The runner temporarily forwards compiler requests to these options interfaces
 while compiling/loading fixtures, then restores the original compiler methods
 before measurement. Runtime lookup and allocation methods are not replaced.
 Typed bodies use the factory route as well as the initial program emitter, so
-both routes are controlled. Unit tests exercise all thirty-two mask combinations.
+both routes are controlled. Unit tests exercise valid masks and retired-bit rejection.
 
 Each fixture uses the same source body for baseline and candidate. Integer
 fixtures derive their arithmetic policy from `modules/integer.birnam`; the
@@ -186,7 +186,7 @@ semantics. See [public-path investigation](integer-performance-investigation.md)
 
 ## Formal-performance controls
 
-`public-integer-roots` compares masks 7 and 15 on the same public sixteen-addition
+`public-integer-roots` compares masks 5 and 13 on the same public sixteen-addition
 chain. Physical allocations must match; counts-only verifies fewer individual
 release messages. The former `public-integer-shape`/`block-shape-large` controls
 and `programShapeBorrowing:` switch were retired when closure construction stopped
@@ -195,7 +195,7 @@ receipts; they are no longer selectable benchmark cases.
 
 ```sh
 python3 scripts/microbench.py --case public-integer-roots --seconds 4
-python3 scripts/microbench.py --case public-integer-bindings --counts-only --trace
+python3 scripts/microbench.py --case public-integer-default --counts-only --trace
 ```
 
 Microbenchmark owner refresh includes PortableCode and ObjectModel. After deleting
@@ -213,7 +213,7 @@ useful for comparing compatible collector dylibs in separate diagnostic prefixes
 separate-process ratios are descriptive, not the paired reporter's confidence
 verdict. No startup images are involved.
 
-`public-integer-retains` compares masks 15 and 31 with identical input roots and
+`public-integer-retains` compares masks 13 and 29 with identical input roots and
 physical allocations; Word's owner-level root batching is enabled for both.
 This isolates compiler incoming-root grouping, not the full before/after change.
 Untimed counts include grouped acquisition/release via the native Root protocols.
@@ -233,30 +233,26 @@ python3 scripts/microbench.py --case semantic-vector-access --counts-only
 ```
 
 The latter probes use captured `"hello" size` and `#[11 22 33] at: 1`; expected
-results are 5 and 22. Both variants use mask 31 and identical physical work.
+results are 5 and 22. Both variants use mask 29 and identical physical work.
 They are reference probes for `formal/semantics`, not optimization comparisons.
 
-`public-integer-bindings` compares the same mask-31 public addition chain with
-Execution `bindingProofBatches:` disabled/enabled outside each measured batch.
-Other cases restore the default enabled mode when activated. This isolates fixed
-ABI guard query coalescing; it does not change compilation masks or arithmetic.
-Counts-only must show identical allocations/charge, balanced observed roots and
-fewer candidate messages. A declined query retains ordinary guard order and costs
-an extra admission query. Run a separate short timing probe; fewer messages alone
-is not a throughput verdict. See [execution semantics](execution-region-semantics.md)
-for contracts and evidence.
+`public-integer-default` is the identical-default-protocol fixture used for send
+censuses and before/after library comparisons. It has no optimization toggle.
+The former binding-proof toggle is retired with the general outbound bridge.
+Within-run baseline/candidate parity is a control, not evidence of a source-change
+speedup.
 
 ## ABI cost controls and message ancestry
 
 `--case abi-audit` selects five diagnostic contrasts: Object-only incoming
 adaptation, a raw versus boxed Integer read, a read/construction round trip, and
 native versus authored Word/Bytes echo leaves under the same outgoing wrapper.
-They all use mask 31 and validate results. Different carrier/leaf contracts are
+They all use mask 29 and validate results. Different carrier/leaf contracts are
 labelled as cost contrasts, not optimizer regressions. Default `all` excludes
 this diagnostic group; profiling requires an individual case.
 
 `messages` records the first invocation after collection; these cases and
-`public-integer-bindings` additionally report `steady_messages` after eight warm
+`public-integer-default` additionally report `steady_messages` after eight warm
 calls following collection. The optional Id `dispatchRegions` inventory assigns
 every send to its nearest named ABI ancestor, or the outside bucket. These buckets
 are disjoint and must sum to the census. `dispatchSubtrees` records call counts and
@@ -270,3 +266,17 @@ so different controls cannot accidentally reuse one loaded dylib pathname.
 The Object-only control also inspects its actual native signature before timing.
 See [ABI overhead investigation](abi-overhead-investigation.md) for costs, limits
 and the next owner-level opportunities.
+
+## Outbound bridge retirement (2026-10-07)
+
+The old `abi`/`abi-captured` Vector-elision controls are retired. `abi-audit-read`
+and `abi-audit-roundtrip` use typed helpers against direct Id controls. Native
+Word/Bytes incoming fixtures now use `ow`/`ob` incoming signatures and return
+Objects; their native leaf controls construct the same result types. Historical
+`ww`/`bb` measurements are different contracts, not directly comparable timings.
+
+New public-policy probes are `semantic-word-as-integer`,
+`semantic-bytes-as-string` and `semantic-boolean-print`. They check the migrated
+production callers. See [the retirement result](outbound-bridge-retirement.md).
+Older sections describing ABI-literal permission work are historical checkpoints;
+the associated pass, signature handling and guard helpers have been deleted.

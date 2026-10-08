@@ -1139,7 +1139,7 @@ unsafe extern "C" fn operation(
                         .map(|o| NativeEntry::new(operation, ptr::from_ref(&**o).cast_mut().cast()))
                         .ok_or_else(invalid)? };
                 return Ok(Operand::word(usize::from(crate::binding_proof::matches_all(
-                    s, &[(receiver, b"captureReadModeOf:", grant), (target, b"captureWordAt:", entry)], true)?)));
+                    s, &[(receiver, b"captureReadModeOf:", grant), (target, b"captureWordAt:", entry)])?)));
             }
             Op::InvalidRequest if args.is_empty() => return Err(invalid()),
             Op::PreserveFailures => {

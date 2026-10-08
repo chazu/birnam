@@ -13,11 +13,8 @@ let boolTrueBytes := ["true" asBytes];
 let boolFalseBytes := ["false" asBytes];
 let boolString := String;
 let boolExecution := Execution;
-let boolByteSignature := "ob";
-let boolPrintTrue := [| [boolExecution sendNativeTo: boolString selector: #fromBytes:
-  arguments: #[boolTrueBytes] signature: boolByteSignature resultFactory: boolWord]];
-let boolPrintFalse := [| [boolExecution sendNativeTo: boolString selector: #fromBytes:
-  arguments: #[boolFalseBytes] signature: boolByteSignature resultFactory: boolWord]];
+let boolPrintTrue := [| [boolExecution objectResultOf: boolString selector: #fromBytes: byteArgument: boolTrueBytes]];
+let boolPrintFalse := [| [boolExecution objectResultOf: boolString selector: #fromBytes: byteArgument: boolFalseBytes]];
 
 [Reflect defineMethod: #not on: Boolean as: [boolExecution block: [:self |
   let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: boolTrue ifDifferent: boolNil];

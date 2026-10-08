@@ -318,50 +318,7 @@ primitive!(clone, 3);
 primitive!(at_word, 5);
 primitive!(slice_words, 6);
 primitive!(append_bytes, 7);
-// Read-only optimizer query; Unit declines without invoking a replacement.
-unsafe extern "C" fn try_primitive_bytes(
-    c: *mut c_void,
-    r: Oop,
-    _: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let t = state(c)?;
-        if n != 0 {
-            return Err(invalid());
-        }
-        if !t
-            .buffers
-            .borrow()
-            .get(&r.addr())
-            .is_some_and(|b| b.kind == Kind::Bytes)
-        {
-            return Ok(Operand::unit());
-        }
-        if t.id
-            .send_named(t.id.receiver, b"usesDefaultLookup:", &[Operand::object(r)])?
-            .as_word()
-            != Some(1)
-            || t.id
-                .send_named(
-                    t.id.receiver,
-                    b"bind:to:",
-                    &[
-                        Operand::object(t.id.intern_name(b"bytes")?),
-                        Operand::object(r),
-                    ],
-                )?
-                .as_entry()
-                != Some(NativeEntry::new(bytes, c))
-        {
-            return Ok(Operand::unit());
-        }
-        run(t, r, &[], 1)
-    })())
-}
-
 const METHODS: &[(&[u8], Method)] = &[
-    (b"tryPrimitiveBytes", try_primitive_bytes),
     (b"fromBytes:", from_bytes),
     (b"bytes", bytes),
     (b"length", length),

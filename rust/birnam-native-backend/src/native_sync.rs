@@ -43,20 +43,12 @@ pub(super) fn function(
     }
     let mut next = 0;
     let word_plans = if policy.optimizations.words() {super::word_expression::plans(&program)} else {Default::default()};
-    let abi_plans = if policy.optimizations.abi() {super::abi_arguments::plans(&program)} else {Default::default()};
-    let skipped: std::collections::BTreeSet<_> = word_plans.values().flat_map(|p|p.nodes.iter().copied()).chain(abi_plans.values().flat_map(|p|p.nodes.iter().copied())).collect();
+    let skipped: std::collections::BTreeSet<_> = word_plans.values().flat_map(|p|p.nodes.iter().copied()).collect();
     let mut result = None;
     for i in 0..program.statement_count as usize {
         let statement = program.statement(i).ok_or(Error::Portable)?;
         while next <= statement.root_node {
             let node = program.node(next as usize).ok_or(Error::Portable)?;
-            if let Some(plan) = abi_plans.get(&(next as usize)) {
-                let args=plan.arguments.iter().map(|i|format!("obj(v{i})")).collect::<Vec<_>>().join(",");
-                writeln!(out,"A na{next}[]={{{args}}};R nr{next}=raw(&c,v{},\"tryNativeArguments:\",na{next},{});if(nr{next}.status==6){{c.failure=(R){{0}};nr{next}=ok((A){{0}});}}if(c.failure.status)return finish(&c,(A){{0}});O v{next}=0;if(nr{next}.value.kind==0){{",plan.receiver,plan.arguments.len()).unwrap();
-                fallback(&mut out,&program,&plan.nodes,&std::collections::BTreeMap::new())?;
-                writeln!(out,"}}else{{v{next}=keep(&c,object(&c,nr{next}.value));}}if(c.failure.status)return finish(&c,(A){{0}});").unwrap();
-                next+=1;continue;
-            }
             if let Some(plan) = word_plans.get(&(next as usize)) {
                 let data=plan.bytes.iter().map(|b|b.to_string()).collect::<Vec<_>>().join(",");
                 writeln!(out,"static const unsigned char wp{next}[]={{{data}}};A wa{next}[{}];wa{next}[0]=bytes(wp{next},sizeof(wp{next}));",plan.bindings.len()+1).unwrap();

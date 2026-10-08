@@ -33,13 +33,10 @@ struct Reentry {
 }
 unsafe extern "C" fn byte_callback(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
     let s = unsafe { &*c.cast::<Reentry>() };
-    let Some([a, b]) = (unsafe { borrowed_slice(a, n) }) else {
+    let Some([a]) = (unsafe { borrowed_slice(a, n) }) else {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };
     let Some(a) = a.as_bytes() else {
-        return Outcome::failed(native::INVALID_REQUEST, 0);
-    };
-    let Some(b) = b.as_bytes() else {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };
     let answer = (|| unsafe {
@@ -47,10 +44,8 @@ unsafe extern "C" fn byte_callback(c: *mut c_void, _: Oop, a: *const Operand, n:
         s.id.send_named(s.bytes, b"appendBytes:", &[Operand::bytes(b"changed")])?;
         s.id.send_named(s.gc, b"collectPrecisely", &[])?;
         let a = borrowed_bytes(a.pointer, a.length).unwrap();
-        let b = borrowed_bytes(b.pointer, b.length).unwrap();
         assert_eq!(a, b"ab");
-        assert_eq!(b, b"ab");
-        Ok(Operand::word(a.len() + b.len()))
+        Ok(Operand::object(s.bytes))
     })();
     answer.map_or_else(|e| e, Outcome::loaded)
 }
@@ -75,10 +70,9 @@ fn primitive_ownership_and_explicit_abi_use_live_id_messages() {
                 &[Operand::object(id.intern_name(name).unwrap())],
             ))
         };
-        let (word, bytes, string, integer, execution, roots, gc, nil) = (
+        let (word, bytes, integer, execution, roots, gc, nil) = (
             named(b"Word"),
             named(b"Bytes"),
-            named(b"String"),
             named(b"Integer"),
             named(b"Execution"),
             named(b"Roots"),
@@ -147,12 +141,6 @@ fn primitive_ownership_and_explicit_abi_use_live_id_messages() {
             send(id, data, b"byteAtWord:", &[Operand::word(usize::MAX)]).kind(),
             native::UNIT
         );
-        let vector = named(b"Vector");
-        let mut args = keep(send(id, vector, b"new", &[]));
-        for _ in 0..2 {
-            args = keep(send(id, args, b"add:", &[Operand::object(data)]));
-        }
-        let signature = keep(send(id, string, b"fromBytes:", &[Operand::bytes(b"wbb")]));
         let reentry = Box::leak(Box::new(Reentry {
             id,
             bytes: data,
@@ -168,16 +156,14 @@ fn primitive_ownership_and_explicit_abi_use_live_id_messages() {
         let result = keep(send(
             id,
             execution,
-            b"sendNativeTo:selector:arguments:signature:resultFactory:",
+            b"objectResultOf:selector:byteArgument:",
             &[
                 Operand::object(id.receiver),
                 Operand::object(id.intern_name(b"byteCallback").unwrap()),
-                Operand::object(args),
-                Operand::object(signature),
-                Operand::object(word),
+                Operand::object(data),
             ],
         ));
-        assert_eq!(bits(Operand::object(result)), 4);
+        assert_eq!(result, data);
         let wb = object(send(
             id,
             id.receiver,
@@ -248,18 +234,13 @@ fn primitive_ownership_and_explicit_abi_use_live_id_messages() {
             failure,
             core::ptr::null_mut(),
         );
-        let empty = keep(send(id, vector, b"new", &[]));
-        let sig = keep(send(id, string, b"fromBytes:", &[Operand::bytes(b"w")]));
         let e = id
             .send_named(
                 execution,
-                b"sendNativeTo:selector:arguments:signature:resultFactory:",
+                b"wordResultOf:selector:",
                 &[
                     Operand::object(id.receiver),
                     Operand::object(id.intern_name(b"abiFailure").unwrap()),
-                    Operand::object(empty),
-                    Operand::object(sig),
-                    Operand::object(word),
                 ],
             )
             .unwrap_err();

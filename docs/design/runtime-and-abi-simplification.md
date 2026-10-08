@@ -262,36 +262,18 @@ it must not remain enabled merely because it lowers one counter.
   prerequisite to every deletion. The first scoped proof covered W09's entry roots;
   the whole-tree census now prioritizes closure/capture work (W07/W08/W12).
 
-- [ ] **W02 — Remove argument containers from fixed ABI calls** (C03, C04, C06).
-  Reuse `invoke_values` and the existing direct-operand experience. Define the
-  smallest zero/one-argument messages needed by actual consumers, preserving
-  explicit factory/kind choices. Pass arguments directly instead of invoking a
-  permission chain to prove omission of a Vector. Acceptance: result/error cases,
-  current target/factory/bits replacement and callback/GC lifetime. Old bridge or
-  Vector interception does not require a compatibility path after source migration.
-
-- [ ] **W03 — Eliminate repeated fixed-signature work** (C05, C11, C22).
-  Prefer conversion kinds in the small helper interface or existing immutable
-  code metadata. Remove String/Bytes signature access from fixed calls. A runtime
-  plan Object is an investigation only if real consumers need it; no general plan
-  framework first. Preserve current data/lookup for operations that remain and
-  own byte borrows through callbacks. New metadata/formats can require explicit
-  artifact rebuild; unsupported old formats are rejected, not emulated.
-
-- [ ] **W04 — Move current consumers and remove their old dependency** (C03–C06, C20).
-  Start with Integer's `Wo`/`ow` reads/result construction. Then cover corresponding
-  Float/native-value cases; inspect Boolean printing and `xw`/`ob`/`b` consumers
-  before deciding which further forms are necessary. Signed/Error/mixed-number
-  policy stays in Birnam. Acceptance: numeric oracle, target/factory changes,
-  collector safety, callbacks and errors. Rebuild changed artifacts explicitly.
-  No gate requiring obsolete helper interception, old-runtime support or shim.
-
-- [ ] **W05 — Delete displaced calling machinery** (C03–C06, C25).
-  Inventory current source/compiler/native/image consumers of the generic bridge,
-  `tryNativeArguments:` and special wrappers. Migrate or remove them, then delete
-  dead APIs, flags and code. A dynamic adapter needs a real current use, not a
-  hypothetical old consumer. Retire incompatible selectors/formats deliberately
-  and rebuild affected artifacts. No legacy path survives merely for compatibility.
+- [x] **W02 — Remove argument containers from fixed ABI calls** (C03, C04, C06).
+- [x] **W03 — Eliminate repeated fixed-signature work** (C05, C11, C22).
+- [x] **W04 — Move current consumers and remove their old dependency** (C03–C06, C20).
+- [x] **W05 — Delete displaced calling machinery** (C03–C06, C25).
+  Completed across the Integer slice and remaining seven production sites.
+  Five fixed argument/factory forms and existing zero-argument queries preserve
+  current owner messages and callback-safe lifetimes. The outbound signature API,
+  compiler Vector-elision pass, unused permission helpers and ABI-proof toggle
+  are deleted. Incoming authored/Alien signatures remain. No dynamic production
+  caller of this outbound API was found. See [retirement and evidence](outbound-bridge-retirement.md).
+  Bytes conversion/Boolean printing probes improve; arithmetic remains at 829.375
+  sends/addition. Full image/worker suites are not claimed by this checkpoint.
 
 ### Owner-local reductions
 

@@ -1,36 +1,29 @@
 // Language policy over generic Word/Bytes owners and explicit Execution ABI sends.
 [Module named: #nativeValues requires: #[]];
 let valueExecution := Execution;
-let valueWord := Word;
 let valueNil := nil;
 let valueTrue := true;
 let valueFalse := false;
-let objectWordSignature := "ow";
-let objectBytesSignature := "ob";
 // Capture immutable Word values, rather than calling Integer during each setter.
 let valueZero := [valueExecution wordResultOf: 0 selector: #word];
 let valueOne := [valueExecution wordResultOf: 1 selector: #word];
 
 [Reflect defineMethod: #fromWordResultOf:selector: on: Integer as: [:self :target :selector |
   let bits := [valueExecution wordResultOf: target selector: selector];
-  [valueExecution sendNativeTo: self selector: #fromWord: arguments: #[bits]
-    signature: objectWordSignature resultFactory: valueWord]
+  [valueExecution objectResultOf: self selector: #fromWord: wordArgument: bits]
 ]];
 [Reflect defineMethod: #sendWordOf:to:selector: on: Boolean as: [:self :value :target :selector |
   [[[value == valueTrue] | [value == valueFalse]] ifTrue: [|
     let bits := [[value == valueTrue] ifTrue: [| valueOne] ifFalse: [| valueZero]];
-    [valueExecution sendNativeTo: target selector: selector arguments: #[bits]
-      signature: "xw" resultFactory: valueWord]; target
+    [valueExecution discardResultOf: target selector: selector wordArgument: bits]; target
   ] ifFalse: [| valueNil]]
 ]];
 [Reflect defineMethod: #fromByteResultOf:selector: on: Bytes as: [:self :target :selector |
-  [valueExecution sendNativeTo: target selector: selector arguments: #[]
-    signature: "b" resultFactory: self]
+  [valueExecution bytesResultOf: target selector: selector resultFactory: self]
 ]];
 [Reflect defineMethod: #asString on: Bytes as: [:self |
   // String factory selection remains live at each conversion.
-  [valueExecution sendNativeTo: String selector: #fromBytes: arguments: #[self]
-    signature: objectBytesSignature resultFactory: valueWord]
+  [valueExecution objectResultOf: String selector: #fromBytes: byteArgument: self]
 ]];
 // Unsigned representation is primitive; Integer range policy and formatting are authored.
 let valueSignedMax := [valueExecution wordResultOf: 9223372036854775807 selector: #word];
@@ -38,8 +31,7 @@ let valueSixteen := [valueExecution wordResultOf: 16 selector: #word];
 let valueHexDigits := "0123456789abcdef";
 [Reflect defineMethod: #asInteger on: Word as: [:self |
   [[[self unsignedLessThan: valueSignedMax] | [self = valueSignedMax]] ifTrue: [|
-    [valueExecution sendNativeTo: Integer selector: #fromWord: arguments: #[self]
-      signature: objectWordSignature resultFactory: valueWord]
+    [valueExecution objectResultOf: Integer selector: #fromWord: wordArgument: self]
   ] ifFalse: [| [Error kind: #overflow message: "word out of Integer range"]]]
 ]];
 [Reflect defineMethod: #hexDigits on: Word as: [:self |

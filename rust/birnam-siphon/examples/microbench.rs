@@ -17,10 +17,12 @@ use std::{
 use support::*;
 // Echo an ABI carrier without inspecting an Object payload. The caller owns
 // any byte borrow for this complete Id invocation.
-unsafe extern "C" fn native_echo(_: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let args = unsafe { borrowed_slice(a,n) }.unwrap();
-    assert_eq!(args.len(),1);
-    Outcome::loaded(args[0])
+struct NativeEcho {id:Protocol,factory:Oop}
+unsafe extern "C" fn native_echo(c:*mut c_void,_:Oop,a:*const Operand,n:usize)->Outcome {
+    (|| unsafe {
+        let echo=&*c.cast::<NativeEcho>();let [arg]=birnam_abi::borrowed_slice(a,n).ok_or_else(||Outcome::failed(1,0))? else {return Err(Outcome::failed(1,0));};
+        echo.id.send_named(echo.factory,if arg.as_word().is_some() {b"fromBits:"} else {b"fromBytes:"},&[*arg])
+    })().map_or_else(|e|e,Outcome::loaded)
 }
 struct Compiler {
     id: Protocol,
@@ -124,22 +126,20 @@ fn cases() -> Vec<Case> {
     let mut cases=vec![
         Case{name:"word-nested".into(),source:wrapper("[[[[a bitXor: b] wrappingAdd: a] bitAnd: b] wrappingAdd: a]"),mask:1,expected:16,result_selector:b"bits",integer_inputs:false},
         Case{name:"word-locals".into(),source:wrapper("let x := [a bitXor: b]; let sum := [x wrappingAdd: a]; let masked := [sum bitAnd: b]; [masked wrappingAdd: a]"),mask:1,expected:16,result_selector:b"bits",integer_inputs:false},
-        Case{name:"abi".into(),source:wrapper(r#"let bridge := Execution; let target := Integer; let signature := "Wo"; let factory := Word; [bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]"#),mask:2,expected:12345,result_selector:b"bits",integer_inputs:true},
         Case{name:"helper".into(),source:r#"let mask := [Execution wordResultOf: 15 selector: #word]; let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | let x := [a bitXor: b]; let sum := [x wrappingAdd: a]; [[sum bitXor: mask] wrappingSubtract: sum]]]; [Globals at: #MicroProbe put: probe]; true"#.into(),mask:4,expected:3,result_selector:b"bits",integer_inputs:false},
     ];
-    cases.push(Case{name:"abi-captured".into(),source:r#"let bridge := Execution; let target := Integer; let signature := "Wo"; let factory := Word; let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [Execution block: [:self :a :b | [bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]] withNativeSignature: "oOO"]]; [Globals at: #MicroProbe put: probe]; true"#.into(),mask:2,expected:12345,result_selector:b"bits",integer_inputs:true});
-    cases.push(Case{name:"abi-audit-object-incoming".into(),source:wrapper("a"),mask:31,expected:12345,result_selector:b"word",integer_inputs:true});
-    let captured = |body: &str| format!(r#"let bridge := Execution; let target := Integer; let factory := Word; let signature := "Wo"; let resultSignature := "ow"; {}"#, wrapper(body));
-    cases.push(Case{name:"abi-audit-read".into(),source:captured("[bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]"),mask:31,expected:12345,result_selector:b"bits",integer_inputs:true});
-    cases.push(Case{name:"abi-audit-roundtrip".into(),source:captured("let bits := [bridge sendNativeTo: target selector: #wordOf: arguments: #[a] signature: signature resultFactory: factory]; [bridge sendNativeTo: target selector: #fromWord: arguments: #[bits] signature: resultSignature resultFactory: factory]"),mask:31,expected:12345,result_selector:b"word",integer_inputs:true});
+    cases.push(Case{name:"abi-audit-object-incoming".into(),source:wrapper("a"),mask:29,expected:12345,result_selector:b"word",integer_inputs:true});
+    let captured = |body: &str| format!(r#"let bridge := Execution; let target := Integer; let factory := Word; {}"#, wrapper(body));
+    cases.push(Case{name:"abi-audit-read".into(),source:captured("[bridge optionalWordResultOf: target selector: #wordOf: argument: a resultFactory: factory]"),mask:29,expected:12345,result_selector:b"bits",integer_inputs:true});
+    cases.push(Case{name:"abi-audit-roundtrip".into(),source:captured("let bits := [bridge optionalWordResultOf: target selector: #wordOf: argument: a resultFactory: factory]; [bridge objectResultOf: target selector: #fromWord: wordArgument: bits]"),mask:29,expected:12345,result_selector:b"word",integer_inputs:true});
     for (name, signature, preamble, argument, result, expected) in [
-        ("abi-audit-word-incoming","ww","","a","result",10),
-        ("abi-audit-bytes-incoming","bb","let payload := [\"hello\" asBytes];","payload","[result size]",5),
+        ("abi-audit-word-incoming","ow","","a","result",10),
+        ("abi-audit-bytes-incoming","ob","let payload := [\"hello\" asBytes];","payload","[result size]",5),
     ] {
-        let source = format!(r#"let bridge := Execution; let target := [Object clone]; let factory := {factory}; let signature := "{signature}"; {preamble} [Reflect defineMethod: #echo: on: target as: [Execution block: [:self :value | value] withNativeSignature: "{signature}"]]; [Globals at: #MicroAbiTarget put: target]; {wrapper}"#,
-            factory=if signature=="bb" {"Bytes"}else{"Word"},
-            wrapper=wrapper(&format!("let result := [bridge sendNativeTo: target selector: #echo: arguments: #[{argument}] signature: signature resultFactory: factory]; {result}")));
-        cases.push(Case{name:name.into(),source,mask:31,expected,result_selector:if signature=="bb" {b"word"}else{b"bits"},integer_inputs:false});
+        let source = format!(r#"let bridge := Execution; let target := [Object clone]; let factory := {factory}; {preamble} [Reflect defineMethod: #echo: on: target as: [Execution block: [:self :value | value] withNativeSignature: "{signature}"]]; [Globals at: #MicroAbiTarget put: target]; {wrapper}"#,
+            factory=if signature=="ob" {"Bytes"}else{"Word"},
+            wrapper=wrapper(&format!("let result := [bridge objectResultOf: target selector: #echo: {argument_kind}: {argument}]; {result}",argument_kind=if signature=="ob" {"byteArgument"} else {"wordArgument"})));
+        cases.push(Case{name:name.into(),source,mask:29,expected,result_selector:if signature=="ob" {b"word"}else{b"bits"},integer_inputs:false});
     }
     // Isolate the real arithmetic policy in two private factories. Only the
     // receiver/constructor bridge is adapted; no arithmetic is reimplemented.
@@ -156,12 +156,12 @@ fn cases() -> Vec<Case> {
         )
         .replace("on: Integer as:", "on: intFactory as:")
         .replace(
-            "sendNativeTo: intFactory selector: #wordOf:",
-            "sendNativeTo: intSeed selector: #wordOf:",
+            "optionalWordResultOf: intFactory selector: #wordOf:",
+            "optionalWordResultOf: intSeed selector: #wordOf:",
         )
         .replace(
-            "sendNativeTo: self selector: #fromWord:",
-            "sendNativeTo: intSeed selector: #fromWord:",
+            "objectResultOf: self selector: #fromWord:",
+            "objectResultOf: intSeed selector: #fromWord:",
         )
         .replace(
             "#integerBinary:operation:",
@@ -176,9 +176,9 @@ fn cases() -> Vec<Case> {
         ("integer-add", "add", 12382),
         ("integer-multiply", "multiply", 456765),
     ] {
-        cases.push(Case{name:name.into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerBinary: a with: b operation: #{operator}]]]; [Globals at: #MicroProbe put: probe]; true"),mask:7,expected,result_selector:b"word",integer_inputs:true});
+        cases.push(Case{name:name.into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerBinary: a with: b operation: #{operator}]]]; [Globals at: #MicroProbe put: probe]; true"),mask:5,expected,result_selector:b"word",integer_inputs:true});
     }
-    cases.push(Case{name:"integer-add-core".into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerAddBits: a with: b]]]; [Globals at: #MicroProbe put: probe]; true"),mask:7,expected:16,result_selector:b"word",integer_inputs:false});
+    cases.push(Case{name:"integer-add-core".into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerAddBits: a with: b]]]; [Globals at: #MicroProbe put: probe]; true"),mask:5,expected:16,result_selector:b"word",integer_inputs:false});
     let mut body = "let x0 := a;".to_owned();
     for i in 1..=16 {
         body.push_str(&format!(" let x{i} := [x{} + b];", i - 1));
@@ -187,7 +187,7 @@ fn cases() -> Vec<Case> {
     cases.push(Case {
         name: "public-integer-loop".into(),
         source: wrapper(&body),
-        mask: 7,
+        mask: 5,
         expected: 12937,
         result_selector: b"word",
         integer_inputs: true,
@@ -196,7 +196,7 @@ fn cases() -> Vec<Case> {
     cases.push(Case {
         name: "public-integer-roots".into(),
         source: public.source.clone(),
-        mask: 15,
+        mask: 13,
         expected: public.expected,
         result_selector: b"word",
         integer_inputs: true,
@@ -208,14 +208,14 @@ fn cases() -> Vec<Case> {
     cases.push(Case {
         name: "public-integer-retains".into(),
         source: public.source.clone(),
-        mask: 31,
+        mask: 29,
         expected: public.expected,
         result_selector: b"word",
         integer_inputs: true,
     });
     let public = cases.iter().find(|c| c.name == "public-integer-retains").unwrap();
     cases.push(Case {
-        name: "public-integer-bindings".into(), source: public.source.clone(), mask: 31,
+        name: "public-integer-default".into(), source: public.source.clone(), mask: 29,
         expected: public.expected, result_selector: b"word", integer_inputs: true,
     });
     for (name, preamble, expression, expected) in [
@@ -225,6 +225,9 @@ fn cases() -> Vec<Case> {
             "[text size]",
             5,
         ),
+        ("semantic-word-as-integer", "let value := [Execution wordResultOf: 42 selector: #word];", "[value asInteger]", 42),
+        ("semantic-bytes-as-string", "let value := [\"hello\" asBytes];", "[[value asString] size]", 5),
+        ("semantic-boolean-print", "", "[[true printString] size]", 4),
         (
             "semantic-vector-access",
             "let values := #[11 22 33]; let index := 1;",
@@ -238,7 +241,7 @@ fn cases() -> Vec<Case> {
         cases.push(Case {
             name: name.into(),
             source,
-            mask: 31,
+            mask: 29,
             expected,
             result_selector: b"word",
             integer_inputs: false,
@@ -250,7 +253,6 @@ fn cases() -> Vec<Case> {
 struct Variant {
     receiver: Oop,
     arithmetic: Option<usize>,
-    binding_proofs: Option<bool>,
     native_read: Option<(Oop, Oop, Option<Oop>)>,
 }
 struct Runtime {
@@ -264,8 +266,6 @@ struct Runtime {
 }
 impl Runtime {
     unsafe fn activate(&self, v: Variant) {
-        unsafe { send(self.id, self.named(b"Execution"), b"bindingProofBatches:",
-            &[Operand::word(v.binding_proofs.unwrap_or(true) as usize)]) };
         if let Some(index) = v.arithmetic {
             unsafe {
                 let vt = self.named(b"IntegerVt");
@@ -407,12 +407,12 @@ unsafe fn compile_case(
         if baseline && matches!(case.name.as_str(), "abi-audit-word-incoming" | "abi-audit-bytes-incoming") {
             let target = object(send(rt.id, rt.named(b"Globals"), b"at:", &[Operand::object(rt.id.intern_name(b"MicroAbiTarget").unwrap())]));
             let behavior = object(send(rt.id, rt.id.receiver, b"behaviorOf:", &[Operand::object(target)]));
-            install(rt.id, behavior, b"echo:", native_echo, std::ptr::null_mut());
+            let echo=Box::into_raw(Box::new(NativeEcho {id:rt.id,factory:rt.named(if case.name=="abi-audit-bytes-incoming" {b"Bytes"} else {b"Word"})}));
+            install(rt.id, behavior, b"echo:", native_echo, echo.cast());
         }
         Variant {
             receiver,
             arithmetic: None,
-            binding_proofs: None,
             native_read: None,
         }
     }
@@ -735,13 +735,13 @@ fn main() {
         std::fs::create_dir_all(&scratch).unwrap();
         let mut prepared = vec![];
         for case in cases {
-            let baseline_mask = if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-bindings" {
-                31
+            let baseline_mask = if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-default" {
+                29
             } else if case.name == "public-integer-roots" {
-                7
+                5
             } else if case.name == "public-integer-retains"
             {
-                15
+                13
             } else {
                 0
             };
@@ -763,10 +763,6 @@ fn main() {
             }
             if matches!(case.name.as_str(), "abi-audit-read" | "abi-audit-roundtrip") {
                 baseline.native_read = Some((rt.named(b"Integer"), rt.id.intern_name(b"wordOf:").unwrap(), if case.name == "abi-audit-roundtrip" { Some(rt.id.intern_name(b"fromWord:").unwrap()) } else { None }));
-            }
-            if case.name == "public-integer-bindings" {
-                baseline.binding_proofs = Some(false);
-                candidate.binding_proofs = Some(true);
             }
             let make = |value| {
                 object(send(
@@ -801,7 +797,7 @@ fn main() {
             if counts_only {
                 work[0]["messages"] = messages(&rt, &case, baseline, &inputs, false, false);
                 work[1]["messages"] = messages(&rt, &case, candidate, &inputs, false, false);
-                if case.name.starts_with("abi-audit-") || case.name == "public-integer-bindings" {
+                if case.name.starts_with("abi-audit-") || case.name == "public-integer-default" {
                     work[0]["steady_messages"] = messages(&rt, &case, baseline, &inputs, true, false);
                     work[1]["steady_messages"] = messages(&rt, &case, candidate, &inputs, true, trace);
                 }
@@ -813,7 +809,7 @@ fn main() {
             };
             if case.name.starts_with("abi-audit-") {
                 // Deliberate cost contrasts; each result was checked above.
-            } else if case.name.starts_with("semantic-") || case.name == "public-integer-bindings"
+            } else if case.name.starts_with("semantic-") || case.name == "public-integer-default"
                 || case.name == "public-integer-roots"
                 || case.name == "public-integer-retains"
             {
@@ -948,7 +944,7 @@ fn main() {
                     break;
                 }
             }
-            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-bindings" {31} else if case.name == "public-integer-roots" {7} else if case.name == "public-integer-retains" {15} else {0},true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
+            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-default" {29} else if case.name == "public-integer-roots" {5} else if case.name == "public-integer-retains" {13} else {0},true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else if case.name == "public-integer-default" { "default protocol fixture; no optimization toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
         }
         println!(
             "{}",

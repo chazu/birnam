@@ -22,8 +22,6 @@ pub enum Error {
 mod synchronous;
 #[path = "word_expression.rs"]
 mod word_expression;
-#[path = "abi_arguments.rs"]
-mod abi_arguments;
 
 struct Function {
     portable: Option<Vec<u8>>,
@@ -235,14 +233,13 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
     })
 }
 /// Synchronous emission switches, supplied explicitly to the compiler.
-/// 1 = Word expressions/locals, 2 = ABI literals, 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration).
+/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration).
 #[derive(Clone, Copy)]
 pub struct Optimizations(u8);
-impl Default for Optimizations { fn default()->Self {Self(31)} }
+impl Default for Optimizations { fn default()->Self {Self(29)} }
 impl Optimizations {
-    pub fn from_bits(bits:usize)->Option<Self> {(bits<=31).then_some(Self(bits as u8))}
+    pub fn from_bits(bits:usize)->Option<Self> {(bits & !29 == 0).then_some(Self(bits as u8))}
     fn words(self)->bool {self.0&1!=0}
-    fn abi(self)->bool {self.0&2!=0}
     fn helpers(self)->bool {self.0&4!=0}
     fn roots(self)->bool {self.0&8!=0}
     fn inputs(self)->bool {self.0&16!=0}

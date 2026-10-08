@@ -45,7 +45,6 @@ struct Execution {
     namespace: Oop,
     native_return_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
-    batch_binding_proofs: Cell<bool>,
     binding_proof_services: [Option<NativeEntry>; 5],
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
@@ -767,22 +766,15 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
     })())
 }
 
-unsafe extern "C" fn binding_proof_batches(c:*mut c_void,_:Oop,a:*const Operand,n:usize)->Outcome {
-    done((|| unsafe {
-        let s=state(c)?;
-        let [enabled]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid())};
-        let enabled=enabled.as_word().filter(|v|*v<=1).ok_or_else(invalid)?;
-        s.batch_binding_proofs.set(enabled==1);
-        Ok(Operand::unit())
-    })())
-}
 const NAMES: &[&[u8]] = &[
-    b"bindingProofBatches:",
     b"nativeBindingsMatch:",
     b"intern:",
     b"symbolNamed:",
-    b"sendNativeTo:selector:arguments:signature:resultFactory:",
-    b"tryNativeArguments:",
+    b"optionalWordResultOf:selector:argument:resultFactory:",
+    b"objectResultOf:selector:wordArgument:",
+    b"discardResultOf:selector:wordArgument:",
+    b"objectResultOf:selector:byteArgument:",
+    b"bytesResultOf:selector:resultFactory:",
     b"wordResultOf:selector:",
     b"block:withNativeSignature:",
     b"bytesResultOf:selector:",
@@ -871,7 +863,6 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             namespace,
             native_return_bytes: RefCell::new(Vec::new()),
             machines: RefCell::new(machine::State::new()),
-            batch_binding_proofs: Cell::new(true),
             binding_proof_services: (*binding_proof::SERVICES).map(|name| {
                 let entry = id.send_named(id.receiver, b"bind:to:", &[
                     Operand::object(names[name]), Operand::object(id.receiver),
@@ -910,13 +901,15 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         }));
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), roots as Method),
-            (behavior,b"bindingProofBatches:",binding_proof_batches),
             (behavior, b"referencesOf:do:", references),
             (behavior, b"implementationOfEntry:", implementation_of_entry),
             (behavior, b"methodOfEntry:", method_of_entry),
             (behavior, b"binding:value:weak:", binding),
-            (behavior, b"sendNativeTo:selector:arguments:signature:resultFactory:", native_abi::send),
-            (behavior, b"tryNativeArguments:", native_abi::try_send),
+            (behavior, b"optionalWordResultOf:selector:argument:resultFactory:", native_abi::optional_word_argument),
+            (behavior, b"objectResultOf:selector:wordArgument:", native_abi::object_word_argument),
+            (behavior, b"discardResultOf:selector:wordArgument:", native_abi::discard_word_argument),
+            (behavior, b"objectResultOf:selector:byteArgument:", native_abi::object_byte_argument),
+            (behavior, b"bytesResultOf:selector:resultFactory:", native_abi::byte_query_factory),
             (behavior, b"block:withNativeSignature:", native_abi::block_with_signature),
             (behavior, b"wordResultOf:selector:", native_abi::word_result),
             (behavior, b"bytesResultOf:selector:", native_abi::bytes_result),

@@ -1,7 +1,7 @@
 //! Explicit carrier conversion for authored callers. Id remains the dispatcher.
-//! Signature: result kind followed by one kind per argument (o=Object,
-//! w=Word, W=optional Word result, b=Bytes, u=Unit result, x=discard result). Word and byte values cross their owners'
-//! current messages; this module never reads their payloads.
+//! Outbound conversions have fixed message shapes. Word/Bytes values cross
+//! their owners' current messages. Incoming authored-method signatures remain
+//! separate; this module never reads foreign payloads.
 use super::*;
 
 unsafe fn binding(s: &Execution, name: &[u8]) -> Result<Oop, Outcome> {
@@ -27,211 +27,69 @@ unsafe fn word(s: &Execution, value: Oop) -> Result<usize, Outcome> {
         .ok_or_else(invalid)
 }
 
-pub(super) unsafe extern "C" fn send(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
+// Fixed conversion surfaces. Every dependency operation remains a current Id
+// message; all Object operands are scoped before the first possible callback.
+fn object_result(s: &Execution, result: Operand) -> Result<Operand, Outcome> {
+    if result.kind() != native::OBJECT { return Err(invalid()); }
+    Ok(Operand::object(result.as_object().filter(|v| !v.is_null()).unwrap_or(s.nil)))
+}
+unsafe fn bytes_result_with_factory(s: &Execution, factory: Oop, result: Operand) -> Result<Operand, Outcome> {
+    let raw = result.as_bytes().ok_or_else(invalid)?;
+    // Copy the returned borrow before any outgoing message or factory callback.
+    let copied = unsafe { borrowed_bytes(raw.pointer, raw.length) }.ok_or_else(invalid)?.to_vec();
+    unsafe { s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&copied)]) }
+}
+pub(super) unsafe extern "C" fn optional_word_argument(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
-        let s = state(c)?;
-        let [target, selector, arguments, signature, factory] =
-            borrowed_slice(a, n).ok_or_else(invalid)?
-        else {
-            return Err(invalid());
-        };
-        let (target, selector, arguments, signature, factory) = (
-            object(*target)?,
-            object(*selector)?,
-            object(*arguments)?,
-            object(*signature)?,
-            object(*factory)?,
-        );
-        let roots = s.scope(&[r, target, selector, arguments, signature, factory]);
-        let signature = snapshot(s, signature)?;
-        let (result_kind, kinds) = signature.split_first().ok_or_else(invalid)?;
-        if !matches!(result_kind, b'o' | b'w' | b'b' | b'u' | b'x' | b'W')
-            || kinds.len() > 128
-            || kinds.iter().any(|k| !matches!(k, b'o' | b'w' | b'b'))
-        {
-            return Err(invalid());
-        }
-        // Do not consult Integer just to enumerate ABI operands. In particular,
-        // a target callback may have replaced Integer's constructor already.
-        let count =
-            s.id.send_named(arguments, b"sizeWord", &[])?
-                .as_word()
-                .ok_or_else(invalid)?;
-        if count != kinds.len() {
-            return Err(invalid());
-        }
-        let mut values = Vec::with_capacity(count);
-        for i in 0..count {
-            let value = object(s.id.send_named(arguments, b"atWord:", &[Operand::word(i)])?)?;
-            roots.keep(value);
-            values.push(value);
-        }
-        invoke_values(s, &roots, target, selector, factory, *result_kind, kinds, &values)
+        let s=state(c)?;
+        let [target,selector,argument,factory]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        let (target,selector,argument,factory)=(object(*target)?,object(*selector)?,object(*argument)?,object(*factory)?);
+        let _roots=s.scope(&[r,target,selector,argument,factory]);
+        let result=s.id.send(target,selector,&[Operand::object(argument)])?;
+        if result.kind()==native::UNIT {return Ok(Operand::object(s.nil));}
+        let bits=result.as_word().ok_or_else(invalid)?;
+        s.id.send_named(factory,b"fromBits:",&[Operand::word(bits)])
     })())
 }
-// Shared carrier adaptation: both paths issue the target's current Id message.
-unsafe fn invoke_values(
-    s: &Execution,
-    roots: &Scope<'_>,
-    target: Oop,
-    selector: Oop,
-    factory: Oop,
-    result_kind: u8,
-    kinds: &[u8],
-    values: &[Oop],
-) -> Result<Operand, Outcome> {
-    unsafe {
-        // Own every byte argument before issuing the target callback. The owned
-        // vectors stay alive throughout that call, including reentrant collection.
-        let mut bytes = Vec::new();
-        let mut small = [Operand::unit(); 8];
-        let mut large = if values.len() > 8 {
-            vec![Operand::unit(); values.len()]
-        } else {
-            Vec::new()
-        };
-        let operands = if values.len() > 8 {
-            large.as_mut_slice()
-        } else {
-            &mut small[..values.len()]
-        };
-        for (i, (&value, &kind)) in values.iter().zip(kinds).enumerate() {
-            operands[i] = match kind {
-                b'o' => Operand::object(value),
-                b'w' => Operand::word(word(s, value)?),
-                b'b' => {
-                    bytes.push(snapshot(s, value)?);
-                    Operand::bytes(bytes.last().unwrap())
-                }
-                _ => return Err(invalid()),
-            };
-        }
-        let result = s.id.send(target, selector, operands)?;
-        // No callback between receiving a native borrow and copying its bytes.
-        let copied = if result_kind == b'b' {
-            let raw = result.as_bytes().ok_or_else(invalid)?;
-            Some(
-                borrowed_bytes(raw.pointer, raw.length)
-                    .ok_or_else(invalid)?
-                    .to_vec(),
-            )
-        } else {
-            None
-        };
-        if let Some(value) = result.as_object() {
-            roots.keep(value);
-        }
-        match &result_kind {
-            b'o' if result.kind() == native::OBJECT => Ok(Operand::object(
-                result.as_object().filter(|v| !v.is_null()).unwrap_or(s.nil),
-            )),
-            b'x' => Ok(Operand::object(s.nil)),
-            b'u' if result.kind() == native::UNIT => Ok(Operand::object(s.nil)),
-            b'W' if result.kind() == native::UNIT => Ok(Operand::object(s.nil)),
-            b'w' | b'W' => s.id.send_named(
-                factory,
-                b"fromBits:",
-                &[Operand::word(result.as_word().ok_or_else(invalid)?)],
-            ),
-            b'b' => s.id.send_named(
-                factory,
-                b"fromBytes:",
-                &[Operand::bytes(copied.as_deref().unwrap())],
-            ),
-            _ => Err(invalid()),
-        }
-    }
-}
-
-// Native variadic compiler protocol: target, selector, signature, factory,
-// Vector factory, followed by nonescaping literal Object arguments.
-pub(super) unsafe extern "C" fn try_send(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
+pub(super) unsafe extern "C" fn object_word_argument(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
-        let s = state(c)?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        if args.len() < 5 || args.len() > 13 {
-            return Err(invalid());
-        }
-        let mut owned_values = [ptr::null_mut(); 13];
-        for (i, arg) in args.iter().enumerate() {
-            owned_values[i] = object(*arg)?;
-        }
-        let values = &owned_values[..args.len()];
-        let roots = s.scope(&[r]);
-        for &v in values {
-            roots.keep(v);
-        }
-        let refuse = || Ok(Operand::unit());
-        if r != s.receiver {
-            return refuse();
-        }
-        let epoch =
-            s.id.send_named(s.id.receiver, b"behaviorEpoch", &[])?
-                .as_word()
-                .ok_or_else(invalid)?;
-        if epoch == usize::MAX
-            || !binding_proof::matches(
-                s, r,
-                b"sendNativeTo:selector:arguments:signature:resultFactory:",
-                NativeEntry::new(send, c),
-            )?
-        {
-            return refuse();
-        }
-        match s.id.send_named(values[4], b"canOmitNativeArguments", &[]) {
-            Ok(v) if v.as_word() == Some(1) => {}
-            Ok(_) => return refuse(),
-            Err(e) if e.status == native::UNBOUND => return refuse(),
-            Err(e) => return Err(e),
-        }
-        let mut owned_signature = [0u8; 9];
-        let signature = match s.id.send_named(values[2], b"tryPrimitiveBytes", &[]) {
-            Ok(v) if v.kind() == native::UNIT => return refuse(),
-            Ok(v) => {
-                let raw = v.as_bytes().ok_or_else(invalid)?;
-                if raw.length > owned_signature.len() {
-                    return refuse();
-                }
-                owned_signature[..raw.length]
-                    .copy_from_slice(borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?);
-                &owned_signature[..raw.length]
-            }
-            Err(e) if e.status == native::UNBOUND => return refuse(),
-            Err(e) => return Err(e),
-        };
-        let Some((&result_kind, kinds)) = signature.split_first() else {
-            return refuse();
-        };
-        if !matches!(result_kind, b'o' | b'w' | b'b' | b'u' | b'x' | b'W')
-            || kinds.len() != values.len() - 5
-            || kinds.iter().any(|k| !matches!(k, b'o' | b'w' | b'b'))
-            || s.id
-                .send_named(s.id.receiver, b"behaviorEpoch", &[])?
-                .as_word()
-                != Some(epoch)
-        {
-            return refuse();
-        }
-        invoke_values(
-            s,
-            &roots,
-            values[0],
-            values[1],
-            values[3],
-            result_kind,
-            kinds,
-            &values[5..],
-        )
+        let s=state(c)?;
+        let [target,selector,argument]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        let (target,selector,argument)=(object(*target)?,object(*selector)?,object(*argument)?);
+        let _roots=s.scope(&[r,target,selector,argument]);
+        let bits=word(s,argument)?;
+        object_result(s,s.id.send(target,selector,&[Operand::word(bits)])?)
+    })())
+}
+pub(super) unsafe extern "C" fn discard_word_argument(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [target,selector,argument]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        let (target,selector,argument)=(object(*target)?,object(*selector)?,object(*argument)?);
+        let _roots=s.scope(&[r,target,selector,argument]);
+        let bits=word(s,argument)?;
+        s.id.send(target,selector,&[Operand::word(bits)])?;
+        Ok(Operand::object(s.nil))
+    })())
+}
+pub(super) unsafe extern "C" fn object_byte_argument(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [target,selector,argument]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        let (target,selector,argument)=(object(*target)?,object(*selector)?,object(*argument)?);
+        let _roots=s.scope(&[r,target,selector,argument]);
+        // The provider may mutate/reallocate its buffer during the target call.
+        let copied=snapshot(s,argument)?;
+        object_result(s,s.id.send(target,selector,&[Operand::bytes(&copied)])?)
+    })())
+}
+pub(super) unsafe extern "C" fn byte_query_factory(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [target,selector,factory]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        let (target,selector,factory)=(object(*target)?,object(*selector)?,object(*factory)?);
+        let _roots=s.scope(&[r,target,selector,factory]);
+        bytes_result_with_factory(s,factory,s.id.send(target,selector,&[])?)
     })())
 }
 

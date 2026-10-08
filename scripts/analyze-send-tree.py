@@ -21,7 +21,7 @@ for r in trace:
 seeds={}; reasons={}
 constructors_selectors={'fromMethod:codeObject:referenceSlots:','fromMethod:codeObject:captureOperands:'}
 construct={'fromMethod:codeObject:captureOperands:','allocateReferenceSlots:','slotAt:in:put:','fromMethod:codeObject:referenceSlots:'}
-abi={'tryNativeArguments:','sendNativeTo:selector:arguments:signature:resultFactory:','wordResultOf:selector:','bytesResultOf:selector:'}
+abi={'discardResultOf:selector:wordArgument:','objectResultOf:selector:byteArgument:','bytesResultOf:selector:resultFactory:','optionalWordResultOf:selector:argument:resultFactory:','objectResultOf:selector:wordArgument:','tryNativeArguments:','sendNativeTo:selector:arguments:signature:resultFactory:','wordResultOf:selector:','bytesResultOf:selector:'}
 word={'tryPrimitiveExpression:','tryPrimitiveExpressionAtEpoch:','wrappingAdd:','bitXor:','bitAnd:','unsignedLessThan:'}
 controlwords={'selectIfSameObject:with:ifEqual:ifDifferent:','sameObject:with:','selectIfZero:ifNonzero:'}
 root={'retain:','release:','tryRetainMany:','tryReleaseMany:','tryReleaseManyForward:'}

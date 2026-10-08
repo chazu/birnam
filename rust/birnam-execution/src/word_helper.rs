@@ -141,7 +141,7 @@ pub(super) unsafe fn try_result(
             return Ok(None);
         }
         let capture_entry = machine::default_capture_entry(s).ok_or_else(invalid)?;
-        if !crate::binding_proof::matches_all(s, &[(implementation, b"captureWordAt:", capture_entry)], true)? {
+        if !crate::binding_proof::matches_all(s, &[(implementation, b"captureWordAt:", capture_entry)])? {
             return Ok(None);
         }
         let mut operands = vec![Operand::word(epoch), Operand::bytes(&plan.bytes)];

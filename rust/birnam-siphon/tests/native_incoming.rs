@@ -127,7 +127,7 @@ fn incoming_signatures_preserve_carriers_and_early_bootstrap() {
           [Globals at: #IncomingProbe put: IncomingProbe];
           let code := [wordEcho codeObject];
           let signature := [code nativeSignature];
-          [Execution sendNativeTo: signature selector: #appendBytes: arguments: #["ignored"] signature: "ob" resultFactory: Word];
+          [Execution objectResultOf: signature selector: #appendBytes: byteArgument: "ignored"];
           [Globals at: #IncomingCode put: code];
           IncomingProbe
         "#;

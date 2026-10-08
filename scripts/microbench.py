@@ -23,7 +23,7 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prefix', type=Path, default=WORK / 'prefix')
     p.add_argument('--prepare-from', type=Path, help='copy a compatible installed prefix; rebuild changed release owners')
-    p.add_argument('--case', choices=['all','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','abi','abi-captured','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-bindings','semantic-string-length','semantic-vector-access'], default='all')
+    p.add_argument('--case', choices=['all','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-default','semantic-string-length','semantic-vector-access','semantic-word-as-integer','semantic-bytes-as-string','semantic-boolean-print'], default='all')
     p.add_argument('--seconds', type=float, default=10, help='total measurement budget, at most 10 seconds')
     p.add_argument('--batch-ms', type=float, default=25)
     p.add_argument('--gc', choices=['normal','off'], default='normal')
@@ -47,8 +47,8 @@ def main():
     p = parser(); args = p.parse_args()
     if not .1 <= args.seconds <= 10 or not 1 <= args.batch_ms <= 100 or not 1 <= args.setup_timeout <= 120:
         p.error('seconds must be 0.1..10; batch-ms 1..100; setup-timeout 1..120')
-    if args.trace and (not args.counts_only or args.case != 'public-integer-bindings'):
-        p.error('trace currently requires --counts-only --case public-integer-bindings')
+    if args.trace and (not args.counts_only or args.case != 'public-integer-default'):
+        p.error('trace currently requires --counts-only --case public-integer-default')
     if args.profile and (args.case in ('all','abi-audit') or not 2 <= args.seconds <= 5):
         p.error('profiling requires one --case and --seconds between 2 and 5')
     env = clean_environment(); env['CARGO_TARGET_DIR'] = str(TARGET)

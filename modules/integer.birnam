@@ -10,16 +10,12 @@ let intZero := [intExecution wordResultOf: 0 selector: #word];
 let intSign := [intExecution wordResultOf: -9223372036854775808 selector: #word];
 let intMax := [intExecution wordResultOf: 9223372036854775807 selector: #word];
 let intShift := [intExecution wordResultOf: 63 selector: #word];
-let intOptionalBits := "Wo";
-let intObjectBits := "ow";
 
 [Reflect defineMethod: #integerBitsOf: on: Integer as: [:self :value |
-  [intExecution sendNativeTo: intFactory selector: #wordOf: arguments: #[value]
-    signature: intOptionalBits resultFactory: intWord]
+  [intExecution optionalWordResultOf: intFactory selector: #wordOf: argument: value resultFactory: intWord]
 ]];
 [Reflect defineMethod: #integerFromBits: on: Integer as: [:self :bits |
-  [intExecution sendNativeTo: self selector: #fromWord: arguments: #[bits]
-    signature: intObjectBits resultFactory: intWord]
+  [intExecution objectResultOf: self selector: #fromWord: wordArgument: bits]
 ]];
 // A sign is the Word 0 or 2^63. Magnitudes and sign restoration stay unsigned.
 [Reflect defineMethod: #integerSignOf: on: Integer as: [:self :bits |
@@ -106,8 +102,7 @@ let intFloatingOperations := {
       [[right notNil] ifTrue: [|
         [[intOperations at: operation] value: left value: right]
       ] ifFalse: [|
-        let floating := [intExecution sendNativeTo: intFloat selector: #bitsOf: arguments: #[other]
-          signature: intOptionalBits resultFactory: intWord];
+        let floating := [intExecution optionalWordResultOf: intFloat selector: #bitsOf: argument: other resultFactory: intWord];
         [[[floating notNil] & [[operation == #remainder] not]] ifTrue: [|
           let value := [self asFloat];
           [[intFloatingOperations at: operation] value: value value: other]

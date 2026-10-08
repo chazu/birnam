@@ -1,5 +1,9 @@
 # Boolean selection without comparison boxes
 
+Follow-up: [fixed ABI call simplification](fixed-abi-simplification.md) reduces
+addition further to 829.375 sends. The measurements below describe the preceding
+Boolean slice.
+
 Implemented 2026-10-07. Successful Integer addition falls from **1,367.375 to
 1,083.375 sends**, 20.8% fewer. Its Boolean-selection category falls from **293 to
 13 sends**, and allocated Id Objects fall from thirty to twenty per addition.

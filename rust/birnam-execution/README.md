@@ -341,21 +341,14 @@ repeated commits fail. The scalar evaluator similarly receives
 bounded, tail and protected calls use the baseline. No new virtual Frame or
 identity representation is introduced. See [scope and tests](../../docs/design/90-numeric-predicate.md).
 
-### Fixed ABI binding proofs
+### Capture borrowing admission
 
-`binding_proof.rs` coalesces the ABI adapter's default-lookup and exact-entry
-admission through current Id `nativeBindingsMatch:`. Initialization asks Id
-`nativeBindingQuerySemantics:for:` and GC `internQuerySemantics:` to describe
-only their own implementations in the requested roles. This caches code meaning,
-not dispatch selection or allocation permission. Every attempt fences the five
-query/interning entries and the ABI entry, including opaque context equality.
-Unknown or changed services execute the original guard path. Native payloads
-remain with their owners; all target operations still use current Id messages.
-`Execution bindingProofBatches:` takes native Word 0/1 (default 1) and returns Unit;
-it is a diagnostic comparison control. Signature callbacks, allocation permissions,
-input roots, byte copies and the final epoch fence remain intact. The dynamically
-named Word-helper guard is outside this rule. Scoped proofs, limits and negative
-checks live in `formal/semantics`; `public-integer-bindings` is the paired probe.
+`binding_proof.rs` sends one canonical Id `nativeBindingsMatch:` query for capture
+borrowing and Word-helper reader admission. It checks the current reader/grant and
+five lookup/query service meanings, including opaque context equality. Unknown or
+changed services decline; there is no reentrant separate-query fallback. Inputs
+remain in the existing Execution scopes and actual reads remain Id messages.
+The former outbound-ABI proof batching toggle and helper guard path are removed.
 
 ## Compact closure construction (2026-10-07)
 
@@ -393,3 +386,32 @@ No selector lookup or arbitrary callback occurs between positive admission and
 these pure projections. Word-helper admission tracks the new direct reader.
 
 See [measurement and proof limits](../../docs/design/capture-access-simplification.md).
+
+## Fixed one-argument native calls (2026-10-07)
+
+`optionalWordResultOf:selector:argument:resultFactory:` sends one Object argument
+and wraps a native Word through the supplied factory's current `fromBits:`; native
+Unit answers language nil. `objectResultOf:selector:wordArgument:` obtains native
+bits through the argument's current `bits` message, sends one native Word argument,
+and accepts an Object result (nullable Object becomes language nil).
+
+All source-facing operands are Objects. These methods scope inputs before any
+callback; they perform no signature-string or argument-
+container permission work. Target/getter/factory lookup and failures stay live
+through ordinary Id messages. The general outbound adapter has been retired; the fixed Byte/discard forms
+below cover its remaining production consumers. See [the measured slice](../../docs/design/fixed-abi-simplification.md).
+
+## Outbound bridge retirement
+
+All production outbound calls now use fixed shapes. Additional messages are
+`discardResultOf:selector:wordArgument:`, `objectResultOf:selector:byteArgument:`
+and `bytesResultOf:selector:resultFactory:`. Word/Bytes getters, actual targets
+and supplied result factories use current Id messages. Byte arguments are copied
+before the target callback; byte results are copied before the factory callback.
+
+The runtime signature interpreter, arbitrary argument-count loop, Vector/string
+permission helpers, `tryNativeArguments:` and the compiler's literal-ABI elision
+pass are removed. The old general selector is not installed. Incoming authored
+method signatures and Alien foreign-function signatures remain distinct live
+interfaces. Existing old compiled outbound calls require explicit rebuilding.
+See [retirement and evidence](../../docs/design/outbound-bridge-retirement.md).
