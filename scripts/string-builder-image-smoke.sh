@@ -66,9 +66,9 @@ test -s "$scratch/app.image"
 rm "$scratch/save.birnam"
 printf 'seed\ntrue\n135\nseedA\n0\nfalse\nok\n\nab3\nBIRNAM\nbirnam\n#generationNotQuiescent\n135\nstring-builder-image-ok\n' >"$scratch/expected.out"
 for mode in mapped rebuilt; do
-  arguments=()
-  if [[ $mode == rebuilt ]]; then arguments+=(--rebuild); fi
-  "$bin" "${arguments[@]}" "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
+  arguments=("$scratch/app.image")
+  if [[ $mode == rebuilt ]]; then arguments=(--rebuild "${arguments[@]}"); fi
+  "$bin" "${arguments[@]}" >"$scratch/$mode.out" 2>"$scratch/$mode.err"
   cmp "$scratch/expected.out" "$scratch/$mode.out"
   test ! -s "$scratch/$mode.err"
 done
