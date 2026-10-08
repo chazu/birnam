@@ -110,8 +110,9 @@ unsafe extern "C" fn observe(c: *mut c_void, r: Oop, a: *const Operand, n: usize
         c.entry.method.unwrap()(c.entry.context, r, args.as_ptr(), args.len())
     }
 }
-unsafe fn numeric(h: &mut H) {
+pub(super) unsafe fn numeric(h: &mut H) {
     unsafe {
+        let native_seed = std::env::var_os("BIRNAM_EXECUTION_NATIVE_SEED").is_some();
         let integer = h.named(b"Integer");
         let vt = object(send(
             h.id,
@@ -170,10 +171,14 @@ unsafe fn numeric(h: &mut H) {
                 assert_eq!(h.value(Operand::object(result)) as i64, expected);
             }
         }
-        assert!(
-            observer.evaluated.get() >= 35,
-            "hot numeric calls use the owner-validated Execution evaluator"
-        );
+        assert!(observer.calls.get() >= 35, "hot calls query the current Integer owner");
+        if native_seed {
+            assert!(observer.evaluated.get() >= 35,
+                "bootstrap arithmetic uses the owner-validated Execution evaluator");
+        } else {
+            assert_eq!(observer.evaluated.get(), 0,
+                "the native Integer evaluator must decline authored arithmetic entries");
+        }
         // These entries are already hot. Refused arithmetic must retain the
         // owner's ordinary language errors, including MIN / -1.
         for (name, left, right, kind) in [
@@ -234,6 +239,13 @@ unsafe fn numeric(h: &mut H) {
         )
         .as_entry()
         .unwrap();
+        // Keep the authored Method alive while its dictionary binding is absent.
+        // Restoring a borrowed NativeEntry after collection would be a dangling
+        // executable context; the native bootstrap entry has no Method wrapper.
+        if let Some(method) = send(h.id, observer.execution, b"methodOfEntry:",
+            &[Operand::entry(original_plus)]).as_object() {
+            h.keep(method);
+        }
         install(h.id, integer_vt, b"+", replacement, ptr::null_mut());
         let before_calls = observer.calls.get();
         for _ in 0..70 {
@@ -256,12 +268,24 @@ unsafe fn numeric(h: &mut H) {
         let query = [Operand::entry(original_plus), Operand::object(left), Operand::object(right), Operand::object(observer.execution)];
         install(h.id, execution_vt, b"numericOperation:left:right:", decline_numeric, ptr::null_mut());
         let answer = send(h.id, integer, b"evaluate:receiver:argument:with:", &query);
-        assert_eq!(h.value(answer), h.value(Operand::object(left)) + h.value(Operand::object(right)));
+        if native_seed {
+            assert_eq!(h.value(answer), h.value(Operand::object(left)) + h.value(Operand::object(right)));
+        } else {
+            assert_eq!(answer.kind(), birnam_abi::id_protocol::UNIT);
+        }
         install(h.id, execution_vt, b"numericOperation:left:right:", fail_numeric, ptr::null_mut());
-        assert_eq!(h.id.send_named(integer, b"evaluate:receiver:argument:with:", &query).unwrap_err().detail, 917);
+        if native_seed {
+            assert_eq!(h.id.send_named(integer, b"evaluate:receiver:argument:with:", &query).unwrap_err().detail, 917);
+        } else {
+            assert_eq!(send(h.id, integer, b"evaluate:receiver:argument:with:", &query).kind(),
+                birnam_abi::id_protocol::UNIT,
+                "declining an authored entry must not invoke the native evaluator");
+        }
         let mut old_visitor = query;
         old_visitor[3] = Operand::entry(evaluator);
-        assert!(h.id.send_named(integer, b"evaluate:receiver:argument:with:", &old_visitor).is_err());
+        if native_seed {
+            assert!(h.id.send_named(integer, b"evaluate:receiver:argument:with:", &old_visitor).is_err());
+        }
         install(h.id, execution_vt, b"numericOperation:left:right:", evaluator.method.unwrap(), evaluator.context);
         send(h.id, execution_vt, b"removeMethod:", &[Operand::object(h.id.intern_name(b"savedNumericOperation:left:right:").unwrap())]);
 

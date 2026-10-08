@@ -209,7 +209,7 @@ fn native_compilers_are_live_value_seams() {
         )
         .unwrap();
     assert!(
-        q.check_result(q.call(
+        q.call(
             format,
             b"inspect:architecture:abi:",
             &[
@@ -217,7 +217,7 @@ fn native_compilers_are_live_value_seams() {
                 Operand::object(arch),
                 Operand::object(abi)
             ]
-        ).unwrap())
+        )
         .is_err()
     );
     let refused = q
@@ -225,9 +225,8 @@ fn native_compilers_are_live_value_seams() {
             h.named(b"System").unwrap(),
             b"loadImageBytes:rebuild:",
             &[Operand::object(truncated), Operand::object(no)],
-        )
-        .unwrap();
-    assert_eq!(refused, nil);
+        );
+    assert!(refused.is_err());
     for (owner, vt, selector, args) in [
         (
             compiler,

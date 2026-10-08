@@ -299,6 +299,10 @@ unsafe fn control_replacements(h: &mut H) {
 fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
     unsafe {
         let mut h = H::new();
+        if std::env::var_os("BIRNAM_EXECUTION_NATIVE_SEED").is_some() {
+            native_tier::numeric(&mut h);
+            return;
+        }
         let nil = h.named(b"nil");
         recovery::check(&mut h);
         control_replacements(&mut h);
