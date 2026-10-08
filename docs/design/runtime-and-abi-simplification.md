@@ -608,3 +608,13 @@ to twenty. Replacement/GC/carrier, bounded-task and formal checks pass.
 ABI bridges (281 sends) are now the largest measured category. This completes the
 specific Boolean intermediate-box removal, not W12's branch virtualization or
 all typed/unboxed compiler-local work.
+
+## Method admission follow-up (2026-10-07)
+
+[Method code admission](method-code-admission.md) moves shape-owner queries out
+of generated literal construction into one immutable binding per portable Method.
+Methods trace the admitted code; aliases retain it. Explicit external code pairings
+keep validation and supplied CodeObject identity. Generated constructors now pass
+only Method plus captures. Total addition sends fall another 13.5%, to 717.375,
+with lifetime/replacement/materialization/bounded-task checks passing. Per-instance
+behavior sharing and virtual Blocks remain separate investigations.

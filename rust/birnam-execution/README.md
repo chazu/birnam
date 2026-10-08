@@ -81,7 +81,7 @@ exact entry. Ordinary future sends perform current lookup.
 | Machine `recoverAt:with:` / `recoverAt:withGraph:` | Integer baseline PC, recipe sequence Object | Machine Object after one atomic pending-call recovery; typed failure for missing/stale authority or invalid recipe. |
 | Block `fromMethod:captures:` | Method Object, capture sequence Object | Block with `value` / `value:…` matching descriptor arity. Reads captures through current `size`/`at:`; validates descriptor capture count. Clone copies this owned representation shallowly. |
 | Block `fromMethod:codeObject:captures:` | Method, admitted CodeObject, capture sequence | As above, retaining the supplied CodeObject. Native Word parameter/capture counts are queried from the current CodeObject owner; counts must agree with a resumable descriptor. For native Methods the admitted program supplies arity. |
-| Block `fromMethod:codeObject:captureOperands:` | Native variadic Object operands: Method, admitted CodeObject, then zero or more captures | Copies the ordered references directly into owned Block storage. All inputs are scoped before dependency sends; no intermediate ObjectModel container. Wrong carriers/counts or descriptor mismatch fail before publication. |
+| Block `fromMethod:captureOperands:` | Native variadic Object operands: admitted Method, then zero or more captures | Copies the ordered references directly into owned Block storage. All inputs are scoped before dependency sends; no intermediate ObjectModel container. Wrong carriers/counts or descriptor mismatch fail before publication. |
 | Block instance `codeObject`, `captureCount`, `captureAt:` | none, none, zero-based Integer index | Supplied CodeObject, capture count, captured Object (or nil outside bounds). All return nil for Blocks without a CodeObject. Clone preserves these references. |
 | Block `captureAt:of:` | Integer index, Block | Owner projection used by synchronous generated code; reads the same owned captures through a send. |
 | Machine `new` | none | New Machine and its own scratch actions, allocated through Id. |
@@ -415,3 +415,19 @@ pass are removed. The old general selector is not installed. Incoming authored
 method signatures and Alien foreign-function signatures remain distinct live
 interfaces. Existing old compiled outbound calls require explicit rebuilding.
 See [retirement and evidence](../../docs/design/outbound-bridge-retirement.md).
+
+## Method code admission (2026-10-07)
+
+`Method admitCodeObject:` obtains checked counts through current CodeObject-owner
+messages and binds the code/counts once, validating a resumable descriptor if one
+exists. Same-code admission is idempotent; different-code rebinding fails. Failed
+admission publishes no binding. Method GC references and captured aliases retain
+the admitted CodeObject.
+
+Generated literals use `Block fromMethod:captureOperands:` with a bound Method and
+zero or more ordered Object captures. No per-literal CodeObject/count query occurs.
+The retired generated constructor accepting Method plus CodeObject is removed.
+Collection-based external code pairings and image shells validate a different
+supplied code and preserve its identity. All actual construction/invocation still
+uses Id; per-instance behaviors remain unchanged. See
+[measurement and contracts](../../docs/design/method-code-admission.md).

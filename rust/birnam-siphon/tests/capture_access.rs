@@ -331,10 +331,9 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
         let only_owner = h.keep(object(send(
             id,
             h.named(b"Block"),
-            b"fromMethod:codeObject:captureOperands:",
+            b"fromMethod:captureOperands:",
             &[
                 Operand::object(method),
-                Operand::object(code),
                 Operand::object(fresh_a),
                 Operand::object(fresh_b),
             ],

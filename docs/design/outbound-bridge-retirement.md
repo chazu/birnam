@@ -1,5 +1,8 @@
 # Retire the general outbound ABI bridge
 
+Follow-up: [Method code admission](method-code-admission.md) reduces addition
+further to 717.375 sends. The measurements below describe the preceding slice.
+
 Implemented 2026-10-07. All seven remaining production call sites have been
 migrated to fixed-shape Id messages. The signature-based outbound API and its
 compiler optimization are deleted. Incoming authored-method ABI signatures and

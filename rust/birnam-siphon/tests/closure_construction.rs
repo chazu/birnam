@@ -180,6 +180,15 @@ fn literal_program(value: i64) -> Vec<u8> {
     .unwrap()
 }
 
+unsafe extern "C" fn admitted_constant(
+    c: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    n: usize,
+) -> Outcome {
+    assert_eq!(n, 0);
+    Outcome::loaded(Operand::object(c.cast()))
+}
 struct ClosureQuery {
     id: Protocol,
     roots: Oop,
@@ -269,7 +278,7 @@ fn compact_shape_and_direct_captures_preserve_dispatch_aliases_and_callback_life
         for (vt, name) in [
             (code_vt, b"parameterCountOf:".as_slice()),
             (code_vt, b"captureCountOf:"),
-            (block_vt, b"fromMethod:codeObject:captureOperands:"),
+            (block_vt, b"fromMethod:captureOperands:"),
         ] {
             let original = binding(&h, vt, name);
             let alias_name = [b"closureOriginal".as_slice(), name].concat();
@@ -287,6 +296,99 @@ fn compact_shape_and_direct_captures_preserve_dispatch_aliases_and_callback_life
             set(&h, vt, name, NativeEntry::new(closure_query, hook.cast()));
             hooks.push((vt, name, original, hook));
         }
+        let answer = h.int(42);
+        let method = h.keep(object(send(
+            id,
+            h.named(b"Method"),
+            b"fromNative:owner:",
+            &[
+                Operand::entry(NativeEntry::new(admitted_constant, answer.cast())),
+                Operand::object(answer),
+            ],
+        )));
+        let admitted_code = h.admit(&literal_program(42));
+        // Failed admission publishes no shape. A later valid admission may retry.
+        (*hooks[1].3).mode.set(2);
+        assert!(
+            id.send_named(
+                method,
+                b"admitCodeObject:",
+                &[Operand::object(admitted_code)]
+            )
+            .is_err()
+        );
+        assert!(
+            id.send_named(
+                owner,
+                b"fromMethod:captureOperands:",
+                &[Operand::object(method)]
+            )
+            .is_err()
+        );
+        (*hooks[1].3).mode.set(0);
+        let token = h.tokens.borrow_mut().pop().unwrap();
+        (*hooks[0].3).release_tokens.borrow_mut().push(token);
+        assert_eq!(
+            send(
+                id,
+                method,
+                b"admitCodeObject:",
+                &[Operand::object(admitted_code)]
+            )
+            .as_object(),
+            Some(method)
+        );
+        assert!(present(id, admitted_code));
+        h.collect();
+        assert!(
+            present(id, admitted_code),
+            "Method must trace its admitted CodeObject"
+        );
+        let before = (*hooks[0].3).calls.get() + (*hooks[1].3).calls.get();
+        send(
+            id,
+            method,
+            b"admitCodeObject:",
+            &[Operand::object(admitted_code)],
+        );
+        let direct = h.keep(object(send(
+            id,
+            owner,
+            b"fromMethod:captureOperands:",
+            &[Operand::object(method)],
+        )));
+        assert_eq!(h.call(direct, b"value", &[]), answer);
+        assert_eq!(h.call(direct, b"codeObject", &[]), admitted_code);
+        assert_eq!(
+            (*hooks[0].3).calls.get() + (*hooks[1].3).calls.get(),
+            before,
+            "admitted reuse must issue no shape queries"
+        );
+        let other_code = h.admit(&literal_program(42));
+        assert_ne!(admitted_code, other_code);
+        assert!(
+            id.send_named(method, b"admitCodeObject:", &[Operand::object(other_code)])
+                .is_err()
+        );
+        let alias = h.call(direct, b"methodFor:", &[id.intern_name(b"value").unwrap()]);
+        let alias_block = h.keep(object(send(
+            id,
+            owner,
+            b"fromMethod:captureOperands:",
+            &[Operand::object(alias)],
+        )));
+        assert_eq!(h.call(alias_block, b"codeObject", &[]), admitted_code);
+        assert_eq!(h.call(alias_block, b"value", &[]), answer);
+        let paired = h.call(
+            owner,
+            b"fromMethod:codeObject:captures:",
+            &[method, other_code, h.vector(&[])],
+        );
+        assert_eq!(
+            h.call(paired, b"codeObject", &[]),
+            other_code,
+            "external equal-byte code identity must be preserved"
+        );
         for resumable in [false, true] {
             let original = h.materialize(code, &[first, second], resumable);
             let method = h.call(
@@ -295,9 +397,9 @@ fn compact_shape_and_direct_captures_preserve_dispatch_aliases_and_callback_life
                 &[id.intern_name(b"value:").unwrap()],
             );
             let direct = |captures: &[Operand]| {
-                let mut args = vec![Operand::object(method), Operand::object(code)];
+                let mut args = vec![Operand::object(method)];
                 args.extend_from_slice(captures);
-                id.send_named(owner, b"fromMethod:codeObject:captureOperands:", &args)
+                id.send_named(owner, b"fromMethod:captureOperands:", &args)
             };
             let block = h.keep(object(
                 direct(&[Operand::object(second), Operand::object(first)]).unwrap(),
@@ -323,20 +425,19 @@ fn compact_shape_and_direct_captures_preserve_dispatch_aliases_and_callback_life
                 ])
                 .is_err()
             );
-            let mut too_many = vec![Operand::object(method), Operand::object(code)];
+            let mut too_many = vec![Operand::object(method)];
             too_many.extend(std::iter::repeat_n(Operand::object(first), 4097));
             assert!(
-                id.send_named(owner, b"fromMethod:codeObject:captureOperands:", &too_many)
+                id.send_named(owner, b"fromMethod:captureOperands:", &too_many)
                     .is_err()
             );
             for bad in [
                 vec![],
-                vec![Operand::object(method)],
-                vec![Operand::object(h.named(b"nil")), Operand::object(code)],
+                vec![Operand::object(h.named(b"nil"))],
                 vec![Operand::object(method), Operand::object(h.named(b"nil"))],
             ] {
                 assert!(
-                    id.send_named(owner, b"fromMethod:codeObject:captureOperands:", &bad)
+                    id.send_named(owner, b"fromMethod:captureOperands:", &bad)
                         .is_err()
                 );
             }
@@ -370,26 +471,60 @@ fn compact_shape_and_direct_captures_preserve_dispatch_aliases_and_callback_life
             );
             h.collect();
             assert_eq!(h.call(shell, b"value:", &[first]), second);
+            let gc_vt = behavior_of(&h, h.gc);
+            let prepare = binding(&h, gc_vt, b"prepareAllocation");
+            let alias = h.keep(id.intern_name(b"closureOriginalPrepare").unwrap());
+            set(&h, gc_vt, b"closureOriginalPrepare", prepare);
+            let checkpoint = Box::into_raw(Box::new(ClosureQuery {
+                id,
+                roots: h.roots,
+                gc: h.gc,
+                alias,
+                calls: Cell::new(0),
+                release_tokens: RefCell::new(Vec::new()),
+                mode: Cell::new(0),
+            }));
+            set(
+                &h,
+                gc_vt,
+                b"prepareAllocation",
+                NativeEntry::new(closure_query, checkpoint.cast()),
+            );
             let fresh = allocate(id, behavior(id), 0);
-            (*hooks[0].3)
+            (*checkpoint)
                 .release_tokens
                 .borrow_mut()
                 .push(retain(id, h.roots, fresh));
             let alias_block = h.keep(object(
                 direct(&[Operand::object(fresh), Operand::object(fresh)]).unwrap(),
             ));
+            assert!((*checkpoint).release_tokens.borrow().is_empty());
             assert!(
                 present(id, fresh),
-                "constructor scope must protect captures during collecting shape query"
+                "constructor scope protects captures before collecting admission"
             );
+            set(&h, gc_vt, b"prepareAllocation", prepare);
+            drop(Box::from_raw(checkpoint));
             h.collect();
             assert_eq!(h.call(alias_block, b"value:", &[first]), fresh);
             let clone = h.call(alias_block, b"clone", &[]);
             assert_eq!(h.call(clone, b"value:", &[first]), fresh);
+            // Changes to shape readers affect explicit external pairing. They
+            // cannot rewrite a Method's previously admitted immutable counts.
             for mode in [1, 2, 3, 4] {
                 (*hooks[1].3).mode.set(mode);
-                let failure =
-                    direct(&[Operand::object(first), Operand::object(second)]).unwrap_err();
+                assert!(direct(&[Operand::object(first), Operand::object(second)]).is_ok());
+                let failure = id
+                    .send_named(
+                        owner,
+                        b"fromMethod:codeObject:captures:",
+                        &[
+                            Operand::object(method),
+                            Operand::object(code),
+                            Operand::object(h.vector(&[first, second])),
+                        ],
+                    )
+                    .unwrap_err();
                 if mode == 3 {
                     assert_eq!((failure.status, failure.detail), (881, 73));
                 } else {
@@ -397,11 +532,6 @@ fn compact_shape_and_direct_captures_preserve_dispatch_aliases_and_callback_life
                 }
             }
             (*hooks[1].3).mode.set(0);
-            if resumable {
-                (*hooks[0].3).mode.set(1);
-                assert!(direct(&[Operand::object(first), Operand::object(second)]).is_err());
-                (*hooks[0].3).mode.set(0);
-            }
         }
         // More than eight direct captures, zero captures, and nested literals in
         // both emitters. Ordered projections prevent a mistaken truncated carrier.

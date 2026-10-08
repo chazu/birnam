@@ -102,8 +102,8 @@ pub(super) fn function(
                             .ok_or(Error::Portable)
                     }).collect::<Result<Vec<_>, _>>()?;
                     let suffix = if captures.is_empty() { String::new() } else { format!(",{}", captures.join(",")) };
-                    writeln!(out, "A a{next}[]={{obj(methods[{child}]),obj(codes[{child}]){suffix}}};").unwrap();
-                    format!("call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:captureOperands:\",a{next},{})",captures.len()+2)
+                    writeln!(out, "A a{next}[]={{obj(methods[{child}]){suffix}}};").unwrap();
+                    format!("call(&c,named(&c,\"Block\"),\"fromMethod:captureOperands:\",a{next},{})",captures.len()+1)
 
                 }
             };

@@ -336,11 +336,11 @@ fn function(
                 } => {
                     let child = portable_function(program, source, filename, functions, policy)?;
                     let v = operation.result.0;
-                    writeln!(out, "A block_args_{v}[{}];block_args_{v}[0]=obj(methods[{child}]);block_args_{v}[1]=obj(codes[{child}]);",captures.len()+2).unwrap();
+                    writeln!(out, "A block_args_{v}[{}];block_args_{v}[0]=obj(methods[{child}]);",captures.len()+1).unwrap();
                     for (i,value) in captures.iter().enumerate() {
-                        writeln!(out,"block_args_{v}[{}]=obj(get(&c,machine,{}));",i+2,slot(*value)).unwrap();
+                        writeln!(out,"block_args_{v}[{}]=obj(get(&c,machine,{}));",i+1,slot(*value)).unwrap();
                     }
-                    format!("call(&c,named(&c,\"Block\"),\"fromMethod:codeObject:captureOperands:\",block_args_{v},{})",captures.len()+2)
+                    format!("call(&c,named(&c,\"Block\"),\"fromMethod:captureOperands:\",block_args_{v},{})",captures.len()+1)
 
                 }
                 Op::BlockLiteral { .. } => return Err(Error::Unsupported),
@@ -474,6 +474,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             } else {
                 writeln!(out, "{{A a[2]={{entry(sync_{i}),obj(owner)}};methods[{i}]=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",a,2);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}} ").unwrap();
             }
+            if f.portable.is_some() {
+                writeln!(out,"{{A code=obj(codes[{i}]);methods[{i}]=call(&c,methods[{i}],\"admitCodeObject:\",&code,1);if(c.failure.status)return finish(&c,(A){{0}});}}").unwrap();
+            }
             if f.named {
                 writeln!(out,"{{methods[{i}]=call(&c,methods[{i}],\"withWordHelperAdapter\",0,0);}}").unwrap();
             } else if let Some(plan) = f.portable.as_deref().filter(|_|f.word_helpers).and_then(|b|birnam_artifact::portable_program::inspect(b).ok()).and_then(|p|word_expression::helper(&p).map(|plan|(plan,p.parameter_count))) {
@@ -492,6 +495,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             ("fromStep:descriptor:selection:owner:", 4)
         };
         writeln!(out,"methods[{i}]=call(&c,named(&c,\"Method\"),\"{name}\",args,{count});A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}").unwrap();
+        if f.portable.is_some() {
+            writeln!(out,"{{A code=obj(codes[{i}]);methods[{i}]=call(&c,methods[{i}],\"admitCodeObject:\",&code,1);if(c.failure.status)return finish(&c,(A){{0}});}}").unwrap();
+        }
         if let Some(plan) = &f.inline_return {
             writeln!(out, "{{A a[3]={{entry(inline_return_{i}),obj(integer(&c,{})),obj(owner)}};methods[{i}]=call(&c,methods[{i}],\"withInline:at:owner:\",a,3);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}", plan.slot).unwrap();
         }

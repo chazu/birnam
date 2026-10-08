@@ -400,12 +400,15 @@ pub(super) unsafe fn new_block(s: &Execution, args: &[Operand], portable: bool) 
     unsafe { new_block_values(s, method, code, BlockCaptures::Sequence(captures)) }
 }
 unsafe fn new_block_operands(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome> {
-    let [method, code, captures @ ..] = args else { return Err(invalid()); };
+    let [method, captures @ ..] = args else { return Err(invalid()); };
     if captures.len() > 4096 { return Err(invalid()); }
+    let method = object(*method)?;
     let captures = captures.iter().copied().map(object).collect::<Result<Vec<_>, _>>()?;
-    unsafe { new_block_values(s, object(*method)?, Some(object(*code)?), BlockCaptures::Values(&captures)) }
+    let code = s.methods.borrow().get(&method.addr()).and_then(|m| m.portable).ok_or_else(invalid)?.code;
+    unsafe { new_block_values(s, method, Some(code), BlockCaptures::Values(&captures)) }
 }
-unsafe fn code_shape(s: &Execution, code: Oop, roots: &Scope<'_>) -> Result<(usize, usize), Outcome> {
+
+pub(super) unsafe fn code_shape(s: &Execution, code: Oop, roots: &Scope<'_>) -> Result<(usize, usize), Outcome> {
     let factory = object(unsafe { s.id.send_named(s.namespace, b"at:",
         &[Operand::object(s.id.intern_name(b"CodeObject")?)]) }?)?;
     roots.keep(factory);
@@ -415,6 +418,35 @@ unsafe fn code_shape(s: &Execution, code: Oop, roots: &Scope<'_>) -> Result<(usi
         .as_word().filter(|n| *n <= 4096).ok_or_else(invalid)?;
     Ok((parameters, captures))
 }
+// Bind immutable admitted code shape once to this owner's Method record. The
+// CodeObject owner supplies the facts through current Id messages at admission.
+pub(super) unsafe extern "C" fn admit_code_object(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let [code] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let code = object(*code)?;
+        let roots = s.scope(&[r, code]);
+        let expected = {
+            let methods = s.methods.borrow();
+            let m = methods.get(&r.addr()).ok_or_else(invalid)?;
+            if let Some(binding) = m.portable {
+                return if binding.code == code { Ok(Operand::object(r)) } else { Err(invalid()) };
+            }
+            m.resumable.as_ref().map(|v| (v.descriptor.v2_entry_binding().unwrap().argument_count, v.descriptor.entry_capture_slots().len()))
+        };
+        let (parameters, captures) = code_shape(s, code, &roots)?;
+        if expected.is_some_and(|shape| shape != (parameters, captures)) { return Err(invalid()); }
+        let binding = PortableBinding { code, parameters, captures };
+        let mut methods = s.methods.borrow_mut();
+        let m = methods.get_mut(&r.addr()).ok_or_else(invalid)?;
+        // A provider may reenter admission. Publish once and never overwrite a
+        // competing binding or accept contradictory checked facts after reentry.
+        if m.portable.is_some_and(|old| old != binding) { return Err(invalid()); }
+        m.portable = Some(binding);
+        Ok(Operand::object(r))
+    })())
+}
+
 enum BlockCaptures<'a> {
     Values(&'a [Oop]),
     Sequence(Oop),
@@ -428,17 +460,20 @@ unsafe fn new_block_values(s: &Execution, method: Oop, code: Option<Oop>, input:
         BlockCaptures::Sequence(value) => roots.keep(*value),
         BlockCaptures::Shell => {}
     }
-    let (mut arity, mut expected) = {
+    let (mut arity, mut expected, admitted) = {
         let methods = s.methods.borrow();
         let m = methods.get(&method.addr()).ok_or_else(invalid)?;
         match &m.resumable {
             Some(r) => (r.descriptor.v2_entry_binding().unwrap().argument_count,
-                Some(r.descriptor.entry_capture_slots().len())),
-            None => (0, None),
+                Some(r.descriptor.entry_capture_slots().len()), m.portable),
+            None => (0, None, m.portable),
         }
     };
     if let Some(code) = code {
-        let (parameters, captures) = unsafe { code_shape(s, code, &roots) }?;
+        let (parameters, captures) = if let Some(binding) = admitted.filter(|p| p.code == code) {
+            (binding.parameters, binding.captures)
+        } else { unsafe { code_shape(s, code, &roots) }? };
+        if admitted.is_some_and(|p| (p.parameters, p.captures) != (parameters, captures)) { return Err(invalid()); }
         if expected.is_some_and(|n| n != captures || arity != parameters) { return Err(invalid()); }
         arity = parameters;
         expected = Some(captures);
@@ -1658,7 +1693,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"failed",
     b"fromMethod:captures:",
     b"fromMethod:codeObject:captures:",
-    b"fromMethod:codeObject:captureOperands:",
+    b"fromMethod:captureOperands:",
     b"codeObject",
     b"isSynchronous",
     b"imageShellFromMethod:codeObject:",
@@ -2211,7 +2246,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"restoreImageCaptures:of:",
             Op::RestoreCaptures,
         )?;
-        install_op(s, block_vtable, b"fromMethod:codeObject:captureOperands:", Op::BlockOperands)?;
+        install_op(s, block_vtable, b"fromMethod:captureOperands:", Op::BlockOperands)?;
         install_op(s, block_vtable, b"captureCount", Op::BlockCaptureCount)?;
         install_op(s, block_vtable, b"captureAt:", Op::BlockCapture(false))?;
         install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;

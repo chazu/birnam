@@ -19,8 +19,8 @@ assert collections.Counter(r['selector'] for r in trace)==m['selectors']
 for r in trace:
  assert 1+sum(c['inclusive'] for c in children[r['id']])==r['inclusive'],r
 seeds={}; reasons={}
-constructors_selectors={'fromMethod:codeObject:referenceSlots:','fromMethod:codeObject:captureOperands:'}
-construct={'fromMethod:codeObject:captureOperands:','allocateReferenceSlots:','slotAt:in:put:','fromMethod:codeObject:referenceSlots:'}
+constructors_selectors={'fromMethod:captureOperands:','fromMethod:codeObject:referenceSlots:','fromMethod:codeObject:captureOperands:'}
+construct={'fromMethod:captureOperands:','fromMethod:codeObject:captureOperands:','allocateReferenceSlots:','slotAt:in:put:','fromMethod:codeObject:referenceSlots:'}
 abi={'discardResultOf:selector:wordArgument:','objectResultOf:selector:byteArgument:','bytesResultOf:selector:resultFactory:','optionalWordResultOf:selector:argument:resultFactory:','objectResultOf:selector:wordArgument:','tryNativeArguments:','sendNativeTo:selector:arguments:signature:resultFactory:','wordResultOf:selector:','bytesResultOf:selector:'}
 word={'tryPrimitiveExpression:','tryPrimitiveExpressionAtEpoch:','wrappingAdd:','bitXor:','bitAnd:','unsignedLessThan:'}
 controlwords={'selectIfSameObject:with:ifEqual:ifDifferent:','sameObject:with:','selectIfZero:ifNonzero:'}
@@ -120,7 +120,7 @@ summary['closure_summary']={'constructed_per_addition':len(groups)/operations,
  'unused_construction_sends_per_addition':sum(g['sends'] for g in groups if not g['invoked'])/operations,
  'canonical_export_calls_per_addition':len(exports)/operations,
  'canonical_export_sends_per_addition':sum(r['inclusive'] for r in exports)/operations}
-summary['construction_cut']=[{'selector':s,'sends_per_addition':sum(r['sends'] for r in cut if r['category']=='closure construction' and r['selector']==s)/operations} for s in ['fromMethod:codeObject:referenceSlots:','fromMethod:codeObject:captureOperands:','allocateReferenceSlots:','slotAt:in:put:','at:','retain:']]
+summary['construction_cut']=[{'selector':s,'sends_per_addition':sum(r['sends'] for r in cut if r['category']=='closure construction' and r['selector']==s)/operations} for s in ['fromMethod:captureOperands:','fromMethod:codeObject:referenceSlots:','fromMethod:codeObject:captureOperands:','allocateReferenceSlots:','slotAt:in:put:','at:','retain:']]
 summary['input_sha256']=__import__('hashlib').sha256(args.input.read_bytes()).hexdigest()
 args.output.parent.mkdir(parents=True,exist_ok=True)
 args.output.write_text(json.dumps(summary,indent=2)+'\n')

@@ -27,7 +27,15 @@ use core::{
 };
 use std::{collections::HashMap, rc::Rc};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PortableBinding {
+    code: Oop,
+    parameters: usize,
+    captures: usize,
+}
+
 struct Callable {
+    portable: Option<PortableBinding>,
     resumable: Option<machine::Registered>,
     inline: Option<recovery::Inline>,
     candidate: Option<Rc<native_tier::Candidate>>,
@@ -216,6 +224,7 @@ impl Execution {
             object(unsafe { self.send(self.method_behavior, b"allocate", &[Operand::word(0)]) }?)?;
         roots.keep(value);
         let record = Box::new(Callable {
+            portable: None,
             resumable: None,
             inline: None,
             candidate: None,
@@ -237,7 +246,7 @@ impl Execution {
     unsafe fn capture(&self, entry: NativeEntry) -> Result<Operand, Outcome> {
         if let Some(method) = self.selected(entry) {
             let _roots = self.scope(&[method]);
-            let (entry, owner, image, resumable, inline, implementation, native_signature, word_expression, word_helper_adapter) = {
+            let (entry, owner, image, resumable, inline, implementation, native_signature, word_expression, word_helper_adapter, portable) = {
                 let values = self.methods.borrow();
                 let value = values.get(&method.addr()).ok_or_else(invalid)?;
                 (
@@ -250,6 +259,7 @@ impl Execution {
                     value.native_signature.clone(),
                     value.word_expression.clone(),
                     value.word_helper_adapter,
+                    value.portable,
                 )
             };
             let value = unsafe { self.make(entry, owner, image) }?;
@@ -261,6 +271,7 @@ impl Execution {
             captured.native_signature = native_signature;
             captured.word_expression = word_expression;
             captured.word_helper_adapter = word_helper_adapter;
+            captured.portable = portable;
             return Ok(value);
         }
         let image = image::Image::retain(entry.method.ok_or_else(invalid)? as *const c_void)
@@ -586,9 +597,11 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
                 m.implementation,
                 m.resumable.as_ref().map(|r| r.origin),
                 m.inline,
+                m.portable.map(|p| p.code),
             )
         });
-        if let Some((owner, implementation, origin, inline_owner)) = owner {
+        if let Some((owner, implementation, origin, inline_owner, code)) = owner {
+            if let Some(code) = code { visit(s, v, code)?; }
             if let Some(value) = implementation {
                 visit(s, v, value)?;
             }
@@ -788,6 +801,7 @@ const NAMES: &[&[u8]] = &[
     b"methodOfEntry:",
     b"implementationOfEntry:",
     b"fromNative:owner:",
+    b"admitCodeObject:",
     b"fromNative:owner:implementation:",
     b"clone",
     b"invokeOn:",
@@ -919,6 +933,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"checkpoint", checkpoint),
             (behavior, b"retirementReady", retirement_ready),
             (method_behavior, b"fromNative:owner:", from_native),
+            (method_behavior, b"admitCodeObject:", machine::admit_code_object),
             (method_behavior,b"fromNative:owner:implementation:",from_native_implementation),
             (method_behavior,b"withWordExpression:bindings:parameters:",word_helper::attach),
             (method_behavior,b"withWordHelperAdapter",word_helper::adapter),
