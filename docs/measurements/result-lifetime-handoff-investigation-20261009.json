@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "scope": "Result lifetime handoff investigation and cleanup coverage repair",
+  "before_sends": 177,
+  "after_sends": 175,
+  "before_failure": "Fresh result reclaimed by collecting release replacement during generated cleanup",
+  "after": "Regression passes; every token is attempted in reverse order and owner scope drains on failure",
+  "allocated_objects": {
+    "Word": 3,
+    "Integer": 1
+  },
+  "count_receipt": "/tmp/birnam-four-investigations-20261009/cleanup-counts-final.json",
+  "count_sha256": "a0c99fccfd4589836bcfee0e57a16df6746165bc152f8195d2d73b5700928549",
+  "inputs_changed_during_run": false,
+  "source_sha256": "f8b25042aa7e7b6d241be257cb1acee8a7f57a7ca45b0f8929c82609ede74e0d",
+  "library_sha256": {
+    "libbirnam_root_registry.dylib": "ab8ee2f5982ffeb6695b55da488e83a93c635283cd8148cb33e7925a9a81dfbb",
+    "libbirnam_native_backend.dylib": "54beef9114a0ac74ae7f76c0b1fe0f36ea6de3b3b0d80a22270ca85ed01ff460",
+    "libbirnam_execution.dylib": "32bf0cd224c6263b4ba75780ae96eb705d1bff46fc081972fa97c58780a7732d"
+  },
+  "checks": {
+    "cleanup-native-final.log": 4,
+    "cleanup-owner-tests-final.log": 4,
+    "cleanup-emission-tests-final.log": 1
+  },
+  "formal_summary": "/tmp/birnam-four-investigations-20261009/cleanup-formal-final/summary.json",
+  "formal_summary_sha256": "d10414eae6fd934f73607054b940965a372a224cac3901c29c61ee31bfdd5f2e",
+  "lean_theorems": 143,
+  "focused_tla_configurations": 13,
+  "logs": {
+    "cleanup-before.log": {
+      "path": "/tmp/birnam-four-investigations-20261009/cleanup-before.log",
+      "sha256": "2bbaea1e6e6af355bbed76ce11f7e83a2543899ae850b63beccc87523d0bdc61"
+    },
+    "cleanup-native-final.log": {
+      "path": "/tmp/birnam-four-investigations-20261009/cleanup-native-final.log",
+      "sha256": "5cb8a275e3dccad4d53214c734104917c288927453881f9544f14c62b4555d62"
+    },
+    "cleanup-owner-tests-final.log": {
+      "path": "/tmp/birnam-four-investigations-20261009/cleanup-owner-tests-final.log",
+      "sha256": "3a6aac539716b83f829f950323f40bb2ad7991dd40b4ea9f857e711cb07e133d"
+    },
+    "cleanup-emission-tests-final.log": {
+      "path": "/tmp/birnam-four-investigations-20261009/cleanup-emission-tests-final.log",
+      "sha256": "c8549da8076d5da773298457a0b1eb84b00b8460649c6d8a1edd32b3c5c08402"
+    }
+  },
+  "limitations": [
+    "No CPU gain estimate",
+    "Fix applies to newly emitted code; image loading does not recompile existing machine code",
+    "New cleanup providers must honor result coverage and consumed-token contracts",
+    "No remaining fresh-result root is assumed redundant merely from lexical liveness"
+  ]
+}

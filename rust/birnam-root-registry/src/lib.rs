@@ -56,8 +56,9 @@ struct Registry {
     receiver: Oop,
     roots: RefCell<Roots>,
     selectors: [Oop; 7],
-    proof_services: [Option<NativeEntry>; 3],
+    binding_guard: birnam_abi::binding_guard::BindingGuard,
     output: RefCell<Vec<usize>>,
+    protected_results: RefCell<Vec<Oop>>,
 }
 static INSTANCE: AtomicPtr<Registry> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome {
@@ -112,41 +113,8 @@ unsafe fn can_batch(
     method: Method,
     selector: Oop,
 ) -> bool {
-    // Explicit Words have no uninitialized ABI-union padding.
-    let mut request = [0usize; 16];
-    for (i, (name, expected)) in registry.selectors[..3]
-        .iter()
-        .zip(registry.proof_services)
-        .enumerate()
-    {
-        let Some(expected) = expected else {
-            return false;
-        };
-        let Some(method) = expected.method else {
-            return false;
-        };
-        request[i * 4] = registry.id.receiver.addr();
-        request[i * 4 + 1] = name.addr();
-        request[i * 4 + 2] = method as usize;
-        request[i * 4 + 3] = expected.context as usize;
-    }
-    request[12] = registry.receiver.addr();
-    request[13] = selector.addr();
-    request[14] = method as usize;
-    request[15] = context as usize;
-    let bytes = unsafe {
-        core::slice::from_raw_parts(request.as_ptr().cast::<u8>(), size_of_val(&request))
-    };
-    unsafe {
-        registry.id.send(
-            registry.id.receiver,
-            registry.selectors[5],
-            &[Operand::bytes(bytes)],
-        )
-    }
-    .ok()
-    .and_then(|v| v.as_word())
-        == Some(1)
+    unsafe { registry.binding_guard.admits(registry.id,
+        &[(registry.receiver, selector, NativeEntry::new(method, context))]) }.unwrap_or(false)
 }
 unsafe fn release_many(
     context: *mut c_void,
@@ -277,6 +245,41 @@ unsafe extern "C" fn try_retain_many(
     };
     Outcome::loaded(Operand::bytes(bytes))
 }
+// This scope supplies the overlap between releasing the result's own token
+// and returning it to the generated caller. No public token is added.
+struct ResultScope<'a> { values: &'a RefCell<Vec<Oop>>, start: usize }
+impl Drop for ResultScope<'_> {
+    fn drop(&mut self) { self.values.borrow_mut().truncate(self.start); }
+}
+unsafe extern "C" fn release_protecting(
+    context: *mut c_void, receiver: Oop, args: *const Operand, count: usize,
+) -> Outcome {
+    let Some([tokens, result, allow_batch]) = (unsafe { borrowed_slice(args, count) }) else { return invalid(); };
+    let Some(bytes) = tokens.as_bytes().and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer, b.length) }) else { return invalid(); };
+    let Ok(result) = object(*result) else { return invalid(); };
+    let Some(allow_batch) = allow_batch.as_word().filter(|v| *v <= 1) else { return invalid(); };
+    if bytes.len() % size_of::<usize>() != 0 { return invalid(); }
+    // Own the token borrow before any query or custom cleanup callback.
+    let tokens: Vec<usize> = bytes.chunks_exact(size_of::<usize>())
+        .map(|b| usize::from_ne_bytes(b.try_into().unwrap())).collect();
+    let registry = unsafe { &*context.cast::<Registry>() };
+    if receiver != registry.receiver { return invalid(); }
+    let start = registry.protected_results.borrow().len();
+    registry.protected_results.borrow_mut().push(result);
+    let _scope = ResultScope { values: &registry.protected_results, start };
+    if allow_batch == 1 && tokens.len() >= 2 && unsafe { can_batch(registry, context, release, registry.selectors[3]) } {
+        let mut roots = registry.roots.borrow_mut();
+        for &token in tokens.iter().rev() { roots.release(token); }
+        return Outcome::loaded(Operand::word(1));
+    }
+    let mut failure = None;
+    for &token in tokens.iter().rev() {
+        if let Err(error) = unsafe { registry.id.send(registry.receiver, registry.selectors[3], &[Operand::word(token)]) } {
+            if failure.is_none() { failure = Some(error); }
+        }
+    }
+    failure.unwrap_or_else(|| Outcome::loaded(Operand::word(1)))
+}
 unsafe extern "C" fn register(
     context: *mut c_void,
     _: Oop,
@@ -308,10 +311,10 @@ unsafe extern "C" fn roots(
     let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
         return invalid();
     };
-    let (id, providers, retained) = {
+    let (id, providers, retained, protected) = {
         let registry = unsafe { &*context.cast::<Registry>() };
         let roots = registry.roots.borrow();
-        (registry.id, roots.providers.clone(), roots.retained.clone())
+        (registry.id, roots.providers.clone(), roots.retained.clone(), registry.protected_results.borrow().clone())
     };
     // Snapshot retains callback order; providers themselves are also roots.
     for object in [receiver]
@@ -319,6 +322,7 @@ unsafe extern "C" fn roots(
         .chain(unsafe { (&*context.cast::<Registry>()).selectors }.into_iter())
         .chain(providers.iter().copied())
         .chain(retained.into_iter().map(|(_, o)| o))
+        .chain(protected)
     {
         let result = unsafe { id.send_named(visitor, b"visit:", &[Operand::object(object)]) };
         if let Err(error) = result {
@@ -338,47 +342,26 @@ unsafe fn construct(id: Protocol) -> Result<Operand, Outcome> {
         let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
         let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
         let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
+        let selectors: [Oop; 7] = [
+            b"behaviorEpoch".as_slice(), b"usesDefaultLookup:", b"bind:to:",
+            b"release:", b"bindingOf:in:", b"nativeBindingsMatch:", b"retain:",
+        ].map(|name| id.intern_name(name)).into_iter().collect::<Result<Vec<_>, _>>()?
+            .try_into().unwrap();
         let registry = Box::into_raw(Box::new(Registry {
             id,
             receiver,
             roots: RefCell::new(Roots::default()),
-            selectors: [
-                b"behaviorEpoch".as_slice(),
-                b"usesDefaultLookup:",
-                b"bind:to:",
-                b"release:",
-                b"bindingOf:in:",
-                b"nativeBindingsMatch:",
-                b"retain:",
-            ]
-            .map(|name| id.intern_name(name))
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?
-            .try_into()
-            .unwrap(),
-            proof_services: [
-                b"behaviorEpoch".as_slice(),
-                b"usesDefaultLookup:",
-                b"bind:to:",
-            ]
-            .map(|name| {
-                id.send_named(
-                    id.receiver,
-                    b"bindingOf:in:",
-                    &[
-                        Operand::object(id.intern_name(name).unwrap()),
-                        Operand::object(id.receiver),
-                    ],
-                )
-                .ok()
-                .and_then(|v| v.as_entry())
-            }),
+            selectors,
+            binding_guard: birnam_abi::binding_guard::BindingGuard::discover(id,
+                [selectors[1], selectors[2], selectors[5]], id.intern_name(b"nativeBindingQuerySemantics:for:")?),
             output: RefCell::new(Vec::new()),
+            protected_results: RefCell::new(Vec::new()),
         }));
         // Id pins this library and the installed native contexts for process life.
         for (name, method) in [
             (b"retain:".as_slice(), retain as Method),
             (b"release:", release),
+            (b"releaseMany:protecting:batch:", release_protecting),
             (b"tryReleaseMany:", try_release_many),
             (b"tryRetainMany:", try_retain_many),
             (b"tryReleaseManyForward:", try_release_forward),
@@ -507,9 +490,14 @@ mod batch_reentry_tests {
         c: *mut c_void,
         _: Oop,
         _: Oop,
-        _: *const Operand,
-        _: usize,
+        args: *const Operand,
+        count: usize,
     ) -> Outcome {
+        let a = unsafe { borrowed_slice(args, count) }.unwrap();
+        if a.len() == 2 {
+            return Outcome::loaded(if a[0].kind() == native::NATIVE_ENTRY { Operand::word(1) }
+                else { Operand::entry(NativeEntry::new(dummy, ptr::null_mut())) });
+        }
         let r = unsafe { &*(*c.cast::<Reentry>()).registry };
         // Simulate lookup dispatch reentry before the callback-free Id query.
         r.roots.borrow_mut().next = usize::MAX;
@@ -538,8 +526,10 @@ mod batch_reentry_tests {
                 receiver: ptr::without_provenance_mut(32),
                 roots: RefCell::new(Roots::default()),
                 selectors: [ptr::without_provenance_mut(40); 7],
-                proof_services: [Some(NativeEntry::new(dummy, ptr::null_mut())); 3],
+                binding_guard: birnam_abi::binding_guard::BindingGuard::discover(id,
+                    [ptr::without_provenance_mut(40); 3], ptr::without_provenance_mut(48)),
                 output: RefCell::new(Vec::new()),
+                protected_results: RefCell::new(Vec::new()),
             };
             reentry.registry = &raw mut r;
             let values = [48usize, 56, 64];

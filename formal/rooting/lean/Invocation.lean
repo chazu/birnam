@@ -109,4 +109,17 @@ theorem direct_return_requires_empty_cleanup (tokens : Nat) (selectorReady : Boo
     canReturnDirect tokens selectorReady = true ↔ tokens = 0 ∧ selectorReady = true := by
   simp [canReturnDirect]
 
+/-- A cleanup owner holds the result even after its original token is
+    removed. This is an overlap scope, not an additional logical retain. -/
+theorem cleanup_owner_covers_result
+    (parent reported : Roots Object) (edges : Object → Object → Prop)
+    (result : Object) (covered : reported result) :
+    Reach edges (ownerRoots parent reported) result := Reach.root (Or.inr covered)
+
+theorem cleanup_result_survives_callback
+    (heap parent reported : Roots Object) (edges : Object → Object → Prop)
+    (result : Object) (alive : heap result) (covered : reported result) :
+    collect heap (ownerRoots parent reported) edges result :=
+  ⟨alive, cleanup_owner_covers_result parent reported edges result covered⟩
+
 end Birnam.Invocation

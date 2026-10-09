@@ -106,3 +106,6 @@ import Branches
 
 #print axioms Birnam.Capture.resolved_admission_requires_dispatch_services
 #print axioms Birnam.Capture.unrelated_name_service_does_not_change_admission
+
+#print axioms Birnam.Invocation.cleanup_owner_covers_result
+#print axioms Birnam.Invocation.cleanup_result_survives_callback

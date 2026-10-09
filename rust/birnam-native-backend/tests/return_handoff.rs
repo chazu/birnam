@@ -15,7 +15,13 @@ static R message(void*ctx,O receiver,O sel,const A*a,size_t n){
  const char*name=(const char*)sel;
  if(receiver==roots){
   if(!strcmp(name,"retain:")){retained++;live[++next]=a[0].data.object;return ok(word(next));}
-  assert(!strcmp(name,"release:"));size_t t=a[0].data.word;assert(live[t]);live[t]=0;released++;return ok(word(1));
+  if(!strcmp(name,"releaseMany:protecting:batch:")){
+   assert(n==3&&a[1].kind==1);size_t count=a[0].data.bytes.length/sizeof(size_t);
+   const size_t*tokens=(const size_t*)a[0].data.bytes.pointer;
+   for(size_t i=count;i>0;i--){size_t t=tokens[i-1];assert(live[t]);live[t]=0;released++;}
+   return ok(word(1));
+  }
+  assert(!strcmp(name,"release:"));size_t t=a[0].data.word;assert(live[t]);live[t]=0;released++;if(mode==5){R r=bad();r.status=914;return r;}return ok(word(1));
  }
  if(receiver==owner)return ok(obj(owner));
  calls++;
@@ -43,6 +49,10 @@ int main(void){
  /* A genuinely full cache cannot promise that an interned literal is owned. */
  for(size_t i=0;i<512;i++)selectors[i]=(Selector){"occupied",(O)99};
  Call full={0};full.reuse=1;assert(literal_symbol(&full,"uncached"));assert(full.count==1);finish(&full,obj(owner));
+ /* Body failure wins; later cleanup failures still drain every token. */
+ mode=5;Call failed={0};keep(&failed,(O)55);keep(&failed,(O)66);
+ size_t before_errors=released;failed.failure=bad();failed.failure.status=812;failed.failure.detail=19;
+ r=finish(&failed,obj((O)777));assert(r.status==812&&r.detail==19);assert(released==before_errors+2);
  return 0;
 }
 "#);

@@ -135,22 +135,30 @@ static R finish(Call*c,A result){
  /* First-use selector caching can append temporary roots. Prepare cleanup
     before taking the final token count, so fallback does not leak them. */
  selector(c,"release:");
- if(batch_cleanup&&c->count>=4){
-  /* Interning a selector may append/reallocate tokens. Resolve it before
-     borrowing the final token array for the owner message. */
+ /* Cleanup consumes token ownership but must keep the returned Object live
+    through every current callback. Resolve the selector before borrowing the
+    final token array: a cold cache miss can append/reallocate tokens. */
+ if(!failure.status&&result.kind==1&&result.data.object&&c->count){
+  O sel=selector(c,"releaseMany:protecting:batch:");
+  if(!c->failure.status){
+   A a[3]={bytes(c->tokens,c->count*sizeof(size_t)),result,word(batch_cleanup)};
+   R r=id.message(id.context,roots,sel,a,3);
+   handled=r.status!=6; /* Missing operation: drain below, but return failure. */
+   if(r.status)failure=r;else if(r.value.kind!=2||r.value.data.word!=1)failure=bad();
+  }else{failure=c->failure;c->failure=(R){0};}
+ }else if(batch_cleanup&&c->count>=4){
   O sel=selector(c,"tryReleaseMany:");
   if(!c->failure.status){
-   A a=bytes(c->tokens,c->count*sizeof(size_t));
-   R r=id.message(id.context,roots,sel,&a,1);
+   A a=bytes(c->tokens,c->count*sizeof(size_t));R r=id.message(id.context,roots,sel,&a,1);
    if(r.status)c->failure=r;
-   else if(r.value.kind!=2||r.value.data.word>1)c->failure=bad();
-   else handled=r.value.data.word==1;
+   else if(r.value.kind!=2||r.value.data.word>1)c->failure=bad();else handled=r.value.data.word==1;
   }
-  /* Declined or failed optimization still performs canonical cleanup.
-     Preserve the original body failure before any cleanup failure. */
   if(c->failure.status){if(!failure.status)failure=c->failure;c->failure=(R){0};}
  }
- if(!handled)for(size_t i=c->count;i>0;i--){A a=word(c->tokens[i-1]);raw(c,roots,"release:",&a,1);}
+ if(!handled)for(size_t i=c->count;i>0;i--){
+  A a=word(c->tokens[i-1]);raw(c,roots,"release:",&a,1);
+  if(c->failure.status){if(!failure.status)failure=c->failure;c->failure=(R){0};}
+ }
  free(c->tokens);return failure.status?failure:c->failure.status?c->failure:ok(result);
 }
 
