@@ -234,7 +234,8 @@ fn bulk_release_is_exact_or_declines_before_any_mutation() {
             vec![tokens[2], tokens[1], tokens[0]]
         );
         bind(id, rb, b"release:", original);
-        // Mutation at the final epoch fence declines, without consuming tokens.
+        // Epoch is not consulted by the atomic binding query. Replacing an
+        // unused service must neither invoke it nor disable valid batching.
         let original_epoch = entry(id, id.receiver, b"behaviorEpoch");
         let mut epoch = EpochHook {
             id,
@@ -251,16 +252,24 @@ fn bulk_release_is_exact_or_declines_before_any_mutation() {
             (&raw mut epoch).cast(),
         );
         let token = retain(id, roots, objects[0]);
+        assert_eq!(bulk(id, roots, &[token]), 1);
+        assert_eq!(snapshot(), baseline);
+        assert_eq!(epoch.calls.get(), 0, "batching does not invoke the unused epoch service");
+        bind(id, id.receiver, b"behaviorEpoch", original_epoch);
+        assert_eq!(send(id, roots, b"release:", &[Operand::word(token)]).as_word(), Some(0));
+        // The actual matcher is a dependency. Its forwarding wrapper cannot
+        // obtain a positive answer while its own binding is noncanonical.
+        let matcher = entry(id, id.receiver, b"nativeBindingsMatch:");
+        epoch.original = matcher;
+        epoch.calls.set(0);
+        install(id, id.receiver, b"nativeBindingsMatch:", epoch_hook, (&raw mut epoch).cast());
+        let token = retain(id, roots, objects[0]);
         let before = snapshot();
         assert_eq!(bulk(id, roots, &[token]), 0);
         assert_eq!(snapshot(), before);
-        assert_eq!(
-            epoch.calls.get(),
-            0,
-            "changed proof services must decline before invoking them"
-        );
-        bind(id, id.receiver, b"behaviorEpoch", original_epoch);
-        send(id, roots, b"release:", &[Operand::word(token)]);
+        assert_eq!(epoch.calls.get(), 1);
+        bind(id, id.receiver, b"nativeBindingsMatch:", matcher);
+        release(id, roots, token);
         bind(id, rb, b"release:", original);
         assert_eq!(snapshot(), baseline);
         // Bad ABI input rejects before touching the registry.
