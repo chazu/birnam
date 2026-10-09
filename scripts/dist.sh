@@ -58,8 +58,11 @@ for relative in receipt['staged_manifest']:
         continue
     path = prefix / relative
     with path.open('rb') as stream:
-        magic = stream.read(4)
-    if relative.startswith('lib/') and magic == b'\x7fELF':
+        magic = stream.read(8)
+    if relative.startswith('lib/') and magic.startswith(b'\x7fELF'):
+        continue
+    # Saved images are receipt-verified data, not Mach-O executables.
+    if relative.startswith('lib/') and path.suffix == '.image' and magic == b'BIRNAMIM':
         continue
     subprocess.run(['codesign', '--verify', '--strict', path], check=True)
 PY_SIGNATURES
