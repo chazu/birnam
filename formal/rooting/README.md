@@ -299,3 +299,22 @@ First-result acquisition/handoff, collector contracts and immutable admitted
 capture edges remain premises. Integration tests force precise GC with fresh
 locals and capture aliases, exceed the cache capacity, check cleanup across calls,
 and verify failure/zero-token acquisition prevents later body operations.
+
+## Reusable branch handlers and native input coverage
+
+`Branches.lean` relates the nested Integer decision tree to shared handlers with
+explicit parameters. Under default branch meanings, it preserves operand/error/
+Float checks, overflow decisions, result category and retained-operation order,
+including noncanonical truth outcomes. It also instantiates `Invocation.lean`'s
+unbounded coverage rule for native numeric inputs. This does not prove signed
+arithmetic or arbitrary replacement handlers; the numeric oracle and replacement
+tests supply those runtime checks.
+
+`ReusableBranches.tla` checks selection without invocation, current handler lookup
+after replacement, argument protection through callbacks/collection, failures and
+no replay. Running both branches, caching an old entry, dropping argument cover
+or replaying a completed effect each requires a counterexample. Existing invocation
+negative cases reject missing input coverage, early scope exit, unprotected fresh
+results and lost entered-code lifetime. Native tests collect inside numeric
+validation: receiver/arguments stay alive without extra numeric tokens, while
+freshly allocated outputs need their first root before that callback.

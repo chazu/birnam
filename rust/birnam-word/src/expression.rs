@@ -67,12 +67,10 @@ fn evaluate_inner(
         {
             return Err(invalid());
         }
-        let mut roots = [core::ptr::null_mut(); 33];
-        roots[0] = r;
-        for (i, input) in inputs.iter().enumerate() {
-            roots[i + 1] = object(*input)?;
-        }
-        n.rooted_inline(&roots[..inputs.len() + 1], || {
+        // Validate all Object carriers before any callback, preserving the
+        // prior admission/error order. The caller supplies their lifetime.
+        for input in inputs { object(*input)?; }
+        (|| {
             // Unit is a refusal, never a failure or a committed expression result.
             let refuse = || Ok(Operand::unit());
             if r != n.prototype {
@@ -180,7 +178,7 @@ fn evaluate_inner(
             } else {
                 n.make(value as usize)
             }
-        })
+        })()
     })())
 }
 

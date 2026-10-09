@@ -29,9 +29,15 @@ let intShift := [intExecution wordResultOf: 63 selector: #word];
   let family := [intNamespace valueAt: #ErrorVt];
   [[family notNil] & [[Reflect vtableOf: value] == family]]
 ]];
+// Shared handlers receive changing values as arguments, never per-call captures.
+let intNil2 := [:a :b | nil];
+let intNil3 := [:a :b :c | nil];
+let intNil5 := [:a :b :c :d :e | nil];
+let intFailure := [:factory :kind :message | [factory kind: kind message: message]];
 [Reflect defineMethod: #integerFailure:message: on: Integer as: [:self :kind :message |
   let factory := [intNamespace valueAt: #Error];
-  [[factory isNil] ifTrue: [| nil] ifFalse: [| [factory kind: kind message: message]]]
+  [[[factory isNil] selectIfTrue: intNil3 ifFalse: intFailure otherwise: intNil3]
+    value: factory value: kind value: message]
 ]];
 [Reflect defineMethod: #integerOverflow on: Integer as: [:self |
   [self integerFailure: #overflow message: "integer overflow"]
@@ -39,48 +45,66 @@ let intShift := [intExecution wordResultOf: 63 selector: #word];
 [Reflect defineMethod: #integerZeroDivide on: Integer as: [:self |
   [self integerFailure: #zeroDivide message: "division by zero"]
 ]];
+let intBox := [:factory :bits | [factory integerFromBits: bits]];
+let intOverflow2 := [:factory :bits | [factory integerOverflow]];
+let intOverflow3 := [:factory :magnitude :sign | [factory integerOverflow]];
+let intOverflow5 := [:factory :a :b :sign :limit | [factory integerOverflow]];
+let intRestore := [:factory :magnitude :sign |
+  [factory integerFromBits: [factory integerMagnitude: magnitude sign: sign]]
+];
 [Reflect defineMethod: #integerSignedMagnitude:sign: on: Integer as: [:self :magnitude :sign |
   let limit := [sign selectIfZero: intMax ifNonzero: intSign];
-  [[limit unsignedLessThan: magnitude] ifTrue: [| [self integerOverflow]] ifFalse: [|
-    [self integerFromBits: [self integerMagnitude: magnitude sign: sign]]
-  ]]
+  [[[limit unsignedLessThan: magnitude] selectIfTrue: intOverflow3 ifFalse: intRestore otherwise: intNil3]
+    value: self value: magnitude value: sign]
 ]];
 [Reflect defineMethod: #integerAddBits:with: on: Integer as: [:self :left :right |
   let result := [left wrappingAdd: right];
-  [[[[left bitXor: result] bitAnd: [right bitXor: result]] unsignedLessThan: intSign] ifTrue: [| [self integerFromBits: result]]
-    ifFalse: [| [self integerOverflow]]]
+  [[[[[left bitXor: result] bitAnd: [right bitXor: result]] unsignedLessThan: intSign]
+    selectIfTrue: intBox ifFalse: intOverflow2 otherwise: intNil2] value: self value: result]
 ]];
 [Reflect defineMethod: #integerSubtractBits:with: on: Integer as: [:self :left :right |
   let result := [left wrappingSubtract: right];
-  [[[[left bitXor: right] bitAnd: [left bitXor: result]] unsignedLessThan: intSign] ifTrue: [| [self integerFromBits: result]]
-    ifFalse: [| [self integerOverflow]]]
+  [[[[[left bitXor: right] bitAnd: [left bitXor: result]] unsignedLessThan: intSign]
+    selectIfTrue: intBox ifFalse: intOverflow2 otherwise: intNil2] value: self value: result]
 ]];
+let intMultiplyZero := [:factory :a :b :sign :limit | [factory integerFromBits: intZero]];
+let intMultiplyResult := [:factory :a :b :sign :limit |
+  [factory integerSignedMagnitude: [a wrappingMultiply: b] sign: sign]
+];
+let intMultiplyCheck := [:factory :a :b :sign :limit |
+  [[[[limit unsignedDivide: b] unsignedLessThan: a]
+    selectIfTrue: intOverflow5 ifFalse: intMultiplyResult otherwise: intNil5]
+    value: factory value: a value: b value: sign value: limit]
+];
 [Reflect defineMethod: #integerMultiplyBits:with: on: Integer as: [:self :left :right |
   let leftSign := [self integerSignOf: left]; let rightSign := [self integerSignOf: right];
   let sign := [leftSign bitXor: rightSign];
   let a := [self integerMagnitude: left sign: leftSign];
   let b := [self integerMagnitude: right sign: rightSign];
   let limit := [sign selectIfZero: intMax ifNonzero: intSign];
-  [[b = intZero] ifTrue: [| [self integerFromBits: intZero]] ifFalse: [|
-    [[[limit unsignedDivide: b] unsignedLessThan: a] ifTrue: [| [self integerOverflow]]
-      ifFalse: [| [self integerSignedMagnitude: [a wrappingMultiply: b] sign: sign]]]
-  ]]
+  [[[b = intZero] selectIfTrue: intMultiplyZero ifFalse: intMultiplyCheck otherwise: intNil5]
+    value: self value: a value: b value: sign value: limit]
 ]];
+let intZeroDivide := [:factory :a :b :leftSign :rightSign | [factory integerZeroDivide]];
+let intDivideResult := [:factory :a :b :leftSign :rightSign |
+  [factory integerSignedMagnitude: [a unsignedDivide: b] sign: [leftSign bitXor: rightSign]]
+];
+let intRemainderResult := [:factory :a :b :leftSign :rightSign |
+  [factory integerSignedMagnitude: [a unsignedRemainder: b] sign: leftSign]
+];
 [Reflect defineMethod: #integerDivideBits:with: on: Integer as: [:self :left :right |
   let leftSign := [self integerSignOf: left]; let rightSign := [self integerSignOf: right];
   let a := [self integerMagnitude: left sign: leftSign];
   let b := [self integerMagnitude: right sign: rightSign];
-  [[b = intZero] ifTrue: [| [self integerZeroDivide]] ifFalse: [|
-    [self integerSignedMagnitude: [a unsignedDivide: b] sign: [leftSign bitXor: rightSign]]
-  ]]
+  [[[b = intZero] selectIfTrue: intZeroDivide ifFalse: intDivideResult otherwise: intNil5]
+    value: self value: a value: b value: leftSign value: rightSign]
 ]];
 [Reflect defineMethod: #integerRemainderBits:with: on: Integer as: [:self :left :right |
   let leftSign := [self integerSignOf: left]; let rightSign := [self integerSignOf: right];
   let a := [self integerMagnitude: left sign: leftSign];
   let b := [self integerMagnitude: right sign: rightSign];
-  [[b = intZero] ifTrue: [| [self integerZeroDivide]] ifFalse: [|
-    [self integerSignedMagnitude: [a unsignedRemainder: b] sign: leftSign]
-  ]]
+  [[[b = intZero] selectIfTrue: intZeroDivide ifFalse: intRemainderResult otherwise: intNil5]
+    value: self value: a value: b value: leftSign value: rightSign]
 ]];
 // Reuse these closures; selecting an operation does not create branch Blocks.
 let intOperations := {
@@ -94,25 +118,45 @@ let intFloatingOperations := {
   #add -> [:a :b | [a + b]], #subtract -> [:a :b | [a - b]],
   #multiply -> [:a :b | [a * b]], #divide -> [:a :b | [a / b]]
 };
+let intReturnOther := [:receiver :other :operation :left :right | other];
+let intApplyInteger := [:receiver :other :operation :left :right |
+  [[intOperations at: operation] value: left value: right]
+];
+let intApplyFloat := [:receiver :other :operation :left :right |
+  let value := [receiver asFloat];
+  [[intFloatingOperations at: operation] value: value value: other]
+];
+let intRemainderFailure := [:receiver :other :operation :left :right |
+  [intFactory integerFailure: #typeMismatch message: "mod: needs an Integer"]
+];
+let intNumberFailure := [:receiver :other :operation :left :right |
+  [intFactory integerFailure: #typeMismatch message: "Integer arithmetic needs a number"]
+];
+let intUnknownMessageFailure := [:receiver :other :operation :left :right |
+  [intFactory integerFailure: #typeMismatch message: nil]
+];
+let intTypeFailure := [:receiver :other :operation :left :right |
+  [[[operation == #remainder] selectIfTrue: intRemainderFailure ifFalse: intNumberFailure otherwise: intUnknownMessageFailure]
+    value: receiver value: other value: operation value: left value: right]
+];
+let intTryFloat := [:receiver :other :operation :left :right |
+  let floating := [intExecution optionalWordResultOf: intFloat selector: #bitsOf: argument: other resultFactory: intWord];
+  [[[[floating notNil] & [[operation == #remainder] not]] selectIfTrue: intApplyFloat ifFalse: intTypeFailure otherwise: intNil5]
+    value: receiver value: other value: operation value: left value: right]
+];
+let intTryInteger := [:receiver :other :operation :left :ignored |
+  let right := [intFactory integerBitsOf: other];
+  [[[right notNil] selectIfTrue: intApplyInteger ifFalse: intTryFloat otherwise: intNil5]
+    value: receiver value: other value: operation value: left value: right]
+];
+let intValidateOther := [:receiver :other :operation :left :ignored |
+  [[[intFactory integerExactError: other] selectIfTrue: intReturnOther ifFalse: intTryInteger otherwise: intNil5]
+    value: receiver value: other value: operation value: left value: left]
+];
 [Reflect defineMethod: #integerBinary:operation: on: Integer as: [:self :other :operation |
   let left := [intFactory integerBitsOf: self];
-  [[left isNil] ifTrue: [| nil] ifFalse: [|
-    [[intFactory integerExactError: other] ifTrue: [| other] ifFalse: [|
-      let right := [intFactory integerBitsOf: other];
-      [[right notNil] ifTrue: [|
-        [[intOperations at: operation] value: left value: right]
-      ] ifFalse: [|
-        let floating := [intExecution optionalWordResultOf: intFloat selector: #bitsOf: argument: other resultFactory: intWord];
-        [[[floating notNil] & [[operation == #remainder] not]] ifTrue: [|
-          let value := [self asFloat];
-          [[intFloatingOperations at: operation] value: value value: other]
-        ] ifFalse: [|
-          [intFactory integerFailure: #typeMismatch message: [[operation == #remainder]
-            ifTrue: [| "mod: needs an Integer"] ifFalse: [| "Integer arithmetic needs a number"]]]
-        ]]
-      ]]
-    ]]
-  ]]
+  [[[left isNil] selectIfTrue: intNil5 ifFalse: intValidateOther otherwise: intNil5]
+    value: self value: other value: operation value: left value: left]
 ]];
 [[intFactory hasBootstrapArithmetic: #+] ifTrue: [|
   [Reflect defineMethod: #+ on: Integer as: [:self :other | [self integerBinary: other operation: #add]]]

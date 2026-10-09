@@ -142,6 +142,8 @@ enum Op {
     ProgramOptions,
     Factory,
     FactoryOptions,
+    ModuleFactory,
+    ModuleFactoryOptions,
     Named,
     Descriptor,
 }
@@ -160,8 +162,8 @@ unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         if n != match e.op {
             Op::Program => 5,
             Op::ProgramOptions => 6,
-            Op::Factory => 3,
-            Op::FactoryOptions => 4,
+            Op::Factory | Op::ModuleFactory => 3,
+            Op::FactoryOptions | Op::ModuleFactoryOptions => 4,
             Op::Named => 2,
             Op::Descriptor => 1,
         } {
@@ -189,7 +191,7 @@ unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                 q.boolean(arg(3)?)?, q.boolean(arg(4)?)?,
                 native::Optimizations::from_bits(q.word(arg(5)?)?).ok_or_else(invalid)?,
             ),
-            Op::Factory | Op::FactoryOptions => {
+            Op::Factory | Op::FactoryOptions | Op::ModuleFactory | Op::ModuleFactoryOptions => {
                 let program = q.bytes(arg(0)?)?;
                 let source = q.bytes(arg(1)?)?;
                 let v = arg(2)?;
@@ -208,8 +210,12 @@ unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                     let index = q.call(s.named(b"Integer")?, b"fromWord:", &[Operand::word(i)])?;
                     flags.push(q.boolean(q.call(v, b"at:", &[Operand::object(index)])?)?);
                 }
-                if matches!(e.op, Op::FactoryOptions) {
-                    let options = native::Optimizations::from_bits(q.word(arg(3)?)?).ok_or_else(invalid)?;
+                let options = if matches!(e.op, Op::FactoryOptions | Op::ModuleFactoryOptions) {
+                    native::Optimizations::from_bits(q.word(arg(3)?)?).ok_or_else(invalid)?
+                } else {native::Optimizations::default()};
+                if matches!(e.op, Op::ModuleFactory | Op::ModuleFactoryOptions) {
+                    native::compile_module_factory(&program, &source, &flags, options)
+                } else if matches!(e.op, Op::FactoryOptions) {
                     native::compile_factory_with_optimizations(&program, &source, &flags, options)
                 } else {
                     native::compile_factory(&program, &source, &flags)
@@ -267,6 +273,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ("emit:source:filename:persistent:synchronous:optimizations:", Op::ProgramOptions),
             ("factory:source:dispositions:", Op::Factory),
             ("factory:source:dispositions:optimizations:", Op::FactoryOptions),
+            ("moduleFactory:source:dispositions:", Op::ModuleFactory),
+            ("moduleFactory:source:dispositions:optimizations:", Op::ModuleFactoryOptions),
             ("named:synchronous:", Op::Named),
             ("descriptorFor:", Op::Descriptor),
         ] {

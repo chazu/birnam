@@ -28,6 +28,13 @@ let boolPrintFalse := [| [boolExecution objectResultOf: boolString selector: #fr
   let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: other ifDifferent: boolNil];
   [boolWord selectIfSameObject: self with: boolTrue ifEqual: self ifDifferent: otherwise]
 ] withNativeSignature: "oO"]];
+// Select data without invoking it. Callers can reuse handlers of any arity and
+// pass their changing data through ordinary value: messages after selection.
+[Reflect defineMethod: #selectIfTrue:ifFalse:otherwise: on: Boolean as:
+  [boolExecution block: [:self :yes :no :otherwise |
+    let choice := [boolWord selectIfSameObject: self with: boolFalse ifEqual: no ifDifferent: otherwise];
+    [boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: choice]
+  ] withNativeSignature: "oOOO"]];
 // The deferred-result ABI invokes only the selected block and preserves raw
 // native Word/Bytes/Unit/Entry results and failures at the existing Id boundary.
 [Reflect defineMethod: #ifTrue:ifFalse: on: Boolean as:

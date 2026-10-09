@@ -66,11 +66,8 @@ pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result
                     &[Operand::object(a), flag(*synchronous)?],
                 )
             }
-            Request::Factory {
-                program,
-                source,
-                dispositions,
-            } => {
+            Request::Factory {program,source,dispositions}
+            | Request::ModuleFactory {program,source,dispositions} => {
                 let mut v = q.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?)?;
                 for d in dispositions {
                     v = q.keep(object(s.send(v, b"add:", &[flag(*d)?])?)?)?;
@@ -78,7 +75,9 @@ pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result
                 checked(
                     s,
                     q,
-                    b"factory:source:dispositions:",
+                    if matches!(request, Request::ModuleFactory {..}) {
+                        b"moduleFactory:source:dispositions:"
+                    } else { b"factory:source:dispositions:" },
                     &[text(program)?, text(source)?, Operand::object(v)],
                 )
             }

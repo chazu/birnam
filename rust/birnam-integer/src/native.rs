@@ -238,13 +238,10 @@ macro_rules! entry {
             done((|| unsafe {
                 let n = state(context)?;
                 let args = borrowed_slice(args, count).ok_or_else(invalid)?;
-                let mut values = vec![receiver];
-                values.extend(
-                    args.iter()
-                        .filter_map(|v| v.as_object())
-                        .filter(|v| !v.is_null()),
-                );
-                n.rooted(&values, || execute(n, receiver, args, $op))
+                // Id callers keep receiver and Object arguments live through
+                // this complete call, including dependency callbacks. Fresh
+                // values created inside execute still need their own roots.
+                execute(n, receiver, args, $op)
             })())
         }
     };
@@ -627,7 +624,8 @@ unsafe extern "C" fn has_bootstrap_arithmetic(
             return Err(invalid());
         };
         let selector = object(*selector)?;
-        n.rooted(&[r, selector], || {
+        // Both are incoming Objects, covered through the entire Id call.
+        (|| {
             let selected = n.id.send_named(n.id.receiver, b"bind:to:", &[
                 Operand::object(selector), Operand::object(r),
             ])?.as_entry();
@@ -644,7 +642,7 @@ unsafe extern "C" fn has_bootstrap_arithmetic(
                     && selector == n.names[[b"+".as_slice(), b"-", b"*", b"/"][op]];
             }
             Ok(n.boolean(matches))
-        })
+        })()
     })())
 }
 entry!(integer_value, 32);
@@ -716,7 +714,9 @@ unsafe extern "C" fn evaluate_numeric(
         let left = object(*left)?;
         let right = object(*right)?;
         let visitor = object(*visitor)?;
-        n.rooted(&[left, right, visitor], || {
+        // Incoming operands/visitor remain live across synchronous visitor
+        // reentry; newly constructed results retain their own protection.
+        (|| {
             let Some(left) = n.read(left)? else {
                 return Ok(Operand::object(n.nil));
             };
@@ -734,7 +734,7 @@ unsafe extern "C" fn evaluate_numeric(
                 );
             };
             n.calculate_with(left, right, op, Some(visitor))
-        })
+        })()
     })())
 }
 

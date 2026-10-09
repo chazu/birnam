@@ -32,6 +32,7 @@ struct Compiler {
 struct Hook {
     compiler: *mut Compiler,
     factory: bool,
+    module: bool,
 }
 unsafe extern "C" fn compile_options(
     c: *mut c_void,
@@ -52,7 +53,9 @@ unsafe extern "C" fn compile_options(
     unsafe {
         s.id.send_named(
             r,
-            if hook.factory {
+            if hook.module {
+                b"moduleFactory:source:dispositions:optimizations:"
+            } else if hook.factory {
                 b"factory:source:dispositions:optimizations:"
             } else {
                 b"emit:source:filename:persistent:synchronous:optimizations:"
@@ -171,7 +174,8 @@ fn cases() -> Vec<Case> {
             "[:self :other :operation |",
             "[:self :leftObject :other :operation |",
         )
-        .replace("integerBitsOf: self", "integerBitsOf: leftObject");
+        .replace("integerBitsOf: self", "integerBitsOf: leftObject")
+        .replace("value: self value: other value: operation value: left", "value: leftObject value: other value: operation value: left");
     for (name, operator, expected) in [
         ("integer-add", "add", 12382),
         ("integer-multiply", "multiply", 456765),
@@ -709,13 +713,19 @@ fn main() {
         )
         .as_entry()
         .unwrap();
+        let module_original = send(id,id.receiver,b"bind:to:", &[
+            Operand::object(id.intern_name(b"moduleFactory:source:dispositions:").unwrap()),
+            Operand::object(backend)]).as_entry().unwrap();
+        let mut module_hook = Hook {compiler: &raw mut compiler, factory: true, module: true};
         let mut program_hook = Hook {
             compiler: &raw mut compiler,
             factory: false,
+            module: false,
         };
         let mut factory_hook = Hook {
             compiler: &raw mut compiler,
             factory: true,
+            module: false,
         };
         install(
             id,
@@ -731,6 +741,7 @@ fn main() {
             compile_options,
             (&raw mut factory_hook).cast(),
         );
+        install(id,backend_vt,b"moduleFactory:source:dispositions:",compile_options,(&raw mut module_hook).cast());
         let scratch = PathBuf::from(get("--scratch", "/tmp/birnam-microbench"));
         std::fs::create_dir_all(&scratch).unwrap();
         let mut prepared = vec![];
@@ -844,6 +855,7 @@ fn main() {
             factory_original.method.unwrap(),
             factory_original.context,
         );
+        install(id,backend_vt,b"moduleFactory:source:dispositions:",module_original.method.unwrap(),module_original.context);
         println!(
             "{}",
             json!({"event":"ready","pid":std::process::id(),"setup_ms":setup.elapsed().as_secs_f64()*1000.0})

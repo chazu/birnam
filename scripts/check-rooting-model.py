@@ -25,6 +25,11 @@ CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
     "Safe": None,
+    "BranchSafe": None,
+    "BranchBoth": "Invariant OnlyChosen is violated.",
+    "BranchStale": "Invariant CurrentEntry is violated.",
+    "BranchArguments": "Invariant NeededAlive is violated.",
+    "BranchReplay": "Invariant NoReplay is violated.",
     "LocalSafe": None,
     "LocalUnrooted": "Invariant NeededAlive is violated.",
     "LocalEviction": "Invariant NeededAlive is violated.",
@@ -159,7 +164,7 @@ def check_tla(jar, java, out):
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
                "-config", str((SEMANTICS if name.startswith(("Region", "Admission")) else FORMAL) / f"tla/{name}.cfg"),
-               str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -181,7 +186,7 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission")]:
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission")]:
         text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
@@ -196,7 +201,7 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Semantics", "SemanticsExamples", "Admission"]:
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "Semantics", "SemanticsExamples", "Admission"]:
         result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:
@@ -233,6 +238,7 @@ def check_lean(lean, out):
         "reverse-identity-selection": ("Selection", "if left = right then equal else different", "if left = right then different else equal"),
         "drop-capture-reachability": ("Capture", "Reach.edge (Reach.root live) capture", "Reach.root live"),
         "ignore-capture-query-binding": ("Capture", "readerCurrent && queryCurrent && servicesCurrent", "readerCurrent && servicesCurrent"),
+        "reverse-branch-choice": ("Branches", "| .yes => yes | .no => no | .other => other", "| .yes => no | .no => yes | .other => other"),
         "unrooted-local-hint": ("LocalReuse", "(fun o => roots o ∨ o = value) (fun o => hints o ∨ o = value)", "roots (fun o => hints o ∨ o = value)"),
         "cache-false-selector": ("SymbolNames", "(agrees : ∀ n, cache n = canonical n)", "(agrees : ∀ n, cache n = cache n)"),
         "drop-uncovered-locals": ("Invocation", "fun o => parent o ∨ locals o", "fun o => parent o"),

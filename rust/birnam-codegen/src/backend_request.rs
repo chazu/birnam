@@ -14,6 +14,11 @@ pub enum Request {
         source: Vec<u8>,
         dispositions: Vec<bool>,
     },
+    ModuleFactory {
+        program: Vec<u8>,
+        source: Vec<u8>,
+        dispositions: Vec<bool>,
+    },
     Named {
         arity: u32,
         synchronous: bool,
@@ -54,6 +59,6 @@ impl Request {
         }
         let mut dispositions = vec![true; count(&program)?];
         dispositions[0] = false;
-        Some(Self::Factory { program, source: source.to_vec(), dispositions })
+        Some(Self::ModuleFactory { program, source: source.to_vec(), dispositions })
     }
 }

@@ -9,6 +9,7 @@ import Capture
 import Selection
 import LocalReuse
 import SymbolNames
+import Branches
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -85,3 +86,7 @@ import SymbolNames
 #print axioms Birnam.SymbolNames.retained_name_uses_current_dispatch
 #print axioms Birnam.SymbolNames.owner_edge_preserves_symbol
 #print axioms Birnam.SymbolNames.stale_entry_changes_behavior
+#print axioms Birnam.Branches.shared_add_preserves_checks_and_result
+#print axioms Birnam.Branches.shared_handlers_preserve_effect_order_and_result
+#print axioms Birnam.Branches.only_selected_handler_runs
+#print axioms Birnam.Branches.native_numeric_inputs_need_no_duplicate_roots

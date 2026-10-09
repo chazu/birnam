@@ -521,6 +521,13 @@ pub fn compile_factory(
     compile_factory_with_optimizations(bytes,source,dispositions,Optimizations::default())
 }
 pub fn compile_factory_with_optimizations(bytes:&[u8],source:&[u8],dispositions:&[bool],optimizations:Optimizations)->Result<Vec<u8>,Error> {
+    compile_factory_root(bytes,source,dispositions,optimizations,false)
+}
+pub fn compile_module_factory(bytes:&[u8],source:&[u8],dispositions:&[bool],optimizations:Optimizations)->Result<Vec<u8>,Error> {
+    if dispositions.first()!=Some(&false) {return Err(Error::Unsupported);}
+    compile_factory_root(bytes,source,dispositions,optimizations,true)
+}
+fn compile_factory_root(bytes:&[u8],source:&[u8],dispositions:&[bool],optimizations:Optimizations,persist_root:bool)->Result<Vec<u8>,Error> {
     let mut functions = Vec::new();
     portable_function(
         bytes,
@@ -530,6 +537,7 @@ pub fn compile_factory_with_optimizations(bytes:&[u8],source:&[u8],dispositions:
         Policy {
             dispositions: Some(dispositions),
             optimizations,
+            persist_root,
             ..Policy::default()
         },
     )?;
@@ -609,6 +617,21 @@ mod predicate_tests {
     use super::*;
     use crate::{Block, Expr, Statement};
     use std::borrow::Cow;
+    #[test]
+    fn module_initializer_publishes_lets_while_candidate_factory_is_inert() {
+        let bytes = crate::portable::encode_block(&Block {
+            params: vec![],
+            body: vec![Statement::Let {
+                name: b"shared",
+                value: Expr::Block(Box::new(Block {params: vec![b"value"], body: vec![Statement::Expr(Expr::Global(b"value"))]})),
+            }],
+        }, &[]).unwrap();
+        let module = String::from_utf8(compile_module_factory(&bytes,b"",&[false,true],Optimizations::default()).unwrap()).unwrap();
+        let candidate = String::from_utf8(compile_factory(&bytes,b"",&[false,true]).unwrap()).unwrap();
+        assert!(module.contains("published=global_put(&c,\"shared\""));
+        assert!(!candidate.contains("published=global_put(&c,\"shared\""));
+        assert!(compile_module_factory(&bytes,b"",&[true,true],Optimizations::default()).is_err());
+    }
     fn body() -> Vec<u8> {
         let send = |receiver, selector: &'static [u8], argument| Expr::Send {
             receiver: Box::new(receiver),

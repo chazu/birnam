@@ -14,13 +14,13 @@ files, fewer crates, or fewer messages are useful only when they produce simpler
 responsibilities and correct behavior. There is no requirement to recreate every
 existing helper, intermediate Object, root token, signature lookup or allocation.
 
-Latest checkpoint, 2026-10-08: [fixed names and local protection](fixed-names-and-local-protection.md)
-reduce successful addition to 514.375 sends, with 112 Lean theorems and 52 bounded
-TLC configurations checked. The earlier closure, capture, Boolean, outbound ABI
+Latest checkpoint, 2026-10-08: [reusable branches and native inputs](reusable-branches-and-native-inputs.md)
+reduce actual successful addition to 338 sends (339.375 including fixture work),
+with 116 Lean theorems and 57 bounded TLC configurations checked. The earlier closure, capture, Boolean, outbound ABI
 retirement and Method-admission slices are linked from that note's predecessors.
 The inventories and cost measurements below retain their original design-time
-context; the general outbound adapter has since been deleted. Eager branch Block
-construction remains an investigation target.
+context; the general outbound adapter has since been deleted. Integer now reuses handlers;
+general compiler closure virtualization remains a separate investigation.
 
 ## Decision: simplification first, no compatibility preservation
 

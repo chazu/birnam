@@ -62,6 +62,15 @@ unsafe extern "C" fn reject_allocation(
 ) -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 991)
 }
+unsafe extern "C" fn choose_alternative(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    let s = unsafe { &*c.cast::<Callback>() };
+    let args = unsafe { borrowed_slice(a, n) }.unwrap();
+    assert_eq!(args.len(), 3);
+    unsafe { collect(s.id, s.gc); }
+    for arg in args { assert!(unsafe { present(s.id, object(*arg)) }); }
+    if s.fail.get() { Outcome::failed(native::MAPPING_FAILED, 719) }
+    else { Outcome::loaded(args[1]) }
+}
 
 #[test]
 #[ignore = "production Boolean artifact required"]
@@ -107,6 +116,35 @@ fn authored_boolean_preserves_identity_branching_carriers_and_replacements() {
         install(id, cvt, b"value", value, (&raw mut callback).cast());
         let block = allocate(id, cvt, 0);
         let token = retain(id, roots, block);
+        // General data selection does not invoke any candidate. The selected
+        // Object can be a reused handler of arbitrary arity, or ordinary data.
+        let selection = b"selectIfTrue:ifFalse:otherwise:";
+        for (receiver, expected) in [(truth, block), (falsity, truth), (other, nil)] {
+            assert_eq!(send(id, receiver, selection,
+                &[Operand::object(block), Operand::object(truth), Operand::object(nil)]).as_object(), Some(expected));
+        }
+        assert_eq!(callback.calls.get(), 0);
+        let selection_entry = send(id, id.receiver, b"bind:to:",
+            &[Operand::object(id.intern_name(selection).unwrap()), Operand::object(truth)]).as_entry().unwrap();
+        // An exact authored entry is not an owning reference. Keep its Method
+        // and code alive while its dictionary binding is temporarily replaced.
+        let selected_method = object(send(id, named(b"Execution"), b"methodOfEntry:", &[Operand::entry(selection_entry)]));
+        let selected_token = retain(id, roots, selected_method);
+        install(id, vt, selection, choose_alternative, (&raw mut callback).cast());
+        assert_eq!(send(id, truth, selection,
+            &[Operand::object(block), Operand::object(falsity), Operand::object(nil)]).as_object(), Some(falsity));
+        callback.fail.set(true);
+        let failure = id.send_named(truth, selection,
+            &[Operand::object(block), Operand::object(falsity), Operand::object(nil)]).unwrap_err();
+        assert_eq!((failure.status, failure.detail), (native::MAPPING_FAILED, 719));
+        callback.fail.set(false);
+        install(id, vt, selection, selection_entry.method.unwrap(), selection_entry.context);
+        release(id, roots, selected_token);
+        assert_eq!(send(id, other, selection,
+            &[Operand::object(block), Operand::object(block), Operand::object(block)]).as_object(), Some(block));
+        assert!(id.send_named(truth, selection, &[]).is_err());
+        assert!(id.send_named(truth, selection,
+            &[Operand::object(block), Operand::object(truth), Operand::object(core::ptr::null_mut())]).is_err());
         assert_eq!(send(id, truth, b"not", &[]).as_object(), Some(falsity));
         assert_eq!(send(id, falsity, b"not", &[]).as_object(), Some(truth));
         assert_eq!(send(id, other, b"not", &[]).as_object(), Some(nil));

@@ -44,55 +44,8 @@ impl Number {
     ) -> Result<Operand, Outcome> {
         unsafe { self.id.send(r, self.names[name], args) }
     }
-    unsafe fn retain_group(&self, values: &[Oop], tokens: &mut [usize]) -> Result<bool, Outcome> {
-        if values.len() < 3 || values.len() > 33 {
-            return Ok(false);
-        }
-        let bytes = unsafe {
-            core::slice::from_raw_parts(values.as_ptr().cast::<u8>(), size_of_val(values))
-        };
-        let result = unsafe { self.send(self.roots, b"tryRetainMany:", &[Operand::bytes(bytes)]) }?;
-        if result.as_word() == Some(0) {
-            return Ok(false);
-        }
-        let bytes = result.as_bytes().ok_or_else(invalid)?;
-        let bytes = unsafe { birnam_abi::borrowed_bytes(bytes.pointer, bytes.length) }
-            .ok_or_else(invalid)?;
-        if bytes.len() != values.len() * size_of::<usize>() {
-            return Err(invalid());
-        }
-        for (slot, chunk) in tokens
-            .iter_mut()
-            .zip(bytes.chunks_exact(size_of::<usize>()))
-        {
-            *slot = usize::from_ne_bytes(chunk.try_into().unwrap());
-            if *slot == 0 {
-                return Err(invalid());
-            }
-        }
-        Ok(true)
-    }
-    unsafe fn release_group(&self, tokens: &[usize]) -> Result<bool, Outcome> {
-        if tokens.len() < 3 {
-            return Ok(false);
-        }
-        let bytes = unsafe {
-            core::slice::from_raw_parts(tokens.as_ptr().cast::<u8>(), size_of_val(tokens))
-        };
-        match unsafe {
-            self.send(
-                self.roots,
-                b"tryReleaseManyForward:",
-                &[Operand::bytes(bytes)],
-            )
-        }?
-        .as_word()
-        {
-            Some(1) => Ok(true),
-            Some(0) => Ok(false),
-            _ => Err(invalid()),
-        }
-    }
+    // Only newly allocated outputs need this local protection. Incoming
+    // receiver/arguments are covered by the native Id invocation contract.
     pub(super) unsafe fn rooted(
         &self,
         values: &[Oop],
@@ -100,66 +53,14 @@ impl Number {
     ) -> Result<Operand, Outcome> {
         let mut tokens = Vec::new();
         let result = (|| unsafe {
-            let mut grouped = [0usize; 33];
-            if self.retain_group(values, &mut grouped)? {
-                tokens.extend_from_slice(&grouped[..values.len()]);
-            } else {
-                for value in values {
-                    tokens.push(
-                        self.send(self.roots, b"retain:", &[Operand::object(*value)])?
-                            .as_word()
-                            .filter(|n| *n != 0)
-                            .ok_or_else(invalid)?,
-                    );
-                }
+            for &value in values {
+                tokens.push(self.send(self.roots, b"retain:", &[Operand::object(value)])?
+                    .as_word().filter(|n| *n != 0).ok_or_else(invalid)?);
             }
             f()
         })();
-        if unsafe { self.release_group(&tokens) }? {
-            return result;
-        }
         for token in tokens {
-            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
-                != Some(1)
-            {
-                return Err(invalid());
-            }
-        }
-        result
-    }
-    // Bounded expression roots. Retain/release order and failures match rooted.
-    pub(super) unsafe fn rooted_inline(
-        &self,
-        values: &[Oop],
-        f: impl FnOnce() -> Result<Operand, Outcome>,
-    ) -> Result<Operand, Outcome> {
-        if values.len() > 33 {
-            return Err(invalid());
-        }
-        let mut tokens = [0usize; 33];
-        let mut count = 0;
-        let result = (|| unsafe {
-            if self.retain_group(values, &mut tokens)? {
-                count = values.len();
-            } else {
-                for value in values {
-                    tokens[count] = self
-                        .send(self.roots, b"retain:", &[Operand::object(*value)])?
-                        .as_word()
-                        .filter(|n| *n != 0)
-                        .ok_or_else(invalid)?;
-                    count += 1;
-                }
-            }
-            f()
-        })();
-        if unsafe { self.release_group(&tokens[..count]) }? {
-            return result;
-        }
-        for &token in &tokens[..count] {
-            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
-                != Some(1)
-            {
+            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word() != Some(1) {
                 return Err(invalid());
             }
         }
@@ -300,13 +201,10 @@ macro_rules! entry {
             done((|| unsafe {
                 let n = state(context)?;
                 let args = borrowed_slice(args, count).ok_or_else(invalid)?;
-                let mut values = vec![receiver];
-                values.extend(
-                    args.iter()
-                        .filter_map(|v| v.as_object())
-                        .filter(|v| !v.is_null()),
-                );
-                n.rooted(&values, || execute(n, receiver, args, $op))
+                // Id callers keep receiver and Object arguments live through
+                // this complete call, including dependency callbacks. Fresh
+                // values created inside execute still need their own roots.
+                execute(n, receiver, args, $op)
             })())
         }
     };
@@ -319,8 +217,6 @@ const NAMES: &[&[u8]] = &[
     b"usesDefaultLookup:",
     b"bind:to:",
     b"retain:",
-    b"tryRetainMany:",
-    b"tryReleaseManyForward:",
     b"release:",
     b"behaviorOf:",
     b"allocationSizeOf:",

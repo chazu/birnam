@@ -1,5 +1,9 @@
 # Remaining sends in Integer addition
 
+Follow-up: [reusable branches and native input borrowing](reusable-branches-and-native-inputs.md)
+reduce actual addition to 338 sends. The 513-send breakdown below is the preceding
+checkpoint and supplied this slice's targets.
+
 Analysis date: 2026-10-08. Runtime changes committed as `0e791ffd`.
 Successful public `Integer +` uses **513 Id sends** in the latest warmed trace.
 The enclosing benchmark adds 1.375 sends/addition of amortized bookkeeping,

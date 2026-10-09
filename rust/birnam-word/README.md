@@ -36,3 +36,13 @@ invalid count/kind/null carriers fail with `INVALID_REQUEST`. The operation rema
 an ordinary replaceable Id method. It replaces Boolean's temporary comparison-Word
 round trip while Boolean policy and branch invocation remain above this owner.
 See [the measured result](../../docs/design/boolean-selection-simplification.md).
+
+## Native input lifetime
+
+Numeric entries and guarded expression evaluation borrow receiver/Object argument
+coverage from the Id invocation contract, including callback reentry. They no
+longer register the same inputs through Roots. The expression still snapshots its
+incoming byte plan and operand array before callbacks and retains current
+permission/lookup/epoch checks. Newly allocated outputs keep their first Root
+through representation validation; these are not covered by caller input roots.
+No payload access crosses representation owners.

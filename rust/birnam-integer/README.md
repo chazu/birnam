@@ -40,6 +40,12 @@ only its own original Integer implementations and preserves prior user changes;
 without a future service slot in Integer. Repeat extension installation is rejected.
 Bootstrap owns this sequencing.
 
+Native numeric entries, bootstrap-arithmetic admission and the numeric visitor
+borrow incoming receiver/argument coverage from the Id ABI for the complete call,
+including callbacks. They do not re-register those inputs. Fresh output boxes,
+iteration temporaries, diagnostics and obtained factories retain their existing
+local protection. The Rust cold-bootstrap implementation remains.
+
 Results use the current `fromWord:`/`fromBits:` factories. Errors use the current
 Namespace Error binding and its `kind:message:` method, with String diagnostics.
 The existing live ErrorVt binding determines incoming Error propagation, except

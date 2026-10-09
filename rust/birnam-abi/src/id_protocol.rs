@@ -1,6 +1,9 @@
 //! Native operands and the common Id message/module boundary (Design 83).
 //! Object references and native data are distinct. Bytes are borrowed for the
 //! synchronous call; callers keep object and native entry owners live.
+//! Every receiver and Object argument remains protected until the native entry
+//! returns, including through callback reentry. Callees may borrow this coverage;
+//! values newly allocated inside a callee still need protection before callbacks.
 use crate::Oop;
 use core::ffi::c_void;
 
