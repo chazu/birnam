@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "scope": "Capture dependency investigation and shared binding-proof simplification",
+  "before_sends": 177,
+  "after_sends": 177,
+  "capture_requests_per_addition": 15,
+  "binding_rows_per_bulk_request": {
+    "before": 8,
+    "after": 6
+  },
+  "row_comparisons_removed_per_addition": 30,
+  "cpu_speedup": "Not measured",
+  "count_receipt": "/tmp/birnam-four-investigations-20261009/capture-counts-final.json",
+  "count_receipt_sha256": "ff6e499194aceb1c8bd17803e2a43702b92e6791d9f83bbcef6db8f48d9b0fb2",
+  "inputs_changed_during_run": false,
+  "source_sha256": "2c79fbbf1268ebd093eeb5c73ea51ac73757e88828cfed797bd8e87899fe24d6",
+  "execution_library_sha256": "32bf0cd224c6263b4ba75780ae96eb705d1bff46fc081972fa97c58780a7732d",
+  "native_checks": 5,
+  "native_log_sha256": "a9578e54454d19cb8eb2ef03d15c473d78d4a4a31606fce830e6c48e78a3cfde",
+  "formal_summary": ".cargo-target/formal/results/rooting-4gaaj6v6/summary.json",
+  "formal_summary_sha256": "3932286fa94566199981d9a622c49c6dfb6afd728cee22245b6bcb1288f25dcb",
+  "lean_theorems": 139,
+  "tla_configurations": 84,
+  "runtime_files_sha256": {
+    "rust/birnam-execution/src/binding_proof.rs": "53e1dd740d28804cce4ff6bacacb7c00bc45c2104683bbb1484a18f85697b309",
+    "rust/birnam-execution/src/lib.rs": "3204051f5ebbc9e8a42d837bcfd0b6be2f7ea0dc8a09a855094147067d818053"
+  },
+  "remaining_work": "An admitted invocation environment requires an explicit carrier and invalidation/lifetime design; no bypass or global cached grant was added."
+}

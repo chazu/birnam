@@ -103,3 +103,6 @@ import Branches
 #print axioms Birnam.Branches.operation_objects_preserve_float_selection
 #print axioms Birnam.Branches.remainder_has_no_float_handler
 #print axioms Birnam.Branches.scoped_global_resolution_preserves_order_and_value
+
+#print axioms Birnam.Capture.resolved_admission_requires_dispatch_services
+#print axioms Birnam.Capture.unrelated_name_service_does_not_change_admission

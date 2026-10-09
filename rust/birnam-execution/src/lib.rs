@@ -54,7 +54,7 @@ struct Execution {
     native_return_bytes: RefCell<Vec<u8>>,
     native_capture_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
-    binding_proof_services: [Option<NativeEntry>; 5],
+    binding_guard: birnam_abi::binding_guard::BindingGuard,
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
     id: Protocol,
@@ -803,6 +803,7 @@ const NAMES: &[&[u8]] = &[
     b"withNativeSignature:",
 
     b"nativeBindingsMatch:",
+    b"nativeBindingQuerySemantics:for:",
     b"intern:",
     b"symbolNamed:",
     b"optionalWordResultOf:selector:argument:resultFactory:",
@@ -900,19 +901,9 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             native_return_bytes: RefCell::new(Vec::new()),
             native_capture_bytes: RefCell::new(Vec::new()),
             machines: RefCell::new(machine::State::new()),
-            binding_proof_services: (*binding_proof::SERVICES).map(|name| {
-                let entry = id.send_named(id.receiver, b"bind:to:", &[
-                    Operand::object(names[name]), Operand::object(id.receiver),
-                ]).ok().and_then(|v|v.as_entry())?;
-                let declaration = if name == b"intern:" {
-                    id.send_named(gc, b"internQuerySemantics:", &[Operand::entry(entry)])
-                } else {
-                    id.send_named(id.receiver, b"nativeBindingQuerySemantics:for:", &[
-                        Operand::entry(entry), Operand::bytes(name),
-                    ])
-                };
-                (declaration.ok()?.as_word() == Some(1)).then_some(entry)
-            }),
+            binding_guard: birnam_abi::binding_guard::BindingGuard::discover(id,
+                birnam_abi::binding_guard::SERVICES.map(|name| names[name]),
+                names[b"nativeBindingQuerySemantics:for:".as_slice()]),
             numeric: RefCell::new(numeric::Registry::default()),
             requests: RefCell::new(Vec::new()),
             id,

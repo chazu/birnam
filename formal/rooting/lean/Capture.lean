@@ -102,4 +102,20 @@ theorem fresh_result_requires_coverage :
   cases path with
   | root h => omega
   | edge _ h => contradiction
+/-- All selectors are supplied by a live owner inventory before admission.
+    Name-service replacements are therefore outside the capture-read dependency
+    set; lookup, binding and the matcher remain current witnesses. -/
+def selectorResolvedAdmission (lookup binding matcher _intern _symbols : Bool) : Bool :=
+  lookup && binding && matcher
+
+theorem resolved_admission_requires_dispatch_services (lookup binding matcher intern symbols : Bool) :
+    selectorResolvedAdmission lookup binding matcher intern symbols = true ↔
+      lookup = true ∧ binding = true ∧ matcher = true := by
+  simp [selectorResolvedAdmission, and_assoc]
+
+theorem unrelated_name_service_does_not_change_admission
+    (lookup binding matcher oldIntern oldSymbols newIntern newSymbols : Bool) :
+    selectorResolvedAdmission lookup binding matcher oldIntern oldSymbols =
+      selectorResolvedAdmission lookup binding matcher newIntern newSymbols := by rfl
+
 end Birnam.Capture
