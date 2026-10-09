@@ -53,3 +53,6 @@ import Admission
 #print axioms Birnam.Admission.revoked_permission_blocks_commit
 #print axioms Birnam.Admission.changed_epoch_blocks_commit
 #print axioms Birnam.Admission.pair_admission_saves_three
+
+#print axioms Birnam.SemanticsExamples.unguarded_box_elision_is_not_a_refinement
+#print axioms Birnam.SemanticsExamples.changed_conversion_binding_invalidates

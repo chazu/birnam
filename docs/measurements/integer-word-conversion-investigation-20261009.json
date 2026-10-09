@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "scope": "Integer-Word conversion observability investigation; no production boxing removed",
+  "production_sends": 177,
+  "allocated_objects": {
+    "Word": 3,
+    "Integer": 1
+  },
+  "experiments": {
+    "unmodified_7_plus_9": 16,
+    "input_factory_replaced_with_10": 20,
+    "result_bits_getter_replaced": 99,
+    "input_factory_calls_per_addition": 2,
+    "input_words_have_distinct_identity": true,
+    "constructor_can_retain_words_through_precise_collection": true
+  },
+  "test_fixture_sha256": "5de56a0dd304cb46a9a202091ed3240cdfccf7eec0ae7fe380e9704ea433ffb9",
+  "native_checks": 3,
+  "native_log": "/tmp/birnam-four-investigations-20261009/boxing-tests.log",
+  "native_log_sha256": "f07bb6e000d664a81ca8e39911ed107d8ca9702ed099e967a93512d802d0b1f7",
+  "formal_summary": "/tmp/birnam-four-investigations-20261009/boxing-formal-final/summary.json",
+  "formal_summary_sha256": "bc69a19790e05d7148d3d539edc29fcc2c114736873accec224bb87a8d0d9a8d",
+  "lean_theorems": 141,
+  "focused_tla_configurations": 9,
+  "runtime_changes": false,
+  "decision": "Keep conversion on unguarded/replaced paths; a guarded compiler region needs conversion binding certificates, current allocation permission and recovery before exposure. Existing within-body Word elision remains enabled."
+}

@@ -68,4 +68,28 @@ theorem unary_integer_access_schedule : BoundedOwnerSchedule interfaceCapacity a
     (.batch Owner.integer 0 (by decide)
       (.batch Owner.word 4 (by decide) (.batch Owner.integer 0 (by decide) .done)))
 
+/-- Even a lexical temporary can escape through an ordinary replaced
+    constructor. Eliminating its allocation must preserve the observable hook
+    and identity, or decline before executing that hook. -/
+def boxedConversion : Action Nat := fun n =>
+  ⟨n, [.allocationHook 1 2, .identity 1 100, .result n], 3⟩
+def rawConversion : Action Nat := fun n => ⟨n, [.result n], 0⟩
+
+theorem unguarded_box_elision_is_not_a_refinement :
+    ¬ Refines Eq boxedConversion rawConversion := by
+  intro h
+  have observations := (h 0 0 rfl).2.1
+  simp [boxedConversion, rawConversion] at observations
+
+/-- Constructor/getter bindings are explicit dependencies, not implied by
+    unchanged arithmetic operators or a valid unsigned overflow proof. -/
+def conversionCertificate : Certificate Nat := capture world [10,11] [2]
+
+theorem changed_conversion_binding_invalidates
+    (key : Nat) (required : key ∈ [10,11]) :
+    ¬ Valid {world with meanings := fun _ => 8} conversionCertificate := by
+  apply replacement_invalidates key
+  · simpa [conversionCertificate, capture] using required
+  · simp [conversionCertificate, capture, world]
+
 end Birnam.SemanticsExamples
