@@ -24,7 +24,7 @@ construct={'fromMethod:captureOperands:','fromMethod:codeObject:captureOperands:
 abi={'discardResultOf:selector:wordArgument:','objectResultOf:selector:byteArgument:','bytesResultOf:selector:resultFactory:','optionalWordResultOf:selector:argument:resultFactory:','objectResultOf:selector:wordArgument:','tryNativeArguments:','sendNativeTo:selector:arguments:signature:resultFactory:','wordResultOf:selector:','bytesResultOf:selector:'}
 word={'tryPrimitiveExpression:','tryPrimitiveExpressionAtEpoch:','wrappingAdd:','bitXor:','bitAnd:','unsignedLessThan:'}
 controlwords={'selectIfSameObject:with:ifEqual:ifDifferent:','sameObject:with:','selectIfZero:ifNonzero:'}
-root={'retain:','release:','tryRetainMany:','tryReleaseMany:','tryReleaseManyForward:'}
+root={'retain:','release:','tryRetainMany:','tryReleaseMany:','tryReleaseManyForward:','releaseMany:protecting:batch:'}
 for r in trace:
  sel=r['selector']
  cat='closure construction' if sel in construct else 'capture access' if sel in {'captureWord:of:','captureWordAt:','captureReadModeOf:','captureReadMode','tryBorrowCaptureOperands:'} else 'ABI bridges' if sel in abi else 'Boolean selection primitives' if sel in controlwords else 'Word arithmetic/guards' if sel in word else None

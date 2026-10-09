@@ -22,6 +22,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         ),
         (b"behaviorOf:".as_slice(), behavior_of as native::Method),
         (b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(), representation_identity as native::Method),
+        (b"tryRepresentationsOf:behavior:bytes:", representations as native::Method),
         (b"reassociateBehaviorOf:with:".as_slice(), reassociate as native::Method),
         (b"behaviorCount".as_slice(), behavior_count as native::Method),
         (b"behaviorAt:".as_slice(), behavior_at as native::Method),
@@ -199,11 +200,23 @@ unsafe extern "C" fn representation_identity(
     let (Some(value), Some(behavior), Some(bytes)) = (value.as_object(), behavior.as_object(), bytes.as_word()) else { return invalid(); };
     let s = unsafe { &*c.cast::<State>() };
     let memory = unsafe { &*s.memory };
+    if !representation_queries_current(s, c, r) { return Outcome::loaded(Operand::unit()); }
+    let Some(allocation) = memory.get(value.addr()).filter(|a|
+        a.requested_size() == bytes && memory.vtable_of(value) == Some(behavior))
+    else { return Outcome::loaded(Operand::word(0)); };
+    let identity = allocation.identity() as usize;
+    // Zero is the mismatch carrier. An unrepresentable identity declines rather
+    // than changing a legacy numeric read that did not query identity at all.
+    Outcome::loaded(if identity == 0 { Operand::unit() } else { Operand::word(identity) })
+}
+
+fn representation_queries_current(s: &State, c: *mut c_void, r: Oop) -> bool {
+    let memory = unsafe { &*s.memory };
     let dictionaries = unsafe { &*s.dictionaries };
     let standard = NativeEntry::new(id_dispatch::vtable_lookup_method, s.dictionaries.cast());
-    if r != s.protocol.receiver || memory.vtable_of(r) != Some(r)
-        || dictionaries.lookup(r, s.lookup) != Some(standard)
-        || ![
+    r == s.protocol.receiver && memory.vtable_of(r) == Some(r)
+        && dictionaries.lookup(r, s.lookup) == Some(standard)
+        && [
             (b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(), representation_identity as native::Method),
             (b"behaviorOf:", behavior_of),
             (b"allocationSizeOf:", allocation_size),
@@ -212,14 +225,30 @@ unsafe extern "C" fn representation_identity(
             unsafe { (&*s.symbols).existing(name) }.is_some_and(|selector|
                 dictionaries.lookup(r, selector) == Some(NativeEntry::new(method, c)))
         })
-    { return Outcome::loaded(Operand::unit()); }
-    let Some(allocation) = memory.get(value.addr()).filter(|a|
-        a.requested_size() == bytes && memory.vtable_of(value) == Some(behavior))
-    else { return Outcome::loaded(Operand::word(0)); };
-    let identity = allocation.identity() as usize;
-    // Zero is the mismatch carrier. An unrepresentable identity declines rather
-    // than changing a legacy numeric read that did not query identity at all.
-    Outcome::loaded(if identity == 0 { Operand::unit() } else { Operand::word(identity) })
+
+}
+
+// Batch only callback-free allocation facts. Values are native ABI Oop words,
+// not portable bytes or permission to inspect any upper owner's payload.
+unsafe extern "C" fn representations(c: *mut c_void, r: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([values, behavior, size]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let (Some(values), Some(behavior), Some(size)) = (values.as_bytes(), behavior.as_object(), size.as_word()) else { return invalid(); };
+    let Some(values) = (unsafe { crate::abi::borrowed_bytes(values.pointer, values.length) }) else { return invalid(); };
+    if values.len() % size_of::<usize>() != 0 || !(2..=32).contains(&(values.len()/size_of::<usize>())) { return invalid(); }
+    let s = unsafe { &*c.cast::<State>() };
+    let own = unsafe { (&*s.symbols).existing(b"tryRepresentationsOf:behavior:bytes:") }
+        .is_some_and(|sel| unsafe { (&*s.dictionaries).lookup(r, sel) } == Some(NativeEntry::new(representations, c)));
+    if !own || !representation_queries_current(s, c, r) { return Outcome::loaded(Operand::unit()); }
+    let memory = unsafe { &*s.memory };
+    for value in values.chunks_exact(size_of::<usize>()) {
+        let address = usize::from_ne_bytes(value.try_into().unwrap());
+        let object = core::ptr::with_exposed_provenance_mut(address);
+        let Some(allocation) = memory.get(address).filter(|a|
+            a.requested_size() == size && memory.vtable_of(object) == Some(behavior))
+        else { return Outcome::loaded(Operand::word(0)); };
+        if allocation.identity() as usize == 0 { return Outcome::loaded(Operand::unit()); }
+    }
+    Outcome::loaded(Operand::word(1))
 }
 
 /// Storage geometry stays with Id. This is a non-allocating size query, not an
@@ -348,6 +377,7 @@ unsafe extern "C" fn default_allocation(
         (b"behaviorOf:", behavior_of),
         (b"identityOf:", identity),
         (b"tryRepresentationIdentityOf:behavior:bytes:", representation_identity),
+        (b"tryRepresentationsOf:behavior:bytes:", representations),
     ]
     .into_iter()
     .all(|(name, method)| {

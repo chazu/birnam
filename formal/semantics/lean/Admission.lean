@@ -149,4 +149,26 @@ theorem changed_epoch_blocks_commit (bindings permission : Bool) (captured curre
 theorem pair_admission_saves_three (a b : Facts) (h : packedPair a b = true) :
     (if packedPair a b then 1 else 5) + 3 = (4 : Nat) := by simp [h]
 
+/-- One metadata request covers all inputs only under current canonical
+    query/getter meanings and representable nonzero allocation identities. -/
+def batchMetadata (services own single known : Bool) (shapes : List Bool) : Option Bool :=
+  if services && own && single && known then some (shapes.all id) else none
+
+theorem metadata_batch_requires_every_shape (services own single known : Bool) (shapes : List Bool)
+    (success : batchMetadata services own single known shapes = some true) :
+    services = true ∧ own = true ∧ single = true ∧ known = true ∧ shapes.all id = true := by
+  unfold batchMetadata at success
+  split at success
+  · rename_i gate
+    have g : services = true ∧ own = true ∧ single = true ∧ known = true := by
+      simpa [Bool.and_eq_true, and_assoc] using gate
+    exact ⟨g.1, g.2.1, g.2.2.1, g.2.2.2, Option.some.inj success⟩
+  · contradiction
+
+theorem unknown_batch_identity_declines (services own single : Bool) (shapes : List Bool) :
+    batchMetadata services own single false shapes = none := by simp [batchMetadata]
+
+theorem metadata_batch_saves_inputs_minus_one (inputs : Nat) (positive : 1 ≤ inputs) :
+    1 + (inputs - 1) = inputs := by omega
+
 end Birnam.Admission

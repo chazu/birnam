@@ -98,14 +98,8 @@ fn evaluate_inner(
                 return refuse();
             }
             let mut values = [0u64; 64];
-            let mut used = 0usize;
-            for input in inputs {
-                let Some(bits) = n.read(object(*input)?)? else {
-                    return refuse();
-                };
-                values[used] = bits;
-                used += 1;
-            }
+            if !n.read_inputs(inputs, &mut values)? { return refuse(); }
+            let mut used = inputs.len();
             let (cached_epoch, mut meanings) = n.expression_meanings.get();
             if cached_epoch != epoch {
                 meanings = 0;

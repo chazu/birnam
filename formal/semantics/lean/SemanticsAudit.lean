@@ -56,3 +56,7 @@ import Admission
 
 #print axioms Birnam.SemanticsExamples.unguarded_box_elision_is_not_a_refinement
 #print axioms Birnam.SemanticsExamples.changed_conversion_binding_invalidates
+
+#print axioms Birnam.Admission.metadata_batch_requires_every_shape
+#print axioms Birnam.Admission.unknown_batch_identity_declines
+#print axioms Birnam.Admission.metadata_batch_saves_inputs_minus_one

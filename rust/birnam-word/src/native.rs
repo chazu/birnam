@@ -81,6 +81,38 @@ impl Number {
             Ok(self.send(self.id.receiver, b"allocationSizeOf:", &[Operand::object(value)])?.as_word() == Some(8))
         }
     }
+    // Canonical expression inputs have no intervening callback between their
+    // shape facts and these owner-local reads. Decline retains ordered reads.
+    pub(super) unsafe fn read_inputs(&self, inputs: &[Operand], values: &mut [u64]) -> Result<bool, Outcome> {
+        if inputs.len() > 32 || inputs.len() > values.len() { return Err(invalid()); }
+        if inputs.len() >= 2 {
+            let mut addresses = [0usize; 32];
+            for (address, input) in addresses.iter_mut().zip(inputs) { *address = object(*input)?.addr(); }
+            let addresses = &addresses[..inputs.len()];
+            let bytes = unsafe { core::slice::from_raw_parts(addresses.as_ptr().cast::<u8>(), size_of_val(addresses)) };
+            match unsafe { self.send(self.id.receiver, b"tryRepresentationsOf:behavior:bytes:",
+                &[Operand::bytes(bytes), Operand::object(self.behavior), Operand::word(8)]) } {
+                Ok(reply) if reply.kind() == native::UNIT => {},
+                Err(error) if error.status == native::UNBOUND => {},
+                Ok(reply) => match reply.as_word() {
+                    Some(0) => return Ok(false),
+                    Some(1) => {
+                        for (input, value) in inputs.iter().zip(values) {
+                            *value = unsafe { object(*input)?.cast::<u64>().read() };
+                        }
+                        return Ok(true);
+                    },
+                    _ => return Err(invalid()),
+                },
+                Err(error) => return Err(error),
+            }
+        }
+        for (input, value) in inputs.iter().zip(values) {
+            let Some(bits) = (unsafe { self.read(object(*input)?) })? else { return Ok(false); };
+            *value = bits;
+        }
+        Ok(true)
+    }
     pub(super) unsafe fn read(&self, value: Oop) -> Result<Option<u64>, Outcome> {
         unsafe {
             if !self.matches_representation(value)?
@@ -217,6 +249,7 @@ const NAMES: &[&[u8]] = &[
     b"behaviorOf:",
     b"allocationSizeOf:",
     b"tryRepresentationIdentityOf:behavior:bytes:",
+    b"tryRepresentationsOf:behavior:bytes:",
     b"allocate:bytes:",
     b"at:",
     b"rootsDo:",
@@ -387,6 +420,17 @@ unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Ope
             let value = n.read(r)?.ok_or_else(invalid)?;
             let (zero, nonzero) = (object(*zero)?, object(*nonzero)?);
             return Ok(Operand::object(if value == 0 { zero } else { nonzero }));
+        }
+        // Only well-shaped binary requests use the optional batch. Malformed
+        // arity/carriers retain the original left-read-before-rejection order.
+        if (6..=16).contains(&op) && !r.is_null() && args.len() == 1
+            && args[0].as_object().is_some_and(|v| !v.is_null())
+        {
+            let mut values = [0u64; 2];
+            if !n.read_inputs(&[Operand::object(r), args[0]], &mut values)? { return Err(invalid()); }
+            if op == 16 { return Ok(n.boolean(values[0] < values[1])); }
+            let value = crate::operations::calculate(values[0], values[1], op).ok_or_else(invalid)?;
+            return n.make(value as usize);
         }
         if op >= 5 {
             let value = n.read(r)?.ok_or_else(invalid)?;
