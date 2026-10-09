@@ -8,6 +8,8 @@ loader ports are complete.
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-10-09
+
 - Expand Birnam implementations of Lang, AlienCompiler, ImageFormat, SourceLoader,
   Printing, NativeLoader, Error, BlockLoop, Range, SystemGC, Boolean policy and
   Integer arithmetic. Retain native representation owners and cold-bootstrap seeds.
