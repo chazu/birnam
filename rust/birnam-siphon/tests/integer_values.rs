@@ -154,10 +154,12 @@ fn signed_integer_policy_preserves_bounds_errors_and_float_dispatch() {
         for (selector, other) in [(b"mod:".as_slice(), half), (b"+", named(b"nil"))] {
             let error = object(send(id, a, selector, &[Operand::object(other)]));
             let token = retain(id, roots, error);
-            assert_eq!(
-                object(send(id, error, b"kind", &[])),
-                id.intern_name(b"typeMismatch").unwrap()
-            );
+            let actual_kind=object(send(id,error,b"kind",&[]));
+            let raw=send(id,id.receiver,b"symbolBytesOf:",&[Operand::object(actual_kind)]).as_bytes().unwrap();
+            let copied=birnam_abi::borrowed_bytes(raw.pointer,raw.length).unwrap().to_vec();
+            let message=send(id,object(send(id,error,b"message",&[])),b"bytes",&[]).as_bytes().unwrap();
+            let message=birnam_abi::borrowed_bytes(message.pointer,message.length).unwrap().to_vec();
+            assert_eq!(actual_kind,id.intern_name(b"typeMismatch").unwrap(),"{} -> {}: {}",String::from_utf8_lossy(selector),String::from_utf8_lossy(&copied),String::from_utf8_lossy(&message));
             release(id, roots, token);
         }
         let error = object(send(

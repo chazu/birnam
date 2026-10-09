@@ -224,33 +224,39 @@ pub(super) unsafe extern "C" fn can_omit(
         {
             return Ok(Operand::word(0));
         }
-        for (receiver, name, method) in [
-            (behavior, b"allocate".as_slice(), allocate as Method),
-            (
-                m.receiver,
-                b"prepareAllocation".as_slice(),
-                prepare as Method,
-            ),
-        ] {
-            if m.send(
-                m.id.receiver,
-                b"usesDefaultLookup:",
-                &[Operand::object(receiver)],
-            )?
-            .as_word()
-                != Some(1)
-                || m.send(
+        let expected = [
+            (behavior, m.selectors[b"allocate".as_slice()], NativeEntry::new(allocate, c)),
+            (m.receiver, m.selectors[b"prepareAllocation".as_slice()], NativeEntry::new(prepare, c)),
+        ];
+        if !m.binding_guard.admits(m.id, &expected)? {
+            for (receiver, name, method) in [
+                (behavior, b"allocate".as_slice(), allocate as Method),
+                (
+                    m.receiver,
+                    b"prepareAllocation".as_slice(),
+                    prepare as Method,
+                ),
+            ] {
+                if m.send(
                     m.id.receiver,
-                    b"bind:to:",
-                    &[
-                        Operand::object(m.selectors[name]),
-                        Operand::object(receiver),
-                    ],
+                    b"usesDefaultLookup:",
+                    &[Operand::object(receiver)],
                 )?
-                .as_entry()
-                    != Some(NativeEntry::new(method, c))
-            {
-                return Ok(Operand::word(0));
+                .as_word()
+                    != Some(1)
+                    || m.send(
+                        m.id.receiver,
+                        b"bind:to:",
+                        &[
+                            Operand::object(m.selectors[name]),
+                            Operand::object(receiver),
+                        ],
+                    )?
+                    .as_entry()
+                        != Some(NativeEntry::new(method, c))
+                {
+                    return Ok(Operand::word(0));
+                }
             }
         }
         Ok(Operand::word(usize::from(

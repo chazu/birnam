@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use birnam_abi::{
-    Oop,
     id_protocol::{Method, NativeEntry, Operand, Protocol},
+    Oop,
 };
 use core::ffi::c_void;
 use std::{os::unix::ffi::OsStrExt, path::PathBuf};

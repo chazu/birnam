@@ -36,6 +36,7 @@ struct Allocation {
 }
 struct Memory {
     id: Protocol,
+    binding_guard: birnam_abi::binding_guard::BindingGuard,
     receiver: Oop,
     roots: Oop,
     core_visitor: Oop,
@@ -344,6 +345,8 @@ const NAMES: &[&[u8]] = &[
     b"usesDefaultLookup:",
     b"behaviorEpoch",
     b"bind:to:",
+    b"nativeBindingsMatch:",
+    b"nativeBindingQuerySemantics:for:",
     b"prepareAllocation",
     b"identityOf:",
     b"behaviorOf:",
@@ -380,8 +383,12 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
         let core_behavior = object(id.send_named(parent, b"delegated", &[])?)?;
         let core_visitor =
             object(id.send_named(core_behavior, b"allocate", &[Operand::word(0)])?)?;
+        let binding_guard = birnam_abi::binding_guard::BindingGuard::discover(id,
+            birnam_abi::binding_guard::SERVICES.map(|name| selectors[name]),
+            selectors[b"nativeBindingQuerySemantics:for:".as_slice()]);
         let pointer = Box::into_raw(Box::new(Memory {
             id,
+            binding_guard,
             receiver,
             roots: roots_object,
             core_visitor,

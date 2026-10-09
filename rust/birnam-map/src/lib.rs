@@ -215,7 +215,9 @@ macro_rules! entry {
                 for arg in args {
                     values.push(object(*arg)?);
                 }
-                Scope::run(s, &values, |scope| execute(s, scope, r, &values[1..], $op))
+                // The Id caller covers receiver and argument lifetimes. Keep
+                // private node snapshots and construction results in this scope.
+                Scope::run(s, &[], |scope| execute(s, scope, r, &values[1..], $op))
             })())
         }
     };

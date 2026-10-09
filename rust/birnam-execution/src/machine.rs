@@ -1100,6 +1100,7 @@ enum Op {
     BlockCaptureWord,
     BlockReadWord,
     BorrowCaptures(bool),
+    BorrowCaptureOperands,
     CloneBlock,
     Prepare,
     New,
@@ -1161,10 +1162,46 @@ unsafe extern "C" fn operation(
         // Word-indexed capture reads are owner-local, nonallocating inspection.
         // The borrowing query only describes the current reader; it neither
         // allocates nor changes collector phase. Mutation admission remains below.
-        if !matches!(op.kind, Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_)) {
+        if !matches!(op.kind, Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op.kind {
+            Op::BorrowCaptureOperands => {
+                let [count] = args else { return Err(invalid()); };
+                let count = count.as_word().ok_or_else(invalid)?;
+                if helper_body(s, receiver).is_none() { return Ok(Operand::unit()); }
+                let available = {
+                    let state = s.machines.borrow();
+                    state.storage.payload_size(receiver).ok_or_else(invalid)? / size_of::<usize>() - 1
+                };
+                // Preserve mismatched Method invokeOn: behavior via ordinary
+                // reads (including nil for absent slots), not a shape rejection.
+                if count > available { return Ok(Operand::unit()); }
+                let reader = default_capture_entry(s).ok_or_else(invalid)?;
+                let grant = {
+                    let state = s.machines.borrow();
+                    let op = state.contexts.iter().find(|o| o.kind == Op::BorrowCaptures(true)).ok_or_else(invalid)?;
+                    NativeEntry::new(operation, ptr::from_ref(&**op).cast_mut().cast())
+                };
+                if !crate::binding_proof::matches_all(s, &[
+                    (receiver, b"tryBorrowCaptureOperands:", NativeEntry::new(operation, context)),
+                    (receiver, b"captureReadMode", grant),
+                    (receiver, b"captureWordAt:", reader),
+                ])? { return Ok(Operand::unit()); }
+                // All dependencies above are callback-free when admitted. Read
+                // only this owner's immutable published capture storage. The
+                // native byte result is an ABI array of opaque Oop identities,
+                // not permission for a caller to interpret our payload layout.
+                let state = s.machines.borrow();
+                let mut bytes = s.native_capture_bytes.borrow_mut();
+                bytes.clear();
+                for i in 0..count {
+                    let value = state.storage.read_payload_word(receiver, i + 1).ok_or_else(invalid)?;
+                    if value == 0 { return Err(invalid()); }
+                    bytes.extend_from_slice(&value.to_ne_bytes());
+                }
+                return Ok(Operand::bytes(&bytes));
+            }
             Op::BorrowCaptures(direct) => {
                 let (target, query) = match (direct, args) {
                     (true, []) => (receiver, b"captureReadMode".as_slice()),
@@ -1709,6 +1746,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"captureWordAt:",
     b"captureReadMode",
     b"captureReadModeOf:",
+    b"tryBorrowCaptureOperands:",
     b"invalidRequest",
     b"evaluatePreservingFailures:",
     b"fromStep:descriptor:selection:owner:",
@@ -2262,6 +2300,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         // Otherwise a non-Block Method receiver could run its DNU handler merely
         // to ask this query. Blocks inherit the same current query binding.
         install_op(s, object_behavior, b"captureReadMode", Op::BorrowCaptures(true))?;
+        install_op(s, object_behavior, b"tryBorrowCaptureOperands:", Op::BorrowCaptureOperands)?;
         install_op(s, block_vtable, b"captureReadModeOf:", Op::BorrowCaptures(false))?;
         install_op(s, block_vtable, b"clone", Op::CloneBlock)?;
         install_op(s, continuation_vtable, b"clone", Op::Disabled)?;

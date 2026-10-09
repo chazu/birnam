@@ -15,6 +15,7 @@ struct Record<T> {
 }
 struct Model {
     id: Protocol,
+    binding_guard: birnam_abi::binding_guard::BindingGuard,
     namespace: Oop,
     roots: Oop,
     gc: Oop,
@@ -27,6 +28,11 @@ struct Model {
     instances: RefCell<HashMap<usize, Record<usize>>>,
     layouts: RefCell<HashMap<usize, Record<Layout>>>,
     copies: RefCell<Vec<Rc<[u8]>>>,
+    scoped: RefCell<Vec<Oop>>,
+}
+struct Scope<'a> { values: &'a RefCell<Vec<Oop>>, start: usize }
+impl Drop for Scope<'_> {
+    fn drop(&mut self) { self.values.borrow_mut().truncate(self.start); }
 }
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -160,31 +166,32 @@ impl Model {
     }
     unsafe fn allocate(&self, behavior: Oop, bytes: usize) -> Result<Operand, Outcome> {
         unsafe {
-            self.rooted(&[behavior], || {
-                let value = self.send(behavior, b"allocate", &[Operand::word(bytes)])?;
-                let object = object(value)?;
-                self.rooted(&[object], || {
-                    let identity = self.identity(object)?;
-                    if self.behavior(object)? != behavior
-                        || self
-                            .send(self.id.receiver, b"allocationSizeOf:", &[value])?
-                            .as_word()
-                            != Some(bytes)
-                    {
-                        return Err(invalid());
-                    }
-                    self.instances.borrow_mut().insert(
-                        object.addr(),
-                        Record {
-                            identity,
-                            value: bytes,
-                        },
-                    );
-                    Ok(value)
-                })
-            })
+            // The caller keeps the behavior argument live. The fresh result
+            // needs this owner's traced local scope before validation callbacks.
+            let value = self.send(behavior, b"allocate", &[Operand::word(bytes)])?;
+            let object = object(value)?;
+            let start = self.scoped.borrow().len();
+            self.scoped.borrow_mut().push(object);
+            let _scope = Scope { values: &self.scoped, start };
+            let identity = match self.send(self.id.receiver, b"tryRepresentationIdentityOf:behavior:bytes:",
+                &[value, Operand::object(behavior), Operand::word(bytes)]) {
+                Ok(result) if result.kind() == native::UNIT => None,
+                Err(error) if error.status == native::UNBOUND => None,
+                Ok(result) => Some(result.as_word().filter(|id| *id != 0).ok_or_else(invalid)?),
+                Err(error) => return Err(error),
+            };
+            let identity = if let Some(identity) = identity { identity } else {
+                let identity = self.identity(object)?;
+                if self.behavior(object)? != behavior
+                    || self.send(self.id.receiver, b"allocationSizeOf:", &[value])?.as_word() != Some(bytes)
+                { return Err(invalid()); }
+                identity
+            };
+            self.instances.borrow_mut().insert(object.addr(), Record { identity, value: bytes });
+            Ok(value)
         }
     }
+
 }
 unsafe extern "C" fn enumerate_roots(
     context: *mut c_void,
@@ -200,6 +207,7 @@ unsafe extern "C" fn enumerate_roots(
         let visitor = object(*visitor)?;
         let mut roots = vec![m.receiver, m.namespace, m.roots, m.gc, m.truth, m.falsity];
         roots.extend(m.names.values().copied());
+        roots.extend(m.scoped.borrow().iter().copied());
         // Ownership/instance/layout keys are weak. Owners are reached only from
         // their live behaviors, never from the module's own root inventory.
         for value in roots {
@@ -735,6 +743,8 @@ const NAMES: &[&[u8]] = &[
     b"usesDefaultLookup:",
     b"behaviorEpoch",
     b"bind:to:",
+    b"nativeBindingsMatch:",
+    b"nativeBindingQuerySemantics:for:",
     b"collectionEquals:",
     b"collectionHash",
     b"symbolBytesOf:",
@@ -742,6 +752,7 @@ const NAMES: &[&[u8]] = &[
     b"behaviorOf:",
     b"isBehavior:",
     b"allocationSizeOf:",
+    b"tryRepresentationIdentityOf:behavior:bytes:",
     b"allocationAt:",
     b"retain:",
     b"release:",
@@ -809,8 +820,12 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             b"allocate",
             &[Operand::word(0)],
         )?)?)?;
+        let binding_guard = birnam_abi::binding_guard::BindingGuard::discover(id,
+            birnam_abi::binding_guard::SERVICES.map(|name| names[name]),
+            names[b"nativeBindingQuerySemantics:for:".as_slice()]);
         let pointer = Box::into_raw(Box::new(Model {
             id,
+            binding_guard,
             namespace,
             roots,
             gc,
@@ -823,6 +838,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             instances: RefCell::new(HashMap::new()),
             layouts: RefCell::new(HashMap::new()),
             copies: RefCell::new(Vec::new()),
+            scoped: RefCell::new(Vec::new()),
         }));
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), enumerate_roots as Method),
@@ -978,22 +994,15 @@ unsafe extern "C" fn symbol_hash(
         if count != 0 {
             return Err(invalid());
         }
-        m.rooted(&[r], || {
-            let raw = m
-                .send(m.id.receiver, b"symbolBytesOf:", &[Operand::object(r)])?
-                .as_bytes()
-                .ok_or_else(invalid)?;
-            let mut hash = 2_166_136_261u32;
-            // Preserve the former Symbol name's C-string hash extent.
-            for byte in borrowed_bytes(raw.pointer, raw.length)
-                .ok_or_else(invalid)?
-                .iter()
-                .take_while(|b| **b != 0)
-            {
-                hash = (hash ^ u32::from(*byte)).wrapping_mul(16_777_619);
-            }
-            Ok(Operand::word(hash as usize))
-        })
+        // The caller keeps the Symbol alive. Consume its owner's byte borrow
+        // before any other message; no registry cleanup is needed for an input.
+        let raw = m.send(m.id.receiver, b"symbolBytesOf:", &[Operand::object(r)])?
+            .as_bytes().ok_or_else(invalid)?;
+        let mut hash = 2_166_136_261u32;
+        for byte in borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?
+            .iter().take_while(|b| **b != 0)
+        { hash = (hash ^ u32::from(*byte)).wrapping_mul(16_777_619); }
+        Ok(Operand::word(hash as usize))
     })())
 }
 fn mix(mut value: u64) -> usize {
@@ -1010,7 +1019,11 @@ impl Model {
         context: *mut c_void,
     ) -> Result<bool, Outcome> {
         unsafe {
-            if self
+            let admitted = self.binding_guard.admits(self.id, &[(
+                self.receiver, self.names[b"allocate:bytes:".as_slice()],
+                NativeEntry::new(allocate, context),
+            )])?;
+            if !admitted && (self
                 .send(
                     self.id.receiver,
                     b"usesDefaultLookup:",
@@ -1028,7 +1041,7 @@ impl Model {
                         ],
                     )?
                     .as_entry()
-                    != Some(NativeEntry::new(allocate, context))
+                    != Some(NativeEntry::new(allocate, context)))
             {
                 return Ok(false);
             }
@@ -1055,11 +1068,8 @@ unsafe extern "C" fn can_omit_allocation(
             return Err(invalid());
         };
         let behavior = object(*behavior)?;
-        m.rooted(&[behavior], || {
-            Ok(Operand::word(usize::from(
-                m.can_omit_allocation(behavior, c)?,
-            )))
-        })
+        // This fixed permission query only uses its caller-covered argument.
+        Ok(Operand::word(usize::from(m.can_omit_allocation(behavior, c)?)))
     })())
 }
 unsafe extern "C" fn can_discard_clone(

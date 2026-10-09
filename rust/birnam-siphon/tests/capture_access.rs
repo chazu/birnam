@@ -167,6 +167,34 @@ unsafe extern "C" fn unbound(_: *mut c_void, _: Oop, _: *const Operand, _: usize
 unsafe extern "C" fn bad_mode(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::word(3))
 }
+unsafe extern "C" fn bulk_wrapper(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    let h = unsafe { &*c.cast::<Hook>() };
+    let answer = unsafe { (h.original.method.unwrap())(h.original.context, r, a, n) };
+    assert_eq!(answer.value.kind(), 0, "forwarding bulk query must decline while wrapper is selected");
+    if h.mutate.get() { unsafe { install(h.id, h.behavior, b"captureWordAt:", fresh, c) }; }
+    answer
+}
+unsafe extern "C" fn malformed_bulk(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::loaded(Operand::bytes(b"truncated"))
+}
+struct Overwrite {
+    id: Protocol,
+    gc: Oop,
+    other: Oop,
+    expected: Oop,
+    calls: Cell<usize>,
+}
+unsafe extern "C" fn overwrite_and_collect(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
+    assert_eq!(n, 0);
+    let h = unsafe { &*c.cast::<Overwrite>() };
+    unsafe {
+        assert!(send(h.id, h.other, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).as_bytes().is_some());
+        collect(h.id, h.gc);
+        assert!(present(h.id, h.expected), "receiver edge must keep later capture alive");
+    }
+    h.calls.set(h.calls.get() + 1);
+    Outcome::loaded(Operand::object(r))
+}
 unsafe extern "C" fn fail(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::failed(812, 19)
 }
@@ -229,6 +257,23 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
         let factory_vt = vtable(&h, factory);
         let reader = binding(&h, block, b"captureWordAt:");
         let grant = binding(&h, block, b"captureReadMode");
+        let bulk = binding(&h, block, b"tryBorrowCaptureOperands:");
+        let snapshot = send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).as_bytes().unwrap();
+        let snapshot = birnam_abi::borrowed_bytes(snapshot.pointer, snapshot.length).unwrap().to_vec();
+        let values: Vec<_> = snapshot.chunks_exact(size_of::<usize>())
+            .map(|b| usize::from_ne_bytes(b.try_into().unwrap())).collect();
+        assert_eq!(values, [a.addr(), b.addr()]);
+        assert_eq!(send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(0)]).as_bytes().unwrap().length, 0);
+        let one = send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(1)]).as_bytes().unwrap();
+        assert_eq!(usize::from_ne_bytes(birnam_abi::borrowed_bytes(one.pointer, one.length).unwrap().try_into().unwrap()), a.addr());
+        let repeated = h.call(h.named(b"Codegen"), b"materializeSynchronous:captures:", &[code, h.vector(&[a, a])]);
+        let repeated_bytes = send(id, repeated, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).as_bytes().unwrap();
+        let repeated_values: Vec<_> = birnam_abi::borrowed_bytes(repeated_bytes.pointer, repeated_bytes.length).unwrap()
+            .chunks_exact(size_of::<usize>()).map(|b| usize::from_ne_bytes(b.try_into().unwrap())).collect();
+        assert_eq!(repeated_values, [a.addr(), a.addr()]);
+        assert_eq!(h.call(repeated, b"value", &[]), a);
+        assert_eq!(send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(3)]).kind(), 0);
+        assert!(id.send_named(block, b"tryBorrowCaptureOperands:", &[Operand::object(a)]).is_err());
         assert_eq!(
             send(
                 id,
@@ -284,6 +329,27 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
         assert_eq!(h.call(block, b"value", &[]), a);
         assert_eq!(hook.calls.get(), 0);
         set(&h, gcvt, b"prepareAllocation", prepare);
+        // A forwarding bulk provider cannot lend a previously valid snapshot
+        // then replace the reader: its own binding is part of admission.
+        hook.original = bulk;
+        hook.mutate.set(true);
+        hook.calls.set(0);
+        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(bulk_wrapper, context));
+        assert_eq!(h.bits(h.call(block, b"value", &[])), 101);
+        assert_eq!(hook.calls.get(), 2);
+        set(&h, vt, b"tryBorrowCaptureOperands:", bulk);
+        set(&h, vt, b"captureWordAt:", reader);
+        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(malformed_bulk, std::ptr::null_mut()));
+        assert_eq!(id.send_named(block, b"value", &[]).unwrap_err().status, 1);
+        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(fail, std::ptr::null_mut()));
+        let failure = id.send_named(block, b"value", &[]).unwrap_err();
+        assert_eq!((failure.status, failure.detail), (812, 19));
+        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(unbound, std::ptr::null_mut()));
+        assert_eq!(h.call(block, b"value", &[]), a);
+        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(bad_mode, std::ptr::null_mut()));
+        assert_eq!(id.send_named(block, b"value", &[]).unwrap_err().status, 1);
+        set(&h, vt, b"tryBorrowCaptureOperands:", bulk);
+        hook.original = grant;
         for mutate_after_grant in [false, true] {
             hook.calls.set(0);
             hook.mutate.set(mutate_after_grant);
@@ -357,6 +423,7 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
         let tb = retain(id, roots, fresh_b);
         let method = h.call(block, b"methodFor:", &[id.intern_name(b"value").unwrap()]);
         let nil = h.named(b"nil");
+        assert_eq!(send(id, nil, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).kind(), 0);
         assert_eq!(send(id, nil, b"captureReadMode", &[]).as_word(), Some(2));
         assert_eq!(h.call(method, b"invokeOn:", &[nil]), nil);
         let only_owner = h.keep(object(send(
@@ -369,11 +436,21 @@ fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
                 Operand::object(fresh_b),
             ],
         )));
+        let callback_code = h.admit(&encode(ProgramSpec {
+            parameters: &[], captures: &[b"a", b"b"], lets: &[],
+            statements: &[StatementSpec::Expression { root_node: 1 }, StatementSpec::Expression { root_node: 2 }],
+            nodes: &[NodeSpec::LexicalRead(0), NodeSpec::Send { selector: b"overwriteCaptureBuffer", operands: &[0] }, NodeSpec::LexicalRead(1)],
+        }).unwrap());
+        let callback_block = h.call(h.named(b"Codegen"), b"materializeSynchronous:captures:", &[callback_code, h.vector(&[fresh_a, fresh_b])]);
+        let mut overwrite = Overwrite { id, gc: h.gc, other: block, expected: fresh_b, calls: Cell::new(0) };
+        install(id, vtable(&h, fresh_a), b"overwriteCaptureBuffer", overwrite_and_collect, (&raw mut overwrite).cast());
         release(id, roots, ta);
         release(id, roots, tb);
         collect(id, h.gc);
         assert!(present(id, fresh_a) && present(id, fresh_b));
         assert_eq!(h.call(only_owner, b"value", &[]), fresh_a);
+        assert_eq!(h.call(callback_block, b"value", &[]), fresh_b);
+        assert_eq!(overwrite.calls.get(), 1, "copied operands survive later borrow overwrite and precise GC");
         assert_eq!(
             send(
                 id,

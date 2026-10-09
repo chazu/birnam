@@ -177,10 +177,10 @@ fn cases() -> Vec<Case> {
         .replace("integerBitsOf: self", "integerBitsOf: leftObject")
         .replace("value: self value: other value: operation value: left", "value: leftObject value: other value: operation value: left");
     for (name, operator, expected) in [
-        ("integer-add", "add", 12382),
-        ("integer-multiply", "multiply", 456765),
+        ("integer-add", "intAddOperation", 12382),
+        ("integer-multiply", "intMultiplyOperation", 456765),
     ] {
-        cases.push(Case{name:name.into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerBinary: a with: b operation: #{operator}]]]; [Globals at: #MicroProbe put: probe]; true"),mask:5,expected,result_selector:b"word",integer_inputs:true});
+        cases.push(Case{name:name.into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerBinary: a with: b operation: {operator}]]]; [Globals at: #MicroProbe put: probe]; true"),mask:5,expected,result_selector:b"word",integer_inputs:true});
     }
     cases.push(Case{name:"integer-add-core".into(),source:format!("{source}\nlet probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [intFactory integerAddBits: a with: b]]]; [Globals at: #MicroProbe put: probe]; true"),mask:5,expected:16,result_selector:b"word",integer_inputs:false});
     let mut body = "let x0 := a;".to_owned();
@@ -575,12 +575,22 @@ unsafe fn public_arithmetic(
     mask: usize,
 ) -> usize {
     unsafe {
-        let source = std::fs::read_to_string("modules/integer.birnam")
+        let mut args = std::env::args();
+        let policy = args.find(|arg| arg == "--integer-policy-source")
+            .and_then(|_| args.next()).unwrap_or_else(|| "modules/integer.birnam".into());
+        let mut source = std::fs::read_to_string(policy)
             .unwrap()
             .replace("#integerValues", &format!("#microPublicInteger{mask}"));
+        // The fixture deliberately installs a complete policy variant. The
+        // production guard protects user replacements during normal loading;
+        // leaving old operators here would mix protocols after a source rewrite.
+        for selector in ["+", "-", "*", "/", "mod:"] {
+            source = source.replace(&format!("[intFactory hasBootstrapArithmetic: #{selector}]"), "true");
+        }
         let names: Vec<Vec<u8>> = source
             .split("[Reflect defineMethod: #")
             .skip(1)
+            .filter(|s| s.split("as:").next().unwrap().contains("on: Integer "))
             .map(|s| s.split_whitespace().next().unwrap().as_bytes().to_vec())
             .collect();
         let case = Case {

@@ -435,3 +435,17 @@ Collection-based external code pairings and image shells validate a different
 supplied code and preserve its identity. All actual construction/invocation still
 uses Id; per-instance behaviors remain unchanged. See
 [measurement and contracts](../../docs/design/method-code-admission.md).
+
+## Bulk capture handoff
+
+`tryBorrowCaptureOperands:` accepts a native Word count and returns native Unit
+(decline) or native Bytes of ordered native-endian opaque Oop identities. The
+owner admits only initialized Blocks with enough slots and current canonical
+bulk/mode/reader/Id-query bindings. It reads only Execution-owned storage, with no
+callback after admission, and uses a private reused byte buffer. Copy it before
+another Id call. The live receiver's immutable edges must cover every returned
+Object throughout consumption; successful custom providers owe the same contract
+and must decline arbitrary fresh references. Later queries may overwrite the
+buffer, not the caller's copied references. Unit/unbound uses the existing
+protected reader path; other failures propagate. No foreign payload reads or
+capture containers are introduced. See [contract and proof limits](../../docs/design/bulk-capture-handoff.md).

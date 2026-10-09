@@ -3,7 +3,7 @@ use birnam_abi::{
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
 use core::{cell::Cell, ffi::c_void};
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 pub(crate) struct Number {
     id: Protocol,
     roots: Oop,
@@ -20,6 +20,13 @@ pub(crate) struct Number {
     mixed: Cell<*mut mixed::Mixed>,
     names: HashMap<&'static [u8], Oop>,
     thread: std::thread::ThreadId,
+    scoped: RefCell<Vec<Oop>>,
+}
+// Owner-local roots are reported through the registered rootsDo: protocol.
+// Nested calls append; dropping a scope restores only its own suffix.
+struct Scope<'a> { values: &'a RefCell<Vec<Oop>>, start: usize }
+impl Drop for Scope<'_> {
+    fn drop(&mut self) { self.values.borrow_mut().truncate(self.start); }
 }
 pub(crate) fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -51,41 +58,31 @@ impl Number {
         values: &[Oop],
         f: impl FnOnce() -> Result<Operand, Outcome>,
     ) -> Result<Operand, Outcome> {
-        let mut tokens = Vec::new();
-        let result = (|| unsafe {
-            for value in values {
-                tokens.push(
-                    self.send(self.roots, b"retain:", &[Operand::object(*value)])?
-                        .as_word()
-                        .filter(|n| *n != 0)
-                        .ok_or_else(invalid)?,
-                );
+        if values.iter().any(|value| value.is_null()) { return Err(invalid()); }
+        let start = self.scoped.borrow().len();
+        self.scoped.borrow_mut().extend(values.iter().copied());
+        let _scope = Scope { values: &self.scoped, start };
+        f()
+    }
+
+    unsafe fn matches_representation(&self, value: Oop) -> Result<bool, Outcome> {
+        unsafe {
+            match self.send(self.id.receiver, b"tryRepresentationIdentityOf:behavior:bytes:",
+                &[Operand::object(value), Operand::object(self.behavior), Operand::word(8)]) {
+                Ok(result) if result.kind() == native::UNIT => {},
+                Err(error) if error.status == native::UNBOUND => {},
+                Ok(result) => return result.as_word().map(|identity| identity != 0).ok_or_else(invalid),
+                Err(error) => return Err(error),
             }
-            f()
-        })();
-        for token in tokens {
-            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
-                != Some(1)
-            {
-                return Err(invalid());
+            if self.send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?.as_object() != Some(self.behavior) {
+                return Ok(false);
             }
+            Ok(self.send(self.id.receiver, b"allocationSizeOf:", &[Operand::object(value)])?.as_word() == Some(8))
         }
-        result
     }
     unsafe fn read(&self, value: Oop) -> Result<Option<i64>, Outcome> {
         unsafe {
-            if self
-                .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-                .as_object()
-                != Some(self.behavior)
-                || self
-                    .send(
-                        self.id.receiver,
-                        b"allocationSizeOf:",
-                        &[Operand::object(value)],
-                    )?
-                    .as_word()
-                    != Some(8)
+            if !self.matches_representation(value)?
             {
                 return Ok(None);
             }
@@ -100,18 +97,7 @@ impl Number {
                 &[Operand::object(self.behavior), Operand::word(8)],
             )?)?;
             self.rooted(&[value], || {
-                if self
-                    .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-                    .as_object()
-                    != Some(self.behavior)
-                    || self
-                        .send(
-                            self.id.receiver,
-                            b"allocationSizeOf:",
-                            &[Operand::object(value)],
-                        )?
-                        .as_word()
-                        != Some(8)
+                if !self.matches_representation(value)?
                 {
                     return Err(invalid());
                 }
@@ -179,6 +165,7 @@ unsafe extern "C" fn roots(
             n.nil,
         ];
         values.extend(n.names.values().copied());
+        values.extend(n.scoped.borrow().iter().copied());
         for value in values {
             n.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
@@ -264,6 +251,7 @@ const NAMES: &[&[u8]] = &[
     b"release:",
     b"behaviorOf:",
     b"allocationSizeOf:",
+    b"tryRepresentationIdentityOf:behavior:bytes:",
     b"allocate:bytes:",
     b"fromBytes:",
     b"at:",
@@ -359,6 +347,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             extended: Cell::new(false),
             mixed: Cell::new(core::ptr::null_mut()),
             thread: std::thread::current().id(),
+            scoped: RefCell::new(Vec::new()),
         }));
         let n = &*pointer;
         for (name, method) in METHODS.iter().copied().chain([

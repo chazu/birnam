@@ -73,4 +73,40 @@ theorem uncovered_input_is_not_equivalent :
   have missing := (h 1).mp (Or.inr (Or.inl rfl))
   exact missing.elim id id
 
+/-- Native owners report private temporary roots through their GC provider;
+    the same live values need not also be registered in the public registry. -/
+def ownerRoots (parent reported : Roots Object) : Roots Object :=
+  fun o => parent o ∨ reported o
+
+theorem owner_local_root_equivalence
+    (parent locals reported : Roots Object)
+    (reports : ∀ o, reported o ↔ locals o)
+    (edges : Object → Object → Prop) :
+    ∀ o, Reach edges (ownerRoots parent reported) o ↔
+      Reach edges (fun o => parent o ∨ locals o) o := by
+  apply reach_congr
+  intro o
+  simp only [ownerRoots]
+  rw [reports o]
+
+theorem owner_local_values_survive
+    (parent locals reported heap : Roots Object)
+    (reports : ∀ o, reported o ↔ locals o)
+    (alive : ∀ o, locals o → heap o) (edges : Object → Object → Prop) :
+    ∀ o, locals o → collect heap (ownerRoots parent reported) edges o := by
+  intro o h
+  exact ⟨alive o h, Reach.root (Or.inr ((reports o).mpr h))⟩
+
+/-- Nested scopes discard their appended suffix, retaining the parent's exact
+    ordered inventory, including duplicate references. -/
+theorem nested_owner_exit_preserves_parent (parent child : List Object) :
+    (parent ++ child).take parent.length = parent := by simp
+
+def canReturnDirect (tokens : Nat) (selectorReady : Bool) : Bool :=
+  (tokens == 0) && selectorReady
+
+theorem direct_return_requires_empty_cleanup (tokens : Nat) (selectorReady : Bool) :
+    canReturnDirect tokens selectorReady = true ↔ tokens = 0 ∧ selectorReady = true := by
+  simp [canReturnDirect]
+
 end Birnam.Invocation

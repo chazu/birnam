@@ -17,7 +17,15 @@ struct Namespace {
     receiver: Oop,
     registry: Oop,
     storage: RefCell<Environment>,
+    active: RefCell<Vec<Oop>>,
     names: std::collections::HashMap<&'static [u8], Oop>,
+}
+struct Scope<'a> { namespace: &'a Namespace, start: usize }
+impl Scope<'_> {
+    fn keep(&self, value: Oop) -> Oop { self.namespace.active.borrow_mut().push(value); value }
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) { self.namespace.active.borrow_mut().truncate(self.start); }
 }
 static INSTANCE: AtomicPtr<Namespace> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome {
@@ -68,6 +76,26 @@ unsafe extern "C" fn value_at(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
         if result.kind() != native::UNIT { return Ok(result); }
         namespace.id.send(r, namespace.names[b"at:".as_slice()], &[Operand::object(namespace.names[b"nil".as_slice()])])
     })().map_or_else(|e| e, Outcome::loaded)
+}
+// Resolve source globals with the compiler's original precedence and Id calls.
+// Namespace owns the temporary reference inventory, never Store/Globals payloads.
+unsafe extern "C" fn resolve_global(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let namespace = &*c.cast::<Namespace>();
+        let [key] = borrowed_slice(a,n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let key = object(*key)?;
+        let scope = Scope { namespace, start: namespace.active.borrow().len() };
+        scope.keep(r); scope.keep(key);
+        let nil = scope.keep(object(namespace.id.send(r, namespace.names[b"at:".as_slice()],
+            &[Operand::object(namespace.names[b"nil".as_slice()])])?)?);
+        let globals = scope.keep(object(namespace.id.send(r, namespace.names[b"at:".as_slice()],
+            &[Operand::object(namespace.names[b"Globals".as_slice()])])?)?);
+        let found = object(namespace.id.send(globals, namespace.names[b"at:".as_slice()], &[Operand::object(key)])?)?;
+        if found != nil { return Ok(Operand::object(found)); }
+        let fallback = namespace.id.send(r, namespace.names[b"at:".as_slice()], &[Operand::object(key)])?;
+        if fallback.kind() == native::UNIT { Ok(Operand::object(nil)) }
+        else { object(fallback).map(Operand::object) }
+    })().map_or_else(|e|e, Outcome::loaded)
 }
 unsafe extern "C" fn includes_key(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     (|| unsafe {
@@ -171,6 +199,7 @@ unsafe extern "C" fn roots(
         let mut snapshot = namespace.storage.borrow().roots();
         snapshot.extend([receiver, namespace.registry]);
         snapshot.extend(namespace.names.values().copied());
+        snapshot.extend(namespace.active.borrow().iter().copied());
         snapshot
     };
     for object in snapshot.into_iter().filter(|o| !o.is_null()) {
@@ -240,7 +269,7 @@ unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
             let retain = id.intern_name(b"retain:")?;
             tokens.push(id.send(registry, retain, &[Operand::object(receiver)])?.as_word().ok_or_else(invalid)?);
             let mut names = std::collections::HashMap::new();
-            for name in [b"symbolBytesOf:".as_slice(), b"at:", b"nil", b"true", b"false"] {
+            for name in [b"symbolBytesOf:".as_slice(), b"at:", b"nil", b"true", b"false", b"Globals"] {
                 let symbol = id.intern_name(name)?;
                 tokens.push(id.send(registry, retain, &[Operand::object(symbol)])?.as_word().ok_or_else(invalid)?);
                 names.insert(name, symbol);
@@ -250,11 +279,13 @@ unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
                 receiver,
                 registry,
                 storage: RefCell::new(Environment::new()),
+                active: RefCell::new(Vec::new()),
                 names,
             }));
             for (name, method) in [
                 (b"at:".as_slice(), find as Method),
                 (b"valueAt:", value_at),
+                (b"resolveGlobal:", resolve_global),
                 (b"includesKey:", includes_key),
                 (b"at:put:", bind),
                 (b"count", count),

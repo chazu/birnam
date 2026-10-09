@@ -147,3 +147,20 @@ memory or replay the omitted allocation's GC timing; see
 Layout replacement remains legal during tracing: it changes owned metadata without
 allocating a language object. A hook can change a later object's layout; allocation,
 cloning and ordinary slot mutation retain their existing phase admission.
+
+## Allocation validation roots
+
+`allocate:bytes:` borrows its caller-held behavior input. It installs the fresh
+result in a nested owner-local inventory before identity/shape queries. Its
+registered `rootsDo:` reports a copied snapshot of that inventory through Id
+visitor messages; return and failure restore the prior scope length. Other
+registry-based ObjectModel operations retain their existing path. See
+[the lifetime and boxing slice](../../docs/design/helper-lifetime-and-boxing.md).
+
+## Atomic representation facts
+
+The owner uses Id `tryRepresentationIdentityOf:behavior:bytes:` for exact behavior,
+extent and nonzero allocation identity. Canonical admission is callback-free and
+consumed immediately. Unit/UNBOUND uses the original ordered getter sequence;
+other failures propagate. Metadata/query/lookup replacement declines admission.
+See [the contract and evidence](../../docs/design/representation-validation-and-lifetime.md).

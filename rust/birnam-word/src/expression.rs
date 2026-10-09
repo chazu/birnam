@@ -116,7 +116,10 @@ fn evaluate_inner(
                 };
                 if meanings & (1u32 << op[0]) == 0 {
                     let selector = n.names[name];
-                    if n
+                    let admitted = n.binding_guard.admits(n.id, &[(
+                        n.prototype, selector, NativeEntry::new(method, c),
+                    )])?;
+                    if !admitted && (n
                         .send(
                             n.id.receiver,
                             b"usesDefaultLookup:",
@@ -131,7 +134,7 @@ fn evaluate_inner(
                                 &[Operand::object(selector), Operand::object(n.prototype)],
                             )?
                             .as_entry()
-                            != Some(NativeEntry::new(method, c))
+                            != Some(NativeEntry::new(method, c)))
                     {
                         return refuse();
                     }

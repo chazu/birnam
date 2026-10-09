@@ -14,7 +14,7 @@ import time
 from validation_support import ROOT, clean_environment, command, save_json, sha
 from microbench_report import summarize
 
-OWNERS = ('native_backend', 'execution', 'portable_code', 'object_model', 'word', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id', 'namespace', 'codegen_runtime', 'integer')
+OWNERS = ('native_backend', 'execution', 'portable_code', 'object_model', 'word', 'map', 'vector', 'string', 'bytes', 'root_registry', 'collect', 'id', 'namespace', 'codegen_runtime', 'integer')
 TARGET = ROOT / '.cargo-target/decomposition-install/target'
 WORK = ROOT / '.cargo-target/microbench'
 
@@ -24,6 +24,7 @@ def parser():
     p.add_argument('--prefix', type=Path, default=WORK / 'prefix')
     p.add_argument('--prepare-from', type=Path, help='copy a compatible installed prefix; rebuild changed release owners')
     p.add_argument('--case', choices=['all','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-default','semantic-string-length','semantic-vector-access','semantic-word-as-integer','semantic-bytes-as-string','semantic-boolean-print'], default='all')
+    p.add_argument('--integer-policy-source', type=Path, help='public Integer fixture policy override for source-version comparisons')
     p.add_argument('--seconds', type=float, default=10, help='total measurement budget, at most 10 seconds')
     p.add_argument('--batch-ms', type=float, default=25)
     p.add_argument('--gc', choices=['normal','off'], default='normal')
@@ -92,6 +93,7 @@ def main():
     stderr_path = output.with_suffix('.stderr.log')
     binary = TARGET / 'release/examples/microbench'
     argv = [str(binary),'--case',args.case,'--seconds',str(args.seconds),'--batch-ms',str(args.batch_ms),'--gc',args.gc,'--scratch',str(scratch)]
+    if args.integer_policy_source: argv += ['--integer-policy-source',str(args.integer_policy_source.resolve())]
     if args.profile: argv += ['--profile',args.profile]
     if args.counts_only: argv += ['--counts-only']
     if args.trace: argv += ['--trace']
@@ -100,8 +102,9 @@ def main():
     def source_digest():
         digest = hashlib.sha256()
         paths = [*ROOT.glob('rust/**/*.rs'), *ROOT.glob('rust/**/*.c'), *ROOT.glob('rust/**/Cargo.toml'), *ROOT.glob('modules/**/*.birnam'), ROOT/'Cargo.lock', ROOT/'Cargo.toml']
-        for path in sorted(paths):
-            digest.update(str(path.relative_to(ROOT)).encode()); digest.update(bytes.fromhex(sha(path)))
+        if args.integer_policy_source: paths.append(args.integer_policy_source.resolve())
+        for path in sorted(set(paths)):
+            digest.update(str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path).encode()); digest.update(bytes.fromhex(sha(path)))
         return digest.hexdigest()
     source_hash = source_digest()
     libraries = {path.name: sha(path) for path in sorted((prefix/'lib').glob('*.dylib'))}
@@ -146,6 +149,7 @@ def main():
     if changed:
         for summary in summaries: summary['verdict'] = 'inconclusive'; summary['reason'] = 'sources or libraries changed during run' 
     evidence = {'schema':1,'source_revision':revision,'dirty_status':status,'source_sha256':source_hash,
+                'integer_policy_source': str(args.integer_policy_source.resolve()) if args.integer_policy_source else 'modules/integer.birnam',
                 'prefix':str(prefix),'library_sha256':libraries,'runner_sha256':sha(binary),
                 'build_seconds':build_seconds,'process_seconds':time.monotonic()-started,'ready':ready,
                 'settings':{'seconds':args.seconds,'batch_ms':args.batch_ms,'gc':args.gc,'case':args.case,'profile':args.profile,'counts_only':args.counts_only,'trace':args.trace,'nice':5},

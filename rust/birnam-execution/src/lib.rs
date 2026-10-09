@@ -52,6 +52,7 @@ struct Callable {
 struct Execution {
     namespace: Oop,
     native_return_bytes: RefCell<Vec<u8>>,
+    native_capture_bytes: RefCell<Vec<u8>>,
     machines: RefCell<machine::State>,
     binding_proof_services: [Option<NativeEntry>; 5],
     numeric: RefCell<numeric::Registry>,
@@ -897,6 +898,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         let s = Box::into_raw(Box::new(Execution {
             namespace,
             native_return_bytes: RefCell::new(Vec::new()),
+            native_capture_bytes: RefCell::new(Vec::new()),
             machines: RefCell::new(machine::State::new()),
             binding_proof_services: (*binding_proof::SERVICES).map(|name| {
                 let entry = id.send_named(id.receiver, b"bind:to:", &[

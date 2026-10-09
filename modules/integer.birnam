@@ -106,25 +106,33 @@ let intRemainderResult := [:factory :a :b :leftSign :rightSign |
   [[[b = intZero] selectIfTrue: intZeroDivide ifFalse: intRemainderResult otherwise: intNil5]
     value: self value: a value: b value: leftSign value: rightSign]
 ]];
-// Reuse these closures; selecting an operation does not create branch Blocks.
-let intOperations := {
-  #add -> [:a :b | [intFactory integerAddBits: a with: b]],
-  #subtract -> [:a :b | [intFactory integerSubtractBits: a with: b]],
-  #multiply -> [:a :b | [intFactory integerMultiplyBits: a with: b]],
-  #divide -> [:a :b | [intFactory integerDivideBits: a with: b]],
-  #remainder -> [:a :b | [intFactory integerRemainderBits: a with: b]]
-};
-let intFloatingOperations := {
-  #add -> [:a :b | [a + b]], #subtract -> [:a :b | [a - b]],
-  #multiply -> [:a :b | [a * b]], #divide -> [:a :b | [a / b]]
-};
+// Each shared operation owns its two live dispatch paths; no per-call table lookup.
+let intAddOperation := [Object clone];
+[Reflect defineMethod: #arithmeticKind on: intAddOperation as: [:self | #add]];
+[Reflect defineMethod: #applyInteger:with: on: intAddOperation as: [:self :a :b | [intFactory integerAddBits: a with: b]]];
+[Reflect defineMethod: #applyFloat:with: on: intAddOperation as: [:self :a :b | [a + b]]];
+let intSubtractOperation := [Object clone];
+[Reflect defineMethod: #arithmeticKind on: intSubtractOperation as: [:self | #subtract]];
+[Reflect defineMethod: #applyInteger:with: on: intSubtractOperation as: [:self :a :b | [intFactory integerSubtractBits: a with: b]]];
+[Reflect defineMethod: #applyFloat:with: on: intSubtractOperation as: [:self :a :b | [a - b]]];
+let intMultiplyOperation := [Object clone];
+[Reflect defineMethod: #arithmeticKind on: intMultiplyOperation as: [:self | #multiply]];
+[Reflect defineMethod: #applyInteger:with: on: intMultiplyOperation as: [:self :a :b | [intFactory integerMultiplyBits: a with: b]]];
+[Reflect defineMethod: #applyFloat:with: on: intMultiplyOperation as: [:self :a :b | [a * b]]];
+let intDivideOperation := [Object clone];
+[Reflect defineMethod: #arithmeticKind on: intDivideOperation as: [:self | #divide]];
+[Reflect defineMethod: #applyInteger:with: on: intDivideOperation as: [:self :a :b | [intFactory integerDivideBits: a with: b]]];
+[Reflect defineMethod: #applyFloat:with: on: intDivideOperation as: [:self :a :b | [a / b]]];
+let intRemainderOperation := [Object clone];
+[Reflect defineMethod: #arithmeticKind on: intRemainderOperation as: [:self | #remainder]];
+[Reflect defineMethod: #applyInteger:with: on: intRemainderOperation as: [:self :a :b | [intFactory integerRemainderBits: a with: b]]];
 let intReturnOther := [:receiver :other :operation :left :right | other];
 let intApplyInteger := [:receiver :other :operation :left :right |
-  [[intOperations at: operation] value: left value: right]
+  [operation applyInteger: left with: right]
 ];
 let intApplyFloat := [:receiver :other :operation :left :right |
   let value := [receiver asFloat];
-  [[intFloatingOperations at: operation] value: value value: other]
+  [operation applyFloat: value with: other]
 ];
 let intRemainderFailure := [:receiver :other :operation :left :right |
   [intFactory integerFailure: #typeMismatch message: "mod: needs an Integer"]
@@ -136,12 +144,12 @@ let intUnknownMessageFailure := [:receiver :other :operation :left :right |
   [intFactory integerFailure: #typeMismatch message: nil]
 ];
 let intTypeFailure := [:receiver :other :operation :left :right |
-  [[[operation == #remainder] selectIfTrue: intRemainderFailure ifFalse: intNumberFailure otherwise: intUnknownMessageFailure]
+  [[[[operation arithmeticKind] == #remainder] selectIfTrue: intRemainderFailure ifFalse: intNumberFailure otherwise: intUnknownMessageFailure]
     value: receiver value: other value: operation value: left value: right]
 ];
 let intTryFloat := [:receiver :other :operation :left :right |
   let floating := [intExecution optionalWordResultOf: intFloat selector: #bitsOf: argument: other resultFactory: intWord];
-  [[[[floating notNil] & [[operation == #remainder] not]] selectIfTrue: intApplyFloat ifFalse: intTypeFailure otherwise: intNil5]
+  [[[[floating notNil] & [[[operation arithmeticKind] == #remainder] not]] selectIfTrue: intApplyFloat ifFalse: intTypeFailure otherwise: intNil5]
     value: receiver value: other value: operation value: left value: right]
 ];
 let intTryInteger := [:receiver :other :operation :left :ignored |
@@ -159,18 +167,18 @@ let intValidateOther := [:receiver :other :operation :left :ignored |
     value: self value: other value: operation value: left value: left]
 ]];
 [[intFactory hasBootstrapArithmetic: #+] ifTrue: [|
-  [Reflect defineMethod: #+ on: Integer as: [:self :other | [self integerBinary: other operation: #add]]]
+  [Reflect defineMethod: #+ on: Integer as: [:self :other | [self integerBinary: other operation: intAddOperation]]]
 ]];
 [[intFactory hasBootstrapArithmetic: #-] ifTrue: [|
-  [Reflect defineMethod: #- on: Integer as: [:self :other | [self integerBinary: other operation: #subtract]]]
+  [Reflect defineMethod: #- on: Integer as: [:self :other | [self integerBinary: other operation: intSubtractOperation]]]
 ]];
 [[intFactory hasBootstrapArithmetic: #*] ifTrue: [|
-  [Reflect defineMethod: #* on: Integer as: [:self :other | [self integerBinary: other operation: #multiply]]]
+  [Reflect defineMethod: #* on: Integer as: [:self :other | [self integerBinary: other operation: intMultiplyOperation]]]
 ]];
 [[intFactory hasBootstrapArithmetic: #/] ifTrue: [|
-  [Reflect defineMethod: #/ on: Integer as: [:self :other | [self integerBinary: other operation: #divide]]]
+  [Reflect defineMethod: #/ on: Integer as: [:self :other | [self integerBinary: other operation: intDivideOperation]]]
 ]];
 [[intFactory hasBootstrapArithmetic: #mod:] ifTrue: [|
-  [Reflect defineMethod: #mod: on: Integer as: [:self :other | [self integerBinary: other operation: #remainder]]]
+  [Reflect defineMethod: #mod: on: Integer as: [:self :other | [self integerBinary: other operation: intRemainderOperation]]]
 ]];
 [Module markLoaded: #integerValues];

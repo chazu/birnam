@@ -75,4 +75,78 @@ theorem admitted_guard_refines :
   exact ⟨⟨rfl, allowed⟩, (guard_behavior_equivalent a).2,
     by simp [ordinaryGuard, optimizedGuard, allowed]⟩
 
+/-- The native query certifies exact shape with a nonzero identity; zero denotes
+    mismatch, and unknown identity or noncanonical services decline. -/
+def metadataResult (current shapeMatches : Bool) (identity : Nat) : Option Nat :=
+  if current then
+    if shapeMatches then if identity = 0 then none else some identity else some 0
+  else none
+
+def selectedShape (current shapeMatches : Bool) (identity : Nat) (legacy : Bool) : Bool :=
+  match metadataResult current shapeMatches identity with
+  | some result => result != 0
+  | none => legacy
+
+theorem metadata_query_requires_current (current shapeMatches : Bool) (identity result : Nat)
+    (success : metadataResult current shapeMatches identity = some result) : current = true := by
+  cases current <;> simp_all [metadataResult]
+
+theorem nonzero_metadata_identity_requires_shape (current shapeMatches : Bool) (identity result : Nat)
+    (success : metadataResult current shapeMatches identity = some result) (nonzero : result ≠ 0) :
+    shapeMatches = true := by
+  cases current <;> cases shapeMatches <;> simp_all [metadataResult]
+
+theorem unknown_metadata_identity_declines : metadataResult true true 0 = none := by rfl
+
+theorem changed_metadata_preserves_legacy (shapeMatches : Bool) (identity : Nat) (legacy : Bool) :
+    selectedShape false shapeMatches identity legacy = legacy := by rfl
+
+theorem selected_shape_preserves_result (current shapeMatches : Bool) (identity : Nat) (legacy : Bool)
+    (canonical : current = true → legacy = shapeMatches) :
+    selectedShape current shapeMatches identity legacy = legacy := by
+  cases current with
+  | false => rfl
+  | true =>
+    have h := canonical rfl
+    subst legacy
+    cases shapeMatches <;> by_cases zero : identity = 0 <;>
+      simp [selectedShape, metadataResult, zero]
+
+/-- GC batches two independent entries. A positive answer requires both;
+    a decline retains the whole original short-circuit path. -/
+def packedPair (a b : Facts) : Bool := packed a && packed b
+
+def selectedPair (a b : Facts) : Bool :=
+  if packedPair a b then true else separate a && separate b
+
+theorem packed_pair_sound (a b : Facts) (h : packedPair a b = true) :
+    separate a = true ∧ separate b = true := by
+  have both : packed a = true ∧ packed b = true := by
+    simpa [packedPair, Bool.and_eq_true] using h
+  exact ⟨packed_sound a both.1, packed_sound b both.2⟩
+
+theorem selected_pair_equivalent (a b : Facts) :
+    selectedPair a b = (separate a && separate b) := by
+  unfold selectedPair
+  split
+  · rename_i h
+    rcases packed_pair_sound a b h with ⟨ha, hb⟩
+    simp [ha, hb]
+  · rfl
+
+/-- Stable binding admission never substitutes for current policy or the
+    final fence after dependency callbacks. -/
+def commitGuard (bindings permission : Bool) (captured current : Nat) : Bool :=
+  bindings && permission && (captured == current)
+
+theorem revoked_permission_blocks_commit (bindings : Bool) (captured current : Nat) :
+    commitGuard bindings false captured current = false := by simp [commitGuard]
+
+theorem changed_epoch_blocks_commit (bindings permission : Bool) (captured current : Nat)
+    (changed : captured ≠ current) : commitGuard bindings permission captured current = false := by
+  simp [commitGuard, changed]
+
+theorem pair_admission_saves_three (a b : Facts) (h : packedPair a b = true) :
+    (if packedPair a b then 1 else 5) + 3 = (4 : Nat) := by simp [h]
+
 end Birnam.Admission

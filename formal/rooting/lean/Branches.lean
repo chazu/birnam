@@ -85,4 +85,46 @@ theorem native_numeric_inputs_need_no_duplicate_roots
     ∀ o, needed o → collect heap (Birnam.Invocation.borrowed caller locals) edges o :=
   Birnam.Invocation.needed_survives caller inputs locals heap needed covered edges alive live
 
+inductive Operation where | add | subtract | multiply | divide | remainder deriving DecidableEq
+
+def integerTable : List Operation := [.add, .subtract, .multiply, .divide, .remainder]
+def floatTable : List Operation := [.add, .subtract, .multiply, .divide]
+
+def oldIntegerSelection (op : Operation) : Option Operation := integerTable.find? (· == op)
+def directIntegerSelection (op : Operation) : Option Operation := some op
+def oldFloatSelection (op : Operation) : Option Operation := floatTable.find? (· == op)
+def directFloatSelection (op : Operation) : Option Operation :=
+  match op with | .remainder => none | other => some other
+
+theorem operation_objects_preserve_integer_selection (op : Operation) :
+    directIntegerSelection op = oldIntegerSelection op := by
+  cases op <;> decide
+
+theorem operation_objects_preserve_float_selection (op : Operation) :
+    directFloatSelection op = oldFloatSelection op := by
+  cases op <;> decide
+
+theorem remainder_has_no_float_handler : directFloatSelection .remainder = none := by rfl
+
+inductive LookupEvent where | nil | globals | value | export deriving DecidableEq
+structure LookupInputs where
+  nilValue : Nat
+  globalValue : Nat
+  exportedValue : Option Nat
+
+def oldGlobalResolution (c : LookupInputs) : List LookupEvent × Nat :=
+  if c.globalValue = c.nilValue then
+    ([.nil, .globals, .value, .export], c.exportedValue.getD c.nilValue)
+  else ([.nil, .globals, .value], c.globalValue)
+def scopedGlobalResolution (c : LookupInputs) : List LookupEvent × Nat :=
+  let nil := c.nilValue
+  let found := c.globalValue
+  if found ≠ nil then ([.nil, .globals, .value], found)
+  else ([.nil, .globals, .value, .export], c.exportedValue.getD nil)
+
+theorem scoped_global_resolution_preserves_order_and_value (c : LookupInputs) :
+    scopedGlobalResolution c = oldGlobalResolution c := by
+  by_cases same : c.globalValue = c.nilValue <;>
+    simp [scopedGlobalResolution, oldGlobalResolution, same]
+
 end Birnam.Branches

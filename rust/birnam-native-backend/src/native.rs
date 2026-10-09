@@ -585,7 +585,7 @@ pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
     }
     write!(
         body,
-        "O result=call(&c,implementation_0,{},a,{});return finish(&c,obj(result));}}",
+        "return return_call(&c,implementation_0,{},a,{});}}",
         quoted(&b"value:".repeat(arity as usize + 1)),
         arity + 1
     )

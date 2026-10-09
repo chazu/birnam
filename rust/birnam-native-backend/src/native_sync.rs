@@ -65,7 +65,7 @@ pub(super) fn function(
                 NodeKind::Integer => format!("integer(&c,0x{:016x}ULL)", node.payload),
                 NodeKind::FloatBits => format!("float_bits(&c,0x{:016x}ULL)", node.payload),
                 NodeKind::String => format!("string(&c,{},{})", quoted(node.data), node.data.len()),
-                NodeKind::Symbol => format!("keep(&c,intern(&c,{}))", quoted(node.data)),
+                NodeKind::Symbol => format!("literal_symbol(&c,{})", quoted(node.data)),
                 NodeKind::Nil => "named(&c,\"nil\")".into(),
                 NodeKind::True => "named(&c,\"true\")".into(),
                 NodeKind::False => "named(&c,\"false\")".into(),
@@ -89,6 +89,11 @@ pub(super) fn function(
                         writeln!(out, "A a{next}[]={{{}}};", args.join(",")).unwrap();
                         format!("a{next}")
                     };
+                    if i + 1 == program.statement_count as usize && next == statement.root_node {
+                        writeln!(out, "return return_call(&c,v{receiver},{},{arg},{});}}", quoted(node.data), args.len()).unwrap();
+                        functions[index].body = out;
+                        return Ok(index);
+                    }
                     format!(
                         "call(&c,v{receiver},{},{arg},{})",
                         quoted(node.data),

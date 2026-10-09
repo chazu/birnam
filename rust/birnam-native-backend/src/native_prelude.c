@@ -51,34 +51,52 @@ static void keep_entry(Call*c,O self,const A*args,size_t n){
 static A send(Call*c,O receiver,const char*n,const A*a,size_t count){if(c->failure.status)return (A){0};R r=raw(c,receiver,n,a,count);if(!r.status&&r.value.kind==1)keep(c,r.value.data.object);return r.value;}
 static O object(Call*c,A a){if(a.kind!=1||!a.data.object){if(!c->failure.status)c->failure=bad();return 0;}return a.data.object;}
 static O call(Call*c,O receiver,const char*n,const A*a,size_t count){return object(c,send(c,receiver,n,a,count));}
-static O selector(Call*c,const char*n){
+static O cached_name(Call*c,const char*n,int*owned){
+ if(owned)*owned=0;
  if(!cache_selectors||c->failure.status)return intern(c,n);
  uint32_t hash=UINT32_C(2166136261);
  for(const unsigned char*p=(const unsigned char*)n;*p;p++){hash^=*p;hash*=UINT32_C(16777619);}
  size_t slot=hash&511;
  for(size_t probe=0;probe<512;probe++,slot=(slot+1)&511){
-  if(selectors[slot].name&&(selectors[slot].name==n||!strcmp(selectors[slot].name,n)))return selectors[slot].symbol;
+  if(selectors[slot].name&&(selectors[slot].name==n||!strcmp(selectors[slot].name,n))){if(owned)*owned=1;return selectors[slot].symbol;}
   if(!selectors[slot].name){
    O symbol=intern(c,n);if(c->failure.status)return 0;
    selectors[slot]=(Selector){n,symbol};
    keep(c,symbol);
    A a=obj(symbol);call(c,owner,"retain:",&a,1);
    if(c->failure.status){selectors[slot]=(Selector){0};return 0;}
+   if(owned)*owned=1;
    return symbol;
   }
  }
  return intern(c,n);
 }
+static O selector(Call*c,const char*n){return cached_name(c,n,0);}
+/* Literal Symbols share the Unit's already traced name inventory. Cache misses
+   and full-cache fallback still acquire protection before any later callback. */
+static O literal_symbol(Call*c,const char*n){int owned=0;O value=cached_name(c,n,&owned);if(owned)cover(c,value);return keep(c,value);}
 static O named(Call*c,const char*n){A a=obj(selector(c,n));return call(c,ns,"at:",&a,1);}
-/* Ask the actual Block, then dispatch capture reads on that same receiver.
+/* Ask the actual Block for an ordered borrow, otherwise dispatch its readers.
    All selector identities are resolved BEFORE checking the borrowing mode.
    1 = canonical callback-free reads covered by this live Block; 0 = retain
    replaced/custom results; 2 = nonportable receiver, use owner inspection to
    preserve Method invokeOn: behavior for receivers that have no Block messages.
-   Every read is an Id message, never a call to a remembered executable. */
+   Owner queries and fallback reads use Id, never a remembered executable. */
 static void load_captures(Call*c,O self,O*out,size_t count){
- O read=selector(c,"captureWordAt:"),permit=selector(c,"captureReadMode"),fallback=selector(c,"captureReadModeOf:"),inspect=selector(c,"captureWord:of:");
+ O bulk=selector(c,"tryBorrowCaptureOperands:"),read=selector(c,"captureWordAt:"),permit=selector(c,"captureReadMode"),fallback=selector(c,"captureReadModeOf:"),inspect=selector(c,"captureWord:of:");
  if(c->failure.status)return;
+ A length=word(count);R snapshot=id.message(id.context,self,bulk,&length,1);
+ if(snapshot.status&&snapshot.status!=6){c->failure=snapshot;return;}
+ if(!snapshot.status&&snapshot.value.kind==3){
+  /* Copy the returned ABI borrow before any callback. The try-borrow contract
+     covers every returned Object by this live receiver's immutable edges. */
+  if(count>SIZE_MAX/sizeof(O)||snapshot.value.data.bytes.length!=count*sizeof(O)||(count&&!snapshot.value.data.bytes.pointer)){c->failure=bad();return;}
+  if(count)memcpy(out,snapshot.value.data.bytes.pointer,count*sizeof(O));
+  for(size_t i=0;i<count;i++)if(!object(c,obj(out[i])))return;
+  for(size_t i=0;i<count;i++)cover(c,out[i]);
+  return;
+ }
+ if(!snapshot.status&&snapshot.value.kind!=0){c->failure=bad();return;}
  R grant=id.message(id.context,self,permit,0,0);
  O factory=0;
  /* Non-Block Method receivers need owner inspection. If a Block's direct
@@ -104,7 +122,7 @@ static void load_captures(Call*c,O self,O*out,size_t count){
    Before that, native failures propagate and no Error family is available. */
 static int is_error(Call*c,O value){A key=obj(selector(c,"Error"));A factory=send(c,ns,"at:",&key,1);if(!c->failure.status&&factory.kind==0)return 0;object(c,factory);return call(c,value,"isError",0,0)==named(c,"true");}
 /* Preserve source lookup: Globals first, then bootstrap exports on nil. */
-static O global(Call*c,const char*n){A key=obj(keep(c,selector(c,n)));O nil=named(c,"nil");O value=call(c,named(c,"Globals"),"at:",&key,1);if(c->failure.status||value!=nil)return value;A fallback=send(c,ns,"at:",&key,1);return fallback.kind==0?nil:object(c,fallback);}
+static O global(Call*c,const char*n){A key=obj(literal_symbol(c,n));return call(c,ns,"resolveGlobal:",&key,1);}
 static O global_put(Call*c,const char*n,O value){A a[2]={obj(keep(c,selector(c,n))),obj(value)};return call(c,named(c,"Globals"),"at:put:",a,2);}
 static O integer(Call*c,size_t w){A a=word(w);return call(c,named(c,"Integer"),"fromWord:",&a,1);}
 static O string(Call*c,const void*p,size_t n){A a=bytes(p,n);return call(c,named(c,"String"),"fromBytes:",&a,1);}
@@ -134,4 +152,14 @@ static R finish(Call*c,A result){
  }
  if(!handled)for(size_t i=c->count;i>0;i--){A a=word(c->tokens[i-1]);raw(c,roots,"release:",&a,1);}
  free(c->tokens);return failure.status?failure:c->failure.status?c->failure:ok(result);
+}
+
+/* A final send in an otherwise root-free call needs no temporary result token:
+   there is no callback between its result and the receiving caller. Resolve
+   its selector first; a cold cache miss may create roots and require fallback.
+   This is ordinary Id dispatch, not tail-frame elimination or a cached entry. */
+static R return_call(Call*c,O receiver,const char*n,const A*a,size_t count){
+ O sel=selector(c,n);if(c->failure.status)return finish(c,(A){0});
+ if(!c->count){R r=id.message(id.context,receiver,sel,a,count);free(c->tokens);if(r.status)return r;if(r.value.kind!=1||!r.value.data.object)return bad();return r;}
+ return finish(c,obj(call(c,receiver,n,a,count)));
 }

@@ -275,6 +275,19 @@ The runtime correspondence and limits are recorded in
 [the receiver-query slice](../../docs/design/capture-receiver-query.md).
 These are abstract models, not a proof of native providers or the emitted ABI.
 
+## Bulk capture handoff
+
+`Capture.lean` adds list identity-copy/order/alias preservation, receiver-covered
+batch survival and an admission lemma requiring the current bulk provider itself.
+`BulkCaptures.tla` checks collection, duplicate slots and overwriting the owner
+buffer after copying. `BulkAdmission`, `BulkCopy`, `BulkOrder` and `BulkScope`
+require counterexamples for stale admission, delayed copying, reordered slots and
+premature owner release. The Lean mutation dropping the bulk-provider check must
+fail kernel checking. This models a serialized borrowing contract; it does not
+verify native byte encoding, C `memcpy`, arbitrary provider promises or concurrent
+mutation. Actual encoding, immediate copying and fallback failures are checked by
+native integration tests. See [the contract](../../docs/design/bulk-capture-handoff.md).
+
 ## Fixed names and protection within a call
 
 `SymbolNames.lean` proves that retaining the correct Symbol identity permits
@@ -318,3 +331,54 @@ negative cases reject missing input coverage, early scope exit, unprotected fres
 results and lost entered-code lifetime. Native tests collect inside numeric
 validation: receiver/arguments stay alive without extra numeric tokens, while
 freshly allocated outputs need their first root before that callback.
+
+## Owner scopes and root-free final-result handoff
+
+`Invocation.lean` now compares an exact owner-reported temporary inventory with
+registry protection, proves collection coverage and nested suffix cleanup, and
+requires zero pending tokens for a direct final-result return. The compiler
+resolves the target selector before checking that condition. With no local
+cleanup, no further callback can intervene between the final Id result and its
+caller. Calls with local roots, cold-cache registrations or failures keep the
+existing path. `SymbolNames.lean` supplies the existing Unit-edge coverage rule
+for reusing retained literal Symbols, without retaining executable bindings.
+
+`NativeOwnerScopes.tla` checks precise collection across nested owner scopes,
+child and parent exit, and immediate result handoff. Required broken models omit
+reported locals, pop a parent too early, drop parent protection with a child,
+leak scopes or introduce a collecting handoff gap. Root-provider reporting and
+serialized calls remain implementation premises, not proofs of arbitrary native
+providers or concurrency. Owner/registry callback histories and multiplicity are
+outside this private-lifetime equivalence; authored Root operations are unchanged.
+The direct-return model does not verify the unchanged nonempty cleanup fallback.
+See [the implementation](../../docs/design/helper-lifetime-and-boxing.md).
+
+## Atomic representation checks and borrowed native inputs
+
+`Admission.lean` adds metadata-query admission, positive identity/shape soundness,
+unknown-identity refusal and unchanged legacy-result selection on fallback.
+`RepresentationChecks.tla` checks current getter/query meanings, immediate raw
+reads, fresh admission after mutation and legacy getter order. Required failures
+ignore getters, ignore the query's own binding, reuse a verdict, insert a callback
+between certification and reading, or reorder fallback getters.
+
+`BorrowedSnapshots.tla` distinguishes caller-covered Map/key inputs from a local
+node snapshot. Rehash replaces the parent edge, so retaining the Map alone cannot
+protect the old node. Missing caller roots, missing snapshot protection and early
+snapshot release must fail. Native tests collect during rehash and verify the
+old node survives the lookup and becomes collectible afterward. Existing
+invocation/input and root-free handoff lemmas apply to Map inputs, Symbol hashing,
+fixed reflection/permission queries and generated named-method adapters.
+These are conditional abstract rules; native provider promises, byte reads and
+runtime correspondence are implementation obligations. See
+[the implementation](../../docs/design/representation-validation-and-lifetime.md).
+
+## Operation selection and global resolution
+
+`Branches.lean` checks direct operation receivers against the former five-Integer/
+four-Float handler tables, and verifies the same default source-resolution result
+and getter order. `GlobalResolution.tla` checks saved nil/Globals references while
+callbacks rebind both exports. Required failures omit either root, compare against
+a newly rebound nil, end protection early or reorder getters. Existing invocation
+and branch proofs remain in use; public retained calls still dispatch through Id.
+See [the slice and remaining candidates](../../docs/design/operation-dispatch-and-global-resolution.md).

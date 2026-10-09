@@ -1,0 +1,499 @@
+{
+  "schema": 1,
+  "date": "2026-10-09",
+  "scope": "Atomic Id-owned representation facts; borrowing native inputs and direct named-adapter result handoff. Positive warmed Integer addition; cold bootstrap retained; no user installation changed.",
+  "temporary_prefix": "/tmp/birnam-representation-lifetime-final-20261009/prefix",
+  "baseline_revision": "22b91554545e668bcd48974192dc188f0765426d plus prior uncommitted capture/helper/boxing slices",
+  "before": {
+    "actual_addition_sends": 242,
+    "actual_addition_selector_counts": {
+      "+": 1,
+      "value:value:": 8,
+      "integerBinary:operation:": 1,
+      "value:value:value:": 2,
+      "tryBorrowCaptureOperands:": 15,
+      "nativeBindingsMatch:": 17,
+      "integerBitsOf:": 2,
+      "optionalWordResultOf:selector:argument:resultFactory:": 2,
+      "wordOf:": 2,
+      "behaviorOf:": 18,
+      "allocationSizeOf:": 23,
+      "fromBits:": 2,
+      "allocate:bytes:": 8,
+      "allocate": 4,
+      "allocationChargeFor:": 4,
+      "identityOf:": 4,
+      "retain:": 36,
+      "release:": 24,
+      "isNil": 1,
+      "selectIfTrue:ifFalse:otherwise:": 4,
+      "value:value:value:value:": 4,
+      "selectIfSameObject:with:ifEqual:ifDifferent:": 10,
+      "value:value:value:value:value:": 3,
+      "integerExactError:": 1,
+      "valueAt:": 1,
+      "at:": 8,
+      "symbolBytesOf:": 7,
+      "notNil": 2,
+      "currentValue:attr:": 1,
+      "vtableOf:": 1,
+      "==": 1,
+      "&": 1,
+      "tryReleaseMany:": 2,
+      "collectionHash": 1,
+      "integerAddBits:with:": 1,
+      "wrappingAdd:": 1,
+      "tryPrimitiveExpression:": 1,
+      "behaviorEpoch": 4,
+      "usesDefaultAllocation": 2,
+      "canOmitAllocationFor:": 2,
+      "usesDefaultLookup:": 3,
+      "bind:to:": 3,
+      "integerFromBits:": 1,
+      "objectResultOf:selector:wordArgument:": 1,
+      "bits": 1,
+      "fromWord:": 1
+    },
+    "fixture_inclusive_sends_per_addition": 243.375,
+    "allocation_objects_per_addition": {
+      "block": 0.0,
+      "integer": 1.0,
+      "other": 0.0,
+      "vector": 0.0,
+      "word": 3.0
+    },
+    "fixture_inclusive_causal_partition": [
+      {
+        "category": "other lifetime/cleanup",
+        "count": 980,
+        "per_addition": 61.25,
+        "percent": 25.166923472008218
+      },
+      {
+        "category": "ABI bridges",
+        "count": 720,
+        "per_addition": 45.0,
+        "percent": 18.48998459167951
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "count": 672,
+        "per_addition": 42.0,
+        "percent": 17.257318952234208
+      },
+      {
+        "category": "capture access",
+        "count": 480,
+        "per_addition": 30.0,
+        "percent": 12.326656394453005
+      },
+      {
+        "category": "validation/other binding lookup",
+        "count": 480,
+        "per_addition": 30.0,
+        "percent": 12.326656394453005
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "count": 402,
+        "per_addition": 25.125,
+        "percent": 10.323574730354391
+      },
+      {
+        "category": "Boolean selection primitives",
+        "count": 160,
+        "per_addition": 10.0,
+        "percent": 4.108885464817668
+      }
+    ],
+    "source_sha256": "3131391d32f575c633ef9811d7be3a452eadfa15948508d002497c6f3ee3cfe9",
+    "library_sha256": {
+      "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+      "libbirnam_alienCompiler.dylib": "f092f4e15e005131d3602bbcf7ed0ced8c64ea73838662fdc59246a1fbef76bc",
+      "libbirnam_artifact.dylib": "4122b36f5f4db1adba27fd15e70bd730182a6a854281cc231dd1beb5659d66c8",
+      "libbirnam_blockLoop.dylib": "e022bbb01c0b4901b3e34f0c129b42f02d8f538ca4457f93b4cd95ff16eccf37",
+      "libbirnam_blockLoopControl.dylib": "acb57d01da0cbdd92c6704caa7ec017bd18406b48112da0f7a5d00f0d2b4d770",
+      "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+      "libbirnam_booleanValues.dylib": "5316a387487a130eb4b5980b7211510ca03877fac23837e83f47e9daa15aabcb",
+      "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+      "libbirnam_bytes.dylib": "cebacc8b6ffe39bafb00884c7307297d03fc95af299d39f77cf4aba79f9ccc60",
+      "libbirnam_cli.dylib": "415f1131b179e873ecf3fabd1f32eac25db0199e8e109954b7c556a2c5906515",
+      "libbirnam_codegen_runtime.dylib": "0c8f44dce3d9d3bd79abf7fd3f2d8b97c51ff1e8e0e320c0891d80063d10f7d5",
+      "libbirnam_collect.dylib": "61b5dc82965ac45bbb338a27c6d2408b51ebc58e129ecde2197f88bb19bbad5b",
+      "libbirnam_compiledUnit.dylib": "5b1877c8c82ed21ad130601ec76fdc8705d62f7f9082be885bee67f10cbb838b",
+      "libbirnam_compiledUnitDocs.dylib": "9e6610b9770391830f00eff7c571c40b5e12575b872d584d88e5fc5111473dc9",
+      "libbirnam_concurrencyDocs.dylib": "30b231939e68f4a6eb948a996cfa1d6be49dbdf44d1b221ad0d08921bbff6022",
+      "libbirnam_config.dylib": "8ed74ebbd0d4751bcfcad054b524963e8bc948eaae2364db3d0a395b319e4952",
+      "libbirnam_doc.dylib": "b750a89eae05f3886df613df9416378ce6712cb4a360457590b454dab3b727f2",
+      "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+      "libbirnam_error.dylib": "4f3339180cbc54467131d57726006947edc29cb52411b29b5e23367ff1f4f03f",
+      "libbirnam_execution.dylib": "d723439dd20a4e9e34fa17bbf1cc0f9cea00b80725cffec417ff65db56ab429a",
+      "libbirnam_file.dylib": "0def564349c7139fde614b3ed8787db0a5100c4bc5a9a37c962d8b6fbb716175",
+      "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+      "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+      "libbirnam_generation.dylib": "00e11537d423ac29609addaf97a7569b77e3760a0f71c6b69c3da4cec6699eb0",
+      "libbirnam_host_entry.dylib": "d429a0c0c12f9bd554854b44f783058cd73324d2949630bf01bcc343e5bd89c2",
+      "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+      "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+      "libbirnam_html.dylib": "28b02716ecb583c85530616feae42d28d459f1a114a3ff488c0d540cac78e5e4",
+      "libbirnam_http.dylib": "a1e886b60c1f95eeba2001dc643b21d0d3b5854a799957d0f639e27906fd50d8",
+      "libbirnam_id.dylib": "568a8105862e67051d4503b93e5dd1b9effbb0bbc7e4aa80b8a4ad13a1a1af92",
+      "libbirnam_image.dylib": "43f3196a85ef1e767cc7c1408e566fcb32cc0ccaef9cbb0e8997f6b7d0667500",
+      "libbirnam_imageFormat.dylib": "db2ad3afa6d45ec50d8fd6d13382bebf11bc2dbf4a047d76acdbb7cdd0908bb3",
+      "libbirnam_integer.dylib": "bb16290c349405826bb9827244301c89d276f4f2170c04b6c76c8055acc9f46a",
+      "libbirnam_integerValues.dylib": "226d481c66f7840245c1dc4efa92e6a142ab3c2ebbd71467da213c350bbc8c8e",
+      "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+      "libbirnam_json.dylib": "898187e68af6d6e07b42bedd394e255dab43794b9f19ddf6546a560d0b46e474",
+      "libbirnam_lang.dylib": "31dba7c7cd5dae94c39db5b9e3994a1ca49491cac78f55c7b8f0654865a5db88",
+      "libbirnam_log.dylib": "6bcbadeb0362737b887e7ee35399156e70e960bbb6c5592fd0d9681b07ade6c5",
+      "libbirnam_lsp.dylib": "d65e54e1558fdb9577e3f822d249e5ac974801c069c73f973fb853465f2465af",
+      "libbirnam_map.dylib": "6ab97ca0ce3a21e5aad911c911d23696bd0849b479a9bdca335b0452b68acfa3",
+      "libbirnam_markdown.dylib": "1afce83ac4bb16a450272459eef12a8cd2d62471e119228b28f914b7726c79de",
+      "libbirnam_modules.dylib": "23a5e7ba0e04b1150ca93582f105579eabf69e051d8a210a92cfaba107b0f14b",
+      "libbirnam_namespace.dylib": "10b6a2e1876db4bdaeef6736086ef73be7aa61456ddb67d7c003cfdd35be4945",
+      "libbirnam_nativeLoader.dylib": "c12111adb98a9bdbd5e27c228e55ea9ecda7888b43e64f2df6c70e538b2ffd31",
+      "libbirnam_nativeValues.dylib": "4ccd44c69d6be94c7804da83aea5dbcf26a8dd73141b6c300d3ae09b8076b7a1",
+      "libbirnam_native_backend.dylib": "b7f74c81226e22c4c1bafa58c8d5d9b041480206dc5600c4a75b0b667914a380",
+      "libbirnam_nativedoc.dylib": "fe09f5cfd763273909d0ab3945eba2ee2f6cdeaa79e90281cad3c51ec45d2b55",
+      "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+      "libbirnam_object_model.dylib": "8aa1b756986304db2ef590c5ff4c68fabc6c9b95cb1a1cc201784ade77340f9f",
+      "libbirnam_os.dylib": "afff99272fec11d53da7a29d3db416fb781c0d13a4ec51f8ad96739e3dee0360",
+      "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+      "libbirnam_portable_code.dylib": "6643fb821d56b2f89062f4fdd56ed1598ad66544c7881db02f17d6a979009707",
+      "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+      "libbirnam_printing.dylib": "987006f604721aaf4f16389e0dec61b77de2d0df86cc1933693d28fd63cdeb4c",
+      "libbirnam_process.dylib": "dad2d04fef6c8a35e595ab1924d583d838b1c67eb71992cc79a1773d37ac33bd",
+      "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+      "libbirnam_random.dylib": "a1bde9114cd1a8deb44f1586c5a186fd063be6a359d3699c1fa7e824be902a72",
+      "libbirnam_range.dylib": "dc835f686a11ce30a2e12157a53ba890fa4be52134a8c2996f1c2487ed66eed3",
+      "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+      "libbirnam_repl.dylib": "38f8320eda45701566f33941809b9bf9468d13e1d3c508d61b7c07862d8a5d6b",
+      "libbirnam_root_registry.dylib": "77eab7375ca6567b867b3e738b05c8a62c009c2ca84bd69fcf77466dff1d7f43",
+      "libbirnam_socket.dylib": "85cb7fa06c09bf13e68e54bf19c16db582d7bb1f830be95c4c2acf0926bfff07",
+      "libbirnam_sourceLoader.dylib": "40f9956194ea1df6820b0dcfefa49ce18fe6b766e57fb8ed32f797b6b8901bdf",
+      "libbirnam_stacklessControl.dylib": "ef33ddcea9294fad0f672ebd0a823cb9df6504daf56b895eea9f86b05d834a0e",
+      "libbirnam_stdlib.dylib": "1a2551ceb08b426e8b72b2a72698ee5dbd12cfeaa6dd9723f538568286e175bb",
+      "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+      "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+      "libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+      "libbirnam_systemGc.dylib": "2a92b3c59f2b1d7fe4780d3161967ef602c3532b8536c0e6079dacb7fe3b9157",
+      "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+      "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+      "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+      "libbirnam_time.dylib": "115a709d37ea045821d8cce0a06d4c63dcf7c271fb63a9c8b797499eb3d9bec5",
+      "libbirnam_toml.dylib": "5a83ca7116c2f902fa309be67f472d339c9b6dba8ff6072ca6f5903b30eaf548",
+      "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+      "libbirnam_vector.dylib": "2f3b3f8e066a6fc6e3af04ccd908b79f48f88f4139bcb37971e6d22c6383df07",
+      "libbirnam_word.dylib": "04b85c4d67b1ed1f5e093660a8602a49aa487281bd979c49c8542856f646ef4f",
+      "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+      "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+    }
+  },
+  "after": {
+    "actual_addition_sends": 195,
+    "actual_addition_selector_counts": {
+      "+": 1,
+      "value:value:": 8,
+      "integerBinary:operation:": 1,
+      "value:value:value:": 2,
+      "tryBorrowCaptureOperands:": 15,
+      "nativeBindingsMatch:": 17,
+      "integerBitsOf:": 2,
+      "optionalWordResultOf:selector:argument:resultFactory:": 2,
+      "wordOf:": 2,
+      "tryRepresentationIdentityOf:behavior:bytes:": 17,
+      "fromBits:": 2,
+      "allocate:bytes:": 8,
+      "allocate": 4,
+      "allocationSizeOf:": 6,
+      "allocationChargeFor:": 4,
+      "retain:": 23,
+      "isNil": 1,
+      "selectIfTrue:ifFalse:otherwise:": 4,
+      "value:value:value:value:": 4,
+      "selectIfSameObject:with:ifEqual:ifDifferent:": 10,
+      "value:value:value:value:value:": 3,
+      "integerExactError:": 1,
+      "valueAt:": 1,
+      "at:": 8,
+      "symbolBytesOf:": 7,
+      "notNil": 2,
+      "currentValue:attr:": 1,
+      "vtableOf:": 1,
+      "behaviorOf:": 1,
+      "==": 1,
+      "&": 1,
+      "tryReleaseMany:": 2,
+      "collectionHash": 1,
+      "release:": 11,
+      "integerAddBits:with:": 1,
+      "wrappingAdd:": 1,
+      "tryPrimitiveExpression:": 1,
+      "behaviorEpoch": 4,
+      "usesDefaultAllocation": 2,
+      "canOmitAllocationFor:": 2,
+      "usesDefaultLookup:": 3,
+      "bind:to:": 3,
+      "integerFromBits:": 1,
+      "objectResultOf:selector:wordArgument:": 1,
+      "bits": 1,
+      "fromWord:": 1
+    },
+    "fixture_inclusive_sends_per_addition": 196.25,
+    "allocation_objects_per_addition": {
+      "block": 0.0,
+      "integer": 1.0,
+      "other": 0.0,
+      "vector": 0.0,
+      "word": 3.0
+    },
+    "fixture_inclusive_causal_partition": [
+      {
+        "category": "other lifetime/cleanup",
+        "count": 594,
+        "per_addition": 37.125,
+        "percent": 18.9171974522293
+      },
+      {
+        "category": "ABI bridges",
+        "count": 528,
+        "per_addition": 33.0,
+        "percent": 16.81528662420382
+      },
+      {
+        "category": "Word arithmetic/guards",
+        "count": 496,
+        "per_addition": 31.0,
+        "percent": 15.796178343949045
+      },
+      {
+        "category": "capture access",
+        "count": 480,
+        "per_addition": 30.0,
+        "percent": 15.286624203821656
+      },
+      {
+        "category": "validation/other binding lookup",
+        "count": 480,
+        "per_addition": 30.0,
+        "percent": 15.286624203821656
+      },
+      {
+        "category": "dispatch/policy scaffolding",
+        "count": 402,
+        "per_addition": 25.125,
+        "percent": 12.802547770700636
+      },
+      {
+        "category": "Boolean selection primitives",
+        "count": 160,
+        "per_addition": 10.0,
+        "percent": 5.095541401273885
+      }
+    ],
+    "source_sha256": "519649045e9e4ca69c14d208ec5a5509883526e720d1abbc8edc1bea40e44712",
+    "library_sha256": {
+      "libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+      "libbirnam_alienCompiler.dylib": "f092f4e15e005131d3602bbcf7ed0ced8c64ea73838662fdc59246a1fbef76bc",
+      "libbirnam_artifact.dylib": "4122b36f5f4db1adba27fd15e70bd730182a6a854281cc231dd1beb5659d66c8",
+      "libbirnam_blockLoop.dylib": "84976561dd6187bcb70ea452837793cce26670958b546ea6f412aa37043e933b",
+      "libbirnam_blockLoopControl.dylib": "acb57d01da0cbdd92c6704caa7ec017bd18406b48112da0f7a5d00f0d2b4d770",
+      "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+      "libbirnam_booleanValues.dylib": "e9b41478bf9b96311c5e04cf89b5ddbcaa7f870c4a0b82c8ba36a8b4f36a86fe",
+      "libbirnam_bootstrap.dylib": "590637fdb8edc7627cc217ed70531a2efeb42e77edf1d87a5586fb1b43befb02",
+      "libbirnam_bytes.dylib": "cebacc8b6ffe39bafb00884c7307297d03fc95af299d39f77cf4aba79f9ccc60",
+      "libbirnam_cli.dylib": "415f1131b179e873ecf3fabd1f32eac25db0199e8e109954b7c556a2c5906515",
+      "libbirnam_codegen_runtime.dylib": "dcae3c7c4e3bbe319d065391cb21cde5ba955a0f0d33c0deec00417b6d24631c",
+      "libbirnam_collect.dylib": "61b5dc82965ac45bbb338a27c6d2408b51ebc58e129ecde2197f88bb19bbad5b",
+      "libbirnam_compiledUnit.dylib": "5b1877c8c82ed21ad130601ec76fdc8705d62f7f9082be885bee67f10cbb838b",
+      "libbirnam_compiledUnitDocs.dylib": "9e6610b9770391830f00eff7c571c40b5e12575b872d584d88e5fc5111473dc9",
+      "libbirnam_concurrencyDocs.dylib": "30b231939e68f4a6eb948a996cfa1d6be49dbdf44d1b221ad0d08921bbff6022",
+      "libbirnam_config.dylib": "8ed74ebbd0d4751bcfcad054b524963e8bc948eaae2364db3d0a395b319e4952",
+      "libbirnam_doc.dylib": "b750a89eae05f3886df613df9416378ce6712cb4a360457590b454dab3b727f2",
+      "libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+      "libbirnam_error.dylib": "bf2cf7026671c0511816915ca1890091a1597d3a07a3b888b52f6662fee90e5a",
+      "libbirnam_execution.dylib": "d723439dd20a4e9e34fa17bbf1cc0f9cea00b80725cffec417ff65db56ab429a",
+      "libbirnam_file.dylib": "0def564349c7139fde614b3ed8787db0a5100c4bc5a9a37c962d8b6fbb716175",
+      "libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+      "libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+      "libbirnam_generation.dylib": "00e11537d423ac29609addaf97a7569b77e3760a0f71c6b69c3da4cec6699eb0",
+      "libbirnam_host_entry.dylib": "d429a0c0c12f9bd554854b44f783058cd73324d2949630bf01bcc343e5bd89c2",
+      "libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+      "libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+      "libbirnam_html.dylib": "28b02716ecb583c85530616feae42d28d459f1a114a3ff488c0d540cac78e5e4",
+      "libbirnam_http.dylib": "a1e886b60c1f95eeba2001dc643b21d0d3b5854a799957d0f639e27906fd50d8",
+      "libbirnam_id.dylib": "0a7b32b2c3f2c830fa83686f942a0114b09bed9bbd43f564f2764437df770e68",
+      "libbirnam_image.dylib": "43f3196a85ef1e767cc7c1408e566fcb32cc0ccaef9cbb0e8997f6b7d0667500",
+      "libbirnam_imageFormat.dylib": "4497683bee9f64d68a9f68d627823795c185c943ae83f4f002c181ec74bbaced",
+      "libbirnam_integer.dylib": "7d5a95e54f6f520e1dfa71a41ec5041ad01021e5242258532bf2205c1ca68d47",
+      "libbirnam_integerValues.dylib": "78ca7bddc048dd7978ed5b71520b60452ddae8b65741157c69f56fd2d8e97aef",
+      "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+      "libbirnam_json.dylib": "898187e68af6d6e07b42bedd394e255dab43794b9f19ddf6546a560d0b46e474",
+      "libbirnam_lang.dylib": "31dba7c7cd5dae94c39db5b9e3994a1ca49491cac78f55c7b8f0654865a5db88",
+      "libbirnam_log.dylib": "6bcbadeb0362737b887e7ee35399156e70e960bbb6c5592fd0d9681b07ade6c5",
+      "libbirnam_lsp.dylib": "d65e54e1558fdb9577e3f822d249e5ac974801c069c73f973fb853465f2465af",
+      "libbirnam_map.dylib": "e3585179d7c068acdd3912c8bfa8caf65dd533210bbf09e8c4705bf3d7110233",
+      "libbirnam_markdown.dylib": "1afce83ac4bb16a450272459eef12a8cd2d62471e119228b28f914b7726c79de",
+      "libbirnam_modules.dylib": "23a5e7ba0e04b1150ca93582f105579eabf69e051d8a210a92cfaba107b0f14b",
+      "libbirnam_namespace.dylib": "10b6a2e1876db4bdaeef6736086ef73be7aa61456ddb67d7c003cfdd35be4945",
+      "libbirnam_nativeLoader.dylib": "3f102df8838eb9bf0770590f8986cb01935adfd70050f898d23f8521fbb5f2ec",
+      "libbirnam_nativeValues.dylib": "7f378a0ce711826a4f82ce58f240f178bf8e292d11714be1fd91fdf888a084b3",
+      "libbirnam_native_backend.dylib": "e259d556b494e493556aa1d0529af6ea8df0f3a1bafb7084581905b1828e3146",
+      "libbirnam_nativedoc.dylib": "fe09f5cfd763273909d0ab3945eba2ee2f6cdeaa79e90281cad3c51ec45d2b55",
+      "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+      "libbirnam_object_model.dylib": "5c8f94596fdacbff0e4f8a075d68f3486e62f3777c48f7c63a41cc99589cea84",
+      "libbirnam_os.dylib": "afff99272fec11d53da7a29d3db416fb781c0d13a4ec51f8ad96739e3dee0360",
+      "libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+      "libbirnam_portable_code.dylib": "6643fb821d56b2f89062f4fdd56ed1598ad66544c7881db02f17d6a979009707",
+      "libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+      "libbirnam_printing.dylib": "3846c5a0e4d1920f631ffd6bbbcce35ebe70af18f3e4a77828a577e176e8cdf7",
+      "libbirnam_process.dylib": "dad2d04fef6c8a35e595ab1924d583d838b1c67eb71992cc79a1773d37ac33bd",
+      "libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+      "libbirnam_random.dylib": "a1bde9114cd1a8deb44f1586c5a186fd063be6a359d3699c1fa7e824be902a72",
+      "libbirnam_range.dylib": "e4af02e4383de5795039509f8ce8db0e3b94ba29242fe84d2a5f3132492c4b3a",
+      "libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+      "libbirnam_repl.dylib": "38f8320eda45701566f33941809b9bf9468d13e1d3c508d61b7c07862d8a5d6b",
+      "libbirnam_root_registry.dylib": "77eab7375ca6567b867b3e738b05c8a62c009c2ca84bd69fcf77466dff1d7f43",
+      "libbirnam_socket.dylib": "85cb7fa06c09bf13e68e54bf19c16db582d7bb1f830be95c4c2acf0926bfff07",
+      "libbirnam_sourceLoader.dylib": "122fca56e8de3e22acc4d7c0e873566fa95b8fb3d6f9c0ce54899d2a480e1e8e",
+      "libbirnam_stacklessControl.dylib": "ef33ddcea9294fad0f672ebd0a823cb9df6504daf56b895eea9f86b05d834a0e",
+      "libbirnam_stdlib.dylib": "1a2551ceb08b426e8b72b2a72698ee5dbd12cfeaa6dd9723f538568286e175bb",
+      "libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+      "libbirnam_store.dylib": "e88052f9a99f40543d367b5b1a80f92dee6b276306a87870001addf0c0c76039",
+      "libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+      "libbirnam_systemGc.dylib": "d240ca9763cf147acc0d8e7f1ceb8bcd2f01da9e3e596f377f1da62782ac5260",
+      "libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+      "libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+      "libbirnam_tcc.dylib": "31c16b5466aa2b4db135d045e37af9adbb93475d9d786a989183cb478b8b0cf4",
+      "libbirnam_time.dylib": "115a709d37ea045821d8cce0a06d4c63dcf7c271fb63a9c8b797499eb3d9bec5",
+      "libbirnam_toml.dylib": "5a83ca7116c2f902fa309be67f472d339c9b6dba8ff6072ca6f5903b30eaf548",
+      "libbirnam_trace.dylib": "bc411933089936016338855e28abc24adbbb509e9fb36b1f7ca246e1be08691d",
+      "libbirnam_vector.dylib": "2f3b3f8e066a6fc6e3af04ccd908b79f48f88f4139bcb37971e6d22c6383df07",
+      "libbirnam_word.dylib": "e1795b7d3985ec47e8ed8a899561988ba08d5c0bc9f6efa09534ca1150aaa391",
+      "liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+      "libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+    }
+  },
+  "removed_sends": 47,
+  "percent_send_reduction": 19.42148760330579,
+  "attribution": {
+    "metadata_sends_removed": 21,
+    "borrowed_native_input_sends_removed": 12,
+    "named_adapter_handoff_sends_removed": 14,
+    "note": "Intermediate prefixes reused some older authored code; adapters stage measured 199, plus permission-query borrowing 197; full rebuild measured 195."
+  },
+  "remaining_lifetime": {
+    "sends": 36,
+    "retain": 21,
+    "individual_release": 11,
+    "batch_cleanup_and_current_binding_queries": 4,
+    "limits": "Protection of intermediate results across actual callbacks and mutable-container node snapshots remains. Not a proof that all remaining registrations are minimal."
+  },
+  "timing": {
+    "seconds_per_prefix": 4,
+    "before_ns_per_addition": 38551.61538461538,
+    "after_ns_per_addition": 37615.15396341463,
+    "observed_percent_lower": 2.429110717820815,
+    "qualification": "Directional sequential cross-prefix CPU samples on a shared machine; not a paired speedup confidence estimate. Within-prefix fixture profiles use production defaults and do not compare these implementations."
+  },
+  "validation": {
+    "rust_tests": 43,
+    "native_checks": 22,
+    "native_binaries": 17,
+    "task_assertions": 14,
+    "task_quanta": [
+      128,
+      1
+    ],
+    "lean_theorems": 128,
+    "tlc_configurations": 78,
+    "temporary_release_install": "passed including rebuilt authored artifacts/bootstrap image and saved-image startup gate",
+    "formal_scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+  },
+  "evidence": {
+    "previous-final-trace.json": {
+      "path": "/tmp/birnam-helper-boxing-20261009/final-trace.json",
+      "sha256": "2a0dd154ce4a8e70167a91e28ed1dabd058c92e905a58fbb7edc49c3fcc400cf"
+    },
+    "previous-final-analysis.json": {
+      "path": "/tmp/birnam-helper-boxing-20261009/final-analysis.json",
+      "sha256": "e9b49874bc4afbcddf557f8eccd7aef39b4a33ee00166c7378e16ff375531f42"
+    },
+    "shape-trace.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/shape-trace.json",
+      "sha256": "d7a632331298b2024db95157e462c23e2cbc4c2860af91eacd42d1e6b45520d3"
+    },
+    "shape-analysis.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/shape-analysis.json",
+      "sha256": "53ed7afdfddb0054469f19d2e498e672beef2c63476fbf3ed386428332b71eb3"
+    },
+    "lifetime-trace.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/lifetime-trace.json",
+      "sha256": "95394262ce271cc8817a2d460ec8cd16d71c84a681dc7daef2d55d391432488d"
+    },
+    "lifetime-analysis.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/lifetime-analysis.json",
+      "sha256": "ff86709e456172d61a8a9814162d4793eec5e44406d4c536b6a0f6ddb032676f"
+    },
+    "adapters-trace.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/adapters-trace.json",
+      "sha256": "a10311d1a88f2034bd612f5a96328036fd03b0ccf7257be96a273aa6605bffe6"
+    },
+    "adapters-analysis.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/adapters-analysis.json",
+      "sha256": "a32427e2cbe7e77bc19d99b5a624de52724adaeaa738f495ab28080902440b3e"
+    },
+    "all-trace.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/all-trace.json",
+      "sha256": "248f35e7c4f24afe23545cb4dbf82ad44d7469dd0116bff8ee7a4f6c5199e27f"
+    },
+    "all-analysis.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/all-analysis.json",
+      "sha256": "aea93020b95be0054d2d35100d2398ca3d966fedc0bfffba4880a99991b95156"
+    },
+    "final-trace.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/final-trace.json",
+      "sha256": "14c2e914cc8c743396879cfc7aa67f2ca8878ed772564e10293c5a6ef5689b6f"
+    },
+    "final-analysis.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/final-analysis.json",
+      "sha256": "a881e5cfec53b3d26b5be746271a6e56d3927b70238e6b1c8329eca9e360dba5"
+    },
+    "before-time.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/before-time.json",
+      "sha256": "554336840284cb4bbfee55336809c3c4fbd61d9c23a3bf1e242c8da570551c4c"
+    },
+    "final-time.json": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/final-time.json",
+      "sha256": "f766bc607c7110311ccf3c1464750c1f87494c2cada2742fb93d5c51a50933b2"
+    },
+    "rust-final.log": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/rust-final.log",
+      "sha256": "9b2335ef441b7504f4681931243b1bfe0f947af54a6fb7026ad63fd0cba84700"
+    },
+    "native-final.log": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/native-final.log",
+      "sha256": "171dd0ec3c58fe95384ccd70525b2f999873bad94935b2c5fce7416510e9ba60"
+    },
+    "new-native-final.log": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/new-native-final.log",
+      "sha256": "4c9c5481cb811d823a807017a1b7cefd63d16b6f1243b5288989466a4dc4ad17"
+    },
+    "tasks.log": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/tasks.log",
+      "sha256": "67f283b945366abd8bf8cc0117223617705ef2ebdee49d837cb46ed0640e81f8"
+    },
+    "formal-final.log": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/formal-final.log",
+      "sha256": "4ee5e75e106be86ea63e30ab7880276c82c404d0f42322e93f18bcd9b16b6608"
+    },
+    "install.log": {
+      "path": "/tmp/birnam-representation-lifetime-20261009/install.log",
+      "sha256": "04a29748c29328f35d8a51f8862999288fef02d0bc3e7e2700f14df686124796"
+    },
+    "summary.json": {
+      "path": "/Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-k86cxghn/summary.json",
+      "sha256": "4f93bec955e5e37253541a09253069c025d06e4c0ec31cfda08f4209ea1b14ce"
+    }
+  }
+}

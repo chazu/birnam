@@ -18,6 +18,7 @@ struct Admission {
     vt: Oop,
     replacement: *mut Hook,
     change: Cell<bool>,
+    allowed: Cell<bool>,
 }
 unsafe extern "C" fn admission(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     let s = unsafe { &*c.cast::<Admission>() };
@@ -30,7 +31,7 @@ unsafe extern "C" fn admission(c: *mut c_void, r: Oop, a: *const Operand, n: usi
             install(s.id, s.vt, b"bitXor:", xor_hook, s.replacement.cast());
         }
     }
-    answer
+    if s.allowed.get() { answer } else { Outcome::loaded(Operand::word(0)) }
 }
 struct Words {
     id: Protocol,
@@ -236,6 +237,7 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
             vt,
             replacement: &raw mut hook,
             change: Cell::new(false),
+            allowed: Cell::new(true),
         };
         install(
             id,
@@ -252,6 +254,19 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
             "collecting admission must preserve inputs"
         );
         release(id, roots, pin);
+        // Stateful permission may revoke without any method/epoch mutation.
+        // Query directly: inventory visitors would themselves rebind methods.
+        let expression = [1, 2, 1, 2, 6, 0, 1];
+        let evaluate = || send(id, named(b"Word"), b"tryPrimitiveExpression:", &[
+            Operand::bytes(&expression), Operand::object(a), Operand::object(b),
+        ]);
+        let epoch = send(id, id.receiver, b"behaviorEpoch", &[]).as_word();
+        grant.allowed.set(false);
+        assert_eq!(evaluate().kind(), birnam_abi::id_protocol::UNIT);
+        assert_eq!(send(id, id.receiver, b"behaviorEpoch", &[]).as_word(), epoch);
+        grant.allowed.set(true);
+        assert_eq!(read(object(evaluate())), 16);
+        assert_eq!(send(id, id.receiver, b"behaviorEpoch", &[]).as_word(), epoch);
         grant.change.set(true);
         hook.calls.set(0);
         assert_eq!(read(run()), 14);

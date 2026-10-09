@@ -52,6 +52,29 @@ theorem receiver_read_batch_survives
   intro o h
   exact ⟨alive o h, receiver_covers_capture_results edges base results block live captures o h⟩
 
+/-- Copying the handed-off references preserves slot order and repeated aliases;
+    the native ABI's byte encoding/memcpy correspondence is checked separately. -/
+theorem batch_copy_preserves_order_and_aliases (slots : List Object) :
+    slots.map id = slots := by simp
+
+theorem copied_capture_batch_survives
+    (edges : Object → Object → Prop) (heap base : Object → Prop)
+    (block : Object) (slots : List Object) (live : Reach edges base block)
+    (captures : ∀ o, o ∈ slots → edges block o)
+    (alive : ∀ o, o ∈ slots → heap o) :
+    ∀ o, o ∈ slots.map id → collect heap base edges o := by
+  simpa using receiver_read_batch_survives edges heap base (fun o => o ∈ slots)
+    block live captures alive
+
+def admitBulk (bulkCurrent readerCurrent queryCurrent servicesCurrent : Bool) : Bool :=
+  bulkCurrent && readerCurrent && queryCurrent && servicesCurrent
+
+theorem bulk_admission_requires_own_current_binding
+    (bulk reader query services : Bool) :
+    admitBulk bulk reader query services = true ↔
+      bulk = true ∧ reader = true ∧ query = true ∧ services = true := by
+  simp [admitBulk, and_assoc]
+
 def admitBorrow (readerCurrent queryCurrent servicesCurrent : Bool) : Bool :=
   readerCurrent && queryCurrent && servicesCurrent
 

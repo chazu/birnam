@@ -279,6 +279,12 @@ unsafe extern "C" fn operation(
         if a.len() != count {
             return Err(invalid());
         }
+        if matches!(e.op, Op::Reflection(reflection::Op::Behavior)) {
+            // A fixed forwarding query has only caller-covered inputs and no
+            // cleanup callback after its result. Other reflection ops keep scopes.
+            object(a[0])?;
+            return s.send(s.id.receiver, b"behaviorOf:", a);
+        }
         let scope = Scope {
             s,
             tokens: RefCell::new(Vec::new()),

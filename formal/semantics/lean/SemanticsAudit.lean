@@ -41,3 +41,15 @@ import Admission
 #print axioms Birnam.Admission.successful_guard_saves_one
 #print axioms Birnam.Admission.declined_guard_cost_is_explicit
 #print axioms Birnam.Admission.admitted_guard_refines
+
+#print axioms Birnam.Admission.metadata_query_requires_current
+#print axioms Birnam.Admission.nonzero_metadata_identity_requires_shape
+#print axioms Birnam.Admission.unknown_metadata_identity_declines
+#print axioms Birnam.Admission.changed_metadata_preserves_legacy
+#print axioms Birnam.Admission.selected_shape_preserves_result
+
+#print axioms Birnam.Admission.packed_pair_sound
+#print axioms Birnam.Admission.selected_pair_equivalent
+#print axioms Birnam.Admission.revoked_permission_blocks_commit
+#print axioms Birnam.Admission.changed_epoch_blocks_commit
+#print axioms Birnam.Admission.pair_admission_saves_three

@@ -70,6 +70,9 @@ import Branches
 #print axioms Birnam.Capture.capture_edge_covers_result
 #print axioms Birnam.Capture.receiver_covers_capture_results
 #print axioms Birnam.Capture.receiver_read_batch_survives
+#print axioms Birnam.Capture.batch_copy_preserves_order_and_aliases
+#print axioms Birnam.Capture.copied_capture_batch_survives
+#print axioms Birnam.Capture.bulk_admission_requires_own_current_binding
 #print axioms Birnam.Capture.borrow_admission_requires_current_bindings
 #print axioms Birnam.Capture.borrowed_needed_survives
 #print axioms Birnam.Capture.fresh_result_requires_coverage
@@ -90,3 +93,13 @@ import Branches
 #print axioms Birnam.Branches.shared_handlers_preserve_effect_order_and_result
 #print axioms Birnam.Branches.only_selected_handler_runs
 #print axioms Birnam.Branches.native_numeric_inputs_need_no_duplicate_roots
+
+#print axioms Birnam.Invocation.owner_local_root_equivalence
+#print axioms Birnam.Invocation.owner_local_values_survive
+#print axioms Birnam.Invocation.nested_owner_exit_preserves_parent
+#print axioms Birnam.Invocation.direct_return_requires_empty_cleanup
+
+#print axioms Birnam.Branches.operation_objects_preserve_integer_selection
+#print axioms Birnam.Branches.operation_objects_preserve_float_selection
+#print axioms Birnam.Branches.remainder_has_no_float_handler
+#print axioms Birnam.Branches.scoped_global_resolution_preserves_order_and_value

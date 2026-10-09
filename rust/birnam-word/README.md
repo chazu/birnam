@@ -46,3 +46,22 @@ incoming byte plan and operand array before callbacks and retains current
 permission/lookup/epoch checks. Newly allocated outputs keep their first Root
 through representation validation; these are not covered by caller input roots.
 No payload access crosses representation owners.
+
+## Private construction roots
+
+New construction/validation values use a nested owner-local scope reported by
+this module's registered `rootsDo:` provider, following Execution's existing
+pattern. The scope appends before callbacks and restores its previous length
+at return or failure. Provider enumeration snapshots the inventory before
+visitor sends. Fresh values remain protected; no public Root tokens are needed
+for this private inventory. Inputs still borrow the caller's Id lifetime.
+Current allocator/getter/factory messages and shape checks remain live. See
+[implementation and validation](../../docs/design/helper-lifetime-and-boxing.md).
+
+## Atomic representation facts
+
+The owner uses Id `tryRepresentationIdentityOf:behavior:bytes:` for exact behavior,
+extent and nonzero allocation identity. Canonical admission is callback-free and
+consumed immediately. Unit/UNBOUND uses the original ordered getter sequence;
+other failures propagate. Metadata/query/lookup replacement declines admission.
+See [the contract and evidence](../../docs/design/representation-validation-and-lifetime.md).

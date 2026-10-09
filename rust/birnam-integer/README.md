@@ -112,3 +112,22 @@ In precise mode, raw bits are not references; in conservative mode the owner
 checks its own payload words through Id `allocationAt:` and sends `visit:` for
 matching allocations. Private behaviors keep the same representation ownership.
 See [System GC controls](../../docs/design/authored-small-modules.md#system-gc).
+
+## Private construction roots
+
+New construction/validation values use a nested owner-local scope reported by
+this module's registered `rootsDo:` provider, following Execution's existing
+pattern. The scope appends before callbacks and restores its previous length
+at return or failure. Provider enumeration snapshots the inventory before
+visitor sends. Fresh values remain protected; no public Root tokens are needed
+for this private inventory. Inputs still borrow the caller's Id lifetime.
+Current allocator/getter/factory messages and shape checks remain live. See
+[implementation and validation](../../docs/design/helper-lifetime-and-boxing.md).
+
+## Atomic representation facts
+
+The owner uses Id `tryRepresentationIdentityOf:behavior:bytes:` for exact behavior,
+extent and nonzero allocation identity. Canonical admission is callback-free and
+consumed immediately. Unit/UNBOUND uses the original ordered getter sequence;
+other failures propagate. Metadata/query/lookup replacement declines admission.
+See [the contract and evidence](../../docs/design/representation-validation-and-lifetime.md).
