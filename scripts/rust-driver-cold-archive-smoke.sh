@@ -51,7 +51,14 @@ for receipt in (first, second):
     assert receipt["authority"] == "rust"
     assert receipt["build_mode"] == "cold"
     assert receipt["profile"] == "release"
-    assert "--features" not in receipt["cargo_invocation"]
+    invocation = receipt["cargo_invocation"]
+    assert invocation.count("--features") == 1
+    feature_index = invocation.index("--features")
+    assert invocation[feature_index + 1] == "birnam-bootstrap/lang-seed"
+    assert receipt["build_seed"] == {"grammar": "birnam-lang-seed", "published": False}
+    assert "libbirnam_lang_seed.dylib" not in receipt["dynamic_libraries"]
+    assert "lib/libbirnam_lang_seed.dylib" not in receipt["staged_manifest"]
+    assert "lib/libbirnam_lang.dylib" in receipt["staged_manifest"]
     assert receipt["source_manifest_files"] > 0
     assert receipt["staged_manifest_files"] > 0
     assert receipt["publication"]["method"] == "atomic-sibling-rename"
