@@ -8,6 +8,38 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Expand Birnam implementations of Lang, AlienCompiler, ImageFormat, SourceLoader,
+  Printing, NativeLoader, Error, BlockLoop, Range, SystemGC, Boolean policy and
+  Integer arithmetic. Retain native representation owners and cold-bootstrap seeds.
+
+- Split native Host, source backend, generation, project services, Alien wrapper
+  compilation and image-format responsibilities into focused owners.
+
+- Persist compiled source metadata and named adapters for startup. Reuse machine
+  code in saved images; compilation is reserved for missing code or explicit
+  rebuilds. Remove the arbitrary native image-emission size cap.
+
+- Simplify closure construction and capture borrowing, replace the general outbound
+  ABI bridge with explicit conversions, and reduce redundant numeric and GC sends.
+  Add guarded compiler optimizations with current method replacement and allocation
+  permission checks, bounded microbenchmarks, and Lean/TLA+ contract models.
+
+- Reduce the measured authored Integer addition path to 171 Id sends, while retaining
+  constructor/getter observability and three temporary Word Objects. This is a send
+  census, not a release-to-release CPU speedup estimate.
+
+- Keep generated results alive through collecting cleanup callbacks. Preserve
+  cleanup order, drain tokens after failures, and batch callback-free metadata and
+  cleanup through their owning modules. Rebuild existing compiled artifacts/images
+  explicitly to receive the newly generated cleanup helper.
+
+- Repair native failure propagation, GC-sensitive input handling, image/Bytes
+  integration fixtures and generation identity tests. Include the new capture,
+  boxing, representation and cleanup regressions in release qualification.
+
+- Restore standalone documentation HTML loading and avoid unnecessary sorting
+  during coverage-count rendering.
+
 ## [0.15.0] — 2026-09-30
 
 - Complete the Id-message migration and remove the aggregate Runtime, retired
