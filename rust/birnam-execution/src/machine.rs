@@ -1083,6 +1083,7 @@ pub(super) unsafe fn invoke_registered(
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
     TryPrepareCall,
+    TryPrepareCallCopies,
     InvalidRequest,
     PreserveFailures,
     FromStep,
@@ -1164,11 +1165,14 @@ unsafe extern "C" fn operation(
         // Capture queries and optional call admission must not collect before
         // their guards. The latter commits only after proving index allocation
         // may be omitted; refusal runs the ordinary admission path below.
-        if !matches!(op.kind, Op::TryPrepareCall | Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
+        if !matches!(op.kind, Op::TryPrepareCall | Op::TryPrepareCallCopies | Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op.kind {
-            Op::TryPrepareCall => return frame_call::prepare(s, receiver, args),
+            Op::TryPrepareCall | Op::TryPrepareCallCopies => {
+                if args.len() != if op.kind == Op::TryPrepareCall { 5 } else { 6 } { return Err(invalid()); }
+                return frame_call::prepare(s, receiver, args);
+            }
             Op::BorrowCaptureOperands => {
                 let [count] = args else { return Err(invalid()); };
                 let count = count.as_word().ok_or_else(invalid)?;
@@ -1763,6 +1767,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"canOmitIndexing",
     b"isCanonicalLookup:",
     b"tryPrepareCall:slots:selector:in:tail:",
+    b"tryPrepareCall:slots:copies:selector:in:tail:",
     b"usesDefaultAllocation",
     b"withInline:at:owner:",
     b"optimizeWith:",
@@ -2195,6 +2200,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         install_op(s, machine_vtable, b"prepareBlockControl", Op::Prepare)?;
         install_op(s, machine_vtable, b"destroy", Op::Destroy)?;
         install_op(s, machine_vtable, b"tryPrepareCall:slots:selector:in:tail:", Op::TryPrepareCall)?;
+        install_op(s, machine_vtable, b"tryPrepareCall:slots:copies:selector:in:tail:", Op::TryPrepareCallCopies)?;
         install_op(s, machine_vtable, b"oopAt:", Op::Read)?;
         install_op(s, machine_vtable, b"oopAt:put:", Op::Write)?;
         install_op(s, machine_vtable, b"continueAt:", Op::Continue)?;

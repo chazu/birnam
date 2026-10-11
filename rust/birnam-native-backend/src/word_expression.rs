@@ -435,7 +435,7 @@ mod option_tests {
             &[],
         )
         .unwrap();
-        for mask in 0..64 {
+        for mask in 0..128 {
             if mask & 2 != 0 {assert!(Optimizations::from_bits(mask).is_none());continue;}
             let source = compile_portable_with_optimizations(
                 &bytes,
@@ -459,6 +459,6 @@ mod option_tests {
                 mask & 4 != 0
             );
         }
-        assert!(Optimizations::from_bits(64).is_none());
+        assert!(Optimizations::from_bits(128).is_none());
     }
 }

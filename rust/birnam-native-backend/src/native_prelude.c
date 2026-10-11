@@ -143,6 +143,16 @@ static R try_frame_call(Call*c,O machine,size_t site,const unsigned char*slots,s
  A args[5]={word(site),bytes(slots,length),obj(selector(c,name)),obj(ns),word(tail)};
  return raw(c,machine,"tryPrepareCall:slots:selector:in:tail:",args,5);
 }
+static R try_frame_call_copies(Call*c,O machine,size_t site,const unsigned char*slots,size_t length,const unsigned char*copies,size_t copy_length,const char*name,size_t tail){
+ O sel=selector(c,"tryPrepareCall:slots:copies:selector:in:tail:");
+ A binding[2]={obj(sel),obj(machine)};
+ R bound=raw(c,id.receiver,"bind:to:",binding,2);
+ if(bound.status)return bound;
+ if(bound.value.kind==0)return ok((A){0});
+ if(bound.value.kind!=4||!bound.value.data.entry.method){c->failure=bad();return c->failure;}
+ A args[6]={word(site),bytes(slots,length),bytes(copies,copy_length),obj(selector(c,name)),obj(ns),word(tail)};
+ return raw(c,machine,"tryPrepareCall:slots:copies:selector:in:tail:",args,6);
+}
 static R finish(Call*c,A result){
  R failure=c->failure;c->failure=(R){0};int handled=0;
  /* First-use selector caching can append temporary roots. Prepare cleanup

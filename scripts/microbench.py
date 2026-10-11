@@ -23,8 +23,10 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prefix', type=Path, default=WORK / 'prefix')
     p.add_argument('--prepare-from', type=Path, help='copy a compatible installed prefix; rebuild changed release owners')
-    p.add_argument('--case', choices=['all','resumable-calls','resumable-unary','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-default','semantic-string-length','semantic-vector-access','semantic-word-as-integer','semantic-bytes-as-string','semantic-boolean-print'], default='all')
+    p.add_argument('--case', choices=['all','resumable-bindings','stackless-loop','stackless-fold','resumable-calls','resumable-unary','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-default','semantic-string-length','semantic-vector-access','semantic-word-as-integer','semantic-bytes-as-string','semantic-boolean-print'], default='all')
     p.add_argument('--integer-policy-source', type=Path, help='public Integer fixture policy override for source-version comparisons')
+    p.add_argument('--baseline-mask', type=int, help='explicit baseline compiler mask for one fixture')
+    p.add_argument('--candidate-mask', type=int, help='explicit candidate compiler mask for one fixture')
     p.add_argument('--seconds', type=float, default=10, help='total measurement budget, at most 10 seconds')
     p.add_argument('--batch-ms', type=float, default=25)
     p.add_argument('--gc', choices=['normal','off'], default='normal')
@@ -48,6 +50,10 @@ def main():
     p = parser(); args = p.parse_args()
     if not .1 <= args.seconds <= 10 or not 1 <= args.batch_ms <= 100 or not 1 <= args.setup_timeout <= 120:
         p.error('seconds must be 0.1..10; batch-ms 1..100; setup-timeout 1..120')
+    for mask in [args.baseline_mask, args.candidate_mask]:
+        if mask is not None and (mask < 0 or mask & ~125): p.error('compiler masks may use bits 1, 4, 8, 16, 32 and 64')
+    if (args.baseline_mask is not None or args.candidate_mask is not None) and args.case in ('all','abi-audit'):
+        p.error('mask overrides require one fixture')
     if args.trace and (not args.counts_only or args.case != 'public-integer-default'):
         p.error('trace currently requires --counts-only --case public-integer-default')
     if args.profile and (args.case in ('all','abi-audit') or not 2 <= args.seconds <= 5):
@@ -97,6 +103,9 @@ def main():
     if args.profile: argv += ['--profile',args.profile]
     if args.counts_only: argv += ['--counts-only']
     if args.trace: argv += ['--trace']
+    for option in ['baseline_mask', 'candidate_mask']:
+        value = getattr(args, option)
+        if value is not None: argv += ['--' + option.replace('_','-'), str(value)]
     revision = command(['git','rev-parse','HEAD'],cwd=ROOT,env=env)['stdout'].strip()
     status = command(['git','status','--porcelain'],cwd=ROOT,env=env)['stdout']
     def source_digest():

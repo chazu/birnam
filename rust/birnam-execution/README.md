@@ -93,6 +93,7 @@ exact entry. Ordinary future sends perform current lookup.
 | Machine `oopAt:` / `oopAt:put:` | Integer slot; optional Object value | Checked access to its current committed frame. |
 | Machine `continueAt:`, `callSite:`, `tailCallSite:`, `returnAt:` | Integer descriptor PC/site/slot | Publish the existing checked StepAction. |
 | Machine `tryPrepareCall:slots:selector:in:tail:` | Word descriptor site, Bytes little-endian u32 source slots (receiver followed by up to 16 arguments), Symbol selector, Namespace Object, Word tail flag | Optional guarded call-window preparation. Unit refuses without frame writes; success publishes the ordinary checked Call/TailCall action. |
+| Machine `tryPrepareCall:slots:copies:selector:in:tail:` | Same call arguments with an additional Bytes copy list: up to 32 little-endian u32 source/destination pairs | The same guarded admission includes ordered local copies. All sources are checked before any write; copy aliases are resolved in order and every original slot is written before the normal action is published. |
 | Machine `suspendAt:continueAt:` / `captureAt:continueAt:` | Integer result slot and PC | Publish waiting/capture actions for the current delimiter. |
 | Machine `restore:with:` / `abortAt:` | Integer continuation/value slots or reason slot | Existing low-level action publications; distinct from host continuation restoration. |
 | Machine `protectedBlock:`, `leaveBoundary:`, `park`, `controlEligible` | Existing control-adapter arguments | Retained resumable native adapters, not language scheduling policy. `prepareBlockControl` is idempotent; loading installs these completed adapters once and subsequent preparation preserves replacements. |
@@ -470,3 +471,13 @@ stop. The driver still selects the actual target through current Id lookup.
 There is no cached permission, virtual source value or deferred materialization.
 The compiler first checks optional-protocol presence, so a failure (including
 UNBOUND) from an entered implementation propagates rather than causing replay.
+
+The compiler's copy extension admits only a contiguous suffix of local bindings
+immediately before an ordinary/tail call. It never moves bindings across literal
+construction, a global lookup, another send or persistent top-level publication.
+The existing read/write/call and allocation guards cover the complete batch;
+refusal executes the original copies and call preparation once. No source value,
+Block, logical frame, budget stop or continuation is removed. A 729-case oracle
+compares copy planning with sequential storage, including chains, overwrites and
+self-copies. The native and image tests also exercise withdrawal of either
+optional protocol, current replacement and collecting fallback.

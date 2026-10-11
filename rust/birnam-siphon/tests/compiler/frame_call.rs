@@ -130,22 +130,38 @@ unsafe fn paused(h: &mut H, block: Oop) -> Vec<Vec<Oop>> {
 }
 pub(super) unsafe fn check(h: &mut H) {
     unsafe {
+        check_case(h, FAST, 61, 29, b"let first := [FrameCallee value: FrameArgument value: FrameArgument value: FrameArgument]; [FrameCallee value: first value: first value: first]");
+        check_case(h, b"tryPrepareCall:slots:copies:selector:in:tail:", 125, 61,
+            b"[| let callee := FrameCallee; let argument := FrameArgument; let one := argument; let two := one; let first := [callee value: two value: one value: argument]; let next := first; let last := next; [callee value: last value: next value: first]]");
+    }
+}
+unsafe fn check_case(
+    h: &mut H,
+    fast_name: &[u8],
+    candidate_mask: usize,
+    baseline_mask: usize,
+    source: &[u8],
+) {
+    unsafe {
         let id = h.id;
         let machine = h.named(b"Machine");
         let mvt = vt(h, machine);
-        let fast = lookup(h, machine, FAST);
+        let fast = lookup(h, machine, fast_name);
         let argument = h.eval(b"[Object clone]");
         h.bind(b"FrameArgument", argument);
         let callee = h.eval(b"[:a :b :c | b]");
         h.bind(b"FrameCallee", callee);
-        let source = b"let first := [FrameCallee value: FrameArgument value: FrameArgument value: FrameArgument]; [FrameCallee value: first value: first value: first]";
-        let code = h.compile(source);
-        let block = h.block(code);
         let backend = h.named(b"NativeBackend");
         let bvt = vt(h, backend);
         let emit_name = b"emit:source:filename:persistent:synchronous:";
         let emit = lookup(h, backend, emit_name);
-        let options = h.eval(b"29");
+        let options = object(send(
+            id,
+            h.named(b"Integer"),
+            b"fromWord:",
+            &[Operand::word(candidate_mask)],
+        ));
+        h.keep(options);
         let mut emitter = Emit { id, options };
         install(
             id,
@@ -154,30 +170,47 @@ pub(super) unsafe fn check(h: &mut H) {
             baseline_emitter,
             ptr::from_mut(&mut emitter).cast(),
         );
-        let plain_code = h.compile(source);
-        let plain_block = h.block(plain_code);
+        let block = if candidate_mask == 125 {
+            h.eval(source)
+        } else {
+            let code = h.compile(source);
+            h.block(code)
+        };
+        emitter.options = object(send(
+            id,
+            h.named(b"Integer"),
+            b"fromWord:",
+            &[Operand::word(baseline_mask)],
+        ));
+        h.keep(emitter.options);
+        let plain_block = if candidate_mask == 125 {
+            h.eval(source)
+        } else {
+            let code = h.compile(source);
+            h.block(code)
+        };
         restore(h, bvt, emit_name, emit);
 
         // Both a normal call and a tail call return the exact input identity.
         assert_eq!(run(h, block, false), argument);
-        install(id, mvt, FAST, decline, ptr::null_mut());
+        install(id, mvt, fast_name, decline, ptr::null_mut());
         assert_eq!(run(h, block, false), argument);
-        restore(h, mvt, FAST, fast);
+        restore(h, mvt, fast_name, fast);
         send(
             id,
             mvt,
             b"removeMethod:",
-            &[Operand::object(id.intern_name(FAST).unwrap())],
+            &[Operand::object(id.intern_name(fast_name).unwrap())],
         );
         assert_eq!(
             run(h, block, false),
             argument,
             "missing optional protocol uses ordinary calls"
         );
-        restore(h, mvt, FAST, fast);
+        restore(h, mvt, fast_name, fast);
         let failure_machine = object(send(id, machine, b"new", &[]));
         h.keep(failure_machine);
-        install(id, mvt, FAST, fail_unbound, ptr::null_mut());
+        install(id, mvt, fast_name, fail_unbound, ptr::null_mut());
         let error = id
             .send_named(failure_machine, b"runBlock:", &[Operand::object(block)])
             .unwrap_err();
@@ -186,7 +219,7 @@ pub(super) unsafe fn check(h: &mut H) {
             (6, 0),
             "entered UNBOUND must not replay baseline"
         );
-        restore(h, mvt, FAST, fast);
+        restore(h, mvt, fast_name, fast);
         // Replaced baseline operations must execute with the same effects.
         for (receiver, selector) in [
             (h.named(b"Integer"), b"fromWord:".as_slice()),
@@ -217,9 +250,9 @@ pub(super) unsafe fn check(h: &mut H) {
             let mut counts = [0; 2];
             for optimized in [false, true] {
                 if optimized {
-                    restore(h, mvt, FAST, fast);
+                    restore(h, mvt, fast_name, fast);
                 } else {
-                    install(id, mvt, FAST, decline, ptr::null_mut());
+                    install(id, mvt, fast_name, decline, ptr::null_mut());
                 }
                 f.calls.set(0);
                 assert_eq!(run(h, block, false), argument);
@@ -301,9 +334,9 @@ pub(super) unsafe fn check(h: &mut H) {
         restore(h, ivt, b"canOmitIndexing", original_guard);
         // Bounded execution retains the ordinary inspectable Frame sequence.
         assert_eq!(run(h, block, true), argument);
-        install(id, mvt, FAST, decline, ptr::null_mut());
+        install(id, mvt, fast_name, decline, ptr::null_mut());
         let baseline_frames = paused(h, block);
-        restore(h, mvt, FAST, fast);
+        restore(h, mvt, fast_name, fast);
         let optimized_frames = paused(h, block);
         assert!(!baseline_frames.is_empty());
         assert_eq!(
@@ -320,9 +353,9 @@ pub(super) unsafe fn check(h: &mut H) {
                 [true, false]
             } {
                 if optimized {
-                    restore(h, mvt, FAST, fast);
+                    restore(h, mvt, fast_name, fast);
                 } else {
-                    install(id, mvt, FAST, decline, ptr::null_mut());
+                    install(id, mvt, fast_name, decline, ptr::null_mut());
                 }
                 h.collect();
                 let before = send(id, id.receiver, b"allocationCount", &[])
@@ -343,9 +376,9 @@ pub(super) unsafe fn check(h: &mut H) {
                         - before;
             }
         }
-        restore(h, mvt, FAST, fast);
+        restore(h, mvt, fast_name, fast);
         println!(
-            "frame-call: baseline {}ns/{} allocations; optimized {}ns/{} allocations",
+            "frame-call {candidate_mask}: baseline {}ns/{} allocations; optimized {}ns/{} allocations",
             nanos[0], allocations[0], nanos[1], allocations[1]
         );
         assert!(

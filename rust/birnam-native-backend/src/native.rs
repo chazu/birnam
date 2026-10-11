@@ -233,12 +233,13 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
     })
 }
 /// Emission switches, supplied explicitly to the compiler.
-/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration); 32 = guarded resumable call-window preparation.
+/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration); 32 = guarded resumable call-window preparation; 64 = trailing frame copies in call preparation.
 #[derive(Clone, Copy)]
 pub struct Optimizations(u8);
-impl Default for Optimizations { fn default()->Self {Self(61)} }
+impl Default for Optimizations { fn default()->Self {Self(125)} }
 impl Optimizations {
-    pub fn from_bits(bits:usize)->Option<Self> {(bits & !61 == 0).then_some(Self(bits as u8))}
+    pub fn from_bits(bits:usize)->Option<Self> {(bits & !125 == 0).then_some(Self(bits as u8))}
+    fn frame_copies(self)->bool {self.0&64!=0}
     fn frame_calls(self)->bool {self.0&32!=0}
     fn words(self)->bool {self.0&1!=0}
     fn helpers(self)->bool {self.0&4!=0}
@@ -323,7 +324,22 @@ fn function(
     out.push_str("switch(pc.data.word){\n");
     for block in &program.blocks {
         writeln!(out, "case {}:{{", block.pc.0).unwrap();
-        for operation in &block.operations {
+        let copy_count = if policy.optimizations.frame_copies() && !(index == 0 && !named && policy.persist_root)
+            && matches!(&block.terminator, Term::Call {arguments,..} | Term::TailCall {arguments,..} if arguments.len() <= 16) {
+            block.operations.iter().rev().take_while(|op| matches!(op.kind, Op::Bind {..})).count()
+        } else { 0 };
+        let copy_count = if copy_count <= 32 { copy_count } else { 0 };
+        for (position, operation) in block.operations.iter().enumerate() {
+            if copy_count != 0 && position == block.operations.len() - copy_count {
+                let (Term::Call {call_site,receiver,selector,arguments,..} | Term::TailCall {call_site,receiver,selector,arguments,..}) = &block.terminator else { unreachable!() };
+                let sources = std::iter::once(receiver).chain(arguments.iter()).flat_map(|v| slot(*v).to_le_bytes()).map(|b| b.to_string()).collect::<Vec<_>>().join(",");
+                let copies = block.operations[position..].iter().flat_map(|op| {
+                    let Op::Bind {source,..} = &op.kind else { unreachable!() };
+                    [slot(*source),slot(op.result)].into_iter().flat_map(u32::to_le_bytes)
+                }).map(|b| b.to_string()).collect::<Vec<_>>().join(",");
+                let tail = usize::from(matches!(block.terminator, Term::TailCall {..}));
+                writeln!(out, "{{static const unsigned char slots[]={{ {sources} }},copies[]={{ {copies} }};R fast=try_frame_call_copies(&c,machine,{},slots,sizeof(slots),copies,sizeof(copies),{},{tail});if(fast.status)return finish(&c,(A){{0}});if(fast.value.kind!=0)return finish(&c,obj(keep(&c,object(&c,fast.value))));}}",call_site.0,quoted(selector)).unwrap();
+            }
             let expr = match &operation.kind {
                 Op::EntryReceiver
                 | Op::EntryImplementation
@@ -375,7 +391,7 @@ fn function(
                 arguments,
                 ..
             } => {
-                if policy.optimizations.frame_calls() && arguments.len() <= 16 {
+                if copy_count == 0 && policy.optimizations.frame_calls() && arguments.len() <= 16 {
                     let mut slots = Vec::new();
                     for value in std::iter::once(receiver).chain(arguments.iter()) {
                         slots.extend_from_slice(&slot(*value).to_le_bytes());
@@ -627,6 +643,24 @@ mod predicate_tests {
     use super::*;
     use crate::{Block, Expr, Statement};
     use std::borrow::Cow;
+    #[test]
+    fn frame_copy_batches_stop_at_observable_work_and_persistent_publication() {
+        let compile = |bindings: usize, barrier: bool, persistent: bool, mask| {
+            let mut body = vec![Statement::Let {name:b"x", value:Expr::Global(b"a")}];
+            for _ in 1..bindings { body.push(Statement::Let {name:b"x", value:Expr::Global(b"x")}); }
+            body.push(Statement::Expr(Expr::Send {
+                receiver:Box::new(Expr::Global(b"receiver")), selector:Cow::Borrowed(b"use:"),
+                args:vec![if barrier { Expr::SmallInt(1) } else { Expr::Global(b"x") }], source:b"",
+            }));
+            let bytes=crate::portable::encode_block(&Block {params:vec![b"receiver",b"a"],body},&[]).unwrap();
+            String::from_utf8(compile_portable_with_optimizations(&bytes,b"",b"<copies>",persistent,false,Optimizations::from_bits(mask).unwrap()).unwrap()).unwrap()
+        };
+        assert!(compile(3,false,false,125).contains("R fast=try_frame_call_copies"));
+        assert!(!compile(3,false,false,61).contains("R fast=try_frame_call_copies"));
+        assert!(!compile(3,true,false,125).contains("R fast=try_frame_call_copies"));
+        assert!(!compile(3,false,true,125).contains("R fast=try_frame_call_copies"));
+        assert!(!compile(33,false,false,125).contains("R fast=try_frame_call_copies"));
+    }
     #[test]
     fn module_initializer_publishes_lets_while_candidate_factory_is_inert() {
         let bytes = crate::portable::encode_block(&Block {

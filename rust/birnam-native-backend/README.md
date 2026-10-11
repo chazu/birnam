@@ -31,7 +31,8 @@ this owner through current Id lookup. Compiled/mapped artifact and image loading
 continue to consume saved metadata and objects without invoking it.
 
 Resumable call-window optimization uses explicit option bit 32; the default
-compiler mask is 61. Mask 29 keeps the earlier synchronous passes without this
+compiler mask is 125. Bit 64 additionally folds up to 32 trailing local copies
+into the call batch; mask 61 disables that extension. Mask 29 keeps the earlier synchronous passes without this
 optimization. The backend emits bounded source-slot metadata and retains the
 complete original call-preparation sequence after a refused attempt. Execution
 owns admission and frame mutation through

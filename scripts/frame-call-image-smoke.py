@@ -18,15 +18,18 @@ let probe := [Object clone];
 [Reflect defineMethod: #replacement:with: on: probe as: [:self :a :b | b]];
 [Reflect defineMethod: #run:with: on: probe as: [:self :a :b |
   let x := [self pick: a with: b];
-  [self pick: x with: b]
+  let y := x; let z := y;
+  [self pick: z with: b]
 ]];
 let first := 41; let second := 99;
 let main := [|
   [System println: [probe run: first with: second]];
   // Withdraw the optional protocol through the existing low-level Id API.
   // Ordinary Reflect publication retains its separate quiescence contract.
+  [[Reflect vtableOf: Machine] removeMethod: #tryPrepareCall:slots:copies:selector:in:tail:];
   [[Reflect vtableOf: Machine] removeMethod: #tryPrepareCall:slots:selector:in:tail:];
-  [System println: [[Machine methodFor: #tryPrepareCall:slots:selector:in:tail:] isNil]];
+  [System println: [[[Machine methodFor: #tryPrepareCall:slots:selector:in:tail:] isNil]
+    & [[Machine methodFor: #tryPrepareCall:slots:copies:selector:in:tail:] isNil]]];
   [System gc];
   [System println: [probe run: first with: second]];
   [[Reflect vtableOf: probe] addMethod: [probe methodFor: #replacement:with:] as: #pick:with:];

@@ -1,6 +1,8 @@
 //! Short paired benchmarks through Id; compilation/bootstrap are untimed.
 #[path = "micro_support/clock.rs"]
 mod clock;
+#[path = "micro_support/control.rs"]
+mod control;
 #[path = "../tests/support/mod.rs"]
 mod support;
 use birnam_abi::{
@@ -153,6 +155,23 @@ fn cases() -> Vec<Case> {
 [Globals at: #MicroProbe put: probe]; true"#.into(),
         mask: 32, expected: 12345, result_selector: b"word", integer_inputs: true,
     });
+    cases.push(Case {
+        name: "resumable-bindings".into(),
+        source: r#"let probe := [Object clone];
+[Reflect defineMethod: #pick:with: on: probe as: [:self :a :b | a]];
+[Reflect defineMethod: #run:with: on: probe as: [:self :a :b |
+  let x := a; let y := x; let z := y;
+  [self pick: z with: b]
+]];
+[Globals at: #MicroProbe put: probe]; true"#.into(),
+        mask: 125, expected: 12345, result_selector: b"word", integer_inputs: true,
+    });
+    for (name, body, expected) in [
+        ("stackless-loop", "let model := ObjectModel; let zero := 0; let cell := [model newSlots: #[zero] parent: ObjectVt]; [[| [[model slot: zero in: cell] < 8]] whileTrue: [| [model slot: zero in: cell put: [[model slot: zero in: cell] + 1]]]]; [model slot: zero in: cell]", 8),
+        ("stackless-fold", "[#[1 2 3 4 5 6 7 8] inject: 0 into: [:sum :each | [sum + each]]]", 36),
+    ] {
+        cases.push(Case { name: name.into(), source: format!("let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | {body}]]; [Globals at: #MicroProbe put: probe]; true"), mask:125, expected, result_selector:b"word", integer_inputs:true });
+    }
     cases.push(Case{name:"abi-audit-object-incoming".into(),source:wrapper("a"),mask:29,expected:12345,result_selector:b"word",integer_inputs:true});
     let captured = |body: &str| format!(r#"let bridge := Execution; let target := Integer; let factory := Word; {}"#, wrapper(body));
     cases.push(Case{name:"abi-audit-read".into(),source:captured("[bridge optionalWordResultOf: target selector: #wordOf: argument: a resultFactory: factory]"),mask:29,expected:12345,result_selector:b"bits",integer_inputs:true});
@@ -278,7 +297,7 @@ fn cases() -> Vec<Case> {
 #[derive(Clone, Copy)]
 struct Variant {
     receiver: Oop,
-    arithmetic: Option<usize>,
+    bindings: Option<usize>,
     native_read: Option<(Oop, Oop, Option<Oop>)>,
 }
 struct Runtime {
@@ -288,14 +307,13 @@ struct Runtime {
     gc: Oop,
     selector: Oop,
     families: Vec<(Oop, &'static str)>,
-    arithmetic: Vec<Vec<(Oop, NativeEntry)>>,
+    bindings: Vec<Vec<(Oop, Oop, NativeEntry)>>,
 }
 impl Runtime {
     unsafe fn activate(&self, v: Variant) {
-        if let Some(index) = v.arithmetic {
+        if let Some(index) = v.bindings {
             unsafe {
-                let vt = self.named(b"IntegerVt");
-                for &(selector, entry) in &self.arithmetic[index] {
+                for &(vt, selector, entry) in &self.bindings[index] {
                     self.id
                         .send_named(
                             vt,
@@ -393,7 +411,7 @@ unsafe fn compile_case(
                 Operand::object(text),
                 Operand::object(out),
                 Operand::object(out),
-                Operand::object(rt.named(if case.name.starts_with("resumable-") { b"false" } else { b"true" })),
+                Operand::object(rt.named(if (case.name.starts_with("resumable-") || case.name.starts_with("stackless-")) { b"false" } else { b"true" })),
             ],
         ));
         assert_eq!(
@@ -438,7 +456,7 @@ unsafe fn compile_case(
         }
         Variant {
             receiver,
-            arithmetic: None,
+            bindings: None,
             native_read: None,
         }
     }
@@ -648,10 +666,10 @@ unsafe fn public_arithmetic(
                     .unwrap(),
             );
             retain(rt.id, rt.roots, method);
-            entries.push((selector, entry));
+            entries.push((rt.named(b"IntegerVt"), selector, entry));
         }
-        let index = rt.arithmetic.len();
-        rt.arithmetic.push(entries);
+        let index = rt.bindings.len();
+        rt.bindings.push(entries);
         index
     }
 }
@@ -681,7 +699,7 @@ fn main() {
         ));
         let cases: Vec<_> = cases()
             .into_iter()
-            .filter(|c| (selected == "all" && !c.name.starts_with("abi-audit-")) || (selected == "abi-audit" && c.name.starts_with("abi-audit-")) || c.name == selected)
+            .filter(|c| (selected == "all" && !c.name.starts_with("abi-audit-") && !c.name.starts_with("stackless-")) || (selected == "abi-audit" && c.name.starts_with("abi-audit-")) || c.name == selected)
             .collect();
         assert!(!cases.is_empty(), "unknown case");
         let setup = Instant::now();
@@ -698,7 +716,7 @@ fn main() {
             gc: std::ptr::null_mut(),
             selector: id.intern_name(b"run:with:").unwrap(),
             families: vec![],
-            arithmetic: vec![],
+            bindings: vec![],
         };
         rt.roots = rt.named(b"Roots");
         rt.gc = rt.named(b"GC");
@@ -777,8 +795,10 @@ fn main() {
         let scratch = PathBuf::from(get("--scratch", "/tmp/birnam-microbench"));
         std::fs::create_dir_all(&scratch).unwrap();
         let mut prepared = vec![];
-        for case in cases {
-            let baseline_mask = if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-default" {
+        if selected.starts_with("stackless-") { control::load_stdlib(&rt); }
+        for mut case in cases {
+            if let Ok(mask) = get("--candidate-mask", "").parse() { case.mask = mask; }
+            let default_baseline = if case.name == "resumable-bindings" { 61 } else if case.name.starts_with("stackless-") { 61 } else if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-default" {
                 29
             } else if case.name == "public-integer-roots" {
                 5
@@ -788,16 +808,21 @@ fn main() {
             } else {
                 0
             };
+            let baseline_mask = get("--baseline-mask", "").parse().unwrap_or(default_baseline);
             let mut baseline = compile_case(&rt, &case, baseline_mask, &mut compiler, &scratch, true);
             let mut candidate = compile_case(&rt, &case, case.mask, &mut compiler, &scratch, false);
+            if case.name.starts_with("stackless-") {
+                baseline.bindings = Some(control::policy(&mut rt, &mut compiler, &scratch, baseline_mask));
+                candidate.bindings = Some(control::policy(&mut rt, &mut compiler, &scratch, case.mask));
+            }
             if case.name.starts_with("public-integer-") {
-                baseline.arithmetic = Some(public_arithmetic(
+                baseline.bindings = Some(public_arithmetic(
                     &mut rt,
                     &mut compiler,
                     &scratch,
                     baseline_mask,
                 ));
-                candidate.arithmetic = Some(public_arithmetic(
+                candidate.bindings = Some(public_arithmetic(
                     &mut rt,
                     &mut compiler,
                     &scratch,
@@ -845,14 +870,21 @@ fn main() {
                     work[1]["steady_messages"] = messages(&rt, &case, candidate, &inputs, true, trace);
                 }
             }
-            let key = if case.name.starts_with("resumable-") {
+            let key = if (case.name.starts_with("resumable-") || case.name.starts_with("stackless-")) {
                 "integer"
             } else if case.name.starts_with("abi") {
                 "vector"
             } else {
                 "word"
             };
-            if case.name.starts_with("abi-audit-") {
+            if case.name == "stackless-fold" && baseline_mask == 61 && case.mask == 125 {
+                // Negative control: intervening sends/literal construction stop
+                // copy fusion. These copies must stay in their original places.
+                assert_eq!(work[0]["allocation_objects"], work[1]["allocation_objects"]);
+                if counts_only {
+                    assert!(work[1]["messages"]["selectors"]["tryPrepareCall:slots:copies:selector:in:tail:"].as_u64().unwrap_or(0) == 0);
+                }
+            } else if case.name.starts_with("abi-audit-") {
                 // Deliberate cost contrasts; each result was checked above.
             } else if case.name.starts_with("semantic-") || case.name == "public-integer-default"
                 || case.name == "public-integer-roots"
@@ -873,7 +905,7 @@ fn main() {
                     case.name
                 );
             }
-            prepared.push((case, [baseline, candidate], inputs, work));
+            prepared.push((case, baseline_mask, [baseline, candidate], inputs, work));
         }
         install(
             id,
@@ -905,7 +937,7 @@ fn main() {
         let deadline = start + budget.duration();
         let mut records = vec![];
         let case_count = prepared.len();
-        for (index, (case, variants, inputs, work)) in prepared.into_iter().enumerate() {
+        for (index, (case, baseline_mask, variants, inputs, work)) in prepared.into_iter().enumerate() {
             let stop = std::cmp::min(
                 deadline,
                 start
@@ -990,7 +1022,7 @@ fn main() {
                     break;
                 }
             }
-            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,if case.name.starts_with("semantic-") || case.name.starts_with("abi-audit-") || case.name == "public-integer-default" {29} else if case.name == "public-integer-roots" {5} else if case.name == "public-integer-retains" {13} else {0},true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else if case.name == "public-integer-default" { "default protocol fixture; no optimization toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"case":case.name,"source":case.source,"candidate_mask":case.mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
+            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,baseline_mask,true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name == "stackless-fold" && baseline_mask == 61 && case.mask == 125 {"negative control: no trailing copies at call boundaries"} else if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else if case.name == "public-integer-default" { "default protocol fixture; no optimization toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"control_source":if case.name.starts_with("stackless-") {Some(std::fs::read_to_string("modules/stackless-control.birnam").unwrap())} else {None},"case":case.name,"source":case.source,"candidate_mask":case.mask,"baseline_mask":baseline_mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
         }
         println!(
             "{}",

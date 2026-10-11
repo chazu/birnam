@@ -48,8 +48,9 @@ bitmask: 1 enables Word expression/local fusion, 4 authored Word helper candidat
 8 owner-batched cleanup, and 16 invocation-covered input roots plus protection
 reuse for already-covered captures/locals within the current generated call. Bit 2 is retired
 and rejected. Bit 32 enables guarded resumable call-window preparation; the
-default mask is 61. Mask 29 still selects the earlier synchronous passes only.
-Tests cover all 32 valid masks and reject retired/out-of-range bits.
+default mask is 125; bit 64 adds guarded trailing-copy fusion. Mask 61 disables
+that new extension. Mask 29 still selects the earlier synchronous passes only.
+Tests cover all 64 valid masks and reject retired/out-of-range bits.
 The runner temporarily forwards compiler requests to these options interfaces
 while compiling/loading fixtures, then restores the original compiler methods
 before measurement. Runtime lookup and allocation methods are not replaced.
@@ -289,3 +290,26 @@ New public-policy probes are `semantic-word-as-integer`,
 production callers. See [the retirement result](outbound-bridge-retirement.md).
 Older sections describing ABI-literal permission work are historical checkpoints;
 the associated pass, signature handling and guard helpers have been deleted.
+
+
+## Full authored control and local-copy measurements
+
+`stackless-loop` and `stackless-fold` compile the complete
+`modules/stackless-control.birnam` twice as resumable code, retain both method sets,
+and install the selected bindings through Id before untimed warmup. Stdlib is
+held constant; the loop/fold policy is never reimplemented in the runner. These
+heavier fixtures are selected explicitly and excluded from `all`.
+
+`resumable-bindings` measures a local alias chain followed by a call. These three
+fixtures default to masks 61/125. Explicit `--baseline-mask` and
+`--candidate-mask` permit one-fixture comparisons, including the earlier call
+preparation slice (29/61). Both masks are recorded. The 61/125 fold is a deliberate
+negative control: intervening work prevents copy fusion, so its allocation census
+must remain identical and an instrumented run must report zero copy-batch sends.
+Other optimization fixtures retain their allocation-reduction assertions.
+
+The [2026-10-10 record](../measurements/frame-copy-fusion-20261010.json) includes
+paired timings, both complete control policies' source, artifact hashes and
+separate Id message counts. Capture gathering was investigated and rejected;
+its experimental use of mask 64 in those earlier records is explicitly labelled
+and is not the shipped bit-64 implementation.

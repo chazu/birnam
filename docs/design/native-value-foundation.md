@@ -710,3 +710,59 @@ the current fixed Word conversion and passes. No runtime compatibility shim or
 relaxation of generation quiescence was added. Logs and rejected experiments are
 under `/tmp/birnam-frame-opt/`. Validation is focused, not full release qualification;
 the normal user installation is unchanged.
+
+
+### Trailing-copy fusion and full control measurements (2026-10-10)
+
+The preceding call-preparation pass was measured in the full authored control
+unit, not just bootstrap loops: local paired loop/fold fixtures used roughly
+40%/35% less CPU with masks 29/61. The remaining eight-iteration loop had 113
+ordinary frame reads but only one `returnAt:` message; the fold had 53 reads and
+one return. That evidence favored frame access over a separate return guard.
+
+An experimental guarded closure-capture batch reduced allocation but did not
+establish a meaningful CPU gain in longer samples. It was removed. Blocks are
+still constructed normally; no general closure-elimination or virtual-value
+recovery mechanism was introduced.
+
+The retained pass folds a contiguous suffix of local binding copies into the
+already guarded call window. It shares the existing guard sequence, validates
+all sources first, simulates sequential aliases/overwrites, then writes every
+original frame slot and publishes the normal call or tail-call action. It cannot
+cross source operations or persistent global publication. Guard refusal resumes
+the original sequence before any frame write, without replaying earlier effects.
+Default mask is now 125; mask 61 provides the previous implementation.
+
+[Paired local evidence](../measurements/frame-copy-fusion-20261010.json), at the
+fixed 16 MiB GC budget, shows:
+
+| Fixture, masks 61/125 | Candidate/baseline CPU | Allocation evidence |
+| --- | ---: | --- |
+| Alias chain and call | 0.690 (95% interval 0.686–0.694), 42 pairs | 22 → 16 objects/invocation |
+| Full authored loop | 0.972 (0.968–0.980), 26 pairs; inconclusive at the 3% margin | 441 → 407 Integer allocations/invocation |
+| Full authored Vector fold | 1.002 (0.997–1.017), 19 pairs; no meaningful difference | Identical counts; no eligible trailing copies |
+
+The loop's untimed Id census falls from 18,417 to 17,703 messages; the fold remains
+at 11,832 with zero copy-batch invocations. These are fixture results, not a
+whole-language speedup claim. Reproduce through `scripts/microbench.py` with
+`--case resumable-bindings`, `stackless-loop` or `stackless-fold`.
+
+
+Validation for this follow-up passed 107 ABI/Codegen/Execution/backend tests,
+four benchmark-reporter tests, and the production compiler, Machine/control,
+Method lifetime, bootstrap-loop, generation and generation-transaction binaries.
+The copy oracle checks all 729 three-copy plans over three slots against ordinary
+sequential storage. Compiler tests reject fusion across literal work, persistent
+publication and over-limit copy lists. Both optional protocols have matched
+replacement, collecting-guard, post-grant mutation, missing-protocol, exact failure
+and paused-frame regression coverage.
+
+A fresh offline cold build at `/tmp/birnam-frame-followup/accepted-prefix` passed
+its exact receipt, 589-file source comparison, and parser/compiler-disabled
+startup. Source-free mapped/rebuilt images passed withdrawal of both frame
+protocols and later target replacement, plus the existing Trace recovery check.
+The installed allocation-accounting and bootstrap-loop tests passed. Authored task
+scheduling passed all 171 checks, including quanta 128 and 1 and native boundary
+checks. Logs are under `/tmp/birnam-frame-followup/`. This is focused acceptance,
+not release qualification; the normal user installation is unchanged.
+The 16 MiB default remains fixed, without scaling.
