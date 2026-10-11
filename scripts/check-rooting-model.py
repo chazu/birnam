@@ -24,6 +24,10 @@ SEMANTICS = ROOT / "formal/semantics"
 CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
+    "HelperSafe": None,
+    "HelperTransitive": "Invariant SameCalls is violated.",
+    "HelperAddress": "Invariant SameCalls is violated.",
+    "HelperDispatch": "Invariant SameCalls is violated.",
     "SlotSafe": None,
     "SlotKey": "Invariant CurrentLookup is violated.",
     "SlotValue": "Invariant CurrentLookup is violated.",
@@ -218,7 +222,7 @@ def check_tla(jar, java, out):
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
                "-config", str((SEMANTICS if name.startswith(("Region", "Admission", "Indexed", "Relational", "Slot")) else FORMAL) / f"tla/{name}.cfg"),
-               str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -240,7 +244,7 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints")]:
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("HelperEmission", "Birnam.HelperEmission"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints")]:
         text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"} else FORMAL) / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
@@ -255,7 +259,7 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"]:
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "HelperEmission", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"]:
         result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"} else FORMAL) / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:
@@ -289,6 +293,7 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "skip-retained-helper-body": ("HelperEmission", "rest (body f state)", "rest state"),
         "charge-whole-capacity-again": ("GC", "before + (after - before)", "before + after"),
         "unchecked-slot-hint": ("SlotHints", "if name = key then some value else lookup key rows", "if true then some value else lookup key rows"),
         "freeze-relational-comparison": ("Relational", ".ok (s == 0)", ".ok true"),

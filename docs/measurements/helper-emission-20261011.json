@@ -1,0 +1,1045 @@
+{
+  "schema": 1,
+  "date": "2026-10-11",
+  "base_revision": "0a47650b4efbe47d8f980b9ecbb4571691800963",
+  "qualification": "Paired fresh prefixes built from one frozen source path with explicit Cargo-cache reuse, rebuilding all authored artifacts and startup images. Packaged sources differ only in native_prelude.c; among the 38 native libraries only NativeBackend differs. Host binaries match. No user installation, commit or release claim. Startup and warm ABBA measurements ran sequentially after validation jobs completed; filesystem caches were warm. Census observations ran alongside validation jobs, with each process blocked after explicit GC.",
+  "artifacts": {
+    "baseline": {
+      "prefix": "/private/tmp/birnam-helper-emission/baseline-prefix",
+      "platform": "macOS-14.6-arm64-arm-64bit",
+      "host_sha256": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "runtime_sha256": {
+        "libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+        "libbirnam_alienCompiler.dylib": "601b561f63c76b608b372650b017393b33dba8d6606f9fc718796c3a69b1578d",
+        "libbirnam_artifact.dylib": "8a441fbbb6b4223be2be882ba843d2b9e7add826a80e33c68fb7aa6aeaaa3baa",
+        "libbirnam_blockLoop.dylib": "ae558ce2357bce5d6676119ee430c902aa68545720edde4ed59ab01dd7d2860f",
+        "libbirnam_blockLoopControl.dylib": "5e10cab4753d51261f5ef175ad2d2cd10988cab109caf29521f27825bdba2ce5",
+        "libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+        "libbirnam_booleanValues.dylib": "c5d7a191b5a1277e66db035b067c7e66e77dc8b776290c4507ed3c5a8f989773",
+        "libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+        "libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+        "libbirnam_cli.dylib": "561300784f8bf38695de809f539017551633bc6a9936d3682cddecde488053a5",
+        "libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+        "libbirnam_collect.dylib": "4eabb99c55211262eca45194e2f746a98f90ed4742275282643854ff34b06d9a",
+        "libbirnam_compiledUnit.dylib": "40c635e42936c51be83cc8274e4388ee6c36b393de5074961461166e27c54389",
+        "libbirnam_compiledUnitDocs.dylib": "68718afe7d5a1fce26db30f711a64ddd843eaa9239b82cc98eae84ee7e8b4ca1",
+        "libbirnam_concurrencyDocs.dylib": "7b4e03020fb7021556d0805131c3417eff38cd6ce0fdf695e016d78c21d16d9d",
+        "libbirnam_config.dylib": "0c91a45a61e4a6ec2fc7b70eccd3c3507dad5edcff8e062f755a4cb335fc59bb",
+        "libbirnam_doc.dylib": "23f6e82d03e4b3b9ee1cd6861e8daf4ac70abf8ef107820282ce871820d27f0e",
+        "libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+        "libbirnam_error.dylib": "a36fffdd77b6676c5ca7ff7139ec0997e1f76b4a0f9eb315094e6ef5d7fd0270",
+        "libbirnam_execution.dylib": "23c14968f3b50d47fc05f61e2b97113d3df36ed73199ded9c0b9d3554119c82a",
+        "libbirnam_file.dylib": "c37833d33fa13646a05e63619c22def24364ae8dd8ef3bf7a95ed37d03d35b30",
+        "libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+        "libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+        "libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+        "libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+        "libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+        "libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+        "libbirnam_html.dylib": "e92ed158b7fb1b52844810e1dd2e63cbc847826c82c0b8851e314cd45342d6fc",
+        "libbirnam_http.dylib": "0a5ab66199de4a82c9f8fa9a7416f6f29a082316d57a22ef5fe7d4dca50f54e5",
+        "libbirnam_id.dylib": "46ea0e1a3e014807903827afa92ff9198f8c1997472bef2dcbfa315e5874252b",
+        "libbirnam_image.dylib": "bbc9306779a5baf04b5364c3adccd2e91c35ffeba3ec6d77c9f6be7de6eed2ef",
+        "libbirnam_imageFormat.dylib": "f5b98fd47bff4c4988fe5289948d84f983f80a997cc2117673d963d72e3222c1",
+        "libbirnam_integer.dylib": "941c34a0ae211d0e99b87fdcd08d68f20b73f4a303d125a266c739445692abbb",
+        "libbirnam_integerValues.dylib": "b3bc56a0e5460b941a8adabff5ab8ef8e0bd25eb723b3d5123404379954313d0",
+        "libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+        "libbirnam_json.dylib": "9c73d84b3054a3343f71b70f223c1bb51b6671fbf1dd79853e8c69ccbed63a2e",
+        "libbirnam_lang.dylib": "e6e393767fe25b7838dee958aa87411b96aacd999482d834a2f856360092dc26",
+        "libbirnam_log.dylib": "33dbe096e09ff56625254f024bab29553c75ae599cfff8433d536719759b11f1",
+        "libbirnam_lsp.dylib": "3fd7a2323efc19c2615e68de40199305323f0e8603e0fc1570b695140f52c3a6",
+        "libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+        "libbirnam_markdown.dylib": "978896f554ad8fa6eecf71a90c6e49157369c41f081699c98d8b4e1201aa085b",
+        "libbirnam_modules.dylib": "b46325642d49854f62cefea1b6e6a57be706f573c670eefef8fe790e280f2098",
+        "libbirnam_namespace.dylib": "c4ae6a8e0ff1fcc0898d143cd5499fa2dfb91fc04a1ed23f3f5db35df465cdb2",
+        "libbirnam_nativeLoader.dylib": "bff0110d18e291a45a5e0a7f7e90769cbc4a819cea7db2a03653a5a86c0d031c",
+        "libbirnam_nativeValues.dylib": "5cd60a14198e7d41e0a8a8035806e34fcd733d8e996b0d2c6a86ea6f771177e5",
+        "libbirnam_native_backend.dylib": "449e1b2b3cee5316b762b0c856f61ff6b6bcac172885852c5813097159047877",
+        "libbirnam_nativedoc.dylib": "2ada9a6f4bf410d1f7af8d7836152d23ca82d2b3300b9fe96bdd3f2f0bde9ab9",
+        "libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+        "libbirnam_object_model.dylib": "3f1fdfa6499b432ecf98cca58c782f5345e6d75f08cd549408f22008e3446688",
+        "libbirnam_os.dylib": "806d739a147939e35cc6cf6201a1420ff5d02c63cb05eb0c2af1222fb78417d9",
+        "libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+        "libbirnam_portable_code.dylib": "8be722626ec8424020eb4135bb2ed24c34867394f3ff20ba7c60c80078f6aa3d",
+        "libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+        "libbirnam_printing.dylib": "04d9f182b72b62d97a12e51db619d32927881b7da5d8fb4edfc43580615962b1",
+        "libbirnam_process.dylib": "6b38560db383bd0617b849f144bdeae8629708526f3f8be5fde698a3ce7463df",
+        "libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+        "libbirnam_random.dylib": "2e83659ab385903a1d3a62424588cee9ba8d85df545319e55d65abc571619c71",
+        "libbirnam_range.dylib": "466238c870bd9117b407116af669af485e0fe00e9e708dc2420c3c47a8743b8d",
+        "libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+        "libbirnam_repl.dylib": "1a4625910e59ab5d95a5164407f88954519a97db260a6ce261e72647ee0f0557",
+        "libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+        "libbirnam_socket.dylib": "149b11cc7cf854d7599f7136a8d6da03f75ea6ef7c6a6ad330cde23bf30eec2e",
+        "libbirnam_sourceLoader.dylib": "db145b8dc29b696d79055a11dfab3e4b95cc6f9b0f6db83e7e8aedd371c268b2",
+        "libbirnam_stacklessControl.dylib": "1214cd9d6fe51ef4f1943ccabb3e3c4a4877045f5a8d305c117c45f07e40838c",
+        "libbirnam_stdlib.dylib": "22388f97a169ea578e2de406bb5b466e47eb1a09db39a264bffe309383340142",
+        "libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+        "libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+        "libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+        "libbirnam_systemGc.dylib": "66c04a94379635e1c6e539711de40d91d2ce5a8a08918da753b40f2dca0e00b9",
+        "libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+        "libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+        "libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+        "libbirnam_time.dylib": "c4a46bca155f9160d83f6a8a3bbc455610e6fc249a8dc38b696dac05b70e12ea",
+        "libbirnam_toml.dylib": "66d2858e10728381c2bb330943e3c2b812a6f2af08310a08bee2fe3b9911428a",
+        "libbirnam_trace.dylib": "dde7719773d9ea34fcee7302a44a8f1e17f6dc02e7acc8d2fa39b73092f7eecc",
+        "libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+        "libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4"
+      },
+      "image_sha256": {
+        "birnam-bootstrap.image": "3eca1255b8e7e8b3fc54dd84b5e8ea24f2fef6372900da3244697e8ebb28e5e1",
+        "birnam-tools.image": "43494b6cd91d27ee90e01e6efcbb5d8f3cf551ae8f4eb6c2a810c1ceeb1d3b8e"
+      }
+    },
+    "candidate": {
+      "prefix": "/private/tmp/birnam-helper-emission/candidate-prefix",
+      "platform": "macOS-14.6-arm64-arm-64bit",
+      "host_sha256": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "runtime_sha256": {
+        "libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+        "libbirnam_alienCompiler.dylib": "011dc783c99d6fb14cdc96280588bc8a86f89189aac4e2d43af25ed8ecc74af4",
+        "libbirnam_artifact.dylib": "8a441fbbb6b4223be2be882ba843d2b9e7add826a80e33c68fb7aa6aeaaa3baa",
+        "libbirnam_blockLoop.dylib": "92b31fad3b3fee184c2baa9fd4eb03fc4975e70b2a1d7898ef2afaaaa0802770",
+        "libbirnam_blockLoopControl.dylib": "c3375b9ac56329bc39ed86e40dccb486bda2bb456cf09b110579b200628f2250",
+        "libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+        "libbirnam_booleanValues.dylib": "c5ca306921f3d0eae4234b237b8ef686b6ccabc4e975d2519b2e9a567498ad18",
+        "libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+        "libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+        "libbirnam_cli.dylib": "03a54b5da7905a96d375ddc6847f97bd6756a1be155f6329ceaf2e4b448bf2d3",
+        "libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+        "libbirnam_collect.dylib": "4eabb99c55211262eca45194e2f746a98f90ed4742275282643854ff34b06d9a",
+        "libbirnam_compiledUnit.dylib": "77f9d1e6346a4d466234b24f47fc82f4a77eadf8db351b684ea75793bcc0ab0d",
+        "libbirnam_compiledUnitDocs.dylib": "89a0dc7a719d34ebcafd31d9aab23a56e22d1246b1e2aed1a680a397aa057ae2",
+        "libbirnam_concurrencyDocs.dylib": "75f8c71b7711035f38c25ed5c4230dc396869052b89ad29735a8efda553dc3d2",
+        "libbirnam_config.dylib": "56301d7ef015f5a7b11dc5cfcbdc345916350fb9019d1d349351cf412a910fc0",
+        "libbirnam_doc.dylib": "c92de34d8df117d08644293f454a2c93f330c1c38be6ae88a18c02fdcda61e8f",
+        "libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+        "libbirnam_error.dylib": "1816a178d762727ae346eecb35c6b7ff025e5da83a93372224bb237543348bfa",
+        "libbirnam_execution.dylib": "23c14968f3b50d47fc05f61e2b97113d3df36ed73199ded9c0b9d3554119c82a",
+        "libbirnam_file.dylib": "81eded70d71038ef4139697278911719bacdb7a8f75d9119ab0620c2c3a32534",
+        "libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+        "libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+        "libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+        "libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+        "libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+        "libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+        "libbirnam_html.dylib": "5ea2e66dc777375a32dc2201ea5492435a7016713b959488bf3bab91cf518f5b",
+        "libbirnam_http.dylib": "b56c4389ba5c76037cbc4c6ec5058157bbd323a1eedb90f990db6236a33fe5b2",
+        "libbirnam_id.dylib": "46ea0e1a3e014807903827afa92ff9198f8c1997472bef2dcbfa315e5874252b",
+        "libbirnam_image.dylib": "bbc9306779a5baf04b5364c3adccd2e91c35ffeba3ec6d77c9f6be7de6eed2ef",
+        "libbirnam_imageFormat.dylib": "b83d1d6490e64393b3fbc846e574e2d01b2191eb7feb3eefea1440ddc17f4bc3",
+        "libbirnam_integer.dylib": "941c34a0ae211d0e99b87fdcd08d68f20b73f4a303d125a266c739445692abbb",
+        "libbirnam_integerValues.dylib": "fec149e9293b0356726ef9c3ac12db6ea9f7cf8569d2be1c35793d14c59a18d1",
+        "libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+        "libbirnam_json.dylib": "7b32bd8183cf8e5e88ea4a83d836c4330be5c2140af1f7ec130813e0e30d772e",
+        "libbirnam_lang.dylib": "8766ef086e15041bdeedba6197574f7949afb562e80969bfe4232f79429a9e88",
+        "libbirnam_log.dylib": "606da53a24a730889ec60acdf6a423d3de96308488da466529ff20ba314907ab",
+        "libbirnam_lsp.dylib": "f374a274abcca51eb3b773bb5520dfc9fa272e002eea9a8dd501d9ebef23e0c8",
+        "libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+        "libbirnam_markdown.dylib": "3295505eb9a01d4b3613701a72985356c1efd8b3d0c492649401579db68491d8",
+        "libbirnam_modules.dylib": "fda65800777e7d24ef310cba41da1a6033488b6f59e9edba77333ef7ce176a02",
+        "libbirnam_namespace.dylib": "c4ae6a8e0ff1fcc0898d143cd5499fa2dfb91fc04a1ed23f3f5db35df465cdb2",
+        "libbirnam_nativeLoader.dylib": "abef842fda5e7e29a68727876020f508ab01145019bff843b8848e56094b7a33",
+        "libbirnam_nativeValues.dylib": "668a34e608698d9443f762e34f8d5a55d4b67e155968281b8d911a3fb39935ca",
+        "libbirnam_native_backend.dylib": "d5ef55a90da00adc7b8c3fba808476bdaf8d3fc943372c51134f85edae3fd6c0",
+        "libbirnam_nativedoc.dylib": "f7e036b5dc7f3d0813f8a083518475765d3d949211ce9c8a8b0db7198026cba3",
+        "libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+        "libbirnam_object_model.dylib": "3f1fdfa6499b432ecf98cca58c782f5345e6d75f08cd549408f22008e3446688",
+        "libbirnam_os.dylib": "d96aa7bbf6a0db0dcb280aed08c040a4fb8bec24f502630e74b8fb5d2bb37983",
+        "libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+        "libbirnam_portable_code.dylib": "8be722626ec8424020eb4135bb2ed24c34867394f3ff20ba7c60c80078f6aa3d",
+        "libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+        "libbirnam_printing.dylib": "c02c26c9032bcbb77827d0776bea67f368dc940d025b9e96dacbe3384ee947f2",
+        "libbirnam_process.dylib": "4fe14fac5dba1e3d1d9bda5de7401160f90df64f1a1e6f3262bf08f9c01076e8",
+        "libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+        "libbirnam_random.dylib": "7ad06140b6b9c76d2c65e9a50afe45ed3746c41a5fbff6797d26df7d327feb50",
+        "libbirnam_range.dylib": "2fb6d1eef7b09f8a5759699d4b6eee26c244e85efc8e002af860d14884dbe2b4",
+        "libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+        "libbirnam_repl.dylib": "fe0176f760e813a558f7c50a1078a310571c1f01282cd3bde73dab4295832f49",
+        "libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+        "libbirnam_socket.dylib": "016bf48566a47d543b928805c27c34a674cf3d0ca47835ce9df71b4ccfbd3d10",
+        "libbirnam_sourceLoader.dylib": "8c6aa341a0ec75c8ac5f315e180d723870ab314ab4181ecd0fa70fc385e62989",
+        "libbirnam_stacklessControl.dylib": "d3d20b93517a2872e148a96cdec16669569687ad2495cec20c657727c10fb65b",
+        "libbirnam_stdlib.dylib": "b675aa70160eabe76b8df564d3261144fc030e18609f766dcc8ab72c34fe75b6",
+        "libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+        "libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+        "libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+        "libbirnam_systemGc.dylib": "cf19db4e1262baa0415950c4589cb64555a3e7462f01e183d1bef13199f2b87a",
+        "libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+        "libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+        "libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+        "libbirnam_time.dylib": "a87890ecf1475230e906cd1e220bebddcc7c8fefb2eb85394f6bcc3a6444e0ca",
+        "libbirnam_toml.dylib": "2319fdaec7929c79fd34db70b55f355537de5cff391e5e4d698430ee28de3b91",
+        "libbirnam_trace.dylib": "a6bab9d99810f9ebacb7240b952fabc41a480d2b7112078b8c61ceb3dd37d9b8",
+        "libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+        "libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4"
+      },
+      "image_sha256": {
+        "birnam-bootstrap.image": "e8c146bee159410904f2f1a61c7b27c99944e49d234c7018b2cbb0649555f480",
+        "birnam-tools.image": "c70d7747538e0f3dd2535a863a459d9f4205162d610d95eacce1182a59331aeb"
+      }
+    }
+  },
+  "paired_source_differences": [
+    "rust/birnam-native-backend/src/native_prelude.c"
+  ],
+  "build_receipts": {
+    "baseline": {
+      "build_mode": "development-cache",
+      "build_seed": {
+        "grammar": "birnam-lang-seed",
+        "published": false
+      },
+      "source_manifest_sha256": "ac5b9774bcd9f9ba87dd4b1c728167f39f1895a49fb3b36529c0f6226df11fcf",
+      "staged_manifest_sha256": "6dad2a882eeea5d4774bc98df95e3b64404ffd507a5151172e779f4860c851c0",
+      "source_identity": {
+        "git_clean": false,
+        "git_commit": "unavailable"
+      },
+      "profile": "release"
+    },
+    "candidate": {
+      "build_mode": "development-cache",
+      "build_seed": {
+        "grammar": "birnam-lang-seed",
+        "published": false
+      },
+      "source_manifest_sha256": "e64906af900d0cdec13b3d1a8d3c8717d8907dd28d2d2ae49cc7d2eb36ce4425",
+      "staged_manifest_sha256": "69c6ea00e8b3bf9fad5cb33d2398b6fd2f5e6d055d7f74a863a40c8ef984a5cf",
+      "source_identity": {
+        "git_clean": false,
+        "git_commit": "unavailable"
+      },
+      "profile": "release"
+    }
+  },
+  "image_bytes": {
+    "baseline": {
+      "birnam-bootstrap.image": 232611242,
+      "birnam-tools.image": 351349020
+    },
+    "candidate": {
+      "birnam-bootstrap.image": 196777498,
+      "birnam-tools.image": 296351052
+    }
+  },
+  "elf_sections": {
+    "baseline": {
+      "image_objects": 3793,
+      "section_bytes": {
+        ".rela.text": 89433600,
+        ".text": 82824900,
+        ".bss": 31520064,
+        ".data.ro": 30423264,
+        ".symtab": 13920264,
+        ".strtab": 4420054,
+        ".shstrtab": 345163,
+        ".rela.data.ro": 91032,
+        ".data": 15172,
+        "": 0,
+        ".tdata": 0,
+        ".tbss": 0
+      },
+      "note": "ELF section sizes before page rounding; BSS is logical size, not stored file bytes. Bootstrap image only, excludes separately compiled bootstrap-prefix units."
+    },
+    "candidate": {
+      "image_objects": 3793,
+      "section_bytes": {
+        ".rela.text": 74055864,
+        ".text": 66784532,
+        ".bss": 31520064,
+        ".data.ro": 29396283,
+        ".symtab": 11401776,
+        ".strtab": 3536204,
+        ".shstrtab": 345163,
+        ".rela.data.ro": 91032,
+        ".data": 15172,
+        "": 0,
+        ".tdata": 0,
+        ".tbss": 0
+      },
+      "note": "ELF section sizes before page rounding; BSS is logical size, not stored file bytes. Bootstrap image only, excludes separately compiled bootstrap-prefix units."
+    }
+  },
+  "small_named_adapter": {
+    "baseline": {
+      "object_bytes": 32683,
+      "functions": 35,
+      "function_bytes": 14360
+    },
+    "candidate": {
+      "object_bytes": 19691,
+      "functions": 21,
+      "function_bytes": 8900
+    }
+  },
+  "startup_samples": {
+    "baseline": [
+      {
+        "mode": "native-prefix",
+        "sample": 0,
+        "wall_ns": 256256209,
+        "peak_rss_bytes": 127074304
+      },
+      {
+        "mode": "native-prefix",
+        "sample": 1,
+        "wall_ns": 252968458,
+        "peak_rss_bytes": 127270912
+      },
+      {
+        "mode": "authored-image",
+        "sample": 0,
+        "wall_ns": 3461287375,
+        "peak_rss_bytes": 1355988992
+      },
+      {
+        "mode": "authored-image",
+        "sample": 1,
+        "wall_ns": 3464523000,
+        "peak_rss_bytes": 1347469312
+      },
+      {
+        "mode": "native-prefix",
+        "sample": 0,
+        "wall_ns": 255137584,
+        "peak_rss_bytes": 117637120
+      },
+      {
+        "mode": "native-prefix",
+        "sample": 1,
+        "wall_ns": 256362417,
+        "peak_rss_bytes": 126435328
+      },
+      {
+        "mode": "authored-image",
+        "sample": 0,
+        "wall_ns": 3480488166,
+        "peak_rss_bytes": 1350139904
+      },
+      {
+        "mode": "authored-image",
+        "sample": 1,
+        "wall_ns": 3476571333,
+        "peak_rss_bytes": 1348976640
+      }
+    ],
+    "candidate": [
+      {
+        "mode": "native-prefix",
+        "sample": 0,
+        "wall_ns": 248116959,
+        "peak_rss_bytes": 130777088
+      },
+      {
+        "mode": "native-prefix",
+        "sample": 1,
+        "wall_ns": 248800584,
+        "peak_rss_bytes": 121307136
+      },
+      {
+        "mode": "authored-image",
+        "sample": 0,
+        "wall_ns": 3315702125,
+        "peak_rss_bytes": 1167048704
+      },
+      {
+        "mode": "authored-image",
+        "sample": 1,
+        "wall_ns": 3317387708,
+        "peak_rss_bytes": 1162739712
+      },
+      {
+        "mode": "native-prefix",
+        "sample": 0,
+        "wall_ns": 252973833,
+        "peak_rss_bytes": 116244480
+      },
+      {
+        "mode": "native-prefix",
+        "sample": 1,
+        "wall_ns": 247764667,
+        "peak_rss_bytes": 128155648
+      },
+      {
+        "mode": "authored-image",
+        "sample": 0,
+        "wall_ns": 3289012125,
+        "peak_rss_bytes": 1157644288
+      },
+      {
+        "mode": "authored-image",
+        "sample": 1,
+        "wall_ns": 3289945167,
+        "peak_rss_bytes": 1155055616
+      }
+    ]
+  },
+  "startup_medians": {
+    "baseline": {
+      "native-prefix": {
+        "wall_ns": 255696896.5,
+        "peak_rss_bytes": 126754816.0
+      },
+      "authored-image": {
+        "wall_ns": 3470547166.5,
+        "peak_rss_bytes": 1349558272.0
+      }
+    },
+    "candidate": {
+      "native-prefix": {
+        "wall_ns": 248458771.5,
+        "peak_rss_bytes": 124731392.0
+      },
+      "authored-image": {
+        "wall_ns": 3302823646.0,
+        "peak_rss_bytes": 1160192000.0
+      }
+    }
+  },
+  "retained_censuses": {
+    "baseline": {
+      "platform": "macOS-14.6-arm64-arm-64bit",
+      "prefix": "/private/tmp/birnam-helper-emission/baseline-prefix",
+      "qualification": "Fresh processes held after explicit GC. vmmap sizes are rounded; RSS and physical footprint are distinct measures.",
+      "host_sha256": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "runtime_sha256": {
+        "libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+        "libbirnam_alienCompiler.dylib": "601b561f63c76b608b372650b017393b33dba8d6606f9fc718796c3a69b1578d",
+        "libbirnam_artifact.dylib": "8a441fbbb6b4223be2be882ba843d2b9e7add826a80e33c68fb7aa6aeaaa3baa",
+        "libbirnam_blockLoop.dylib": "ae558ce2357bce5d6676119ee430c902aa68545720edde4ed59ab01dd7d2860f",
+        "libbirnam_blockLoopControl.dylib": "5e10cab4753d51261f5ef175ad2d2cd10988cab109caf29521f27825bdba2ce5",
+        "libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+        "libbirnam_booleanValues.dylib": "c5d7a191b5a1277e66db035b067c7e66e77dc8b776290c4507ed3c5a8f989773",
+        "libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+        "libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+        "libbirnam_cli.dylib": "561300784f8bf38695de809f539017551633bc6a9936d3682cddecde488053a5",
+        "libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+        "libbirnam_collect.dylib": "4eabb99c55211262eca45194e2f746a98f90ed4742275282643854ff34b06d9a",
+        "libbirnam_compiledUnit.dylib": "40c635e42936c51be83cc8274e4388ee6c36b393de5074961461166e27c54389",
+        "libbirnam_compiledUnitDocs.dylib": "68718afe7d5a1fce26db30f711a64ddd843eaa9239b82cc98eae84ee7e8b4ca1",
+        "libbirnam_concurrencyDocs.dylib": "7b4e03020fb7021556d0805131c3417eff38cd6ce0fdf695e016d78c21d16d9d",
+        "libbirnam_config.dylib": "0c91a45a61e4a6ec2fc7b70eccd3c3507dad5edcff8e062f755a4cb335fc59bb",
+        "libbirnam_doc.dylib": "23f6e82d03e4b3b9ee1cd6861e8daf4ac70abf8ef107820282ce871820d27f0e",
+        "libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+        "libbirnam_error.dylib": "a36fffdd77b6676c5ca7ff7139ec0997e1f76b4a0f9eb315094e6ef5d7fd0270",
+        "libbirnam_execution.dylib": "23c14968f3b50d47fc05f61e2b97113d3df36ed73199ded9c0b9d3554119c82a",
+        "libbirnam_file.dylib": "c37833d33fa13646a05e63619c22def24364ae8dd8ef3bf7a95ed37d03d35b30",
+        "libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+        "libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+        "libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+        "libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+        "libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+        "libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+        "libbirnam_html.dylib": "e92ed158b7fb1b52844810e1dd2e63cbc847826c82c0b8851e314cd45342d6fc",
+        "libbirnam_http.dylib": "0a5ab66199de4a82c9f8fa9a7416f6f29a082316d57a22ef5fe7d4dca50f54e5",
+        "libbirnam_id.dylib": "46ea0e1a3e014807903827afa92ff9198f8c1997472bef2dcbfa315e5874252b",
+        "libbirnam_image.dylib": "bbc9306779a5baf04b5364c3adccd2e91c35ffeba3ec6d77c9f6be7de6eed2ef",
+        "libbirnam_imageFormat.dylib": "f5b98fd47bff4c4988fe5289948d84f983f80a997cc2117673d963d72e3222c1",
+        "libbirnam_integer.dylib": "941c34a0ae211d0e99b87fdcd08d68f20b73f4a303d125a266c739445692abbb",
+        "libbirnam_integerValues.dylib": "b3bc56a0e5460b941a8adabff5ab8ef8e0bd25eb723b3d5123404379954313d0",
+        "libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+        "libbirnam_json.dylib": "9c73d84b3054a3343f71b70f223c1bb51b6671fbf1dd79853e8c69ccbed63a2e",
+        "libbirnam_lang.dylib": "e6e393767fe25b7838dee958aa87411b96aacd999482d834a2f856360092dc26",
+        "libbirnam_log.dylib": "33dbe096e09ff56625254f024bab29553c75ae599cfff8433d536719759b11f1",
+        "libbirnam_lsp.dylib": "3fd7a2323efc19c2615e68de40199305323f0e8603e0fc1570b695140f52c3a6",
+        "libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+        "libbirnam_markdown.dylib": "978896f554ad8fa6eecf71a90c6e49157369c41f081699c98d8b4e1201aa085b",
+        "libbirnam_modules.dylib": "b46325642d49854f62cefea1b6e6a57be706f573c670eefef8fe790e280f2098",
+        "libbirnam_namespace.dylib": "c4ae6a8e0ff1fcc0898d143cd5499fa2dfb91fc04a1ed23f3f5db35df465cdb2",
+        "libbirnam_nativeLoader.dylib": "bff0110d18e291a45a5e0a7f7e90769cbc4a819cea7db2a03653a5a86c0d031c",
+        "libbirnam_nativeValues.dylib": "5cd60a14198e7d41e0a8a8035806e34fcd733d8e996b0d2c6a86ea6f771177e5",
+        "libbirnam_native_backend.dylib": "449e1b2b3cee5316b762b0c856f61ff6b6bcac172885852c5813097159047877",
+        "libbirnam_nativedoc.dylib": "2ada9a6f4bf410d1f7af8d7836152d23ca82d2b3300b9fe96bdd3f2f0bde9ab9",
+        "libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+        "libbirnam_object_model.dylib": "3f1fdfa6499b432ecf98cca58c782f5345e6d75f08cd549408f22008e3446688",
+        "libbirnam_os.dylib": "806d739a147939e35cc6cf6201a1420ff5d02c63cb05eb0c2af1222fb78417d9",
+        "libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+        "libbirnam_portable_code.dylib": "8be722626ec8424020eb4135bb2ed24c34867394f3ff20ba7c60c80078f6aa3d",
+        "libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+        "libbirnam_printing.dylib": "04d9f182b72b62d97a12e51db619d32927881b7da5d8fb4edfc43580615962b1",
+        "libbirnam_process.dylib": "6b38560db383bd0617b849f144bdeae8629708526f3f8be5fde698a3ce7463df",
+        "libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+        "libbirnam_random.dylib": "2e83659ab385903a1d3a62424588cee9ba8d85df545319e55d65abc571619c71",
+        "libbirnam_range.dylib": "466238c870bd9117b407116af669af485e0fe00e9e708dc2420c3c47a8743b8d",
+        "libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+        "libbirnam_repl.dylib": "1a4625910e59ab5d95a5164407f88954519a97db260a6ce261e72647ee0f0557",
+        "libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+        "libbirnam_socket.dylib": "149b11cc7cf854d7599f7136a8d6da03f75ea6ef7c6a6ad330cde23bf30eec2e",
+        "libbirnam_sourceLoader.dylib": "db145b8dc29b696d79055a11dfab3e4b95cc6f9b0f6db83e7e8aedd371c268b2",
+        "libbirnam_stacklessControl.dylib": "1214cd9d6fe51ef4f1943ccabb3e3c4a4877045f5a8d305c117c45f07e40838c",
+        "libbirnam_stdlib.dylib": "22388f97a169ea578e2de406bb5b466e47eb1a09db39a264bffe309383340142",
+        "libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+        "libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+        "libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+        "libbirnam_systemGc.dylib": "66c04a94379635e1c6e539711de40d91d2ce5a8a08918da753b40f2dca0e00b9",
+        "libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+        "libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+        "libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+        "libbirnam_time.dylib": "c4a46bca155f9160d83f6a8a3bbc455610e6fc249a8dc38b696dac05b70e12ea",
+        "libbirnam_toml.dylib": "66d2858e10728381c2bb330943e3c2b812a6f2af08310a08bee2fe3b9911428a",
+        "libbirnam_trace.dylib": "dde7719773d9ea34fcee7302a44a8f1e17f6dc02e7acc8d2fa39b73092f7eecc",
+        "libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+        "libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4"
+      },
+      "image_sha256": {
+        "birnam-bootstrap.image": "3eca1255b8e7e8b3fc54dd84b5e8ea24f2fef6372900da3244697e8ebb28e5e1",
+        "birnam-tools.image": "43494b6cd91d27ee90e01e6efcbb5d8f3cf551ae8f4eb6c2a810c1ceeb1d3b8e"
+      },
+      "samples": [
+        {
+          "rss_bytes": 445890560,
+          "physical_footprint_bytes": 340996915,
+          "malloc_allocated_bytes": 83886080,
+          "malloc_dirty_fragmentation_bytes": 25899827,
+          "vmmap": "Process:         birnam [69718]\nPath:            /private/tmp/*/birnam\nLoad Address:    0x100bfc000\nIdentifier:      birnam\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [69674]\n\nDate/Time:       2026-10-11 18:21:35.210 -0400\nLaunch Time:     2026-10-11 18:21:30.436 -0400\nOS Version:      macOS 14.6 (23G80)\nReport Version:  7\nAnalysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/vmmap\nAnalysis Tool Version:  Xcode 16.0 (16A242d)\n\nPhysical footprint:         325.2M\nPhysical footprint (peak):  1.2G\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=549.0M resident=49.1M(9%) swapped_out_or_unallocated=500.0M(91%)\nWritable regions: Total=1.7G written=144.4M(8%) resident=318.1M(18%) swapped_out=18.2M(1%) unallocated=1.4G(81%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K      16K      16K       0K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    176K     176K     176K       0K       0K       0K       0K        8 \nMALLOC_LARGE                      8464K    8464K    8464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE (empty)              10.1M    2976K    2976K    7344K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE metadata               16K      16K      16K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_MEDIUM                    402.2M    83.0M    11.9M       0K       0K       0K       0K        6         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            621.8M    36.7M    3904K      64K       0K       0K       0K        6         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    16.0M    12.4M       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     104.0M    63.2M    47.7M      48K       0K       0K       0K       13         see MALLOC ZONE table below\nMALLOC_TINY                       25.0M    20.9M    20.5M       0K       0K       0K       0K       25         see MALLOC ZONE table below\nMALLOC_TINY (empty)               1024K      48K      48K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nStack                             8160K     368K     368K      16K       0K       0K       0K        2 \nStack Guard                       56.0M       0K       0K       0K       0K       0K       0K        1 \nVM_ALLOCATE                      207.6M   183.1M   183.1M    24.4M       0K       0K       0K     8144 \nVM_ALLOCATE (reserved)             128K       0K       0K       0K       0K       0K       0K        1         reserved VM address space (unallocated)\n__AUTH                              46K      46K     2176       0K       0K       0K       0K       13 \n__AUTH_CONST                        78K      76K       0K       0K       0K       0K       0K       42 \n__DATA                             941K     939K     875K       0K       0K       0K       0K       80 \n__DATA_CONST                       829K     797K     640K       0K       0K       0K       0K       82 \n__DATA_DIRTY                        79K      79K      78K       0K       0K       0K       0K       22 \n__LINKEDIT                       529.8M    35.9M       0K       0K       0K       0K       0K       40 \n__OBJC_RO                         71.9M    51.7M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2200K    1224K      24K       0K       0K       0K       0K        1 \n__TEXT                            19.3M    13.2M       0K       0K       0K       0K       0K       84 \ndyld private memory                272K      80K      80K       0K       0K       0K       0K        2 \npage table in kernel               594K     594K     594K       0K       0K       0K       0K        1 \nshared memory                       16K      16K      16K       0K       0K       0K       0K        1 \nunused but dirty shlib __DATA       77K      77K      77K       0K       0K       0K       0K       28 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                              2.5G   519.1M   293.5M    31.7M       0K       0K       0K     8615 \nTOTAL, minus reserved VM space     2.5G   519.1M   293.5M    31.7M       0K       0K       0K     8615 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x101110000        1.1G     212.0M      92.2M       112K      44521      71.8M      20.5M     23%      53\nDefaultMallocZone_0x10114c000     512.0M      16.0M      12.4M         0K     138011      8352K      4352K     35%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.6G     228.0M     104.6M       112K     182532      80.0M      24.7M     24%      54\n\n"
+        },
+        {
+          "rss_bytes": 456474624,
+          "physical_footprint_bytes": 352006963,
+          "malloc_allocated_bytes": 83886080,
+          "malloc_dirty_fragmentation_bytes": 37014733,
+          "vmmap": "Process:         birnam [70611]\nPath:            /private/tmp/*/birnam\nLoad Address:    0x100a24000\nIdentifier:      birnam\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [69674]\n\nDate/Time:       2026-10-11 18:21:41.328 -0400\nLaunch Time:     2026-10-11 18:21:36.735 -0400\nOS Version:      macOS 14.6 (23G80)\nReport Version:  7\nAnalysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/vmmap\nAnalysis Tool Version:  Xcode 16.0 (16A242d)\n\nPhysical footprint:         335.7M\nPhysical footprint (peak):  1.1G\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=549.0M resident=49.1M(9%) swapped_out_or_unallocated=500.0M(91%)\nWritable regions: Total=1.7G written=175.9M(10%) resident=284.1M(16%) swapped_out=44.9M(3%) unallocated=1.4G(82%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K      16K      16K       0K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    176K     176K     176K       0K       0K       0K       0K        8 \nMALLOC_LARGE                      8464K    8464K    8464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE (empty)              10.1M    1888K    1888K    8432K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE metadata               16K      16K      16K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_MEDIUM                    525.9M    98.2M    16.2M     256K       0K       0K       0K        5         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            498.1M    6496K    1088K       0K       0K       0K       0K        4         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    15.4M    11.9M      32K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     104.0M    68.6M    54.4M    2384K       0K       0K       0K       13         see MALLOC ZONE table below\nMALLOC_TINY                       27.0M    21.5M    20.8M       0K       0K       0K       0K       27         see MALLOC ZONE table below\nStack                             8160K     368K     368K      16K       0K       0K       0K        2 \nStack Guard                       56.0M       0K       0K       0K       0K       0K       0K        1 \nVM_ALLOCATE                      207.6M   134.3M   134.3M    73.2M       0K       0K       0K     8144 \nVM_ALLOCATE (reserved)             128K       0K       0K       0K       0K       0K       0K        1         reserved VM address space (unallocated)\n__AUTH                              46K      46K     2176       0K       0K       0K       0K       13 \n__AUTH_CONST                        78K      76K       0K       0K       0K       0K       0K       42 \n__DATA                             941K     875K     811K      64K       0K       0K       0K       80 \n__DATA_CONST                       829K     653K     496K     144K       0K       0K       0K       82 \n__DATA_DIRTY                        79K      79K      78K       0K       0K       0K       0K       22 \n__LINKEDIT                       529.8M    35.9M       0K       0K       0K       0K       0K       40 \n__OBJC_RO                         71.9M    51.7M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2200K    1224K      24K       0K       0K       0K       0K        1 \n__TEXT                            19.3M    13.2M       0K       0K       0K       0K       0K       84 \ndyld private memory                272K      80K      80K       0K       0K       0K       0K        2 \npage table in kernel               594K     594K     594K       0K       0K       0K       0K        1 \nshared memory                       16K      16K      16K       0K       0K       0K       0K        1 \nunused but dirty shlib __DATA       77K      77K      77K       0K       0K       0K       0K       28 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                              2.5G   459.3M   251.5M    84.3M       0K       0K       0K     8613 \nTOTAL, minus reserved VM space     2.5G   459.3M   251.5M    84.3M       0K       0K       0K     8613 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x100f38000        1.1G     202.8M     100.8M      2640K      44521      71.8M      31.5M     31%      51\nDefaultMallocZone_0x100f74000     512.0M      15.4M      11.9M        32K     138011      8352K      3872K     32%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.6G     218.2M     112.7M      2672K     182532      80.0M      35.3M     31%      52\n\n"
+        },
+        {
+          "rss_bytes": 483983360,
+          "physical_footprint_bytes": 349700096,
+          "malloc_allocated_bytes": 83886080,
+          "malloc_dirty_fragmentation_bytes": 65640858,
+          "vmmap": "Process:         birnam [71274]\nPath:            /private/tmp/*/birnam\nLoad Address:    0x10453c000\nIdentifier:      birnam\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [69674]\n\nDate/Time:       2026-10-11 18:21:47.371 -0400\nLaunch Time:     2026-10-11 18:21:42.656 -0400\nOS Version:      macOS 14.6 (23G80)\nReport Version:  7\nAnalysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/vmmap\nAnalysis Tool Version:  Xcode 16.0 (16A242d)\n\nPhysical footprint:         333.5M\nPhysical footprint (peak):  1.2G\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=549.0M resident=49.1M(9%) swapped_out_or_unallocated=500.0M(91%)\nWritable regions: Total=1.7G written=163.8M(9%) resident=213.5M(12%) swapped_out=76.1M(4%) unallocated=1.5G(84%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K       0K       0K      16K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    176K     176K     176K       0K       0K       0K       0K        8 \nMALLOC_LARGE                      8464K    8464K    8464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE (empty)              10.1M    7312K    7312K    3008K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE metadata               16K      16K      16K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_MEDIUM                    530.8M    56.1M    31.3M    2528K       0K       0K       0K        5         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            493.2M    4032K    1984K      32K       0K       0K       0K        4         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    13.7M    12.3M     192K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     104.0M    66.7M    56.9M    8944K       0K       0K       0K       13         see MALLOC ZONE table below\nMALLOC_TINY                       26.0M    21.2M    20.4M       0K       0K       0K       0K       26         see MALLOC ZONE table below\nMALLOC_TINY (empty)               1024K      80K      48K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nStack                             8160K     368K     368K      16K       0K       0K       0K        2 \nStack Guard                       56.0M       0K       0K       0K       0K       0K       0K        1 \nVM_ALLOCATE                      207.6M    74.1M    74.1M   133.5M       0K       0K       0K     8144 \nVM_ALLOCATE (reserved)             128K       0K       0K       0K       0K       0K       0K        1         reserved VM address space (unallocated)\n__AUTH                              46K      46K     2176       0K       0K       0K       0K       13 \n__AUTH_CONST                        78K      76K       0K       0K       0K       0K       0K       42 \n__DATA                             941K     747K     683K     192K       0K       0K       0K       80 \n__DATA_CONST                       829K     365K     208K     432K       0K       0K       0K       82 \n__DATA_DIRTY                        79K      70K      70K       8K       0K       0K       0K       22 \n__LINKEDIT                       529.8M    35.9M       0K       0K       0K       0K       0K       40 \n__OBJC_RO                         71.9M    51.7M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2200K    1200K       0K      24K       0K       0K       0K        1 \n__TEXT                            19.3M    13.2M       0K       0K       0K       0K       0K       84 \ndyld private memory                272K      64K      64K      16K       0K       0K       0K        2 \npage table in kernel               578K     578K     578K       0K       0K       0K       0K        1 \nshared memory                       16K      16K      16K       0K       0K       0K       0K        1 \nunused but dirty shlib __DATA       77K      61K      61K      16K       0K       0K       0K       28 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                              2.5G   355.7M   214.5M   148.5M       0K       0K       0K     8613 \nTOTAL, minus reserved VM space     2.5G   355.7M   214.5M   148.5M       0K       0K       0K     8613 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x104a50000        1.1G     156.3M     118.8M      11.2M      44521      71.8M      58.2M     45%      51\nDefaultMallocZone_0x104a8c000     512.0M      13.7M      12.3M       192K     138010      8352K      4432K     35%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.6G     170.0M     131.1M      11.4M     182531      80.0M      62.6M     44%      52\n\n"
+        }
+      ]
+    },
+    "candidate": {
+      "platform": "macOS-14.6-arm64-arm-64bit",
+      "prefix": "/private/tmp/birnam-helper-emission/candidate-prefix",
+      "qualification": "Fresh processes held after explicit GC. vmmap sizes are rounded; RSS and physical footprint are distinct measures.",
+      "host_sha256": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "runtime_sha256": {
+        "libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+        "libbirnam_alienCompiler.dylib": "011dc783c99d6fb14cdc96280588bc8a86f89189aac4e2d43af25ed8ecc74af4",
+        "libbirnam_artifact.dylib": "8a441fbbb6b4223be2be882ba843d2b9e7add826a80e33c68fb7aa6aeaaa3baa",
+        "libbirnam_blockLoop.dylib": "92b31fad3b3fee184c2baa9fd4eb03fc4975e70b2a1d7898ef2afaaaa0802770",
+        "libbirnam_blockLoopControl.dylib": "c3375b9ac56329bc39ed86e40dccb486bda2bb456cf09b110579b200628f2250",
+        "libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+        "libbirnam_booleanValues.dylib": "c5ca306921f3d0eae4234b237b8ef686b6ccabc4e975d2519b2e9a567498ad18",
+        "libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+        "libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+        "libbirnam_cli.dylib": "03a54b5da7905a96d375ddc6847f97bd6756a1be155f6329ceaf2e4b448bf2d3",
+        "libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+        "libbirnam_collect.dylib": "4eabb99c55211262eca45194e2f746a98f90ed4742275282643854ff34b06d9a",
+        "libbirnam_compiledUnit.dylib": "77f9d1e6346a4d466234b24f47fc82f4a77eadf8db351b684ea75793bcc0ab0d",
+        "libbirnam_compiledUnitDocs.dylib": "89a0dc7a719d34ebcafd31d9aab23a56e22d1246b1e2aed1a680a397aa057ae2",
+        "libbirnam_concurrencyDocs.dylib": "75f8c71b7711035f38c25ed5c4230dc396869052b89ad29735a8efda553dc3d2",
+        "libbirnam_config.dylib": "56301d7ef015f5a7b11dc5cfcbdc345916350fb9019d1d349351cf412a910fc0",
+        "libbirnam_doc.dylib": "c92de34d8df117d08644293f454a2c93f330c1c38be6ae88a18c02fdcda61e8f",
+        "libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+        "libbirnam_error.dylib": "1816a178d762727ae346eecb35c6b7ff025e5da83a93372224bb237543348bfa",
+        "libbirnam_execution.dylib": "23c14968f3b50d47fc05f61e2b97113d3df36ed73199ded9c0b9d3554119c82a",
+        "libbirnam_file.dylib": "81eded70d71038ef4139697278911719bacdb7a8f75d9119ab0620c2c3a32534",
+        "libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+        "libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+        "libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+        "libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+        "libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+        "libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+        "libbirnam_html.dylib": "5ea2e66dc777375a32dc2201ea5492435a7016713b959488bf3bab91cf518f5b",
+        "libbirnam_http.dylib": "b56c4389ba5c76037cbc4c6ec5058157bbd323a1eedb90f990db6236a33fe5b2",
+        "libbirnam_id.dylib": "46ea0e1a3e014807903827afa92ff9198f8c1997472bef2dcbfa315e5874252b",
+        "libbirnam_image.dylib": "bbc9306779a5baf04b5364c3adccd2e91c35ffeba3ec6d77c9f6be7de6eed2ef",
+        "libbirnam_imageFormat.dylib": "b83d1d6490e64393b3fbc846e574e2d01b2191eb7feb3eefea1440ddc17f4bc3",
+        "libbirnam_integer.dylib": "941c34a0ae211d0e99b87fdcd08d68f20b73f4a303d125a266c739445692abbb",
+        "libbirnam_integerValues.dylib": "fec149e9293b0356726ef9c3ac12db6ea9f7cf8569d2be1c35793d14c59a18d1",
+        "libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+        "libbirnam_json.dylib": "7b32bd8183cf8e5e88ea4a83d836c4330be5c2140af1f7ec130813e0e30d772e",
+        "libbirnam_lang.dylib": "8766ef086e15041bdeedba6197574f7949afb562e80969bfe4232f79429a9e88",
+        "libbirnam_log.dylib": "606da53a24a730889ec60acdf6a423d3de96308488da466529ff20ba314907ab",
+        "libbirnam_lsp.dylib": "f374a274abcca51eb3b773bb5520dfc9fa272e002eea9a8dd501d9ebef23e0c8",
+        "libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+        "libbirnam_markdown.dylib": "3295505eb9a01d4b3613701a72985356c1efd8b3d0c492649401579db68491d8",
+        "libbirnam_modules.dylib": "fda65800777e7d24ef310cba41da1a6033488b6f59e9edba77333ef7ce176a02",
+        "libbirnam_namespace.dylib": "c4ae6a8e0ff1fcc0898d143cd5499fa2dfb91fc04a1ed23f3f5db35df465cdb2",
+        "libbirnam_nativeLoader.dylib": "abef842fda5e7e29a68727876020f508ab01145019bff843b8848e56094b7a33",
+        "libbirnam_nativeValues.dylib": "668a34e608698d9443f762e34f8d5a55d4b67e155968281b8d911a3fb39935ca",
+        "libbirnam_native_backend.dylib": "d5ef55a90da00adc7b8c3fba808476bdaf8d3fc943372c51134f85edae3fd6c0",
+        "libbirnam_nativedoc.dylib": "f7e036b5dc7f3d0813f8a083518475765d3d949211ce9c8a8b0db7198026cba3",
+        "libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+        "libbirnam_object_model.dylib": "3f1fdfa6499b432ecf98cca58c782f5345e6d75f08cd549408f22008e3446688",
+        "libbirnam_os.dylib": "d96aa7bbf6a0db0dcb280aed08c040a4fb8bec24f502630e74b8fb5d2bb37983",
+        "libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+        "libbirnam_portable_code.dylib": "8be722626ec8424020eb4135bb2ed24c34867394f3ff20ba7c60c80078f6aa3d",
+        "libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+        "libbirnam_printing.dylib": "c02c26c9032bcbb77827d0776bea67f368dc940d025b9e96dacbe3384ee947f2",
+        "libbirnam_process.dylib": "4fe14fac5dba1e3d1d9bda5de7401160f90df64f1a1e6f3262bf08f9c01076e8",
+        "libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+        "libbirnam_random.dylib": "7ad06140b6b9c76d2c65e9a50afe45ed3746c41a5fbff6797d26df7d327feb50",
+        "libbirnam_range.dylib": "2fb6d1eef7b09f8a5759699d4b6eee26c244e85efc8e002af860d14884dbe2b4",
+        "libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+        "libbirnam_repl.dylib": "fe0176f760e813a558f7c50a1078a310571c1f01282cd3bde73dab4295832f49",
+        "libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+        "libbirnam_socket.dylib": "016bf48566a47d543b928805c27c34a674cf3d0ca47835ce9df71b4ccfbd3d10",
+        "libbirnam_sourceLoader.dylib": "8c6aa341a0ec75c8ac5f315e180d723870ab314ab4181ecd0fa70fc385e62989",
+        "libbirnam_stacklessControl.dylib": "d3d20b93517a2872e148a96cdec16669569687ad2495cec20c657727c10fb65b",
+        "libbirnam_stdlib.dylib": "b675aa70160eabe76b8df564d3261144fc030e18609f766dcc8ab72c34fe75b6",
+        "libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+        "libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+        "libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+        "libbirnam_systemGc.dylib": "cf19db4e1262baa0415950c4589cb64555a3e7462f01e183d1bef13199f2b87a",
+        "libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+        "libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+        "libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+        "libbirnam_time.dylib": "a87890ecf1475230e906cd1e220bebddcc7c8fefb2eb85394f6bcc3a6444e0ca",
+        "libbirnam_toml.dylib": "2319fdaec7929c79fd34db70b55f355537de5cff391e5e4d698430ee28de3b91",
+        "libbirnam_trace.dylib": "a6bab9d99810f9ebacb7240b952fabc41a480d2b7112078b8c61ceb3dd37d9b8",
+        "libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+        "libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4"
+      },
+      "image_sha256": {
+        "birnam-bootstrap.image": "e8c146bee159410904f2f1a61c7b27c99944e49d234c7018b2cbb0649555f480",
+        "birnam-tools.image": "c70d7747538e0f3dd2535a863a459d9f4205162d610d95eacce1182a59331aeb"
+      },
+      "samples": [
+        {
+          "rss_bytes": 459014144,
+          "physical_footprint_bytes": 315726234,
+          "malloc_allocated_bytes": 82313216,
+          "malloc_dirty_fragmentation_bytes": 17616077,
+          "vmmap": "Process:         birnam [72249]\nPath:            /private/tmp/*/birnam\nLoad Address:    0x104ec4000\nIdentifier:      birnam\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [72162]\n\nDate/Time:       2026-10-11 18:21:53.919 -0400\nLaunch Time:     2026-10-11 18:21:49.539 -0400\nOS Version:      macOS 14.6 (23G80)\nReport Version:  7\nAnalysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/vmmap\nAnalysis Tool Version:  Xcode 16.0 (16A242d)\n\nPhysical footprint:         301.1M\nPhysical footprint (peak):  1.0G\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=549.0M resident=49.1M(9%) swapped_out_or_unallocated=500.0M(91%)\nWritable regions: Total=1.8G written=218.6M(12%) resident=330.2M(18%) swapped_out=0K(0%) unallocated=1.4G(82%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K      16K      16K       0K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    176K     176K     176K       0K       0K       0K       0K        8 \nMALLOC_LARGE                      8464K    8464K    8464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE (empty)              10.1M    10.1M    10.1M       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE metadata               16K      16K      16K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_MEDIUM                    392.2M    88.4M    10.8M       0K       0K       0K       0K        4         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            631.8M    14.7M    3232K       0K       0K       0K       0K        5         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    19.6M    9152K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     112.0M    71.6M    44.5M       0K       0K       0K       0K       14         see MALLOC ZONE table below\nMALLOC_TINY                       25.0M    20.9M    19.5M       0K       0K       0K       0K       25         see MALLOC ZONE table below\nStack                             8160K     384K     384K       0K       0K       0K       0K        2 \nStack Guard                       56.0M       0K       0K       0K       0K       0K       0K        1 \nVM_ALLOCATE                      193.0M   192.9M   192.9M       0K       0K       0K       0K     8144 \nVM_ALLOCATE (reserved)             128K       0K       0K       0K       0K       0K       0K        1         reserved VM address space (unallocated)\n__AUTH                              46K      46K     2176       0K       0K       0K       0K       13 \n__AUTH_CONST                        78K      76K       0K       0K       0K       0K       0K       42 \n__DATA                             941K     939K     875K       0K       0K       0K       0K       80 \n__DATA_CONST                       829K     797K     640K       0K       0K       0K       0K       82 \n__DATA_DIRTY                        79K      79K      78K       0K       0K       0K       0K       22 \n__LINKEDIT                       529.8M    35.9M       0K       0K       0K       0K       0K       40 \n__OBJC_RO                         71.9M    51.7M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2200K    1224K      24K       0K       0K       0K       0K        1 \n__TEXT                            19.3M    13.2M       0K       0K       0K       0K       0K       84 \ndyld private memory                272K      80K      80K       0K       0K       0K       0K        2 \npage table in kernel               562K     562K     562K       0K       0K       0K       0K        1 \nshared memory                       16K      16K      16K       0K       0K       0K       0K        1 \nunused but dirty shlib __DATA       77K      77K      77K       0K       0K       0K       0K       28 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                              2.5G   531.6M   301.2M       0K       0K       0K       0K     8612 \nTOTAL, minus reserved VM space     2.5G   531.6M   301.2M       0K       0K       0K       0K     8612 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x1053d8000        1.1G     203.8M      86.3M         0K      44521      70.3M      16.0M     19%      50\nDefaultMallocZone_0x105414000     512.0M      19.6M      9152K         0K     138010      8352K       800K      9%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.6G     223.5M      95.3M         0K     182531      78.5M      16.8M     18%      51\n\n"
+        },
+        {
+          "rss_bytes": 481443840,
+          "physical_footprint_bytes": 326316851,
+          "malloc_allocated_bytes": 82313216,
+          "malloc_dirty_fragmentation_bytes": 28101837,
+          "vmmap": "Process:         birnam [73085]\nPath:            /private/tmp/*/birnam\nLoad Address:    0x102654000\nIdentifier:      birnam\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [72162]\n\nDate/Time:       2026-10-11 18:21:59.724 -0400\nLaunch Time:     2026-10-11 18:21:55.236 -0400\nOS Version:      macOS 14.6 (23G80)\nReport Version:  7\nAnalysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/vmmap\nAnalysis Tool Version:  Xcode 16.0 (16A242d)\n\nPhysical footprint:         311.2M\nPhysical footprint (peak):  1.0G\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=549.0M resident=49.1M(9%) swapped_out_or_unallocated=500.0M(91%)\nWritable regions: Total=1.8G written=191.5M(11%) resident=351.6M(20%) swapped_out=0K(0%) unallocated=1.4G(80%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K      16K      16K       0K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    176K     176K     176K       0K       0K       0K       0K        8 \nMALLOC_LARGE                      8464K    8464K    8464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE (empty)              10.1M    10.1M    10.1M       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE metadata               16K      16K      16K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_MEDIUM                    505.0M   106.2M    10.6M       0K       0K       0K       0K        6         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            519.0M    11.6M    2912K       0K       0K       0K       0K        6         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    18.5M    9280K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     112.0M    79.1M    54.2M       0K       0K       0K       0K       14         see MALLOC ZONE table below\nMALLOC_TINY                       28.0M    21.2M    20.4M       0K       0K       0K       0K       28         see MALLOC ZONE table below\nStack                             8160K     384K     384K       0K       0K       0K       0K        2 \nStack Guard                       56.0M       0K       0K       0K       0K       0K       0K        1 \nVM_ALLOCATE                      193.0M   192.9M   192.9M       0K       0K       0K       0K     8144 \nVM_ALLOCATE (reserved)             128K       0K       0K       0K       0K       0K       0K        1         reserved VM address space (unallocated)\n__AUTH                              46K      46K     2176       0K       0K       0K       0K       13 \n__AUTH_CONST                        78K      76K       0K       0K       0K       0K       0K       42 \n__DATA                             941K     939K     875K       0K       0K       0K       0K       80 \n__DATA_CONST                       829K     797K     640K       0K       0K       0K       0K       82 \n__DATA_DIRTY                        79K      79K      78K       0K       0K       0K       0K       22 \n__LINKEDIT                       529.8M    35.9M       0K       0K       0K       0K       0K       40 \n__OBJC_RO                         71.9M    51.7M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2200K    1224K      24K       0K       0K       0K       0K        1 \n__TEXT                            19.3M    13.2M       0K       0K       0K       0K       0K       84 \ndyld private memory                272K      80K      80K       0K       0K       0K       0K        2 \npage table in kernel               594K     594K     594K       0K       0K       0K       0K        1 \nshared memory                       16K      16K      16K       0K       0K       0K       0K        1 \nunused but dirty shlib __DATA       77K      77K      77K       0K       0K       0K       0K       28 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                              2.5G   553.0M   311.2M       0K       0K       0K       0K     8618 \nTOTAL, minus reserved VM space     2.5G   553.0M   311.2M       0K       0K       0K       0K     8618 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x102b68000        1.1G     226.4M      96.3M         0K      44521      70.3M      25.9M     27%      56\nDefaultMallocZone_0x102ba4000     512.0M      18.5M      9280K         0K     138011      8352K       928K     10%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.6G     244.8M     105.3M         0K     182532      78.5M      26.8M     26%      57\n\n"
+        },
+        {
+          "rss_bytes": 466763776,
+          "physical_footprint_bytes": 314782515,
+          "malloc_allocated_bytes": 82313216,
+          "malloc_dirty_fragmentation_bytes": 16672358,
+          "vmmap": "Process:         birnam [73915]\nPath:            /private/tmp/*/birnam\nLoad Address:    0x100908000\nIdentifier:      birnam\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [72162]\n\nDate/Time:       2026-10-11 18:22:05.392 -0400\nLaunch Time:     2026-10-11 18:22:01.073 -0400\nOS Version:      macOS 14.6 (23G80)\nReport Version:  7\nAnalysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/vmmap\nAnalysis Tool Version:  Xcode 16.0 (16A242d)\n\nPhysical footprint:         300.2M\nPhysical footprint (peak):  990.0M\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=549.0M resident=49.1M(9%) swapped_out_or_unallocated=500.0M(91%)\nWritable regions: Total=1.8G written=241.7M(13%) resident=337.6M(19%) swapped_out=0K(0%) unallocated=1.4G(81%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K      16K      16K       0K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    176K     176K     176K       0K       0K       0K       0K        8 \nMALLOC_LARGE                      8464K    8464K    8464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE (empty)              10.1M    10.1M    10.1M       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_LARGE metadata               16K      16K      16K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_MEDIUM                    640.0M   111.0M    4400K       0K       0K       0K       0K        5         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            384.0M    1632K    1632K       0K       0K       0K       0K        3         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    19.5M    9136K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     112.0M    69.4M    51.0M       0K       0K       0K       0K       14         see MALLOC ZONE table below\nMALLOC_TINY                       26.0M    21.0M    20.2M       0K       0K       0K       0K       26         see MALLOC ZONE table below\nStack                             8160K     384K     384K       0K       0K       0K       0K        2 \nStack Guard                       56.0M       0K       0K       0K       0K       0K       0K        1 \nVM_ALLOCATE                      193.0M   192.9M   192.9M       0K       0K       0K       0K     8144 \nVM_ALLOCATE (reserved)             128K       0K       0K       0K       0K       0K       0K        1         reserved VM address space (unallocated)\n__AUTH                              46K      46K     2176       0K       0K       0K       0K       13 \n__AUTH_CONST                        78K      76K       0K       0K       0K       0K       0K       42 \n__DATA                             941K     939K     875K       0K       0K       0K       0K       80 \n__DATA_CONST                       829K     797K     640K       0K       0K       0K       0K       82 \n__DATA_DIRTY                        79K      79K      78K       0K       0K       0K       0K       22 \n__LINKEDIT                       529.8M    35.9M       0K       0K       0K       0K       0K       40 \n__OBJC_RO                         71.9M    51.7M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2200K    1224K      24K       0K       0K       0K       0K        1 \n__TEXT                            19.3M    13.2M       0K       0K       0K       0K       0K       84 \ndyld private memory                272K      80K      80K       0K       0K       0K       0K        2 \npage table in kernel               578K     578K     578K       0K       0K       0K       0K        1 \nshared memory                       16K      16K      16K       0K       0K       0K       0K        1 \nunused but dirty shlib __DATA       77K      77K      77K       0K       0K       0K       0K       28 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                              2.5G   539.0M   300.3M       0K       0K       0K       0K     8612 \nTOTAL, minus reserved VM space     2.5G   539.0M   300.3M       0K       0K       0K       0K     8612 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x100e1c000        1.1G     211.3M      85.4M         0K      44521      70.3M      15.1M     18%      50\nDefaultMallocZone_0x100e58000     512.0M      19.5M      9136K         0K     138010      8352K       784K      9%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.6G     230.8M      94.4M         0K     182531      78.5M      15.9M     17%      51\n\n"
+        }
+      ]
+    }
+  },
+  "retained_medians": {
+    "baseline": {
+      "rss_bytes": 456474624,
+      "physical_footprint_bytes": 349700096,
+      "malloc_allocated_bytes": 83886080,
+      "malloc_dirty_fragmentation_bytes": 37014733
+    },
+    "candidate": {
+      "rss_bytes": 466763776,
+      "physical_footprint_bytes": 315726234,
+      "malloc_allocated_bytes": 82313216,
+      "malloc_dirty_fragmentation_bytes": 17616077
+    }
+  },
+  "warm_50_records": {
+    "samples": [
+      {
+        "label": "a1",
+        "variant": "baseline",
+        "report": {
+          "bytes": 1621817,
+          "errors": 15,
+          "format": "log-summary-v1",
+          "requests": 50,
+          "endpoints": [
+            {
+              "bytes": 816177,
+              "errors": 8,
+              "requests": 25,
+              "path": "/"
+            },
+            {
+              "bytes": 113786,
+              "errors": 0,
+              "requests": 3,
+              "path": "/api/items"
+            },
+            {
+              "bytes": 76762,
+              "errors": 1,
+              "requests": 3,
+              "path": "/caf\u00e9"
+            },
+            {
+              "bytes": 51569,
+              "errors": 1,
+              "requests": 2,
+              "path": "/health"
+            },
+            {
+              "bytes": 120424,
+              "errors": 2,
+              "requests": 3,
+              "path": "/missing"
+            },
+            {
+              "bytes": 443099,
+              "errors": 3,
+              "requests": 14,
+              "path": "/search"
+            }
+          ]
+        },
+        "samples": [
+          {
+            "cpu_ns": 1971373667,
+            "wall_ns": 1971916000
+          },
+          {
+            "cpu_ns": 1964026334,
+            "wall_ns": 1964346000
+          },
+          {
+            "cpu_ns": 1960453084,
+            "wall_ns": 1961011000
+          },
+          {
+            "cpu_ns": 1990399042,
+            "wall_ns": 1990720000
+          },
+          {
+            "cpu_ns": 1993874833,
+            "wall_ns": 1994278000
+          }
+        ]
+      },
+      {
+        "label": "b1",
+        "variant": "candidate",
+        "report": {
+          "bytes": 1621817,
+          "errors": 15,
+          "format": "log-summary-v1",
+          "requests": 50,
+          "endpoints": [
+            {
+              "bytes": 816177,
+              "errors": 8,
+              "requests": 25,
+              "path": "/"
+            },
+            {
+              "bytes": 113786,
+              "errors": 0,
+              "requests": 3,
+              "path": "/api/items"
+            },
+            {
+              "bytes": 76762,
+              "errors": 1,
+              "requests": 3,
+              "path": "/caf\u00e9"
+            },
+            {
+              "bytes": 51569,
+              "errors": 1,
+              "requests": 2,
+              "path": "/health"
+            },
+            {
+              "bytes": 120424,
+              "errors": 2,
+              "requests": 3,
+              "path": "/missing"
+            },
+            {
+              "bytes": 443099,
+              "errors": 3,
+              "requests": 14,
+              "path": "/search"
+            }
+          ]
+        },
+        "samples": [
+          {
+            "cpu_ns": 1957980250,
+            "wall_ns": 1958381000
+          },
+          {
+            "cpu_ns": 1940112542,
+            "wall_ns": 1940617000
+          },
+          {
+            "cpu_ns": 1933781000,
+            "wall_ns": 1934145000
+          },
+          {
+            "cpu_ns": 1967396667,
+            "wall_ns": 1967867000
+          },
+          {
+            "cpu_ns": 1954760000,
+            "wall_ns": 1955640000
+          }
+        ]
+      },
+      {
+        "label": "b2",
+        "variant": "candidate",
+        "report": {
+          "bytes": 1621817,
+          "errors": 15,
+          "format": "log-summary-v1",
+          "requests": 50,
+          "endpoints": [
+            {
+              "bytes": 816177,
+              "errors": 8,
+              "requests": 25,
+              "path": "/"
+            },
+            {
+              "bytes": 113786,
+              "errors": 0,
+              "requests": 3,
+              "path": "/api/items"
+            },
+            {
+              "bytes": 76762,
+              "errors": 1,
+              "requests": 3,
+              "path": "/caf\u00e9"
+            },
+            {
+              "bytes": 51569,
+              "errors": 1,
+              "requests": 2,
+              "path": "/health"
+            },
+            {
+              "bytes": 120424,
+              "errors": 2,
+              "requests": 3,
+              "path": "/missing"
+            },
+            {
+              "bytes": 443099,
+              "errors": 3,
+              "requests": 14,
+              "path": "/search"
+            }
+          ]
+        },
+        "samples": [
+          {
+            "cpu_ns": 1986238250,
+            "wall_ns": 1986632000
+          },
+          {
+            "cpu_ns": 1977660125,
+            "wall_ns": 1978088000
+          },
+          {
+            "cpu_ns": 1974362042,
+            "wall_ns": 1974894000
+          },
+          {
+            "cpu_ns": 2019899916,
+            "wall_ns": 2261925000
+          },
+          {
+            "cpu_ns": 1989083584,
+            "wall_ns": 1989458000
+          }
+        ]
+      },
+      {
+        "label": "a2",
+        "variant": "baseline",
+        "report": {
+          "bytes": 1621817,
+          "errors": 15,
+          "format": "log-summary-v1",
+          "requests": 50,
+          "endpoints": [
+            {
+              "bytes": 816177,
+              "errors": 8,
+              "requests": 25,
+              "path": "/"
+            },
+            {
+              "bytes": 113786,
+              "errors": 0,
+              "requests": 3,
+              "path": "/api/items"
+            },
+            {
+              "bytes": 76762,
+              "errors": 1,
+              "requests": 3,
+              "path": "/caf\u00e9"
+            },
+            {
+              "bytes": 51569,
+              "errors": 1,
+              "requests": 2,
+              "path": "/health"
+            },
+            {
+              "bytes": 120424,
+              "errors": 2,
+              "requests": 3,
+              "path": "/missing"
+            },
+            {
+              "bytes": 443099,
+              "errors": 3,
+              "requests": 14,
+              "path": "/search"
+            }
+          ]
+        },
+        "samples": [
+          {
+            "cpu_ns": 1978020500,
+            "wall_ns": 1978279000
+          },
+          {
+            "cpu_ns": 1973512458,
+            "wall_ns": 1973968000
+          },
+          {
+            "cpu_ns": 1973490875,
+            "wall_ns": 1973528000
+          },
+          {
+            "cpu_ns": 1988178708,
+            "wall_ns": 1988157000
+          },
+          {
+            "cpu_ns": 1988954292,
+            "wall_ns": 1988851000
+          }
+        ]
+      }
+    ],
+    "medians": {
+      "baseline": {
+        "wall_ns": 1976123500.0,
+        "cpu_ns": 1975766479.0
+      },
+      "candidate": {
+        "wall_ns": 1971380500.0,
+        "cpu_ns": 1970879354.5
+      }
+    },
+    "artifact_policy": "Each variant compiled its own benchmark from matching application/library source and processed the same generated fixture. Outputs matched the independent oracle."
+  },
+  "validation": {
+    "backend_tests": 13,
+    "native_message_test_binaries": 66,
+    "native_message_top_level_tests": 68,
+    "native_tests": {
+      "alien.rs": 1,
+      "allocation_accounting.rs": 1,
+      "artifact.rs": 1,
+      "artifact_activation.rs": 1,
+      "binding_proof.rs": 1,
+      "block_loop.rs": 1,
+      "boolean_values.rs": 1,
+      "byte_abi.rs": 1,
+      "candidate.rs": 1,
+      "candidate_retirement.rs": 1,
+      "capture_access.rs": 1,
+      "capture_dependencies.rs": 1,
+      "closure_construction.rs": 1,
+      "collections.rs": 1,
+      "compiler.rs": 1,
+      "embedding.rs": 1,
+      "execution_machines.rs": 1,
+      "execution_methods.rs": 1,
+      "external_allocation.rs": 1,
+      "fixed_abi.rs": 1,
+      "generation.rs": 1,
+      "generation_ledger.rs": 1,
+      "generation_transaction.rs": 1,
+      "global_resolution.rs": 1,
+      "guard_batch.rs": 1,
+      "image.rs": 2,
+      "integer_box_observability.rs": 1,
+      "integer_operation_objects.rs": 1,
+      "integer_values.rs": 1,
+      "invocation_inputs.rs": 1,
+      "isolate.rs": 1,
+      "materialization.rs": 1,
+      "memory.rs": 1,
+      "memory_activation.rs": 1,
+      "method_observation.rs": 1,
+      "modules.rs": 1,
+      "native_incoming.rs": 1,
+      "native_loader.rs": 1,
+      "native_numeric_inputs.rs": 1,
+      "native_values.rs": 1,
+      "numbers.rs": 1,
+      "numbers_loading.rs": 1,
+      "object_model.rs": 1,
+      "portable_code.rs": 1,
+      "relational.rs": 1,
+      "representation.rs": 1,
+      "representation_batch.rs": 1,
+      "representation_fallback.rs": 1,
+      "result_cleanup.rs": 1,
+      "root_batches.rs": 1,
+      "root_reuse.rs": 1,
+      "roots.rs": 1,
+      "source_loader.rs": 1,
+      "storage_trace.rs": 1,
+      "store.rs": 2,
+      "store_compensation.rs": 1,
+      "system_gc.rs": 1,
+      "system_output.rs": 1,
+      "system_services.rs": 1,
+      "tagged_rows.rs": 1,
+      "text_error.rs": 1,
+      "trace_graphs.rs": 1,
+      "trace_heap.rs": 1,
+      "word_expression.rs": 1,
+      "word_helper.rs": 1,
+      "word_representation_order.rs": 1
+    },
+    "frame_and_trace_images": "passed source-free mapped/rebuilt recovery, protocol withdrawal, fresh dispatch and collecting completion",
+    "application": "passed project checks/build/tests, valid/invalid inputs, deterministic output, small scaling and automated edit-rebuild-run",
+    "install": "both published isolated prefixes; authored bootstrap artifacts regenerated from seed, seed excluded, startup REPL and CLI image qualification passed",
+    "formal_summary": ".cargo-target/formal/results/rooting-t039xksx/summary.json",
+    "formal_sha256": "7a5f1437b596ebb1e563e47129f79cb2b7b46dedac1da5ece23d271d956f0b1f",
+    "lean_theorems": 170,
+    "tlc_cases": 113,
+    "rejected_lean_mutations": 31,
+    "formal_scope": "Abstract closure of helper references and unchanged call/state semantics; no proof of TinyCC compilation or the complete runtime. ELF symbol inventory, address-taken execution, and native/recovery tests exercise implementation. Formal model/code inputs are unchanged since verification; explanatory formal README was updated afterwards.",
+    "logs_directory": "/tmp/birnam-helper-emission"
+  },
+  "limits": [
+    "Helper bodies, private mutable state, selector capacity and generated entrypoint definitions are unchanged.",
+    "This removes statically unreferenced private C helpers, not dynamically callable Birnam methods.",
+    "Existing mapped images retain their original native code; rebuild artifacts/images to obtain savings.",
+    "No meaningful warm-processing speedup is claimed.",
+    "Compare within these paired fresh builds; RSS varies with allocator and OS page retention between investigations.",
+    "GC remains fixed at 16 MiB with no scaling."
+  ],
+  "implementation_sha256": {
+    "Cargo.lock": "bd7a77cc7f40897f40ecf10c1d3cef33449d90b9bc9dec1cfe5db58f009f113f",
+    "formal/rooting/README.md": "c0ae5a4f3df2a0e5b92e96a5da6bd33210592564c62dbd666f55910dc83a9408",
+    "formal/rooting/lean/Audit.lean": "f9923a8e642b615cf4a73f318d452f1cb057fc1ee10310e3fab9eff2beb2a11f",
+    "formal/rooting/lean/lakefile.toml": "66405988407a38ba0c61121279814fad2ac4da968cad0dc34d7e0bc23299727d",
+    "rust/birnam-native-backend/Cargo.toml": "769a8cafd3c812544e05b44e9be37d9c9874e145cd0aaa2d4c92efa0552f8e4e",
+    "rust/birnam-native-backend/README.md": "4c9c3a0e7711d4911e217ab592cb90422e4b79a88da9621449791acd0e63ec60",
+    "rust/birnam-native-backend/src/lib.rs": "00604a0969469cd5d71ba7b43a520c3b61d2f3db724317fef7fad1ffd7000bcb",
+    "rust/birnam-native-backend/src/native_prelude.c": "a9c0142cebdc358478458d937c14f2598b2a3e49dc51c25a4371319b0d6e896b",
+    "scripts/check-rooting-model.py": "b519e0197344cc87d0ac8c866ab362efab32def5052156b7ca25df5a215104e9",
+    "formal/rooting/lean/HelperEmission.lean": "ecb5ba23de6b8cf80baf484b49ee916dcd8b73ac70a5321b0c8ce74b1bd64e91",
+    "formal/rooting/tla/HelperAddress.cfg": "88e2bdd0ff979e6544fe53778ab8bec54406f40a867172ea21b9b3527e576116",
+    "formal/rooting/tla/HelperDispatch.cfg": "321078584eb4c215f63206a08c6d72ce009085f9bc6a50890f98b5b406b83255",
+    "formal/rooting/tla/HelperEmission.tla": "ee6ee319067461a73a2b5a54db624435bf35250e8343bf1891767887322b1b89",
+    "formal/rooting/tla/HelperSafe.cfg": "5bed647899860be10f6fcd55e961225e4564ce6bae2eada13ce9dd45d129aacb",
+    "formal/rooting/tla/HelperTransitive.cfg": "c1b7548984ac7ea5e76f76c6de1e80add740d90659e489513843be0ae15c6070",
+    "rust/birnam-native-backend/src/helper_emission.rs": "65e9e5d94c37f5a55413eff648dc9e082f23f8cdae7953687174863dfdd51713"
+  }
+}

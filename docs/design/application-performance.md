@@ -69,3 +69,11 @@ reduced median post-GC physical footprint from 685 MiB to 341 MiB, with startup
 and warm processing essentially unchanged. Peak startup RSS remains about
 1.47 GiB: retained physical footprint, peak RSS and live allocation counters must
 be tracked separately. Duplicated generated scaffolding is a promising next target.
+
+The [helper-emission follow-up](../startup-analysis.md#october-11-emit-only-referenced-private-helpers)
+marks private C helpers `static inline`, allowing TinyCC to omit bodies with no
+references. Paired rebuilt prefixes reduced bootstrap/tools images by roughly
+15%, startup time by 4.8% and peak startup RSS by 14%; warm processing remained
+unchanged. Helper bodies, language dispatch, recovery paths, unit ownership and
+selector-table capacity are unchanged. Savings require rebuilding existing
+artifacts and images.

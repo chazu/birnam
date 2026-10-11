@@ -618,3 +618,82 @@ raw VM censuses, individual timing samples, matching image hashes and validation
 provenance. Only the TCC library differs between the measured runtime prefixes.
 The measurements used a local diagnostic follow-up to `76653ea5`; they do not
 constitute installation or release qualification. No GC threshold or scaling policy changed.
+
+## October 11: emit only referenced private helpers
+
+The next retained change marks the native C prelude's helper declarations and
+definitions `static inline`. The retained TinyCC implementation records these
+bodies and emits referenced functions to a fixed point, including transitive
+calls and address-taken references (`tccgen.c`, `gen_inline_functions`). Here the
+benefit is omission of unused private helpers; TinyCC does not inline Birnam sends
+or assume that current language methods will remain unchanged.
+
+After removing the `inline` qualifiers and the explanatory header comment, the
+prelude is byte-for-byte identical to the preceding version. Helper bodies,
+unit-local mutable state and the 512-entry selector table are unchanged. Generated
+entrypoints and initializers keep their linkage. Guard refusal and recovery paths
+remain ordinary references and retain their dependencies. A later method
+replacement still goes through the current Id message path. No additional
+speculative state or deoptimization recipe is introduced.
+
+A real TinyCC object regression test first failed because a synchronous named
+adapter contained unused helpers such as `float_bits`. Its object shrank from
+32,683 to 19,691 bytes, with 35 emitted functions reduced to 21. The test also
+requires transitive dependencies. A second test stores a helper's address in a
+function pointer and calls it after loading the relocatable object; that helper
+must remain present and executable.
+
+Both runtime prefixes were rebuilt from the same frozen source path, with explicit
+Cargo-cache reuse and fresh authored artifacts/startup images. Packaged sources
+differ only in `native_prelude.c`; only NativeBackend differs among the 38 native
+libraries, and the host binaries match. These are isolated diagnostic prefixes,
+not the user's installation or a release. The initial install attempt refused
+publication when test-file edits changed its source digest; the frozen-copy builds
+passed their source-integrity checks.
+
+| Measurement | Original helpers | Referenced helpers |
+| --- | ---: | ---: |
+| Bootstrap image | 221.8 MiB | 187.7 MiB |
+| Tools image | 335.1 MiB | 282.6 MiB |
+| Bootstrap ELF `.text` | 79.0 MiB | 63.7 MiB |
+| Median authored-image startup | 3.471 s | 3.303 s |
+| Median peak startup RSS | 1.26 GiB | 1.08 GiB |
+| Median post-GC physical footprint | 333.5 MiB | 301.1 MiB |
+| Median warm processing, 50 records | 1.976 s | 1.971 s |
+
+The bootstrap/tools images are 15.4%/15.7% smaller. Startup improved about 4.8%,
+peak RSS fell 14.0%, and the post-GC footprint fell about 9.7%. Warm processing is
+essentially unchanged. The bootstrap image still has 3,793 native objects and
+31,520,064 bytes of logical BSS: this change neither merges owners nor shrinks
+selector tables. Its instruction section fell by 19.4% and text relocations by
+17.2%. Existing mapped images keep their old helpers until rebuilt.
+
+Startup used four fresh processes per variant in ABBA order with warm filesystem
+caches. Warm processing used ten samples per variant, each preceded by explicit
+GC, with each variant compiling its own application artifact from matching source.
+The timing comparison ran after validation jobs finished. Post-GC censuses used
+three held processes per variant alongside validation activity. RSS is sensitive
+to allocator and OS page retention, so compare this fresh pair rather than
+subtracting results from an earlier investigation.
+
+Validation passed 13 native-backend tests and the full native-message suite:
+68 top-level tests across 66 test binaries, including the repeated image chain.
+Frame and Trace source-free mapped/rebuilt checks passed, as did the unattended
+application's correctness, error and edit/rebuild cycle. Both install builds
+regenerated the authored bootstrap from the existing seed path, excluded the seed
+from the published prefix, and qualified fresh REPL/CLI image startup.
+
+The formal run passed 170 Lean theorems, 113 TLC cases and 31 rejected Lean
+mutations. New helper-emission checks require closure over transitive and
+address-taken references, preserve unchanged bodies and ordered effects, and reject
+frozen dispatch. They establish abstract obligations, not a proof of TinyCC's
+reference discovery or code generation; object inventories, function-pointer
+execution and production recovery tests cover those implementation seams.
+
+The [evidence record](measurements/helper-emission-20261011.json) includes paired
+artifact hashes, build receipts, ELF section inventories, individual timings,
+raw VM censuses and validation provenance. Existing startup/retained-memory
+runners reproduce the measurements against explicit prefixes. These diagnostic
+builds were not installed for the user. GC stays at the fixed 16 MiB budget. Selector-table
+sizing remains a separate target: its effects on page rounding, lookup cost and
+fallback behavior need measurement before changing that policy.

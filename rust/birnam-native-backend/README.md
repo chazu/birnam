@@ -38,3 +38,17 @@ complete original call-preparation sequence after a refused attempt. Execution
 owns admission and frame mutation through
 `tryPrepareCall:slots:selector:in:tail:`; the backend never inspects frame storage.
 See [Execution's contract](../birnam-execution/README.md#guarded-generated-call-preparation).
+
+Private prelude helpers are `static inline`. The retained TinyCC compiler emits
+these bodies only when referenced, following transitive calls and address-taken
+references to a fixed point. Generated entrypoints, initializers, unit-local
+state and the 512-entry selector table keep their existing definitions. Every
+retained helper body and Id send is unchanged; the C compiler does not remove
+Birnam methods merely because an application has not called them. Guard refusal
+and recovery branches still reference—and therefore retain—their helpers.
+
+This is private code-emission elimination, not a new speculative dispatch path.
+Fresh source artifacts and images are required to obtain the size savings;
+existing mapped images keep their saved code. Tests inspect real TinyCC ELF
+symbols, require transitive helpers, and call a helper through a stored function
+pointer. See `docs/startup-analysis.md` for paired rebuilt-prefix measurements.

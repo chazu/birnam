@@ -1,6 +1,6 @@
 name = "birnam_rooting"
 version = "0.1.0"
-defaultTargets = ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "Audit"]
+defaultTargets = ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "HelperEmission", "Audit"]
 
 [[lean_lib]]
 name = "Rooting"
@@ -40,3 +40,6 @@ name = "SymbolNames"
 
 [[lean_lib]]
 name = "Branches"
+
+[[lean_lib]]
+name = "HelperEmission"

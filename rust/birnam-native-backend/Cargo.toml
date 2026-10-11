@@ -13,3 +13,5 @@ birnam-artifact={package="birnam-artifact-codec",path="../birnam-artifact-codec"
 sha2.workspace=true
 [lints]
 workspace=true
+[dev-dependencies]
+birnam-native-compiler = { path = "../birnam-native-compiler" }

@@ -382,3 +382,16 @@ callbacks rebind both exports. Required failures omit either root, compare again
 a newly rebound nil, end protection early or reorder getters. Existing invocation
 and branch proofs remain in use; public retained calls still dispatch through Id.
 See [the slice and remaining candidates](../../docs/design/operation-dispatch-and-global-resolution.md).
+
+## Private helper emission
+
+`HelperEmission.lean` checks that retaining entry roots and closing over helper
+references preserves every reachable helper. Executing retained bodies preserves
+the complete modeled state, including ordered effects and current-world data.
+Address-taken functions belong in that reference graph. `HelperEmission.tla`
+checks the corresponding trace rule with a world replacement between calls;
+negative cases drop a transitive helper, drop an address-taken callback, or freeze
+dispatch. This does not verify TinyCC's reference discovery or C compilation.
+The native backend's ELF inventory and execution tests exercise those concrete
+boundaries. The production change keeps bodies and private state unchanged and
+uses TinyCC's existing `static inline` emission mechanism.

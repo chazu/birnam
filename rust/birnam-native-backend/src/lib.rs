@@ -3,6 +3,8 @@
 mod c_string;
 mod literal;
 mod native;
+#[cfg(test)]
+mod helper_emission;
 use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as abi, NativeEntry, Operand, Outcome, Protocol},

@@ -10,6 +10,7 @@ import Selection
 import LocalReuse
 import SymbolNames
 import Branches
+import HelperEmission
 
 -- Kernel dependency audit: no sorryAx or project axioms are permitted.
 #print axioms Birnam.Rooting.reach_congr
@@ -114,3 +115,6 @@ import Branches
 #print axioms Birnam.GC.capacity_growth_exact
 #print axioms Birnam.GC.capacity_growth_twice
 #print axioms Birnam.GC.capacity_reuse_no_charge
+
+#print axioms Birnam.HelperEmission.reachable_retained
+#print axioms Birnam.HelperEmission.retained_calls_preserve_state
