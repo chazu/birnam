@@ -109,3 +109,8 @@ import Branches
 
 #print axioms Birnam.Invocation.cleanup_owner_covers_result
 #print axioms Birnam.Invocation.cleanup_result_survives_callback
+
+#print axioms Birnam.Borrow.owned_slice_equivalent
+#print axioms Birnam.GC.capacity_growth_exact
+#print axioms Birnam.GC.capacity_growth_twice
+#print axioms Birnam.GC.capacity_reuse_no_charge

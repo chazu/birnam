@@ -108,4 +108,17 @@ theorem dead_inventory_equivalent (index : Object → Index)
     rw [h.1 o]
   rw [functions]
 
+/-- Bytes charges the initial capacity and only positive capacity growth.
+    Between collections this telescopes to the final capacity, including slack;
+    repeated append within capacity contributes zero additional work. -/
+theorem capacity_growth_exact (before after : Nat) (grows : before ≤ after) :
+    before + (after - before) = after := by omega
+
+theorem capacity_growth_twice (first middle last : Nat)
+    (one : first ≤ middle) (two : middle ≤ last) :
+    first + (middle - first) + (last - middle) = last := by omega
+
+theorem capacity_reuse_no_charge (capacity : Nat) :
+    capacity - capacity = 0 := by omega
+
 end Birnam.GC

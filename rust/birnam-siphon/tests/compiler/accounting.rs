@@ -24,12 +24,62 @@ unsafe fn inventory(h: &H) -> BTreeMap<usize, usize> {
         entries
     }
 }
+struct ExternalCharge {
+    total: Cell<usize>,
+    original: NativeEntry,
+}
+unsafe extern "C" fn external_charge(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe {
+        let observer = &*c.cast::<ExternalCharge>();
+        let [bytes] = borrowed_slice(a, n).unwrap() else {
+            panic!("external charge")
+        };
+        let result = observer.original.method.unwrap()(observer.original.context, r, a, n);
+        if result.into_result().is_ok() {
+            observer
+                .total
+                .set(observer.total.get() + bytes.as_word().unwrap());
+        }
+        result
+    }
+}
 pub(super) unsafe fn check(h: &mut H) {
     unsafe {
         h.clear();
         h.collect();
         let gc = h.named(b"GC");
         send(h.id, gc, b"budget:", &[Operand::word(usize::MAX)]);
+        let vt = object(send(
+            h.id,
+            h.id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(gc)],
+        ));
+        let selector = h.id.intern_name(b"chargeExternalAllocation:").unwrap();
+        let original = send(
+            h.id,
+            h.id.receiver,
+            b"bindingOf:in:",
+            &[Operand::object(selector), Operand::object(vt)],
+        )
+        .as_entry()
+        .unwrap();
+        let mut external = ExternalCharge {
+            total: Cell::new(0),
+            original,
+        };
+        install(
+            h.id,
+            vt,
+            b"chargeExternalAllocation:",
+            external_charge,
+            (&mut external as *mut ExternalCharge).cast(),
+        );
         let before = inventory(h);
         assert_eq!(send(h.id, gc, b"allocationBytes", &[]).as_word(), Some(0));
         let result = h.eval(b"let chargeInput := 35; [[:x | [chargeInput + x]] value: 7]");
@@ -48,8 +98,19 @@ pub(super) unsafe fn check(h: &mut H) {
         assert!(expected > 0);
         assert_eq!(
             send(h.id, gc, b"allocationBytes", &[]).as_word(),
-            Some(expected),
+            Some(expected + external.total.get()),
             "parsing, generated Method construction and Machine execution charge their actual allocations"
+        );
+        assert!(
+            external.total.get() > 0,
+            "source compilation creates external Bytes storage"
+        );
+        install(
+            h.id,
+            vt,
+            b"chargeExternalAllocation:",
+            original.method.unwrap(),
+            original.context,
         );
         h.clear();
         h.collect();

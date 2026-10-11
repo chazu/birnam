@@ -422,3 +422,110 @@ compiler test requires opt-in diagnostic messages. The ordinary installed TCC
 does not expose those counters; the installed prefix was not changed by this
 audit. This is focused contract evidence, not an exhaustive proof of all language
 invariants.
+
+## October 11: startup memory investigation
+
+A script containing only `[System println: "ready"]` reproduced the log
+application's roughly 2.4 GiB peak. Disabling authored-image startup removed most
+of that peak. The 4 KiB Id lookup-hint table is unrelated: it is fixed per runtime.
+
+The diagnostic bootstrap image is 232,611,241 bytes (222 MiB), of which
+224,835,879 bytes (214 MiB) are its native-code section. Phase probes found
+RSS rising from about 352 MiB before image admission to 1.26 GiB after admission,
+then 2.37 GiB during native-code loading. Heap reconstruction added comparatively
+little. These probes were removed from the production sources after diagnosis.
+
+Two problems amplified this image size. File bytes, language Bytes carriers,
+validated Rust snapshots and native-object copies overlapped. Several carriers
+were rooted for the entire restoration operation, even after their last use.
+Also, GC counted the small Bytes object payload but omitted its external vector
+capacity: hundreds of MiB could be allocated without that storage contributing
+to the 16 MiB collection budget. A diagnostic collection after validation released
+about 640 MiB; that forced collection was not retained.
+
+The implemented changes are:
+
+- Release the input file snapshot after validation, and the validated native-code
+  snapshot after the current Bytes factory consumes it.
+- Scope validation carriers and individual loader inputs to their actual use.
+  Keep each returned native unit in the receiving outer scope before dropping
+  its input scope. A replaced loader may retain its input independently.
+- Decode native objects as slices of Codegen's private immutable bundle snapshot.
+  That owned snapshot survives every loader call; foreign byte borrows are still
+  copied before callbacks. All objects are validated before loading starts.
+- Add the ordinary `GC chargeExternalAllocation:` message. Bytes reports its
+  initial vector capacity and subsequent capacity growth after publishing storage
+  and finalization, while the object is rooted and no owner-state borrow is held.
+  The default handler adds to accumulated allocation work without collecting.
+  Existing allocation checkpoints apply the unchanged fixed 16 MiB budget.
+
+Current ImageFormat admission, Bytes construction and native loading remain
+ordinary sends. Accounting replacements may collect or reenter; tests cover that
+case. Existing identity, image rejection, loader failure, recovery and native-unit
+ownership contracts remain in force. These changes introduce no speculative
+cached behavior or virtual values requiring additional deoptimization machinery.
+Automatic collection remains suppressible, and the budget does not scale.
+
+Four fresh processes per variant, in ABBA order with warm filesystem caches,
+produced these medians on macOS arm64:
+
+| Measurement | Baseline | Candidate |
+| --- | ---: | ---: |
+| Minimal script, authored-image peak RSS | 2.37 GiB | 1.49 GiB |
+| Minimal script, authored-image wall time | 2.98 s | 3.46 s |
+| Minimal script, native-prefix peak RSS | 129.4 MiB | 117.6 MiB |
+| Minimal script, native-prefix wall time | 0.222 s | 0.263 s |
+
+Peak image-startup RSS fell **37.3%**, approximately **905 MiB**. Startup became
+**15.8% slower**, about 0.47 s, as byte allocations now cause collections through
+the fixed budget. Retain this as a memory-accounting correction and memory
+improvement, with an explicit latency cost. It is not a startup-speed improvement.
+
+Sustained processing of the same 50-record input remained approximately unchanged:
+an ABBA comparison, with five timed iterations per process and explicit GC before
+each iteration, gave median wall times of 2.0057 s before and 1.9907 s after.
+Both variants used the same published application artifact and matched the
+independent oracle. The small difference is not a meaningful speedup claim.
+
+A separate process held at an input handshake used about 1.79 GiB before explicit
+GC on the baseline and 1.24 GiB on the candidate. After GC it used about 1.16 GiB
+and 1.02 GiB respectively. These are single diagnostic observations, not live-heap
+sizes. A TCC metrics build reported 4,071 live units, 271 MiB of relocation
+allocations and 302 MiB of total requested compiler heap storage. Those measures
+may overlap and must not be added.
+
+The remaining footprint requires another investigation. First distinguish live
+allocations from allocator-retained pages. Then examine image/Bytes copying and
+sharing, the size and number of native units, and metadata retained by their
+compiler owners. Any code-storage reduction must keep active and suspended code,
+recovery metadata and current late-bound behavior valid. Do not infer that all
+remaining RSS is TinyCC scratch, or increase/scale the GC budget to mask it.
+External accounting currently covers Bytes-owned vectors, including String
+backing; it does not yet cover every native owner or shared indexed-table storage.
+
+Validation passed 71 Codegen unit tests and 13 production native tests, including
+mapped/rebuilt/stripped image restoration, precise collecting callbacks, injected
+loader/publication failures and the repeated save/reload lifetime chain. The
+source startup path (`BIRNAM_FORCE_SOURCE=1`) and the log application's valid and
+invalid fixtures, project tests, deterministic output and automated edit/rebuild
+cycle passed. Formal checks passed 168 Lean theorems, 109 TLC cases and 30 rejected
+Lean mutations. New proofs cover capacity-growth accounting and owned-slice
+contents; existing scope/borrow models check lifetime obligations. They verify
+abstract contracts, not the compiled Rust implementation.
+
+Reproduce the bounded startup measurement with:
+
+```sh
+python3 scripts/startup-memory.py --prefix /path/to/prefix \
+  --output /tmp/startup-memory.json --runs 3
+# Optional platform-specific regression ceiling:
+python3 scripts/startup-memory.py --prefix /path/to/prefix \
+  --output /tmp/startup-memory.json --runs 3 --max-rss-mib 1800
+```
+
+The [evidence record](measurements/startup-memory-20261011.json) includes individual
+samples, artifact hashes, formal-result provenance and local diagnostic paths.
+The candidate changes four native owners in an isolated diagnostic prefix while
+using the same bootstrap/tools images. These measurements do not constitute installation, remote publication or
+release qualification. The source-startup check is not a complete cold-install
+build qualification.

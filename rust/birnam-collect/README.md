@@ -27,7 +27,8 @@ singletons still limit this prefix to one domain per process.
 | GC `automaticCollection:` | Word flag (zero disables, nonzero enables) | Unit. Assign the automatic collection setting; no collection or accounting reset. Initially enabled. |
 | GC `precisePayloads:` | Word flag | Unit. Assign payload precision, initially disabled. May change during tracing/finalization. |
 | GC `precisePayloads` | none | Word 0/1. Owners query before scanning each object; no collection/allocation. |
-| GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
+| GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header, padded payload and reported external capacity. |
+| GC `chargeExternalAllocation:` | Word committed capacity bytes | Unit. Add owner-reported external allocation work while idle or inactive. Does not collect, reserve storage or change the budget. |
 | GC `allocationBytes` | none | Word accumulated allocation charge. Readable during tracing/finalization; not a live-storage count. |
 | GC `rootsDo:` | Visitor Object | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
 | GC `roots` | none | The Roots Object used by this instance. |
@@ -95,6 +96,21 @@ charge adds to the current total after the query returns. Freeing an allocation
 does not refund accumulated work. Only a successful collection resets the total;
 failed activation does not publish a partial inventory charge, and failed tracing
 does not reset it.
+
+Bytes reports its owned vector capacity through current `chargeExternalAllocation:`
+after publishing storage, registering finalization and rooting the object. Append
+reports only capacity growth, after releasing its owner-state borrow. Replacement
+accounting methods may collect or reenter; all byte storage and roots must already
+be valid. The default method uses checked addition to the current total and rejects
+collection phases. Zero is valid. Freeing storage does not refund accumulated work.
+The next ordinary allocation/preparation checkpoint applies the same fixed budget
+and automatic-collection setting; this message itself never forces collection.
+
+This currently covers Bytes-owned buffers (including String backing), not all
+process memory: native compiler storage, transient Rust snapshots and shared
+indexed-table storage are not reported. It is allocation pressure, not an RSS
+limit or a complete live-storage counter. Pre-activation validation still inventories
+Id storage; its charge is not a retrospective census of external owner allocations.
 
 Committed charges use checked addition and preserve the fatal diagnostic
 `birnam-id invariant failed: GC allocation byte counter overflow`. When automatic collection is enabled, the existing

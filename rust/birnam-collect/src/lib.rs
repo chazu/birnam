@@ -427,6 +427,7 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"precisePayloads:", precise_payloads_set),
             (b"precisePayloads", precise_payloads),
             (b"allocationBytes", accounting::read),
+            (b"chargeExternalAllocation:", accounting::external),
             (b"canOmitAllocationFor:", construction::can_omit),
         ] {
             id.send_named(

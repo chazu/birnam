@@ -238,12 +238,18 @@ pub(super) unsafe fn operation(
                     return value(s, q, b"Bytes", &plan.encode(&objects).ok_or_else(invalid)?)
                         .map(Operand::object);
                 }
-                let objects = if matches!(op, Op::Mapped) {
-                    let bytes = s.bytes(object(args[0])?)?;
-                    Some(plan.decode(&bytes).ok_or_else(invalid)?)
+                // Copy the foreign borrow before any callback, then decode slices
+                // of this private immutable snapshot. No foreign borrow crosses
+                // a send, and the snapshot outlives every loader request.
+                let bundle = if matches!(op, Op::Mapped) {
+                    Some(s.bytes(object(args[0])?)?)
                 } else {
                     None
                 };
+                let objects = bundle
+                    .as_deref()
+                    .map(|bytes| plan.decode(bytes).ok_or_else(invalid))
+                    .transpose()?;
                 let mut stage = Stage {
                     methods: Vec::new(),
                     units: Vec::new(),
@@ -252,7 +258,14 @@ pub(super) unsafe fn operation(
                 };
                 for i in 0..plan.requests.len() {
                     let unit = if let Some(ref objects) = objects {
-                        let bytes = value(s, q, b"Bytes", &objects[i])?;
+                        // The loader may retain the input itself. Our temporary
+                        // carrier only needs protection through this request;
+                        // the returned unit is handed to the enclosing scope.
+                        let input = Scope {
+                            s,
+                            tokens: RefCell::new(Vec::new()),
+                        };
+                        let bytes = value(s, &input, b"Bytes", objects[i])?;
                         q.keep(object(s.send(
                             s.named(b"TCC")?,
                             b"loadObject:",

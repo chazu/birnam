@@ -51,3 +51,14 @@ The [evidence record](../measurements/log-summary-20261011.json) separates this
 local result from remaining costs. Startup still peaks around 2.4 GiB, and the
 5,000-record baseline exceeded its 30-second deadline. Latency statistics and
 larger parser improvements remain later steps; no installation or release was made.
+
+## Startup memory follow-up
+
+The [startup investigation](../startup-analysis.md#october-11-startup-memory-investigation)
+found overlapping image buffers and external Bytes capacity missing from GC
+accounting. Shorter scratch lifetimes and capacity accounting reduced median
+startup peak RSS from 2.37 GiB to 1.49 GiB, with the fixed 16 MiB budget unchanged.
+Startup rose from 2.98 s to 3.46 s. This is a memory improvement with a measured
+latency cost; the remaining roughly 1 GiB after collection still needs attribution.
+New allocation-byte diagnostics include reported external capacity, so they are
+not directly comparable to earlier managed-object-only counts.

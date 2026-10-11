@@ -45,8 +45,15 @@ unsafe fn admitted(s: &State, q: &Scope<'_>, answer: Oop) -> Result<Oop, Outcome
         Ok(answer)
     }
 }
-pub(super) unsafe fn inspect(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Decoded, Outcome> {
+pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Outcome> {
     unsafe {
+        // All returned fields are copied snapshots. Do not pin the full input
+        // and the validator's temporary carriers through heap reconstruction.
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let q = &scope;
         let owner = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"ImageFormat")?)?])?;
         let value = s.text(q, b"Bytes", bytes)?;
         let arch = s.integer(q, support::IMAGE_ARCH_TAG as usize)?;

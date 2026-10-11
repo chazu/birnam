@@ -23,7 +23,20 @@ mod tests {
         assert_eq!(plan.requests.len(), 2 * plan.programs + plan.bindings);
         let objects = vec![b"trusted object".to_vec(); plan.requests.len()];
         let encoded = plan.encode(&objects).unwrap();
-        assert_eq!(plan.decode(&encoded), Some(objects));
+        assert_eq!(
+            plan.decode(&encoded),
+            Some(objects.iter().map(Vec::as_slice).collect())
+        );
+        // The runtime holds its owned bundle snapshot through all loader sends.
+        // Decoding must not duplicate the complete native-code inventory.
+        let decoded = plan.decode(&encoded).unwrap();
+        let mut offset = 44;
+        for object in &decoded {
+            offset += 8;
+            assert_eq!(object.as_ptr(), encoded[offset..].as_ptr());
+            offset += object.len();
+        }
+        assert_eq!(offset, encoded.len());
         for n in 0..encoded.len() {
             assert!(plan.decode(&encoded[..n]).is_none());
         }
@@ -75,7 +88,7 @@ impl Plan {
         }
         Some(out)
     }
-    pub fn decode(&self, bytes: &[u8]) -> Option<Vec<Vec<u8>>> {
+    pub fn decode<'a>(&self, bytes: &'a [u8]) -> Option<Vec<&'a [u8]>> {
         if bytes.get(..8)? != b"BIRNAMO1" || bytes.get(8..40)? != self.authority {
             return None;
         }
@@ -95,7 +108,7 @@ impl Plan {
             if length == 0 {
                 return None;
             }
-            objects.push(bytes.get(offset..end)?.to_vec());
+            objects.push(bytes.get(offset..end)?);
             offset = end;
         }
         (offset == bytes.len()).then_some(objects)

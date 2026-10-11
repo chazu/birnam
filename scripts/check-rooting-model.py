@@ -289,6 +289,7 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "charge-whole-capacity-again": ("GC", "before + (after - before)", "before + after"),
         "unchecked-slot-hint": ("SlotHints", "if name = key then some value else lookup key rows", "if true then some value else lookup key rows"),
         "freeze-relational-comparison": ("Relational", ".ok (s == 0)", ".ok true"),
         "reverse-indexed-edge": ("IndexedSnapshot", "(object a, object b)", "(object b, object a)"),

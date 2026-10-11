@@ -109,6 +109,20 @@ impl Bytes {
             .ok_or_else(invalid)?
             .to_vec())
     }
+    // Report only committed storage; no RefCell borrow may cross this send.
+    // The caller roots the fully published object, since a replacement may GC.
+    unsafe fn charge_capacity(&self, bytes: usize) -> Result<(), Outcome> {
+        if bytes != 0 {
+            unsafe {
+                self.id.send_named(
+                    self.gc,
+                    b"chargeExternalAllocation:",
+                    &[Operand::word(bytes)],
+                )
+            }?;
+        }
+        Ok(())
+    }
     pub(crate) unsafe fn make(&self, bytes: Vec<u8>, kind: Kind) -> Result<Operand, Outcome> {
         unsafe {
             let behavior = if kind == Kind::Bytes {
@@ -140,6 +154,7 @@ impl Bytes {
                 {
                     return Err(invalid());
                 }
+                let capacity = bytes.capacity();
                 let b = Buffer { bytes, kind };
                 mirror(value, &b);
                 self.buffers.borrow_mut().insert(value.addr(), b);
@@ -148,6 +163,7 @@ impl Bytes {
                     b"finalize:with:",
                     &[Operand::object(value), Operand::object(self.prototype)],
                 )?;
+                self.charge_capacity(capacity)?;
                 Ok(Operand::object(value))
             })
         }
@@ -242,13 +258,18 @@ unsafe fn run(t: &Bytes, r: Oop, a: &[Operand], op: usize) -> Result<Operand, Ou
                     return t.make(copied, Kind::Bytes);
                 }
                 t.id.send_named(t.gc, b"prepareAllocation", &[])?;
-                let mut buffers = t.buffers.borrow_mut();
-                let b = buffers
-                    .get_mut(&r.addr())
-                    .filter(|b| b.kind == Kind::Bytes)
-                    .ok_or_else(invalid)?;
-                b.bytes.extend_from_slice(&copied);
-                mirror(r, b);
+                let growth = {
+                    let mut buffers = t.buffers.borrow_mut();
+                    let b = buffers
+                        .get_mut(&r.addr())
+                        .filter(|b| b.kind == Kind::Bytes)
+                        .ok_or_else(invalid)?;
+                    let before = b.bytes.capacity();
+                    b.bytes.extend_from_slice(&copied);
+                    mirror(r, b);
+                    b.bytes.capacity() - before
+                };
+                t.charge_capacity(growth)?;
                 Ok(Operand::object(r))
             });
         }

@@ -42,3 +42,25 @@ pub(super) unsafe extern "C" fn read(
         Ok(Operand::word(m.charged.get()))
     })())
 }
+
+/// Account committed owner storage, without collecting or reserving capacity.
+/// The owner publishes and roots its object before this replaceable send.
+pub(super) unsafe extern "C" fn external(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = memory(c)?;
+        if !matches!(m.phase.get(), Phase::Inactive | Phase::Idle) {
+            return Err(invalid());
+        }
+        let [bytes] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let bytes = bytes.as_word().ok_or_else(invalid)?;
+        m.charged.set(add(m.charged.get(), bytes));
+        Ok(Operand::unit())
+    })())
+}

@@ -1266,14 +1266,18 @@ unsafe fn foreign_publication(
 unsafe fn load(
     s: &State,
     q: &Scope<'_>,
-    bytes: &[u8],
+    bytes: Vec<u8>,
     rebuild: bool,
     mapped_only: bool,
 ) -> Result<Operand, Outcome> {
     unsafe {
-        let owned = format::inspect(s, q, bytes)?;
+        let mut owned = format::inspect(s, &bytes)?;
+        // Validation returned independent snapshots; the file buffer is dead.
+        drop(bytes);
+        let composition = composition_identity(&owned.view());
+        let native_code = owned.code.take();
         let decoded = owned.view();
-        if mapped_only && decoded.code.is_none() {
+        if mapped_only && native_code.is_none() {
             return Err(bad());
         }
         let codegen = q.keep(s.named(b"Codegen")?)?;
@@ -1281,16 +1285,26 @@ unsafe fn load(
         let p = s.text(q, b"Bytes", decoded.programs)?;
         let b = s.text(q, b"Bytes", decoded.bindings)?;
         let selection = s.text(q, b"Bytes", decoded.selection)?;
-        let mapped = !rebuild && decoded.code.is_some();
+        let mapped = !rebuild && native_code.is_some();
         let loaded_result = q.keep(s.named(if mapped { b"true" } else { b"false" })?)?;
-        let composition = composition_identity(&decoded);
         let composition_value = s.text(q, b"String", &composition)?;
         let started = if mapped {
+            let input = Scope {
+                s,
+                tokens: RefCell::new(Vec::new()),
+            };
             let code = s.text(
-                q,
+                &input,
                 b"Bytes",
-                decoded.code.ok_or_else(bad)?.get(72..).ok_or_else(bad)?,
+                native_code
+                    .as_deref()
+                    .ok_or_else(bad)?
+                    .get(72..)
+                    .ok_or_else(bad)?,
             )?;
+            // The current factory has consumed our borrow. Its owned carrier
+            // is pinned independently; do not retain the Rust copy as well.
+            drop(native_code);
             s.call(
                 q,
                 codegen,
@@ -1298,6 +1312,7 @@ unsafe fn load(
                 &[code, p, b, selection],
             )?
         } else {
+            drop(native_code);
             s.call(
                 q,
                 codegen,
@@ -1648,7 +1663,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 std::fs::read(path).map_err(|_| bad())?
             };
             let rebuild = n == 2 && object(args[1])? == s.named(b"true")?;
-            load(s, &q, &bytes, rebuild, matches!(e.op, Op::LoadMapped))
+            load(s, &q, bytes, rebuild, matches!(e.op, Op::LoadMapped))
         })();
         if result.is_err() {
             s.reject(b"Image admission, owner operation or publication failed");
