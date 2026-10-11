@@ -296,6 +296,58 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(target_os = "macos", feature = "allocation-metrics"))]
+    fn relocated_storage_does_not_pin_malloc_heap_regions() {
+        unsafe extern "C" {
+            fn birnam_tcc_mapping_protection(address: *const c_void) -> core::ffi::c_int;
+        }
+        let _test = TEST_COMPILER.lock().unwrap();
+        let source = c"volatile unsigned char data[1048576]; long answer(long n) { data[n & 1048575] = 7; return data[n & 1048575]; }";
+        let object = Unit::compile_object(source).unwrap();
+        let heap_before = Unit::compiler_heap_totals();
+        let units_before = Unit::resource_totals();
+        // Empty relocations still own a valid mapping and can be released.
+        drop(unsafe { Unit::compile(c"", &[]) }.unwrap());
+        assert_eq!(Unit::compiler_heap_totals(), heap_before);
+        assert_eq!(Unit::resource_totals(), units_before);
+        for mapped in [false, true] {
+            let owner = Rc::new(
+                unsafe {
+                    if mapped {
+                        Unit::load_object(&object)
+                    } else {
+                        Unit::compile(source, &[])
+                    }
+                }
+                .unwrap(),
+            );
+            assert!(owner.relocated_allocation_bytes() >= 1048576);
+            let heap = Unit::compiler_heap_totals();
+            assert!(
+                heap.requested_bytes - heap_before.requested_bytes < 1048576,
+                "relocated BSS must not occupy the malloc heap: {heap:?}"
+            );
+            let entry: unsafe extern "C" fn(i64) -> i64 =
+                unsafe { core::mem::transmute(owner.symbol(c"answer").unwrap().as_ptr()) };
+            let code = entry as *const c_void;
+            let data = owner.symbol(c"data").unwrap().as_ptr();
+            // Mach protection bits: read=1, write=2, execute=4.
+            assert_eq!(unsafe { birnam_tcc_mapping_protection(code) }, 5);
+            assert_eq!(unsafe { birnam_tcc_mapping_protection(data) }, 3);
+            let selected = owner.clone();
+            drop(owner);
+            assert_eq!(unsafe { entry(1048575) }, 7);
+            drop(selected);
+            // Ask the kernel without dereferencing released code. Counters alone
+            // would not detect a leaked VM mapping in the release implementation.
+            assert_eq!(unsafe { birnam_tcc_mapping_protection(code) }, 0);
+            assert_eq!(unsafe { birnam_tcc_mapping_protection(data) }, 0);
+            assert_eq!(Unit::compiler_heap_totals(), heap_before);
+            assert_eq!(Unit::resource_totals(), units_before);
+        }
+    }
+
+    #[test]
     #[cfg(feature = "allocation-metrics")]
     fn compiler_heap_returns_to_baseline_after_failure_and_last_owner_release() {
         let _test = TEST_COMPILER.lock().unwrap();

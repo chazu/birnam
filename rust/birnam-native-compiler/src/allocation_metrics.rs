@@ -15,7 +15,9 @@ pub(super) fn install() {
 
 /// Requested live heap storage in this compiler instance, including transient
 /// compiler allocations. Excludes accounting headers and allocator rounding.
-/// Relocation storage may overlap this total; do not add the two measurements.
+/// macOS relocation mappings are separate VM allocations and excluded here.
+/// On other targets relocation storage may overlap this total; do not add
+/// the two measurements without accounting for the platform allocation path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HeapAllocationTotals {
     pub blocks: usize,

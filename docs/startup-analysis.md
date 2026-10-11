@@ -529,3 +529,92 @@ The candidate changes four native owners in an isolated diagnostic prefix while
 using the same bootstrap/tools images. These measurements do not constitute installation, remote publication or
 release qualification. The source-startup check is not a complete cold-install
 build qualification.
+
+## October 11: retained footprint and executable allocation
+
+The next investigation separated live allocations from allocator-retained pages.
+The input-handshake probe runs an explicit collection, prints `ready`, then waits
+on a pipe controlled by the test runner. `vmmap` and `heap` inspect that stable
+process. Three processes per variant gave these median observations:
+
+| Post-GC measurement | Malloc-backed native units | Dedicated VM mappings |
+| --- | ---: | ---: |
+| Physical footprint | 685.0 MiB | 340.7 MiB |
+| RSS | 1059.7 MiB | 963.0 MiB |
+| Malloc dirty slack/fragmentation | 275.7 MiB | 39.2 MiB |
+
+The **50.3% physical-footprint reduction** is the useful result here. RSS includes
+many allocator pages that `vmmap` does not charge to physical footprint; it must
+not be described as live object storage. Measurements vary with allocator
+placement. The original roughly 1 GiB RSS observation did not imply a 1 GiB live
+language heap.
+
+TinyCC previously allocated relocated units with `tcc_malloc(size + page_size)`,
+then page-aligned the result and changed its code/data protections. On this macOS
+arm64 host, each unit carried an extra 16 KiB alignment page, allocator size-class
+rounding and protected pages inside shared malloc regions. Thousands of long-lived
+units kept those regions fragmented. The baseline census found 396 MiB allocated
+through malloc, with hundreds more MiB of dirty slack.
+
+The macOS allocation path now uses an anonymous, private `mmap`, initially RW.
+The existing relocation pass still applies RX code and RW data protections before
+execution. A successful unit owns the mapping through the same `Unit` lifetime;
+the existing last-owner/checkpoint path calls `munmap`. Empty relocations retain
+a one-page mapping. Mapping failures follow the existing error path. The other
+platform allocation paths are unchanged. Cargo now explicitly watches the included
+`tccrun.c` source so edits rebuild the compiler.
+
+The candidate's malloc census drops to about 80.7 MiB because executable storage
+moves into separate VM regions; those regions add about 207.6 MiB. This is not a
+claim that total live storage fell to 80.7 MiB. The mapping path removes padding
+and allocator fragmentation while preserving private unit ownership. It changes
+physical backing, not binding lookup, executable selection or recovery. It adds
+no cache whose contents could bypass later method replacement. GC remains fixed
+at 16 MiB without adaptive scaling.
+
+A regression test first failed on the old allocator with a 1 MiB generated global
+array counted in the compiler's malloc heap. It now covers both source compilation
+and relocatable-object loading, empty units, execution after dropping an initial
+owner, and final release. Independent Mach queries check RX code, RW data and the
+absence of both mappings after the last owner disappears. Existing tests cover
+compile/link/load failures and repeated resource release. The diagnostic heap
+counter excludes direct VM mappings on macOS; the relocated-byte counter continues
+to count them.
+
+Reproduce the census with:
+
+```sh
+python3 scripts/retained-memory.py --prefix /path/to/prefix \
+  --output /tmp/retained-memory.json --runs 3
+```
+
+The next likely target is duplicated generated scaffolding. The unchanged
+bootstrap image contains 3,793 ELF objects, with about 79 MiB of `.text` and 85 MiB
+of text relocation records. Its logical `.bss` is about 30 MiB; the generated
+512-entry selector table alone occupies 8 KiB per unit. These figures are section
+sizes before page rounding, and BSS is not stored as file bytes. Inspecting which
+helpers and tables each unit actually needs could reduce image size and startup
+copying as well as retained storage. Page granularity means that shrinking a table
+does not automatically yield an equal RSS saving. That is a separate compiler
+change requiring fresh image evidence and the existing lookup/recovery checks.
+
+A separate ABBA run after validation jobs finished found median startup times of
+3.490 s before and 3.503 s after, with peak RSS about 1.47 GiB in both cases.
+The 50-record warm application measured 1.975 s before and 1.978 s after. These
+small differences support no meaningful speedup or slowdown claim. This change
+improves retained physical footprint; the earlier image-buffer peak remains a
+separate cost.
+
+Validation passed five private native-compiler tests, five production integration
+tests covering compiler/generation/image recovery, the full repeated image
+save/reload chain, source startup, Frame/Trace source-free mapped/rebuilt image
+checks and the unattended application's acceptance/edit cycle. The focused formal
+run checked seven TLA+ owner/recovery cases, all 168 Lean theorems and 30 rejected
+Lean mutations. These are existing abstract lifetime/recovery obligations, not a
+proof of OS mapping behavior; native execution and Mach queries test that seam.
+
+The [retained-memory evidence](measurements/retained-memory-20261011.json) preserves
+raw VM censuses, individual timing samples, matching image hashes and validation
+provenance. Only the TCC library differs between the measured runtime prefixes.
+The measurements used a local diagnostic follow-up to `76653ea5`; they do not
+constitute installation or release qualification. No GC threshold or scaling policy changed.

@@ -62,3 +62,10 @@ Startup rose from 2.98 s to 3.46 s. This is a memory improvement with a measured
 latency cost; the remaining roughly 1 GiB after collection still needs attribution.
 New allocation-byte diagnostics include reported external capacity, so they are
 not directly comparable to earlier managed-object-only counts.
+
+A [second investigation](../startup-analysis.md#october-11-retained-footprint-and-executable-allocation)
+found executable units fragmenting macOS malloc regions. Dedicated VM mappings
+reduced median post-GC physical footprint from 685 MiB to 341 MiB, with startup
+and warm processing essentially unchanged. Peak startup RSS remains about
+1.47 GiB: retained physical footprint, peak RSS and live allocation counters must
+be tracked separately. Duplicated generated scaffolding is a promising next target.

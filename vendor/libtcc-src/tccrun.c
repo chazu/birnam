@@ -133,6 +133,15 @@ static int rt_mem(TCCState *s1, int size)
 # ifdef _WIN32
     /* Generated code is page-protected below; avoid changing CRT heap pages. */
     ptr = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+# elif defined __APPLE__
+    /* Page protections belong to this unit, not to malloc's shared regions.
+       mmap supplies page alignment without an extra allocator padding page. */
+    if (size == 0)
+        size = PAGESIZE;
+    ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (ptr == MAP_FAILED)
+        return tcc_error_noabort("tccrun: could not map memory");
 # else
     ptr = tcc_malloc(size += PAGESIZE); /* one extra page to align malloc memory */
 # endif
@@ -201,6 +210,8 @@ ST_FUNC void tcc_run_free(TCCState *s1)
     win64_del_function_table(s1->run_function_table);
 #  endif
     VirtualFree(ptr, 0, MEM_RELEASE);
+# elif defined __APPLE__
+    munmap(ptr, size);
 # else
     /* unprotect memory to make it usable for malloc again */
     protect_pages((void*)PAGEALIGN(ptr), size - PAGESIZE, 2 /*rw*/);

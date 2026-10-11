@@ -42,3 +42,18 @@ captured, entered, suspended and recovery lifetimes with real TCC mappings. Both
 Unit count and libtcc relocated bytes return to zero after final release. The C
 recovery candidate uses an independent ABI fixture; it tests compiled mapping
 lifetime, not the deferred optimizer emitters.
+
+On macOS, each relocated unit owns a dedicated anonymous VM mapping. The mapping
+starts read/write; the existing relocation pass applies the usual code/data page
+protections before execution. The existing last-owner/checkpoint path releases
+it with `munmap`. This avoids placing protected executable pages inside malloc's
+shared regions and removes the extra malloc-alignment page per unit. Empty units
+still receive one page. Owner edges, initializers, dispatch and recovery are
+unchanged. Other platforms retain their existing allocation paths.
+
+`allocation-metrics` reports TinyCC's requested malloc storage. On macOS that
+excludes the dedicated relocation mappings; `liveNativeBytes` still includes
+those mappings. RSS, physical footprint, allocator capacity and these live-owner
+counters measure different things. Use `scripts/retained-memory.py` for a macOS
+post-GC census. Kernel-backed regression checks cover RX code, RW data, execution
+after cache-owner release and unmapping after the final owner goes away.
