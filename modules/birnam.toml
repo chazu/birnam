@@ -1,0 +1,5 @@
+# Source package for projects that use the authored standard library modules.
+# Depend on individual declared module names through this directory.
+name = "birnam-library"
+version = "0.1.0"
+source_roots = ["."]

@@ -1,3 +1,6 @@
+import SlotHints
+import Relational
+import IndexedSnapshot
 import Semantics
 import SemanticsExamples
 import Admission
@@ -60,3 +63,21 @@ import Admission
 #print axioms Birnam.Admission.metadata_batch_requires_every_shape
 #print axioms Birnam.Admission.unknown_batch_identity_declines
 #print axioms Birnam.Admission.metadata_batch_saves_inputs_minus_one
+#print axioms Birnam.IndexedSnapshot.roots_roundtrip
+#print axioms Birnam.IndexedSnapshot.edges_roundtrip
+#print axioms Birnam.IndexedSnapshot.graph_policy_preserved
+#print axioms Birnam.IndexedSnapshot.inverse_implies_injective
+#print axioms Birnam.IndexedSnapshot.resume_keeps_prefix
+#print axioms Birnam.SemanticsExamples.reusable_fold_without_guard_is_not_refinement
+#print axioms Birnam.Relational.stopped_error
+#print axioms Birnam.Relational.stopped_mismatch
+#print axioms Birnam.Relational.row_fold_refines_reference
+#print axioms Birnam.Relational.new_variable_preserves_identity
+#print axioms Birnam.Relational.seen_first_true_stops
+#print axioms Birnam.Relational.projection_keeps_originals
+#print axioms Birnam.Relational.replacement_between_comparisons_is_observed
+#print axioms Birnam.Relational.nonreflexive_equality_is_not_repaired
+#print axioms Birnam.SlotHints.lookup_of_member
+#print axioms Birnam.SlotHints.validated_hint_equals_current_lookup
+#print axioms Birnam.SlotHints.replacement_value_is_read
+#print axioms Birnam.SlotHints.shifted_key_falls_back

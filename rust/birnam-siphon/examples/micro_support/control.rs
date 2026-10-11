@@ -42,9 +42,10 @@ pub(super) unsafe fn policy(
     compiler: &mut Compiler,
     scratch: &std::path::Path,
     mask: usize,
+    source: &str,
+    variant: &str,
 ) -> usize {
     unsafe {
-        let source = std::fs::read_to_string("modules/stackless-control.birnam").unwrap();
         let declarations: Vec<_> = source
             .split("[Reflect defineMethod: #")
             .skip(1)
@@ -63,10 +64,13 @@ pub(super) unsafe fn policy(
             })
             .collect();
         let case = Case {
-            name: format!("stackless-policy-{mask}"),
+            name: format!("stackless-policy-{variant}-{mask}"),
             source: format!(
                 "{}\n[Globals at: #MicroProbe put: Block]; true",
-                source.replace("#stacklessControl", &format!("#microControls{mask}"))
+                source.replace(
+                    "#stacklessControl",
+                    &format!("#microControls{variant}{mask}")
+                )
             ),
             mask,
             expected: 0,
@@ -122,5 +126,69 @@ pub(super) unsafe fn policy(
         let index = rt.bindings.len();
         rt.bindings.push(entries);
         index
+    }
+}
+
+// A source-policy speedup is not acceptance evidence if it erases current
+// Boolean dispatch. Keep this probe untimed and separate from the cost census.
+pub(super) unsafe fn replacement_probe(
+    rt: &Runtime,
+    compiler: &mut Compiler,
+    scratch: &std::path::Path,
+    baseline: Variant,
+    candidate: Variant,
+) {
+    unsafe extern "C" fn replaced(
+        context: *mut c_void,
+        _: Oop,
+        _: *const Operand,
+        _: usize,
+    ) -> Outcome {
+        Outcome::loaded(Operand::object(context.cast()))
+    }
+    unsafe {
+        let case = Case {
+            name: "control-replacement".into(),
+            source: "let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | [#[] inject: 0 into: [:sum :each | sum]]]]; [Globals at: #MicroProbe put: probe]; true".into(),
+            mask: 125, expected: 0, result_selector: b"word", integer_inputs: true,
+        };
+        let probe = compile_case(rt, &case, 125, compiler, scratch, false);
+        let answer = object(send(
+            rt.id,
+            rt.named(b"Integer"),
+            b"fromWord:",
+            &[Operand::word(777)],
+        ));
+        let token = retain(rt.id, rt.roots, answer);
+        let behavior = object(send(
+            rt.id,
+            rt.id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(rt.named(b"Boolean"))],
+        ));
+        let mut answers = Vec::new();
+        for policy in [baseline, candidate] {
+            rt.activate(policy);
+            install(rt.id, behavior, b"ifTrue:ifFalse:", replaced, answer.cast());
+            collect(rt.id, rt.gc);
+            let (_, result) = rt.run(
+                probe,
+                &[Operand::object(answer); 2],
+                1,
+                Instant::now() + Duration::from_secs(2),
+            );
+            answers.push(send(rt.id, object(result), b"word", &[]).as_word());
+        }
+        rt.activate(candidate);
+        release(rt.id, rt.roots, token);
+        eprintln!(
+            "control replacement probe: baseline={:?}, candidate={:?}",
+            answers[0], answers[1]
+        );
+        assert_eq!(
+            answers,
+            vec![Some(777), Some(777)],
+            "control policy erased current ifTrue:ifFalse: replacement"
+        );
     }
 }

@@ -92,4 +92,19 @@ theorem changed_conversion_binding_invalidates
   · simpa [conversionCertificate, capture] using required
   · simp [conversionCertificate, capture, world]
 
+/-- Concrete rejection witness for the reusable Vector fold experiment. The
+    current Boolean override answers 777 on an empty fold. Replacing that send
+    with data selection returns the unchanged accumulator 0 instead. -/
+def overriddenEmptyFold (s : Nat) : Outcome Nat :=
+  ⟨s, [.userEffect 1 777, .result 777], 1⟩
+
+def sharedHandlerEmptyFold (s : Nat) : Outcome Nat :=
+  ⟨s, [.result 0], 1⟩
+
+theorem reusable_fold_without_guard_is_not_refinement :
+    ¬ Refines Eq overriddenEmptyFold sharedHandlerEmptyFold := by
+  intro h
+  have observations := (h 0 0 rfl).2.1
+  simp [overriddenEmptyFold, sharedHandlerEmptyFold] at observations
+
 end Birnam.SemanticsExamples

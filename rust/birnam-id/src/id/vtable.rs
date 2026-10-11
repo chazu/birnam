@@ -1,6 +1,7 @@
 //! Raw vtable objects, ordered method dictionaries, and exact membership.
 #![allow(dead_code)] // Direct allocation entry is used by the construction cutover.
 
+use core::cell::Cell;
 use core::mem::offset_of;
 use core::ptr::NonNull;
 
@@ -121,6 +122,10 @@ pub(crate) enum AddMethod<T = NativeEntry> {
     Overwrote(T),
 }
 
+// Position hints contain no Objects, selected methods, contexts or parent links.
+// Any hint is safe only after checking the current ordered key at that position.
+const SLOT_HINTS: usize = 256;
+
 /// Ordered registry of every vtable in one runtime.
 pub(crate) struct Vtables {
     pub(crate) ordered: Vec<Oop>,
@@ -132,7 +137,7 @@ pub(crate) struct Vtables {
     // Explicit binding/parent/association changes, including ABA. Retiring an
     // unreachable behavior cannot change a live lookup and does not advance it.
     binding_epoch: u64,
-
+    slot_hints: [Cell<Option<usize>>; SLOT_HINTS],
 }
 
 impl Vtables {
@@ -142,6 +147,7 @@ impl Vtables {
             by_address: AddressMap::default(),
             mutation_epoch: 0,
             binding_epoch: 0,
+            slot_hints: std::array::from_fn(|_| Cell::new(None)),
         }
     }
     pub(crate) fn mutation_epoch(&self) -> u64 {
@@ -296,10 +302,26 @@ impl Vtables {
     }
     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         while !vtable.is_null() {
+            // Membership is still checked before consulting a hint. Retirement,
+            // address reuse and slot shifts cannot make an old index authority.
             let record = self.record(vtable);
-            if let Some(index) = record.key_index(selector) {
+            // Tiny dictionaries already use a cheaper linear scan. Avoid adding
+            // hint hashing to fresh one-method Block behaviors and empty parents.
+            let hint = if record.key_indices.is_empty() { None } else {
+                let hash = (vtable.addr().rotate_left(13) ^ selector.addr())
+                    .wrapping_mul(0x9e3779b97f4a7c15);
+                Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])
+            };
+            if let Some(slot) = hint && let Some(index) = slot.get()
+                && record.keys.get(index) == Some(&selector)
+            {
                 return record.values[index].as_entry();
             }
+            if let Some(index) = record.key_index(selector) {
+                if let Some(slot) = hint { slot.set(Some(index)); }
+                return record.values[index].as_entry();
+            }
+            // Never memoize inherited resolution or absence: read this live link.
             vtable = record.parent;
         }
         None
@@ -401,6 +423,78 @@ impl Vtables {
 #[cfg(test)]
 mod core_tests {
     use super::*;
+    #[test]
+    fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {
+        unsafe extern "C" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {
+            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))
+        }
+        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<NativeEntry> {
+            while !at.is_null() {
+                let row = tables.record(at);
+                for (&candidate, value) in row.keys.iter().zip(&row.values) {
+                    if candidate == key { return value.as_entry(); }
+                }
+                at = row.parent;
+            }
+            None
+        }
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
+        memory.set_vtable(meta, meta);
+        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
+        let other = tables.create(&mut memory, core::ptr::null_mut(), meta);
+        let child = tables.create(&mut memory, parent, meta);
+        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();
+        let entry = |value| NativeEntry::new(leaf, core::ptr::without_provenance_mut(value));
+        for (i, &key) in keys.iter().enumerate() {
+            tables.add_method(parent, key, entry(i+1));
+            tables.add_method(other, key, entry(i+101));
+        }
+        for round in 0..80 {
+            let key = keys[round % keys.len()];
+            for &lookup in &keys { assert_eq!(tables.lookup(child, lookup), reference(&tables, child, lookup)); }
+            match round % 4 {
+                0 => { tables.add_method(parent, key, entry(round+501)); }
+                1 => { tables.remove_method(parent, key); }
+                2 => { tables.set_parent(child, if round % 8 == 2 {other} else {parent}); }
+                _ => { tables.add_method(child, key, entry(round+901)); }
+            }
+        }
+        // A populated large-dictionary hint must read a newly opaque value,
+        // rather than returning the native entry that used to occupy the slot.
+        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));
+        tables.add_weak_opaque_binding(other, keys[0], meta);
+        assert_eq!(tables.lookup(other, keys[0]), None);
+        let mut removed_key = AddressMap::default(); removed_key.insert(keys[0].addr(), ());
+        tables.remove_weak_keys(&removed_key);
+        assert_eq!(tables.lookup(other, keys[0]), None);
+        tables.add_method(other, keys[0], entry(101));
+        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));
+        // An opaque entry shadows an inherited method just as it did before.
+        tables.set_parent(child, other);
+        tables.add_weak_opaque_binding(child, keys[0], meta);
+        assert_eq!(tables.lookup(child, keys[0]), None);
+        let mut dead = AddressMap::default(); dead.insert(keys[0].addr(), ());
+        tables.remove_weak_keys(&dead);
+        assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));
+        // Re-register the same still-allocated payload after retiring its record.
+        // Hints do not keep a record or its previous entries alive.
+        tables.remove_objects(&[child]);
+        unsafe { tables.register(child, parent); }
+        tables.add_method(child, keys[0], entry(9999));
+        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));
+        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }
+        // Force stale/out-of-range entries and cache collisions independently
+        // of the hash, then check fallback against a linear reference.
+        for hint in &tables.slot_hints {
+            hint.set(Some(usize::MAX));
+        }
+        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));
+        for &key in &keys { assert_eq!(tables.lookup(other, key), reference(&tables, other, key)); }
+        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }
+    }
+
     #[test]
     fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {
         let mut memory = ObjectMemory::new();

@@ -24,6 +24,23 @@ SEMANTICS = ROOT / "formal/semantics"
 CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
+    "SlotSafe": None,
+    "SlotKey": "Invariant CurrentLookup is violated.",
+    "SlotValue": "Invariant CurrentLookup is violated.",
+    "SlotParent": "Invariant CurrentLookup is violated.",
+
+    "RelationalSafe": None,
+    "RelationalCached": "Invariant CurrentComparison is violated.",
+    "RelationalShared": "Invariant SnapshotsAlive is violated.",
+    "RelationalExpired": "Invariant ClosedCollectors is violated.",
+    "RelationalFailure": "Invariant FailuresLatched is violated.",
+    "RelationalReplay": "Invariant CurrentComparison is violated.",
+
+    "IndexedSafe": None,
+    "IndexedBounds": "Invariant AllValidated is violated.",
+    "IndexedReplay": "Invariant CurrentCallbacks is violated.",
+    "IndexedStale": "Invariant CurrentCallbacks is violated.",
+    "IndexedEarly": "Invariant InventoryAlive is violated.",
     "ShapesSafe": None,
     "ShapesSecond": "Invariant CertifiedBatch is violated.",
     "ShapesServices": "Invariant CertifiedBatch is violated.",
@@ -200,8 +217,8 @@ def check_tla(jar, java, out):
         cmd = [java, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC", "-Xmx512m",
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
-               "-config", str((SEMANTICS if name.startswith(("Region", "Admission")) else FORMAL) / f"tla/{name}.cfg"),
-               str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               "-config", str((SEMANTICS if name.startswith(("Region", "Admission", "Indexed", "Relational", "Slot")) else FORMAL) / f"tla/{name}.cfg"),
+               str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -223,8 +240,8 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission")]:
-        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean").read_text()
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints")]:
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"} else FORMAL) / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
         # accidental proof holes or unsafe evaluator shortcuts in source.
@@ -238,8 +255,8 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "Semantics", "SemanticsExamples", "Admission"]:
-        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean"),
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"]:
+        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"} else FORMAL) / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:
             raise RuntimeError(f"Lean {module} failed; see {out / f'lean-{module}.log'}")
@@ -272,6 +289,9 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "unchecked-slot-hint": ("SlotHints", "if name = key then some value else lookup key rows", "if true then some value else lookup key rows"),
+        "freeze-relational-comparison": ("Relational", ".ok (s == 0)", ".ok true"),
+        "reverse-indexed-edge": ("IndexedSnapshot", "(object a, object b)", "(object b, object a)"),
         "ignore-second-batched-entry": ("Admission", "def packedPair (a b : Facts) : Bool := packed a && packed b", "def packedPair (a _b : Facts) : Bool := packed a"),
         "wrong-direct-integer-operation": ("Branches", "def directIntegerSelection (op : Operation) : Option Operation := some op", "def directIntegerSelection (_op : Operation) : Option Operation := some .add"),
         "float-remainder-handler": ("Branches", "match op with | .remainder => none | other => some other", "some op"),
@@ -297,7 +317,7 @@ def check_lean(lean, out):
         "free-owner-batch": ("Semantics", "OwnerSchedule (List.replicate (n+1) owner ++ tail) (cost+1)", "OwnerSchedule (List.replicate (n+1) owner ++ tail) cost"),
     }
     for name, (module, before, after) in extra_mutations.items():
-        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission"} else FORMAL) / f"lean/{module}.lean").read_text()
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints"} else FORMAL) / f"lean/{module}.lean").read_text()
         if text.count(before) != 1: raise RuntimeError(f"mutation {name} is stale")
         changed = build / f"Broken_{name.replace('-', '_')}.lean"
         changed.write_text(text.replace(before, after))

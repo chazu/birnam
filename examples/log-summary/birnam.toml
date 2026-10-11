@@ -1,0 +1,13 @@
+name = "log-summary"
+version = "0.1.0"
+source_roots = ["src"]
+load = ["logSummary"]
+main = "main.birnam"
+
+[test]
+sources = ["tests/smoke.birnam"]
+
+[dependencies]
+stdlib = { path = "../../modules" }
+json = { path = "../../modules" }
+os = { path = "../../modules" }

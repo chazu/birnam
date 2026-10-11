@@ -812,8 +812,19 @@ fn main() {
             let mut baseline = compile_case(&rt, &case, baseline_mask, &mut compiler, &scratch, true);
             let mut candidate = compile_case(&rt, &case, case.mask, &mut compiler, &scratch, false);
             if case.name.starts_with("stackless-") {
-                baseline.bindings = Some(control::policy(&mut rt, &mut compiler, &scratch, baseline_mask));
-                candidate.bindings = Some(control::policy(&mut rt, &mut compiler, &scratch, case.mask));
+                let original = std::fs::read_to_string("modules/stackless-control.birnam").unwrap();
+                let proposed = std::fs::read_to_string(get(
+                    "--control-policy-source", "modules/stackless-control.birnam",
+                )).unwrap();
+                baseline.bindings = Some(control::policy(
+                    &mut rt, &mut compiler, &scratch, baseline_mask, &original, "baseline",
+                ));
+                candidate.bindings = Some(control::policy(
+                    &mut rt, &mut compiler, &scratch, case.mask, &proposed, "candidate",
+                ));
+            }
+            if std::env::args().any(|arg| arg == "--check-control-replacement") {
+                control::replacement_probe(&rt, &mut compiler, &scratch, baseline, candidate);
             }
             if case.name.starts_with("public-integer-") {
                 baseline.bindings = Some(public_arithmetic(
@@ -877,13 +888,18 @@ fn main() {
             } else {
                 "word"
             };
-            if case.name == "stackless-fold" && baseline_mask == 61 && case.mask == 125 {
+            if case.name == "stackless-fold" && baseline_mask == 61 && case.mask == 125 && get("--control-policy-source", "").is_empty() {
                 // Negative control: intervening sends/literal construction stop
                 // copy fusion. These copies must stay in their original places.
                 assert_eq!(work[0]["allocation_objects"], work[1]["allocation_objects"]);
                 if counts_only {
                     assert!(work[1]["messages"]["selectors"]["tryPrepareCall:slots:copies:selector:in:tail:"].as_u64().unwrap_or(0) == 0);
                 }
+            } else if !get("--control-policy-source", "").is_empty() {
+                // A source-policy experiment may win or lose; do not assume
+                // fewer allocations before the measurements are reported.
+            } else if case.name.starts_with("stackless-") && baseline_mask == case.mask {
+                assert_eq!(work[0]["allocation_objects"], work[1]["allocation_objects"]);
             } else if case.name.starts_with("abi-audit-") {
                 // Deliberate cost contrasts; each result was checked above.
             } else if case.name.starts_with("semantic-") || case.name == "public-integer-default"
@@ -1022,7 +1038,7 @@ fn main() {
                     break;
                 }
             }
-            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,baseline_mask,true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name == "stackless-fold" && baseline_mask == 61 && case.mask == 125 {"negative control: no trailing copies at call boundaries"} else if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else if case.name == "public-integer-default" { "default protocol fixture; no optimization toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"control_source":if case.name.starts_with("stackless-") {Some(std::fs::read_to_string("modules/stackless-control.birnam").unwrap())} else {None},"case":case.name,"source":case.source,"candidate_mask":case.mask,"baseline_mask":baseline_mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
+            records.push(json!({"compiled_sources":{"baseline":compilation_source(&case,baseline_mask,true),"candidate":compilation_source(&case,case.mask,false)},"comparison_kind":if case.name == "stackless-fold" && baseline_mask == 61 && case.mask == 125 && get("--control-policy-source", "").is_empty() {"negative control: no trailing copies at call boundaries"} else if case.name.starts_with("abi-audit-"){ "ABI cost contrast, not an optimizer toggle" } else if case.name == "public-integer-default" { "default protocol fixture; no optimization toggle" } else { "paired optimization/control" },"baseline_execution":if case.name=="abi-audit-read"{"direct Id Integer wordOf:"}else if case.name=="abi-audit-roundtrip"{"direct Id wordOf: then fromWord:"}else if matches!(case.name.as_str(),"abi-audit-word-incoming"|"abi-audit-bytes-incoming"){"compiled wrapper with native Id echo leaf"}else{"compiled source"},"candidate_control_source":if case.name.starts_with("stackless-") {Some(std::fs::read_to_string(get("--control-policy-source", "modules/stackless-control.birnam")).unwrap())} else {None},"control_source":if case.name.starts_with("stackless-") {Some(std::fs::read_to_string("modules/stackless-control.birnam").unwrap())} else {None},"case":case.name,"source":case.source,"candidate_mask":case.mask,"baseline_mask":baseline_mask,"operations_per_invocation":if case.name.starts_with("public-integer-"){16}else{1},"work_counts":{"baseline":work[0],"candidate":work[1]},"samples":samples}));
         }
         println!(
             "{}",

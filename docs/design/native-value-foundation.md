@@ -766,3 +766,128 @@ scheduling passed all 171 checks, including quanta 128 and 1 and native boundary
 checks. Logs are under `/tmp/birnam-frame-followup/`. This is focused acceptance,
 not release qualification; the normal user installation is unchanged.
 The 16 MiB default remains fixed, without scaling.
+
+
+### Trace and control candidate investigation (2026-10-11)
+
+No additional production runtime optimization was retained from this round.
+The [evidence record](../measurements/trace-candidates-20261011.json) preserves
+measurements, rejected prototype sources, replacement results and formal checks.
+The fixed 16 MiB budget, installed runtime and current source policies are unchanged.
+
+**Frame access.** The current full-heap Trace probe against the preceding fresh
+cold prefix took 11.24 seconds, charged 118,501,768 bytes and collected eight
+times. The subsequent three baseline repetitions had a 10.659-second median.
+These are diagnostic observations, not a change from the previous release or a
+paired language-wide speedup. `birnam-build` compiles Trace with synchronous
+bodies; its bootstrap traversal uses the native Vector fold. The resumable-frame
+passes therefore do not directly address this measured path. No full-stdlib
+Trace timing is claimed.
+
+For general resumable code, call arguments and trailing copies already share an
+admitted owner batch. Remaining literal writes and capture construction cross
+potential callbacks. Moving their guard across those callbacks requires renewed
+binding/permission checks and preservation of the exact already-written frame;
+retrying a constructor on refusal would replay effects. The earlier capture-read
+batch failed to establish a CPU gain, so it was not reinstated. This round's
+frame-access investigation was source/contract analysis, not a new frame-access
+speedup experiment. The production compiler regression, including both guarded
+call protocols, replacement, collection, refusal and paused frames, passed again.
+
+**Indexed transport.** Two temporary versions kept scalar allocation delivery
+and the ordinary current `Storage observe:` dispatch. An optional visitor method
+negotiated before facts; roots/edges used positions in the sorted snapshot, never
+allocation identities. Trace still performed duplicate-identity/object checks,
+endpoint validation and graph/report policy. No graph logic moved into Storage.
+
+* Scalar indexed endpoints: three alternating-order process pairs had median
+  report time 10.659 -> 10.342 seconds (about 3%); median process CPU was
+  10.89 -> 10.58 seconds. Allocation rose 118,501,768 -> 119,061,920 bytes.
+  The initial apparent 10% gain did not survive repetition. This is insufficient
+  evidence to accept the additional interface and protocol complexity.
+* Bounded byte batches: up to 256 root indexes or 128 edge pairs per callback,
+  encoded as little-endian u32. The first exploratory report took 14.63 seconds,
+  despite reducing allocation to 113,364,528 bytes and collections to seven.
+  Authored byte-offset arithmetic and iteration were more expensive than the
+  removed callbacks. A separate repeat confirmed 14.62 seconds versus a fresh
+  10.59-second baseline; process CPU was 14.86 versus 10.82 seconds.
+  Existing tagged-record decoders do not directly provide
+  the fixed-width index stream needed here. No new native decoder was added
+  merely to salvage this candidate.
+
+Both transport prototypes were removed. Their normal full-heap probes completed
+with ordered reports, but they were rejected before complete adversarial graph,
+image or cold-install qualification. The transport proofs described below are
+abstract reusable work, not proof that either rejected implementation is correct.
+
+**Collection iteration.** A temporary authored Vector fold reused two handlers
+instead of constructing branch captures on every iteration. At compiler masks
+125/125, 30 paired batches gave CPU ratio 0.858 (95% within-run interval
+0.853–0.872). Across eight invocations, Block allocations fell 152 -> 8 and
+allocation charge 80,640 -> 59,328 bytes.
+
+That apparent win is **not semantics-preserving**. Replacing the current Boolean
+`ifTrue:ifFalse:` with an answer of 777 made the original empty fold return 777;
+the candidate returned 0. It switched selectors and bypassed a current control
+replacement. It also changes fresh Block identities. The candidate was removed.
+A future compiler specialization needs current control/constructor permissions,
+real recovery of observable values and continuation state, and revalidation
+across body callbacks; normal-result agreement is inadequate.
+
+**Retained verification support.** The benchmark runner now supports independent
+control-policy sources at identical compiler masks, records both policies, and
+provides an untimed collecting Boolean replacement check. The unchanged policy
+passes (777/777), while the faster invalid prototype fails (777/0). An identical
+policy/mask timing control reports no meaningful difference.
+
+`IndexedSnapshot.lean` proves root/edge sequence round trips under an explicit
+left-inverse index mapping, injectivity, preservation of any graph policy on the
+decoded inputs, and preservation of committed prefixes. `IndexedSnapshot.tla`
+checks a bounded transport lifecycle with current callbacks, validation before
+reporting, inventory protection and cleanup; intentionally broken bounds,
+stale-dispatch, replay and early-release variants must produce counterexamples.
+`SemanticsExamples.lean` adds a non-refinement witness for the unguarded fold.
+These contracts do not verify byte encoding, Rust/C translation or arbitrary
+owner declarations. No compiler optimization is enabled by them.
+
+Final verification passed: 152 Lean theorems with standard-kernel axiom audit,
+27 required rejected Lean mutations, and 99 TLC cases (24 passing models and
+75 required counterexamples). The production compiler integration binary passed,
+as did all four benchmark-reporter tests. The matching-policy collecting
+replacement control passed and the rejected fold failed that same gate as
+required. Runtime sources match the preceding commit; no cold installation or
+release qualification was repeated for these tooling, proof and evidence changes.
+
+### Validated dictionary positions (2026-10-11)
+
+The [application workload](application-performance.md) sampled Id dictionary
+lookup as its largest individual CPU leaf (345 of 2,532 samples). A bounded
+256-entry hint table now accelerates dictionaries using the derived key index;
+small dictionaries retain their cheaper linear scan. Each hint contains only a
+slot number. Lookup still verifies live dictionary membership, checks the current
+selector at that slot, and reads the current Operand/NativeEntry. A stale,
+colliding or out-of-range hint falls back to the original lookup. Parent links,
+absence and executable method/context results are never cached. The table adds
+4 KiB per Id instance on the supported 64-bit layout and holds no Object roots.
+
+Method replacement at an unchanged slot takes effect immediately. Slot shifts,
+weak-key removal, parent changes and retired/reused dictionary records remain
+ordinary live lookups. Custom lookup, receiver reassociation, DNU and generated
+optimization guards are unchanged. No source values/frames/allocations disappear,
+so fallback needs no materialization or effect replay. Existing cold boot and
+image restoration create empty hints; no durable format changed.
+
+`SlotHints.lean` proves that a validated position in the current unique-key
+dictionary agrees with ordinary lookup. `SlotHints.tla` requires counterexamples
+for missing key validation, cached old values and cached parent results. Rust
+checks compare with an independent linear scan across mutation, index shifts,
+opaque shadows, retirement/re-registration and deliberately poisoned hints.
+These proofs model the owner-local lookup rule, not the complete Rust compiler.
+
+A first hint implementation applied to every dictionary did not establish a useful
+gain and was replaced by the larger-dictionary-only version. The retained version
+measured approximately 4.8% less warm CPU on the 50-record application, using the
+same published benchmark artifacts in baseline/candidate/candidate/baseline order.
+This is a local separate-process comparison, not a language-wide speedup claim.
+See [raw evidence](../measurements/log-summary-20261011.json) for validation and
+source/library hashes. The normal installation is unchanged.

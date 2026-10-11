@@ -1,0 +1,19 @@
+// Developer measurement driver. Input is loaded once; each timed pass parses,
+// validates, aggregates, sorts and renders it again. Darwin thread CPU clock=16.
+let args := [Globals at: #ProjectArgs];
+let path := [args at: 0];
+let iterations := [[args at: 1] asInteger];
+let text := [System readFile: path];
+let expected := [LogSummary render: text];
+[[expected isError] ifTrue: [| [LogSummary die: [expected message]]]];
+let samples := [[1 to: iterations] collect: [:iteration |
+  [System gc];
+  let cpu := [16 clockNanos];
+  let wall := [6 clockNanos];
+  let report := [LogSummary render: text];
+  let elapsed := [[6 clockNanos] - wall];
+  let used := [[16 clockNanos] - cpu];
+  [[report = expected] ifFalse: [| [LogSummary die: "benchmark result changed"]]];
+  {"cpu_ns" -> used "wall_ns" -> elapsed}
+]];
+[System println: [Json stringify: {"samples" -> samples "report" -> [Json parse: expected]}]]

@@ -1,0 +1,16 @@
+let suite := [TestSuite named: "Log summary" module: #logSummary];
+[suite test: "empty input" do: [:t |
+  [t expect: [[LogSummary summarize: ""] at: "requests"] equals: 0 describes: "no records"]
+]];
+[suite test: "counts and deterministic paths" do: [:t |
+  let report := [LogSummary summarize: "{\"path\":\"/b\",\"status\":500,\"bytes\":12,\"duration_ms\":3}\n{\"path\":\"/a\",\"status\":200,\"bytes\":8,\"duration_ms\":1}"];
+  [t expect: [report at: "requests"] equals: 2 describes: "request count"];
+  [t expect: [report at: "errors"] equals: 1 describes: "error count"];
+  [t expect: [report at: "bytes"] equals: 20 describes: "byte count"];
+  [t expect: [[[report at: "endpoints"] at: 0] at: "path"] equals: "/a" describes: "sorted paths"]
+]];
+[suite test: "physical line diagnostics" do: [:t |
+  let result := [LogSummary summarize: "\nnot JSON"];
+  [t expect: [result isError] equals: true describes: "invalid input"];
+  [t expect: [result message] equals: "line 2: not valid JSON" describes: "physical line"]
+]]

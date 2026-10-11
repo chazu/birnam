@@ -1,0 +1,168 @@
+// Isolated migration slice: positive conjunctions with live world equality.
+// Not loaded by Bootstrap and does not replace canonical Store query methods.
+[Module named: #relationalQuery requires: #[#stdlib]];
+let rqModel := ObjectModel;
+let rqExecution := Execution;
+let rqWord := Word;
+let rq0 := 0; let rq1 := 1; let rq2 := 2; let rq3 := 3; let rq4 := 4;
+let rqZero := [rqExecution wordResultOf: 0 selector: #word];
+let rqOne := [rqExecution wordResultOf: 1 selector: #word];
+let rqSame := [:left :right | [rqWord selectIfSameObject: left with: right ifEqual: true ifDifferent: false]];
+
+// Ordinary deferred message and cleanup, using the existing Execution boundary.
+let rqMessage := [rqModel newSlots: #[nil nil nil nil nil] parent: ObjectVt];
+[Reflect defineMethod: #value on: rqMessage as:
+  [rqExecution block: [:self | self] withNativeSignature: "m"]];
+[Reflect defineMethod: #nativeReceiver on: rqMessage as: [:self | [rqModel slot: rq0 in: self]]];
+[Reflect defineMethod: #nativeSelector on: rqMessage as: [:self | [rqModel slot: rq1 in: self]]];
+[Reflect defineMethod: #nativeArguments on: rqMessage as: [:self | [rqModel slot: rq2 in: self]]];
+[Reflect defineMethod: #nativeSignature on: rqMessage as: [:self | [rqModel slot: rq3 in: self]]];
+[Reflect defineMethod: #nativeCleanup on: rqMessage as: [:self | [rqModel slot: rq4 in: self]]];
+let rqRequest := [:receiver :selector :arguments :signature :cleanup |
+  [rqModel newSlots: #[receiver selector arguments signature cleanup] parent: [Reflect vtableOf: rqMessage]]
+];
+let rqFailure := [:status :detail |
+  [rqRequest value: rqExecution value: #failNative:detail: value: #[status detail] value: "vww" value: nil]
+];
+let rqInvalid := [rqFailure value: rqOne value: rqZero];
+let rqReject := [| [rqInvalid value]];
+
+// Per-invocation collector: facts, accepting callbacks, first native failure.
+let rqCollector := [rqModel newSlots: #[nil false nil] parent: ObjectVt];
+[Reflect defineMethod: #nativeFailed:detail: on: rqCollector as:
+  [rqExecution block: [:self :status :detail |
+    [[rqModel slot: rq1 in: self] ifTrue: [|
+      [[[rqModel slot: rq2 in: self] isNil] ifTrue: [|
+        [rqModel slot: rq2 in: self put: [rqFailure value: status value: detail]]
+      ]]
+    ]]; nil
+  ] withNativeSignature: "xww"]];
+[Reflect defineMethod: #value:value:value: on: rqCollector as:
+  [rqExecution block: [:self :entity :attribute :value |
+    [[rqModel slot: rq1 in: self] ifFalse: rqReject];
+    let prior := [rqModel slot: rq2 in: self];
+    [[prior notNil] ifTrue: [| [prior value]]];
+    let facts := [rqModel slot: rq0 in: self];
+    [[[facts size] >= 1000000] ifTrue: rqReject];
+    [rqModel slot: rq0 in: self put: [facts add: #[entity attribute value]]]; nil
+  ] withNativeSignature: "!oOOO"]];
+[Reflect defineMethod: #close on: rqCollector as: [:self |
+  [rqModel slot: rq1 in: self put: false];
+  [rqModel slot: rq0 in: self put: nil];
+  [rqModel slot: rq2 in: self put: nil]; nil
+]];
+
+// Tags describe query syntax only. Fact values remain the original Objects.
+let rqTerm := [:term :logicVt |
+  [[rqSame value: [Reflect vtableOf: term] value: logicVt]
+    ifTrue: [| #[true [term name]]] ifFalse: [| #[false term]]]
+];
+let rqReservedHead := #[#rule #not #or];
+let rqPredicates := #[#= #!= #~= #< #<= #> #>=];
+let rqHasIdentity := [:items :value |
+  [items inject: false into: [:found :item |
+    [found ifTrue: [| true] ifFalse: [| [rqSame value: item value: value]]]
+  ]]
+];
+let rqParse := [:body :logicVt |
+  let count := [body size];
+  [[[count < 0] | [count > 512]] ifTrue: [| nil] ifFalse: [|
+    [body inject: [Vector new] into: [:parsed :clause |
+      [[parsed isNil] ifTrue: [| nil] ifFalse: [|
+        [[[[clause size] = 3] not] ifTrue: [| nil] ifFalse: [|
+          [[[rqHasIdentity value: rqReservedHead value: [clause at: rq0]]
+            | [rqHasIdentity value: rqPredicates value: [clause at: rq1]]]
+            ifTrue: [| nil] ifFalse: [|
+              [parsed add: #[[rqTerm value: [clause at: rq0] value: logicVt]
+                [rqTerm value: [clause at: rq1] value: logicVt]
+                [rqTerm value: [clause at: rq2] value: logicVt]]]
+            ]]
+        ]]
+      ]]
+    ]]
+  ]]
+];
+let rqLookup := [:bindings :name |
+  [bindings inject: nil into: [:found :pair |
+    [[found notNil] ifTrue: [| found] ifFalse: [|
+      [[rqSame value: [pair at: rq0] value: name] ifTrue: [| pair] ifFalse: [| nil]]
+    ]]
+  ]]
+];
+let rqMatch := [:bindings :term :actual |
+  [[term at: rq0] ifTrue: [|
+    let bound := [rqLookup value: bindings value: [term at: rq1]];
+    [[bound isNil] ifTrue: [| [bindings add: #[[term at: rq1] actual]]] ifFalse: [|
+      [[[bound at: rq1] = actual] ifTrue: [| bindings] ifFalse: [| nil]]
+    ]]
+  ] ifFalse: [|
+    [[[term at: rq1] = actual] ifTrue: [| bindings] ifFalse: [| nil]]
+  ]]
+];
+let rqIndexes := #[0 1 2];
+let rqJoin := [:facts :solutions :clause |
+  [solutions inject: [Vector new] into: [:next :solution |
+    [[next isError] ifTrue: [| next] ifFalse: [|
+      [facts inject: next into: [:rows :fact |
+        [[rows isError] ifTrue: [| rows] ifFalse: [|
+          let bound := [rqIndexes inject: solution into: [:bindings :index |
+            [[bindings isError] ifTrue: [| bindings] ifFalse: [|
+              [[bindings isNil] ifTrue: [| nil] ifFalse: [|
+                [rqMatch value: bindings value: [clause at: index] value: [fact at: index]]
+              ]]
+            ]]
+          ]];
+          [[bound isError] ifTrue: [| bound] ifFalse: [|
+            [[bound isNil] ifTrue: [| rows] ifFalse: [| [rows add: bound]]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+];
+let rqProject := [:solutions :name |
+  [solutions inject: [Vector new] into: [:values :solution |
+    [[values isError] ifTrue: [| values] ifFalse: [|
+    let pair := [rqLookup value: solution value: name];
+    [[pair isNil] ifTrue: [| values] ifFalse: [|
+      let value := [pair at: rq1];
+      let duplicate := [values inject: false into: [:found :seen |
+        [found ifTrue: [| true] ifFalse: [| [seen = value]]]
+      ]];
+      [duplicate ifTrue: [| values] ifFalse: [| [values add: value]]]
+    ]]
+    ]]
+  ]]
+];
+
+// A facade owns only its Store reference. Each call gets a fresh collector.
+let rqFacade := [rqModel newSlots: #[nil] parent: ObjectVt];
+[Reflect defineMethod: #on: on: rqFacade as: [:self :store |
+  [rqModel newSlots: #[store] parent: [Reflect vtableOf: rqFacade]]
+]];
+[Reflect defineMethod: #evaluate:result:body: on: rqFacade as: [:self :collector :result :body |
+  let logicVt := [Namespace at: #LogicVarVt];
+  [[[rqSame value: [Reflect vtableOf: result] value: logicVt] not] ifTrue: [| nil] ifFalse: [|
+    let name := [result name];
+    let clauses := [rqParse value: body value: logicVt];
+    [[clauses isNil] ifTrue: [| nil] ifFalse: [|
+      [[rqModel slot: rq0 in: self] liveTriplesDo: collector];
+      [rqModel slot: rq1 in: collector put: false];
+      let failure := [rqModel slot: rq2 in: collector];
+      [[failure notNil] ifTrue: [| [failure value]]];
+      let facts := [rqModel slot: rq0 in: collector];
+      let solutions := [clauses inject: #[#[]] into: [:prior :clause |
+        [[prior isError] ifTrue: [| prior] ifFalse: [| [rqJoin value: facts value: prior value: clause]]]
+      ]];
+      [[solutions isError] ifTrue: [| solutions] ifFalse: [| [rqProject value: solutions value: name]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #findAll:where: on: rqFacade as:
+  [rqExecution block: [:self :result :body |
+    let collector := [rqModel newSlots: #[[Vector new] true nil] parent: [Reflect vtableOf: rqCollector]];
+    [rqRequest value: self value: #evaluate:result:body: value: #[collector result body] value: "vOOO"
+      value: [| [collector close]]]
+  ] withNativeSignature: "vOO"]];
+[Namespace at: #RelationalQuery put: rqFacade];
+[Module markLoaded: #relationalQuery];

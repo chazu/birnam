@@ -87,6 +87,31 @@ result. Ordinary and tail calls retain their baseline frames and source
 results. `--gc normal` now uses the fixed 16 MiB default budget; the JSON records
 the exact budget so earlier 1 MiB measurements remain distinguishable.
 
+## Authored control policy experiments
+
+`--control-policy-source PATH` compiles the candidate from a separate control
+source while keeping the checkout's `modules/stackless-control.birnam` as the
+baseline. Use it with `stackless-loop` or `stackless-fold`. Both sources are
+recorded in the result, the override participates in the source hash, and
+baseline/candidate artifacts have distinct names even with identical masks.
+Candidate allocation improvement is measured, not assumed.
+
+For fold experiments, add `--check-control-replacement`. Before timing, the
+runner replaces the current Boolean `ifTrue:ifFalse:` with an implementation
+returning 777, collects, and invokes an empty fold under each policy. Both must
+return 777. A failure rejects setup and preserves the diagnostic in the stderr
+log. This is one necessary replacement check, not full semantic qualification.
+
+```sh
+python3 scripts/microbench.py --prefix PREFIX --case stackless-fold \
+  --baseline-mask 125 --candidate-mask 125 \
+  --control-policy-source /path/to/candidate.birnam \
+  --check-control-replacement --seconds 3 --output /tmp/fold-policy.json
+```
+
+The 2026-10-11 reusable-handler candidate was faster but failed this check;
+see the [investigation](native-value-foundation.md#trace-and-control-candidate-investigation-2026-10-11).
+
 ## Timers, limits and interpretation
 
 Thread CPU time uses `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` (Darwin clock 16,

@@ -1,0 +1,89 @@
+// A deterministic, noninteractive JSONL application; no query-engine dependency.
+[Module named: #logSummary requires: #[#stdlib #json #os]];
+[Globals at: #LogSummary put: [Object clone]];
+
+[Reflect defineMethod: #failure: on: LogSummary as: [:self :message |
+  [Error kind: #logSummary message: message]
+]];
+[Reflect defineMethod: #integer: on: LogSummary as: [:self :value |
+  [[Reflect vtableOf: value] == IntegerVt]
+]];
+[Reflect defineMethod: #validate: on: LogSummary as: [:self :record |
+  [[[[Reflect vtableOf: record] == MapVt] not] ifTrue: [| [self failure: "expected a JSON object"]] ifFalse: [|
+    let path := [record at: "path"];
+    let status := [record at: "status"];
+    let bytes := [record at: "bytes"];
+    let duration := [record at: "duration_ms"];
+    [[[[Reflect vtableOf: path] == StringVt] not] ifTrue: [| [self failure: "path must be a nonempty string"]] ifFalse: [|
+      [[[path size] = 0] ifTrue: [| [self failure: "path must be a nonempty string"]] ifFalse: [|
+        [[[self integer: status] not] ifTrue: [| [self failure: "status must be an integer from 100 to 599"]] ifFalse: [|
+          [[[status < 100] | [status > 599]] ifTrue: [| [self failure: "status must be an integer from 100 to 599"]] ifFalse: [|
+            [[[self integer: bytes] not] ifTrue: [| [self failure: "bytes must be a nonnegative integer"]] ifFalse: [|
+              [[bytes < 0] ifTrue: [| [self failure: "bytes must be a nonnegative integer"]] ifFalse: [|
+                [[[self integer: duration] not] ifTrue: [| [self failure: "duration_ms must be a nonnegative integer"]] ifFalse: [|
+                  [[duration < 0] ifTrue: [| [self failure: "duration_ms must be a nonnegative integer"]] ifFalse: [| true]]
+                ]]
+              ]]
+            ]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+// State: physical line number, request count, error count, bytes, endpoint map.
+[Reflect defineMethod: #line:state: on: LogSummary as: [:self :line :state |
+  [[state isError] ifTrue: [| state] ifFalse: [|
+    let number := [[state at: 0] + 1];
+    let text := [line trimmed];
+    [[[text size] = 0] ifTrue: [|
+      #[number [state at: 1] [state at: 2] [state at: 3] [state at: 4]]
+    ] ifFalse: [|
+      let record := [Json parse: text];
+      let valid := [[record isError] ifTrue: [| record] ifFalse: [| [self validate: record]]];
+      [[valid isError] ifTrue: [|
+        [self failure: [["line " , [number printString]] , [": " , [valid message]]]]
+      ] ifFalse: [|
+        let path := [record at: "path"];
+        let failed := [[[record at: "status"] >= 400] ifTrue: [| 1] ifFalse: [| 0]];
+        let bytes := [record at: "bytes"];
+        let groups := [state at: 4];
+        let old := [groups at: path ifAbsent: [| #[0 0 0]]];
+        let bucket := #[[[old at: 0] + 1] [[old at: 1] + failed] [[old at: 2] + bytes]];
+        #[number [[state at: 1] + 1] [[state at: 2] + failed] [[state at: 3] + bytes] [groups at: path put: bucket]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #summarize: on: LogSummary as: [:self :text |
+  let state := [[text split: "\n"] inject: #[0 0 0 0 [Map new]] into: [:state :line | [self line: line state: state]]];
+  [[state isError] ifTrue: [| state] ifFalse: [|
+    let groups := [state at: 4];
+    let paths := [[groups keys] mergeSortBy: [:path | path]];
+    let endpoints := [paths collect: [:path |
+      let bucket := [groups at: path];
+      {"path" -> path "requests" -> [bucket at: 0] "errors" -> [bucket at: 1] "bytes" -> [bucket at: 2]}
+    ]];
+    {"format" -> "log-summary-v1" "requests" -> [state at: 1] "errors" -> [state at: 2] "bytes" -> [state at: 3] "endpoints" -> endpoints}
+  ]]
+]];
+[Reflect defineMethod: #render: on: LogSummary as: [:self :text |
+  let report := [self summarize: text];
+  [[report isError] ifTrue: [| report] ifFalse: [| [Json stringify: report]]]
+]];
+[Reflect defineMethod: #die: on: LogSummary as: [:self :message |
+  [System printErrorText: [message , "\n"]]; [OS exit: 2]
+]];
+[Reflect defineMethod: #run: on: LogSummary as: [:self :args |
+  [[[[args size] = 1] not] ifTrue: [| [self die: "usage: log-summary INPUT.jsonl"]] ifFalse: [|
+    let path := [args at: 0];
+    let text := [System readFile: path];
+    let report := [[text isNil] ifTrue: [| [self failure: "could not read file"]] ifFalse: [|
+      [[text isError] ifTrue: [| text] ifFalse: [| [self render: text]]]
+    ]];
+    [[report isError] ifTrue: [|
+      [self die: [path , [": " , [report message]]]]
+    ] ifFalse: [| [System println: report]]]
+  ]]
+]];
+LogSummary

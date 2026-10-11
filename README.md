@@ -241,6 +241,21 @@ entry = "src/json.birnam"
 files = ["src/json/parser.birnam", "src/json/render.birnam"]
 ```
 
+Projects in this checkout can use the authored library as explicit local source
+dependencies. For a project under `examples/`, for example:
+
+```toml
+[dependencies]
+stdlib = { path = "../../modules" }
+json = { path = "../../modules" }
+```
+
+Its module can then declare `requires: #[#stdlib #json]`. The `modules/` directory
+is a source package; each dependency names a module declared within it. Installed
+runtime modules are not implicit project providers, and `Module load:` searches
+the selected publication when running a published project. See the runnable
+[log-summary application](examples/log-summary/README.md) for a complete example.
+
 Projects may also declare `[[wrapped]]` native libraries and embed
 project-relative files at compile time with
 `[System embedFile: "assets/schema.json"]`, which returns a clonable Bytes object.
