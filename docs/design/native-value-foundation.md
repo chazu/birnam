@@ -97,8 +97,12 @@ let nativeBody := [Execution block: [:self :bits | bits]
 ```
 
 A signature is copied into immutable CodeObject metadata. Normal methods have no
-signature and keep their existing calling convention. The first byte describes
-the native result; remaining bytes describe native arguments. `o`, `w` and `b`
+signature and keep their existing calling convention. After an optional `!`
+prefix, the first byte describes the native result; remaining bytes describe native
+arguments. The prefix asks Execution to notify the receiver through `nativeFailed:detail:` on
+incoming adaptation or invocation failure, retaining the original failure. Result
+`m` executes an ordinary deferred native-message request with scoped cleanup; see
+the [Trace execution boundary](../guide/trace.md#native-execution-boundary). `o`, `w` and `b`
 mean Object, Word and Bytes. `u` requires a language nil result and returns native
 Unit; `x` discards a successful result. `W` and `B` allow language nil to become
 native Unit instead of a Word/Bytes result. The signature includes exactly the
@@ -632,3 +636,77 @@ accounts for about 27–30% of sampled path time, and normal GC also matters.
 The next targets are admitted CodeObject shape reuse in Block construction and
 root/name work, ahead of further Word scratch-buffer tuning. No arithmetic
 implementation or Id semantics were changed by this investigation.
+
+
+### Guarded resumable call preparation (2026-10-10)
+
+The native backend now emits an optional call-preparation attempt before ordinary
+and tail calls with up to 16 arguments. Execution copies the receiver/arguments
+into the existing descriptor call window and publishes the same checked action,
+omitting the transient Integer objects otherwise used to index those operations.
+Source values, frame layouts, continuation edges and budget stops remain intact.
+No language control or graph policy moves into Rust.
+
+Admission requires the current Machine read/write/call implementations, canonical
+Namespace lookup and matching Integer factories, and the existing Integer
+allocation-omission permission. Final epoch, factory and activation checks follow
+callbacks. A failed guard returns to the original sequence before any frame write;
+already completed source effects are not replayed. Once committed, normal driver
+dispatch still chooses the target through Id. No permission survives into the
+next call. This form needs no virtual-frame reconstruction because no logical
+frame or inspectable source value was removed.
+
+The [integration fixture](../../rust/birnam-siphon/tests/compiler/frame_call.rs)
+checks constructor/getter, frame-access, call/tail-call, namespace and GC-admission
+replacement effects; collection during guards; constructor mutation after a
+positive grant; namespace rebinding without an epoch change; optional-protocol
+removal; propagation of an entered UNBOUND failure; exact input identity; and
+matching one-step frame snapshots with collection between stops (normalizing
+only the separately created Machine identities).
+
+The [paired measurements](../measurements/resumable-call-preparation-20261010.json)
+use the same source compiled with masks 0 and 32, a fixed 16 MiB budget and
+release owners with uninstrumented Id. Compilation and allocation census are outside
+timed batches. Three-second runs produced:
+
+| Fixture | Candidate/baseline CPU | Paired samples | Objects per invocation |
+| --- | ---: | ---: | ---: |
+| Three two-argument calls | 0.629 (95% interval 0.616–0.642) | 22 | 52 → 28 |
+| Three unary calls, captured result | 0.790 (0.785–0.793) | 30 | 36 → 24 |
+
+An independent untimed Id census for the two-argument fixture counted 1,155 → 663
+messages and 41 → 17 Integer constructions per invocation. No dispatch methods
+were replaced to obtain those counts. These are local fixture results, not a
+whole-language speedup claim. Earlier exploratory timings are superseded by the
+paired records. Reproduce with `scripts/microbench.py --prefix PREFIX --case
+resumable-calls --seconds 3` or `--case resumable-unary`; add `--counts-only` for
+the separate census. The new default compiler mask is 61; mask 29 disables only
+this new pass while preserving the earlier synchronous passes.
+
+Two other targets were investigated. Reusing the existing Id matcher to batch
+inline-control guards showed no measurable CPU benefit (7.65 versus 7.67 ms in
+the small 180-invocation probe), so that experiment was removed. General branch-
+Block elimination still requires a separate escape/recovery proof and potential
+materialization of inspectable blocks; it is not silently enabled by this change.
+Adaptive GC scaling remains absent.
+
+
+Validation passed: 105 ABI/Codegen/Execution/backend tests, four benchmark-reporter
+tests, and the production compiler, Machine/control, Method lifetime, BlockLoop,
+generation projection/ledger/transaction integration binaries. The fresh offline
+cold prefix `/tmp/birnam-frame-opt/accepted-prefix` passes exact receipt and
+588-file Rust/Birnam source comparison, seed exclusion and parser/compiler-disabled
+startup. Its fixed GC boundary, authored graph oracle and freshly compiled
+bootstrap-loop tests pass. Source-free mapped and rebuilt recovery passes for
+Trace, Word helpers/fixed ABI conversion, and the new
+[`frame-call-image-smoke.py`](../../scripts/frame-call-image-smoke.py), which
+withdraws the optimization protocol, collects, and verifies ordinary fallback
+plus a subsequent low-level target binding change. The new image test is wired
+into the host image gate.
+
+The existing Word image smoke initially failed identically on the previous and
+new prefixes: it called the retired general outbound ABI. The fixture now uses
+the current fixed Word conversion and passes. No runtime compatibility shim or
+relaxation of generation quiescence was added. Logs and rejected experiments are
+under `/tmp/birnam-frame-opt/`. Validation is focused, not full release qualification;
+the normal user installation is unchanged.

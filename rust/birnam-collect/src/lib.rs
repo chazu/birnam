@@ -398,7 +398,7 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             tracers: RefCell::new(HashMap::new()),
             finalizers: RefCell::new(HashMap::new()),
             temporary: RefCell::new(Vec::new()),
-            budget: Cell::new(1 << 20),
+            budget: Cell::new(16 << 20),
             automatic: Cell::new(true),
             precise_payloads: Cell::new(false),
             charged: Cell::new(0),

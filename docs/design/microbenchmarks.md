@@ -47,8 +47,9 @@ messages: `emit:source:filename:persistent:synchronous:optimizations:` and
 bitmask: 1 enables Word expression/local fusion, 4 authored Word helper candidates,
 8 owner-batched cleanup, and 16 invocation-covered input roots plus protection
 reuse for already-covered captures/locals within the current generated call. Bit 2 is retired
-and rejected; default mask is 29. Tests cover all sixteen valid masks and reject
-retired/out-of-range bits. No compatibility alias accepts old mask 29.
+and rejected. Bit 32 enables guarded resumable call-window preparation; the
+default mask is 61. Mask 29 still selects the earlier synchronous passes only.
+Tests cover all 32 valid masks and reject retired/out-of-range bits.
 The runner temporarily forwards compiler requests to these options interfaces
 while compiling/loading fixtures, then restores the original compiler methods
 before measurement. Runtime lookup and allocation methods are not replaced.
@@ -77,6 +78,13 @@ Word/Vector allocations. A fixture with accidentally identical implementations
 fails during setup, rather than reporting a misleading comparison. Counts are
 physical allocations grouped by family plus GC charge, measured with collection
 disabled. They are distinct from timing with normal GC.
+
+The `resumable-calls` fixture compares the same three-send method compiled with
+masks 0 and 32 and resumable bodies. It asserts fewer physical Integer allocations
+before timing. `resumable-unary` covers zero-argument calls with a captured
+result. Ordinary and tail calls retain their baseline frames and source
+results. `--gc normal` now uses the fixed 16 MiB default budget; the JSON records
+the exact budget so earlier 1 MiB measurements remain distinguishable.
 
 ## Timers, limits and interpretation
 

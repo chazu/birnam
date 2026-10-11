@@ -13,6 +13,8 @@ mod numeric_predicate;
 mod inline_return;
 #[path = "compiler/publication.rs"]
 mod publication;
+#[path = "compiler/frame_call.rs"]
+mod frame_call;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -237,6 +239,7 @@ fn source_compiles_and_runs_on_production_execution() {
         compiled_control(&mut h);
         collecting_factories(&mut h);
         compiled_recovery(&mut h);
+        frame_call::check(&mut h);
         dispatch::check(&mut h);
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);

@@ -435,7 +435,7 @@ mod option_tests {
             &[],
         )
         .unwrap();
-        for mask in 0..32 {
+        for mask in 0..64 {
             if mask & 2 != 0 {assert!(Optimizations::from_bits(mask).is_none());continue;}
             let source = compile_portable_with_optimizations(
                 &bytes,
@@ -448,11 +448,17 @@ mod option_tests {
             .unwrap();
             let source = String::from_utf8(source).unwrap();
             assert_eq!(source.contains("tryPrimitiveExpression:"), mask & 1 != 0);
+            assert!(!source.contains("R fast=try_frame_call"), "synchronous code keeps its ABI");
+            let resumable = String::from_utf8(compile_portable_with_optimizations(
+                &bytes, b"", b"<test>", false, false, Optimizations::from_bits(mask).unwrap(),
+            ).unwrap()).unwrap();
+            assert_eq!(resumable.contains("R fast=try_frame_call"), mask & 32 != 0);
+
             assert_eq!(
                 source.contains("withWordExpression:bindings:parameters:"),
                 mask & 4 != 0
             );
         }
-        assert!(Optimizations::from_bits(32).is_none());
+        assert!(Optimizations::from_bits(64).is_none());
     }
 }

@@ -110,9 +110,32 @@ fn production_allocation_accounting() {
             b"allocationBytes".as_slice(),
             b"allocationChargeFor:",
             b"detachAllocationAt:",
+            b"prepareAllocation",
         ] {
             id.intern_name(name).unwrap();
         }
+        // The initial fixed budget admits more than the former 1 MiB without
+        // collecting, then collects at 16 MiB on the next admission. Repeat
+        // after collection to witness that the threshold does not scale.
+        for _ in 0..2 {
+            collect(id, gc);
+            let mut previous = 0;
+            for _ in 0..16 {
+                allocate(id, behavior, 1 << 20);
+                let charged = bytes(id, gc);
+                assert!(charged > previous, "default budget collected below 16 MiB");
+                previous = charged;
+            }
+            assert!(previous >= 16 << 20);
+            send(id, gc, b"prepareAllocation", &[]);
+            assert_eq!(bytes(id, gc), 0, "default budget missed 16 MiB admission");
+        }
+        // An explicit smaller budget remains authoritative.
+        send(id, gc, b"budget:", &[Operand::word(1)]);
+        allocate(id, behavior, 0);
+        assert!(bytes(id, gc) > 0);
+        send(id, gc, b"prepareAllocation", &[]);
+        assert_eq!(bytes(id, gc), 0);
         send(id, gc, b"budget:", &[Operand::word(usize::MAX)]);
         collect(id, gc);
         assert_eq!(bytes(id, gc), 0);

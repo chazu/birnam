@@ -1,0 +1,220 @@
+// Declared-graph diagnostics. Storage owns the protected physical snapshot;
+// Trace validates and traverses it, and never authorizes reclamation.
+[Module named: #trace requires: #[#nativeValues #booleanValues]];
+let traceModel := ObjectModel;
+let traceExecution := Execution;
+let traceId := Vtable;
+let traceWord := Word;
+let traceInteger := Integer;
+let traceStorage := Storage;
+let traceDiscardObjectWord := "xOw";
+// Reuse immutable slot indices and ordinary layouts in the diagnostic hot path.
+let traceSlot0 := 0;
+let traceSlot1 := 1;
+let traceSlot2 := 2;
+let traceSlot3 := 3;
+let traceSlot4 := 4;
+let traceSlot5 := 5;
+let traceSlot6 := 6;
+let traceSlot7 := 7;
+let traceSlot8 := 8;
+let traceZero := [traceExecution wordResultOf: 0 selector: #word];
+let traceOne := [traceExecution wordResultOf: 1 selector: #word];
+let traceTwo := [traceExecution wordResultOf: 2 selector: #word];
+let traceThree := [traceExecution wordResultOf: 3 selector: #word];
+
+// Deferred native sends are ordinary reference-slot objects. Execution handles
+// only carrier conversion, exact native results/failures and synchronous cleanup.
+let traceMessagePrototype := [traceModel newSlots: #[nil nil nil nil nil] parent: ObjectVt];
+[Reflect defineMethod: #value on: traceMessagePrototype as:
+  [traceExecution block: [:self | self] withNativeSignature: "m"]];
+[Reflect defineMethod: #nativeReceiver on: traceMessagePrototype as: [:self | [traceModel slot: traceSlot0 in: self]]];
+[Reflect defineMethod: #nativeSelector on: traceMessagePrototype as: [:self | [traceModel slot: traceSlot1 in: self]]];
+[Reflect defineMethod: #nativeArguments on: traceMessagePrototype as: [:self | [traceModel slot: traceSlot2 in: self]]];
+[Reflect defineMethod: #nativeSignature on: traceMessagePrototype as: [:self | [traceModel slot: traceSlot3 in: self]]];
+[Reflect defineMethod: #nativeCleanup on: traceMessagePrototype as: [:self | [traceModel slot: traceSlot4 in: self]]];
+let traceRequest := [:target :selector :arguments :signature :cleanup |
+  let result := [traceMessagePrototype clone];
+  [traceModel slot: traceSlot0 in: result put: target];
+  [traceModel slot: traceSlot1 in: result put: selector];
+  [traceModel slot: traceSlot2 in: result put: arguments];
+  [traceModel slot: traceSlot3 in: result put: signature];
+  [traceModel slot: traceSlot4 in: result put: cleanup]; result
+];
+let traceFailure := [:status :detail |
+  [traceRequest value: traceExecution value: #failNative:detail: value: #[status detail] value: "vww" value: nil]
+];
+let traceInvalid := [traceFailure value: traceOne value: traceOne];
+let traceReject := [| [traceInvalid value]];
+let traceBusy := [traceFailure value: traceOne value: traceTwo];
+let traceGapsRejected := [traceFailure value: traceOne value: traceThree];
+let traceSame := [:a :b | [traceWord selectIfSameObject: a with: b ifEqual: true ifDifferent: false]];
+let traceKey := [:bits | [traceExecution objectResultOf: traceInteger selector: #fromWord: wordArgument: bits]];
+
+let traceOwner := [traceModel newSlots: #[nil] parent: ObjectVt];
+[Namespace at: #Trace put: traceOwner];
+// Session slots: caller, accepted gaps, allocation rows, object index,
+// identity index, roots, edges, completed, first native failure.
+let traceSessionPrototype := [traceModel newSlots: #[nil nil nil nil nil nil nil false nil] parent: ObjectVt];
+// Row slots: original Object, unsigned allocation identity, outgoing rows, mark.
+let traceRowPrototype := [traceModel newSlots: #[nil nil [Vector new] false] parent: ObjectVt];
+let traceLinkPrototype := [traceModel newSlots: #[nil nil] parent: ObjectVt];
+let traceLink := [:node :next |
+  let result := [traceLinkPrototype clone];
+  [traceModel slot: traceSlot0 in: result put: node];
+  [traceModel slot: traceSlot1 in: result put: next]; result
+];
+[Reflect defineMethod: #< on: traceRowPrototype as: [:self :other |
+  [[traceModel slot: traceSlot1 in: self] unsignedLessThan: [traceModel slot: traceSlot1 in: other]]
+]];
+
+let traceMissingKey := [:ignored | [traceInvalid value]];
+[Reflect defineMethod: #keyOf: on: traceOwner as: [:self :value |
+  let bits := [traceExecution optionalWordResultOf: traceId selector: #identityOf: argument: value resultFactory: traceWord];
+  [[[bits isNil] selectIfTrue: traceMissingKey ifFalse: traceKey otherwise: traceMissingKey] value: bits]
+]];
+[Reflect defineMethod: #requireOpen on: traceSessionPrototype as: [:self |
+  [[[traceSame value: [traceModel slot: traceSlot0 in: traceOwner] value: self]
+    & [[traceModel slot: traceSlot7 in: self] == false]] ifFalse: traceReject];
+  self
+]];
+[Reflect defineMethod: #nativeFailed:detail: on: traceSessionPrototype as:
+  [traceExecution block: [:self :status :detail |
+    [[traceSame value: [traceModel slot: traceSlot0 in: traceOwner] value: self] ifTrue: [|
+      [[[traceModel slot: traceSlot8 in: self] isNil] ifTrue: [|
+        [traceModel slot: traceSlot8 in: self put: [traceFailure value: status value: detail]]
+      ]]
+    ]]; nil
+  ] withNativeSignature: "xww"]];
+
+[Reflect defineMethod: #allocation:bytes:identity: on: traceSessionPrototype as:
+  [traceExecution block: [:self :value :bytes :identity |
+    [self requireOpen];
+    let entry := [traceRowPrototype clone];
+    [traceModel slot: traceSlot0 in: entry put: value];
+    [traceModel slot: traceSlot1 in: entry put: identity];
+    [traceModel slot: traceSlot2 in: self put: [[traceModel slot: traceSlot2 in: self] add: entry]];
+    nil
+  ] withNativeSignature: "!uOww"]];
+[Reflect defineMethod: #root: on: traceSessionPrototype as:
+  [traceExecution block: [:self :value |
+    [self requireOpen];
+    [traceModel slot: traceSlot5 in: self put: [[traceModel slot: traceSlot5 in: self] add: value]]; nil
+  ] withNativeSignature: "!uO"]];
+[Reflect defineMethod: #edgeFrom:to: on: traceSessionPrototype as:
+  [traceExecution block: [:self :from :to |
+    [self requireOpen];
+    [traceModel slot: traceSlot6 in: self put: [[traceModel slot: traceSlot6 in: self] add: [traceLink value: from value: to]]]; nil
+  ] withNativeSignature: "!uOO"]];
+[Reflect defineMethod: #rowFor: on: traceSessionPrototype as: [:self :value |
+  let found := [[traceModel slot: traceSlot3 in: self] at: [traceOwner keyOf: value]];
+  [[found isNil] ifTrue: traceReject];
+  [[traceSame value: [traceModel slot: traceSlot0 in: found] value: value] ifFalse: traceReject]; found
+]];
+[Reflect defineMethod: #complete: on: traceSessionPrototype as:
+  [traceExecution block: [:self :gaps |
+    [traceRequest value: self value: #finish: value: #[gaps] value: "vO" value: nil]
+  ] withNativeSignature: "!vw"]];
+[Reflect defineMethod: #finish: on: traceSessionPrototype as:
+  [traceExecution block: [:self :gaps |
+    [self requireOpen];
+    let prior := [traceModel slot: traceSlot8 in: self];
+    [[prior notNil] ifTrue: [| [prior value]]];
+
+    // As in the native protocol, well-typed facts are accepted until complete:.
+    // Identity/graph rejection happens here, before any report callback.
+    [[traceModel slot: traceSlot2 in: self] inject: nil into: [:unused :entry |
+      let value := [traceModel slot: traceSlot0 in: entry];
+      let identity := [traceModel slot: traceSlot1 in: entry];
+      let objects := [traceModel slot: traceSlot3 in: self];
+      let identities := [traceModel slot: traceSlot4 in: self];
+      let objectKey := [traceOwner keyOf: value]; let identityKey := [traceKey value: identity];
+      [[[[identity = traceZero] | [[objects at: objectKey] notNil]] | [[identities at: identityKey] notNil]]
+        ifTrue: traceReject];
+      [traceModel slot: traceSlot3 in: self put: [objects at: objectKey put: entry]];
+      [traceModel slot: traceSlot4 in: self put: [identities at: identityKey put: entry]]; nil
+    ]];
+
+    // Validate every edge, including disconnected subgraphs, before reporting.
+    [[traceModel slot: traceSlot6 in: self] inject: nil into: [:unused :edge |
+      let from := [self rowFor: [traceModel slot: traceSlot0 in: edge]]; let to := [self rowFor: [traceModel slot: traceSlot1 in: edge]];
+      [traceModel slot: traceSlot2 in: from put: [[traceModel slot: traceSlot2 in: from] add: to]]; nil
+    ]];
+
+    let enqueueSkip := [:head :target | head];
+    let enqueueAdd := [:head :target |
+      [traceModel slot: traceSlot3 in: target put: true];
+      [traceLink value: target value: head]
+    ];
+    let enqueue := [:head :target |
+      let selected := [[[traceModel slot: traceSlot3 in: target] == false]
+        selectIfTrue: enqueueAdd ifFalse: enqueueSkip otherwise: enqueueSkip];
+      [selected value: head value: target]
+    ];
+    let pending := [[traceModel slot: traceSlot5 in: self] inject: nil into: [:head :root |
+      [enqueue value: head value: [self rowFor: root]]
+    ]];
+    // Mark on enqueue: each vertex enters the worklist at most once.
+    // One fold step per allocation therefore drains it without allocating
+    // fresh loop continuations; remaining steps after exhaustion do nothing.
+    let done := [:head :unused | nil];
+    let step := [:head :unused |
+      let current := [traceModel slot: traceSlot0 in: head];
+      [[traceModel slot: traceSlot2 in: current]
+        inject: [traceModel slot: traceSlot1 in: head] into: enqueue]
+    ];
+    let rest := [[traceModel slot: traceSlot2 in: self] inject: pending into: [:head :unused |
+      let selected := [[head isNil] selectIfTrue: done ifFalse: step otherwise: done];
+      [selected value: head value: unused]
+    ]];
+    [[rest notNil] ifTrue: traceReject];
+    [[[gaps bitAnd: [[traceModel slot: traceSlot1 in: self] bitNot]] = traceZero]
+      ifFalse: [| [traceGapsRejected value]]];
+
+    let ordered := [[traceModel slot: traceSlot2 in: self] mergeSortBy: [:entry | entry]];
+    [traceModel slot: traceSlot7 in: self put: true];
+
+    let caller := [traceModel slot: traceSlot0 in: self];
+    [ordered inject: nil into: [:unused :entry |
+      let selector := [[traceModel slot: traceSlot3 in: entry]
+        selectIfTrue: #reached:identity: ifFalse: #notReached:identity: otherwise: nil];
+      [[traceRequest value: caller value: selector
+        value: #[[traceModel slot: traceSlot0 in: entry] [traceModel slot: traceSlot1 in: entry]]
+        value: traceDiscardObjectWord value: nil] value]; nil
+    ]];
+    [traceRequest value: caller value: #complete: value: #[gaps] value: "vw" value: nil]
+  ] withNativeSignature: "vO"]];
+
+[Reflect defineMethod: #begin: on: traceOwner as:
+  [traceExecution block: [:self :current |
+    [[[traceModel slot: traceSlot0 in: traceOwner] notNil] ifTrue: [| [traceBusy value]]];
+    [traceModel slot: traceSlot0 in: traceOwner put: current];
+
+    [traceRequest value: traceStorage value: #observe: value: #[current] value: "vO" value: nil]
+  ] withNativeSignature: "vO"]];
+[Reflect defineMethod: #end: on: traceOwner as: [:self :current |
+  [[traceSame value: [traceModel slot: traceSlot0 in: traceOwner] value: current] ifTrue: [|
+    let completed := [traceModel slot: traceSlot7 in: current];
+    let error := [traceModel slot: traceSlot8 in: current];
+    [traceModel slot: traceSlot0 in: traceOwner put: nil];
+    // Expired callbacks retain no observed objects or report visitor.
+    [0 to: 8 do: [:index | [traceModel slot: index in: current put: nil]; nil]];
+    [[error notNil] ifTrue: [| [error value]]];
+    [[completed == true] ifFalse: traceReject]
+  ]]; nil
+]];
+[Reflect defineMethod: #report:acceptingGaps: on: traceOwner as:
+  [traceExecution block: [:self :caller :accepted |
+    [[[traceModel slot: traceSlot0 in: traceOwner] notNil] ifTrue: [| traceBusy] ifFalse: [|
+      let current := [traceModel newSlots:
+        #[caller accepted [Vector new] [Map new] [Map new] [Vector new] [Vector new] false nil]
+        parent: [Reflect vtableOf: traceSessionPrototype]];
+      [traceRequest value: traceOwner value: #begin: value: #[current] value: "vO"
+        value: [| [traceOwner end: current]]]
+    ]]
+  ] withNativeSignature: "vOw"]];
+[Reflect defineMethod: #rootsDo: on: traceOwner as:
+  [traceExecution block: [:self :visitor |
+    [[traceRequest value: visitor value: #visit: value: #[traceOwner] value: "xO" value: nil] value]; nil
+  ] withNativeSignature: "xO"]];
+[Module markLoaded: #trace];

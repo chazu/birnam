@@ -29,3 +29,11 @@ Source compilation, source artifacts, named adapters, portable materialization,
 candidate factories, image rebuild and generation descriptor hashing all call
 this owner through current Id lookup. Compiled/mapped artifact and image loading
 continue to consume saved metadata and objects without invoking it.
+
+Resumable call-window optimization uses explicit option bit 32; the default
+compiler mask is 61. Mask 29 keeps the earlier synchronous passes without this
+optimization. The backend emits bounded source-slot metadata and retains the
+complete original call-preparation sequence after a refused attempt. Execution
+owns admission and frame mutation through
+`tryPrepareCall:slots:selector:in:tail:`; the backend never inspects frame storage.
+See [Execution's contract](../birnam-execution/README.md#guarded-generated-call-preparation).

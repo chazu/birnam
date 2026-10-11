@@ -209,7 +209,7 @@ Every baseline file appears once below. Delete/Archive links are pinned to the r
 | [rust/birnam-system-input/README.md](../rust/birnam-system-input/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-system-output/README.md](../rust/birnam-system-output/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-tcc/README.md](../rust/birnam-tcc/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
-| [rust/birnam-trace/README.md](../rust/birnam-trace/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
+| [docs/guide/trace.md](guide/trace.md) | Authored Trace protocol and native execution boundary; replaces the retired Rust owner README. |
 | [rust/birnam-vector/README.md](../rust/birnam-vector/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [rust/birnam-word/README.md](../rust/birnam-word/README.md) | Current owner-local protocol or independent native boundary evidence; retain beside its implementation. |
 | [scripts/fixtures/README.md](../scripts/fixtures/README.md) | Current semantic-fixture or editor workflow documentation; no specific retirement/correction identified. |

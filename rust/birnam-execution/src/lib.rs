@@ -9,6 +9,7 @@ mod image;
 mod machine;
 mod native_tier;
 mod native_abi;
+mod native_message;
 mod word_helper;
 mod numeric;
 mod numeric_operator;
@@ -305,7 +306,13 @@ impl Execution {
         args: &[Operand],
     ) -> Result<Operand, Outcome> {
         let signature=self.methods.borrow().get(&method.addr()).and_then(|m|m.native_signature.clone());
-        if let Some(signature)=signature {return unsafe {native_abi::incoming(self,method,receiver,args,&signature)}}
+        if let Some(signature)=signature {
+            let result = unsafe { native_abi::incoming(self,method,receiver,args,&signature) };
+            if signature.observes_failure() {
+                if let Err(error) = result { unsafe { native_message::notify_failure(self, receiver, error) }; }
+            }
+            return result;
+        }
         unsafe {self.invoke_body(method,receiver,args)}
     }
     unsafe fn invoke_body(&self,method:Oop,receiver:Oop,args:&[Operand])->Result<Operand,Outcome> {
@@ -813,6 +820,7 @@ const NAMES: &[&[u8]] = &[
     b"bytesResultOf:selector:resultFactory:",
     b"wordResultOf:selector:",
     b"block:withNativeSignature:",
+    b"failNative:detail:",
     b"bytesResultOf:selector:",
     b"numericOperation:left:right:",
     b"commitNumericPredicate:",
@@ -939,6 +947,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"objectResultOf:selector:byteArgument:", native_abi::object_byte_argument),
             (behavior, b"bytesResultOf:selector:resultFactory:", native_abi::byte_query_factory),
             (behavior, b"block:withNativeSignature:", native_abi::block_with_signature),
+            (behavior, b"failNative:detail:", native_message::fail),
             (behavior, b"wordResultOf:selector:", native_abi::word_result),
             (behavior, b"bytesResultOf:selector:", native_abi::bytes_result),
             (behavior, b"numericOperation:left:right:", numeric::evaluate),

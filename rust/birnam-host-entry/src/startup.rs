@@ -63,7 +63,6 @@ impl HostRuntime<'_> {
             "artifact",
             "store",
             "storage",
-            "trace",
             "peg",
             "tcc",
             "codegen",

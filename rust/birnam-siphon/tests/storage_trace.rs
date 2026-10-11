@@ -9,7 +9,10 @@ use core::{
     ffi::c_void,
     ptr,
 };
-use std::{collections::HashMap, os::unix::ffi::OsStrExt};
+use std::{
+    collections::{HashMap, HashSet},
+    os::unix::ffi::OsStrExt,
+};
 use support::*;
 struct Probe {
     id: Protocol,
@@ -29,6 +32,10 @@ struct Probe {
     in_collection: Cell<bool>,
     saved: Cell<Oop>,
     token: Cell<usize>,
+    sample: RefCell<HashSet<usize>>,
+    proxy: Cell<Oop>,
+    target: Cell<Oop>,
+    sweep_scratch: Cell<bool>,
 }
 fn failure() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 991)
@@ -37,9 +44,55 @@ unsafe extern "C" fn observed(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
     unsafe {
         let p = &*c.cast::<Probe>();
         p.observations.set(p.observations.get() + 1);
-        p.id.send_named(r, b"originalObserve:", borrowed_slice(a, n).unwrap())
-            .map_or_else(|e| e, Outcome::loaded)
+        let [target] = borrowed_slice(a, n).unwrap() else {
+            panic!("observer arity")
+        };
+        let previous = p.target.replace(object(*target));
+        let result =
+            p.id.send_named(r, b"originalObserve:", &[Operand::object(p.proxy.get())]);
+        p.target.set(previous);
+        result.map_or_else(|e| e, Outcome::loaded)
     }
+}
+// Keep repeated adversarial cases small while using the REAL Storage inventory,
+// root exclusion, owner callbacks and collection protection. The replacement
+// observe: method projects the fixture's subgraph only after Storage builds it.
+// trace_heap separately exercises an unfiltered physical-heap report.
+unsafe fn project(
+    c: *mut c_void,
+    a: *const Operand,
+    n: usize,
+    name: &[u8],
+    objects: usize,
+) -> Outcome {
+    let p = unsafe { &*c.cast::<Probe>() };
+    let args = unsafe { borrowed_slice(a, n) }.unwrap();
+    let included = args
+        .iter()
+        .take(objects)
+        .all(|v| p.sample.borrow().contains(&object(*v).addr()));
+    if included {
+        unsafe { p.id.send_named(p.target.get(), name, args) }.map_or_else(|e| e, Outcome::loaded)
+    } else {
+        Outcome::loaded(Operand::unit())
+    }
+}
+unsafe extern "C" fn allocation(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { project(c, a, n, b"allocation:bytes:identity:", 1) }
+}
+unsafe extern "C" fn root(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { project(c, a, n, b"root:", 1) }
+}
+unsafe extern "C" fn edge(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { project(c, a, n, b"edgeFrom:to:", 2) }
+}
+unsafe extern "C" fn projected_complete(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    unsafe { project(c, a, n, b"complete:", 0) }
 }
 unsafe extern "C" fn no_edges(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::unit())
@@ -147,6 +200,30 @@ unsafe fn report(p: &Probe, accept: usize) -> Result<Operand, Outcome> {
     p.rows.borrow_mut().clear();
     p.completed.set(0);
     unsafe {
+        // Authored diagnostics allocate ordinary temporary objects. Reclaim the
+        // preceding report's scratch before taking another physical inventory,
+        // while preserving our deliberately unreachable fixture graph. Release
+        // these setup roots BEFORE observation so reachability remains tested.
+        if p.sweep_scratch.get() {
+            let mut tokens = Vec::new();
+            for (&address, edges) in p.edges.borrow().iter() {
+                let o = ptr::with_exposed_provenance_mut(address);
+                if present(p.id, o) {
+                    tokens.push(retain(p.id, p.roots, o));
+                }
+                for &o in edges {
+                    if present(p.id, o) {
+                        tokens.push(retain(p.id, p.roots, o));
+                    }
+                }
+            }
+            p.in_collection.set(true);
+            collect(p.id, p.gc);
+            p.in_collection.set(false);
+            for token in tokens {
+                release(p.id, p.roots, token);
+            }
+        }
         p.id.send_named(
             p.trace,
             b"report:acceptingGaps:",
@@ -194,8 +271,26 @@ fn live_diagnostics_preserve_graph_coverage_lifetimes_and_failure_cleanup() {
             in_collection: Cell::new(false),
             saved: Cell::new(ptr::null_mut()),
             token: Cell::new(0),
+            sample: RefCell::new(HashSet::new()),
+            proxy: Cell::new(ptr::null_mut()),
+            target: Cell::new(ptr::null_mut()),
+            sweep_scratch: Cell::new(true),
         });
         let c = (&*p as *const Probe).cast_mut().cast();
+        let proxy_vt = behavior(id);
+        for (name, method) in [
+            (
+                b"allocation:bytes:identity:".as_slice(),
+                allocation as native::Method,
+            ),
+            (b"root:", root),
+            (b"edgeFrom:to:", edge),
+            (b"complete:", projected_complete),
+        ] {
+            install(id, proxy_vt, name, method, c);
+        }
+        p.proxy.set(allocate(id, proxy_vt, 0));
+        retain(id, roots, p.proxy.get());
         let storage_behavior = object(send(
             id,
             id.receiver,
@@ -259,6 +354,9 @@ fn live_diagnostics_preserve_graph_coverage_lifetimes_and_failure_cleanup() {
             &[Operand::word(u.addr())],
         ));
         retain(id, roots, raw);
+        p.sample
+            .borrow_mut()
+            .extend([x, y, u, v, raw].map(|o| o.addr()));
         // Strict coverage never silently accepts unobserved native stack roots.
         assert_eq!(report(&p, 0).unwrap_err().detail, 3);
         assert_eq!(p.completed.get(), 0);
@@ -344,8 +442,12 @@ fn live_diagnostics_preserve_graph_coverage_lifetimes_and_failure_cleanup() {
                 Operand::object(ptr::null_mut()),
             ],
         );
+        // Precise GC deliberately rejects unowned nonempty payloads.
+        p.sweep_scratch.set(false);
         let unknown = allocate(id, unknown_behavior, 8);
         retain(id, roots, unknown);
+        p.sample.borrow_mut().clear();
+        p.sample.borrow_mut().insert(unknown.addr());
         assert_eq!(report(&p, 1).unwrap_err().detail, 3);
         report(&p, 3).unwrap();
         assert_eq!(p.gaps.get(), 3);

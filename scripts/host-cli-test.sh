@@ -53,6 +53,8 @@ fi
 if selected image; then
   python3 scripts/host-image-test.py "$scratch/relocated"
   bash scripts/native-loader-image-smoke.sh "$scratch/relocated"
+  python3 scripts/trace-image-smoke.py "$scratch/relocated"
+  python3 scripts/frame-call-image-smoke.py "$scratch/relocated"
   bash scripts/string-builder-image-smoke.sh "$scratch/relocated"
   python3 scripts/system-image-test.py "$scratch/relocated"
   python3 scripts/alien-image-test.py "$scratch/relocated"

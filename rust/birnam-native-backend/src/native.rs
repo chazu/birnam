@@ -232,13 +232,14 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
         Literal::False => "named(&c,\"false\")".into(),
     })
 }
-/// Synchronous emission switches, supplied explicitly to the compiler.
-/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration).
+/// Emission switches, supplied explicitly to the compiler.
+/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration); 32 = guarded resumable call-window preparation.
 #[derive(Clone, Copy)]
 pub struct Optimizations(u8);
-impl Default for Optimizations { fn default()->Self {Self(29)} }
+impl Default for Optimizations { fn default()->Self {Self(61)} }
 impl Optimizations {
-    pub fn from_bits(bits:usize)->Option<Self> {(bits & !29 == 0).then_some(Self(bits as u8))}
+    pub fn from_bits(bits:usize)->Option<Self> {(bits & !61 == 0).then_some(Self(bits as u8))}
+    fn frame_calls(self)->bool {self.0&32!=0}
     fn words(self)->bool {self.0&1!=0}
     fn helpers(self)->bool {self.0&4!=0}
     fn roots(self)->bool {self.0&8!=0}
@@ -374,6 +375,15 @@ fn function(
                 arguments,
                 ..
             } => {
+                if policy.optimizations.frame_calls() && arguments.len() <= 16 {
+                    let mut slots = Vec::new();
+                    for value in std::iter::once(receiver).chain(arguments.iter()) {
+                        slots.extend_from_slice(&slot(*value).to_le_bytes());
+                    }
+                    let data = slots.iter().map(u8::to_string).collect::<Vec<_>>().join(",");
+                    let tail = usize::from(matches!(block.terminator, Term::TailCall { .. }));
+                    writeln!(out, "{{static const unsigned char slots[]={{ {data} }};R fast=try_frame_call(&c,machine,{},slots,sizeof(slots),{},{tail});if(fast.status)return finish(&c,(A){{0}});if(fast.value.kind!=0)return finish(&c,obj(keep(&c,object(&c,fast.value))));}}", call_site.0, quoted(selector)).unwrap();
+                }
                 let start = layout.call_window_start.ok_or(Error::Layout)?;
                 writeln!(out,"put(&c,machine,{start},get(&c,machine,{}));put(&c,machine,{},keep(&c,intern(&c,{})));",slot(*receiver),start+1,quoted(selector)).unwrap();
                 for (i, arg) in arguments.iter().enumerate() {

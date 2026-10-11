@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guarded ABI literals and authored Word helpers survive source-free images.
+# Fixed ABI conversion and authored Word helpers survive source-free images.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 prefix=${1:?usage: word-optimization-image-smoke.sh PREFIX}
@@ -16,9 +16,9 @@ let probe := [Object clone];
 ]];
 [Reflect defineMethod: #convert: on: probe as: [:self :value |
   let bridge := Execution; let target := Integer;
-  let signature := "Wo"; let factory := Word;
-  [bridge sendNativeTo: target selector: #wordOf: arguments: #[value]
-    signature: signature resultFactory: factory]
+  let factory := Word;
+  [bridge optionalWordResultOf: target selector: #wordOf: argument: value
+    resultFactory: factory]
 ]];
 [Globals at: #WordOptimizationImage put: probe]; true
 BIRNAM
@@ -53,4 +53,4 @@ for mode in mapped rebuilt; do
   cmp "$scratch/expected.out" "$scratch/$mode.out"
   test ! -s "$scratch/$mode.err"
 done
-printf 'Word optimization: source-free mapped/rebuilt helpers, ABI literals and Integer arithmetic passed\n'
+printf 'Word optimization: source-free mapped/rebuilt helpers, fixed ABI conversion and Integer arithmetic passed\n'

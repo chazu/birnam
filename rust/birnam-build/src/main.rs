@@ -27,6 +27,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("nativeLoader", "modules/native-loader.birnam"),
     ("alienCompiler", "modules/alien-compiler.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
+    ("trace", "modules/trace.birnam"),
 ];
 
 // Migration candidates installed for explicit loading, outside startup images.
@@ -93,7 +94,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_environment.dylib",
     "libbirnam_file_io.dylib",
     "libbirnam_storage.dylib",
-    "libbirnam_trace.dylib",
     "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
     "libbirnam_image.dylib",
@@ -693,7 +693,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
         compile.env("BIRNAM_NO_STDLIB", "1");
-        if matches!(*name, "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues" | "integerValues") {
+        if matches!(*name, "trace" | "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues" | "integerValues") {
             // These authored policies use synchronous bodies. Select
             // that representation at build time; startup only maps saved objects.
             let source_path = root.join(source);

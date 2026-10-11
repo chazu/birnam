@@ -243,6 +243,7 @@ pub(super) unsafe fn incoming(
         b'o' => Ok(result),
         // A deferred result evaluates the selected thunk after the authored
         // selector body has returned, preserving every native result carrier.
+        b'm' => unsafe { native_message::evaluate(ptr::from_ref(s).cast_mut().cast(), value, ptr::null(), 0).into_result() },
         b'v' => unsafe { s.send(value, b"value", &[]) },
         b'u' if value == s.nil => Ok(Operand::unit()),
         b'x' => Ok(Operand::unit()),

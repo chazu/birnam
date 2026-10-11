@@ -146,7 +146,7 @@ Private marking, phases, accounting, hook resolution, finalizer records and nati
 capture replace the former Collect/Lifetime/Trace integration and the Native Mark,
 Native Stack, Trace Hooks and Finalizers helper libraries. GC depends only on the
 common Id ABI. Diagnostic described-graph tracing is owned separately by
-[Storage](../birnam-storage/README.md) and [Trace](../birnam-trace/README.md);
+[Storage](../birnam-storage/README.md) and [Trace](../../docs/guide/trace.md);
 it does not authorize collection.
 
 Run `mise run native-messages`. Its tests build the actual production dylibs and
@@ -175,7 +175,9 @@ System's existing GC controls now use these messages; see [System GC](../../docs
 Payload precision does not change native-root capture. Reference owners query the
 current precision flag by send; conservative candidates are filtered through Id
 `allocationAt:` before sending `visit:`. GC never decodes another owner's payload.
-The default threshold remains one MiB. Turning automatic collection back on does
+The initial automatic collection threshold is a fixed 16 MiB. `budget:` can
+explicitly select any nonzero threshold, including smaller values; collection
+does not scale it with the live heap. Turning automatic collection back on does
 not collect until a subsequent allocation admission; explicit collection is
 available while it is off.
 

@@ -131,6 +131,28 @@ fn cases() -> Vec<Case> {
         Case{name:"word-locals".into(),source:wrapper("let x := [a bitXor: b]; let sum := [x wrappingAdd: a]; let masked := [sum bitAnd: b]; [masked wrappingAdd: a]"),mask:1,expected:16,result_selector:b"bits",integer_inputs:false},
         Case{name:"helper".into(),source:r#"let mask := [Execution wordResultOf: 15 selector: #word]; let probe := [Object clone]; [Reflect defineMethod: #run:with: on: probe as: [:self :a :b | let x := [a bitXor: b]; let sum := [x wrappingAdd: a]; [[sum bitXor: mask] wrappingSubtract: sum]]]; [Globals at: #MicroProbe put: probe]; true"#.into(),mask:4,expected:3,result_selector:b"bits",integer_inputs:false},
     ];
+    cases.push(Case {
+        name: "resumable-calls".into(),
+        source: r#"let probe := [Object clone];
+[Reflect defineMethod: #pick:with: on: probe as: [:self :a :b | a]];
+[Reflect defineMethod: #run:with: on: probe as: [:self :a :b |
+  let x := [self pick: a with: b];
+  let y := [self pick: x with: b];
+  [self pick: y with: b]
+]];
+[Globals at: #MicroProbe put: probe]; true"#.into(),
+        mask: 32, expected: 12345, result_selector: b"word", integer_inputs: true,
+    });
+    cases.push(Case {
+        name: "resumable-unary".into(),
+        source: r#"let value := 12345; let probe := [Object clone];
+[Reflect defineMethod: #pick on: probe as: [:self | value]];
+[Reflect defineMethod: #run:with: on: probe as: [:self :a :b |
+  [self pick]; [self pick]; [self pick]
+]];
+[Globals at: #MicroProbe put: probe]; true"#.into(),
+        mask: 32, expected: 12345, result_selector: b"word", integer_inputs: true,
+    });
     cases.push(Case{name:"abi-audit-object-incoming".into(),source:wrapper("a"),mask:29,expected:12345,result_selector:b"word",integer_inputs:true});
     let captured = |body: &str| format!(r#"let bridge := Execution; let target := Integer; let factory := Word; {}"#, wrapper(body));
     cases.push(Case{name:"abi-audit-read".into(),source:captured("[bridge optionalWordResultOf: target selector: #wordOf: argument: a resultFactory: factory]"),mask:29,expected:12345,result_selector:b"bits",integer_inputs:true});
@@ -371,7 +393,7 @@ unsafe fn compile_case(
                 Operand::object(text),
                 Operand::object(out),
                 Operand::object(out),
-                Operand::object(rt.named(b"true")),
+                Operand::object(rt.named(if case.name.starts_with("resumable-") { b"false" } else { b"true" })),
             ],
         ));
         assert_eq!(
@@ -823,7 +845,9 @@ fn main() {
                     work[1]["steady_messages"] = messages(&rt, &case, candidate, &inputs, true, trace);
                 }
             }
-            let key = if case.name.starts_with("abi") {
+            let key = if case.name.starts_with("resumable-") {
+                "integer"
+            } else if case.name.starts_with("abi") {
                 "vector"
             } else {
                 "word"
@@ -901,7 +925,7 @@ fn main() {
                     &[Operand::word(if gc_mode == "off" {
                         usize::MAX
                     } else {
-                        1 << 20
+                        16 << 20
                     })],
                 );
             }
@@ -927,7 +951,7 @@ fn main() {
                             &[Operand::word(if gc_mode == "off" {
                                 usize::MAX
                             } else {
-                                1 << 20
+                                16 << 20
                             })],
                         );
                         let (_, warm) = rt.run(variants[variant], &inputs, 8, stop);
@@ -970,7 +994,7 @@ fn main() {
         }
         println!(
             "{}",
-            json!({"event":"result","schema":1,"measurement_ms":start.elapsed().as_secs_f64()*1000.0,"budget_seconds":budget.seconds(),"gc":gc_mode,"profile":if counts_only {"counts-only"} else {profile.as_str()},"cases":records})
+            json!({"event":"result","schema":1,"measurement_ms":start.elapsed().as_secs_f64()*1000.0,"budget_seconds":budget.seconds(),"gc":gc_mode,"gc_budget_bytes":if gc_mode == "off" {usize::MAX} else {16 << 20},"profile":if counts_only {"counts-only"} else {profile.as_str()},"cases":records})
         );
     }
 }

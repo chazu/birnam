@@ -50,7 +50,6 @@ members = [
     "rust/birnam-store",
     "rust/birnam-storage",
     "rust/birnam-tcc",
-    "rust/birnam-trace",
 ]
 resolver = "3"
 

@@ -92,6 +92,7 @@ exact entry. Ordinary future sends perform current lookup.
 | Machine `destroy` | none | Abandon runnable, suspended, completed or failed state and release frame pins. No asynchronous task cleanup runs. |
 | Machine `oopAt:` / `oopAt:put:` | Integer slot; optional Object value | Checked access to its current committed frame. |
 | Machine `continueAt:`, `callSite:`, `tailCallSite:`, `returnAt:` | Integer descriptor PC/site/slot | Publish the existing checked StepAction. |
+| Machine `tryPrepareCall:slots:selector:in:tail:` | Word descriptor site, Bytes little-endian u32 source slots (receiver followed by up to 16 arguments), Symbol selector, Namespace Object, Word tail flag | Optional guarded call-window preparation. Unit refuses without frame writes; success publishes the ordinary checked Call/TailCall action. |
 | Machine `suspendAt:continueAt:` / `captureAt:continueAt:` | Integer result slot and PC | Publish waiting/capture actions for the current delimiter. |
 | Machine `restore:with:` / `abortAt:` | Integer continuation/value slots or reason slot | Existing low-level action publications; distinct from host continuation restoration. |
 | Machine `protectedBlock:`, `leaveBoundary:`, `park`, `controlEligible` | Existing control-adapter arguments | Retained resumable native adapters, not language scheduling policy. `prepareBlockControl` is idempotent; loading installs these completed adapters once and subsequent preparation preserves replacements. |
@@ -449,3 +450,23 @@ and must decline arbitrary fresh references. Later queries may overwrite the
 buffer, not the caller's copied references. Unit/unbound uses the existing
 protected reader path; other failures propagate. No foreign payload reads or
 capture containers are introduced. See [contract and proof limits](../../docs/design/bulk-capture-handoff.md).
+
+## Guarded generated call preparation
+
+The native backend can omit transient Integer indices while copying a call's
+receiver/arguments into the descriptor's existing call window. Execution checks
+its current read/write/call entries, both compiler and runtime Namespace lookups
+and Integer bindings, and Integer's existing `canOmitIndexing` permission. A final
+behavior epoch and factory-binding fence follows all guard callbacks; a frame
+handle/PC check prevents committing into a different activation. Overlapping
+source/window slots decline. Input borrows are copied before callbacks and all
+Objects remain rooted. No foreign payload is inspected or foreign entry invoked.
+
+Admission precedes every write. On refusal, generated code performs the original
+ordered reads, index construction, writes and action publication at that point;
+it does not restart the source method or replay prior effects. Successful
+preparation keeps every logical frame, source slot, continuation edge and budget
+stop. The driver still selects the actual target through current Id lookup.
+There is no cached permission, virtual source value or deferred materialization.
+The compiler first checks optional-protocol presence, so a failure (including
+UNBOUND) from an entered implementation propagates rather than causing replay.

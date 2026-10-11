@@ -1,4 +1,5 @@
 //! Message integration for the retained frame, control and registration engine.
+mod frame_call;
 use super::*;
 use crate::entry::EntryKey;
 use crate::execution::*;
@@ -1081,6 +1082,7 @@ pub(super) unsafe fn invoke_registered(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
+    TryPrepareCall,
     InvalidRequest,
     PreserveFailures,
     FromStep,
@@ -1159,13 +1161,14 @@ unsafe extern "C" fn operation(
                 roots.keep(v);
             }
         }
-        // Word-indexed capture reads are owner-local, nonallocating inspection.
-        // The borrowing query only describes the current reader; it neither
-        // allocates nor changes collector phase. Mutation admission remains below.
-        if !matches!(op.kind, Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
+        // Capture queries and optional call admission must not collect before
+        // their guards. The latter commits only after proving index allocation
+        // may be omitted; refusal runs the ordinary admission path below.
+        if !matches!(op.kind, Op::TryPrepareCall | Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op.kind {
+            Op::TryPrepareCall => return frame_call::prepare(s, receiver, args),
             Op::BorrowCaptureOperands => {
                 let [count] = args else { return Err(invalid()); };
                 let count = count.as_word().ok_or_else(invalid)?;
@@ -1758,6 +1761,8 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"at:",
     b"canDiscardClone:of:",
     b"canOmitIndexing",
+    b"isCanonicalLookup:",
+    b"tryPrepareCall:slots:selector:in:tail:",
     b"usesDefaultAllocation",
     b"withInline:at:owner:",
     b"optimizeWith:",
@@ -2189,6 +2194,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         install_op(s, machine_vtable, b"isRunnable", Op::Runnable)?;
         install_op(s, machine_vtable, b"prepareBlockControl", Op::Prepare)?;
         install_op(s, machine_vtable, b"destroy", Op::Destroy)?;
+        install_op(s, machine_vtable, b"tryPrepareCall:slots:selector:in:tail:", Op::TryPrepareCall)?;
         install_op(s, machine_vtable, b"oopAt:", Op::Read)?;
         install_op(s, machine_vtable, b"oopAt:put:", Op::Write)?;
         install_op(s, machine_vtable, b"continueAt:", Op::Continue)?;

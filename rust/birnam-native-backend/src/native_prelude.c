@@ -130,6 +130,19 @@ static O float_bits(Call*c,uint64_t w){A a=word(w);return call(c,named(c,"Float"
 static O get(Call*c,O m,size_t slot){A a=obj(integer(c,slot));return call(c,m,"oopAt:",&a,1);}
 static void put(Call*c,O m,size_t slot,O value){A a[2]={obj(integer(c,slot)),obj(value)};send(c,m,"oopAt:put:",a,2);}
 static O action(Call*c,O m,const char*n,size_t slot){A a=obj(integer(c,slot));return call(c,m,n,&a,1);}
+/* Optional frame preparation is selected through Id. Test presence before
+   invocation: an UNBOUND failure from an entered guard must not be mistaken
+   for an absent protocol and replayed as a baseline call. */
+static R try_frame_call(Call*c,O machine,size_t site,const unsigned char*slots,size_t length,const char*name,size_t tail){
+ O sel=selector(c,"tryPrepareCall:slots:selector:in:tail:");
+ A binding[2]={obj(sel),obj(machine)};
+ R bound=raw(c,id.receiver,"bind:to:",binding,2);
+ if(bound.status)return bound;
+ if(bound.value.kind==0)return ok((A){0});
+ if(bound.value.kind!=4||!bound.value.data.entry.method){c->failure=bad();return c->failure;}
+ A args[5]={word(site),bytes(slots,length),obj(selector(c,name)),obj(ns),word(tail)};
+ return raw(c,machine,"tryPrepareCall:slots:selector:in:tail:",args,5);
+}
 static R finish(Call*c,A result){
  R failure=c->failure;c->failure=(R){0};int handled=0;
  /* First-use selector caching can append temporary roots. Prepare cleanup

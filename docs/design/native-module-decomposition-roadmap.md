@@ -4,7 +4,7 @@ The follow-on [runtime and ABI simplification plan](runtime-and-abi-simplificati
 tracks interface, rooting, representation and bootstrap cleanup separately from
 the completed extractions recorded here.
 
-Updated: 2026-10-04.
+Updated: 2026-10-10.
 
 All five decompositions below are agreed directions. Start with **source compiler
 and native backend**. This document tracks extraction, acceptance and later Birnam
@@ -131,6 +131,105 @@ Incoming native ABI adaptation now survives captured Method aliases and
 mapped/rebuilt images. Execution and PortableCode initialize before the native
 value modules; compiler capture storage uses generic Object Model reference
 slots. Compiler/reflection startup still requires the five native value owners.
+
+### Trace rewrite 2026-10-10
+
+`modules/trace.birnam` owns graph validation, unsigned identity ordering,
+reachability, coverage admission and report/session policy. The Rust Trace crate,
+workspace/lockfile entries and native-library inventory entry are removed. Trace
+is compiled with the existing cold seed and admitted as an authored bootstrap
+artifact; Storage remains the physical snapshot owner.
+
+Execution supplies generic deferred native messages and failure-observed incoming
+signatures, described in the [Trace guide](../guide/trace.md). It owns no graph or
+Trace state. Portable method bindings preserve image recovery without native
+aliases. Graph validation still occurs at completion before report callbacks.
+
+The acceptance tests are `storage_trace` (real Storage with an observed fixture
+subgraph, owner replacement, failure and GC), `trace_graphs` (all 4,096 three-node
+graphs/root sets and adversarial native results), `trace_heap` (an unfiltered
+physical inventory under automatic GC), and `scripts/trace-image-smoke.py`
+(source-free mapped/rebuilt recovery). The pre-port inventory and subsequent
+priorities remain in the [Rust bootstrap audit](rust-bootstrap-migration-audit.md).
+
+Authored diagnostics allocate ordinary temporary objects. Repeated tests with
+automatic GC disabled explicitly reclaim test scratch between snapshots; those
+setup roots are released before observation. The implementation does not change
+GC settings or collect as part of its diagnostic policy.
+
+The remaining performance gap is substantial. A full-heap probe reported 16,199
+allocations in 193.91 seconds wall time, while a cold installation ran concurrently.
+The native control in the preceding installed runtime reported 15,681 allocations
+in 0.74 seconds. These are different heap snapshots, not a controlled release
+benchmark, but they rule out a performance-parity claim. Sampling identified heavy
+GC work. Shared internal layouts, reused slot indices, compact edge pairs and
+marking on enqueue reduce scratch allocation without moving graph logic into
+Rust or changing GC policy. Full-heap diagnostic cost remains follow-up work.
+
+Private top-level bindings use the `trace` prefix; the image smoke checks that
+generic `message`, `request` and `row` Globals remain absent. The native-facing
+contract retains graph rejection detail `1`, nested-report detail `2` and rejected
+coverage detail `3`. Malformed incoming carriers/arity now use Execution's standard
+INVALID_REQUEST detail `0`; downstream native failures retain their status/detail.
+
+Validation passed: workspace checking; 28 focused ABI/Execution/build unit tests;
+the 4,096-case graph oracle and live Storage fixture checks, including allocator
+scribbling; incoming/fixed/byte ABI integration; unfiltered physical-heap tracing
+with automatic and completion-time GC; source-free mapped/rebuilt images and
+Module reload; and installed startup/console with parser and compiler disabled.
+The generic bridge's argument-aliasing byte result has a demonstrated failing
+pre-fix case and passing regression: copied argument storage now outlives return
+copying and cleanup.
+
+A fresh offline cold install at `/tmp/birnam-trace-port/accepted-prefix` publishes
+38 native libraries and an ELF Trace artifact. Its exact receipt, all installed
+Rust/Birnam source bytes, seed exclusion, exports, install names and dependency
+inventory were checked. Logs are in `/tmp/birnam-trace-port/`. These are focused
+acceptance results; the exhaustive repository suite and release qualification
+were not run. The changes are not a new release.
+
+### Trace performance follow-up: fixed budget and bounded traversal
+
+The initial GC budget is now a fixed 16 MiB. Explicit nonzero `budget:` values,
+including smaller budgets, are preserved; no adaptive scaling is implemented.
+Trace reuses rejection/enqueue handlers, selects report selectors as data, and
+drains its mark-on-enqueue worklist with at most one fold step per allocation.
+The complete graph algorithm remains authored Birnam.
+
+A local release-runtime probe at the same explicit 16 MiB budget measured the
+unfiltered physical heap (about 16,200 objects), with automatic GC enabled and an
+explicit collecting completion. Single-run exploratory results, outside a cold
+build, were:
+
+| Implementation | Report seconds | Allocated bytes | Collections including completion |
+| --- | ---: | ---: | ---: |
+| Initial authored Trace | 29.44 | 266,982,520 | 16 |
+| Bounded fold and reused handlers | 10.77 | 118,430,920 | 8 |
+
+That is approximately 2.7 times faster and 56% less allocation at the same GC
+budget. The snapshots differ slightly because the implementation's own objects
+are included. This is not a release benchmark or parity with native Trace. The
+older 193.91-second run overlapped a cold build and must not be used as a controlled
+speedup baseline. The probe and raw output are in `/tmp/birnam-trace-perf/`
+(`probe.rs`, `before-real-16.*`, `final-real-16.*`).
+
+A separate reusable-continuation BlockLoop prototype passed the loop behavior
+suite but only reduced allocation from 55,283,944 to 49,763,784 bytes for 10,000
+iterations, with no measured speedup (7.11 versus 7.15 seconds). It was rejected
+from this change. The next general-loop experiment should reduce resumable frame
+construction, rather than only move branch closures. Indexed snapshot transport
+also remains a separate interface change; its replacement, lifetime and validation
+requirements are recorded in the [Trace guide](../guide/trace.md#allocation-and-collection-cost).
+
+The final source passed a fresh offline cold install at
+`/tmp/birnam-trace-perf/accepted-prefix`, exact receipt verification and comparison
+of 586 installed Rust/Birnam source files with the checkout. Against that prefix,
+allocation accounting (including the 16 MiB boundary and smaller overrides), live
+Storage diagnostics, the 4,096-case graph oracle, unfiltered heap tracing,
+source-free mapped/rebuilt image recovery and parser/compiler-disabled startup
+all passed. The new threshold test fails against the old 1 MiB runtime. Logs are
+under `/tmp/birnam-trace-perf/`. No release, normal-prefix installation or general
+BlockLoop/transport rewrite is claimed.
 
 ## Rules shared by every decomposition
 

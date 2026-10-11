@@ -23,7 +23,7 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prefix', type=Path, default=WORK / 'prefix')
     p.add_argument('--prepare-from', type=Path, help='copy a compatible installed prefix; rebuild changed release owners')
-    p.add_argument('--case', choices=['all','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-default','semantic-string-length','semantic-vector-access','semantic-word-as-integer','semantic-bytes-as-string','semantic-boolean-print'], default='all')
+    p.add_argument('--case', choices=['all','resumable-calls','resumable-unary','abi-audit','abi-audit-object-incoming','abi-audit-read','abi-audit-roundtrip','abi-audit-word-incoming','abi-audit-bytes-incoming','word-nested','word-locals','helper','integer-add','integer-add-core','integer-multiply','public-integer-loop','public-integer-roots','public-integer-retains','public-integer-default','semantic-string-length','semantic-vector-access','semantic-word-as-integer','semantic-bytes-as-string','semantic-boolean-print'], default='all')
     p.add_argument('--integer-policy-source', type=Path, help='public Integer fixture policy override for source-version comparisons')
     p.add_argument('--seconds', type=float, default=10, help='total measurement budget, at most 10 seconds')
     p.add_argument('--batch-ms', type=float, default=25)
