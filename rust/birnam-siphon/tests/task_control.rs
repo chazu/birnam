@@ -142,7 +142,7 @@ fn authored_task_scheduling_preserves_native_boundaries() {
                 &[Operand::object(checks)]
             )
             .as_word(),
-            Some(171)
+            Some(177)
         );
         // The native contexts remain pinned until all entered fixture calls finish.
         core::mem::forget(p);

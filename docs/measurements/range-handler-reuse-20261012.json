@@ -1,0 +1,301 @@
+{
+  "date": "2026-10-12",
+  "baseline_commit": "6494fb8b444d112f6d766282ad640e7bda05d530",
+  "platform": "macOS-14.6-arm64-arm-64bit",
+  "scope": "Authored Range size/at: reusable argument-taking branch blocks; original exact comparison sends retained.",
+  "methodology": {
+    "order": "ABBA fresh processes",
+    "samples_per_process": 3,
+    "warmups_per_workload": 1,
+    "elements": 200,
+    "clock": "thread CPU, clockNanos id 16",
+    "gc": "explicit full GC before each timer; default 16 MiB automatic collection during workload",
+    "compilation": "Both Range overlays synchronous AOT, matching production Range compilation. Same final runtime for every process.",
+    "limits": "Microbenchmark, not an application speedup; controls are Vector do and collect. The harness checks size 200; semantic correctness is covered by separate tests."
+  },
+  "measurement": {
+    "binary": "/tmp/birnam-range-handlers/prefix-v2/bin/birnam",
+    "runs": [
+      {
+        "variant": "baseline",
+        "rows": [
+          {
+            "cpu_ns": [
+              38615750,
+              38172250,
+              39670000
+            ],
+            "phase": "vector_do",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              42505916,
+              41732333,
+              43649584
+            ],
+            "phase": "vector_collect",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              145954500,
+              146233625,
+              146179292
+            ],
+            "phase": "range_do",
+            "size": 200
+          }
+        ]
+      },
+      {
+        "variant": "shared",
+        "rows": [
+          {
+            "cpu_ns": [
+              38292625,
+              38428084,
+              38479542
+            ],
+            "phase": "vector_do",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              41520750,
+              41800208,
+              41526083
+            ],
+            "phase": "vector_collect",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              132444292,
+              136239375,
+              135841667
+            ],
+            "phase": "range_do",
+            "size": 200
+          }
+        ]
+      },
+      {
+        "variant": "shared",
+        "rows": [
+          {
+            "cpu_ns": [
+              39094250,
+              38629750,
+              38665375
+            ],
+            "phase": "vector_do",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              41642250,
+              41441375,
+              41769042
+            ],
+            "phase": "vector_collect",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              134925000,
+              133382166,
+              135882917
+            ],
+            "phase": "range_do",
+            "size": 200
+          }
+        ]
+      },
+      {
+        "variant": "baseline",
+        "rows": [
+          {
+            "cpu_ns": [
+              39284833,
+              39203750,
+              39217583
+            ],
+            "phase": "vector_do",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              41894875,
+              42002459,
+              43526875
+            ],
+            "phase": "vector_collect",
+            "size": 200
+          },
+          {
+            "cpu_ns": [
+              147427625,
+              147933209,
+              146664500
+            ],
+            "phase": "range_do",
+            "size": 200
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "vector_do": {
+        "baseline_median_ns": 39210666.5,
+        "candidate_median_ns": 38554646.0,
+        "reduction_percent": 1.6730664346141677
+      },
+      "vector_collect": {
+        "baseline_median_ns": 42254187.5,
+        "candidate_median_ns": 41584166.5,
+        "reduction_percent": 1.5856913589925248
+      },
+      "range_do": {
+        "baseline_median_ns": 146449062.5,
+        "candidate_median_ns": 135383333.5,
+        "reduction_percent": 7.556025836628355
+      }
+    }
+  },
+  "reproduction": {
+    "benchmark": "[Module load: #time];\n[Module load: #json];\nlet range := [1 to: 200];\nlet vector := [range collect: [:i | i]];\nlet noop := [:i | nil];\nlet identity := [:i | i];\nlet cases := {\n  \"vector_do\" -> [| [vector do: noop]]\n  \"vector_collect\" -> [| [vector collect: identity]]\n  \"range_do\" -> [| [range do: noop]]\n};\nlet rows := #[\"vector_do\" \"vector_collect\" \"range_do\"];\nlet results := [rows collect: [:name |\n  let op := [cases at: name];\n  let warm := [op value];\n  let samples := [[1 to: 3] collect: [:i |\n    [System gc];\n    let start := [16 clockNanos];\n    let value := [op value];\n    let elapsed := [[16 clockNanos] - start];\n    elapsed\n  ]];\n  {\"phase\" -> name \"cpu_ns\" -> samples \"size\" -> [warm size]}\n]];\n[System println: [Json stringify: results]]\n",
+    "baseline_overlay": "[Reflect defineMethod: #size on: Range as: [:self |\n  let start := [self rangeStart]; let end := [self rangeEnd];\n  [[[Integer compareInteger: start with: end] > 0] ifTrue: [| 0] ifFalse: [|\n    let difference := [end - start];\n    [[[difference isError] | [difference = 9223372036854775807]]\n      ifTrue: [| nil] ifFalse: [| [difference + 1]]]\n  ]]\n]];\n\n[Reflect defineMethod: #includes: on: Range as: [:self :value |\n  let number := [Integer integerValue: value];\n  [[number isNil] ifTrue: [| false] ifFalse: [|\n    [[[Integer compareInteger: number with: [self rangeStart]] >= 0]\n      & [[Integer compareInteger: number with: [self rangeEnd]] <= 0]]\n  ]]\n]];\n\n[Reflect defineMethod: #at: on: Range as: [:self :index |\n  let number := [Integer integerValue: index];\n  [[number isNil] ifTrue: [| nil] ifFalse: [|\n    [[number < 0] ifTrue: [| nil] ifFalse: [|\n      let value := [[self rangeStart] + number];\n      [[value isError] ifTrue: [| nil] ifFalse: [|\n        [[[Integer compareInteger: value with: [self rangeEnd]] > 0]\n          ifTrue: [| nil] ifFalse: [| value]]\n      ]]\n    ]]\n  ]]\n]];\n\n[Reflect defineMethod: #printString on: Range as: [:self |\n  let text := [StringBuilder new]; [text add: \"#[\"];\n  [self do: [:value |\n    [[[Integer compareInteger: value with: [self rangeStart]] = 0] ifFalse: [| [text add: \" \"]]];\n    [text add: [value printString]]\n  ]]; [text add: \"]\"]; [text asString]\n]];\n",
+    "candidate_overlay": "let rangeNil1 := [:a | nil];\nlet rangeNil2 := [:a :b | nil];\nlet rangeZero2 := [:a :b | 0];\nlet rangeSecond := [:a :b | b];\nlet rangePlusOne := [:difference | [difference + 1]];\nlet rangeDifference := [:start :end |\n  let difference := [end - start];\n  [[[[difference isError] | [difference = 9223372036854775807]]\n    selectIfTrue: rangeNil1 ifFalse: rangePlusOne otherwise: rangeNil1] value: difference]\n];\n[Reflect defineMethod: #size on: Range as: [:self |\n  let start := [self rangeStart]; let end := [self rangeEnd];\n  [[[[Integer compareInteger: start with: end] > 0] selectIfTrue: rangeZero2 ifFalse: rangeDifference otherwise: rangeNil2]\n    value: start value: end]\n]];\nlet rangeAtEnd := [:range :value |\n  [[[[Integer compareInteger: value with: [range rangeEnd]] > 0] selectIfTrue: rangeNil2 ifFalse: rangeSecond otherwise: rangeNil2]\n    value: range value: value]\n];\nlet rangeAtValue := [:range :index |\n  let value := [[range rangeStart] + index];\n  [[[value isError] selectIfTrue: rangeNil2 ifFalse: rangeAtEnd otherwise: rangeNil2]\n    value: range value: value]\n];\nlet rangeAtIndex := [:range :index |\n  [[[index < 0] selectIfTrue: rangeNil2 ifFalse: rangeAtValue otherwise: rangeNil2]\n    value: range value: index]\n];\n[Reflect defineMethod: #at: on: Range as: [:self :index |\n  let number := [Integer integerValue: index];\n  [[[number isNil] selectIfTrue: rangeNil2 ifFalse: rangeAtIndex otherwise: rangeNil2]\n    value: self value: number]\n]];\ntrue\n",
+    "compile": "[Codegen compile: source output: artifact from: sourcePath synchronousBodies: true]",
+    "run": "[Codegen load: artifact]; followed by benchmark source",
+    "runner": "import subprocess,json,statistics,os\nfrom pathlib import Path\nroot=Path('/tmp/birnam-iteration-simplify');runs=[]\nbinary='/tmp/birnam-range-handlers/prefix-v2/bin/birnam'\nenv={k:v for k,v in os.environ.items() if not k.startswith(('BIRNAM_','DYLD_','BENCH_HOST_'))}\nfor variant in ['baseline','shared','shared','baseline']:\n    p=subprocess.run([binary,str(root/(variant+'-aot-bench.birnam'))],env=env,capture_output=True,text=True,timeout=120,check=True)\n    assert not p.stderr,p.stderr\n    rows=json.loads(p.stdout)\n    assert len(rows)==3 and all(r['size']==200 and len(r['cpu_ns'])==3 for r in rows),p.stdout\n    runs.append(dict(variant=variant,rows=rows))\n    print(variant,[(r['phase'],round(statistics.median(r['cpu_ns'])/1e6,3)) for r in rows],flush=True)\nsummary={}\nfor phase in ['vector_do','vector_collect','range_do']:\n    medians={v:statistics.median([n for run in runs if run['variant']==v for r in run['rows'] if r['phase']==phase for n in r['cpu_ns']]) for v in ['baseline','shared']}\n    summary[phase]=dict(baseline_median_ns=medians['baseline'],candidate_median_ns=medians['shared'],reduction_percent=(1-medians['shared']/medians['baseline'])*100)\nprint(json.dumps(summary,indent=2))\n(root/'final-comparison.json').write_text(json.dumps(dict(binary=binary,runs=runs,summary=summary),indent=2)+'\\n')\n"
+  },
+  "runtime": {
+    "prefix": "/tmp/birnam-range-handlers/prefix-v2",
+    "install_receipt_sha256": "a3f93c471747c3cc74c252aa3abcc120a4bb95b96a74cc123cfa7811553b3cc8",
+    "binary_sha256": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+    "range_artifact_sha256": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14"
+  },
+  "source_sha256": {
+    "modules/range.birnam": "8e1e88b9a4064fec47c89c97fb07135777023f34dac90d20aefac7906d12bea7",
+    "modules/range-test.birnam": "32fb75ed8d98c06eeedec8e5ff5fb202ef2a60a75c0a6eb6c4ba896c9ddb95e6",
+    "modules/run-tests.birnam": "64389e21eaf9dd6808eba17c7516c27b8ee4cdd5d884f357fe1a4dbf0cd378cf",
+    "scripts/task-control-smoke.birnam": "19caf66eef496000967977643682bcde1234e1c0cfb238e1503d95f854c8a1fa",
+    "rust/birnam-siphon/tests/task_control.rs": "d47397381e76cadeaf562049de28375ba0b5a5b50e9ac62590f2a33d544f6938",
+    "formal/semantics/lean/RangeHandlers.lean": "4594c9f8ff428a8b50ec93cb550e0fdc7e5c8e4df8c6cde31ae17076fbc9de80",
+    "formal/semantics/lean/SemanticsAudit.lean": "1884551b488581febcac7c7fc16eaa2dea1f1f5743ff282d5fa9571e40c44c70",
+    "scripts/check-rooting-model.py": "cc9cfb940c240786cbe835f4fddcff410abe23b5139fea8e48196c38eed6ed5a"
+  },
+  "formal": {
+    "receipt_sha256": "5f1917b5ffba976aaae5d0e943ba06cff7abc542b51c1fb77b1152a207a6651e",
+    "lean_version": "Lean (version 4.24.0, arm64-apple-darwin23.6.0, commit 797c613eb9b6d4ec95db23e3e00af9ac6657f24b, Release)",
+    "lean_binary_sha256": "9544be237d91099efe1db8cb97d0c359fa13aa94f565e9972bfb8b63abbcb437",
+    "tla_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "theorems": 191,
+    "rejected_mutations": [
+      "omit-first",
+      "leak-on-exit",
+      "skip-materialization",
+      "range-wrong-end-comparison",
+      "json-unsafe-short-bound",
+      "json-ignore-uppercase-exponent",
+      "json-wrong-kind-handler",
+      "json-skip-backslash-scan",
+      "json-reuse-nonempty-identity",
+      "lose-full-cache-fallback",
+      "skip-retained-helper-body",
+      "charge-whole-capacity-again",
+      "unchecked-slot-hint",
+      "freeze-relational-comparison",
+      "reverse-indexed-edge",
+      "ignore-second-batched-entry",
+      "wrong-direct-integer-operation",
+      "float-remainder-handler",
+      "ignore-metadata-current",
+      "accept-unknown-metadata-identity",
+      "omit-owner-local-report",
+      "admit-nonempty-return",
+      "reverse-identity-selection",
+      "drop-capture-reachability",
+      "ignore-bulk-own-binding",
+      "ignore-capture-query-binding",
+      "reverse-branch-choice",
+      "unrooted-local-hint",
+      "cache-false-selector",
+      "drop-uncovered-locals",
+      "ignore-entry-context",
+      "wrong-release-order",
+      "lost-index-mark",
+      "wrong-memo-key",
+      "truncated-borrow",
+      "ignore-observation",
+      "ignore-permission",
+      "free-owner-batch"
+    ],
+    "tla_configurations": 118,
+    "scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+  },
+  "validation": {
+    "install-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/install-final.log",
+      "sha256": "4be26b0335551fabe5a0c2dd54f78d5ab0bdb8c8d3ce9ba1e11a2c5b29288ff3",
+      "tail": "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s\n     Running `.cargo-target/decomposition-install/driver/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /tmp/birnam-range-handlers/prefix-v2 --profile release --build-cache /Users/chazu/dev/zig/birnam/.cargo-target/decomposition-install`\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.83s\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.35s\nrust-install: published /private/tmp/birnam-range-handlers/prefix-v2 (38 native libraries, 4 source bootstrap modules, 23 authored tools)"
+    },
+    "focused-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/focused-final.log",
+      "sha256": "00d55b77fb0caec037fc9456088fe36a45f63a26a7c9124fd4b352cdc3a8b3a0",
+      "tail": "  ok   index addition overflow\n  ok   do answers receiver\n  ok   changed end is read\n  ok   changed start and end are read\n  ok   Error is an accumulator value\n  ok   fold continues after Error value\n  ok   empty seed identity\n  ok   current bound getters\n  ok   changed bound getters\n  ok   index uses changed bounds\n  ok   replacement is visible\nTOTAL: 30 passed, 0 failed"
+    },
+    "collections-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/collections-final.log",
+      "sha256": "95e5e9829a69ca906b4d01df34698984368c0041ffedb1129dd03660cf8571f7",
+      "tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s\n     Running tests/collections.rs (.cargo-target/decomposition-install/target/debug/deps/collections-9034ae49b130a7e6)\n\nrunning 1 test\ntest persistent_collections_use_live_owner_messages_and_survive_gc ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.76s\n"
+    },
+    "suite-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/suite-final.log",
+      "sha256": "313082817de26d48e29440c552e9c15c389b4155d1d05f07aab3998123b8497d",
+      "tail": "  ok   environment name\n  ok   default path is HOME-relative\n  ok   CLI config path\n  ok   CLI beats environment and file\n  ok   environment beats file\n  ok   boolean CLI flag\n  ok   CLI origin\n  ok   environment origin\n  ok   selected path is retained\n  ok   TOML value\n  ok   TOML origin\nTOTAL: 672 passed, 0 failed"
+    },
+    "task-range-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/task-range-final.log",
+      "sha256": "2e02e627bba6d2bd430033f361de35383287d3c675c723a06d56ab90ac34858f",
+      "tail": "#[1]\ntrue\n#[#success #[1 2]]\n#[1]\ntrue\n#[#success #[1 2]]"
+    },
+    "task-control-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/task-control-final.log",
+      "sha256": "34654730da428982873a973fd56b399d05bad28a195805459b7c7e4406fd6c45",
+      "tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.30s\n     Running tests/task_control.rs (.cargo-target/decomposition-install/target/debug/deps/task_control-80ffd6aee0b3b3b8)\n\nrunning 1 test\n#[#timeslicingQuantum 128 #checked]\ntest authored_task_scheduling_preserves_native_boundaries has been running for over 60 seconds\n#[#timeslicingQuantum 1 #checked]\n#[#taskControlChecks 177 #failures 0]\ntest authored_task_scheduling_preserves_native_boundaries ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 104.19s\n"
+    },
+    "task-image-final.log": {
+      "path": "/tmp/birnam-iteration-simplify/task-image-final.log",
+      "sha256": "3c51393604c90b5bf8c2b1d10ef8920e7e31ca891875a99560ea993c74f537f1",
+      "tail": "installed task Images: completed/waiting handles rejected; outcomes and fresh tasks survive mapped/rebuilt loading"
+    }
+  },
+  "discarded": [
+    {
+      "candidate": "direct public > instead of exact compareInteger:with: then > 0",
+      "reason": "Native collections test failed at the signed 64-bit boundaries: early ordering converts to Float. Not retained."
+    },
+    {
+      "candidate": "alternate size-overflow arithmetic",
+      "reason": "No convincing performance gain."
+    },
+    {
+      "candidate": "Vector owner-local temporary roots",
+      "reason": "No consistent application gain; Rust implementation restored."
+    },
+    {
+      "candidate": "snapshot Vector/String iteration extent",
+      "reason": "No convincing application gain. Range bounds were never frozen."
+    }
+  ],
+  "qualification_notes": [
+    "The first candidate passed the full module suite but failed native bootstrap; the corrected final candidate is checked separately.",
+    "One install was rejected because test sources changed during its source-manifest check; final production build completed with stable sources.",
+    "The task regression added six assertions; its harness expected count was updated from 171 to 177 after the assertions themselves passed. This harness-only change followed the final production build.",
+    "Preliminary measurements under concurrent validation and measurements including the discarded direct comparison are excluded from the final timing summary."
+  ],
+  "delivery": "Working tree only; no user installation, commit or push."
+}

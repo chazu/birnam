@@ -126,3 +126,7 @@ result improves from 350 ms to 330 ms (5.6% less CPU); short/long Float-array pa
 also improves. A long-integer-only conversion workload is 14.6% slower, an explicit
 tradeoff for retaining exact overflow behavior. Grammar, CST layout, late binding
 and runtime deoptimization remain unchanged.
+
+The [Range handler investigation](range-handler-reuse.md) reduces repeated
+branch construction in authored Range operations while retaining exact bootstrap
+comparisons and live bounds. It also records discarded iteration/rooting ideas.

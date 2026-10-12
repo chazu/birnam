@@ -1,3 +1,4 @@
+import RangeHandlers
 import JsonNumbers
 import JsonDispatch
 import JsonStrings
@@ -104,3 +105,7 @@ import Admission
 #print axioms Birnam.JsonNumbers.bounded_same_value
 #print axioms Birnam.JsonNumbers.long_uses_original
 #print axioms Birnam.JsonNumbers.lazy_same_value
+
+#print axioms Birnam.RangeHandlers.same_size
+#print axioms Birnam.RangeHandlers.same_element_and_identity
+#print axioms Birnam.RangeHandlers.overflow_stays_nil

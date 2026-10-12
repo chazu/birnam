@@ -28,6 +28,7 @@ let loadTestSource := [:path |
 [loadTestSource value: "modules/cli-test.birnam"];
 [loadTestSource value: "modules/stdlib-test.birnam"];
 [loadTestSource value: "modules/block-test.birnam"];
+[loadTestSource value: "modules/range-test.birnam"];
 [loadTestSource value: "modules/portable-code-test.birnam"];
 [loadTestSource value: "modules/lang-test.birnam"];
 [loadTestSource value: "modules/modules-test.birnam"];

@@ -1,0 +1,75 @@
+// Range arithmetic remains ordinary policy over live slots and numeric sends.
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+let s := [TestSuite named: "Range" module: #range];
+
+[s test: "sizes cover empty, ordinary and signed boundaries" do: [:t |
+  let cases := #[ #[3 7 5] #[9 4 0]
+    #[9223372036854775805 9223372036854775807 3]
+    #[-9223372036854775808 -9223372036854775806 3]
+    #[9223372036854775807 -9223372036854775808 0]
+    #[-9223372036854775808 -2 9223372036854775807] ];
+  [cases do: [:row |
+    [t expect: [[[row at: 0] to: [row at: 1]] size] equals: [row at: 2] describes: "inclusive size"]]];
+  [t assert: [[[-9223372036854775808 to: 9223372036854775807] size] isNil] describes: "subtraction overflow"];
+  [t assert: [[[-9223372036854775808 to: -1] size] isNil] describes: "count overflow"];
+  [t assert: [[[0 to: 9223372036854775807] size] isNil] describes: "unrepresentable count"]
+]];
+
+[s test: "indexing and element identities retain their contracts" do: [:t |
+  let start := 3; let range := [start to: 5];
+  [t expect: [range at: 0] equals: 3 describes: "first element"];
+  [t expect: [range at: 2] equals: 5 describes: "last element"];
+  [#[ -1 3 nil "0" 1.0 ] do: [:index |
+    [t assert: [[range at: index] isNil] describes: "invalid index"]]];
+  let first := [range at: 0];
+  [t deny: [first == start] describes: "element does not alias bound"];
+  [t deny: [first == [range at: 0]] describes: "fresh result on repeated indexing"];
+  [t expect: [[9223372036854775807 to: 9223372036854775807] at: 0] equals: 9223372036854775807 describes: "max endpoint"];
+  [t assert: [[[9223372036854775807 to: 9223372036854775807] at: 1] isNil] describes: "index addition overflow"]
+]];
+
+[s test: "iteration sees live bound changes and ignores do results" do: [:t |
+  let range := [1 to: 5]; let seen := [#[] asCell];
+  let answer := [range do: [:value |
+    [System gc];
+    [seen set: [[seen value] add: value]];
+    [[value = 2] ifTrue: [| [ObjectModel slot: 1 in: range put: 3]]];
+    ["ignored" error: #rangeProbe]
+  ]];
+  [t assert: [answer == range] describes: "do answers receiver"];
+  [t expect: [seen value] equals: #[1 2 3] describes: "changed end is read"];
+  let shifted := [1 to: 3]; [seen set: #[]];
+  [shifted do: [:value |
+    [seen set: [[seen value] add: value]];
+    [[value = 1] ifTrue: [|
+      [ObjectModel slot: 0 in: shifted put: 10];
+      [ObjectModel slot: 1 in: shifted put: 12]]]
+  ]];
+  [t expect: [seen value] equals: #[1 11 12] describes: "changed start and end are read"]
+]];
+
+[s test: "fold threads Error values and empty folds keep seed identity" do: [:t |
+  let failure := ["value" error: #rangeProbe];
+  let answer := [[1 to: 3] inject: nil into: [:acc :value |
+    [[value = 1] ifTrue: [| failure] ifFalse: [|
+      [[value = 2] ifTrue: [|
+        [t assert: [acc == failure] describes: "Error is an accumulator value"]; 42
+      ] ifFalse: [| [acc + 1]]]
+    ]]
+  ]];
+  [t expect: answer equals: 43 describes: "fold continues after Error value"];
+  [t assert: [[[3 to: 1] inject: failure into: [:a :v | nil]] == failure] describes: "empty seed identity"]
+]];
+
+[s test: "bound getters use current methods" do: [:t |
+  let range := [1 to: 3];
+  [Reflect defineMethod: #rangeStart on: range as: [:self | 9]];
+  [Reflect defineMethod: #rangeEnd on: range as: [:self | 4]];
+  [t expect: [range size] equals: 0 describes: "current bound getters"];
+  [Reflect defineMethod: #rangeStart on: range as: [:self | 3]];
+  [Reflect defineMethod: #rangeEnd on: range as: [:self | 7]];
+  [t expect: [range size] equals: 5 describes: "changed bound getters"];
+  [t expect: [range at: 2] equals: 5 describes: "index uses changed bounds"];
+  [Reflect defineMethod: #rangeEnd on: range as: [:self | 4]];
+  [t assert: [[range at: 2] isNil] describes: "replacement is visible"]
+]]

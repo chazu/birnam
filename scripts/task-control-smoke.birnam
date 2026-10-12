@@ -377,6 +377,21 @@ let peers := [TaskControl start: [:parent |
 [TaskCheck that: [[right value] = 2] label: #cpuRightMadeProgress];
 [TaskCheck that: [[peers pollOutcome] = #[#success #joined]] label: #cpuPeersAutomaticallyJoined];
 
+// Range helpers retain live bounds across callback suspension and collection.
+let range := [1 to: 4];
+let rangeSeen := [#[] asCell];
+let rangeTask := [TaskControl start: [:task |
+  [range do: [:value |
+    [rangeSeen set: [[rangeSeen value] add: value]];
+    [[value = 1] ifTrue: [| [task wait]]]]];
+  [rangeSeen value]]];
+[TaskCheck that: [[rangeSeen value] = #[1]] label: #rangePausedOnce];
+[TaskCheck that: [[rangeTask pollOutcome] isNil] label: #rangeWaiting];
+[ObjectModel slot: 1 in: range put: 2];
+[System gc];
+[rangeTask resolve: [rangeTask waitToken] with: nil];
+[TaskCheck that: [[rangeTask pollOutcome] = #[#success #[1 2]]] label: #rangeUsesChangedEndAfterGcAndResume];
+
 // Cancellation enters cleanup without a cooperative checkpoint in the body.
 let entered := [false asCell];
 let cleaned := [0 asCell];

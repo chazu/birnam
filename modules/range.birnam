@@ -20,13 +20,22 @@ let rangeVectorVt := VectorVt;
 [[rangeWasDefined | [[Integer methodFor: #to:] isNil]] ifTrue: [|
   [Reflect defineMethod: #to: on: Integer as: [:self :last | [Range from: self to: last]]]
 ] ifFalse: [| nil]];
+// Reuse argument-taking branches instead of capturing start/end or index on
+// every call. Selection and handler invocation remain ordinary current sends.
+let rangeNil1 := [:a | nil];
+let rangeNil2 := [:a :b | nil];
+let rangeZero2 := [:a :b | 0];
+let rangeSecond := [:a :b | b];
+let rangePlusOne := [:difference | [difference + 1]];
+let rangeDifference := [:start :end |
+  let difference := [end - start];
+  [[[[difference isError] | [difference = 9223372036854775807]]
+    selectIfTrue: rangeNil1 ifFalse: rangePlusOne otherwise: rangeNil1] value: difference]
+];
 [Reflect defineMethod: #size on: Range as: [:self |
   let start := [self rangeStart]; let end := [self rangeEnd];
-  [[[Integer compareInteger: start with: end] > 0] ifTrue: [| 0] ifFalse: [|
-    let difference := [end - start];
-    [[[difference isError] | [difference = 9223372036854775807]]
-      ifTrue: [| nil] ifFalse: [| [difference + 1]]]
-  ]]
+  [[[[Integer compareInteger: start with: end] > 0] selectIfTrue: rangeZero2 ifFalse: rangeDifference otherwise: rangeNil2]
+    value: start value: end]
 ]];
 [Reflect defineMethod: #includes: on: Range as: [:self :value |
   let number := [Integer integerValue: value];
@@ -35,17 +44,23 @@ let rangeVectorVt := VectorVt;
       & [[Integer compareInteger: number with: [self rangeEnd]] <= 0]]
   ]]
 ]];
+let rangeAtEnd := [:range :value |
+  [[[[Integer compareInteger: value with: [range rangeEnd]] > 0] selectIfTrue: rangeNil2 ifFalse: rangeSecond otherwise: rangeNil2]
+    value: range value: value]
+];
+let rangeAtValue := [:range :index |
+  let value := [[range rangeStart] + index];
+  [[[value isError] selectIfTrue: rangeNil2 ifFalse: rangeAtEnd otherwise: rangeNil2]
+    value: range value: value]
+];
+let rangeAtIndex := [:range :index |
+  [[[index < 0] selectIfTrue: rangeNil2 ifFalse: rangeAtValue otherwise: rangeNil2]
+    value: range value: index]
+];
 [Reflect defineMethod: #at: on: Range as: [:self :index |
   let number := [Integer integerValue: index];
-  [[number isNil] ifTrue: [| nil] ifFalse: [|
-    [[number < 0] ifTrue: [| nil] ifFalse: [|
-      let value := [[self rangeStart] + number];
-      [[value isError] ifTrue: [| nil] ifFalse: [|
-        [[[Integer compareInteger: value with: [self rangeEnd]] > 0]
-          ifTrue: [| nil] ifFalse: [| value]]
-      ]]
-    ]]
-  ]]
+  [[[number isNil] selectIfTrue: rangeNil2 ifFalse: rangeAtIndex otherwise: rangeNil2]
+    value: self value: number]
 ]];
 [Reflect defineMethod: #do: on: Range as: [:self :body |
   [[self rangeStart] to: [self rangeEnd] do: [:value | [body value: value]; nil]];
