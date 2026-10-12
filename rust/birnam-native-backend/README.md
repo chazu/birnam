@@ -41,8 +41,8 @@ See [Execution's contract](../birnam-execution/README.md#guarded-generated-call-
 
 Private prelude helpers are `static inline`. The retained TinyCC compiler emits
 these bodies only when referenced, following transitive calls and address-taken
-references to a fixed point. Generated entrypoints, initializers, unit-local
-state and the 512-entry selector table keep their existing definitions. Every
+references to a fixed point. Generated entrypoints, initializers and unit-local
+state keep their existing definitions. Every
 retained helper body and Id send is unchanged; the C compiler does not remove
 Birnam methods merely because an application has not called them. Guard refusal
 and recovery branches still reference—and therefore retain—their helpers.
@@ -52,3 +52,19 @@ Fresh source artifacts and images are required to obtain the size savings;
 existing mapped images keep their saved code. Tests inspect real TinyCC ELF
 symbols, require transitive helpers, and call a helper through a stored function
 pointer. See `docs/startup-analysis.md` for paired rebuilt-prefix measurements.
+
+
+Selector tables now choose a compile-time capacity from the emitted C's distinct
+string-literal spellings: twice the estimate, rounded up to a power of two and
+clamped to 64..512. Comments and character literals are skipped; escaped quotes
+stay inside their string. Non-name strings and unused helpers can overestimate
+demand. Malformed lexical input uses 512. This estimate is a storage policy,
+not an admission proof: unknown demand and full tables keep the existing interning
+fallback. The standalone prelude defaults to 512 when no capacity is supplied.
+
+Hashing, spelling comparisons, canonical Symbol ownership and current Id dispatch
+retain their existing contracts. Rooting failures clear the unpublished cache
+entry. No method entry, lookup verdict or factory result is cached. Internal
+interning frequency is not preserved, as documented in
+[fixed names](../../docs/design/fixed-names-and-local-protection.md). Capacity
+selection introduces no runtime resizing, new native service or GC-budget change.

@@ -26,7 +26,13 @@ static inline O intern(Call*c,const char*n){if(c->failure.status)return 0;A a=by
    TCC may store identical literals at different addresses: cache by spelling.
    Root their Symbols in that Unit; retain live lookup on every actual send. */
 typedef struct {const char *name;O symbol;} Selector;
-static Selector selectors[512];
+#ifndef BIRNAM_SELECTOR_CAPACITY
+#define BIRNAM_SELECTOR_CAPACITY 512
+#endif
+#if BIRNAM_SELECTOR_CAPACITY < 1 || BIRNAM_SELECTOR_CAPACITY > 512 || (BIRNAM_SELECTOR_CAPACITY & (BIRNAM_SELECTOR_CAPACITY - 1))
+#error BIRNAM_SELECTOR_CAPACITY_must_be_a_power_of_two_up_to_512
+#endif
+static Selector selectors[BIRNAM_SELECTOR_CAPACITY];
 static int cache_selectors;
 static int batch_cleanup=1;
 static inline O selector(Call*c,const char*n);
@@ -59,8 +65,8 @@ static inline O cached_name(Call*c,const char*n,int*owned){
  if(!cache_selectors||c->failure.status)return intern(c,n);
  uint32_t hash=UINT32_C(2166136261);
  for(const unsigned char*p=(const unsigned char*)n;*p;p++){hash^=*p;hash*=UINT32_C(16777619);}
- size_t slot=hash&511;
- for(size_t probe=0;probe<512;probe++,slot=(slot+1)&511){
+ size_t slot=hash&(BIRNAM_SELECTOR_CAPACITY-1);
+ for(size_t probe=0;probe<BIRNAM_SELECTOR_CAPACITY;probe++,slot=(slot+1)&(BIRNAM_SELECTOR_CAPACITY-1)){
   if(selectors[slot].name&&(selectors[slot].name==n||!strcmp(selectors[slot].name,n))){if(owned)*owned=1;return selectors[slot].symbol;}
   if(!selectors[slot].name){
    O symbol=intern(c,n);if(c->failure.status)return 0;

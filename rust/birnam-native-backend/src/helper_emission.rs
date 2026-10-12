@@ -93,3 +93,14 @@ fn address_taken_helper_remains_callable() {
         assert_eq!(unsafe { entry(value) }, value);
     }
 }
+
+#[test]
+fn small_units_do_not_reserve_512_selector_entries() {
+    let source = crate::native::compile_named_synchronous(1).unwrap();
+    let object = Unit::compile_object(&CString::new(source).unwrap()).unwrap();
+    let size = symbols(&object, false)["selectors"];
+    assert!(
+        size <= (128 * 2 * size_of::<usize>()) as u64,
+        "small adapter reserved {size} bytes of selector storage"
+    );
+}

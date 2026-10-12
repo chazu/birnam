@@ -697,3 +697,85 @@ runners reproduce the measurements against explicit prefixes. These diagnostic
 builds were not installed for the user. GC stays at the fixed 16 MiB budget. Selector-table
 sizing remains a separate target: its effects on page rounding, lookup cost and
 fallback behavior need measurement before changing that policy.
+
+## October 11: size selector tables per generated unit
+
+The helper-emission work was committed as `17cb5d54`. The next slice sizes each
+unit's private name table at compilation instead of reserving 512 entries in
+every unit. Names still resolve to retained canonical Symbols; every real send
+still dispatches in the current world. This follows the existing
+[fixed-name contract](design/fixed-names-and-local-protection.md), which does not
+preserve repeated internal interning hooks or private root-registration counts.
+It does not authorize caching a selected method entry.
+
+A temporary census exposed the known selector arrays through TinyCC diagnostics,
+then inspected occupancy after explicit GC. It covered 4,044 of 4,071 live or
+pending-retirement units at startup, with 54,543 occupied slots out of 2,070,528.
+Most tables held 15 names or fewer; the largest held 186. After the 50-record log
+workload, 4,078 tables held 55,931 names, again with a maximum of 186. The remaining
+27 units did not expose the expected array. These are workload observations, not
+proof that future execution cannot need more names. All census instrumentation
+was removed from source and excluded from the measured candidate.
+
+The emitter counts distinct C string-literal spellings, skipping comments and
+character literals and respecting escaped quotes. It doubles that estimate,
+rounds up to a power of two and clamps to 64..512. Non-name strings and unused
+helpers can overestimate ordinary demand. Malformed lexical input selects 512.
+The estimate is a storage heuristic, not a semantic bound: full tables keep the
+existing interning fallback. Capacity is fixed for the unit's lifetime; there is
+no runtime resizing, shared cache, new native service or GC-policy change.
+
+The bootstrap image's 3,793 tables now comprise 3,693 at 128 entries and 100 at
+256 entries. Larger early source artifacts can still select 512. Hashing,
+spelling comparison, owner retention, failure rollback and actual Id dispatch
+retain their contracts. The C prelude defaults to 512 for callers that do not
+supply the private capacity macro.
+
+| Measurement | Fixed 512 | Per-unit capacity |
+| --- | ---: | ---: |
+| Bootstrap logical BSS | 30.1 MiB | 8.0 MiB |
+| Native VM allocation regions | 193.0 MiB | 184.6 MiB |
+| Median post-GC physical footprint | 301.6 MiB | 295.6 MiB |
+| Median startup | 3.265 s | 3.290 s |
+| Median warm processing, 50 records | 1.973 s | 1.974 s |
+
+The meaningful retained saving is approximately **8.4 MiB of page-backed native
+storage**. The 22 MiB reduction in raw BSS mostly falls inside pages that still
+must exist. Both image file sizes are exactly unchanged: zero-initialized BSS is
+represented by its size rather than stored contents. Peak startup RSS was also
+essentially unchanged. Timing differences are small and support no speedup claim.
+This is a modest storage improvement with bounded fallback, not another large
+startup win. Further cache shrinking has limited value under the current page
+layout.
+
+The timing comparison used ABBA order, four fresh startup processes and ten warm
+application samples per variant, with separately compiled application artifacts
+from matching sources. Three post-GC census processes per variant supplied the
+retained measurements. These measurements ran before the full validation jobs.
+The candidate rebuilt all authored artifacts and images from a frozen copy of
+the preceding measured source tree with NativeBackend changes; only NativeBackend
+differs among the 38 native libraries. Existing images must be rebuilt to change
+their table sizes.
+
+Validation passed 16 backend tests and the full native-message suite (68 top-level
+tests in 66 binaries), including repeated image save/reload. The selector fixture
+now uses distinct canonical answers to detect collision mistakes and exercises
+64/128/256/512 entries, duplicate spellings, full-table literal protection,
+failed owner retention and reentrant lookup. Frame/Trace source-free mapped and
+rebuilt images, current target replacement, the unattended application and its
+edit/rebuild cycle passed. The install qualified regenerated bootstrap artifacts
+and fresh REPL/CLI startup with the existing build-only seed excluded.
+
+Formal verification passed 172 Lean theorems, 118 TLC cases and 32 rejected Lean
+mutations. New checks preserve canonical resolution on hits and misses, including
+full-table fallback, and dispatch in the current world. Negative cases accept a
+wrong key, lose fallback or freeze dispatch. Existing owner-edge and recovery
+obligations remain in force. These models do not prove the C implementation or
+that the sizing estimate equals runtime demand.
+
+The [evidence record](measurements/selector-tables-20261011.json) retains occupancy
+and capacity distributions, ELF sections, raw VM censuses, timings and validation
+provenance. The measurements used an isolated diagnostic prefix, not the user
+installation. GC remains fixed at
+16 MiB with no scaling. The next performance cycle should profile application
+CPU costs again; the remaining savings from table capacity alone are small.

@@ -3,6 +3,7 @@
 mod c_string;
 mod literal;
 mod native;
+mod selector_capacity;
 #[cfg(test)]
 mod helper_emission;
 use birnam_abi::{

@@ -395,3 +395,15 @@ dispatch. This does not verify TinyCC's reference discovery or C compilation.
 The native backend's ELF inventory and execution tests exercise those concrete
 boundaries. The production change keeps bodies and private state unchanged and
 uses TinyCC's existing `static inline` emission mechanism.
+
+
+## Selector-table capacity
+
+The additional `SymbolNames.lean` results cover canonical resolution on cache hits
+and misses, followed by dispatch in the current world. `SelectorTables.tla` checks
+bounded linear probing at different capacities over arbitrary bucket contents;
+negative cases accept a mismatching key, lose full-table fallback, or freeze the
+dispatch world. The C regression exercises 64/128/256/512-entry tables, duplicate
+spellings, collisions, full-cache literal protection, failed owner retention and
+reentrancy. These checks do not claim that the compile-time literal estimate is an
+exact count of runtime names; correctness relies on the ordinary fallback.

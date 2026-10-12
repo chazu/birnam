@@ -118,3 +118,6 @@ import HelperEmission
 
 #print axioms Birnam.HelperEmission.reachable_retained
 #print axioms Birnam.HelperEmission.retained_calls_preserve_state
+
+#print axioms Birnam.SymbolNames.cache_or_fallback_is_canonical
+#print axioms Birnam.SymbolNames.resized_cache_uses_current_dispatch

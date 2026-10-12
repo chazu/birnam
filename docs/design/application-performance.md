@@ -77,3 +77,11 @@ references. Paired rebuilt prefixes reduced bootstrap/tools images by roughly
 unchanged. Helper bodies, language dispatch, recovery paths, unit ownership and
 selector-table capacity are unchanged. Savings require rebuilding existing
 artifacts and images.
+
+The [selector-table follow-up](../startup-analysis.md#october-11-size-selector-tables-per-generated-unit)
+selects 64..512 static entries per unit from an estimated name inventory, retaining
+ordinary full-table fallback and current dispatch. Bootstrap BSS fell from
+30.1 MiB to 8.0 MiB, but page-backed native storage fell only about 8.4 MiB.
+Startup, warm processing, image size and peak RSS were essentially unchanged.
+Record this as a modest storage saving; the next cycle should return to profiling
+application CPU costs.

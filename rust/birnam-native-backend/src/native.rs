@@ -535,7 +535,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
         }
     }
     out.push_str("return finish(&c,obj(methods[0]));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n");
-    out.replace("ROOT_BATCH_POLICY", &batch_cleanup.to_string()).into_bytes()
+    let capacity = crate::selector_capacity::for_source(&out);
+    let out = out.replace("ROOT_BATCH_POLICY", &batch_cleanup.to_string());
+    format!("#define BIRNAM_SELECTOR_CAPACITY {capacity}\n{out}").into_bytes()
 }
 /// Compile an inert candidate factory with an exact preorder disposition for
 /// its factory and each nested Block. Its lexical lets never publish Globals.
