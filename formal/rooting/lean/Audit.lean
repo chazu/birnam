@@ -121,3 +121,9 @@ import HelperEmission
 
 #print axioms Birnam.SymbolNames.cache_or_fallback_is_canonical
 #print axioms Birnam.SymbolNames.resized_cache_uses_current_dispatch
+
+#print axioms Birnam.SymbolNames.digest_bucket_preserves_lookup
+#print axioms Birnam.SymbolNames.equal_digest_does_not_alias_names
+
+#print axioms Birnam.SymbolNames.cached_digest_uses_current_inventory
+#print axioms Birnam.SymbolNames.cached_digest_observes_retirement_and_reinterning

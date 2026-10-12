@@ -1,0 +1,5961 @@
+{
+  "all_requested_passed": true,
+  "checked_checkpoints": 75,
+  "completed_correctness_passed": true,
+  "date": "2026-10-12",
+  "full_receipt": "/tmp/birnam-logue-final/results.json",
+  "full_receipt_sha256": "58e8929bbb2ea75fc8fafb64af4c49d356d80ddf24736db46b8322116aa33d84",
+  "oracle_tests": {
+    "command": "python3 scripts/logue-bench-test.py",
+    "passed": 5
+  },
+  "platform": "macOS-14.6-arm64-arm-64bit",
+  "prefix": "/private/tmp/birnam-range-handlers/prefix-v2",
+  "qualification": "Script loader path; startup/source loading, fixture setup, GC between batches, snapshots and JSON are outside phase timers. Timing keeps normal GC and Store history. Allocation mode disables automatic GC for one batch and is not a timing baseline. Live counters are process-wide and include retained harness output; charge is GC accounting, not RSS. Archived checkpoint digests bind full states checked against the independent oracle; selected observed fields are retained here. Raw resettable charge readings are not retained-byte metrics. The known message-bound defect is deliberately present in this baseline.",
+  "regression_requested": true,
+  "revision": "3033c2a1411869237ec3aac9cc421f75a655eac7",
+  "runs": [
+    {
+      "correctness_passed": true,
+      "exit_code": 0,
+      "label": "regression",
+      "log": "/private/tmp/birnam-logue-final/regression.log",
+      "log_sha256": "ee030a9bfa05ad29b2f0caa438620b8b4c59ccb866d13fc09f05e3758c11a369",
+      "output": "[logue-core] loaded\n== logue-core headless tests ==\n  ok   interactive loop is stack-flat\n  ok   mode is play\n  ok   starts at depth 1\n  ok   5 levels generated\n  ok   player on up-stairs\n  ok   fighter hp 30\n  ok   fighter weapon sword\n  ok   starts full hunger\n  ok   L1 has floor tiles\n  ok   hunger drops by 1/turn\n  ok   eating consumes a ration\n  ok   eating restores hunger\n  ok   quaffing consumes a potion\n  ok   quaffing heals\n  ok   monster spawned adjacent\n  ok   attacking does not move player\n  ok   attack killed the rat\n  ok   standing on down-stairs\n  ok   descended to level 2\n  ok   arrived on up-stairs\n  ok   wizard low hp\n  ok   wizard has mana\n  ok   rogue more gold\n  ok   deepest level is 5\n  ok   Star of Birnam on L5\n  ok   picked up the Star\n  ok   escaping with the Star wins\n  ok   120 turns stay alive\nRESULT: 28 checks, 0 failures\n",
+      "peak_rss_bytes": 1179058176,
+      "status": "completed",
+      "wall_ns": 23843153916
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 26689833,
+        "2": 26700916,
+        "3": 26890167,
+        "4": 26852417
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 27059417,
+          "objects_after_gc": 45519,
+          "objects_before": 45513,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "ae2b21402d41fba3557c8e521cc5aa8548d7a546ff1aa56dcb51a35cbce3aebf",
+          "wall_ns": 26907000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26700916,
+          "objects_after_gc": 45555,
+          "objects_before": 45549,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 1,
+          "state_sha256": "7f0f8797e3a2f584b4beca5153cef36d7d54edeacda7cb959cf2194dcb1fa493",
+          "wall_ns": 26544000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26890167,
+          "objects_after_gc": 45591,
+          "objects_before": 45585,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 1,
+          "state_sha256": "5c70244d1378d78c183eb23189085efa88bd2bbd3f35f4bd7f535d485ed42d62",
+          "wall_ns": 26730000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26852417,
+          "objects_after_gc": 45627,
+          "objects_before": 45621,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 1,
+          "state_sha256": "b267f76bc854d6b84a4c58bbae441384d432818f4525e33a9d396661a4a60f60",
+          "wall_ns": 26698000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26577000,
+          "objects_after_gc": 45667,
+          "objects_before": 45661,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 2,
+          "state_sha256": "ae2b21402d41fba3557c8e521cc5aa8548d7a546ff1aa56dcb51a35cbce3aebf",
+          "wall_ns": 26418000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 27201209,
+          "objects_after_gc": 45703,
+          "objects_before": 45697,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 2,
+          "state_sha256": "7f0f8797e3a2f584b4beca5153cef36d7d54edeacda7cb959cf2194dcb1fa493",
+          "wall_ns": 27064000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 27099167,
+          "objects_after_gc": 45739,
+          "objects_before": 45733,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 2,
+          "state_sha256": "5c70244d1378d78c183eb23189085efa88bd2bbd3f35f4bd7f535d485ed42d62",
+          "wall_ns": 26945000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26880083,
+          "objects_after_gc": 45775,
+          "objects_before": 45769,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 2,
+          "state_sha256": "b267f76bc854d6b84a4c58bbae441384d432818f4525e33a9d396661a4a60f60",
+          "wall_ns": 26723000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26689833,
+          "objects_after_gc": 45815,
+          "objects_before": 45809,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 3,
+          "state_sha256": "ae2b21402d41fba3557c8e521cc5aa8548d7a546ff1aa56dcb51a35cbce3aebf",
+          "wall_ns": 26531000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26531583,
+          "objects_after_gc": 45851,
+          "objects_before": 45845,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 3,
+          "state_sha256": "7f0f8797e3a2f584b4beca5153cef36d7d54edeacda7cb959cf2194dcb1fa493",
+          "wall_ns": 26369000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26505084,
+          "objects_after_gc": 45887,
+          "objects_before": 45881,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 3,
+          "state_sha256": "5c70244d1378d78c183eb23189085efa88bd2bbd3f35f4bd7f535d485ed42d62",
+          "wall_ns": 26355000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 26751084,
+          "objects_after_gc": 45923,
+          "objects_before": 45917,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 3,
+          "state_sha256": "b267f76bc854d6b84a4c58bbae441384d432818f4525e33a9d396661a4a60f60",
+          "wall_ns": 26618000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 4,
+        "monsters": 0,
+        "phase": "arena",
+        "replace": false,
+        "samples": 3,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "54387ffbf978ecc1480577a77ce237d4b0856b2631da96ca211941def278fd7a",
+      "label": "quiet",
+      "log": "/private/tmp/birnam-logue-final/quiet.log",
+      "log_sha256": "3bf57508974854eeb3946fbec29477f2972dd3c6e43e6079d50b6d6b36422681",
+      "median_cpu_ns": 26801750.5,
+      "median_cpu_ns_per_turn": 1675109.40625,
+      "peak_rss_bytes": 1143635968,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 7368777875
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 27131750
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 113040,
+          "allocated_objects": 5888,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 27131750,
+          "objects_after_gc": 45509,
+          "objects_before": 45503,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "ae2b21402d41fba3557c8e521cc5aa8548d7a546ff1aa56dcb51a35cbce3aebf",
+          "wall_ns": 26975000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 0,
+        "phase": "arena",
+        "replace": false,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "e838f53c4e4b68203ff5dbecc4853b29a1e3cb902a8975cf6a2b4901c9881c14",
+      "label": "quiet-allocation",
+      "log": "/private/tmp/birnam-logue-final/quiet-allocation.log",
+      "log_sha256": "0ee0373a5898a7b15c3e1122fe534b4599241dd2c4e34a905338b923c3b49e37",
+      "median_cpu_ns": 27131750,
+      "median_cpu_ns_per_turn": 1695734.375,
+      "peak_rss_bytes": 1162280960,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 4916765875
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 197842125,
+        "2": 308441000,
+        "3": 325660834,
+        "4": 329789334
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 197842125,
+          "objects_after_gc": 45556,
+          "objects_before": 45542,
+          "observed": {
+            "message_count": 4,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9996,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 2075203078,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "9229e0dce7b16d78e9c23c352c5eabfb371cc749b3acb4a11edc5043ecd83181",
+          "wall_ns": 197694000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 312972250,
+          "objects_after_gc": 45596,
+          "objects_before": 45586,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9980,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1861291190,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 1,
+          "state_sha256": "ccf998b8988b364f40ad02514a2d866dd639be598da4fa9b46efcb3e7c0387a4",
+          "wall_ns": 312824000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 342344000,
+          "objects_after_gc": 45632,
+          "objects_before": 45626,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9964,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1161039718,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 1,
+          "state_sha256": "105cfd496ed6bdc7cb99a7fff408d2f46d3e4fbc104154833f1c1efb220f3894",
+          "wall_ns": 342327000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 334447708,
+          "objects_after_gc": 45668,
+          "objects_before": 45662,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 1,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 334308000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 198704250,
+          "objects_after_gc": 45704,
+          "objects_before": 45690,
+          "observed": {
+            "message_count": 4,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9996,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 2075203078,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 2,
+          "state_sha256": "9229e0dce7b16d78e9c23c352c5eabfb371cc749b3acb4a11edc5043ecd83181",
+          "wall_ns": 198564000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 308441000,
+          "objects_after_gc": 45744,
+          "objects_before": 45734,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9980,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1861291190,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 2,
+          "state_sha256": "ccf998b8988b364f40ad02514a2d866dd639be598da4fa9b46efcb3e7c0387a4",
+          "wall_ns": 308358000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 325660834,
+          "objects_after_gc": 45780,
+          "objects_before": 45774,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9964,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1161039718,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 2,
+          "state_sha256": "105cfd496ed6bdc7cb99a7fff408d2f46d3e4fbc104154833f1c1efb220f3894",
+          "wall_ns": 325651000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 319488750,
+          "objects_after_gc": 45816,
+          "objects_before": 45810,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 2,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 319356000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 194162416,
+          "objects_after_gc": 45852,
+          "objects_before": 45838,
+          "observed": {
+            "message_count": 4,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9996,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 2075203078,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 3,
+          "state_sha256": "9229e0dce7b16d78e9c23c352c5eabfb371cc749b3acb4a11edc5043ecd83181",
+          "wall_ns": 194005000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 304834666,
+          "objects_after_gc": 45892,
+          "objects_before": 45882,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9980,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1861291190,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 3,
+          "state_sha256": "ccf998b8988b364f40ad02514a2d866dd639be598da4fa9b46efcb3e7c0387a4",
+          "wall_ns": 304693000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 323110875,
+          "objects_after_gc": 45928,
+          "objects_before": 45922,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9964,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1161039718,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 3,
+          "state_sha256": "105cfd496ed6bdc7cb99a7fff408d2f46d3e4fbc104154833f1c1efb220f3894",
+          "wall_ns": 322962000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 329789334,
+          "objects_after_gc": 45964,
+          "objects_before": 45958,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 3,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 329857000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 4,
+        "monsters": 2,
+        "phase": "arena",
+        "replace": false,
+        "samples": 3,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "e9d4e076c02e925cef662b9d2a2a66b100ea17ac16adb5c59741bcb047ff6a6c",
+      "label": "sparse",
+      "log": "/private/tmp/birnam-logue-final/sparse.log",
+      "log_sha256": "ec37ac93070d6f3f5299c245f1013872b6738cd3cfc7c155148a4b8cab23cc36",
+      "median_cpu_ns": 316230500.0,
+      "median_cpu_ns_per_turn": 19764406.25,
+      "peak_rss_bytes": 1149943808,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 11341556208
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 200260250
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 1103572,
+          "allocated_objects": 47976,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 200260250,
+          "objects_after_gc": 45547,
+          "objects_before": 45533,
+          "observed": {
+            "message_count": 4,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9996,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 2075203078,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "9229e0dce7b16d78e9c23c352c5eabfb371cc749b3acb4a11edc5043ecd83181",
+          "wall_ns": 200119000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 2,
+        "phase": "arena",
+        "replace": false,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "7104f31a290f4ffad83d70d41baf9274fbf99452e6bacc90054cfda20cb75c5b",
+      "label": "sparse-allocation",
+      "log": "/private/tmp/birnam-logue-final/sparse-allocation.log",
+      "log_sha256": "cf17e9a737be6d3ecf06d4f3cb600865cc59d56cdf8b849f0688d3bd6ce57492",
+      "median_cpu_ns": 200260250,
+      "median_cpu_ns_per_turn": 12516265.625,
+      "peak_rss_bytes": 1164984320,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 5416114666
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 1346358916,
+        "2": 2079853083,
+        "3": 3129935209,
+        "4": 4663962500
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1369072750,
+          "objects_after_gc": 45634,
+          "objects_before": 45609,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "6b21bd5dc7e561b412dd2105561157c832e1154d06fa9f7d1f6d0b2e9613120a",
+          "wall_ns": 1369003000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2079920291,
+          "objects_after_gc": 45735,
+          "objects_before": 45664,
+          "observed": {
+            "message_count": 41,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9941,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 212212585,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 1,
+          "state_sha256": "c8534753eca9399f35a14463727a63602647e0ddfcb1de3cd02827c21331984b",
+          "wall_ns": 2080156000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 3135216791,
+          "objects_after_gc": 45836,
+          "objects_before": 45765,
+          "observed": {
+            "message_count": 73,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9893,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 798134201,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 1,
+          "state_sha256": "5c0f65c6f47d59598eadb9ba47f74fa31f7d382a88c2a9708bdb570e47fa68ac",
+          "wall_ns": 3136224000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 4672368334,
+          "objects_after_gc": 45937,
+          "objects_before": 45866,
+          "observed": {
+            "message_count": 105,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9845,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1804017673,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 1,
+          "state_sha256": "9275009ba12a0a45e92fbc206962c9375cbda0448db706795502c81220f7b66d",
+          "wall_ns": 4672498000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1342139459,
+          "objects_after_gc": 45782,
+          "objects_before": 45758,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 2,
+          "state_sha256": "6b21bd5dc7e561b412dd2105561157c832e1154d06fa9f7d1f6d0b2e9613120a",
+          "wall_ns": 1342045000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2079853083,
+          "objects_after_gc": 45883,
+          "objects_before": 45812,
+          "observed": {
+            "message_count": 41,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9941,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 212212585,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 2,
+          "state_sha256": "c8534753eca9399f35a14463727a63602647e0ddfcb1de3cd02827c21331984b",
+          "wall_ns": 2080143000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 3129935209,
+          "objects_after_gc": 45984,
+          "objects_before": 45913,
+          "observed": {
+            "message_count": 73,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9893,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 798134201,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 2,
+          "state_sha256": "5c0f65c6f47d59598eadb9ba47f74fa31f7d382a88c2a9708bdb570e47fa68ac",
+          "wall_ns": 3130615000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 4663962500,
+          "objects_after_gc": 46085,
+          "objects_before": 46014,
+          "observed": {
+            "message_count": 105,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9845,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1804017673,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 2,
+          "state_sha256": "9275009ba12a0a45e92fbc206962c9375cbda0448db706795502c81220f7b66d",
+          "wall_ns": 4664549000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1346358916,
+          "objects_after_gc": 45930,
+          "objects_before": 45906,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 3,
+          "state_sha256": "6b21bd5dc7e561b412dd2105561157c832e1154d06fa9f7d1f6d0b2e9613120a",
+          "wall_ns": 1346234000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2072237500,
+          "objects_after_gc": 46031,
+          "objects_before": 45960,
+          "observed": {
+            "message_count": 41,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9941,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 212212585,
+            "tile_count": 160,
+            "turn": 32
+          },
+          "sample": 3,
+          "state_sha256": "c8534753eca9399f35a14463727a63602647e0ddfcb1de3cd02827c21331984b",
+          "wall_ns": 2072184000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 3126364916,
+          "objects_after_gc": 46132,
+          "objects_before": 46061,
+          "observed": {
+            "message_count": 73,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9893,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 798134201,
+            "tile_count": 160,
+            "turn": 48
+          },
+          "sample": 3,
+          "state_sha256": "5c0f65c6f47d59598eadb9ba47f74fa31f7d382a88c2a9708bdb570e47fa68ac",
+          "wall_ns": 3127159000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 4641840208,
+          "objects_after_gc": 46233,
+          "objects_before": 46162,
+          "observed": {
+            "message_count": 105,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9845,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1804017673,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 3,
+          "state_sha256": "9275009ba12a0a45e92fbc206962c9375cbda0448db706795502c81220f7b66d",
+          "wall_ns": 4642233000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 4,
+        "monsters": 8,
+        "phase": "arena",
+        "replace": false,
+        "samples": 3,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "9bbf68ed8fd350169a500523af965bc7edaa671e9c6e278bf3f59ee1d2c274f2",
+      "label": "crowded",
+      "log": "/private/tmp/birnam-logue-final/crowded.log",
+      "log_sha256": "5b2e1c20c5c8b466b23fb7ec8445813ea90702657cd11ac9ecb7c21e4e17f330",
+      "median_cpu_ns": 2603142603.5,
+      "median_cpu_ns_per_turn": 162696412.71875,
+      "peak_rss_bytes": 1146322944,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 46132093250
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 1357898500
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 7212035,
+          "allocated_objects": 326918,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1357898500,
+          "objects_after_gc": 45640,
+          "objects_before": 45610,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 160,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "6b21bd5dc7e561b412dd2105561157c832e1154d06fa9f7d1f6d0b2e9613120a",
+          "wall_ns": 1357787000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 8,
+        "phase": "arena",
+        "replace": false,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "94f602021c13b2438e7faf21a7c8493b140391cfb7807a77fb372d27e49f4656",
+      "label": "crowded-allocation",
+      "log": "/private/tmp/birnam-logue-final/crowded-allocation.log",
+      "log_sha256": "bbfa2938afa95a2956549039b3bc09fce16c9359e5fcbbd2dc91d6316f44add4",
+      "median_cpu_ns": 1357898500,
+      "median_cpu_ns_per_turn": 84868656.25,
+      "peak_rss_bytes": 1131298816,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 8168489750
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 1171536250,
+        "2": 1303464250,
+        "3": 1310884958,
+        "4": 1312745333
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1183707042,
+          "objects_after_gc": 45550,
+          "objects_before": 45532,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 1,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 1183652000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1303464250,
+          "objects_after_gc": 45586,
+          "objects_before": 45580,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9884,
+              "#hunger": 872,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1642189014,
+            "tile_count": 160,
+            "turn": 128
+          },
+          "sample": 1,
+          "state_sha256": "cf022de65097b31c288669651d9bedce381ef45e9ec4693e65c053eb56a2b82c",
+          "wall_ns": 1303452000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1319704042,
+          "objects_after_gc": 45622,
+          "objects_before": 45616,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9820,
+              "#hunger": 808,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1035944854,
+            "tile_count": 160,
+            "turn": 192
+          },
+          "sample": 1,
+          "state_sha256": "b04c34d6fe533e11d22abdc4287ac070061bc91a1049ed76a43628f201b7bbc8",
+          "wall_ns": 1319620000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1312745333,
+          "objects_after_gc": 45658,
+          "objects_before": 45652,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9756,
+              "#hunger": 744,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1840084566,
+            "tile_count": 160,
+            "turn": 256
+          },
+          "sample": 1,
+          "state_sha256": "319dc18f78f6007c35db92e2a6b6c480cbbe13ed9ad9dfcb01f3d71cfa620cf6",
+          "wall_ns": 1312717000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1155677166,
+          "objects_after_gc": 45698,
+          "objects_before": 45680,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 2,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 1155548000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1294673375,
+          "objects_after_gc": 45734,
+          "objects_before": 45728,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9884,
+              "#hunger": 872,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1642189014,
+            "tile_count": 160,
+            "turn": 128
+          },
+          "sample": 2,
+          "state_sha256": "cf022de65097b31c288669651d9bedce381ef45e9ec4693e65c053eb56a2b82c",
+          "wall_ns": 1294569000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1302976709,
+          "objects_after_gc": 45770,
+          "objects_before": 45764,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9820,
+              "#hunger": 808,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1035944854,
+            "tile_count": 160,
+            "turn": 192
+          },
+          "sample": 2,
+          "state_sha256": "b04c34d6fe533e11d22abdc4287ac070061bc91a1049ed76a43628f201b7bbc8",
+          "wall_ns": 1303009000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1327482417,
+          "objects_after_gc": 45806,
+          "objects_before": 45800,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9756,
+              "#hunger": 744,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1840084566,
+            "tile_count": 160,
+            "turn": 256
+          },
+          "sample": 2,
+          "state_sha256": "319dc18f78f6007c35db92e2a6b6c480cbbe13ed9ad9dfcb01f3d71cfa620cf6",
+          "wall_ns": 1327636000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1171536250,
+          "objects_after_gc": 45846,
+          "objects_before": 45828,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 3,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 1171443000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1307058541,
+          "objects_after_gc": 45882,
+          "objects_before": 45876,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9884,
+              "#hunger": 872,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1642189014,
+            "tile_count": 160,
+            "turn": 128
+          },
+          "sample": 3,
+          "state_sha256": "cf022de65097b31c288669651d9bedce381ef45e9ec4693e65c053eb56a2b82c",
+          "wall_ns": 1307304000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1310884958,
+          "objects_after_gc": 45918,
+          "objects_before": 45912,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9820,
+              "#hunger": 808,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1035944854,
+            "tile_count": 160,
+            "turn": 192
+          },
+          "sample": 3,
+          "state_sha256": "b04c34d6fe533e11d22abdc4287ac070061bc91a1049ed76a43628f201b7bbc8",
+          "wall_ns": 1310750000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1300314000,
+          "objects_after_gc": 45954,
+          "objects_before": 45948,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9756,
+              "#hunger": 744,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1840084566,
+            "tile_count": 160,
+            "turn": 256
+          },
+          "sample": 3,
+          "state_sha256": "319dc18f78f6007c35db92e2a6b6c480cbbe13ed9ad9dfcb01f3d71cfa620cf6",
+          "wall_ns": 1300376000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 4,
+        "monsters": 2,
+        "phase": "arena",
+        "replace": false,
+        "samples": 3,
+        "seed": 12345,
+        "turns": 64,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "c34c093d4aa735163e923f3e2ab0606f773ab00d884d111c0c3a502b2d194a98",
+      "label": "long",
+      "log": "/private/tmp/birnam-logue-final/long.log",
+      "log_sha256": "62d3554cdca3d49fc5f5c57dc04081d3b970cf0c843eeb8a274c1711c1996d79",
+      "median_cpu_ns": 1303220479.5,
+      "median_cpu_ns_per_turn": 20362819.9921875,
+      "peak_rss_bytes": 1169539072,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 25892959417
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 1195791875
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 5840708,
+          "allocated_objects": 264752,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1195791875,
+          "objects_after_gc": 45550,
+          "objects_before": 45532,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9948,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 995434006,
+            "tile_count": 160,
+            "turn": 64
+          },
+          "sample": 1,
+          "state_sha256": "b819929c8dd865a9d386fae879ea12344e9cfbb1a52dac05b36fbf67da3316fd",
+          "wall_ns": 1195757000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 2,
+        "phase": "arena",
+        "replace": false,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 64,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "3a4052bc7fd26026613ed29ddaa7ed730508438e27230c50ecffe7344aa22eac",
+      "label": "long-allocation",
+      "log": "/private/tmp/birnam-logue-final/long-allocation.log",
+      "log_sha256": "91eaac18d537979202b7c34ebaedc2bee586aed515fffae5151716e4ed01a988",
+      "median_cpu_ns": 1195791875,
+      "median_cpu_ns_per_turn": 18684248.046875,
+      "peak_rss_bytes": 1135886336,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 7661938791
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 1363224792,
+        "2": 1332643417,
+        "3": 2107242708,
+        "4": 3186216125
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1353761750,
+          "objects_after_gc": 45808,
+          "objects_before": 45802,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 15,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 16,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 18,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 19,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 15,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 15,
+                "#y": 7
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 15,
+                "#y": 8
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 320,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "554f846fe4c2fc47d75d058ec5ab7874680313c6acede3940cdff90e6aef36bd",
+          "wall_ns": 1353636000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1314222959,
+          "objects_after_gc": 45862,
+          "objects_before": 45838,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 320,
+            "turn": 32
+          },
+          "sample": 1,
+          "state_sha256": "15f51a4d46c50b7a81c87fe2c9840123e4b174df18c8b711cd7c502e2029ff78",
+          "wall_ns": 1314117000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2107242708,
+          "objects_after_gc": 45963,
+          "objects_before": 45892,
+          "observed": {
+            "message_count": 41,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9941,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 212212585,
+            "tile_count": 320,
+            "turn": 48
+          },
+          "sample": 1,
+          "state_sha256": "d62ccc90b496ca99c1e4f003dbfe0a8dc886f589a1d0ca8a459fcbe5413fe9e4",
+          "wall_ns": 2107867000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 3178623708,
+          "objects_after_gc": 46064,
+          "objects_before": 45993,
+          "observed": {
+            "message_count": 73,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9893,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 798134201,
+            "tile_count": 320,
+            "turn": 64
+          },
+          "sample": 1,
+          "state_sha256": "1b710593d8b5f08e35c45dc0c121d35c34731c677fb1c94b548a6541d496f70e",
+          "wall_ns": 3178625000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1363224792,
+          "objects_after_gc": 45956,
+          "objects_before": 45950,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 15,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 16,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 18,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 19,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 15,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 15,
+                "#y": 7
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 15,
+                "#y": 8
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 320,
+            "turn": 16
+          },
+          "sample": 2,
+          "state_sha256": "554f846fe4c2fc47d75d058ec5ab7874680313c6acede3940cdff90e6aef36bd",
+          "wall_ns": 1363159000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1345288542,
+          "objects_after_gc": 46010,
+          "objects_before": 45986,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 320,
+            "turn": 32
+          },
+          "sample": 2,
+          "state_sha256": "15f51a4d46c50b7a81c87fe2c9840123e4b174df18c8b711cd7c502e2029ff78",
+          "wall_ns": 1345374000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2107517834,
+          "objects_after_gc": 46111,
+          "objects_before": 46040,
+          "observed": {
+            "message_count": 41,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9941,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 212212585,
+            "tile_count": 320,
+            "turn": 48
+          },
+          "sample": 2,
+          "state_sha256": "d62ccc90b496ca99c1e4f003dbfe0a8dc886f589a1d0ca8a459fcbe5413fe9e4",
+          "wall_ns": 2108215000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 3186216125,
+          "objects_after_gc": 46212,
+          "objects_before": 46141,
+          "observed": {
+            "message_count": 73,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9893,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 798134201,
+            "tile_count": 320,
+            "turn": 64
+          },
+          "sample": 2,
+          "state_sha256": "1b710593d8b5f08e35c45dc0c121d35c34731c677fb1c94b548a6541d496f70e",
+          "wall_ns": 3187569000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1368568792,
+          "objects_after_gc": 46104,
+          "objects_before": 46098,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 15,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 16,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 18,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 19,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 15,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 15,
+                "#y": 7
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 15,
+                "#y": 8
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 320,
+            "turn": 16
+          },
+          "sample": 3,
+          "state_sha256": "554f846fe4c2fc47d75d058ec5ab7874680313c6acede3940cdff90e6aef36bd",
+          "wall_ns": 1368996000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1332643417,
+          "objects_after_gc": 46158,
+          "objects_before": 46134,
+          "observed": {
+            "message_count": 9,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9989,
+              "#hunger": 968,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1149551385,
+            "tile_count": 320,
+            "turn": 32
+          },
+          "sample": 3,
+          "state_sha256": "15f51a4d46c50b7a81c87fe2c9840123e4b174df18c8b711cd7c502e2029ff78",
+          "wall_ns": 1334259000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 3,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2105860209,
+          "objects_after_gc": 46259,
+          "objects_before": 46188,
+          "observed": {
+            "message_count": 41,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9941,
+              "#hunger": 952,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 212212585,
+            "tile_count": 320,
+            "turn": 48
+          },
+          "sample": 3,
+          "state_sha256": "d62ccc90b496ca99c1e4f003dbfe0a8dc886f589a1d0ca8a459fcbe5413fe9e4",
+          "wall_ns": 2106008000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 4,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 3187666542,
+          "objects_after_gc": 46360,
+          "objects_before": 46289,
+          "observed": {
+            "message_count": 73,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 5,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 6,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 7,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 3,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 2,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 2,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9893,
+              "#hunger": 936,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 798134201,
+            "tile_count": 320,
+            "turn": 64
+          },
+          "sample": 3,
+          "state_sha256": "1b710593d8b5f08e35c45dc0c121d35c34731c677fb1c94b548a6541d496f70e",
+          "wall_ns": 3189351000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 4,
+        "monsters": 8,
+        "phase": "arena",
+        "replace": false,
+        "samples": 3,
+        "seed": 12345,
+        "turns": 16,
+        "width": 32
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "c8f167ea3a2b7349e7fe94cca2c7cde01273a069a87f89b8c9d8156b16e761e4",
+      "label": "wide",
+      "log": "/private/tmp/birnam-logue-final/wide.log",
+      "log_sha256": "5e34e53af28b88384565ed042cefd83bc2070c1affd2c54b298314ad27d81026",
+      "median_cpu_ns": 1737214500.5,
+      "median_cpu_ns_per_turn": 108575906.28125,
+      "peak_rss_bytes": 1160642560,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 37374561375
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 1361485916
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 7287600,
+          "allocated_objects": 326402,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 1361485916,
+          "objects_after_gc": 45807,
+          "objects_before": 45801,
+          "observed": {
+            "message_count": 0,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 15,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 16,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 18,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 19,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 15,
+                "#y": 6
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 15,
+                "#y": 7
+              },
+              {
+                "#hp": 3,
+                "#id": 8,
+                "#x": 15,
+                "#y": 8
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 10000,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 12346,
+            "tile_count": 320,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "554f846fe4c2fc47d75d058ec5ab7874680313c6acede3940cdff90e6aef36bd",
+          "wall_ns": 1361352000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 8,
+        "phase": "arena",
+        "replace": false,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 16,
+        "width": 32
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "43e875842271d5f96838e224755ae5f962657ee0452f954a2754be1c09e2d136",
+      "label": "wide-allocation",
+      "log": "/private/tmp/birnam-logue-final/wide-allocation.log",
+      "log_sha256": "b85c00f715c41375be0682c16a0058425d0bc5590f272056980a2e28e835b852",
+      "median_cpu_ns": 1361485916,
+      "median_cpu_ns_per_turn": 85092869.75,
+      "peak_rss_bytes": 1198899200,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 8527396291
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 2524856875
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2524856875,
+          "objects_after_gc": 47491,
+          "objects_before": 47485,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 7,
+                "rooms": 7,
+                "tiles": 271
+              },
+              "2": {
+                "items": 4,
+                "monsters": 6,
+                "rooms": 5,
+                "tiles": 217
+              },
+              "3": {
+                "items": 2,
+                "monsters": 3,
+                "rooms": 5,
+                "tiles": 223
+              },
+              "4": {
+                "items": 5,
+                "monsters": 6,
+                "rooms": 7,
+                "tiles": 259
+              },
+              "5": {
+                "items": 1,
+                "monsters": 4,
+                "rooms": 6,
+                "tiles": 224
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 39,
+                "#y": 3
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 35,
+                "#y": 1
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 46,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 11,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 7,
+                "#y": 11
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 24,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 33,
+              "#xp": 0,
+              "#y": 15
+            },
+            "rng": 1023680213,
+            "tile_count": 271,
+            "turn": 0
+          },
+          "sample": 1,
+          "state_sha256": "c27ad98008b726b74a95ef2387b92c646bf0a0ba1a44d788bc34b3aac618f08a",
+          "wall_ns": 2525130000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2514933209,
+          "objects_after_gc": 47531,
+          "objects_before": 47525,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 7,
+                "rooms": 7,
+                "tiles": 271
+              },
+              "2": {
+                "items": 4,
+                "monsters": 6,
+                "rooms": 5,
+                "tiles": 217
+              },
+              "3": {
+                "items": 2,
+                "monsters": 3,
+                "rooms": 5,
+                "tiles": 223
+              },
+              "4": {
+                "items": 5,
+                "monsters": 6,
+                "rooms": 7,
+                "tiles": 259
+              },
+              "5": {
+                "items": 1,
+                "monsters": 4,
+                "rooms": 6,
+                "tiles": 224
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 39,
+                "#y": 3
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 35,
+                "#y": 1
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 46,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 11,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 7,
+                "#y": 11
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 24,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 33,
+              "#xp": 0,
+              "#y": 15
+            },
+            "rng": 1023680213,
+            "tile_count": 271,
+            "turn": 0
+          },
+          "sample": 2,
+          "state_sha256": "c27ad98008b726b74a95ef2387b92c646bf0a0ba1a44d788bc34b3aac618f08a",
+          "wall_ns": 2515219000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2530640000,
+          "objects_after_gc": 47571,
+          "objects_before": 47565,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 7,
+                "rooms": 7,
+                "tiles": 271
+              },
+              "2": {
+                "items": 4,
+                "monsters": 6,
+                "rooms": 5,
+                "tiles": 217
+              },
+              "3": {
+                "items": 2,
+                "monsters": 3,
+                "rooms": 5,
+                "tiles": 223
+              },
+              "4": {
+                "items": 5,
+                "monsters": 6,
+                "rooms": 7,
+                "tiles": 259
+              },
+              "5": {
+                "items": 1,
+                "monsters": 4,
+                "rooms": 6,
+                "tiles": 224
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 39,
+                "#y": 3
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 35,
+                "#y": 1
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 46,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 11,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 7,
+                "#y": 11
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 24,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 33,
+              "#xp": 0,
+              "#y": 15
+            },
+            "rng": 1023680213,
+            "tile_count": 271,
+            "turn": 0
+          },
+          "sample": 3,
+          "state_sha256": "c27ad98008b726b74a95ef2387b92c646bf0a0ba1a44d788bc34b3aac618f08a",
+          "wall_ns": 2530616000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 1,
+        "monsters": 2,
+        "phase": "generation",
+        "replace": false,
+        "samples": 3,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "7fffa0a9bc4bfb0948ef589eafcad5ea76980fa4fdfb681f406fb6cb56eef141",
+      "label": "generation",
+      "log": "/private/tmp/birnam-logue-final/generation.log",
+      "log_sha256": "4677ee1de57a046984e50f5dabfe84bc837eb1fc3c27bbce29db5b245c5f5d40",
+      "median_cpu_ns": 2524856875,
+      "peak_rss_bytes": 1156022272,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 21543754292
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 2532615708
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 9021709,
+          "allocated_objects": 484841,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2532615708,
+          "objects_after_gc": 47493,
+          "objects_before": 47487,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 7,
+                "rooms": 7,
+                "tiles": 271
+              },
+              "2": {
+                "items": 4,
+                "monsters": 6,
+                "rooms": 5,
+                "tiles": 217
+              },
+              "3": {
+                "items": 2,
+                "monsters": 3,
+                "rooms": 5,
+                "tiles": 223
+              },
+              "4": {
+                "items": 5,
+                "monsters": 6,
+                "rooms": 7,
+                "tiles": 259
+              },
+              "5": {
+                "items": 1,
+                "monsters": 4,
+                "rooms": 6,
+                "tiles": 224
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 39,
+                "#y": 3
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 35,
+                "#y": 1
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 17,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 46,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 5,
+                "#x": 11,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 6,
+                "#x": 7,
+                "#y": 11
+              },
+              {
+                "#hp": 3,
+                "#id": 7,
+                "#x": 24,
+                "#y": 7
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 33,
+              "#xp": 0,
+              "#y": 15
+            },
+            "rng": 1023680213,
+            "tile_count": 271,
+            "turn": 0
+          },
+          "sample": 1,
+          "state_sha256": "c27ad98008b726b74a95ef2387b92c646bf0a0ba1a44d788bc34b3aac618f08a",
+          "wall_ns": 2532823000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 2,
+        "phase": "generation",
+        "replace": false,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "f6a507880794eae49b20c357241d519bbb13382e03f38dc6423fcdb877f36f10",
+      "label": "generation-allocation",
+      "log": "/private/tmp/birnam-logue-final/generation-allocation.log",
+      "log_sha256": "2b277fde7eb873208fa28420b61383ab42ce261142c07355878400fc3ddb4023",
+      "median_cpu_ns": 2532615708,
+      "peak_rss_bytes": 1164345344,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 11885775000
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 2201043000
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2208959584,
+          "objects_after_gc": 47158,
+          "objects_before": 47152,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 4,
+                "rooms": 5,
+                "tiles": 192
+              },
+              "2": {
+                "items": 3,
+                "monsters": 7,
+                "rooms": 6,
+                "tiles": 257
+              },
+              "3": {
+                "items": 1,
+                "monsters": 7,
+                "rooms": 5,
+                "tiles": 188
+              },
+              "4": {
+                "items": 1,
+                "monsters": 1,
+                "rooms": 5,
+                "tiles": 189
+              },
+              "5": {
+                "items": 2,
+                "monsters": 2,
+                "rooms": 5,
+                "tiles": 198
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 24,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 22,
+                "#y": 12
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 39,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 28,
+                "#y": 11
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 10,
+              "#xp": 0,
+              "#y": 12
+            },
+            "rng": 819564067,
+            "tile_count": 192,
+            "turn": 0
+          },
+          "sample": 1,
+          "state_sha256": "5360048d39a221d5787737d1466568fd6b8a3fbc871d3d44eedefa60632df06d",
+          "wall_ns": 2208912000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2175459792,
+          "objects_after_gc": 47198,
+          "objects_before": 47192,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 4,
+                "rooms": 5,
+                "tiles": 192
+              },
+              "2": {
+                "items": 3,
+                "monsters": 7,
+                "rooms": 6,
+                "tiles": 257
+              },
+              "3": {
+                "items": 1,
+                "monsters": 7,
+                "rooms": 5,
+                "tiles": 188
+              },
+              "4": {
+                "items": 1,
+                "monsters": 1,
+                "rooms": 5,
+                "tiles": 189
+              },
+              "5": {
+                "items": 2,
+                "monsters": 2,
+                "rooms": 5,
+                "tiles": 198
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 24,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 22,
+                "#y": 12
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 39,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 28,
+                "#y": 11
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 10,
+              "#xp": 0,
+              "#y": 12
+            },
+            "rng": 819564067,
+            "tile_count": 192,
+            "turn": 0
+          },
+          "sample": 2,
+          "state_sha256": "5360048d39a221d5787737d1466568fd6b8a3fbc871d3d44eedefa60632df06d",
+          "wall_ns": 2175668000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2201043000,
+          "objects_after_gc": 47238,
+          "objects_before": 47232,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 4,
+                "rooms": 5,
+                "tiles": 192
+              },
+              "2": {
+                "items": 3,
+                "monsters": 7,
+                "rooms": 6,
+                "tiles": 257
+              },
+              "3": {
+                "items": 1,
+                "monsters": 7,
+                "rooms": 5,
+                "tiles": 188
+              },
+              "4": {
+                "items": 1,
+                "monsters": 1,
+                "rooms": 5,
+                "tiles": 189
+              },
+              "5": {
+                "items": 2,
+                "monsters": 2,
+                "rooms": 5,
+                "tiles": 198
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 24,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 22,
+                "#y": 12
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 39,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 28,
+                "#y": 11
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 10,
+              "#xp": 0,
+              "#y": 12
+            },
+            "rng": 819564067,
+            "tile_count": 192,
+            "turn": 0
+          },
+          "sample": 3,
+          "state_sha256": "5360048d39a221d5787737d1466568fd6b8a3fbc871d3d44eedefa60632df06d",
+          "wall_ns": 2201177000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 1,
+        "monsters": 2,
+        "phase": "generation",
+        "replace": false,
+        "samples": 3,
+        "seed": 777,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "670d4174bb0cfc4b81a9ef02c8f7d25bc30b5bcff63b18152a1cb9dd70b00d90",
+      "label": "generation-alt",
+      "log": "/private/tmp/birnam-logue-final/generation-alt.log",
+      "log_sha256": "f44e9ac54256e3f006ab35a3ed9457a52d3aca393b28828c43abbc15235a2aac",
+      "median_cpu_ns": 2201043000,
+      "peak_rss_bytes": 1174011904,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 19181898917
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 2389462500
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": 7791264,
+          "allocated_objects": 420008,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 2389462500,
+          "objects_after_gc": 47157,
+          "objects_before": 47151,
+          "observed": {
+            "levels": {
+              "1": {
+                "items": 0,
+                "monsters": 4,
+                "rooms": 5,
+                "tiles": 192
+              },
+              "2": {
+                "items": 3,
+                "monsters": 7,
+                "rooms": 6,
+                "tiles": 257
+              },
+              "3": {
+                "items": 1,
+                "monsters": 7,
+                "rooms": 5,
+                "tiles": 188
+              },
+              "4": {
+                "items": 1,
+                "monsters": 1,
+                "rooms": 5,
+                "tiles": 189
+              },
+              "5": {
+                "items": 2,
+                "monsters": 2,
+                "rooms": 5,
+                "tiles": 198
+              }
+            },
+            "message_count": 1,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 24,
+                "#y": 10
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 22,
+                "#y": 12
+              },
+              {
+                "#hp": 3,
+                "#id": 3,
+                "#x": 39,
+                "#y": 8
+              },
+              {
+                "#hp": 3,
+                "#id": 4,
+                "#x": 28,
+                "#y": 11
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 30,
+              "#hunger": 1000,
+              "#mana": 0,
+              "#maxHp": 30,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 10,
+              "#xp": 0,
+              "#y": 12
+            },
+            "rng": 819564067,
+            "tile_count": 192,
+            "turn": 0
+          },
+          "sample": 1,
+          "state_sha256": "5360048d39a221d5787737d1466568fd6b8a3fbc871d3d44eedefa60632df06d",
+          "wall_ns": 2420428000
+        }
+      ],
+      "config": {
+        "allocation": true,
+        "batches": 1,
+        "monsters": 2,
+        "phase": "generation",
+        "replace": false,
+        "samples": 1,
+        "seed": 777,
+        "turns": 16,
+        "width": 16
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "c1c24ba07102e5bc1cbd17f0a85e0008f154b3d4559b1476f6bce4a29e5290be",
+      "label": "generation-alt-allocation",
+      "log": "/private/tmp/birnam-logue-final/generation-alt-allocation.log",
+      "log_sha256": "33d5f1d1e003bb026e97c1f2bfb92139e8df079377a02d1292f0509b6f2f7281",
+      "median_cpu_ns": 2389462500,
+      "peak_rss_bytes": 1148010496,
+      "replacement": null,
+      "status": "completed",
+      "wall_ns": 11124419500
+    },
+    {
+      "batch_median_cpu_ns": {
+        "1": 102994916,
+        "2": 149622500
+      },
+      "checkpoints": [
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 1,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 102994916,
+          "objects_after_gc": 45447,
+          "objects_before": 45433,
+          "observed": {
+            "message_count": 4,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9996,
+              "#hunger": 992,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 2075203078,
+            "tile_count": 80,
+            "turn": 8
+          },
+          "sample": 1,
+          "state_sha256": "2a9e94671acc7a998330246a88dc6c0dcf8c91c3d0cebb0efb1b6058d092aad4",
+          "wall_ns": 102836000
+        },
+        {
+          "allocated_charge": null,
+          "allocated_objects": null,
+          "batch": 2,
+          "charge_after_gc": 224,
+          "charge_before": 224,
+          "cpu_ns": 149622500,
+          "objects_after_gc": 45487,
+          "objects_before": 45477,
+          "observed": {
+            "message_count": 6,
+            "mode": "#play",
+            "monsters": [
+              {
+                "#hp": 3,
+                "#id": 1,
+                "#x": 3,
+                "#y": 5
+              },
+              {
+                "#hp": 3,
+                "#id": 2,
+                "#x": 4,
+                "#y": 5
+              }
+            ],
+            "player": {
+              "#armor": "chainmail",
+              "#armorDef": 3,
+              "#class": "#fighter",
+              "#gold": 10,
+              "#hasMac": false,
+              "#hp": 9988,
+              "#hunger": 984,
+              "#mana": 0,
+              "#maxHp": 10000,
+              "#maxMana": 0,
+              "#plvl": 1,
+              "#potions": 1,
+              "#rations": 2,
+              "#str": 5,
+              "#weapon": "sword",
+              "#weaponDmg": 4,
+              "#x": 2,
+              "#xp": 0,
+              "#y": 5
+            },
+            "rng": 1582227422,
+            "tile_count": 80,
+            "turn": 16
+          },
+          "sample": 1,
+          "state_sha256": "8d475173d4250e0133a8dd03ea5ece507562c970a36b954c97e7b7b71c3c3dad",
+          "wall_ns": 149486000
+        }
+      ],
+      "config": {
+        "allocation": false,
+        "batches": 2,
+        "monsters": 2,
+        "phase": "arena",
+        "replace": true,
+        "samples": 1,
+        "seed": 12345,
+        "turns": 8,
+        "width": 8
+      },
+      "correctness_passed": true,
+      "exit_code": 0,
+      "fixture_sha256": "41bbbebb422fec0016ee7c5ed4f2245ff04d6980882a307a637d64ef7490606c",
+      "label": "replacement",
+      "log": "/private/tmp/birnam-logue-final/replacement.log",
+      "log_sha256": "c1c96c5d5163f114fdcb69924dbe121122dcbcbe0e460c921244d6334095f6c0",
+      "median_cpu_ns": 126308708.0,
+      "median_cpu_ns_per_turn": 15788588.5,
+      "peak_rss_bytes": 1164935168,
+      "replacement": {
+        "items": [],
+        "message_count": 6,
+        "mode": "#play",
+        "monsters": [
+          {
+            "#atk": 2,
+            "#def": 0,
+            "#glyph": 114,
+            "#hp": 3,
+            "#id": 1,
+            "#name": "rat",
+            "#x": 3,
+            "#xp": 2,
+            "#y": 5
+          },
+          {
+            "#atk": 2,
+            "#def": 0,
+            "#glyph": 114,
+            "#hp": 3,
+            "#id": 2,
+            "#name": "rat",
+            "#x": 4,
+            "#xp": 2,
+            "#y": 5
+          }
+        ],
+        "player": {
+          "#armor": "chainmail",
+          "#armorDef": 3,
+          "#class": "#fighter",
+          "#gold": 10,
+          "#hasMac": false,
+          "#hp": 9988,
+          "#hunger": 983,
+          "#mana": 0,
+          "#maxHp": 10000,
+          "#maxMana": 0,
+          "#plvl": 1,
+          "#potions": 1,
+          "#rations": 2,
+          "#str": 5,
+          "#weapon": "sword",
+          "#weaponDmg": 4,
+          "#x": 2,
+          "#xp": 0,
+          "#y": 5
+        },
+        "rng": 1582227422,
+        "tile_count": 80,
+        "turn": 17
+      },
+      "status": "completed",
+      "wall_ns": 5413342958
+    }
+  ],
+  "runtime_sha256": {
+    "bin/birnam": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+    "lib/birnam-bootstrap.image": "4a25ed01404264ac18c5667d65dc5e94a323992681a78e5c7370415506c0ece7",
+    "lib/birnam-tools.image": "12341ef0d9a2e58582533c45d3e98ebdafb4213ff78dc67efe5109165c31b569",
+    "lib/libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+    "lib/libbirnam_alienCompiler.dylib": "2fbce311a9d9772760a416e0291febfddf51d364e29b791df47e3ee8a3905f82",
+    "lib/libbirnam_artifact.dylib": "de642ccf6bc94e6f4f0812f95a31d45becb5e5ba6931f1157765df0a1f80234f",
+    "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+    "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+    "lib/libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+    "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+    "lib/libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+    "lib/libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+    "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+    "lib/libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+    "lib/libbirnam_collect.dylib": "4eabb99c55211262eca45194e2f746a98f90ed4742275282643854ff34b06d9a",
+    "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+    "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+    "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+    "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+    "lib/libbirnam_doc.dylib": "b54d72dff556c211d2ff8a8ef4fdcc7603212b995f9308b5e1ebc8b178f6e7ea",
+    "lib/libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+    "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+    "lib/libbirnam_execution.dylib": "f5655c4f70172b8e6763273d6933766f911e303fa4f14db6901d0e8965771e79",
+    "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+    "lib/libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+    "lib/libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+    "lib/libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+    "lib/libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+    "lib/libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+    "lib/libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+    "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+    "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+    "lib/libbirnam_id.dylib": "46ea0e1a3e014807903827afa92ff9198f8c1997472bef2dcbfa315e5874252b",
+    "lib/libbirnam_image.dylib": "afa37a577f133fd7b40d410c09a5bb13260450078c91869bd3ad1a3c645b1324",
+    "lib/libbirnam_imageFormat.dylib": "012075ee2f0a1b36d41e67f0e5f4609e64238be3c7a030b49bd35020267d6096",
+    "lib/libbirnam_integer.dylib": "fe01cbfe1cc5a16be27d10cafab7de479abaad755b80b8a8a99198c4e04fe874",
+    "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+    "lib/libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+    "lib/libbirnam_json.dylib": "136edef2d89a93cfb868fef7a2e3a7c29e482bc19d852245e8ec44c3bea553b0",
+    "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+    "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+    "lib/libbirnam_lsp.dylib": "0aaded060740b1d9b09ed2eb4228e8c529e42d25015d4100c53b94e7c7fa8d74",
+    "lib/libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+    "lib/libbirnam_markdown.dylib": "d5c72bb09dad0081d5dc34e63f33a9de775300035e25594bcb9e2c2c244e93bf",
+    "lib/libbirnam_modules.dylib": "c651c49e261c95a8cbbc2c2fa962fd1e55ef8eee9db3e1a993f627f2c1da1a52",
+    "lib/libbirnam_namespace.dylib": "c4ae6a8e0ff1fcc0898d143cd5499fa2dfb91fc04a1ed23f3f5db35df465cdb2",
+    "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+    "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+    "lib/libbirnam_native_backend.dylib": "5ea3d80abcac129761657357660907ca162dbeb785d81ef0246aba8878d71654",
+    "lib/libbirnam_nativedoc.dylib": "4ef4af3a44216705a04eed9c135048cf93a5affd4368dd36eb88761354f6026b",
+    "lib/libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+    "lib/libbirnam_object_model.dylib": "1b886dd3b7b6d9606fcbb677113f57d87f5d7dd347e1cd163c26ebf53362e166",
+    "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+    "lib/libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+    "lib/libbirnam_portable_code.dylib": "2bf5a6c28d067b22c2c35af95e207dffcd9bb7e72128167bd62fb091ff3ad01a",
+    "lib/libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+    "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+    "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+    "lib/libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+    "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+    "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+    "lib/libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+    "lib/libbirnam_repl.dylib": "f7ffda0bcdc252147e7429a4957e266a69c1c253dd065b6e7a1a8aaeb57f3a21",
+    "lib/libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+    "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+    "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+    "lib/libbirnam_stacklessControl.dylib": "65ab7a4d58b118635c025dabfd861223bed331496865904cd77ac89307ad9084",
+    "lib/libbirnam_stdlib.dylib": "32e7b5ee0ac84e903039484c699c546021901c1f60fa4af191a7680437ab7454",
+    "lib/libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+    "lib/libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+    "lib/libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+    "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+    "lib/libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+    "lib/libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+    "lib/libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+    "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+    "lib/libbirnam_toml.dylib": "a569af7a61f6b45e438fe80e335df9f0b8f3d1c8ba60611203e5c85dbdb3b9ff",
+    "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+    "lib/libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+    "lib/libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4",
+    "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "examples/logue/logue-bench.birnam": "fbd845fa2f66180742509c77255fadcf7691d01bc6c4130fdc279f6a4405dfe3",
+    "examples/logue/logue-core.birnam": "3f472b68127b1e6d04fd4fe7ab0633ce61dc93d9472a2f8df2bd967b966eda33",
+    "examples/logue/logue-test.birnam": "4f1bee028dcaf955de46287bf6be79ef69bf06c5b9e843825e07ae849570e425",
+    "scripts/logue-bench-test.py": "e341066ee765074313f00b053d882f8c350044ef276560f289b5bd17fb4950b3",
+    "scripts/logue-bench.py": "4ca6301bebca059a65854c5d62c485aafccf9b06b918b7bb066bb06b3842d6f3",
+    "scripts/logue_oracle.py": "6e8927ef5526741e826b79e8cdd2b6ff9f9a05120422cdc18570a9a34c837d72",
+    "scripts/validation_support.py": "ab6aab062bf0b448adae5af3a3052ff7fc0a924471eae741f52e36238d5c5880"
+  },
+  "timeout_probe": {
+    "all_requested_passed": false,
+    "receipt_sha256": "6541c0f65c627ca3465c628d412082c5e0faee655de480ddf26f13ff6fccbfc4",
+    "runner_exit_code": 2,
+    "status": "timeout",
+    "timeout_seconds": 1
+  }
+}

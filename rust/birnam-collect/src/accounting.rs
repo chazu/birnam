@@ -13,9 +13,9 @@ pub(super) fn add(current: usize, bytes: usize) -> usize {
 impl Memory {
     pub(super) unsafe fn allocation_charge(&self, payload: usize) -> Result<usize, Outcome> {
         unsafe {
-            self.send(
+            self.id.send(
                 self.id.receiver,
-                b"allocationChargeFor:",
+                self.allocation_charge_selector,
                 &[Operand::word(payload)],
             )?
             .as_word()

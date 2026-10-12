@@ -19,6 +19,9 @@ struct Namespace {
     storage: RefCell<Environment>,
     active: RefCell<Vec<Oop>>,
     names: std::collections::HashMap<&'static [u8], Oop>,
+    // Same retained Symbol as the inventory entry; never a cached method.
+    symbol_bytes_selector: Oop,
+    at_selector: Oop,
 }
 struct Scope<'a> { namespace: &'a Namespace, start: usize }
 impl Scope<'_> {
@@ -46,7 +49,7 @@ fn value(object: Oop) -> Operand {
 }
 unsafe fn symbol(namespace: &Namespace, key: Operand) -> Result<Oop, Outcome> {
     let object = object(key)?;
-    if unsafe { namespace.id.send(namespace.id.receiver, namespace.names[b"symbolBytesOf:".as_slice()], &[key]) }?.kind() != native::BYTES {
+    if unsafe { namespace.id.send(namespace.id.receiver, namespace.symbol_bytes_selector, &[key]) }?.kind() != native::BYTES {
         return Err(invalid());
     }
     Ok(object)
@@ -72,9 +75,9 @@ unsafe extern "C" fn value_at(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
         let namespace = &*c.cast::<Namespace>();
         let args = borrowed_slice(a, n).ok_or_else(invalid)?;
         if n != 1 { return Err(invalid()); }
-        let result = namespace.id.send(r, namespace.names[b"at:".as_slice()], args)?;
+        let result = namespace.id.send(r, namespace.at_selector, args)?;
         if result.kind() != native::UNIT { return Ok(result); }
-        namespace.id.send(r, namespace.names[b"at:".as_slice()], &[Operand::object(namespace.names[b"nil".as_slice()])])
+        namespace.id.send(r, namespace.at_selector, &[Operand::object(namespace.names[b"nil".as_slice()])])
     })().map_or_else(|e| e, Outcome::loaded)
 }
 // Resolve source globals with the compiler's original precedence and Id calls.
@@ -86,13 +89,13 @@ unsafe extern "C" fn resolve_global(c: *mut c_void, r: Oop, a: *const Operand, n
         let key = object(*key)?;
         let scope = Scope { namespace, start: namespace.active.borrow().len() };
         scope.keep(r); scope.keep(key);
-        let nil = scope.keep(object(namespace.id.send(r, namespace.names[b"at:".as_slice()],
+        let nil = scope.keep(object(namespace.id.send(r, namespace.at_selector,
             &[Operand::object(namespace.names[b"nil".as_slice()])])?)?);
-        let globals = scope.keep(object(namespace.id.send(r, namespace.names[b"at:".as_slice()],
+        let globals = scope.keep(object(namespace.id.send(r, namespace.at_selector,
             &[Operand::object(namespace.names[b"Globals".as_slice()])])?)?);
-        let found = object(namespace.id.send(globals, namespace.names[b"at:".as_slice()], &[Operand::object(key)])?)?;
+        let found = object(namespace.id.send(globals, namespace.at_selector, &[Operand::object(key)])?)?;
         if found != nil { return Ok(Operand::object(found)); }
-        let fallback = namespace.id.send(r, namespace.names[b"at:".as_slice()], &[Operand::object(key)])?;
+        let fallback = namespace.id.send(r, namespace.at_selector, &[Operand::object(key)])?;
         if fallback.kind() == native::UNIT { Ok(Operand::object(nil)) }
         else { object(fallback).map(Operand::object) }
     })().map_or_else(|e|e, Outcome::loaded)
@@ -101,8 +104,8 @@ unsafe extern "C" fn includes_key(c: *mut c_void, r: Oop, a: *const Operand, n: 
     (|| unsafe {
         let namespace = &*c.cast::<Namespace>();
         let [key] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let value = namespace.id.send(r, namespace.names[b"at:".as_slice()], &[*key])?;
-        namespace.id.send(namespace.receiver, namespace.names[b"at:".as_slice()], &[Operand::object(namespace.names[if value.kind() == native::UNIT { b"false".as_slice() } else { b"true".as_slice() }])])
+        let value = namespace.id.send(r, namespace.at_selector, &[*key])?;
+        namespace.id.send(namespace.receiver, namespace.at_selector, &[Operand::object(namespace.names[if value.kind() == native::UNIT { b"false".as_slice() } else { b"true".as_slice() }])])
     })().map_or_else(|e| e, Outcome::loaded)
 }
 unsafe extern "C" fn bind(
@@ -280,6 +283,8 @@ unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
                 registry,
                 storage: RefCell::new(Environment::new()),
                 active: RefCell::new(Vec::new()),
+                symbol_bytes_selector: names[b"symbolBytesOf:".as_slice()],
+                at_selector: names[b"at:".as_slice()],
                 names,
             }));
             for (name, method) in [

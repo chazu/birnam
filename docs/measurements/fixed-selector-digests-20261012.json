@@ -1,0 +1,684 @@
+{
+  "applications_sha256": {
+    "examples/log-summary/bench/main.birnam": "4088a861cc2eb6cd8d59f6a6f45b054da48c5a09c062e64b7653d909852462c4",
+    "examples/log-summary/src/log-summary.birnam": "6bed41e232e72ab16b88b7fe2f91029d5475c40c90efd994707141328ac38875",
+    "examples/logue/logue-bench.birnam": "fbd845fa2f66180742509c77255fadcf7691d01bc6c4130fdc279f6a4405dfe3",
+    "examples/logue/logue-core.birnam": "2906c24690ebd95e7efbe0d930714c9fc28c08f4e3ea3e1ad8b4679067be8c9d",
+    "modules/json.birnam": "98eceabb5a7b3e82011e952612328aaff016811926e79b692cb505c141f7f14f"
+  },
+  "baseline": "Previous digest-index reuse and direct owner selector identities are already included.",
+  "bootstrap_receipt_sha256": "03d80d43784d5377b530c4537ad1d63881f298f601f5e39a057ac9a1e83afa5f",
+  "comparison": {
+    "driver": "import argparse,importlib.util,json,statistics,sys\nfrom pathlib import Path\nroot=Path.cwd();sys.path.insert(0,str(root/'scripts'))\nfrom validation_support import command,clean_environment,save_json,sha\nspec=importlib.util.spec_from_file_location('lb',root/'scripts/logue-bench.py');lb=importlib.util.module_from_spec(spec);spec.loader.exec_module(lb)\np=argparse.ArgumentParser();p.add_argument('--variants',default='baseline,candidate,candidate,baseline');p.add_argument('--output',required=True);a=p.parse_args()\nbase=Path('/tmp/birnam-selector-investigation')\nprefixes={'baseline':Path('/tmp/birnam-selector-investigation/combined-prefix'),'candidate':Path('/tmp/birnam-fixed-digests/candidate-prefix')}\nlogue=Path('/tmp/birnam-logue-logfix/acceptance/logue')\nproject=Path('/tmp/birnam-number-bound/acceptance/examples/log-summary/bench')\ndata=Path('/tmp/birnam-number-bound/acceptance/data')\nexpect=json.loads((data/'small.expected.json').read_text())\ncfg=dict(phase='arena',seed=12345,width=16,monsters=8,turns=16,batches=4,samples=3,allocation=False,replace=False)\n(logue/'hash-probe.birnam').write_text('[Globals at: #LogueBenchConfig put: '+lb.literal(cfg)+'];\\n[System load: \"logue-bench.birnam\"]')\nruns=[]\nfor variant in a.variants.split(','):\n binary=prefixes[variant]/'bin/birnam'\n for app in ['logue','json']:\n  args=[binary,'hash-probe.birnam'] if app=='logue' else [binary,'run',project,'--',data/'small.jsonl','3']\n  r=command(args,cwd=logue if app=='logue' else root,env=clean_environment(),timeout=150)\n  assert r['exit_code']==0 and not r['stderr'],r\n  if app=='logue':\n   lines=r['stdout'].splitlines();assert lines[0]=='[logue-core] loaded'\n   report=json.loads(lines[1]);lb.check_report(report,cfg)\n   samples=[b['cpu_ns'] for sample in report['results'] for b in sample]\n  else:\n   report=json.loads(r['stdout']);assert report['report']==expect\n   samples=[b['cpu_ns'] for b in report['samples']]\n  row=dict(variant=variant,app=app,samples=samples,median_ns=statistics.median(samples),checked=True)\n  runs.append(row);print(variant,app,round(row['median_ns']/1e6,3),flush=True)\n  save_json(a.output,dict(runs=runs,driver=Path(__file__).read_text()))\n",
+    "runs": [
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1047037396.0,
+        "samples": [
+          1134456250,
+          1060715292,
+          1019104334,
+          1013441583,
+          1117405167,
+          1063561833,
+          1033359500,
+          1067499708,
+          1111782542,
+          1019848459,
+          1013187375,
+          1013043458
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 281162542,
+        "samples": [
+          279856250,
+          281798541,
+          281162542
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1085008625.0,
+        "samples": [
+          1210748500,
+          1084956708,
+          1081890792,
+          1080902750,
+          1181526875,
+          1118681750,
+          1080765375,
+          1085060542,
+          1180458250,
+          1081749292,
+          1069245292,
+          1110292500
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 302053291,
+        "samples": [
+          299063291,
+          302053291,
+          302587542
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1100744104.5,
+        "samples": [
+          1207333875,
+          1103397917,
+          1098090292,
+          1130979750,
+          1202845333,
+          1085016958,
+          1091630625,
+          1092653958,
+          1199560709,
+          1123116583,
+          1089928750,
+          1089308042
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 304729208,
+        "samples": [
+          304729208,
+          313653708,
+          294898083
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1025998938.0,
+        "samples": [
+          1128940000,
+          1057260209,
+          1006093667,
+          1016793292,
+          1115606166,
+          1015772375,
+          1035204584,
+          1048769083,
+          1105126375,
+          1014662417,
+          1008518709,
+          1006277875
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 283516666,
+        "samples": [
+          283516666,
+          321166833,
+          280739250
+        ],
+        "variant": "candidate"
+      }
+    ]
+  },
+  "date": "2026-10-12",
+  "delivery": "Uncommitted working tree; prior work preserved; no normal-prefix install or push.",
+  "formal": {
+    "lean_binary_sha256": "9544be237d91099efe1db8cb97d0c359fa13aa94f565e9972bfb8b63abbcb437",
+    "lean_version": "Lean (version 4.24.0, arm64-apple-darwin23.6.0, commit 797c613eb9b6d4ec95db23e3e00af9ac6657f24b, Release)",
+    "receipt_sha256": "8479def519732d0d132b1ce33de47a49704f811395aaa3f9c2cb0ce263ec63d6",
+    "rejected_mutations": [
+      "omit-first",
+      "leak-on-exit",
+      "skip-materialization",
+      "cached-digest-wrong-name",
+      "digest-collision-aliases-name",
+      "log-keeps-seven",
+      "range-wrong-end-comparison",
+      "json-unsafe-short-bound",
+      "json-ignore-uppercase-exponent",
+      "json-wrong-kind-handler",
+      "json-skip-backslash-scan",
+      "json-reuse-nonempty-identity",
+      "lose-full-cache-fallback",
+      "skip-retained-helper-body",
+      "charge-whole-capacity-again",
+      "unchecked-slot-hint",
+      "freeze-relational-comparison",
+      "reverse-indexed-edge",
+      "ignore-second-batched-entry",
+      "wrong-direct-integer-operation",
+      "float-remainder-handler",
+      "ignore-metadata-current",
+      "accept-unknown-metadata-identity",
+      "omit-owner-local-report",
+      "admit-nonempty-return",
+      "reverse-identity-selection",
+      "drop-capture-reachability",
+      "ignore-bulk-own-binding",
+      "ignore-capture-query-binding",
+      "reverse-branch-choice",
+      "unrooted-local-hint",
+      "cache-false-selector",
+      "drop-uncovered-locals",
+      "ignore-entry-context",
+      "wrong-release-order",
+      "lost-index-mark",
+      "wrong-memo-key",
+      "truncated-borrow",
+      "ignore-observation",
+      "ignore-permission",
+      "free-owner-batch"
+    ],
+    "theorems": 200,
+    "tla_configurations": 118,
+    "tla_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
+  },
+  "method": "Pilot ABBA; independent delivery BAAB after validation workloads finished. Same application code and images; only libbirnam_id.dylib differs. Normal automatic GC, fixed 16 MiB. Two processes per variant, three warmed samples each; Logue has four 16-turn batches per sample. Independent Python oracles check every run. No sample exclusions.",
+  "pilot": {
+    "driver": "import argparse,importlib.util,json,statistics,sys\nfrom pathlib import Path\nroot=Path.cwd();sys.path.insert(0,str(root/'scripts'))\nfrom validation_support import command,clean_environment,save_json,sha\nspec=importlib.util.spec_from_file_location('lb',root/'scripts/logue-bench.py');lb=importlib.util.module_from_spec(spec);spec.loader.exec_module(lb)\np=argparse.ArgumentParser();p.add_argument('--variants',default='baseline,candidate,candidate,baseline');p.add_argument('--output',required=True);a=p.parse_args()\nbase=Path('/tmp/birnam-selector-investigation')\nprefixes={'baseline':Path('/tmp/birnam-selector-investigation/combined-prefix'),'candidate':Path('/tmp/birnam-fixed-digests/candidate-prefix')}\nlogue=Path('/tmp/birnam-logue-logfix/acceptance/logue')\nproject=Path('/tmp/birnam-number-bound/acceptance/examples/log-summary/bench')\ndata=Path('/tmp/birnam-number-bound/acceptance/data')\nexpect=json.loads((data/'small.expected.json').read_text())\ncfg=dict(phase='arena',seed=12345,width=16,monsters=8,turns=16,batches=4,samples=3,allocation=False,replace=False)\n(logue/'hash-probe.birnam').write_text('[Globals at: #LogueBenchConfig put: '+lb.literal(cfg)+'];\\n[System load: \"logue-bench.birnam\"]')\nruns=[]\nfor variant in a.variants.split(','):\n binary=prefixes[variant]/'bin/birnam'\n for app in ['logue','json']:\n  args=[binary,'hash-probe.birnam'] if app=='logue' else [binary,'run',project,'--',data/'small.jsonl','3']\n  r=command(args,cwd=logue if app=='logue' else root,env=clean_environment(),timeout=150)\n  assert r['exit_code']==0 and not r['stderr'],r\n  if app=='logue':\n   lines=r['stdout'].splitlines();assert lines[0]=='[logue-core] loaded'\n   report=json.loads(lines[1]);lb.check_report(report,cfg)\n   samples=[b['cpu_ns'] for sample in report['results'] for b in sample]\n  else:\n   report=json.loads(r['stdout']);assert report['report']==expect\n   samples=[b['cpu_ns'] for b in report['samples']]\n  row=dict(variant=variant,app=app,samples=samples,median_ns=statistics.median(samples),checked=True)\n  runs.append(row);print(variant,app,round(row['median_ns']/1e6,3),flush=True)\n  save_json(a.output,dict(runs=runs,driver=Path(__file__).read_text()))\n",
+    "runs": [
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1097512833.5,
+        "samples": [
+          1210359209,
+          1096324459,
+          1097419042,
+          1094291833,
+          1215114167,
+          1089839167,
+          1097606625,
+          1098082917,
+          1192596125,
+          1087007042,
+          1126200792,
+          1093467375
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 299062625,
+        "samples": [
+          297625458,
+          299062625,
+          299456375
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1016985291.5,
+        "samples": [
+          1174796542,
+          1007314458,
+          1026780833,
+          1014901583,
+          1099502250,
+          1015373208,
+          1008230416,
+          1014145167,
+          1122534375,
+          1020674750,
+          1018597375,
+          1007675500
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 288047625,
+        "samples": [
+          296265250,
+          288047625,
+          283757375
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1024504000.0,
+        "samples": [
+          1134218833,
+          1055313667,
+          1018218458,
+          1020277584,
+          1117737500,
+          1017169042,
+          1025030125,
+          1058443333,
+          1123888708,
+          1023977875,
+          1021165708,
+          1017619875
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 287026459,
+        "samples": [
+          287813042,
+          287026459,
+          286830458
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1099688896.0,
+        "samples": [
+          1216083667,
+          1098935125,
+          1100442667,
+          1098454750,
+          1200344542,
+          1127182000,
+          1094613666,
+          1095954958,
+          1200263041,
+          1092448916,
+          1092396750,
+          1121500125
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 307176292,
+        "samples": [
+          307252250,
+          306974041,
+          307176292
+        ],
+        "variant": "baseline"
+      }
+    ]
+  },
+  "runtime_sha256": {
+    "baseline": {
+      "bin/birnam": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "lib/birnam-bootstrap.image": "4a25ed01404264ac18c5667d65dc5e94a323992681a78e5c7370415506c0ece7",
+      "lib/birnam-tools.image": "12341ef0d9a2e58582533c45d3e98ebdafb4213ff78dc67efe5109165c31b569",
+      "lib/libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+      "lib/libbirnam_alienCompiler.dylib": "2fbce311a9d9772760a416e0291febfddf51d364e29b791df47e3ee8a3905f82",
+      "lib/libbirnam_artifact.dylib": "de642ccf6bc94e6f4f0812f95a31d45becb5e5ba6931f1157765df0a1f80234f",
+      "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+      "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+      "lib/libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+      "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+      "lib/libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+      "lib/libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+      "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+      "lib/libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+      "lib/libbirnam_collect.dylib": "31a8316ff577f116a044a4646faf527439446c59607558a9668e269a48c2d57f",
+      "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+      "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+      "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+      "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+      "lib/libbirnam_doc.dylib": "b54d72dff556c211d2ff8a8ef4fdcc7603212b995f9308b5e1ebc8b178f6e7ea",
+      "lib/libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+      "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+      "lib/libbirnam_execution.dylib": "f5655c4f70172b8e6763273d6933766f911e303fa4f14db6901d0e8965771e79",
+      "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+      "lib/libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+      "lib/libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+      "lib/libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+      "lib/libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+      "lib/libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+      "lib/libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+      "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+      "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+      "lib/libbirnam_id.dylib": "cb8cbb2e1b9bee2e348286fb686936f0d23aa4d07ddbc8a576a21688870ab790",
+      "lib/libbirnam_image.dylib": "afa37a577f133fd7b40d410c09a5bb13260450078c91869bd3ad1a3c645b1324",
+      "lib/libbirnam_imageFormat.dylib": "012075ee2f0a1b36d41e67f0e5f4609e64238be3c7a030b49bd35020267d6096",
+      "lib/libbirnam_integer.dylib": "0e81cbcbcb56a7f82df50f4d454d537372f695c26f6dccbda6f91efd12db2ab3",
+      "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+      "lib/libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+      "lib/libbirnam_json.dylib": "136edef2d89a93cfb868fef7a2e3a7c29e482bc19d852245e8ec44c3bea553b0",
+      "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+      "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+      "lib/libbirnam_lsp.dylib": "0aaded060740b1d9b09ed2eb4228e8c529e42d25015d4100c53b94e7c7fa8d74",
+      "lib/libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+      "lib/libbirnam_markdown.dylib": "d5c72bb09dad0081d5dc34e63f33a9de775300035e25594bcb9e2c2c244e93bf",
+      "lib/libbirnam_modules.dylib": "c651c49e261c95a8cbbc2c2fa962fd1e55ef8eee9db3e1a993f627f2c1da1a52",
+      "lib/libbirnam_namespace.dylib": "f286905111c51bdd19c87afa50dd33e96001c302ad0e57aca4daebaab396971e",
+      "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+      "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+      "lib/libbirnam_native_backend.dylib": "5ea3d80abcac129761657357660907ca162dbeb785d81ef0246aba8878d71654",
+      "lib/libbirnam_nativedoc.dylib": "4ef4af3a44216705a04eed9c135048cf93a5affd4368dd36eb88761354f6026b",
+      "lib/libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+      "lib/libbirnam_object_model.dylib": "8476999d63a79a9b2d873535ee417c71105789d610981b2881dffe2e6c5aee89",
+      "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+      "lib/libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+      "lib/libbirnam_portable_code.dylib": "2bf5a6c28d067b22c2c35af95e207dffcd9bb7e72128167bd62fb091ff3ad01a",
+      "lib/libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+      "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+      "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+      "lib/libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+      "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+      "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+      "lib/libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+      "lib/libbirnam_repl.dylib": "f7ffda0bcdc252147e7429a4957e266a69c1c253dd065b6e7a1a8aaeb57f3a21",
+      "lib/libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+      "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+      "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+      "lib/libbirnam_stacklessControl.dylib": "65ab7a4d58b118635c025dabfd861223bed331496865904cd77ac89307ad9084",
+      "lib/libbirnam_stdlib.dylib": "32e7b5ee0ac84e903039484c699c546021901c1f60fa4af191a7680437ab7454",
+      "lib/libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+      "lib/libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+      "lib/libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+      "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+      "lib/libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+      "lib/libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+      "lib/libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+      "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+      "lib/libbirnam_toml.dylib": "a569af7a61f6b45e438fe80e335df9f0b8f3d1c8ba60611203e5c85dbdb3b9ff",
+      "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+      "lib/libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+      "lib/libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4",
+      "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+      "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+    },
+    "candidate": {
+      "bin/birnam": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "lib/birnam-bootstrap.image": "4a25ed01404264ac18c5667d65dc5e94a323992681a78e5c7370415506c0ece7",
+      "lib/birnam-tools.image": "12341ef0d9a2e58582533c45d3e98ebdafb4213ff78dc67efe5109165c31b569",
+      "lib/libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+      "lib/libbirnam_alienCompiler.dylib": "2fbce311a9d9772760a416e0291febfddf51d364e29b791df47e3ee8a3905f82",
+      "lib/libbirnam_artifact.dylib": "de642ccf6bc94e6f4f0812f95a31d45becb5e5ba6931f1157765df0a1f80234f",
+      "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+      "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+      "lib/libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+      "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+      "lib/libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+      "lib/libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+      "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+      "lib/libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+      "lib/libbirnam_collect.dylib": "31a8316ff577f116a044a4646faf527439446c59607558a9668e269a48c2d57f",
+      "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+      "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+      "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+      "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+      "lib/libbirnam_doc.dylib": "b54d72dff556c211d2ff8a8ef4fdcc7603212b995f9308b5e1ebc8b178f6e7ea",
+      "lib/libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+      "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+      "lib/libbirnam_execution.dylib": "f5655c4f70172b8e6763273d6933766f911e303fa4f14db6901d0e8965771e79",
+      "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+      "lib/libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+      "lib/libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+      "lib/libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+      "lib/libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+      "lib/libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+      "lib/libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+      "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+      "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+      "lib/libbirnam_id.dylib": "921f6da5c742a1f38ef4b4f0bc1a9b74e4d6c87799ba43ec6fe88d279333a963",
+      "lib/libbirnam_image.dylib": "afa37a577f133fd7b40d410c09a5bb13260450078c91869bd3ad1a3c645b1324",
+      "lib/libbirnam_imageFormat.dylib": "012075ee2f0a1b36d41e67f0e5f4609e64238be3c7a030b49bd35020267d6096",
+      "lib/libbirnam_integer.dylib": "0e81cbcbcb56a7f82df50f4d454d537372f695c26f6dccbda6f91efd12db2ab3",
+      "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+      "lib/libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+      "lib/libbirnam_json.dylib": "136edef2d89a93cfb868fef7a2e3a7c29e482bc19d852245e8ec44c3bea553b0",
+      "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+      "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+      "lib/libbirnam_lsp.dylib": "0aaded060740b1d9b09ed2eb4228e8c529e42d25015d4100c53b94e7c7fa8d74",
+      "lib/libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+      "lib/libbirnam_markdown.dylib": "d5c72bb09dad0081d5dc34e63f33a9de775300035e25594bcb9e2c2c244e93bf",
+      "lib/libbirnam_modules.dylib": "c651c49e261c95a8cbbc2c2fa962fd1e55ef8eee9db3e1a993f627f2c1da1a52",
+      "lib/libbirnam_namespace.dylib": "f286905111c51bdd19c87afa50dd33e96001c302ad0e57aca4daebaab396971e",
+      "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+      "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+      "lib/libbirnam_native_backend.dylib": "5ea3d80abcac129761657357660907ca162dbeb785d81ef0246aba8878d71654",
+      "lib/libbirnam_nativedoc.dylib": "4ef4af3a44216705a04eed9c135048cf93a5affd4368dd36eb88761354f6026b",
+      "lib/libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+      "lib/libbirnam_object_model.dylib": "8476999d63a79a9b2d873535ee417c71105789d610981b2881dffe2e6c5aee89",
+      "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+      "lib/libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+      "lib/libbirnam_portable_code.dylib": "2bf5a6c28d067b22c2c35af95e207dffcd9bb7e72128167bd62fb091ff3ad01a",
+      "lib/libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+      "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+      "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+      "lib/libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+      "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+      "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+      "lib/libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+      "lib/libbirnam_repl.dylib": "f7ffda0bcdc252147e7429a4957e266a69c1c253dd065b6e7a1a8aaeb57f3a21",
+      "lib/libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+      "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+      "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+      "lib/libbirnam_stacklessControl.dylib": "65ab7a4d58b118635c025dabfd861223bed331496865904cd77ac89307ad9084",
+      "lib/libbirnam_stdlib.dylib": "32e7b5ee0ac84e903039484c699c546021901c1f60fa4af191a7680437ab7454",
+      "lib/libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+      "lib/libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+      "lib/libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+      "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+      "lib/libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+      "lib/libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+      "lib/libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+      "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+      "lib/libbirnam_toml.dylib": "a569af7a61f6b45e438fe80e335df9f0b8f3d1c8ba60611203e5c85dbdb3b9ff",
+      "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+      "lib/libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+      "lib/libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4",
+      "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+      "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+    }
+  },
+  "scope": "Per-Id digests for eleven fixed internal query names; weak inventory and current binding lookup remain authoritative.",
+  "source_delta": "--- before/symbol.rs\n+++ after/symbol.rs\n@@ -57,6 +57,22 @@\n }\n type NameDigestIndex = HashMap<u64, usize, BuildHasherDefault<NameDigestHasher>>;\n \n+// Private admission queries repeatedly use these byte names. Digests belong\n+// to this Symbols instance's immutable hasher, not to a Symbol's lifetime.\n+const QUERY_NAMES: [&[u8]; 11] = [\n+    b\"tryRepresentationIdentityOf:behavior:bytes:\",\n+    b\"behaviorOf:\",\n+    b\"allocationSizeOf:\",\n+    b\"identityOf:\",\n+    b\"tryRepresentationsOf:behavior:bytes:\",\n+    b\"allocate:bytes:\",\n+    b\"allocationChargeFor:\",\n+    b\"isBehavior:\",\n+    b\"behaviorEpoch\",\n+    b\"bind:to:\",\n+    b\"usesDefaultLookup:\",\n+];\n+\n /// Ordered authority for interned Symbol identities.\n pub(crate) struct Symbols {\n     ordered: Vec<SymbolRecord>,\n@@ -65,16 +81,20 @@\n     // hash collisions; ordered remains the enumeration and name authority.\n     by_name_hash: NameDigestIndex,\n     name_hasher: RandomState,\n+    query_digests: [u64; QUERY_NAMES.len()],\n     owned_name_bytes: usize,\n }\n \n impl Symbols {\n     pub(crate) fn new() -> Self {\n+        let name_hasher = RandomState::new();\n+        let query_digests = QUERY_NAMES.map(|name| name_hasher.hash_one(name));\n         Self {\n             ordered: Vec::new(),\n             by_address: AddressMap::default(),\n             by_name_hash: NameDigestIndex::default(),\n-            name_hasher: RandomState::new(),\n+            name_hasher,\n+            query_digests,\n             owned_name_bytes: 0,\n         }\n     }\n@@ -95,7 +115,22 @@\n     /// Non-allocating identity query for a guarded native region. A missing\n     /// symbol requires ordinary interning at its baseline observation boundary.\n     pub(crate) fn existing(&self, bytes: &[u8]) -> Option<Oop> {\n-        self.find_hashed(bytes, self.name_hasher.hash_one(bytes))\n+        let hash = match bytes {\n+            b\"tryRepresentationIdentityOf:behavior:bytes:\" => self.query_digests[0],\n+            b\"behaviorOf:\" => self.query_digests[1],\n+            b\"allocationSizeOf:\" => self.query_digests[2],\n+            b\"identityOf:\" => self.query_digests[3],\n+            b\"tryRepresentationsOf:behavior:bytes:\" => self.query_digests[4],\n+            b\"allocate:bytes:\" => self.query_digests[5],\n+            b\"allocationChargeFor:\" => self.query_digests[6],\n+            b\"isBehavior:\" => self.query_digests[7],\n+            b\"behaviorEpoch\" => self.query_digests[8],\n+            b\"bind:to:\" => self.query_digests[9],\n+            b\"usesDefaultLookup:\" => self.query_digests[10],\n+            _ => self.name_hasher.hash_one(bytes),\n+        };\n+        // Always search the current weak inventory and compare full names.\n+        self.find_hashed(bytes, hash)\n     }\n \n     #[cfg(test)]\n@@ -268,6 +303,36 @@\n     }\n \n     #[test]\n+    fn fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning() {\n+        // Each instance has its own hash seed. Missing queries must neither\n+        // intern names nor retain objects, including after a formerly live hit.\n+        for _ in 0..3 {\n+            let mut heap = ObjectMemory::new();\n+            let behavior = heap.allocate(0);\n+            let mut symbols = Symbols::new();\n+            for name in QUERY_NAMES { assert_eq!(symbols.existing(name), None); }\n+            assert_eq!(symbols.count(), 0);\n+            assert_eq!(symbols.owned_name_bytes(), 0);\n+            for name in QUERY_NAMES {\n+                let name = name.to_vec();\n+                let first = symbols.intern(&mut heap, behavior, &name).unwrap();\n+                assert_eq!(symbols.existing(&name), Some(first));\n+                // A different name of the same length must use the fallback,\n+                // rather than another name's cached digest or Symbol identity.\n+                let mut neighbor = name.clone(); neighbor[0] = b'!';\n+                let other = symbols.intern(&mut heap, behavior, &neighbor).unwrap();\n+                assert_eq!(symbols.existing(&neighbor), Some(other));\n+                assert_eq!(symbols.remove_objects(&[(first.addr(), ())].into_iter().collect()), 1);\n+                assert_eq!(symbols.existing(&name), None);\n+                assert_eq!(symbols.existing(&neighbor), Some(other));\n+                let second = symbols.intern(&mut heap, behavior, &name).unwrap();\n+                assert_ne!(first, second);\n+                assert_eq!(symbols.existing(&name), Some(second));\n+            }\n+        }\n+    }\n+\n+    #[test]\n     fn randomized_names_still_use_full_bytes_and_reject_embedded_nul() {\n         let mut heap = ObjectMemory::new();\n         let behavior = heap.allocate(0);\n",
+  "source_sha256": {
+    "formal/rooting/lean/Audit.lean": "157c30f7b2465258b90a4f8187d30073f3c446f130bb7e8273c25100c05cc231",
+    "formal/rooting/lean/SymbolNames.lean": "db03232edbe341265998416273097d5426527ec9bedb3aaf2c619cde583706bb",
+    "rust/birnam-id/src/id/symbol.rs": "b6d1680e0db1d12fade5e88ce7cdcb8bf3004fee90607937f69fc38958835e66",
+    "scripts/check-rooting-model.py": "433f5ab71ed341582d7e847a9a46c8ddfd7535277d54c7289b7d70b2aadd29d2"
+  },
+  "storage": "11 u64 digests: 88 bytes per Symbols/Id instance, no extra allocation and no Oop references. Original randomized hasher and full byte comparisons remain.",
+  "summary": {
+    "json": {
+      "baseline_median_ns": 302320416.5,
+      "candidate_median_ns": 281480541.5,
+      "reduction_percent": 6.893307187541531
+    },
+    "logue": {
+      "baseline_median_ns": 1095372125.0,
+      "candidate_median_ns": 1034282042.0,
+      "reduction_percent": 5.577107688403149
+    }
+  },
+  "validation": {
+    "id_tests": 11,
+    "json": {
+      "correctness_passed": true,
+      "receipt_sha256": "c0002e2fcc55548d17cf5868ca7b3959f3210cebdbe13f0a1aa42fcc35e97535",
+      "runs": [
+        {
+          "exit_code": 0,
+          "label": "check",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "build",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "tests",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "empty",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "tiny",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "edges",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "escaping",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-malformed",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-missing",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-type",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-range",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-line-number",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "missing-file",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "usage",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "startup-0",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "startup-1",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "startup-2",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "scale-small",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "scale-medium",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "build-warm",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "warm-tiny",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "warm-small",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "edit-rebuild-run",
+          "status": "completed"
+        }
+      ]
+    },
+    "logs": {
+      "id-tests.log": {
+        "path": "/tmp/birnam-fixed-digests/id-tests.log",
+        "sha256": "6127bf2aa9e32cc0ff04ab492106737565a44f8f3debcae233123117b856bf5a",
+        "tail": "test id::id_dispatch::tests::saved_primitives_work_without_an_active_message_and_keep_their_registry ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::id_dispatch::tests::actual_initial_graph_installs_invokes_and_forwards_without_runtime ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest id::id_dispatch::tests::c_native_entry_round_trips_typed_operands_through_actual_id ... ok\n\ntest result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s\n"
+      },
+      "images.log": {
+        "path": "/tmp/birnam-fixed-digests/images.log",
+        "sha256": "b0be97f32d2a396446da7af048b4683a55d3991f31c233e84cec791af8f92caa",
+        "tail": "installed image CLI: saved main, deleted source/assets, nil/false, missing/invalid main and load diagnostics passed\nFrame calls: source-free mapped/rebuilt images, protocol withdrawal, collecting fallback and fresh target lookup passed"
+      },
+      "install.log": {
+        "path": "/tmp/birnam-fixed-digests/install.log",
+        "sha256": "e00ef5f7f2ed8724e300e50edae26f4ee791332168bd6848a19ee80792ebbf9e",
+        "tail": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s\n     Running `.cargo-target/decomposition-install/driver/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /tmp/birnam-fixed-digests/final-prefix --profile release --build-cache /Users/chazu/dev/zig/birnam/.cargo-target/decomposition-install`\n   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.66s\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.29s\nrust-install: published /private/tmp/birnam-fixed-digests/final-prefix (38 native libraries, 4 source bootstrap modules, 23 authored tools)"
+      },
+      "json-acceptance.log": {
+        "path": "/tmp/birnam-fixed-digests/json-acceptance.log",
+        "sha256": "6c5c227cff906afd21df97cbd6df0228733b2c5105ced40bcb35e2e1dffcc571",
+        "tail": "startup-0 completed 0 3.636\nstartup-1 completed 0 3.678\nstartup-2 completed 0 3.673\nscale-small completed 0 4.161\nscale-medium completed 0 6.988\nbuild-warm completed 0 12.373\nwarm-tiny completed 0 4.75\nwarm-small completed 0 6.484\nedit-rebuild-run completed 0 11.151\n/private/tmp/birnam-fixed-digests/json-acceptance/results.json"
+      },
+      "logue-acceptance.log": {
+        "path": "/tmp/birnam-fixed-digests/logue-acceptance.log",
+        "sha256": "ef9253760eb150369aa98b0d9923708ff1452dfe659f859c1cc6df09c6301e4d",
+        "tail": "  checked 4 checkpoints; median CPU ms 743.876\nwide completed 0\n  checked 4 checkpoints; median CPU ms 1139.613\ngeneration completed 0\n  checked 1 checkpoints; median CPU ms 2362.809\ngeneration-alt completed 0\n  checked 1 checkpoints; median CPU ms 2103.989\nreplacement completed 0\n  checked 2 checkpoints; median CPU ms 105.281\n/private/tmp/birnam-fixed-digests/logue-acceptance/results.json"
+      },
+      "modules.log": {
+        "path": "/tmp/birnam-fixed-digests/modules.log",
+        "sha256": "313082817de26d48e29440c552e9c15c389b4155d1d05f07aab3998123b8497d",
+        "tail": "  ok   CLI config path\n  ok   CLI beats environment and file\n  ok   environment beats file\n  ok   boolean CLI flag\n  ok   CLI origin\n  ok   environment origin\n  ok   selected path is retained\n  ok   TOML value\n  ok   TOML origin\nTOTAL: 672 passed, 0 failed"
+      },
+      "native-tests.log": {
+        "path": "/tmp/birnam-fixed-digests/native-tests.log",
+        "sha256": "3bdbe880d40b160b624a10b4c2f5a594240c56277788ba784450ebc830a57275",
+        "tail": "\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running tests/representation_fallback.rs (.cargo-target/decomposition-install/target/debug/deps/representation_fallback-6fb185946aa38fa9)\n\nrunning 1 test\ntest identity_replacement_preserves_numeric_read_and_allocator_failure_order ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s\n"
+      }
+    },
+    "logue": {
+      "all_requested_passed": true,
+      "checkpoints": 24,
+      "game_assertions": 34,
+      "receipt_sha256": "e3386dcdc8f8ac3b90118876d25ede8349b5428c654de4d82421dfd977be1e7b"
+    },
+    "module_assertions": 672,
+    "native_binaries": 16,
+    "native_tests": 16
+  }
+}

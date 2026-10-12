@@ -47,4 +47,44 @@ theorem resized_cache_uses_current_dispatch (canonical : Name → Symbol)
   rw [cache_or_fallback_is_canonical canonical cache agrees name]
   rfl
 
+-- The private digest index narrows candidates, but names still compare in full.
+-- Digest collisions may change cost; they must not change the canonical answer.
+def lookupName (name : Nat) : List (Nat × Nat) → Option Nat
+  | [] => none
+  | (key, symbol) :: rest => if key = name then some symbol else lookupName name rest
+
+theorem digest_bucket_preserves_lookup (digest : Nat → Nat) (name : Nat)
+    (rows : List (Nat × Nat)) :
+    lookupName name (rows.filter (fun row => digest row.1 == digest name)) =
+      lookupName name rows := by
+  induction rows with
+  | nil => rfl
+  | cons row rest ih =>
+    rcases row with ⟨key, symbol⟩
+    by_cases same : key = name
+    · simp [lookupName, same]
+    · by_cases bucket : digest key = digest name
+      · simpa [lookupName, same, bucket] using ih
+      · simpa [lookupName, same, bucket] using ih
+
+theorem equal_digest_does_not_alias_names :
+    lookupName 2 ([(1, 10), (2, 20)].filter (fun _ => true)) = some 20 := by decide
+
+-- A cached digest holds neither an old Symbol nor a lookup result. The weak
+-- inventory remains an explicit, current input on every query.
+def cachedDigestLookup (digest cache : Nat → Nat) (name : Nat)
+    (current : List (Nat × Nat)) : Option Nat :=
+  lookupName name (current.filter (fun row => digest row.1 == cache name))
+
+theorem cached_digest_uses_current_inventory (digest cache : Nat → Nat)
+    (name : Nat) (agrees : cache name = digest name) (current : List (Nat × Nat)) :
+    cachedDigestLookup digest cache name current = lookupName name current := by
+  simp only [cachedDigestLookup, agrees]
+  exact digest_bucket_preserves_lookup digest name current
+
+theorem cached_digest_observes_retirement_and_reinterning :
+    cachedDigestLookup id id 1 [(1, 10)] = some 10 ∧
+    cachedDigestLookup id id 1 [] = none ∧
+    cachedDigestLookup id id 1 [(1, 11)] = some 11 := by decide
+
 end Birnam.SymbolNames

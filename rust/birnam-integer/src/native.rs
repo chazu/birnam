@@ -19,6 +19,8 @@ pub(crate) struct Number {
     extended: Cell<bool>,
     mixed: Cell<*mut mixed::Mixed>,
     names: HashMap<&'static [u8], Oop>,
+    // Same retained Symbol as the inventory entry; never a cached method.
+    representation_query: Oop,
     thread: std::thread::ThreadId,
     scoped: RefCell<Vec<Oop>>,
 }
@@ -67,7 +69,7 @@ impl Number {
 
     unsafe fn matches_representation(&self, value: Oop) -> Result<bool, Outcome> {
         unsafe {
-            match self.send(self.id.receiver, b"tryRepresentationIdentityOf:behavior:bytes:",
+            match self.id.send(self.id.receiver, self.representation_query,
                 &[Operand::object(value), Operand::object(self.behavior), Operand::word(8)]) {
                 Ok(result) if result.kind() == native::UNIT => {},
                 Err(error) if error.status == native::UNBOUND => {},
@@ -343,6 +345,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             truth,
             falsity,
             nil,
+            representation_query: names[b"tryRepresentationIdentityOf:behavior:bytes:".as_slice()],
             names,
             extended: Cell::new(false),
             mixed: Cell::new(core::ptr::null_mut()),

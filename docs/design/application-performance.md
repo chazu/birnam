@@ -130,3 +130,31 @@ and runtime deoptimization remain unchanged.
 The [Range handler investigation](range-handler-reuse.md) reduces repeated
 branch construction in authored Range operations while retaining exact bootstrap
 comparisons and live bounds. It also records discarded iteration/rooting ideas.
+
+## Second workload: stateful simulation
+
+The [Logue performance harness](logue-performance.md) adds seeded dungeon
+generation and deterministic combat arenas over the existing, unchanged game
+core. Independent state checks and separate phase/process measurements expose
+collection, dispatch, arithmetic, allocation and state-retention costs outside
+JSON parsing. This establishes a second baseline before choosing another runtime
+optimization.
+
+The [bounded-message follow-up](logue-message-log.md) corrects Logue's six-entry
+log contract, removes redundant traversals, and profiles the remaining turn
+work. It retains a paired comparison against the original application behavior.
+
+## Agreed runtime and library targets
+
+1. **Hashing and selector handling:** remove repeated private lookup work while
+   preserving canonical names, weak retirement, current sends and root behavior.
+   The [selector-hashing investigation](selector-hashing.md) records the first
+   retained runtime changes and paired results on both applications.
+2. **Ordinary method lookup:** measure repeated dictionary/parent work and improve
+   its mechanics while preserving current replacement and existing recovery.
+3. **First-match collection traversal:** investigate genuine early termination in
+   shared search operations, including callback, nil, GC and suspension contracts.
+
+The [fixed-selector digest follow-up](fixed-selector-digests.md) tests reusing
+per-Id hashes for fixed query names. It holds the Symbol inventory and all method
+lookups live; neither Symbol identities nor binding results are cached.

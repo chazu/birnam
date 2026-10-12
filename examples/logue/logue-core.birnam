@@ -110,15 +110,15 @@ let midCtr   := [newCell value: 0];           // monster id counter (unique acro
 let msg := [:s |
   let m := [[messages value] add: s];
   let n := [m size];
-  [messages set: [[n > 6] ifTrue: [| [[m collect: [:x | x]] select: [:x | true]]] ifFalse: [| m]]]];
+  [messages set: [[n > 6] ifTrue: [| [m copyFrom: [n - 6] to: n]] ifFalse: [| m]]]];
 
-// (the trim above keeps it a vector; drop the oldest when too long)
+// Repair an oversized log restored or edited through its ordinary state cell.
+// Normal appends already enforce the bound; short logs keep their identity.
 let msgTrim := [|
   let m := [messages value];
-  [[[m size] > 6]
-    ifTrue: [|
-      let keep := [[1 to: [[m size] - 1]] inject: #[] into: [:acc :i | [acc add: [m at: i]]]];
-      [messages set: keep]]
+  let n := [m size];
+  [[n > 6]
+    ifTrue: [| [messages set: [m copyFrom: [n - 6] to: n]]]
     ifFalse: [| nil]]];
 
 // ===========================================================================

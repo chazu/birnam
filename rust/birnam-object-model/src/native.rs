@@ -24,6 +24,8 @@ struct Model {
     falsity: Oop,
     thread: std::thread::ThreadId,
     names: HashMap<&'static [u8], Oop>,
+    // Same retained Symbol as the inventory entry; never a cached method.
+    representation_query: Oop,
     owners: RefCell<HashMap<usize, Record<Oop>>>,
     instances: RefCell<HashMap<usize, Record<usize>>>,
     layouts: RefCell<HashMap<usize, Record<Layout>>>,
@@ -173,7 +175,7 @@ impl Model {
             let start = self.scoped.borrow().len();
             self.scoped.borrow_mut().push(object);
             let _scope = Scope { values: &self.scoped, start };
-            let identity = match self.send(self.id.receiver, b"tryRepresentationIdentityOf:behavior:bytes:",
+            let identity = match self.id.send(self.id.receiver, self.representation_query,
                 &[value, Operand::object(behavior), Operand::word(bytes)]) {
                 Ok(result) if result.kind() == native::UNIT => None,
                 Err(error) if error.status == native::UNBOUND => None,
@@ -833,6 +835,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             truth: named(b"true")?,
             falsity: named(b"false")?,
             thread: std::thread::current().id(),
+            representation_query: names[b"tryRepresentationIdentityOf:behavior:bytes:".as_slice()],
             names,
             owners: RefCell::new(HashMap::new()),
             instances: RefCell::new(HashMap::new()),

@@ -1,3 +1,4 @@
+import LogMessages
 import RangeHandlers
 import JsonNumbers
 import JsonDispatch
@@ -109,3 +110,9 @@ import Admission
 #print axioms Birnam.RangeHandlers.same_size
 #print axioms Birnam.RangeHandlers.same_element_and_identity
 #print axioms Birnam.RangeHandlers.overflow_stays_nil
+
+#print axioms Birnam.LogMessages.bounded
+#print axioms Birnam.LogMessages.short_unchanged
+#print axioms Birnam.LogMessages.exact_suffix
+#print axioms Birnam.LogMessages.append_bounded
+#print axioms Birnam.LogMessages.burst_keeps_newest

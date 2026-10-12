@@ -249,8 +249,8 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("HelperEmission", "Birnam.HelperEmission"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints"), ("JsonStrings", "Birnam.JsonStrings"), ("JsonDispatch", "Birnam.JsonDispatch"), ("JsonNumbers", "Birnam.JsonNumbers"), ("RangeHandlers", "Birnam.RangeHandlers")]:
-        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers"} else FORMAL) / f"lean/{module}.lean").read_text()
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("HelperEmission", "Birnam.HelperEmission"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints"), ("JsonStrings", "Birnam.JsonStrings"), ("JsonDispatch", "Birnam.JsonDispatch"), ("JsonNumbers", "Birnam.JsonNumbers"), ("RangeHandlers", "Birnam.RangeHandlers"), ("LogMessages", "Birnam.LogMessages")]:
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages"} else FORMAL) / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
         # accidental proof holes or unsafe evaluator shortcuts in source.
@@ -264,8 +264,8 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "HelperEmission", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers"]:
-        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers"} else FORMAL) / f"lean/{module}.lean"),
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "HelperEmission", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages"]:
+        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages"} else FORMAL) / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:
             raise RuntimeError(f"Lean {module} failed; see {out / f'lean-{module}.log'}")
@@ -298,6 +298,9 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "cached-digest-wrong-name": ("SymbolNames", "digest row.1 == cache name", "digest row.1 == cache 0"),
+        "digest-collision-aliases-name": ("SymbolNames", "if key = name then some symbol else lookupName name rest", "if True then some symbol else lookupName name rest"),
+        "log-keeps-seven": ("LogMessages", "if xs.length > 6 then xs.drop (xs.length - 6) else xs", "if xs.length > 6 then xs.drop (xs.length - 7) else xs"),
         "range-wrong-end-comparison": ("RangeHandlers", "let handler := if compare value.1 last > 0 then", "let handler := if compare value.1 last >= 0 then"),
         "json-unsafe-short-bound": ("JsonNumbers", "short : bytes < 19", "short : bytes < 20"),
         "json-ignore-uppercase-exponent": ("JsonNumbers", "if upper then number else integer", "if upper then integer else integer"),
@@ -335,7 +338,7 @@ def check_lean(lean, out):
         "free-owner-batch": ("Semantics", "OwnerSchedule (List.replicate (n+1) owner ++ tail) (cost+1)", "OwnerSchedule (List.replicate (n+1) owner ++ tail) cost"),
     }
     for name, (module, before, after) in extra_mutations.items():
-        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers"} else FORMAL) / f"lean/{module}.lean").read_text()
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages"} else FORMAL) / f"lean/{module}.lean").read_text()
         if text.count(before) != 1: raise RuntimeError(f"mutation {name} is stale")
         changed = build / f"Broken_{name.replace('-', '_')}.lean"
         changed.write_text(text.replace(before, after))

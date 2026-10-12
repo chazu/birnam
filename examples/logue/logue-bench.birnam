@@ -1,0 +1,68 @@
+// Invoked by scripts/logue-bench.py in an isolated source copy. No terminal.
+// Configuration and fixture construction are outside measured operations.
+[System load: "logue-core.birnam"];
+[Module load: #json];
+[Module load: #time];
+let config := [Globals at: #LogueBenchConfig];
+let phase := [config at: #phase];
+let allocation := [config at: #allocation];
+let benchSnapshot := [|
+  {"player" -> [player value] "monsters" -> [monsters value]
+   "items" -> [items value] "mode" -> [mode value] "turn" -> [turn value]
+   "rng" -> [rngState value] "tile_count" -> [[tiles value] size]
+   "message_count" -> [[messages value] size]}
+];
+let benchArena := [|
+  [rndSeed value: [config at: #seed]];
+  [midCtr set: 0]; [turn set: 0]; [depth set: 1]; [mode set: #play];
+  [levels set: {}]; [items set: #[]]; [messages set: #[]]; [monsters set: #[]];
+  [player set: [[[[[mkPlayer value: #fighter] at: #x put: 2] at: #y put: 5]
+    at: #hp put: 10000] at: #maxHp put: 10000]];
+  [tiles set: [[1 to: 10] inject: {} into: [:grid :y |
+    [[1 to: [config at: #width]] inject: grid into: [:row :x |
+      [row at: [idx value: x value: y] put: #floor]]]]]];
+  [[0 to: [[config at: #monsters] - 1]] do: [:i |
+    [monsters set: [[monsters value] add: [mkMonster value: 1
+      value: [[[config at: #width] - 1] - [i / 8]] value: [[i mod: 8] + 1]]]]]]
+];
+let benchOperation := [[phase = "generation"]
+  ifTrue: [| [| [newGameSeeded value: #fighter value: [config at: #seed]]]]
+  ifFalse: [| [| [[1 to: [config at: #turns]] do: [:i | [endTurn value]]]]]];
+let benchState := [|
+  let state := [benchSnapshot value];
+  [[phase = "generation"] ifTrue: [| [state at: "levels" put: [levels value]]] ifFalse: [| state]]
+];
+// Warm once, then reset each sample. Store history is deliberately not erased.
+[[phase = "generation"] ifFalse: [| [benchArena value]]];
+[benchOperation value];
+let results := [[1 to: [config at: #samples]] collect: [:sample |
+  [[phase = "generation"] ifFalse: [| [benchArena value]]];
+  [[1 to: [config at: #batches]] collect: [:batch |
+    [System gc];
+    let beforeObjects := [System liveObjects];
+    let beforeBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];
+    [allocation ifTrue: [| [System autoGc: false]]];
+    let cpu := [16 clockNanos]; let wall := [6 clockNanos];
+    [benchOperation value];
+    let elapsed := [[6 clockNanos] - wall]; let used := [[16 clockNanos] - cpu];
+    let objects := [[System liveObjects] - beforeObjects];
+    let charged := [[[Execution wordResultOf: GC selector: #allocationBytes] asInteger] - beforeBytes];
+    [allocation ifTrue: [| [System autoGc: true]]];
+    [System gc];
+    let retainedObjects := [System liveObjects];
+    let retainedBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];
+    {"sample" -> sample "batch" -> batch "cpu_ns" -> used "wall_ns" -> elapsed
+     "objects_before" -> beforeObjects "objects_after_gc" -> retainedObjects
+     "charge_before" -> beforeBytes "charge_after_gc" -> retainedBytes
+     "allocated_objects" -> [allocation ifTrue: [| objects] ifFalse: [| nil]]
+     "allocated_charge" -> [allocation ifTrue: [| charged] ifFalse: [| nil]]
+     "state_json" -> [Json stringify: [benchState value]]}
+  ]]
+]];
+// Correctness-only replacement: suppress this live Vector's next do: callback
+// traversal, collect, then verify the next turn observes the replacement.
+let replacement := [[config at: #replace] ifTrue: [|
+  [Reflect defineMethod: #do: on: [monsters value] as: [:self :body | self]];
+  [System gc]; [endTurn value]; [benchSnapshot value]
+] ifFalse: [| nil]];
+[System println: [Json stringify: {"config" -> config "results" -> results "replacement" -> replacement}]]

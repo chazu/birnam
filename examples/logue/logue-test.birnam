@@ -120,4 +120,24 @@ let stressTurns := [newCell value: 0];
   [stressTurns set: [[stressTurns value] + 1]]]];
 [check value: "120 turns stay alive" value: [stressTurns value] value: 120];
 
+// The message bound applies on each append, including bursts in one turn.
+[messages set: #[]];
+let emptyMessages := [messages value];
+[msgTrim value];
+[check value: "empty log keeps identity" value: [[messages value] == emptyMessages] value: true];
+[[1 to: 6] do: [:i | [msg value: i]]];
+[check value: "six messages retained in order" value: [messages value] value: #[1 2 3 4 5 6]];
+let sixMessages := [messages value];
+[msgTrim value];
+[check value: "bounded log keeps identity" value: [[messages value] == sixMessages] value: true];
+[[7 to: 12] do: [:i | [msg value: i]]];
+[check value: "burst keeps newest six before turn end" value: [messages value] value: #[7 8 9 10 11 12]];
+[messages set: #[0 1 2 3 4 5 6 7 8 9]];
+[msgTrim value];
+[check value: "restored oversized log repaired" value: [messages value] value: #[4 5 6 7 8 9]];
+let retainedMessage := [Object clone];
+[msg value: retainedMessage];
+[System gc];
+[check value: "trimming preserves entry identity through GC" value: [[[messages value] at: 5] == retainedMessage] value: true];
+
 [System println: ["RESULT: " , [[[checks value] printString] , [" checks, " , [[[fails value] printString] , " failures"]]]]]

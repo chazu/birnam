@@ -42,6 +42,8 @@ struct Memory {
     core_visitor: Oop,
     thread: std::thread::ThreadId,
     selectors: HashMap<&'static [u8], Oop>,
+    // Same retained Symbol as the inventory entry; never a cached method.
+    allocation_charge_selector: Oop,
     phase: Cell<Phase>,
     tracers: RefCell<HashMap<usize, Owner>>,
     finalizers: RefCell<HashMap<usize, Owner>>,
@@ -393,6 +395,7 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             roots: roots_object,
             core_visitor,
             thread: std::thread::current().id(),
+            allocation_charge_selector: selectors[b"allocationChargeFor:".as_slice()],
             selectors,
             phase: Cell::new(Phase::Inactive),
             tracers: RefCell::new(HashMap::new()),
