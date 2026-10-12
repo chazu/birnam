@@ -1,3 +1,4 @@
+import JsonStrings
 import SlotHints
 import Relational
 import IndexedSnapshot
@@ -81,3 +82,8 @@ import Admission
 #print axioms Birnam.SlotHints.validated_hint_equals_current_lookup
 #print axioms Birnam.SlotHints.replacement_value_is_read
 #print axioms Birnam.SlotHints.shifted_key_falls_back
+
+#print axioms Birnam.JsonStrings.plain_decode
+#print axioms Birnam.JsonStrings.same_contents
+#print axioms Birnam.JsonStrings.empty_identity
+#print axioms Birnam.JsonStrings.nonempty_fresh

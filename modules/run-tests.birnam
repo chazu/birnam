@@ -21,6 +21,7 @@ let loadTestSource := [:path |
 
 // -- register every suite (loading defines + registers, runs nothing) ---------
 [loadTestSource value: "modules/html-test.birnam"];
+[loadTestSource value: "modules/json-test.birnam"];
 [loadTestSource value: "modules/markdown-test.birnam"];
 [loadTestSource value: "modules/random-test.birnam"];
 [loadTestSource value: "modules/doc-test.birnam"];

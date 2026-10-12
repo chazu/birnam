@@ -1,0 +1,63 @@
+// Ordinary authored JSON decoding: contents, identity, and live operation sends.
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+// Exercise this checkout's decoder even if an installed image already loaded Json.
+[System load: "modules/json.birnam"];
+let s := [TestSuite named: "JSON strings" module: #json];
+
+[s test: "plain bodies preserve contents and result identity rules" do: [:t |
+  let empty := "";
+  [t assert: [empty == [empty jsonUnescape]] describes: "empty input returns itself"];
+  [#[ "x" "duration_ms" "café/λ/猫" "line\nwith\ttabs" ] do: [:input |
+    let first := [input jsonUnescape];
+    let second := [input jsonUnescape];
+    [t expect: first equals: input describes: "plain bytes unchanged"];
+    [t deny: [first == input] describes: "nonempty result is a copy"];
+    [t deny: [first == second] describes: "each call makes a fresh result"]]]
+]];
+
+[s test: "escape decoding retains current supported meanings" do: [:t |
+  let cases := #[
+    #[ "\\n" "\n" ] #[ "\\t" "\t" ] #[ "\\r" "\r" ]
+    #[ "\\\"" "\"" ] #[ "\\\\" "\\" ] #[ "\\/" "/" ]
+    #[ "a\\nb" "a\nb" ] #[ "\\\\n" "\\n" ]
+    #[ "a\\\\b\\tend" "a\\b\tend" ]
+    #[ "\\b\\f\\u0041" "bfu0041" ]
+  ];
+  [cases do: [:pair |
+    [t expect: [[pair at: 0] jsonUnescape] equals: [pair at: 1] describes: "escape case"]]];
+  let input := "a\\nb";
+  [t deny: [input == [input jsonUnescape]] describes: "escaped result is fresh"];
+  [t expect: ["\"café\\n\"" jsonDecodeString] equals: "café\n" describes: "quoted token"]
+]];
+
+[s test: "plain path sends current scanning and slicing operations" do: [:t |
+  let input := "abc";
+  let scanned := [0 asCell];
+  let copied := [0 asCell];
+  [Reflect defineMethod: #includesSubstring: on: input as: [:self :needle |
+    [scanned inc]; false]];
+  [Reflect defineMethod: #copyFrom:to: on: input as: [:self :start :end |
+    [copied inc]; #[ start end ]]];
+  [t expect: [[input jsonUnescape] at: 0] equals: 0 describes: "copy starts at zero"];
+  [t expect: [[input jsonUnescape] at: 1] equals: 3 describes: "copy uses current size"];
+  [t expect: [scanned value] equals: 2 describes: "scanner runs on every call"];
+  [t expect: [copied value] equals: 2 describes: "slicer runs on every call"];
+  [Reflect defineMethod: #copyFrom:to: on: input as: [:self :start :end | "changed"]];
+  [t expect: [input jsonUnescape] equals: "changed" describes: "replacement is immediately visible"]
+]];
+
+[s test: "escaped path uses current escape-character decoding" do: [:t |
+  let input := "\\n";
+  let letter := "n";
+  [Reflect defineMethod: #jsonEscChar on: letter as: [:self | "custom"]];
+  [Reflect defineMethod: #at: on: input as: [:self :index |
+    [[index = 1] ifTrue: [| letter] ifFalse: [| "\\"]]]];
+  [t expect: [input jsonUnescape] equals: "custom" describes: "current escape decoder is called"]
+]];
+
+[s test: "JSON keys and values decode together" do: [:t |
+  let value := [Json parse: "{\"plain\":\"café\",\"line\\nkey\":\"tab\\tvalue\",\"empty\":\"\"}"];
+  [t expect: [value at: "plain"] equals: "café" describes: "plain key and value"];
+  [t expect: [value at: "line\nkey"] equals: "tab\tvalue" describes: "escaped key and value"];
+  [t expect: [value at: "empty"] equals: "" describes: "empty value"]
+]]

@@ -30,6 +30,12 @@ deoptimization. Use Lean/TLA+ when an optimization changes those boundaries.
 Keep GC's default at 16 MiB without adaptive scaling. Do not infer application
 speedups from isolated send reductions or from comparisons with different semantics.
 
+Authored algorithm changes may change their internal sends. Late binding applies
+to the messages the new algorithm actually sends; the algorithm does not need
+guards that reproduce its former implementation under method replacement.
+Compiler/runtime optimizations that bypass source-level sends still need the
+appropriate guards and deoptimization. Keep these two obligations distinct.
+
 ## First cycle
 
 The runnable [log-summary project](../../examples/log-summary/README.md) and
@@ -85,3 +91,23 @@ ordinary full-table fallback and current dispatch. Bootstrap BSS fell from
 Startup, warm processing, image size and peak RSS were essentially unchanged.
 Record this as a modest storage saving; the next cycle should return to profiling
 application CPU costs.
+
+The [CPU profiling follow-up](application-cpu-profile.md) finds JSON string
+unescaping dominant: 1.63 seconds for the fixture's strings versus 1.99 seconds
+for the full 50-record application. Native samples and an untimed dispatch
+census identify repeated namespace, guard, rooting and conversion work inside
+the string loop. The phase harness checks independent results; this cycle adds
+measurement evidence without changing runtime semantics.
+
+The [Execution follow-up](execution-name-access.md) avoids repeated hashing when
+retrieving eight retained selector Symbols. The final local comparison reduced
+full application CPU by 2.3% and string-unescaping CPU by 1.9%, preserving current
+namespace reads, admission and recovery. A separate admission-batching experiment
+was removed because its send reduction did not produce a clear CPU improvement.
+
+The [JSON algorithm rewrite](json-unescape-investigation.md) scans for backslashes
+and copies unescaped nonempty bodies once. All operations use ordinary current
+dispatch. Paired measurements improved the full application from 1.92 s to 405 ms
+and string unescaping from 1.60 s to 86 ms; a short-escape microcase was 1.5% slower.
+Full-pass allocation charge fell from 11.43 MiB to 2.95 MiB. The fixed GC budget,
+runtime guards and bootstrap behavior are unchanged.

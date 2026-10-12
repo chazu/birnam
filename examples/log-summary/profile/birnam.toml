@@ -1,0 +1,9 @@
+name = "log-summary-profile"
+version = "0.1.0"
+main = "main.birnam"
+source_roots = ["."]
+load = ["logSummary", "time"]
+
+[dependencies]
+logSummary = { path = ".." }
+time = { path = "../../../modules" }

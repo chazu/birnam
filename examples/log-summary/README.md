@@ -53,3 +53,16 @@ The existing Json parser retains its documented escape limitations (`\uXXXX`,
 `\b`, `\f`); generated records use raw UTF-8 and supported escapes. This cycle's
 [results](../../docs/measurements/log-summary-20261011.json) include the remaining
 startup-memory and throughput costs as well as the measured lookup improvement.
+
+For warmed CPU phase measurements with an independent result oracle:
+
+```sh
+python3 scripts/log-summary-profile.py --prefix /path/to/birnam-prefix --work /tmp/log-summary-profile
+```
+
+The nested `profile` project separates parsing, PEG matching, tree lowering,
+string decoding, validation and rendering. Timing runs retain normal GC;
+separate allocation runs disable automatic GC for one pass. These phases are
+independent workloads, not additive slices. See the
+[CPU investigation](../../docs/design/application-cpu-profile.md) for findings
+and sampling limitations.

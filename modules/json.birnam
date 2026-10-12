@@ -100,24 +100,28 @@
   c] doc:
   "Answers the unescaped meaning of the receiver as the byte after a backslash (n/t/r; else the byte itself)."];
 
-// Process backslash escapes in a string body (a fold that skips the byte each
-// escape consumes). Lifted from the TOML unescaper.
+// Scan before decoding. Most JSON keys and values have no backslashes; a single
+// slice preserves fresh nonempty results without building one String per byte.
+// These are ordinary late-bound sends, not guarded copies of an older algorithm.
 [Reflect defineMethod: #jsonUnescape on: String as: [:self |
   let n := [self size];
-  let step := [:st :i |
-    let out := [st at: 0];
-    let wasEsc := [st at: 1];
-    let ch := [self at: i];
-    [[wasEsc = 1]
-      ifTrue: [| #[ out 0 ]]
-      ifFalse: [| [[ch = "\\"]
-        ifTrue: [| #[ [out , [[self at: [i + 1]] jsonEscChar]] 1 ]]
-        ifFalse: [| #[ [out , ch] 0 ]]]]]];
-  let r := [[n = 0]
+  [[n = 0]
     ifTrue: [| self]
-    ifFalse: [| [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]];
-  r] doc:
-  "Processes backslash escapes in a JSON string body; answers the decoded String."];
+    ifFalse: [| [[self includesSubstring: "\\"]
+      ifTrue: [|
+        let step := [:st :i |
+          let out := [st at: 0];
+          let wasEsc := [st at: 1];
+          let ch := [self at: i];
+          [[wasEsc = 1]
+            ifTrue: [| #[ out 0 ]]
+            ifFalse: [| [[ch = "\\"]
+              ifTrue: [| #[ [out , [[self at: [i + 1]] jsonEscChar]] 1 ]]
+              ifFalse: [| #[ [out , ch] 0 ]]]]]];
+        [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]
+      ifFalse: [| [self copyFrom: 0 to: n]]]]]
+] doc:
+  "Processes backslash escapes in a JSON string body; scans and copies bodies without escapes."];
 
 // A quoted JSON string token → its decoded content (strip the quotes, unescape).
 [Reflect defineMethod: #jsonDecodeString on: String as: [:self |

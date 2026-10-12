@@ -1,5 +1,6 @@
 //! Execution-owned callable objects. See the local protocol and migration ledger.
 mod control;
+mod names;
 mod binding_proof;
 mod discarded_clone;
 mod entry;
@@ -68,7 +69,7 @@ struct Execution {
     method_behavior: Oop,
     prototype: Oop,
     thread: std::thread::ThreadId,
-    names: HashMap<&'static [u8], Oop>,
+    names: names::Names,
     methods: RefCell<HashMap<usize, Box<Callable>>>,
     entries: RefCell<HashMap<usize, Oop>>,
     scoped: RefCell<Vec<Oop>>,
@@ -924,7 +925,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             method_behavior,
             prototype,
             thread: std::thread::current().id(),
-            names,
+            names: names::Names::new(names),
             methods: RefCell::new(HashMap::new()),
             entries: RefCell::new(HashMap::new()),
             scoped: RefCell::new(Vec::new()),

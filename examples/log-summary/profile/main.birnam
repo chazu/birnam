@@ -1,0 +1,66 @@
+// Diagnostic phase measurements. Prepared inputs remain live between phases;
+// these are separate workloads, not additive slices of one timed invocation.
+// Allocation deltas are totals only in allocation mode, with automatic GC off.
+let args := [Globals at: #ProjectArgs];
+let text := [System readFile: [args at: 0]];
+let selected := [args at: 1];
+let iterations := [[args at: 2] asInteger];
+let mode := [args at: 3];
+let lines := [[[text split: "\n"] collect: [:line | [line trimmed]]] select: [:line | [[line size] > 0]]];
+let grammar := [Json grammar];
+let trees := [lines collect: [:line | [grammar parse: line from: #json]]];
+let records := [lines collect: [:line | [Json parse: line]]];
+let report := [LogSummary summarize: text];
+[[report isError] ifTrue: [| [LogSummary die: [report message]]]];
+let rendered := [Json stringify: report];
+let strings := [db localCell: #[]];
+let numbers := [db localCell: #[]];
+let visit := [db localCell: nil];
+[visit set: [:node :line |
+  [[[node ruleName] = "string"] ifTrue: [| [strings set: [[strings value] add: [node jsonText: line]]]]];
+  [[[node ruleName] = "number"] ifTrue: [| [numbers set: [[numbers value] add: #[node line]]]]];
+  [[node children] do: [:child | [[visit value] value: child value: line]]]
+]];
+[0 to: [[lines size] - 1] do: [:i | [[visit value] value: [trees at: i] value: [lines at: i]]]];
+let tokens := [strings value];
+let bodies := [tokens collect: [:token | [token copyFrom: 1 to: [[token size] - 1]]]];
+let numeric := [numbers value];
+let cases := {
+  "empty" -> [| nil]
+  "full" -> [| [LogSummary render: text]]
+  "split_trim" -> [| [[[text split: "\n"] collect: [:line | [line trimmed]]] select: [:line | [[line size] > 0]]]]
+  "parse" -> [| [lines collect: [:line | [Json parse: line]]]]
+  "peg" -> [| [lines collect: [:line | [grammar parse: line from: #json]]]]
+  "lower" -> [| [[0 to: [[lines size] - 1]] collect: [:i | [[[[trees at: i] children] at: 0] jsonValue: [lines at: i]]]]]
+  "validate" -> [| [records collect: [:record | [LogSummary validate: record]]]]
+  "render" -> [| [Json stringify: report]]
+  "decode_strings" -> [| [tokens collect: [:token | [token jsonDecodeString]]]]
+  "unescape" -> [| [bodies collect: [:body | [body jsonUnescape]]]]
+  "numbers" -> [| [numeric collect: [:pair | [[pair at: 0] jsonNumber: [pair at: 1]]]]]
+};
+let names := [[selected = "all"] ifTrue: [| #["empty" "full" "split_trim" "parse" "peg" "lower" "validate" "render" "decode_strings" "unescape" "numbers"]] ifFalse: [| #[selected]]];
+let results := [names collect: [:name |
+  let operation := [cases at: name];
+  let warm := [operation value];
+  [[mode = "sample"] ifTrue: [| [System println: "ready"]; [System readLine]]];
+  let samples := [[1 to: iterations] collect: [:i |
+    [System gc];
+    let allocation := [mode = "allocation"];
+    [allocation ifTrue: [| [System autoGc: false]]];
+    let beforeObjects := [System liveObjects];
+    let beforeBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];
+    let cpu := [16 clockNanos];
+    let wall := [6 clockNanos];
+    let value := [operation value];
+    let elapsed := [[6 clockNanos] - wall];
+    let used := [[16 clockNanos] - cpu];
+    let charged := [[[Execution wordResultOf: GC selector: #allocationBytes] asInteger] - beforeBytes];
+    let objects := [[System liveObjects] - beforeObjects];
+    [allocation ifTrue: [| [System autoGc: true]]];
+    [[value isError] ifTrue: [| [LogSummary die: [value message]]]];
+    {"cpu_ns" -> used "wall_ns" -> elapsed "allocation_bytes_delta" -> charged "object_delta" -> objects}
+  ]];
+  let observed := [[name = "peg"] ifTrue: [| [warm collect: [:tree | [tree end]]]] ifFalse: [| warm]];
+  {"phase" -> name "samples" -> samples "check_json" -> [Json stringify: observed]}
+]];
+[System println: [Json stringify: {"results" -> results "records" -> [lines size] "string_tokens" -> [tokens size] "string_bytes" -> [bodies inject: 0 into: [:n :s | [n + [s size]]]] "number_tokens" -> [numeric size] "string_inputs" -> tokens "number_inputs" -> [numeric collect: [:pair | [[pair at: 0] jsonText: [pair at: 1]]]] "report" -> report "rendered" -> rendered}]]
