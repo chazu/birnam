@@ -111,3 +111,10 @@ dispatch. Paired measurements improved the full application from 1.92 s to 405 m
 and string unescaping from 1.60 s to 86 ms; a short-escape microcase was 1.5% slower.
 Full-pass allocation charge fell from 11.43 MiB to 2.95 MiB. The fixed GC budget,
 runtime guards and bootstrap behavior are unchanged.
+
+The [value-conversion follow-up](json-value-conversion.md) stops kind dispatch
+after a match, then removes the second copy of unescaped quoted string bodies.
+Together they reduced full application CPU from 410 ms to 352 ms (14.1%) in a
+paired comparison. The second change independently saved 3.4% on top of dispatch;
+short escaped tokens cost 1.1% more. The full pass now adds 95,604 live objects
+and 2.50 MiB of allocation charge with automatic collection disabled for counting.

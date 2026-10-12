@@ -14,7 +14,13 @@ def main():
     parser.add_argument('--prefix', type=Path, required=True)
     parser.add_argument('--baseline-json', type=Path, required=True)
     parser.add_argument('--work', type=Path, required=True)
+    parser.add_argument('--phases', default='full,unescape,escaped_short',
+                        help='comma-separated: full, unescape, decode_strings, escaped_short, quoted_escaped_short')
     args = parser.parse_args()
+    phases = args.phases.split(',')
+    allowed = {'full', 'unescape', 'decode_strings', 'escaped_short', 'quoted_escaped_short'}
+    if len(set(phases)) != len(phases) or any(phase not in allowed for phase in phases):
+        parser.error('phases must be distinct supported names')
     work = args.work.resolve()
     if work == ROOT or ROOT.is_relative_to(work):
         parser.error('work must be a dedicated directory')
@@ -43,8 +49,10 @@ def main():
         projects[label] = project
         # An isolated workload of short escaped bodies makes scan overhead visible.
         p = project/'main.birnam'
-        code = p.read_text().replace('  "empty" -> [| nil]',
-            '  "escaped_short" -> [| [[1 to: 250] collect: [:i | ["\\\\n" jsonUnescape]]]]\n  "empty" -> [| nil]')
+        quoted = json.dumps(json.dumps('\n'))
+        extra = ('  "escaped_short" -> [| [[1 to: 250] collect: [:i | ["\\\\n" jsonUnescape]]]]\n'
+                 f'  "quoted_escaped_short" -> [| [[1 to: 250] collect: [:i | [{quoted} jsonDecodeString]]]]\n')
+        code = p.read_text().replace('  "empty" -> [| nil]', extra + '  "empty" -> [| nil]')
         p.write_text(code)
         built = command([binary, 'build', project], cwd=work, env=env, timeout=120)
         if built['exit_code']:
@@ -54,7 +62,7 @@ def main():
                 'runner_sha256': sha(Path(__file__)), 'profile_sha256': sha(ROOT/'examples/log-summary/profile/main.birnam'),
                 'method': 'ABBA per phase, one warmup and 3 timed iterations per process. Same runtime; normal GC. Independent workloads, not additive attribution.',
                 'rows': []}
-    for phase in ['full', 'unescape', 'escaped_short']:
+    for phase in phases:
         for label in ['baseline', 'candidate', 'candidate', 'baseline']:
             result = command([binary, 'run', projects[label], '--', fixture, phase, 3, 'time'],
                              cwd=work, env=env, timeout=120)
@@ -66,7 +74,7 @@ def main():
             observed = json.loads(row['check_json'])
             if phase == 'full':
                 assert json.loads(observed) == expected
-            elif phase == 'unescape':
+            elif phase in ('unescape', 'decode_strings'):
                 assert observed == list(map(json.loads, data['string_inputs']))
             else:
                 assert observed == ['\n']*250
@@ -74,7 +82,7 @@ def main():
             save_json(work/'results.json', evidence)
             print(phase, label, round(statistics.median(s['cpu_ns'] for s in row['samples'])/1e6, 3), flush=True)
     evidence['medians'] = {}
-    for phase in ['full', 'unescape', 'escaped_short']:
+    for phase in phases:
         med = {label: statistics.median(s['cpu_ns'] for r in evidence['rows']
                     if r['variant'] == label and r['phase'] == phase for s in r['samples'])
                for label in sources}

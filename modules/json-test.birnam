@@ -2,7 +2,7 @@
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
 // Exercise this checkout's decoder even if an installed image already loaded Json.
 [System load: "modules/json.birnam"];
-let s := [TestSuite named: "JSON strings" module: #json];
+let s := [TestSuite named: "JSON" module: #json];
 
 [s test: "plain bodies preserve contents and result identity rules" do: [:t |
   let empty := "";
@@ -60,4 +60,72 @@ let s := [TestSuite named: "JSON strings" module: #json];
   [t expect: [value at: "plain"] equals: "café" describes: "plain key and value"];
   [t expect: [value at: "line\nkey"] equals: "tab\tvalue" describes: "escaped key and value"];
   [t expect: [value at: "empty"] equals: "" describes: "empty value"]
+]]
+;
+
+[s test: "all value kinds and nested containers" do: [:t |
+  [t expect: [Json parse: "7"] equals: 7 describes: "integer root"];
+  [t assert: [[Reflect vtableOf: [Json parse: "1.5"]] == FloatVt] describes: "float root"];
+  [t assert: [[Json parse: "true"] == true] describes: "true root"];
+  [t assert: [[Json parse: "false"] == false] describes: "false root"];
+  [t assert: [[Json parse: "null"] isNil] describes: "null root"];
+  [t expect: [[Json parse: "[]"] size] equals: 0 describes: "empty array"];
+  [t expect: [[[Json parse: "{}"] keys] size] equals: 0 describes: "empty object"];
+  let value := [Json parse: "[null,true,false,\"text\",1,{\"a\":[2,3]}]"];
+  [t expect: [value at: 3] equals: "text" describes: "nested string"];
+  [t expect: [[[value at: 5] at: "a"] at: 1] equals: 3 describes: "nested object and array"]
+]];
+
+[s test: "type dispatch stops and uses the current handler" do: [:t |
+  let node := [[[[Json grammar] parse: "7" from: #json] children] at: 0];
+  let tag := "number";
+  let comparisons := [0 asCell];
+  [Reflect defineMethod: #= on: tag as: [:self :other |
+    [comparisons inc]; [other = "number"]]];
+  [Reflect defineMethod: #ruleName on: node as: [:self | tag]];
+  [Reflect defineMethod: #jsonNumber: on: node as: [:self :src | "first"]];
+  [t expect: [node jsonValue: "7"] equals: "first" describes: "current numeric handler"];
+  [t expect: [comparisons value] equals: 2 describes: "only string and number tested"];
+  [Reflect defineMethod: #jsonNumber: on: node as: [:self :src | "second"]];
+  [t expect: [node jsonValue: "7"] equals: "second" describes: "replacement takes effect"];
+  [t expect: [comparisons value] equals: 4 describes: "dispatch remains late-bound"];
+  [Reflect defineMethod: #ruleName on: node as: [:self | "unknown"]];
+  [t assert: [[node jsonValue: "7"] isNil] describes: "unknown kind still returns nil"]
+]]
+;
+
+[s test: "quoted decoding preserves fresh results" do: [:t |
+  let cases := #[ #[ "\"\"" "" ] #[ "\"plain\"" "plain" ]
+    #[ "\"café\"" "café" ] #[ "\"a\\nb\"" "a\nb" ] ];
+  [cases do: [:pair |
+    let input := [pair at: 0];
+    let first := [input jsonDecodeString];
+    [t expect: first equals: [pair at: 1] describes: "quoted contents"];
+    [t deny: [first == input] describes: "result differs from quoted token"];
+    [t deny: [first == [input jsonDecodeString]] describes: "successive decoded results are fresh"]
+  ]]
+]];
+
+[s test: "quoted decoder returns its fresh plain slice using current sends" do: [:t |
+  let input := "\"abc\"";
+  let body := "abc";
+  let copies := [0 asCell];
+  let scans := [0 asCell];
+  [Reflect defineMethod: #copyFrom:to: on: input as: [:self :start :end |
+    [copies inc]; body]];
+  [Reflect defineMethod: #includesSubstring: on: body as: [:self :needle |
+    [scans inc]; [System gc]; false]];
+  [t assert: [[input jsonDecodeString] == body] describes: "plain slice is not copied again"];
+  [t expect: [copies value] equals: 1 describes: "token slicing remains a live send"];
+  [t expect: [scans value] equals: 1 describes: "scan remains a live send"]
+]];
+
+[s test: "quoted escaped bodies use the current unescaper" do: [:t |
+  let input := "\"\\n\"";
+  let body := "\\n";
+  [Reflect defineMethod: #copyFrom:to: on: input as: [:self :start :end | body]];
+  [Reflect defineMethod: #jsonUnescape on: body as: [:self | "decoded"]];
+  [t expect: [input jsonDecodeString] equals: "decoded" describes: "current unescape handler"];
+  [Reflect defineMethod: #jsonUnescape on: body as: [:self | "replacement"]];
+  [t expect: [input jsonDecodeString] equals: "replacement" describes: "changed unescape handler"]
 ]]

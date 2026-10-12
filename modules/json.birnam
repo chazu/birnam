@@ -126,9 +126,10 @@
 // A quoted JSON string token → its decoded content (strip the quotes, unescape).
 [Reflect defineMethod: #jsonDecodeString on: String as: [:self |
   let body := [self copyFrom: 1 to: [[self size] - 1]];
-  let r := [body jsonUnescape];
-  r] doc:
-  "Decodes a quoted JSON string token: strips the surrounding quotes and unescapes the body."];
+  [[body includesSubstring: "\\"]
+    ifTrue: [| [body jsonUnescape]]
+    ifFalse: [| body]]
+] doc: "Decodes a quoted JSON string token: copies the body, then unescapes it only when needed."];
 
 // -- string escapes (stringify side) ------------------------------------------
 
@@ -180,13 +181,16 @@
 // A typed value node → the birnam value it denotes (recursive for object/array).
 [Reflect defineMethod: #jsonValue: on: PegCstVt as: [:self :src |
   let r := [self ruleName];
-  let vStr := [[r = "string"]  ifTrue: [| [[self jsonText: src] jsonDecodeString]] ifFalse: [| nil]];
-  let vNum := [[r = "number"]  ifTrue: [| [self jsonNumber: src]] ifFalse: [| vStr]];
-  let vObj := [[r = "object"]  ifTrue: [| [self jsonObject: src]] ifFalse: [| vNum]];
-  let vArr := [[r = "array"]   ifTrue: [| [[self children] collect: [:c | [c jsonValue: src]]]] ifFalse: [| vObj]];
-  let vLit := [[r = "literal"] ifTrue: [| [self jsonLiteral: src]] ifFalse: [| vArr]];
-  vLit] doc:
-  "Lowers a typed value node over source `src` to the birnam value it denotes (recursive for objects/arrays)."];
+  [[r = "string"] ifTrue: [| [[self jsonText: src] jsonDecodeString]] ifFalse: [|
+    [[r = "number"] ifTrue: [| [self jsonNumber: src]] ifFalse: [|
+      [[r = "object"] ifTrue: [| [self jsonObject: src]] ifFalse: [|
+        [[r = "array"] ifTrue: [| [[self children] collect: [:c | [c jsonValue: src]]]] ifFalse: [|
+          [[r = "literal"] ifTrue: [| [self jsonLiteral: src]] ifFalse: [| nil]]
+        ]]
+      ]]
+    ]]
+  ]]
+] doc: "Lowers a typed value node over src, stopping at the matching kind (recursive for objects/arrays)."];
 
 // -- parse entry point --------------------------------------------------------
 

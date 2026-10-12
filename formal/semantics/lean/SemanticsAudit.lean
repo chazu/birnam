@@ -1,3 +1,4 @@
+import JsonDispatch
 import JsonStrings
 import SlotHints
 import Relational
@@ -87,3 +88,10 @@ import Admission
 #print axioms Birnam.JsonStrings.same_contents
 #print axioms Birnam.JsonStrings.empty_identity
 #print axioms Birnam.JsonStrings.nonempty_fresh
+
+#print axioms Birnam.JsonDispatch.same_value
+#print axioms Birnam.JsonDispatch.no_more_checks
+#print axioms Birnam.JsonDispatch.fixture_saves_checks
+
+#print axioms Birnam.JsonStrings.quoted_result_fresh
+#print axioms Birnam.JsonStrings.quoted_calls_distinct
