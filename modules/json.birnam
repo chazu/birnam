@@ -154,10 +154,17 @@
 // A #number span → Integer, or Float when it has a fraction or exponent.
 [Reflect defineMethod: #jsonNumber: on: PegCstVt as: [:self :src |
   let t := [self jsonText: src];
-  let isF := [[t includesSubstring: "."] | [[t includesSubstring: "e"] | [t includesSubstring: "E"]]];
-  let r := [isF ifTrue: [| [t asNumber]] ifFalse: [| [t asInteger]]];
-  r] doc:
-  "Lowers a #number node over source `src` to an Integer, or a Float when it has a fraction or exponent."];
+  // At most 18 bytes means at most 18 decimal digits: a signed i64 cannot
+  // overflow. asNumber therefore preserves the Integer/Float distinction.
+  // Longer integer tokens must still use asInteger (overflow answers nil).
+  [[[t size] < 19] ifTrue: [| [t asNumber]] ifFalse: [|
+    [[t includesSubstring: "."] ifTrue: [| [t asNumber]] ifFalse: [|
+      [[t includesSubstring: "e"] ifTrue: [| [t asNumber]] ifFalse: [|
+        [[t includesSubstring: "E"] ifTrue: [| [t asNumber]] ifFalse: [| [t asInteger]]]
+      ]]
+    ]]
+  ]]
+] doc: "Lowers a number token; short tokens use asNumber, while long integer tokens retain exact overflow handling."];
 
 // A #literal span → true / false / nil.
 [Reflect defineMethod: #jsonLiteral: on: PegCstVt as: [:self :src |

@@ -129,3 +129,48 @@ let s := [TestSuite named: "JSON" module: #json];
   [Reflect defineMethod: #jsonUnescape on: body as: [:self | "replacement"]];
   [t expect: [input jsonDecodeString] equals: "replacement" describes: "changed unescape handler"]
 ]]
+;
+
+[s test: "numeric length boundaries preserve Integer and overflow behavior" do: [:t |
+  let cases := #[ #[ "0" "0" ] #[ "-0" "0" ]
+    #[ "999999999999999999" "999999999999999999" ]
+    #[ "1000000000000000000" "1000000000000000000" ]
+    #[ "9223372036854775807" "9223372036854775807" ]
+    #[ "-9223372036854775808" "-9223372036854775808" ]
+    #[ "0000000000000000000000001" "1" ] ];
+  [cases do: [:pair |
+    let value := [Json parse: [pair at: 0]];
+    [t assert: [[Reflect vtableOf: value] == IntegerVt] describes: "integer kind"];
+    [t expect: [value printString] equals: [pair at: 1] describes: "exact integer value"]]];
+  [#[ "9223372036854775808" "9999999999999999999" "-9223372036854775809" "18446744073709551615" ] do: [:text |
+    [t assert: [[Json parse: text] isNil] describes: "overflow does not become Float"]]]
+]];
+
+[s test: "short and long decimal and exponent forms remain Floats" do: [:t |
+  [#[ "1.5" "-0.0" "1e3" "1E-3" "1e309"
+      "1.234567890123456789012345" "-0.000000000000000001"
+      "1234567890123456789.0" "1234567890123456789e-5" "1234567890123456789E-5" ] do: [:text |
+    [t assert: [[Reflect vtableOf: [Json parse: text]] == FloatVt] describes: "floating syntax keeps Float kind"]]];
+  [t expect: [Json parse: "1.5"] equals: 1.5 describes: "decimal value"];
+  [t expect: [Json parse: "1e3"] equals: 1000.0 describes: "exponent value"];
+  [t expect: [[Json parse: "-0.0"] printString] equals: "-0.0" describes: "negative zero"];
+  [#[ "NaN" "Infinity" "+1" "1." "1e" "1e+" "--1" ] do: [:text |
+    [t assert: [[Json parse: text] isError] describes: "malformed input rejected by grammar"]]]
+]];
+
+[s test: "numeric conversion uses current methods on both paths" do: [:t |
+  let node := [[[[Json grammar] parse: "7" from: #json] children] at: 0];
+  let short := "123";
+  [Reflect defineMethod: #jsonText: on: node as: [:self :src | short]];
+  [Reflect defineMethod: #asNumber on: short as: [:self | "short"]];
+  [t expect: [node jsonNumber: "7"] equals: "short" describes: "current short conversion"];
+  [Reflect defineMethod: #asNumber on: short as: [:self | "replacement"]];
+  [t expect: [node jsonNumber: "7"] equals: "replacement" describes: "changed short conversion"];
+  let long := "9223372036854775808";
+  [Reflect defineMethod: #jsonText: on: node as: [:self :src | long]];
+  [Reflect defineMethod: #asInteger on: long as: [:self | "long integer"]];
+  [Reflect defineMethod: #asNumber on: long as: [:self | "long float"]];
+  [t expect: [node jsonNumber: "7"] equals: "long integer" describes: "current long integer conversion"];
+  [Reflect defineMethod: #includesSubstring: on: long as: [:self :needle | [needle = "e"]]];
+  [t expect: [node jsonNumber: "7"] equals: "long float" describes: "current classifier and float conversion"]
+]]

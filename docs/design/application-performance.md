@@ -118,3 +118,11 @@ Together they reduced full application CPU from 410 ms to 352 ms (14.1%) in a
 paired comparison. The second change independently saved 3.4% on top of dispatch;
 short escaped tokens cost 1.1% more. The full pass now adds 95,604 live objects
 and 2.50 MiB of allocation charge with automatic collection disabled for counting.
+
+The [numeric-conversion follow-up](json-number-conversion.md) uses `asNumber`
+directly for valid tokens shorter than 19 bytes, with a proved signed-integer
+bound, and short-circuits classification of longer tokens. The paired application
+result improves from 350 ms to 330 ms (5.6% less CPU); short/long Float-array parsing
+also improves. A long-integer-only conversion workload is 14.6% slower, an explicit
+tradeoff for retaining exact overflow behavior. Grammar, CST layout, late binding
+and runtime deoptimization remain unchanged.

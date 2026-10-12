@@ -1,3 +1,4 @@
+import JsonNumbers
 import JsonDispatch
 import JsonStrings
 import SlotHints
@@ -95,3 +96,11 @@ import Admission
 
 #print axioms Birnam.JsonStrings.quoted_result_fresh
 #print axioms Birnam.JsonStrings.quoted_calls_distinct
+
+#print axioms Birnam.JsonNumbers.decimal_bound
+#print axioms Birnam.JsonNumbers.short_decimal_fits
+#print axioms Birnam.JsonNumbers.short_token_fits
+#print axioms Birnam.JsonNumbers.signed_short_fits
+#print axioms Birnam.JsonNumbers.bounded_same_value
+#print axioms Birnam.JsonNumbers.long_uses_original
+#print axioms Birnam.JsonNumbers.lazy_same_value
