@@ -212,3 +212,21 @@ The observable contract includes replacement callbacks; passive census events
 are diagnostic costs, not an assertion that the full public operation has a
 minimal message trace. No root coalescing, Block/Frame omission or arithmetic
 specialization follows from these guard proofs.
+
+## Authored first-match search
+
+`CollectionSearch.lean` proves that replacing the full fold with early return
+preserves the result, predicate state effects and ordered predicate calls under
+canonical conditional/nil contracts and a fixed element sequence. The abstract
+predicate may update state used by its later invocations; non-nil Error results
+remain ordinary values. A nil match continues. The theorem deliberately does
+not equate internal traversal sends, allocation observations or arbitrary
+replaced accessors: this is an authored library algorithm change, not a compiler
+rewrite of a user program.
+
+`CollectionSearch.tla` checks a bounded search with parked predicates, GC,
+replacement, cancellation and resumption. The entered predicate retains its
+version and element; the next read uses current contents. Negative cases require
+counterexamples for replay, stale reads, missing roots and premature nil return.
+Executable collection-search tests connect these abstract contracts to installed
+Birnam, including one-step Machine budgets and mapped/rebuilt saved images.

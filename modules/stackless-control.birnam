@@ -187,6 +187,31 @@
       ifTrue: [| found]
       ifFalse: [| [[body value: each] ifTrue: [| each] ifFalse: [| nil]]]]]]]];
 
+// Keep the fold fallback for collections that only implement inject:into:.
+// Indexable families can finish without traversing the suffix. A matching nil
+// still means "not found", as in the fold; ordinary Error results remain values.
+// Size, elements, predicates and recursive steps are all ordinary live sends.
+[Reflect defineMethod: #detect: on: Vector as: [:self :body |
+  [self stacklessDetect: body from: 0]]];
+[Reflect defineMethod: #detect: on: Range as: [:self :body |
+  [self stacklessDetect: body from: 0]]];
+[Reflect defineMethod: #detect: on: String as: [:self :body |
+  [self stacklessDetect: body from: 0]]];
+[Reflect defineMethod: #detect: on: MapVt as: [:self :body |
+  [[self values] detect: body]]];
+
+[Reflect defineMethod: #stacklessDetect:from: on: Collection as: [:self :body :index |
+  [[index >= [self size]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let each := [self at: index];
+      [[body value: each]
+        ifTrue: [|
+          [[each notNil]
+            ifTrue: [| each]
+            ifFalse: [| [self stacklessDetect: body from: [index + 1]]]]]
+        ifFalse: [| [self stacklessDetect: body from: [index + 1]]]]]]]];
+
 [Reflect defineMethod: #detect:ifNone: on: Collection as: [:self :body :none |
   let found := [self detect: body];
   [[found notNil] ifTrue: [| found] ifFalse: [| [none value]]]]];

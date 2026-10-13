@@ -1,0 +1,125 @@
+// Shared search contracts, including live dispatch and resumable predicates.
+[[Globals includes: #TestSuite] ifFalse: [| [System load: "modules/test.birnam"]]];
+let s := [TestSuite named: "Collection search" module: #stacklessControl];
+
+[s test: "detect preserves nil, identity, order and absence" do: [:t |
+  let visits := [#[] asCell];
+  let item := [Object clone];
+  let found := [#[nil item 3] detect: [:each |
+    [visits set: [[visits value] add: each]]; true]];
+  [t assert: [found == item] describes: "returns the original non-nil match"];
+  [t expect: [visits value] equals: #[nil item] describes: "nil match continues, later predicates stop"];
+  [t expect: [#[nil nil] detect: [:each | true] ifNone: [| #absent]] equals: #absent describes: "all nil matches remain absent"];
+  [t expect: [#[] detect: [:each | [visits set: #bad]] ifNone: [| #empty]] equals: #empty describes: "empty search invokes no predicate"];
+  [t expect: [#[1 2 3] detect: [:each | [each = 3]]] equals: 3 describes: "last match"];
+  [t expect: [#[1 2 3] detect: [:each | false] ifNone: [| #missing]] equals: #missing describes: "no match"];
+  let noneCalls := [0 asCell];
+  [t assert: [[#[item] detect: [:each | true] ifNone: [| [noneCalls inc]]] == item] describes: "ifNone preserves result identity"];
+  [t expect: [noneCalls value] equals: 0 describes: "ifNone is lazy"];
+  [#[] detect: [:each | true] ifNone: [| [noneCalls inc]]];
+  [t expect: [noneCalls value] equals: 1 describes: "absent block runs once"]]];
+
+[s test: "indexable search stops actual element reads" do: [:t |
+  let vector := #[1 2 3];
+  let reads := [#[] asCell];
+  [Reflect defineMethod: #at: on: vector as: [:self :index |
+    [reads set: [[reads value] add: index]]; [index + 1]]];
+  [t expect: [vector detect: [:each | true]] equals: 1 describes: "first hit"];
+  [t expect: [reads value] equals: #[0] describes: "suffix elements are never read"];
+  [reads set: #[]];
+  [t expect: [vector detect: [:each | false]] equals: nil describes: "exhausted search"];
+  [t expect: [reads value] equals: #[0 1 2] describes: "miss reads every element in order"]]];
+
+[s test: "Range String and Map retain their order and values" do: [:t |
+  [t expect: [[4 to: 8] detect: [:each | [each > 5]]] equals: 6 describes: "range first hit"];
+  [t expect: [[8 to: 4] detect: [:each | true]] equals: nil describes: "empty range"];
+  [t expect: ["abcd" detect: [:each | [each = "c"]]] equals: "c" describes: "string byte search"];
+  [t expect: ["" detect: [:each | true]] equals: nil describes: "empty string"];
+  let map := {#a -> 3 #b -> nil #c -> 4};
+  [t expect: [map detect: [:each | [each notNil]]] equals: [[map values] detect: [:each | [each notNil]]] describes: "map follows its values order"];
+  [t expect: [{} detect: [:each | true]] equals: nil describes: "empty map"]]];
+
+[s test: "fold-only collections still work and errors are values" do: [:t |
+  let custom := [ObjectModel newSlots: #[] parent: Collection];
+  [Reflect defineMethod: #inject:into: on: custom as: [:self :initial :body |
+    [body value: [body value: initial value: nil] value: 7]]];
+  [t expect: [custom detect: [:each | true]] equals: 7 describes: "custom collection needs no indexed access"];
+  let error := [Error kind: #searchValue];
+  [t assert: [[#[error 4] detect: [:each | true]] == error] describes: "Error element retains identity"];
+  let calls := [0 asCell];
+  let rejected := [#[1 2] detect: [:each | [calls inc]; error]];
+  [t assert: [rejected isError] describes: "Error predicate follows ordinary conditional sends"];
+  [t expect: [calls value] equals: 1 describes: "non-nil conditional error ends predicate calls"];
+  let reference := [custom detect: [:each | 42]];
+  [t expect: [[#[1 2] detect: [:each | 42]] kind] equals: [reference kind] describes: "nonboolean predicate keeps ordinary error kind"]]];
+
+[s test: "search observes edits before the next step" do: [:t |
+  let shortened := #[1 2 3];
+  let calls := [0 asCell];
+  [t expect: [shortened detect: [:each |
+    [calls inc]; [Reflect defineMethod: #size on: shortened as: [:self | 1]]; false]] equals: nil describes: "next bound is live"];
+  [t expect: [calls value] equals: 1 describes: "shortened bound stops next callback"];
+  let changed := #[1 2 3];
+  [t expect: [changed detect: [:each |
+    [[each = 1] ifTrue: [|
+      [Reflect defineMethod: #at: on: changed as: [:self :index | 99]]; false]
+      ifFalse: [| true]]]] equals: 99 describes: "next element lookup sees replacement"];
+  let text := ["abc" , ""];
+  let contents := ["abc" asCell];
+  [Reflect defineMethod: #at: on: text as: [:self :index | [[contents value] at: index]]];
+  [t expect: [text detect: [:each |
+    [[each = "a"] ifTrue: [| [contents set: "azc"]; false] ifFalse: [| true]]]] equals: "z" describes: "String accessor reads current contents"];
+  let predicate := [Object clone];
+  [Reflect defineMethod: #value: on: predicate as: [:self :each |
+    [Reflect defineMethod: #value: on: self as: [:next :value | true]]; false]];
+  [t expect: [#[1 2 3] detect: predicate] equals: 2 describes: "predicate replacement applies on the next invocation"];
+  let delegated := #[1 2];
+  [t expect: [delegated detect: [:each |
+    [Reflect defineMethod: #stacklessDetect:from: on: delegated as: [:self :body :index | #changed]]; false]] equals: #changed describes: "recursive helper is replaceable"];
+  [Reflect defineMethod: #detect: on: delegated as: [:self :body | #newSearch]];
+  [t expect: [delegated detect: [:each | true]] equals: #newSearch describes: "public search is replaceable"]]];
+
+[s test: "suspended predicates retain current element and next live sends" do: [:t |
+  let visited := [#[] asCell];
+  let values := #[11 22 33];
+  let task := [TaskControl start: [:task |
+    [values detect: [:each |
+      [visited set: [[visited value] add: each]];
+      [task wait]]]]];
+  [t expect: [visited value] equals: #[11] describes: "search parks in its first predicate"];
+  [t assert: [[task pollOutcome] isNil] describes: "suspension is not an absent result"];
+  let firstToken := [task waitToken];
+  [System gc];
+  [Reflect defineMethod: #at: on: values as: [:self :index | 99]];
+  [t assert: [task resolve: firstToken with: false] describes: "first predicate resumes"];
+  [t expect: [visited value] equals: #[11 99] describes: "no replay and next read sees edit"];
+  let secondToken := [task waitToken];
+  [System gc];
+  [t assert: [task resolve: secondToken with: true] describes: "second predicate resumes"];
+  [t expect: [task pollOutcome] equals: #[#success 99] describes: "current element survives suspension and GC"];
+  [t expect: [visited value] equals: #[11 99] describes: "success never visits suffix"]]];
+
+[s test: "cancelling a suspended search runs cleanup without further predicates" do: [:t |
+  let calls := [0 asCell]; let cleaned := [0 asCell];
+  let task := [TaskControl start: [:task |
+    [task ensure: [| [#[1 2 3] detect: [:each | [calls inc]; [task wait]]]]
+      cleanup: [| [cleaned inc]]]]];
+  let token := [task waitToken];
+  [System gc];
+  [task cancel: #searchStopped];
+  [t expect: [task pollOutcome] equals: #[#cancelled #searchStopped] describes: "search cancellation settles"];
+  [t expect: [calls value] equals: 1 describes: "cancelled predicate is not replayed"];
+  [t expect: [cleaned value] equals: 1 describes: "cleanup runs once"];
+  [t expect: [task resolve: token with: true] equals: false describes: "stale resume cannot restart search"]]];
+
+[s test: "budget stops preserve search progress" do: [:t |
+  let answer := [nil asCell]; let calls := [0 asCell];
+  let machine := [Machine new];
+  [machine runBlock: [|
+    [answer set: [[1 to: 8] detect: [:each | [calls inc]; [each = 7]]]]] budget: 0];
+  [t expect: [calls value] equals: 0 describes: "zero budget runs no predicate"];
+  [[| [machine isRunnable]] whileTrue: [|
+    [machine continueWithBudget: 1]; [System gc]]];
+  [t expect: [answer value] equals: 7 describes: "one-step resumes preserve answer"];
+  [t expect: [calls value] equals: 7 describes: "budget stops never replay predicates"];
+  [t expect: [machine executionState] equals: #completed describes: "bounded search completes"]]];

@@ -73,11 +73,14 @@ unchanged. That is exactly why folds work:
 [items inject: #[] into: [:acc :e | [acc add: [e squared]]]]
 ```
 
-`inject:into:` is the universal primitive — `collect:`, `select:`,
-`detect:ifNone:`, `count:`, `allSatisfy:` and the rest all derive from it, on
-every family (Vector, Map, Range, String). Folds cannot early-exit; for
-scan-until-hit over long input use `whileTrue:` with cells, or keep the
-scanner on the native floor.
+`inject:into:` supplies the general Collection protocol, including `collect:`,
+`select:`, `count:` and `allSatisfy:`. For first-match search, use `detect:` or
+`detect:ifNone:`. The installed Vector, Range and String drivers stop traversal
+at the first non-nil match. Map searches its values projection in the same order;
+constructing that projection still visits the map. A matching nil means "not
+found", so search continues. Custom collections that provide only a fold retain
+the generic search fallback. Predicates and traversal helpers remain replaceable
+ordinary methods; search callbacks can suspend through the stackless driver.
 
 Equality is by **value** where it makes sense: numbers, strings, symbols, and
 whole collections compare element-wise with `=`. Identity is `==`.

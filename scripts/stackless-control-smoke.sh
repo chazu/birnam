@@ -60,6 +60,8 @@ let handled := [[| [Error kind: #expected]] on: #expected do: [:error | #handled
 [[| 41] ensure: [| [cleaned set: true]]];
 [System println: handled];
 [System println: [cleaned value]];
+[System println: [[1 to: 100000] detect: [:each | [each = 100000]]]];
+[System println: [[1 to: 100000] detect: [:each | false]]];
 EOF
 
 "$bin" "$run_script" >"$smoke_root/run.out"
@@ -84,6 +86,8 @@ true
 7
 #handled
 true
+100000
+nil
 EOF
 
 cmp "$smoke_root/expected.out" "$smoke_root/run.out"

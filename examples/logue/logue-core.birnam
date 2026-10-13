@@ -143,8 +143,7 @@ let isPlayerAt := [:x :y |
 // ===========================================================================
 
 let monsterAt := [:x :y |
-  let hits := [[monsters value] select: [:m | [[[m at: #x] = x] & [[m at: #y] = y]]]];
-  [[[hits size] > 0] ifTrue: [| [hits at: 0]] ifFalse: [| nil]]];
+  [[monsters value] detect: [:m | [[[m at: #x] = x] & [[m at: #y] = y]]]]];
 
 let occupied := [:x :y | [[[monsterAt value: x value: y] isNil] not]];
 
@@ -349,8 +348,7 @@ let equipArmor := [:name :def |
 // ===========================================================================
 
 let itemAt := [:x :y |
-  let hits := [[items value] select: [:it | [[[it at: #x] = x] & [[it at: #y] = y]]]];
-  [[[hits size] > 0] ifTrue: [| [hits at: 0]] ifFalse: [| nil]]];
+  [[items value] detect: [:it | [[[it at: #x] = x] & [[it at: #y] = y]]]]];
 
 let removeItemAt := [:x :y |
   [items set: [[items value] select: [:it | [[[[it at: #x] = x] & [[it at: #y] = y]] not]]]]];

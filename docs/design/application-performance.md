@@ -163,3 +163,8 @@ The [ordinary method-lookup investigation](method-lookup.md) measures registry,
 slot-hint and compiler-inlining alternatives on both applications. The retained
 candidate changes private Rust code generation while keeping the lookup
 algorithm, current bindings and recovery behavior intact.
+
+The [shared collection-search investigation](collection-search.md) replaces
+remaining suffix traversal with authored early return, preserves the nil and
+resumable callback contracts, and measures the library separately from Logue
+adopting the search API.

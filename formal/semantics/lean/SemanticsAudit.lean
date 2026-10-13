@@ -1,3 +1,4 @@
+import CollectionSearch
 import LogMessages
 import RangeHandlers
 import JsonNumbers
@@ -116,3 +117,11 @@ import Admission
 #print axioms Birnam.LogMessages.exact_suffix
 #print axioms Birnam.LogMessages.append_bounded
 #print axioms Birnam.LogMessages.burst_keeps_newest
+
+#print axioms Birnam.CollectionSearch.found_suffix
+#print axioms Birnam.CollectionSearch.same_result_state_callbacks
+#print axioms Birnam.CollectionSearch.hit_stops
+#print axioms Birnam.CollectionSearch.miss_continues
+#print axioms Birnam.CollectionSearch.matching_nil_continues
+#print axioms Birnam.CollectionSearch.predicate_state_is_live
+#print axioms Birnam.CollectionSearch.direct_branch_equivalent
