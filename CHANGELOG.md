@@ -8,6 +8,8 @@ loader ports are complete.
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-10-13
+
 - Port Trace graph traversal and observation policy to Birnam while preserving
   scoped roots, explicit coverage gaps, saved images and live method replacement.
 
