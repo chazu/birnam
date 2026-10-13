@@ -370,3 +370,65 @@ mapping and limits, collecting dependency replacements, typed failures, transien
 roots and reclamation, clone/MOP/reload and compiled source. Inspection of a real
 dylib leaves its constructor sentinel untouched. Codecs are unchanged; activation,
 PortableCode, Image and Host/CLI remain separate gates.
+
+## Release candidates and resumable promotion
+
+Release tooling requires Python 3.12 or newer on `PATH`, the pinned Rust
+toolchain, and arm64 macOS. `scripts/release.sh patch|minor|major` now prepares
+and commits VERSION/CHANGELOG **before** qualifying the candidate. It creates
+the tag only after acceptance, then pushes and publishes. It does not run an
+additional pre-bump qualification pass.
+
+The release path is:
+
+1. `validate.py --suite release --candidate` executes the complete release plan.
+   Its one shipping installation is cold, with no development build cache.
+   The candidate prefix lives outside the checkout at a stable, commit-specific
+   path, recorded in the qualification receipt. Diagnostic native tests and the
+   existing independent two-snapshot cold-bootstrap proof retain their separate
+   builds and coverage.
+2. `dist.sh --prefix PREFIX` packages that exact installation without rebuilding
+   or invoking the full installed-test matrix. It checks the receipt, version,
+   signatures and staged closure. An existing identical archive is reused
+   byte-for-byte. `--output PATH` allows a separate local artifact destination.
+   Standalone `dist.sh` still builds cold, but packaging itself is not a claim of
+   full qualification.
+3. `release-acceptance.py ARCHIVE EVIDENCE --qualification QUALIFICATION/run.json`
+   re-audits every required gate, its command, current inputs, toolchain/config,
+   dependencies, logs and artifacts. The extracted installation must match the
+   qualified prefix exactly. Only then does it run the small archive gate:
+   signatures/layout, relocation, source/GC/image checks and startup without
+   parsing or compilation. Without `--qualification`, standalone acceptance
+   retains its full installed-test matrix.
+
+After an interruption, run `scripts/release.sh --resume` on the clean prepared
+release commit. This retains the version and reuses matching passed evidence;
+failed, missing, modified or invalidated gates run again. Keep the candidate
+prefix and `dist/vVERSION-id-message-acceptance/` between attempts. Deleting the
+prefix invalidates build evidence and requires rebuilding. Changed source gets
+new evidence; passed status alone never authorizes publication. Aggregate
+`reused` display flags do not invalidate an otherwise identical archive proof:
+that gate binds the individual proof hashes instead.
+
+A process lock serializes release commands, and the existing validation lock
+also protects archive checks that use shared test binaries. Qualification may be
+inspected with `--candidate --plan`, but candidate mode refuses partial `--only`
+plans. Dirty-tree checks remain available for local development and cannot
+produce a promotable archive receipt. Version/tag/push/publish actions are not
+part of the nonpublishing validation commands.
+
+This first change removes two repeated installed matrices and the redundant
+shipping build from the previous release path. It adds pipeline regressions to
+the mandatory plan. It preserves all existing gates; it does not introduce local
+parallel execution or merge the independent bootstrap proof builds. Those are
+separate follow-ups. Full release duration must be measured on the next actual
+candidate rather than inferred from the removal of duplicate steps.
+
+Implementation evidence: [release workflow checks, 2026-10-13](measurements/release-workflow-20261013.json).
+The 31 tooling regressions pass, including candidate-build reuse, commit
+invalidation, interrupted preparation, deferred tagging, failed/changed proof
+rejection and unchanged-archive reuse. A real cold build, packaging and the new
+archive smoke gate also passed; repeating packaging reused the same archive in
+2.16 seconds. This is component qualification of the tooling, not a full release
+qualification or an end-to-end release duration measurement. No version was
+bumped and no release was published for these checks.

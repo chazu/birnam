@@ -14,6 +14,15 @@ cd "$(dirname "$0")/.."
 
 log() { echo "==> $*" >&2; }
 
+prefix=
+output=
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --prefix) prefix=${2:?--prefix requires a directory}; shift 2 ;;
+    --output) output=${2:?--output requires an archive path}; shift 2 ;;
+    *) echo "usage: $0 [--prefix cold-release-prefix] [--output archive.tar.gz]" >&2; exit 2 ;;
+  esac
+done
 VERSION="$(cat VERSION)"
 
 # The build is intentionally fail-fast outside its one supported target. Keep
@@ -30,49 +39,59 @@ target="aarch64-macos"
 name="birnam-${VERSION}-${target}"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-prefix="$work/prefix"
+
 stage="$work/${name}"
 archive="$work/${name}.tar.gz"
-published="dist/${name}.tar.gz"
+published="${output:-dist/${name}.tar.gz}"
 
-log "building ${name} (Rust release, production distribution)"
-scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release >&2
+if [[ -z "$prefix" ]]; then
+  prefix="$work/prefix"
+  log "building ${name} (Rust release, production distribution)"
+  scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release >&2
+fi
+
+# Repeated publication attempts preserve an already-packaged identical archive,
+# including its gzip bytes, so its passed acceptance receipt remains reusable.
+if python3 - "$prefix" "$published" "$VERSION" <<'PY_REUSE'
+from pathlib import Path
+import sys, tempfile
+sys.path.insert(0, 'scripts')
+from install_contract import verify
+from release_archive import extract_candidate, verify_signatures
+prefix, archive = map(Path, sys.argv[1:3])
+receipt = verify(prefix)
+if receipt['profile'] != 'release' or receipt['build_mode'] != 'cold':
+    raise ValueError('distribution requires a cold release candidate')
+if (prefix / 'share/birnam/src/VERSION').read_text().strip() != sys.argv[3]:
+    raise ValueError('candidate and requested distribution versions differ')
+verify_signatures(prefix, receipt)
+if archive.is_file():
+    try:
+        with tempfile.TemporaryDirectory() as temporary:
+            if verify(extract_candidate(archive, Path(temporary))) == receipt:
+                sys.exit(0)
+    except (ValueError, OSError):
+        pass
+sys.exit(3)
+PY_REUSE
+then
+  log "reusing identical packaged candidate"
+  echo "$published"
+  exit 0
+else
+  status=$?
+  [[ $status == 3 ]] || exit "$status"
+fi
 
 log "staging exact installation"
 cp -R "$prefix" "$stage"
+python3 scripts/install_contract.py "$stage" >&2
 
-# Authored modules are ELF relocatable objects, not Mach-O dylibs, despite the
-# .dylib suffix. Only the host and native shared libraries carry OS signatures.
-# Preserve all bytes (including explicitly shipped wrappers) from the receipt.
-log "verifying native signatures and installed receipt"
-python3 - "$stage" <<'PY_SIGNATURES'
-from pathlib import Path
-import subprocess
-import sys
-sys.path.insert(0, 'scripts')
-from install_contract import verify
-prefix = Path(sys.argv[1])
-receipt = verify(prefix)
-for relative in receipt['staged_manifest']:
-    if not relative.startswith(('bin/', 'lib/')):
-        continue
-    path = prefix / relative
-    with path.open('rb') as stream:
-        magic = stream.read(8)
-    if relative.startswith('lib/') and magic.startswith(b'\x7fELF'):
-        continue
-    # Saved images are receipt-verified data, not Mach-O executables.
-    if relative.startswith('lib/') and path.suffix == '.image' and magic == b'BIRNAMIM':
-        continue
-    subprocess.run(['codesign', '--verify', '--strict', path], check=True)
-PY_SIGNATURES
-
-log "smoke testing relocated bundle"
-BIRNAM_PREFIX="$stage" scripts/install-smoke.sh >&2
-
+# Full qualification belongs to validate --candidate; archive acceptance checks
+# relocation. Packaging neither rebuilds supplied artifacts nor runs that matrix.
 log "tarball"
 tar -C "$work" -czf "$archive" "$name"
-mkdir -p dist
+mkdir -p "$(dirname "$published")"
 mv "$archive" "$published"
 
 log "done: $published"

@@ -120,7 +120,7 @@ description = "Build a portable Rust release tarball for the current platform"
 run = "./scripts/dist.sh"
 
 [tasks.release]
-description = "Bump version, build, tag, and publish a Rust GitHub release (patch|minor|major)"
+description = "Prepare, qualify once, and publish a release (patch|minor|major|--resume)"
 run = "./scripts/release.sh {{arg(name='level')}}"
 
 [tasks.bench]

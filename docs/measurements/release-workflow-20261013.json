@@ -1,0 +1,456 @@
+{
+  "archive_reuse": {
+    "argv": [
+      "bash",
+      "scripts/dist.sh",
+      "--prefix",
+      "/tmp/birnam-release-streamline/candidate",
+      "--output",
+      "/tmp/birnam-release-streamline/candidate.tar.gz"
+    ],
+    "exit_code": 0,
+    "output": "/tmp/birnam-release-streamline/candidate.tar.gz\n==> reusing identical packaged candidate\n",
+    "stderr": "==> reusing identical packaged candidate\n",
+    "stdout": "/tmp/birnam-release-streamline/candidate.tar.gz\n",
+    "wall_ns": 2159840000
+  },
+  "archive_smoke": {
+    "log_sha256": "02256bcc016cc11e535099215aadcb1458e0c70645a6ca4e427ea3b43d435985",
+    "output": "installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and early mode validation passed\n\nrunning 1 test\nbirnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n\ntest startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 12.03s\n\n   Compiling birnam-abi v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-abi)\n   Compiling birnam-host-support v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host-support)\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n   Compiling birnam-host v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.41s\n     Running unittests src/lib.rs (.cargo-target/debug/deps/birnam_host-ae1905f6c16f2591)\narchive smoke: signatures, exact layout, relocation, source/GC/image and compiled startup passed\n"
+  },
+  "date": "2026-10-13",
+  "limits": [
+    "No release version/tag/push/publication performed. Publication calls in orchestration tests are local stubs.",
+    "Real production cold build and archive smoke passed; the full candidate qualification matrix was not rerun for a tooling-only change.",
+    "Installed groups remain serial and the independent two-snapshot cold proof retains its builds.",
+    "No end-to-end release-duration measurement."
+  ],
+  "plan": {
+    "deadline_seconds": 14400,
+    "steps": [
+      {
+        "argv": [
+          "python3",
+          "scripts/validation-support-test.py"
+        ],
+        "inputs": [
+          "scripts/validation*.py",
+          "scripts/validate.py",
+          "scripts/host-cli-test.sh",
+          "scripts/rust-install.sh",
+          "scripts/*timing*.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh"
+        ],
+        "name": "tool-tests"
+      },
+      {
+        "argv": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--locked",
+          "--offline"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib"
+        ],
+        "name": "workspace",
+        "timeout": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tests/fixtures/stackless-s2/verify.py"
+        ],
+        "inputs": [
+          "tests/fixtures/stackless-s2/*"
+        ],
+        "name": "stackless-s2"
+      },
+      {
+        "argv": [
+          "python3",
+          "tests/fixtures/portable-code-v1/verify.py"
+        ],
+        "inputs": [
+          "tests/fixtures/portable-code-v1/*"
+        ],
+        "name": "portable-code-v1"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/release-changelog-test.py"
+        ],
+        "inputs": [
+          "scripts/release-changelog-test.py",
+          "scripts/release-changelog.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/install_contract.py"
+        ],
+        "name": "release-changelog-test"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/release-acceptance-test.py"
+        ],
+        "inputs": [
+          "scripts/release-acceptance-test.py",
+          "scripts/release-acceptance.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/install_contract.py"
+        ],
+        "name": "release-acceptance-test"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/release-pipeline-test.py"
+        ],
+        "inputs": [
+          "scripts/release-pipeline-test.py",
+          "scripts/release-pipeline.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/install_contract.py"
+        ],
+        "name": "release-pipeline-test"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/v014-performance-acceptance-test.py"
+        ],
+        "inputs": [
+          "scripts/v014-performance-acceptance-test.py",
+          "scripts/v014-performance-acceptance.py"
+        ],
+        "name": "v014-performance-acceptance-test"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/v015-performance-acceptance-test.py"
+        ],
+        "inputs": [
+          "scripts/v015-performance-acceptance-test.py",
+          "scripts/v015-performance-acceptance.py"
+        ],
+        "name": "v015-performance-acceptance-test"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/install-contract-test.py"
+        ],
+        "inputs": [
+          "scripts/install-contract-test.py",
+          "scripts/install_contract.py"
+        ],
+        "name": "install-contract-test"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/measurement-archive-test.py"
+        ],
+        "inputs": [
+          "scripts/measurement*.py"
+        ],
+        "name": "archive-test"
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/native-message-test.sh"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/native-message-test.sh",
+          "tests/fixtures/**/*"
+        ],
+        "name": "native",
+        "timeout": 900
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/rust-install.sh",
+          "install",
+          "--root",
+          "/Users/chazu/dev/zig/birnam",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix",
+          "--profile",
+          "release"
+        ],
+        "artifacts": [
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "VERSION",
+          "scripts/rust-install.sh",
+          "docs/guide/**/*",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/candidate-source.json"
+        ],
+        "name": "install",
+        "timeout": 900
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix",
+          "--group",
+          "cli"
+        ],
+        "depends": [
+          "install"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/*",
+          "tests/**/*",
+          "examples/**/*"
+        ],
+        "name": "host-cli",
+        "timeout": 2400
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix",
+          "--group",
+          "image"
+        ],
+        "depends": [
+          "install"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/*",
+          "tests/**/*",
+          "examples/**/*"
+        ],
+        "name": "host-image",
+        "timeout": 1200
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix",
+          "--group",
+          "interaction"
+        ],
+        "depends": [
+          "install"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/*",
+          "tests/**/*",
+          "examples/**/*"
+        ],
+        "name": "host-interaction",
+        "timeout": 3600
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix",
+          "--group",
+          "generation"
+        ],
+        "depends": [
+          "install"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/*",
+          "tests/**/*",
+          "examples/**/*"
+        ],
+        "name": "host-generation",
+        "timeout": 2400
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/b7d580f85bedd62288131f9ab9761a5686f0a326/prefix",
+          "--group",
+          "tasks"
+        ],
+        "depends": [
+          "install"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/*",
+          "tests/**/*",
+          "examples/**/*"
+        ],
+        "name": "host-tasks",
+        "timeout": 2400
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/rust-dylib-audit.sh"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/rust-dylib-audit.sh",
+          "rust/birnam-id/exports.json"
+        ],
+        "name": "dylib-audit",
+        "timeout": 300
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/rust-driver-cold-archive-smoke.sh"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "VERSION",
+          "scripts/rust-install.sh",
+          "scripts/rust-driver-cold-archive-smoke.sh",
+          "docs/guide/**/*",
+          "examples/fizzbuzz.birnam"
+        ],
+        "name": "cold-source",
+        "timeout": 1200
+      }
+    ],
+    "suite": "release"
+  },
+  "promotable": false,
+  "real_candidate": {
+    "archive_bytes": 103336865,
+    "archive_sha256": "31b71d28f023a43c92895a65635fe4eaf484bda1bb0b8b02a5a66e9dec4c96f2",
+    "build_mode": "cold",
+    "install_receipt_sha256": "7725624b0204a63c7058798118b8defd1a7c935f277e59ddfa97d16833a69625",
+    "source_identity": {
+      "git_clean": false,
+      "git_commit": "b7d580f85bedd62288131f9ab9761a5686f0a326"
+    },
+    "staged_manifest_sha256": "92be8b51dac6077184fcc0469f5c04592d551d269f3fe08a1dcc32db1dbb6944",
+    "toolchain": {
+      "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+      "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+    }
+  },
+  "result": "component_checks_passed",
+  "schema": 1,
+  "scope": "Release tooling component qualification; not a full release gate pass or promotion receipt",
+  "source_commit": "b7d580f85bedd62288131f9ab9761a5686f0a326",
+  "source_sha256": {
+    ".gitignore": "21ca5f98ce1520596b4821b733893a657915c1bf5859ea9e273b0f79264c7a2f",
+    "docs/validation.md": "5f4cf904ae8236f0665362302dff0418e37eeb35295e62d1cffcbfe7d7b5127c",
+    "mise.toml": "b05cd79ce4af26b18fe116110323dfc586772acbd899a95f0dfaa010788f5717",
+    "scripts/dist.sh": "eec7a598faa9eaa024879cd825c16ed8473f145285d1a40a0350e99b3d321367",
+    "scripts/release-acceptance.py": "313828dd742b4e38931ff1163cd80a782b797b7aeb74863c95144862dec8bb78",
+    "scripts/release-pipeline-test.py": "2b4cca42001915db32d2b147c06ef2d9d8299c76a66c81fbc2eee9e8f38ab474",
+    "scripts/release.sh": "9b6eea50bceec42be9d0b2834be8f74ecb6150a253bedc9311c0f2ca74e56796",
+    "scripts/release_archive.py": "750d749709ffc3b50e2dd04c02915ab9d3568345f530c8c03fe345af0338b99d",
+    "scripts/validate.py": "292789db9fbced3f5e07ee246d993262f5de2ad6e20ec1d613309011234af878",
+    "scripts/validation-ci.py": "5330500387c6c8ecf795aa86fca7758e111927943ed703b29e001505b72e5a2e",
+    "scripts/validation-support-test.py": "8cd5a349aaa8aca924240f70a41ea3be317cd8b003968a35af9776fd5e148ded",
+    "scripts/validation_support.py": "ec4014cb8d87c6b07a8e810bb094737e72f55c0fe7ad522b22c622bd2f7299c8"
+  },
+  "tests": {
+    "acceptance-tests": {
+      "output": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.017s\n\nOK\n",
+      "sha256": "79f67ba8a97920a34cec119dace8230172188faa3db2533e13a06374aeb2ef49",
+      "tests": 4
+    },
+    "changelog-tests": {
+      "output": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.051s\n\nOK\n",
+      "sha256": "4d781620bc10541738c207349d827f2b375d4f72493bce92c5f0ea15cb151f4e",
+      "tests": 3
+    },
+    "install-tests": {
+      "output": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.017s\n\nOK\n",
+      "sha256": "cb4b0893c1ad095466f5a4fff264cb5c39aa41cb3196ed219c998fc981e85d18",
+      "tests": 5
+    },
+    "pipeline-tests": {
+      "output": "validate: install: running (limit 300s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/install/eac0125f25865f6e81d8b41574cdd5f636f01f4e5eb35a7b877031de3787a8cb/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 300s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/host-cli/61842491f49fd3caa598b8949fffc702e458e176362069f4f6c42fba8a70b4e6/output.log)\nvalidate: host-cli: passed in 0.0s\nvalidate: release: 2 steps passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/run.json\nvalidate: install: reused matching passed evidence\nvalidate: host-cli: reused matching passed evidence\nvalidate: release: 2 steps passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/run.json\nvalidate: install: running (limit 300s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/install/3004c8f3f5dd1db6491685f05ba9b9081e16cbbabc3fee529baef7400c1c457e/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 300s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/host-cli/1d956d81d4f7ae348166968ecff4890d57777efb1461bc4b4eeaab1519167454/output.log)\nvalidate: host-cli: passed in 0.0s\n.validate: release: 2 steps passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpvhxnnxn_/qualification/run.json\nvalidate: install: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpy_g9e91p/qualification/install/bb21bf5b7e1331bcc19e57eeabbb6c77652ec6204aa73f6e88eb8a8c75e1bacb/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpy_g9e91p/qualification/host-cli/99e1afaaf5d06dbf721272728e9b3d7168cffae54e1f29efb2ff06995a5191fd/output.log)\nvalidate: host-cli: passed in 0.0s\n.validate: install: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpq1rb2ry3/qualification/install/3fa86acb48ca1981342390908482a18fe1244b02855e64bdfb71bfa71a3e907a/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpq1rb2ry3/qualification/host-cli/30628f5dcad75019b3c1014d681a5529614ec829f99abdfa7c8ea42a9a388f68/output.log)\nvalidate: host-cli: passed in 0.0s\n.validate: install: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpwugyu8lx/qualification/install/2f71c66e6d44d1ddccbe004b04244476118b4f38df5d55c871dfdb518aac86e9/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpwugyu8lx/qualification/host-cli/6409e323786e9737cd2f070ea1dab98902f0cfed22a2bc68a72b961496ec31e2/output.log)\nvalidate: host-cli: passed in 0.0s\n.validate: install: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpbbttjuwp/qualification/install/5bf2ce8034caa2a12c0600fe2f97c9783b6a1875fa677f7748a23a969684c894/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpbbttjuwp/qualification/host-cli/df260087979af3e4acdadcaacf2b1e5ea087c32015b1ee7b70ea483696e5d708/output.log)\nvalidate: host-cli: passed in 0.0s\nvalidate: archive-smoke: running (limit 600s; /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpbbttjuwp/acceptance/gates/archive-smoke/1b1c7ebb8312ba64f6d0011de95fc1c405209edc47ff9d6be064c1d14d3bb62b/output.log)\nvalidate: archive-smoke: running (limit 600s; /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpbbttjuwp/acceptance/gates/archive-smoke/1b1c7ebb8312ba64f6d0011de95fc1c405209edc47ff9d6be064c1d14d3bb62b/output.log)\nvalidate: archive-smoke: passed in 0.0s\nrelease acceptance: immutable Id-message archive passed; /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpbbttjuwp/acceptance/receipt.json\nvalidate: archive-smoke: reused matching passed evidence\n.release acceptance: immutable Id-message archive passed; /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpbbttjuwp/acceptance/receipt.json\nvalidate: install: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpfp6c1tqm/qualification/install/3cca5e5d393f554f0361f56e29027aba6ef796c97f612020e153010690f208e5/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpfp6c1tqm/qualification/host-cli/b9190ed3b636dc47efdc3f19b7297887cc7ea916094049a1f8a1ddeb48ea3a7f/output.log)\nvalidate: host-cli: passed in 0.0s\n.validate: install: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpp2vd90lq/qualification/install/764bdbb2c7ce87e5e8653cc8e39bc0d7f5bed7072d70d39e4e50d2e28274d807/output.log)\nvalidate: install: passed in 0.0s\nvalidate: host-cli: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpp2vd90lq/qualification/host-cli/c1aa20aac2906db8d263e0468307e054fd15e752ef4d98e9ddbb318996a5aac4/output.log)\nvalidate: host-cli: passed in 0.0s\nvalidate: archive-smoke: running (limit 600s; /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpp2vd90lq/acceptance/gates/archive-smoke/f8c5f8f79ee786c6941353be98950f911b0f2469513a16d6ace43c71783287c9/output.log)\nvalidate: archive-smoke: passed in 0.0s\n.....\n----------------------------------------------------------------------\nRan 11 tests in 2.532s\n\nOK\n",
+      "sha256": "8f7f3427c38e4d9404c12032dcd1e1bc6b33ffd64def620cda218f7749213f15",
+      "tests": 11
+    },
+    "support-tests": {
+      "output": "...validate: case: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpsro2l4nj/evidence/case/4a7c1da29bc70e634ff434ef22c76771aea1e5bf1ab1e62bf375c4a336b0951f/output.log)\nvalidate: case: passed in 0.0s\nvalidate: case: reused matching passed evidence\nvalidate: case: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpsro2l4nj/evidence/case/4a7c1da29bc70e634ff434ef22c76771aea1e5bf1ab1e62bf375c4a336b0951f/output.log)\nvalidate: case: passed in 0.0s\nvalidate: case: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpsro2l4nj/evidence/case/3b8cedacaa1f73273de2466c95b049649251283da84c595db7a3012c913d0612/output.log)\nvalidate: case: passed in 0.0s\nvalidate: failure: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpsro2l4nj/evidence/failure/a23fe26f268e25f6701aff0a82a3bbe0d7b176e63b2df2448d59db2c50617ff9/output.log)\nvalidate: failure: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmpsro2l4nj/evidence/failure/a23fe26f268e25f6701aff0a82a3bbe0d7b176e63b2df2448d59db2c50617ff9/output.log)\n..validate: case: running (limit 30s; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/tmp45efju16/evidence/case/9ea3519ecf6c9bb717444b3fe489008edab050584e7b903bbe2c3d349e2e0863/output.log)\nvalidate: case: passed in 0.0s\n...\n----------------------------------------------------------------------\nRan 8 tests in 1.752s\n\nOK\n",
+      "sha256": "bd8945207b07761dcb2e901e19af16491c916a6174a66fab6cb5ae61185b6fdc",
+      "tests": 8
+    }
+  }
+}

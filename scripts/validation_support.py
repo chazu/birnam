@@ -41,6 +41,13 @@ def clean_environment():
             if k == 'BIRNAM_VALIDATION_CHILD' or not k.startswith(('BIRNAM_', 'DYLD_', 'BENCH_HOST_'))}
 
 
+def environment_binding(env):
+    return {k: env[k] for k in (
+        "PATH", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET",
+        "CC", "CFLAGS", "CXX", "CXXFLAGS", "SDKROOT", "MACOSX_DEPLOYMENT_TARGET",
+        "RUSTUP_TOOLCHAIN", "CARGO_TARGET_DIR", "LANG", "LC_ALL") if k in env}
+
+
 def file_hashes(patterns, root=ROOT):
     """Include membership, so adding/removing a matching input invalidates reuse."""
     paths = set()
@@ -172,10 +179,7 @@ class PlanRunner:
         paths = tuple(inputs) + ('scripts/validation_support.py', 'scripts/validate.py')
         before = file_hashes(paths)
         binding = dict(argv=[str(a) for a in argv], inputs=before, patterns=list(paths),
-                       toolchain=self.toolchain, environment={k: self.env[k] for k in (
-                           "PATH", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET",
-                           "CC", "CFLAGS", "CXX", "CXXFLAGS", "SDKROOT", "MACOSX_DEPLOYMENT_TARGET",
-                           "RUSTUP_TOOLCHAIN", "CARGO_TARGET_DIR", "LANG", "LC_ALL") if k in self.env},
+                       toolchain=self.toolchain, environment=environment_binding(self.env),
                        dependencies={n: self.rows[n]['evidence_sha256'] for n in depends})
         key = hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest()
         directory = self.directory / name / key

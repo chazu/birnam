@@ -1,4 +1,6 @@
 .cargo-target/
+dist/
+__pycache__/
 .zig-cache/
 zig-out/
 .birnam/
