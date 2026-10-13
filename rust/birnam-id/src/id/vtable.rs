@@ -300,6 +300,9 @@ impl Vtables {
         }
         Err(record.parent)
     }
+    // Expose this callback-free walk to its callers so the optimizer can
+    // eliminate helper call/return work. Values and parents are still read live.
+    #[inline(always)]
     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         while !vtable.is_null() {
             // Membership is still checked before consulting a hint. Retirement,

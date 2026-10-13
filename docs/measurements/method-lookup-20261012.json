@@ -1,0 +1,1037 @@
+{
+  "alternatives": {
+    "dense": {
+      "driver": "import argparse,importlib.util,json,statistics,sys\nfrom pathlib import Path\nroot=Path.cwd();sys.path.insert(0,str(root/'scripts'))\nfrom validation_support import command,clean_environment,save_json,sha\nspec=importlib.util.spec_from_file_location('lb',root/'scripts/logue-bench.py');lb=importlib.util.module_from_spec(spec);spec.loader.exec_module(lb)\np=argparse.ArgumentParser();p.add_argument('--variants',default='baseline,candidate,candidate,baseline');p.add_argument('--output',required=True);a=p.parse_args()\nbase=Path('/tmp/birnam-selector-investigation')\nprefixes={'baseline':Path('/tmp/birnam-fixed-digests/candidate-prefix'),'candidate':Path('/tmp/birnam-method-lookup/candidate-prefix')}\nlogue=Path('/tmp/birnam-logue-logfix/acceptance/logue')\nproject=Path('/tmp/birnam-number-bound/acceptance/examples/log-summary/bench')\ndata=Path('/tmp/birnam-number-bound/acceptance/data')\nexpect=json.loads((data/'small.expected.json').read_text())\ncfg=dict(phase='arena',seed=12345,width=16,monsters=8,turns=16,batches=4,samples=3,allocation=False,replace=False)\n(logue/'hash-probe.birnam').write_text('[Globals at: #LogueBenchConfig put: '+lb.literal(cfg)+'];\\n[System load: \"logue-bench.birnam\"]')\nruns=[]\nfor variant in a.variants.split(','):\n binary=prefixes[variant]/'bin/birnam'\n for app in ['logue','json']:\n  args=[binary,'hash-probe.birnam'] if app=='logue' else [binary,'run',project,'--',data/'small.jsonl','3']\n  r=command(args,cwd=logue if app=='logue' else root,env=clean_environment(),timeout=150)\n  assert r['exit_code']==0 and not r['stderr'],r\n  if app=='logue':\n   lines=r['stdout'].splitlines();assert lines[0]=='[logue-core] loaded'\n   report=json.loads(lines[1]);lb.check_report(report,cfg)\n   samples=[b['cpu_ns'] for sample in report['results'] for b in sample]\n  else:\n   report=json.loads(r['stdout']);assert report['report']==expect\n   samples=[b['cpu_ns'] for b in report['samples']]\n  row=dict(variant=variant,app=app,samples=samples,median_ns=statistics.median(samples),checked=True)\n  runs.append(row);print(variant,app,round(row['median_ns']/1e6,3),flush=True)\n  save_json(a.output,dict(runs=runs,driver=Path(__file__).read_text()))\n",
+      "runs": [
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1018133208.0,
+          "samples": [
+            1120265292,
+            1040122917,
+            1013986209,
+            1008093291,
+            1099355834,
+            1007340125,
+            1010490334,
+            1039012000,
+            1115941000,
+            1017977666,
+            1014300917,
+            1018288750
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 281475375,
+          "samples": [
+            281444166,
+            282437333,
+            281475375
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1050383937.5,
+          "samples": [
+            1151665625,
+            1051156542,
+            1046696791,
+            1033942584,
+            1162151208,
+            1062913458,
+            1049611333,
+            1039074500,
+            1132649250,
+            1036928958,
+            1036923917,
+            1052298625
+          ],
+          "variant": "candidate"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 289531917,
+          "samples": [
+            289531917,
+            290846375,
+            288349959
+          ],
+          "variant": "candidate"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1037402604.0,
+          "samples": [
+            1151069417,
+            1040290000,
+            1033871666,
+            1035786791,
+            1138232292,
+            1032385416,
+            1034861667,
+            1035348875,
+            1133858125,
+            1049246209,
+            1039018417,
+            1035129583
+          ],
+          "variant": "candidate"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 285818959,
+          "samples": [
+            283842667,
+            286535833,
+            285818959
+          ],
+          "variant": "candidate"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1021356354.0,
+          "samples": [
+            1138367541,
+            1018020250,
+            1051121833,
+            1018874750,
+            1118596250,
+            1021106000,
+            1020728375,
+            1019670458,
+            1143961500,
+            1020207833,
+            1025043000,
+            1021606708
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 284741416,
+          "samples": [
+            284888791,
+            284430875,
+            284741416
+          ],
+          "variant": "baseline"
+        }
+      ]
+    },
+    "dense_patch": "--- before/vtable.rs\n+++ dense/vtable.rs\n@@ -125,11 +125,15 @@\n // Position hints contain no Objects, selected methods, contexts or parent links.\n // Any hint is safe only after checking the current ordered key at that position.\n const SLOT_HINTS: usize = 256;\n+const RECORD_HINTS: usize = 32;\n \n /// Ordered registry of every vtable in one runtime.\n pub(crate) struct Vtables {\n     pub(crate) ordered: Vec<Oop>,\n-    by_address: AddressMap<VtableRecord>,\n+    by_address: AddressMap<usize>,\n+    records: Vec<VtableRecord>,\n+    // Positions only: validate the current record address before each use.\n+    record_hints: [Cell<usize>; RECORD_HINTS],\n     // Monotonic count of dictionary, parent and registry mutations. Design 74A\n     // \u00a73.2: a reader that cached a verification against one epoch re-verifies\n     // when the epoch moved. Over-counting is harmless; never skip a mutator.\n@@ -145,6 +149,8 @@\n         Self {\n             ordered: Vec::new(),\n             by_address: AddressMap::default(),\n+            records: Vec::new(),\n+            record_hints: std::array::from_fn(|_| Cell::new(0)),\n             mutation_epoch: 0,\n             binding_epoch: 0,\n             slot_hints: std::array::from_fn(|_| Cell::new(None)),\n@@ -192,18 +198,16 @@\n             });\n         }\n \n-        let previous = self.by_address.insert(\n-            object.addr(),\n-            VtableRecord {\n-                raw,\n-                logical_capacity: 0,\n-                keys: Vec::new(),\n-                values: Vec::new(),\n-                weak_keys: Vec::new(),\n-                key_indices: AddressMap::default(),\n-                parent,\n-            },\n-        );\n+        let previous = self.by_address.insert(object.addr(), self.records.len());\n+        self.records.push(VtableRecord {\n+            raw,\n+            logical_capacity: 0,\n+            keys: Vec::new(),\n+            values: Vec::new(),\n+            weak_keys: Vec::new(),\n+            key_indices: AddressMap::default(),\n+            parent,\n+        });\n         boundary::require_invariant(previous.is_none(), \"duplicate vtable address\");\n         self.ordered.push(object);\n     }\n@@ -214,9 +218,10 @@\n         self.by_address.contains_key(&address)\n     }\n     pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {\n-        let Some(record) = self.by_address.get(&vtable.addr()) else {\n+        let Some(&index) = self.by_address.get(&vtable.addr()) else {\n             return Vec::new();\n         };\n+        let record = &self.records[index];\n         let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));\n         if !record.parent.is_null() {\n             edges.push(record.parent);\n@@ -232,14 +237,25 @@\n         edges\n     }\n     pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {\n-        self.by_address\n-            .get(&vtable.addr())\n-            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n+        let hash = vtable.addr().wrapping_mul(0x9e3779b97f4a7c15);\n+        let hint = &self.record_hints[(hash >> (usize::BITS - 5)) & (RECORD_HINTS - 1)];\n+        let encoded = hint.get();\n+        if encoded != 0\n+            && let Some(record) = self.records.get(encoded - 1)\n+            && record.raw.as_ptr().cast() == vtable\n+        {\n+            return record;\n+        }\n+        let index = *self.by_address.get(&vtable.addr())\n+            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"));\n+        // A Vec of nonzero-sized records cannot contain usize::MAX elements.\n+        hint.set(index + 1);\n+        &self.records[index]\n     }\n     pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {\n-        self.by_address\n-            .get_mut(&vtable.addr())\n-            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n+        let index = *self.by_address.get(&vtable.addr())\n+            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"));\n+        &mut self.records[index]\n     }\n     pub(crate) fn count(&self) -> usize {\n         self.ordered.len()\n@@ -256,7 +272,7 @@\n     pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {\n         self.by_address\n             .get(&vtable.addr())\n-            .map(|record| record.parent)\n+            .map(|&index| self.records[index].parent)\n             .unwrap_or(core::ptr::null_mut())\n     }\n     pub(crate) fn set_parent(&mut self, vtable: Oop, parent: Oop) {\n@@ -381,7 +397,13 @@\n     /// Retire dictionary records before the caller releases their allocations.\n     pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {\n         for vtable in dead {\n-            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant(\"dead vtable registry record disappeared\"));\n+            let index = self.by_address.remove(&vtable.addr())\n+                .unwrap_or_else(|| boundary::fatal_invariant(\"dead vtable registry record disappeared\"));\n+            self.records.swap_remove(index);\n+            if let Some(moved) = self.records.get(index) {\n+                *self.by_address.get_mut(&moved.raw.as_ptr().addr())\n+                    .unwrap_or_else(|| boundary::fatal_invariant(\"moved vtable registry record disappeared\")) = index;\n+            }\n         }\n         self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));\n         if !dead.is_empty() {\n@@ -393,7 +415,7 @@\n     }\n     pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {\n         let mut removed = 0usize;\n-        for record in self.by_address.values_mut() {\n+        for record in &mut self.records {\n             let original_length = record.keys.len();\n             let mut index = 0usize;\n             while index < record.keys.len() {\n@@ -496,6 +518,63 @@\n     }\n \n     #[test]\n+    fn record_positions_follow_growth_compaction_reuse_and_current_values() {\n+        unsafe extern \"C\" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n+            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n+        }\n+        let entry = |n| NativeEntry::new(leaf, core::ptr::without_provenance_mut(n));\n+        let mut memory = ObjectMemory::new();\n+        let mut tables = Vtables::new();\n+        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n+        memory.set_vtable(meta, meta);\n+        let key = memory.allocate(0);\n+        let mut objects = Vec::new();\n+        for i in 0..257 {\n+            let table = tables.create(&mut memory, meta, meta);\n+            tables.add_method(table, key, entry(i + 1));\n+            objects.push(table);\n+            // Warm positions across repeated registry/vector growth.\n+            assert_eq!(tables.lookup(objects[0], key), Some(entry(1)));\n+        }\n+        // Seed every possible hint with wrong in-range positions and an\n+        // out-of-range position, independently of the cache's hash function.\n+        for position in [1, 2, 128, usize::MAX] {\n+            for hint in &tables.record_hints { hint.set(position); }\n+            for (i, &table) in objects.iter().enumerate() {\n+                assert_eq!(tables.record(table).raw.as_ptr().cast(), table);\n+                assert_eq!(tables.lookup(table, key), Some(entry(i + 1)));\n+            }\n+        }\n+        let dead: Vec<_> = objects.iter().enumerate()\n+            .filter_map(|(i, &table)| (i % 3 == 0).then_some(table)).collect();\n+        tables.remove_objects(&dead);\n+        let ordered: Vec<_> = std::iter::once(meta).chain(objects.iter().enumerate()\n+            .filter_map(|(i, &table)| (i % 3 != 0).then_some(table))).collect();\n+        assert_eq!(tables.ordered, ordered);\n+        assert_eq!(tables.by_address.len(), tables.records.len());\n+        for (i, &table) in objects.iter().enumerate() {\n+            assert_eq!(tables.is_registered(table), i % 3 != 0);\n+            if i % 3 != 0 {\n+                assert_eq!(tables.records[tables.by_address[&table.addr()]].raw.as_ptr().cast(), table);\n+                assert_eq!(tables.lookup(table, key), Some(entry(i + 1)));\n+                tables.add_method(table, key, entry(i + 1000));\n+                assert_eq!(tables.lookup(table, key), Some(entry(i + 1000)));\n+            }\n+        }\n+        for &table in &dead {\n+            // Reuse the still-allocated RawVtable after retiring its record.\n+            unsafe { tables.register(table, meta); }\n+            assert_eq!(tables.lookup(table, key), None);\n+            tables.add_method(table, key, entry(9999));\n+            assert_eq!(tables.lookup(table, key), Some(entry(9999)));\n+        }\n+        assert_eq!(tables.ordered, ordered.into_iter().chain(dead).collect::<Vec<_>>());\n+        for (index, record) in tables.records.iter().enumerate() {\n+            assert_eq!(tables.by_address[&record.raw.as_ptr().addr()], index);\n+        }\n+    }\n+\n+    #[test]\n     fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {\n         let mut memory = ObjectMemory::new();\n         let mut tables = Vtables::new();\n",
+    "dense_source": "//! Raw vtable objects, ordered method dictionaries, and exact membership.\n#![allow(dead_code)] // Direct allocation entry is used by the construction cutover.\n\nuse core::cell::Cell;\nuse core::mem::offset_of;\nuse core::ptr::NonNull;\n\nuse crate::abi::Oop;\nuse crate::abi::id_protocol::{NativeEntry, Operand};\nuse crate::boundary;\nuse crate::id::object_memory::ObjectMemory;\nuse crate::raw::AddressMap;\n\n/// The payload shape retained for vtable objects themselves.\n#[allow(non_snake_case)]\n#[repr(C)]\npub(crate) struct RawVtable {\n    pub(crate) size: usize,\n    pub(crate) tally: usize,\n    pub(crate) keys: *mut Oop,\n    pub(crate) values: *mut Operand,\n    pub(crate) parent: Oop,\n}\n\nconst _: () = {\n    assert!(size_of::<RawVtable>() == 40);\n    assert!(align_of::<RawVtable>() == 8);\n    assert!(offset_of!(RawVtable, size) == 0);\n    assert!(offset_of!(RawVtable, tally) == 8);\n    assert!(offset_of!(RawVtable, keys) == 16);\n    assert!(offset_of!(RawVtable, values) == 24);\n    assert!(offset_of!(RawVtable, parent) == 32);\n};\n\npub(crate) struct VtableRecord {\n    pub(crate) raw: NonNull<RawVtable>,\n    pub(crate) logical_capacity: usize,\n    pub(crate) keys: Vec<Oop>,\n    pub(crate) values: Vec<Operand>,\n    pub(crate) weak_keys: Vec<bool>,\n    // Derived identity lookup only. Ordered vectors retain raw-view and GC\n    // authority; these integer addresses never add roots or cache dispatch.\n    pub(crate) key_indices: AddressMap<usize>,\n    pub(crate) parent: Oop,\n}\n\n/// Dictionaries at or below this size answer lookups by scanning the ordered\n/// keys; the derived index exists only for larger dictionaries. Most vtables\n/// hold a handful of methods, and allocating and growing a hash table for each\n/// of them measured +4.5 ms on every stdlib boot (epic as7 acceptance repeat,\n/// 2026-09-09) without any lookup benefit at that size.\nconst KEY_INDEX_THRESHOLD: usize = 16;\n\nimpl VtableRecord {\n    // Invariant: `key_indices` is either empty (scan the ordered keys) or a\n    // complete map of every key to its position. It is never partially stale.\n    pub(crate) fn key_index(&self, key: Oop) -> Option<usize> {\n        if self.key_indices.is_empty() {\n            return self.keys.iter().position(|candidate| *candidate == key);\n        }\n        self.key_indices.get(&key.addr()).copied()\n    }\n\n    fn rebuild_key_indices(&mut self) {\n        self.key_indices.clear();\n        if self.keys.len() > KEY_INDEX_THRESHOLD {\n            for (index, key) in self.keys.iter().enumerate() {\n                self.key_indices.insert(key.addr(), index);\n            }\n        }\n    }\n\n    /// Record that a key was just pushed at the end of `keys`.\n    fn index_appended_key(&mut self) {\n        if !self.key_indices.is_empty() {\n            let last = self.keys.len() - 1;\n            self.key_indices.insert(self.keys[last].addr(), last);\n        } else if self.keys.len() > KEY_INDEX_THRESHOLD {\n            self.rebuild_key_indices();\n        }\n    }\n\n    fn sync_raw_view(&mut self) {\n        // SAFETY: raw is the live, uniquely runtime-owned payload allocated for\n        // this record. No foreign call or other reference overlaps this update.\n        let raw = unsafe { self.raw.as_mut() };\n        raw.size = self.logical_capacity;\n        raw.tally = self.keys.len();\n        raw.keys = if self.keys.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.keys.as_mut_ptr()\n        };\n        raw.values = if self.values.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.values.as_mut_ptr()\n        };\n        raw.parent = self.parent;\n\n    }\n\n    fn grow_dictionary(&mut self) {\n        let next_capacity = if self.logical_capacity == 0 {\n            4\n        } else {\n            self.logical_capacity\n                .checked_mul(2)\n                .unwrap_or_else(|| boundary::fatal_invariant(\"vtable dictionary capacity overflow\"))\n        };\n        self.keys.reserve_exact(next_capacity - self.keys.len());\n        self.values.reserve_exact(next_capacity - self.values.len());\n        self.weak_keys\n            .reserve_exact(next_capacity - self.weak_keys.len());\n        self.logical_capacity = next_capacity;\n    }\n}\n\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub(crate) enum AddMethod<T = NativeEntry> {\n    Added,\n    Overwrote(T),\n}\n\n// Position hints contain no Objects, selected methods, contexts or parent links.\n// Any hint is safe only after checking the current ordered key at that position.\nconst SLOT_HINTS: usize = 256;\nconst RECORD_HINTS: usize = 32;\n\n/// Ordered registry of every vtable in one runtime.\npub(crate) struct Vtables {\n    pub(crate) ordered: Vec<Oop>,\n    by_address: AddressMap<usize>,\n    records: Vec<VtableRecord>,\n    // Positions only: validate the current record address before each use.\n    record_hints: [Cell<usize>; RECORD_HINTS],\n    // Monotonic count of dictionary, parent and registry mutations. Design 74A\n    // \u00a73.2: a reader that cached a verification against one epoch re-verifies\n    // when the epoch moved. Over-counting is harmless; never skip a mutator.\n    mutation_epoch: u64,\n    // Explicit binding/parent/association changes, including ABA. Retiring an\n    // unreachable behavior cannot change a live lookup and does not advance it.\n    binding_epoch: u64,\n    slot_hints: [Cell<Option<usize>>; SLOT_HINTS],\n}\n\nimpl Vtables {\n    pub(crate) fn new() -> Self {\n        Self {\n            ordered: Vec::new(),\n            by_address: AddressMap::default(),\n            records: Vec::new(),\n            record_hints: std::array::from_fn(|_| Cell::new(0)),\n            mutation_epoch: 0,\n            binding_epoch: 0,\n            slot_hints: std::array::from_fn(|_| Cell::new(None)),\n        }\n    }\n    pub(crate) fn mutation_epoch(&self) -> u64 {\n        self.mutation_epoch\n    }\n\n    pub(crate) fn note_mutation(&mut self) {\n        self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        self.binding_epoch = self.binding_epoch.saturating_add(1);\n    }\n    pub(crate) fn binding_epoch(&self) -> u64 { self.binding_epoch }\n    pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();\n\n    /// Construct a behavior using Id allocation alone.\n    pub(crate) fn create(&mut self, memory: &mut ObjectMemory, parent: Oop, metavtable: Oop) -> Oop {\n        let object = memory.allocate(Self::PAYLOAD_SIZE);\n        assert!(memory.set_vtable(object, metavtable));\n        // SAFETY: the fresh allocation has the exact behavior payload extent.\n        unsafe { self.register(object, parent) };\n        object\n    }\n\n    /// Register a fresh behavior allocation supplied by the caller.\n    /// # Safety\n    /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.\n    pub(crate) unsafe fn register(&mut self, object: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let raw = NonNull::new(object.cast::<RawVtable>())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"new vtable payload is null\"));\n        // SAFETY: object owns a zeroed, aligned payload of exactly RawVtable's\n        // size, and no typed value or reference exists there yet.\n        unsafe {\n            raw.as_ptr().write(RawVtable {\n                size: 0,\n                tally: 0,\n                keys: core::ptr::null_mut(),\n                values: core::ptr::null_mut(),\n                parent,\n            });\n        }\n\n        let previous = self.by_address.insert(object.addr(), self.records.len());\n        self.records.push(VtableRecord {\n            raw,\n            logical_capacity: 0,\n            keys: Vec::new(),\n            values: Vec::new(),\n            weak_keys: Vec::new(),\n            key_indices: AddressMap::default(),\n            parent,\n        });\n        boundary::require_invariant(previous.is_none(), \"duplicate vtable address\");\n        self.ordered.push(object);\n    }\n    pub(crate) fn is_registered(&self, candidate: Oop) -> bool {\n        !candidate.is_null() && self.by_address.contains_key(&candidate.addr())\n    }\n    pub(crate) fn is_registered_address(&self, address: usize) -> bool {\n        self.by_address.contains_key(&address)\n    }\n    pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {\n        let Some(&index) = self.by_address.get(&vtable.addr()) else {\n            return Vec::new();\n        };\n        let record = &self.records[index];\n        let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));\n        if !record.parent.is_null() {\n            edges.push(record.parent);\n        }\n        edges.extend(\n            record\n                .keys\n                .iter()\n                .copied()\n                .zip(record.weak_keys.iter().copied())\n                .filter_map(|(key, weak)| (!weak && !key.is_null()).then_some(key)),\n        );\n        edges\n    }\n    pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {\n        let hash = vtable.addr().wrapping_mul(0x9e3779b97f4a7c15);\n        let hint = &self.record_hints[(hash >> (usize::BITS - 5)) & (RECORD_HINTS - 1)];\n        let encoded = hint.get();\n        if encoded != 0\n            && let Some(record) = self.records.get(encoded - 1)\n            && record.raw.as_ptr().cast() == vtable\n        {\n            return record;\n        }\n        let index = *self.by_address.get(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"));\n        // A Vec of nonzero-sized records cannot contain usize::MAX elements.\n        hint.set(index + 1);\n        &self.records[index]\n    }\n    pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {\n        let index = *self.by_address.get(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"));\n        &mut self.records[index]\n    }\n    pub(crate) fn count(&self) -> usize {\n        self.ordered.len()\n    }\n    pub(crate) fn view(&self) -> &[Oop] {\n        &self.ordered\n    }\n    pub(crate) fn at(&self, index: usize) -> Oop {\n        self.ordered\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {\n        self.by_address\n            .get(&vtable.addr())\n            .map(|&index| self.records[index].parent)\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn set_parent(&mut self, vtable: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let record = self.record_mut(vtable);\n        record.parent = parent;\n        record.sync_raw_view();\n        self.note_mutation();\n    }\n    pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {\n        self.record(vtable).logical_capacity\n    }\n    pub(crate) fn selector_at(&self, vtable: Oop, index: usize) -> Oop {\n        self.record(vtable)\n            .keys\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {\n        &self.record(vtable).keys\n    }\n    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        let record = self.record(vtable);\n        record\n            .key_index(selector)\n            // Object-valued internal dictionary entries are not methods.\n            .and_then(|index| record.values[index].as_entry())\n    }\n    pub(crate) fn lookup_head(\n        &self,\n        vtable: Oop,\n        selector: Oop,\n    ) -> Result<Option<NativeEntry>, Oop> {\n        let record = self.record(vtable);\n        if let Some(index) = record.key_index(selector) {\n            return Ok(record.values[index].as_entry());\n        }\n        Err(record.parent)\n    }\n    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        while !vtable.is_null() {\n            // Membership is still checked before consulting a hint. Retirement,\n            // address reuse and slot shifts cannot make an old index authority.\n            let record = self.record(vtable);\n            // Tiny dictionaries already use a cheaper linear scan. Avoid adding\n            // hint hashing to fresh one-method Block behaviors and empty parents.\n            let hint = if record.key_indices.is_empty() { None } else {\n                let hash = (vtable.addr().rotate_left(13) ^ selector.addr())\n                    .wrapping_mul(0x9e3779b97f4a7c15);\n                Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])\n            };\n            if let Some(slot) = hint && let Some(index) = slot.get()\n                && record.keys.get(index) == Some(&selector)\n            {\n                return record.values[index].as_entry();\n            }\n            if let Some(index) = record.key_index(selector) {\n                if let Some(slot) = hint { slot.set(Some(index)); }\n                return record.values[index].as_entry();\n            }\n            // Never memoize inherited resolution or absence: read this live link.\n            vtable = record.parent;\n        }\n        None\n    }\n    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {\n        assert!(method.method.is_some(), \"method binding requires a native entry\");\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(selector) {\n            let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect(\"method dictionary held non-entry\");\n            record.sync_raw_view();\n            return AddMethod::Overwrote(previous);\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(selector);\n        record.values.push(Operand::entry(method));\n        record.weak_keys.push(false);\n        record.index_appended_key();\n        record.sync_raw_view();\n        AddMethod::Added\n    }\n    pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(key) {\n            record.values[index] = Operand::object(value);\n            record.weak_keys[index] = true;\n            record.sync_raw_view();\n            return;\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(key);\n        record.values.push(Operand::object(value));\n        record.weak_keys.push(true);\n        record.index_appended_key();\n        record.sync_raw_view();\n    }\n    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        let index = record.key_index(selector)?;\n        record.keys.remove(index);\n        let removed = record.values.remove(index);\n        record.weak_keys.remove(index);\n        record.rebuild_key_indices();\n        record.sync_raw_view();\n        removed.as_entry()\n    }\n    pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {\n        // SAFETY: forwarded caller precondition.\n        unsafe { ObjectMemory::vtable_of_valid_object(object) }\n    }\n    /// Retire dictionary records before the caller releases their allocations.\n    pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {\n        for vtable in dead {\n            let index = self.by_address.remove(&vtable.addr())\n                .unwrap_or_else(|| boundary::fatal_invariant(\"dead vtable registry record disappeared\"));\n            self.records.swap_remove(index);\n            if let Some(moved) = self.records.get(index) {\n                *self.by_address.get_mut(&moved.raw.as_ptr().addr())\n                    .unwrap_or_else(|| boundary::fatal_invariant(\"moved vtable registry record disappeared\")) = index;\n            }\n        }\n        self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));\n        if !dead.is_empty() {\n            self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        }\n    }\n    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {\n        self.record(vtable).values.iter().filter_map(|value| value.as_entry())\n    }\n    pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {\n        let mut removed = 0usize;\n        for record in &mut self.records {\n            let original_length = record.keys.len();\n            let mut index = 0usize;\n            while index < record.keys.len() {\n                let key = record.keys[index];\n                let dead = record.weak_keys[index] && dead.contains_key(&key.addr());\n                if dead {\n                    record.keys.remove(index);\n                    record.values.remove(index);\n                    record.weak_keys.remove(index);\n                    removed = removed.saturating_add(1);\n                } else {\n                    index += 1;\n                }\n            }\n            if record.keys.len() != original_length {\n                record.rebuild_key_indices();\n            }\n            record.sync_raw_view();\n        }\n        if removed != 0 {\n            self.note_mutation();\n        }\n        removed\n    }\n}\n\n#[cfg(test)]\nmod core_tests {\n    use super::*;\n    #[test]\n    fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {\n        unsafe extern \"C\" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<NativeEntry> {\n            while !at.is_null() {\n                let row = tables.record(at);\n                for (&candidate, value) in row.keys.iter().zip(&row.values) {\n                    if candidate == key { return value.as_entry(); }\n                }\n                at = row.parent;\n            }\n            None\n        }\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let other = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();\n        let entry = |value| NativeEntry::new(leaf, core::ptr::without_provenance_mut(value));\n        for (i, &key) in keys.iter().enumerate() {\n            tables.add_method(parent, key, entry(i+1));\n            tables.add_method(other, key, entry(i+101));\n        }\n        for round in 0..80 {\n            let key = keys[round % keys.len()];\n            for &lookup in &keys { assert_eq!(tables.lookup(child, lookup), reference(&tables, child, lookup)); }\n            match round % 4 {\n                0 => { tables.add_method(parent, key, entry(round+501)); }\n                1 => { tables.remove_method(parent, key); }\n                2 => { tables.set_parent(child, if round % 8 == 2 {other} else {parent}); }\n                _ => { tables.add_method(child, key, entry(round+901)); }\n            }\n        }\n        // A populated large-dictionary hint must read a newly opaque value,\n        // rather than returning the native entry that used to occupy the slot.\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        tables.add_weak_opaque_binding(other, keys[0], meta);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        let mut removed_key = AddressMap::default(); removed_key.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&removed_key);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        tables.add_method(other, keys[0], entry(101));\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        // An opaque entry shadows an inherited method just as it did before.\n        tables.set_parent(child, other);\n        tables.add_weak_opaque_binding(child, keys[0], meta);\n        assert_eq!(tables.lookup(child, keys[0]), None);\n        let mut dead = AddressMap::default(); dead.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&dead);\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));\n        // Re-register the same still-allocated payload after retiring its record.\n        // Hints do not keep a record or its previous entries alive.\n        tables.remove_objects(&[child]);\n        unsafe { tables.register(child, parent); }\n        tables.add_method(child, keys[0], entry(9999));\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n        // Force stale/out-of-range entries and cache collisions independently\n        // of the hash, then check fallback against a linear reference.\n        for hint in &tables.slot_hints {\n            hint.set(Some(usize::MAX));\n        }\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(other, key), reference(&tables, other, key)); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n    }\n\n    #[test]\n    fn record_positions_follow_growth_compaction_reuse_and_current_values() {\n        unsafe extern \"C\" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        let entry = |n| NativeEntry::new(leaf, core::ptr::without_provenance_mut(n));\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let key = memory.allocate(0);\n        let mut objects = Vec::new();\n        for i in 0..257 {\n            let table = tables.create(&mut memory, meta, meta);\n            tables.add_method(table, key, entry(i + 1));\n            objects.push(table);\n            // Warm positions across repeated registry/vector growth.\n            assert_eq!(tables.lookup(objects[0], key), Some(entry(1)));\n        }\n        // Seed every possible hint with wrong in-range positions and an\n        // out-of-range position, independently of the cache's hash function.\n        for position in [1, 2, 128, usize::MAX] {\n            for hint in &tables.record_hints { hint.set(position); }\n            for (i, &table) in objects.iter().enumerate() {\n                assert_eq!(tables.record(table).raw.as_ptr().cast(), table);\n                assert_eq!(tables.lookup(table, key), Some(entry(i + 1)));\n            }\n        }\n        let dead: Vec<_> = objects.iter().enumerate()\n            .filter_map(|(i, &table)| (i % 3 == 0).then_some(table)).collect();\n        tables.remove_objects(&dead);\n        let ordered: Vec<_> = std::iter::once(meta).chain(objects.iter().enumerate()\n            .filter_map(|(i, &table)| (i % 3 != 0).then_some(table))).collect();\n        assert_eq!(tables.ordered, ordered);\n        assert_eq!(tables.by_address.len(), tables.records.len());\n        for (i, &table) in objects.iter().enumerate() {\n            assert_eq!(tables.is_registered(table), i % 3 != 0);\n            if i % 3 != 0 {\n                assert_eq!(tables.records[tables.by_address[&table.addr()]].raw.as_ptr().cast(), table);\n                assert_eq!(tables.lookup(table, key), Some(entry(i + 1)));\n                tables.add_method(table, key, entry(i + 1000));\n                assert_eq!(tables.lookup(table, key), Some(entry(i + 1000)));\n            }\n        }\n        for &table in &dead {\n            // Reuse the still-allocated RawVtable after retiring its record.\n            unsafe { tables.register(table, meta); }\n            assert_eq!(tables.lookup(table, key), None);\n            tables.add_method(table, key, entry(9999));\n            assert_eq!(tables.lookup(table, key), Some(entry(9999)));\n        }\n        assert_eq!(tables.ordered, ordered.into_iter().chain(dead).collect::<Vec<_>>());\n        for (index, record) in tables.records.iter().enumerate() {\n            assert_eq!(tables.by_address[&record.raw.as_ptr().addr()], index);\n        }\n    }\n\n    #[test]\n    fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let live = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let dead = tables.create(&mut memory, live, meta);\n        let survivor = tables.create(&mut memory, live, meta);\n        let before = tables.binding_epoch();\n        let global = tables.mutation_epoch();\n        tables.remove_objects(&[dead]);\n        assert_eq!(tables.binding_epoch(), before);\n        assert_eq!(tables.mutation_epoch(), global + 1);\n        assert_eq!(tables.ordered, vec![meta, live, survivor]);\n        tables.set_parent(survivor, meta);\n        tables.set_parent(survivor, live);\n        assert_eq!(tables.parent_of(survivor), live);\n        assert_eq!(tables.binding_epoch(), before + 2, \"ABA must invalidate snapshots\");\n        unsafe extern \"C\" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        let key = memory.allocate(0);\n        let entry = NativeEntry::new(method, core::ptr::null_mut());\n        tables.add_method(live, key, entry);\n        let bound = tables.binding_epoch();\n        tables.remove_method(live, key);\n        tables.add_method(live, key, entry);\n        assert_eq!(tables.direct_lookup(live, key), Some(entry));\n        assert_eq!(tables.binding_epoch(), bound + 2);\n    }\n    #[test]\n    fn behavior_graph_and_dictionary_need_only_id_allocation() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        assert!(memory.set_vtable(meta, meta));\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));\n        unsafe extern \"C\" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }\n        let identity = NativeEntry::new(identity, core::ptr::null_mut());\n        let mut symbols = crate::id::symbol::Symbols::new();\n        let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!(\"key-{index}\").as_bytes()).unwrap()).collect();\n        assert_eq!(symbols.intern(&mut memory, symbol_behavior, b\"key-7\").unwrap(), keys[7]);\n        for &key in &keys { tables.add_method(parent, key, identity); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(identity)); }\n        tables.remove_method(parent, keys[7]);\n        assert!(tables.lookup(child, keys[7]).is_none());\n        tables.remove_objects(&[child]);\n        assert!(!tables.is_registered(child));\n        assert!(memory.detach(child.addr()).is_some());\n        assert_eq!(tables.count(), 3);\n    }\n}\n",
+    "dense_unit_test_tail": "test id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::id_dispatch::tests::actual_initial_graph_installs_invokes_and_forwards_without_runtime ... ok\ntest id::vtable::core_tests::record_positions_follow_growth_compaction_reuse_and_current_values ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest id::id_dispatch::tests::c_native_entry_round_trips_typed_operands_through_actual_id ... ok\n\ntest result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n",
+    "forced_inlining": {
+      "driver": "import argparse,importlib.util,json,statistics,sys\nfrom pathlib import Path\nroot=Path.cwd();sys.path.insert(0,str(root/'scripts'))\nfrom validation_support import command,clean_environment,save_json,sha\nspec=importlib.util.spec_from_file_location('lb',root/'scripts/logue-bench.py');lb=importlib.util.module_from_spec(spec);spec.loader.exec_module(lb)\np=argparse.ArgumentParser();p.add_argument('--variants',default='baseline,candidate,candidate,baseline');p.add_argument('--output',required=True);a=p.parse_args()\nbase=Path('/tmp/birnam-selector-investigation')\nprefixes={'baseline':Path('/tmp/birnam-fixed-digests/candidate-prefix'),**{v:Path('/tmp/birnam-method-lookup')/(v+'-prefix') for v in ['always','both']}}\nlogue=Path('/tmp/birnam-logue-logfix/acceptance/logue')\nproject=Path('/tmp/birnam-number-bound/acceptance/examples/log-summary/bench')\ndata=Path('/tmp/birnam-number-bound/acceptance/data')\nexpect=json.loads((data/'small.expected.json').read_text())\ncfg=dict(phase='arena',seed=12345,width=16,monsters=8,turns=16,batches=4,samples=1,allocation=False,replace=False)\n(logue/'hash-probe.birnam').write_text('[Globals at: #LogueBenchConfig put: '+lb.literal(cfg)+'];\\n[System load: \"logue-bench.birnam\"]')\nruns=[]\nfor variant in a.variants.split(','):\n binary=prefixes[variant]/'bin/birnam'\n for app in ['logue','json']:\n  args=[binary,'hash-probe.birnam'] if app=='logue' else [binary,'run',project,'--',data/'small.jsonl','3']\n  r=command(args,cwd=logue if app=='logue' else root,env=clean_environment(),timeout=150)\n  assert r['exit_code']==0 and not r['stderr'],r\n  if app=='logue':\n   lines=r['stdout'].splitlines();assert lines[0]=='[logue-core] loaded'\n   report=json.loads(lines[1]);lb.check_report(report,cfg)\n   samples=[b['cpu_ns'] for sample in report['results'] for b in sample]\n  else:\n   report=json.loads(r['stdout']);assert report['report']==expect\n   samples=[b['cpu_ns'] for b in report['samples']]\n  row=dict(variant=variant,app=app,samples=samples,median_ns=statistics.median(samples),checked=True)\n  runs.append(row);print(variant,app,round(row['median_ns']/1e6,3),flush=True)\n  save_json(a.output,dict(runs=runs,driver=Path(__file__).read_text()))\n",
+      "runs": [
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1046316104.5,
+          "samples": [
+            1145107667,
+            1031742459,
+            1053553959,
+            1039078250
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 285978625,
+          "samples": [
+            285978625,
+            286725042,
+            285753459
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1005151458.0,
+          "samples": [
+            1136966500,
+            995611750,
+            1014691166,
+            979781334
+          ],
+          "variant": "always"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 273039500,
+          "samples": [
+            269266125,
+            273039500,
+            274959750
+          ],
+          "variant": "always"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1024261875.5,
+          "samples": [
+            1124275750,
+            1008550667,
+            1011939084,
+            1036584667
+          ],
+          "variant": "both"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 271756917,
+          "samples": [
+            269937625,
+            271756917,
+            272094041
+          ],
+          "variant": "both"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 977884375.0,
+          "samples": [
+            1078990667,
+            978158625,
+            973461000,
+            977610125
+          ],
+          "variant": "both"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 272253667,
+          "samples": [
+            273509042,
+            272253667,
+            272077834
+          ],
+          "variant": "both"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 997386687.5,
+          "samples": [
+            1084160708,
+            998574500,
+            990941208,
+            996198875
+          ],
+          "variant": "always"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 272734167,
+          "samples": [
+            272734167,
+            270951250,
+            274061000
+          ],
+          "variant": "always"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1026396354.0,
+          "samples": [
+            1135742834,
+            1016304750,
+            1025899250,
+            1026893458
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 286204417,
+          "samples": [
+            286376917,
+            286204417,
+            285627417
+          ],
+          "variant": "baseline"
+        }
+      ]
+    },
+    "inline_source": "//! Raw vtable objects, ordered method dictionaries, and exact membership.\n#![allow(dead_code)] // Direct allocation entry is used by the construction cutover.\n\nuse core::cell::Cell;\nuse core::mem::offset_of;\nuse core::ptr::NonNull;\n\nuse crate::abi::Oop;\nuse crate::abi::id_protocol::{NativeEntry, Operand};\nuse crate::boundary;\nuse crate::id::object_memory::ObjectMemory;\nuse crate::raw::AddressMap;\n\n/// The payload shape retained for vtable objects themselves.\n#[allow(non_snake_case)]\n#[repr(C)]\npub(crate) struct RawVtable {\n    pub(crate) size: usize,\n    pub(crate) tally: usize,\n    pub(crate) keys: *mut Oop,\n    pub(crate) values: *mut Operand,\n    pub(crate) parent: Oop,\n}\n\nconst _: () = {\n    assert!(size_of::<RawVtable>() == 40);\n    assert!(align_of::<RawVtable>() == 8);\n    assert!(offset_of!(RawVtable, size) == 0);\n    assert!(offset_of!(RawVtable, tally) == 8);\n    assert!(offset_of!(RawVtable, keys) == 16);\n    assert!(offset_of!(RawVtable, values) == 24);\n    assert!(offset_of!(RawVtable, parent) == 32);\n};\n\npub(crate) struct VtableRecord {\n    pub(crate) raw: NonNull<RawVtable>,\n    pub(crate) logical_capacity: usize,\n    pub(crate) keys: Vec<Oop>,\n    pub(crate) values: Vec<Operand>,\n    pub(crate) weak_keys: Vec<bool>,\n    // Derived identity lookup only. Ordered vectors retain raw-view and GC\n    // authority; these integer addresses never add roots or cache dispatch.\n    pub(crate) key_indices: AddressMap<usize>,\n    pub(crate) parent: Oop,\n}\n\n/// Dictionaries at or below this size answer lookups by scanning the ordered\n/// keys; the derived index exists only for larger dictionaries. Most vtables\n/// hold a handful of methods, and allocating and growing a hash table for each\n/// of them measured +4.5 ms on every stdlib boot (epic as7 acceptance repeat,\n/// 2026-09-09) without any lookup benefit at that size.\nconst KEY_INDEX_THRESHOLD: usize = 16;\n\nimpl VtableRecord {\n    // Invariant: `key_indices` is either empty (scan the ordered keys) or a\n    // complete map of every key to its position. It is never partially stale.\n    pub(crate) fn key_index(&self, key: Oop) -> Option<usize> {\n        if self.key_indices.is_empty() {\n            return self.keys.iter().position(|candidate| *candidate == key);\n        }\n        self.key_indices.get(&key.addr()).copied()\n    }\n\n    fn rebuild_key_indices(&mut self) {\n        self.key_indices.clear();\n        if self.keys.len() > KEY_INDEX_THRESHOLD {\n            for (index, key) in self.keys.iter().enumerate() {\n                self.key_indices.insert(key.addr(), index);\n            }\n        }\n    }\n\n    /// Record that a key was just pushed at the end of `keys`.\n    fn index_appended_key(&mut self) {\n        if !self.key_indices.is_empty() {\n            let last = self.keys.len() - 1;\n            self.key_indices.insert(self.keys[last].addr(), last);\n        } else if self.keys.len() > KEY_INDEX_THRESHOLD {\n            self.rebuild_key_indices();\n        }\n    }\n\n    fn sync_raw_view(&mut self) {\n        // SAFETY: raw is the live, uniquely runtime-owned payload allocated for\n        // this record. No foreign call or other reference overlaps this update.\n        let raw = unsafe { self.raw.as_mut() };\n        raw.size = self.logical_capacity;\n        raw.tally = self.keys.len();\n        raw.keys = if self.keys.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.keys.as_mut_ptr()\n        };\n        raw.values = if self.values.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.values.as_mut_ptr()\n        };\n        raw.parent = self.parent;\n\n    }\n\n    fn grow_dictionary(&mut self) {\n        let next_capacity = if self.logical_capacity == 0 {\n            4\n        } else {\n            self.logical_capacity\n                .checked_mul(2)\n                .unwrap_or_else(|| boundary::fatal_invariant(\"vtable dictionary capacity overflow\"))\n        };\n        self.keys.reserve_exact(next_capacity - self.keys.len());\n        self.values.reserve_exact(next_capacity - self.values.len());\n        self.weak_keys\n            .reserve_exact(next_capacity - self.weak_keys.len());\n        self.logical_capacity = next_capacity;\n    }\n}\n\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub(crate) enum AddMethod<T = NativeEntry> {\n    Added,\n    Overwrote(T),\n}\n\n// Position hints contain no Objects, selected methods, contexts or parent links.\n// Any hint is safe only after checking the current ordered key at that position.\nconst SLOT_HINTS: usize = 256;\n\n/// Ordered registry of every vtable in one runtime.\npub(crate) struct Vtables {\n    pub(crate) ordered: Vec<Oop>,\n    by_address: AddressMap<VtableRecord>,\n    // Monotonic count of dictionary, parent and registry mutations. Design 74A\n    // \u00a73.2: a reader that cached a verification against one epoch re-verifies\n    // when the epoch moved. Over-counting is harmless; never skip a mutator.\n    mutation_epoch: u64,\n    // Explicit binding/parent/association changes, including ABA. Retiring an\n    // unreachable behavior cannot change a live lookup and does not advance it.\n    binding_epoch: u64,\n    slot_hints: [Cell<Option<usize>>; SLOT_HINTS],\n}\n\nimpl Vtables {\n    pub(crate) fn new() -> Self {\n        Self {\n            ordered: Vec::new(),\n            by_address: AddressMap::default(),\n            mutation_epoch: 0,\n            binding_epoch: 0,\n            slot_hints: std::array::from_fn(|_| Cell::new(None)),\n        }\n    }\n    pub(crate) fn mutation_epoch(&self) -> u64 {\n        self.mutation_epoch\n    }\n\n    pub(crate) fn note_mutation(&mut self) {\n        self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        self.binding_epoch = self.binding_epoch.saturating_add(1);\n    }\n    pub(crate) fn binding_epoch(&self) -> u64 { self.binding_epoch }\n    pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();\n\n    /// Construct a behavior using Id allocation alone.\n    pub(crate) fn create(&mut self, memory: &mut ObjectMemory, parent: Oop, metavtable: Oop) -> Oop {\n        let object = memory.allocate(Self::PAYLOAD_SIZE);\n        assert!(memory.set_vtable(object, metavtable));\n        // SAFETY: the fresh allocation has the exact behavior payload extent.\n        unsafe { self.register(object, parent) };\n        object\n    }\n\n    /// Register a fresh behavior allocation supplied by the caller.\n    /// # Safety\n    /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.\n    pub(crate) unsafe fn register(&mut self, object: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let raw = NonNull::new(object.cast::<RawVtable>())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"new vtable payload is null\"));\n        // SAFETY: object owns a zeroed, aligned payload of exactly RawVtable's\n        // size, and no typed value or reference exists there yet.\n        unsafe {\n            raw.as_ptr().write(RawVtable {\n                size: 0,\n                tally: 0,\n                keys: core::ptr::null_mut(),\n                values: core::ptr::null_mut(),\n                parent,\n            });\n        }\n\n        let previous = self.by_address.insert(\n            object.addr(),\n            VtableRecord {\n                raw,\n                logical_capacity: 0,\n                keys: Vec::new(),\n                values: Vec::new(),\n                weak_keys: Vec::new(),\n                key_indices: AddressMap::default(),\n                parent,\n            },\n        );\n        boundary::require_invariant(previous.is_none(), \"duplicate vtable address\");\n        self.ordered.push(object);\n    }\n    pub(crate) fn is_registered(&self, candidate: Oop) -> bool {\n        !candidate.is_null() && self.by_address.contains_key(&candidate.addr())\n    }\n    pub(crate) fn is_registered_address(&self, address: usize) -> bool {\n        self.by_address.contains_key(&address)\n    }\n    pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {\n        let Some(record) = self.by_address.get(&vtable.addr()) else {\n            return Vec::new();\n        };\n        let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));\n        if !record.parent.is_null() {\n            edges.push(record.parent);\n        }\n        edges.extend(\n            record\n                .keys\n                .iter()\n                .copied()\n                .zip(record.weak_keys.iter().copied())\n                .filter_map(|(key, weak)| (!weak && !key.is_null()).then_some(key)),\n        );\n        edges\n    }\n    pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {\n        self.by_address\n            .get(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n    }\n    pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {\n        self.by_address\n            .get_mut(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n    }\n    pub(crate) fn count(&self) -> usize {\n        self.ordered.len()\n    }\n    pub(crate) fn view(&self) -> &[Oop] {\n        &self.ordered\n    }\n    pub(crate) fn at(&self, index: usize) -> Oop {\n        self.ordered\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {\n        self.by_address\n            .get(&vtable.addr())\n            .map(|record| record.parent)\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn set_parent(&mut self, vtable: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let record = self.record_mut(vtable);\n        record.parent = parent;\n        record.sync_raw_view();\n        self.note_mutation();\n    }\n    pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {\n        self.record(vtable).logical_capacity\n    }\n    pub(crate) fn selector_at(&self, vtable: Oop, index: usize) -> Oop {\n        self.record(vtable)\n            .keys\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {\n        &self.record(vtable).keys\n    }\n    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        let record = self.record(vtable);\n        record\n            .key_index(selector)\n            // Object-valued internal dictionary entries are not methods.\n            .and_then(|index| record.values[index].as_entry())\n    }\n    pub(crate) fn lookup_head(\n        &self,\n        vtable: Oop,\n        selector: Oop,\n    ) -> Result<Option<NativeEntry>, Oop> {\n        let record = self.record(vtable);\n        if let Some(index) = record.key_index(selector) {\n            return Ok(record.values[index].as_entry());\n        }\n        Err(record.parent)\n    }\n    #[inline]\n    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        while !vtable.is_null() {\n            // Membership is still checked before consulting a hint. Retirement,\n            // address reuse and slot shifts cannot make an old index authority.\n            let record = self.record(vtable);\n            // Tiny dictionaries already use a cheaper linear scan. Avoid adding\n            // hint hashing to fresh one-method Block behaviors and empty parents.\n            let hint = if record.key_indices.is_empty() { None } else {\n                let hash = (vtable.addr().rotate_left(13) ^ selector.addr())\n                    .wrapping_mul(0x9e3779b97f4a7c15);\n                Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])\n            };\n            if let Some(slot) = hint && let Some(index) = slot.get()\n                && record.keys.get(index) == Some(&selector)\n            {\n                return record.values[index].as_entry();\n            }\n            if let Some(index) = record.key_index(selector) {\n                if let Some(slot) = hint { slot.set(Some(index)); }\n                return record.values[index].as_entry();\n            }\n            // Never memoize inherited resolution or absence: read this live link.\n            vtable = record.parent;\n        }\n        None\n    }\n    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {\n        assert!(method.method.is_some(), \"method binding requires a native entry\");\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(selector) {\n            let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect(\"method dictionary held non-entry\");\n            record.sync_raw_view();\n            return AddMethod::Overwrote(previous);\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(selector);\n        record.values.push(Operand::entry(method));\n        record.weak_keys.push(false);\n        record.index_appended_key();\n        record.sync_raw_view();\n        AddMethod::Added\n    }\n    pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(key) {\n            record.values[index] = Operand::object(value);\n            record.weak_keys[index] = true;\n            record.sync_raw_view();\n            return;\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(key);\n        record.values.push(Operand::object(value));\n        record.weak_keys.push(true);\n        record.index_appended_key();\n        record.sync_raw_view();\n    }\n    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        let index = record.key_index(selector)?;\n        record.keys.remove(index);\n        let removed = record.values.remove(index);\n        record.weak_keys.remove(index);\n        record.rebuild_key_indices();\n        record.sync_raw_view();\n        removed.as_entry()\n    }\n    pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {\n        // SAFETY: forwarded caller precondition.\n        unsafe { ObjectMemory::vtable_of_valid_object(object) }\n    }\n    /// Retire dictionary records before the caller releases their allocations.\n    pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {\n        for vtable in dead {\n            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant(\"dead vtable registry record disappeared\"));\n        }\n        self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));\n        if !dead.is_empty() {\n            self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        }\n    }\n    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {\n        self.record(vtable).values.iter().filter_map(|value| value.as_entry())\n    }\n    pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {\n        let mut removed = 0usize;\n        for record in self.by_address.values_mut() {\n            let original_length = record.keys.len();\n            let mut index = 0usize;\n            while index < record.keys.len() {\n                let key = record.keys[index];\n                let dead = record.weak_keys[index] && dead.contains_key(&key.addr());\n                if dead {\n                    record.keys.remove(index);\n                    record.values.remove(index);\n                    record.weak_keys.remove(index);\n                    removed = removed.saturating_add(1);\n                } else {\n                    index += 1;\n                }\n            }\n            if record.keys.len() != original_length {\n                record.rebuild_key_indices();\n            }\n            record.sync_raw_view();\n        }\n        if removed != 0 {\n            self.note_mutation();\n        }\n        removed\n    }\n}\n\n#[cfg(test)]\nmod core_tests {\n    use super::*;\n    #[test]\n    fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {\n        unsafe extern \"C\" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<NativeEntry> {\n            while !at.is_null() {\n                let row = tables.record(at);\n                for (&candidate, value) in row.keys.iter().zip(&row.values) {\n                    if candidate == key { return value.as_entry(); }\n                }\n                at = row.parent;\n            }\n            None\n        }\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let other = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();\n        let entry = |value| NativeEntry::new(leaf, core::ptr::without_provenance_mut(value));\n        for (i, &key) in keys.iter().enumerate() {\n            tables.add_method(parent, key, entry(i+1));\n            tables.add_method(other, key, entry(i+101));\n        }\n        for round in 0..80 {\n            let key = keys[round % keys.len()];\n            for &lookup in &keys { assert_eq!(tables.lookup(child, lookup), reference(&tables, child, lookup)); }\n            match round % 4 {\n                0 => { tables.add_method(parent, key, entry(round+501)); }\n                1 => { tables.remove_method(parent, key); }\n                2 => { tables.set_parent(child, if round % 8 == 2 {other} else {parent}); }\n                _ => { tables.add_method(child, key, entry(round+901)); }\n            }\n        }\n        // A populated large-dictionary hint must read a newly opaque value,\n        // rather than returning the native entry that used to occupy the slot.\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        tables.add_weak_opaque_binding(other, keys[0], meta);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        let mut removed_key = AddressMap::default(); removed_key.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&removed_key);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        tables.add_method(other, keys[0], entry(101));\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        // An opaque entry shadows an inherited method just as it did before.\n        tables.set_parent(child, other);\n        tables.add_weak_opaque_binding(child, keys[0], meta);\n        assert_eq!(tables.lookup(child, keys[0]), None);\n        let mut dead = AddressMap::default(); dead.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&dead);\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));\n        // Re-register the same still-allocated payload after retiring its record.\n        // Hints do not keep a record or its previous entries alive.\n        tables.remove_objects(&[child]);\n        unsafe { tables.register(child, parent); }\n        tables.add_method(child, keys[0], entry(9999));\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n        // Force stale/out-of-range entries and cache collisions independently\n        // of the hash, then check fallback against a linear reference.\n        for hint in &tables.slot_hints {\n            hint.set(Some(usize::MAX));\n        }\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(other, key), reference(&tables, other, key)); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n    }\n\n    #[test]\n    fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let live = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let dead = tables.create(&mut memory, live, meta);\n        let survivor = tables.create(&mut memory, live, meta);\n        let before = tables.binding_epoch();\n        let global = tables.mutation_epoch();\n        tables.remove_objects(&[dead]);\n        assert_eq!(tables.binding_epoch(), before);\n        assert_eq!(tables.mutation_epoch(), global + 1);\n        assert_eq!(tables.ordered, vec![meta, live, survivor]);\n        tables.set_parent(survivor, meta);\n        tables.set_parent(survivor, live);\n        assert_eq!(tables.parent_of(survivor), live);\n        assert_eq!(tables.binding_epoch(), before + 2, \"ABA must invalidate snapshots\");\n        unsafe extern \"C\" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        let key = memory.allocate(0);\n        let entry = NativeEntry::new(method, core::ptr::null_mut());\n        tables.add_method(live, key, entry);\n        let bound = tables.binding_epoch();\n        tables.remove_method(live, key);\n        tables.add_method(live, key, entry);\n        assert_eq!(tables.direct_lookup(live, key), Some(entry));\n        assert_eq!(tables.binding_epoch(), bound + 2);\n    }\n    #[test]\n    fn behavior_graph_and_dictionary_need_only_id_allocation() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        assert!(memory.set_vtable(meta, meta));\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));\n        unsafe extern \"C\" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }\n        let identity = NativeEntry::new(identity, core::ptr::null_mut());\n        let mut symbols = crate::id::symbol::Symbols::new();\n        let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!(\"key-{index}\").as_bytes()).unwrap()).collect();\n        assert_eq!(symbols.intern(&mut memory, symbol_behavior, b\"key-7\").unwrap(), keys[7]);\n        for &key in &keys { tables.add_method(parent, key, identity); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(identity)); }\n        tables.remove_method(parent, keys[7]);\n        assert!(tables.lookup(child, keys[7]).is_none());\n        tables.remove_objects(&[child]);\n        assert!(!tables.is_registered(child));\n        assert!(memory.detach(child.addr()).is_some());\n        assert_eq!(tables.count(), 3);\n    }\n}\n",
+    "packed_source": "//! Raw vtable objects, ordered method dictionaries, and exact membership.\n#![allow(dead_code)] // Direct allocation entry is used by the construction cutover.\n\nuse core::cell::Cell;\nuse core::mem::offset_of;\nuse core::num::NonZeroUsize;\nuse core::ptr::NonNull;\n\nuse crate::abi::Oop;\nuse crate::abi::id_protocol::{NativeEntry, Operand};\nuse crate::boundary;\nuse crate::id::object_memory::ObjectMemory;\nuse crate::raw::AddressMap;\n\n/// The payload shape retained for vtable objects themselves.\n#[allow(non_snake_case)]\n#[repr(C)]\npub(crate) struct RawVtable {\n    pub(crate) size: usize,\n    pub(crate) tally: usize,\n    pub(crate) keys: *mut Oop,\n    pub(crate) values: *mut Operand,\n    pub(crate) parent: Oop,\n}\n\nconst _: () = {\n    assert!(size_of::<RawVtable>() == 40);\n    assert!(align_of::<RawVtable>() == 8);\n    assert!(offset_of!(RawVtable, size) == 0);\n    assert!(offset_of!(RawVtable, tally) == 8);\n    assert!(offset_of!(RawVtable, keys) == 16);\n    assert!(offset_of!(RawVtable, values) == 24);\n    assert!(offset_of!(RawVtable, parent) == 32);\n};\n\npub(crate) struct VtableRecord {\n    pub(crate) raw: NonNull<RawVtable>,\n    pub(crate) logical_capacity: usize,\n    pub(crate) keys: Vec<Oop>,\n    pub(crate) values: Vec<Operand>,\n    pub(crate) weak_keys: Vec<bool>,\n    // Derived identity lookup only. Ordered vectors retain raw-view and GC\n    // authority; these integer addresses never add roots or cache dispatch.\n    pub(crate) key_indices: AddressMap<usize>,\n    pub(crate) parent: Oop,\n}\n\n/// Dictionaries at or below this size answer lookups by scanning the ordered\n/// keys; the derived index exists only for larger dictionaries. Most vtables\n/// hold a handful of methods, and allocating and growing a hash table for each\n/// of them measured +4.5 ms on every stdlib boot (epic as7 acceptance repeat,\n/// 2026-09-09) without any lookup benefit at that size.\nconst KEY_INDEX_THRESHOLD: usize = 16;\n\nimpl VtableRecord {\n    // Invariant: `key_indices` is either empty (scan the ordered keys) or a\n    // complete map of every key to its position. It is never partially stale.\n    pub(crate) fn key_index(&self, key: Oop) -> Option<usize> {\n        if self.key_indices.is_empty() {\n            return self.keys.iter().position(|candidate| *candidate == key);\n        }\n        self.key_indices.get(&key.addr()).copied()\n    }\n\n    fn rebuild_key_indices(&mut self) {\n        self.key_indices.clear();\n        if self.keys.len() > KEY_INDEX_THRESHOLD {\n            for (index, key) in self.keys.iter().enumerate() {\n                self.key_indices.insert(key.addr(), index);\n            }\n        }\n    }\n\n    /// Record that a key was just pushed at the end of `keys`.\n    fn index_appended_key(&mut self) {\n        if !self.key_indices.is_empty() {\n            let last = self.keys.len() - 1;\n            self.key_indices.insert(self.keys[last].addr(), last);\n        } else if self.keys.len() > KEY_INDEX_THRESHOLD {\n            self.rebuild_key_indices();\n        }\n    }\n\n    fn sync_raw_view(&mut self) {\n        // SAFETY: raw is the live, uniquely runtime-owned payload allocated for\n        // this record. No foreign call or other reference overlaps this update.\n        let raw = unsafe { self.raw.as_mut() };\n        raw.size = self.logical_capacity;\n        raw.tally = self.keys.len();\n        raw.keys = if self.keys.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.keys.as_mut_ptr()\n        };\n        raw.values = if self.values.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.values.as_mut_ptr()\n        };\n        raw.parent = self.parent;\n\n    }\n\n    fn grow_dictionary(&mut self) {\n        let next_capacity = if self.logical_capacity == 0 {\n            4\n        } else {\n            self.logical_capacity\n                .checked_mul(2)\n                .unwrap_or_else(|| boundary::fatal_invariant(\"vtable dictionary capacity overflow\"))\n        };\n        self.keys.reserve_exact(next_capacity - self.keys.len());\n        self.values.reserve_exact(next_capacity - self.values.len());\n        self.weak_keys\n            .reserve_exact(next_capacity - self.weak_keys.len());\n        self.logical_capacity = next_capacity;\n    }\n}\n\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub(crate) enum AddMethod<T = NativeEntry> {\n    Added,\n    Overwrote(T),\n}\n\n// Position hints contain no Objects, selected methods, contexts or parent links.\n// Any hint is safe only after checking the current ordered key at that position.\nconst SLOT_HINTS: usize = 256;\n\n/// Ordered registry of every vtable in one runtime.\npub(crate) struct Vtables {\n    pub(crate) ordered: Vec<Oop>,\n    by_address: AddressMap<VtableRecord>,\n    // Monotonic count of dictionary, parent and registry mutations. Design 74A\n    // \u00a73.2: a reader that cached a verification against one epoch re-verifies\n    // when the epoch moved. Over-counting is harmless; never skip a mutator.\n    mutation_epoch: u64,\n    // Explicit binding/parent/association changes, including ABA. Retiring an\n    // unreachable behavior cannot change a live lookup and does not advance it.\n    binding_epoch: u64,\n    slot_hints: [Cell<Option<NonZeroUsize>>; SLOT_HINTS],\n}\n\nimpl Vtables {\n    pub(crate) fn new() -> Self {\n        Self {\n            ordered: Vec::new(),\n            by_address: AddressMap::default(),\n            mutation_epoch: 0,\n            binding_epoch: 0,\n            slot_hints: std::array::from_fn(|_| Cell::new(None)),\n        }\n    }\n    pub(crate) fn mutation_epoch(&self) -> u64 {\n        self.mutation_epoch\n    }\n\n    pub(crate) fn note_mutation(&mut self) {\n        self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        self.binding_epoch = self.binding_epoch.saturating_add(1);\n    }\n    pub(crate) fn binding_epoch(&self) -> u64 { self.binding_epoch }\n    pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();\n\n    /// Construct a behavior using Id allocation alone.\n    pub(crate) fn create(&mut self, memory: &mut ObjectMemory, parent: Oop, metavtable: Oop) -> Oop {\n        let object = memory.allocate(Self::PAYLOAD_SIZE);\n        assert!(memory.set_vtable(object, metavtable));\n        // SAFETY: the fresh allocation has the exact behavior payload extent.\n        unsafe { self.register(object, parent) };\n        object\n    }\n\n    /// Register a fresh behavior allocation supplied by the caller.\n    /// # Safety\n    /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.\n    pub(crate) unsafe fn register(&mut self, object: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let raw = NonNull::new(object.cast::<RawVtable>())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"new vtable payload is null\"));\n        // SAFETY: object owns a zeroed, aligned payload of exactly RawVtable's\n        // size, and no typed value or reference exists there yet.\n        unsafe {\n            raw.as_ptr().write(RawVtable {\n                size: 0,\n                tally: 0,\n                keys: core::ptr::null_mut(),\n                values: core::ptr::null_mut(),\n                parent,\n            });\n        }\n\n        let previous = self.by_address.insert(\n            object.addr(),\n            VtableRecord {\n                raw,\n                logical_capacity: 0,\n                keys: Vec::new(),\n                values: Vec::new(),\n                weak_keys: Vec::new(),\n                key_indices: AddressMap::default(),\n                parent,\n            },\n        );\n        boundary::require_invariant(previous.is_none(), \"duplicate vtable address\");\n        self.ordered.push(object);\n    }\n    pub(crate) fn is_registered(&self, candidate: Oop) -> bool {\n        !candidate.is_null() && self.by_address.contains_key(&candidate.addr())\n    }\n    pub(crate) fn is_registered_address(&self, address: usize) -> bool {\n        self.by_address.contains_key(&address)\n    }\n    pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {\n        let Some(record) = self.by_address.get(&vtable.addr()) else {\n            return Vec::new();\n        };\n        let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));\n        if !record.parent.is_null() {\n            edges.push(record.parent);\n        }\n        edges.extend(\n            record\n                .keys\n                .iter()\n                .copied()\n                .zip(record.weak_keys.iter().copied())\n                .filter_map(|(key, weak)| (!weak && !key.is_null()).then_some(key)),\n        );\n        edges\n    }\n    pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {\n        self.by_address\n            .get(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n    }\n    pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {\n        self.by_address\n            .get_mut(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n    }\n    pub(crate) fn count(&self) -> usize {\n        self.ordered.len()\n    }\n    pub(crate) fn view(&self) -> &[Oop] {\n        &self.ordered\n    }\n    pub(crate) fn at(&self, index: usize) -> Oop {\n        self.ordered\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {\n        self.by_address\n            .get(&vtable.addr())\n            .map(|record| record.parent)\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn set_parent(&mut self, vtable: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let record = self.record_mut(vtable);\n        record.parent = parent;\n        record.sync_raw_view();\n        self.note_mutation();\n    }\n    pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {\n        self.record(vtable).logical_capacity\n    }\n    pub(crate) fn selector_at(&self, vtable: Oop, index: usize) -> Oop {\n        self.record(vtable)\n            .keys\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {\n        &self.record(vtable).keys\n    }\n    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        let record = self.record(vtable);\n        record\n            .key_index(selector)\n            // Object-valued internal dictionary entries are not methods.\n            .and_then(|index| record.values[index].as_entry())\n    }\n    pub(crate) fn lookup_head(\n        &self,\n        vtable: Oop,\n        selector: Oop,\n    ) -> Result<Option<NativeEntry>, Oop> {\n        let record = self.record(vtable);\n        if let Some(index) = record.key_index(selector) {\n            return Ok(record.values[index].as_entry());\n        }\n        Err(record.parent)\n    }\n    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        while !vtable.is_null() {\n            // Membership is still checked before consulting a hint. Retirement,\n            // address reuse and slot shifts cannot make an old index authority.\n            let record = self.record(vtable);\n            // Tiny dictionaries already use a cheaper linear scan. Avoid adding\n            // hint hashing to fresh one-method Block behaviors and empty parents.\n            let hint = if record.key_indices.is_empty() { None } else {\n                let hash = (vtable.addr().rotate_left(13) ^ selector.addr())\n                    .wrapping_mul(0x9e3779b97f4a7c15);\n                Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])\n            };\n            if let Some(slot) = hint && let Some(encoded) = slot.get()\n                && let index = encoded.get() - 1\n                && record.keys.get(index) == Some(&selector)\n            {\n                return record.values[index].as_entry();\n            }\n            if let Some(index) = record.key_index(selector) {\n                if let Some(slot) = hint { slot.set(NonZeroUsize::new(index + 1)); }\n                return record.values[index].as_entry();\n            }\n            // Never memoize inherited resolution or absence: read this live link.\n            vtable = record.parent;\n        }\n        None\n    }\n    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {\n        assert!(method.method.is_some(), \"method binding requires a native entry\");\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(selector) {\n            let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect(\"method dictionary held non-entry\");\n            record.sync_raw_view();\n            return AddMethod::Overwrote(previous);\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(selector);\n        record.values.push(Operand::entry(method));\n        record.weak_keys.push(false);\n        record.index_appended_key();\n        record.sync_raw_view();\n        AddMethod::Added\n    }\n    pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(key) {\n            record.values[index] = Operand::object(value);\n            record.weak_keys[index] = true;\n            record.sync_raw_view();\n            return;\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(key);\n        record.values.push(Operand::object(value));\n        record.weak_keys.push(true);\n        record.index_appended_key();\n        record.sync_raw_view();\n    }\n    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        let index = record.key_index(selector)?;\n        record.keys.remove(index);\n        let removed = record.values.remove(index);\n        record.weak_keys.remove(index);\n        record.rebuild_key_indices();\n        record.sync_raw_view();\n        removed.as_entry()\n    }\n    pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {\n        // SAFETY: forwarded caller precondition.\n        unsafe { ObjectMemory::vtable_of_valid_object(object) }\n    }\n    /// Retire dictionary records before the caller releases their allocations.\n    pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {\n        for vtable in dead {\n            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant(\"dead vtable registry record disappeared\"));\n        }\n        self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));\n        if !dead.is_empty() {\n            self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        }\n    }\n    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {\n        self.record(vtable).values.iter().filter_map(|value| value.as_entry())\n    }\n    pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {\n        let mut removed = 0usize;\n        for record in self.by_address.values_mut() {\n            let original_length = record.keys.len();\n            let mut index = 0usize;\n            while index < record.keys.len() {\n                let key = record.keys[index];\n                let dead = record.weak_keys[index] && dead.contains_key(&key.addr());\n                if dead {\n                    record.keys.remove(index);\n                    record.values.remove(index);\n                    record.weak_keys.remove(index);\n                    removed = removed.saturating_add(1);\n                } else {\n                    index += 1;\n                }\n            }\n            if record.keys.len() != original_length {\n                record.rebuild_key_indices();\n            }\n            record.sync_raw_view();\n        }\n        if removed != 0 {\n            self.note_mutation();\n        }\n        removed\n    }\n}\n\n#[cfg(test)]\nmod core_tests {\n    use super::*;\n    #[test]\n    fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {\n        unsafe extern \"C\" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<NativeEntry> {\n            while !at.is_null() {\n                let row = tables.record(at);\n                for (&candidate, value) in row.keys.iter().zip(&row.values) {\n                    if candidate == key { return value.as_entry(); }\n                }\n                at = row.parent;\n            }\n            None\n        }\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let other = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();\n        let entry = |value| NativeEntry::new(leaf, core::ptr::without_provenance_mut(value));\n        for (i, &key) in keys.iter().enumerate() {\n            tables.add_method(parent, key, entry(i+1));\n            tables.add_method(other, key, entry(i+101));\n        }\n        for round in 0..80 {\n            let key = keys[round % keys.len()];\n            for &lookup in &keys { assert_eq!(tables.lookup(child, lookup), reference(&tables, child, lookup)); }\n            match round % 4 {\n                0 => { tables.add_method(parent, key, entry(round+501)); }\n                1 => { tables.remove_method(parent, key); }\n                2 => { tables.set_parent(child, if round % 8 == 2 {other} else {parent}); }\n                _ => { tables.add_method(child, key, entry(round+901)); }\n            }\n        }\n        // A populated large-dictionary hint must read a newly opaque value,\n        // rather than returning the native entry that used to occupy the slot.\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        tables.add_weak_opaque_binding(other, keys[0], meta);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        let mut removed_key = AddressMap::default(); removed_key.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&removed_key);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        tables.add_method(other, keys[0], entry(101));\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        // An opaque entry shadows an inherited method just as it did before.\n        tables.set_parent(child, other);\n        tables.add_weak_opaque_binding(child, keys[0], meta);\n        assert_eq!(tables.lookup(child, keys[0]), None);\n        let mut dead = AddressMap::default(); dead.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&dead);\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));\n        // Re-register the same still-allocated payload after retiring its record.\n        // Hints do not keep a record or its previous entries alive.\n        tables.remove_objects(&[child]);\n        unsafe { tables.register(child, parent); }\n        tables.add_method(child, keys[0], entry(9999));\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n        // Force stale/out-of-range entries and cache collisions independently\n        // of the hash, then check fallback against a linear reference.\n        for hint in &tables.slot_hints {\n            hint.set(NonZeroUsize::new(usize::MAX));\n        }\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(other, key), reference(&tables, other, key)); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n    }\n\n    #[test]\n    fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let live = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let dead = tables.create(&mut memory, live, meta);\n        let survivor = tables.create(&mut memory, live, meta);\n        let before = tables.binding_epoch();\n        let global = tables.mutation_epoch();\n        tables.remove_objects(&[dead]);\n        assert_eq!(tables.binding_epoch(), before);\n        assert_eq!(tables.mutation_epoch(), global + 1);\n        assert_eq!(tables.ordered, vec![meta, live, survivor]);\n        tables.set_parent(survivor, meta);\n        tables.set_parent(survivor, live);\n        assert_eq!(tables.parent_of(survivor), live);\n        assert_eq!(tables.binding_epoch(), before + 2, \"ABA must invalidate snapshots\");\n        unsafe extern \"C\" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        let key = memory.allocate(0);\n        let entry = NativeEntry::new(method, core::ptr::null_mut());\n        tables.add_method(live, key, entry);\n        let bound = tables.binding_epoch();\n        tables.remove_method(live, key);\n        tables.add_method(live, key, entry);\n        assert_eq!(tables.direct_lookup(live, key), Some(entry));\n        assert_eq!(tables.binding_epoch(), bound + 2);\n    }\n    #[test]\n    fn behavior_graph_and_dictionary_need_only_id_allocation() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        assert!(memory.set_vtable(meta, meta));\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));\n        unsafe extern \"C\" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }\n        let identity = NativeEntry::new(identity, core::ptr::null_mut());\n        let mut symbols = crate::id::symbol::Symbols::new();\n        let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!(\"key-{index}\").as_bytes()).unwrap()).collect();\n        assert_eq!(symbols.intern(&mut memory, symbol_behavior, b\"key-7\").unwrap(), keys[7]);\n        for &key in &keys { tables.add_method(parent, key, identity); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(identity)); }\n        tables.remove_method(parent, keys[7]);\n        assert!(tables.lookup(child, keys[7]).is_none());\n        tables.remove_objects(&[child]);\n        assert!(!tables.is_registered(child));\n        assert!(memory.detach(child.addr()).is_some());\n        assert_eq!(tables.count(), 3);\n    }\n}\n",
+    "small_hint_source": "//! Raw vtable objects, ordered method dictionaries, and exact membership.\n#![allow(dead_code)] // Direct allocation entry is used by the construction cutover.\n\nuse core::cell::Cell;\nuse core::mem::offset_of;\nuse core::ptr::NonNull;\n\nuse crate::abi::Oop;\nuse crate::abi::id_protocol::{NativeEntry, Operand};\nuse crate::boundary;\nuse crate::id::object_memory::ObjectMemory;\nuse crate::raw::AddressMap;\n\n/// The payload shape retained for vtable objects themselves.\n#[allow(non_snake_case)]\n#[repr(C)]\npub(crate) struct RawVtable {\n    pub(crate) size: usize,\n    pub(crate) tally: usize,\n    pub(crate) keys: *mut Oop,\n    pub(crate) values: *mut Operand,\n    pub(crate) parent: Oop,\n}\n\nconst _: () = {\n    assert!(size_of::<RawVtable>() == 40);\n    assert!(align_of::<RawVtable>() == 8);\n    assert!(offset_of!(RawVtable, size) == 0);\n    assert!(offset_of!(RawVtable, tally) == 8);\n    assert!(offset_of!(RawVtable, keys) == 16);\n    assert!(offset_of!(RawVtable, values) == 24);\n    assert!(offset_of!(RawVtable, parent) == 32);\n};\n\npub(crate) struct VtableRecord {\n    pub(crate) raw: NonNull<RawVtable>,\n    pub(crate) logical_capacity: usize,\n    pub(crate) keys: Vec<Oop>,\n    pub(crate) values: Vec<Operand>,\n    pub(crate) weak_keys: Vec<bool>,\n    // Derived identity lookup only. Ordered vectors retain raw-view and GC\n    // authority; these integer addresses never add roots or cache dispatch.\n    pub(crate) key_indices: AddressMap<usize>,\n    pub(crate) parent: Oop,\n}\n\n/// Dictionaries at or below this size answer lookups by scanning the ordered\n/// keys; the derived index exists only for larger dictionaries. Most vtables\n/// hold a handful of methods, and allocating and growing a hash table for each\n/// of them measured +4.5 ms on every stdlib boot (epic as7 acceptance repeat,\n/// 2026-09-09) without any lookup benefit at that size.\nconst KEY_INDEX_THRESHOLD: usize = 16;\n\nimpl VtableRecord {\n    // Invariant: `key_indices` is either empty (scan the ordered keys) or a\n    // complete map of every key to its position. It is never partially stale.\n    pub(crate) fn key_index(&self, key: Oop) -> Option<usize> {\n        if self.key_indices.is_empty() {\n            return self.keys.iter().position(|candidate| *candidate == key);\n        }\n        self.key_indices.get(&key.addr()).copied()\n    }\n\n    fn rebuild_key_indices(&mut self) {\n        self.key_indices.clear();\n        if self.keys.len() > KEY_INDEX_THRESHOLD {\n            for (index, key) in self.keys.iter().enumerate() {\n                self.key_indices.insert(key.addr(), index);\n            }\n        }\n    }\n\n    /// Record that a key was just pushed at the end of `keys`.\n    fn index_appended_key(&mut self) {\n        if !self.key_indices.is_empty() {\n            let last = self.keys.len() - 1;\n            self.key_indices.insert(self.keys[last].addr(), last);\n        } else if self.keys.len() > KEY_INDEX_THRESHOLD {\n            self.rebuild_key_indices();\n        }\n    }\n\n    fn sync_raw_view(&mut self) {\n        // SAFETY: raw is the live, uniquely runtime-owned payload allocated for\n        // this record. No foreign call or other reference overlaps this update.\n        let raw = unsafe { self.raw.as_mut() };\n        raw.size = self.logical_capacity;\n        raw.tally = self.keys.len();\n        raw.keys = if self.keys.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.keys.as_mut_ptr()\n        };\n        raw.values = if self.values.is_empty() {\n            core::ptr::null_mut()\n        } else {\n            self.values.as_mut_ptr()\n        };\n        raw.parent = self.parent;\n\n    }\n\n    fn grow_dictionary(&mut self) {\n        let next_capacity = if self.logical_capacity == 0 {\n            4\n        } else {\n            self.logical_capacity\n                .checked_mul(2)\n                .unwrap_or_else(|| boundary::fatal_invariant(\"vtable dictionary capacity overflow\"))\n        };\n        self.keys.reserve_exact(next_capacity - self.keys.len());\n        self.values.reserve_exact(next_capacity - self.values.len());\n        self.weak_keys\n            .reserve_exact(next_capacity - self.weak_keys.len());\n        self.logical_capacity = next_capacity;\n    }\n}\n\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub(crate) enum AddMethod<T = NativeEntry> {\n    Added,\n    Overwrote(T),\n}\n\n// Position hints contain no Objects, selected methods, contexts or parent links.\n// Any hint is safe only after checking the current ordered key at that position.\nconst SLOT_HINTS: usize = 256;\n\n/// Ordered registry of every vtable in one runtime.\npub(crate) struct Vtables {\n    pub(crate) ordered: Vec<Oop>,\n    by_address: AddressMap<VtableRecord>,\n    // Monotonic count of dictionary, parent and registry mutations. Design 74A\n    // \u00a73.2: a reader that cached a verification against one epoch re-verifies\n    // when the epoch moved. Over-counting is harmless; never skip a mutator.\n    mutation_epoch: u64,\n    // Explicit binding/parent/association changes, including ABA. Retiring an\n    // unreachable behavior cannot change a live lookup and does not advance it.\n    binding_epoch: u64,\n    slot_hints: [Cell<Option<usize>>; SLOT_HINTS],\n}\n\nimpl Vtables {\n    pub(crate) fn new() -> Self {\n        Self {\n            ordered: Vec::new(),\n            by_address: AddressMap::default(),\n            mutation_epoch: 0,\n            binding_epoch: 0,\n            slot_hints: std::array::from_fn(|_| Cell::new(None)),\n        }\n    }\n    pub(crate) fn mutation_epoch(&self) -> u64 {\n        self.mutation_epoch\n    }\n\n    pub(crate) fn note_mutation(&mut self) {\n        self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        self.binding_epoch = self.binding_epoch.saturating_add(1);\n    }\n    pub(crate) fn binding_epoch(&self) -> u64 { self.binding_epoch }\n    pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();\n\n    /// Construct a behavior using Id allocation alone.\n    pub(crate) fn create(&mut self, memory: &mut ObjectMemory, parent: Oop, metavtable: Oop) -> Oop {\n        let object = memory.allocate(Self::PAYLOAD_SIZE);\n        assert!(memory.set_vtable(object, metavtable));\n        // SAFETY: the fresh allocation has the exact behavior payload extent.\n        unsafe { self.register(object, parent) };\n        object\n    }\n\n    /// Register a fresh behavior allocation supplied by the caller.\n    /// # Safety\n    /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.\n    pub(crate) unsafe fn register(&mut self, object: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let raw = NonNull::new(object.cast::<RawVtable>())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"new vtable payload is null\"));\n        // SAFETY: object owns a zeroed, aligned payload of exactly RawVtable's\n        // size, and no typed value or reference exists there yet.\n        unsafe {\n            raw.as_ptr().write(RawVtable {\n                size: 0,\n                tally: 0,\n                keys: core::ptr::null_mut(),\n                values: core::ptr::null_mut(),\n                parent,\n            });\n        }\n\n        let previous = self.by_address.insert(\n            object.addr(),\n            VtableRecord {\n                raw,\n                logical_capacity: 0,\n                keys: Vec::new(),\n                values: Vec::new(),\n                weak_keys: Vec::new(),\n                key_indices: AddressMap::default(),\n                parent,\n            },\n        );\n        boundary::require_invariant(previous.is_none(), \"duplicate vtable address\");\n        self.ordered.push(object);\n    }\n    pub(crate) fn is_registered(&self, candidate: Oop) -> bool {\n        !candidate.is_null() && self.by_address.contains_key(&candidate.addr())\n    }\n    pub(crate) fn is_registered_address(&self, address: usize) -> bool {\n        self.by_address.contains_key(&address)\n    }\n    pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {\n        let Some(record) = self.by_address.get(&vtable.addr()) else {\n            return Vec::new();\n        };\n        let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));\n        if !record.parent.is_null() {\n            edges.push(record.parent);\n        }\n        edges.extend(\n            record\n                .keys\n                .iter()\n                .copied()\n                .zip(record.weak_keys.iter().copied())\n                .filter_map(|(key, weak)| (!weak && !key.is_null()).then_some(key)),\n        );\n        edges\n    }\n    pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {\n        self.by_address\n            .get(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n    }\n    pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {\n        self.by_address\n            .get_mut(&vtable.addr())\n            .unwrap_or_else(|| boundary::fatal_invariant(\"vtable is not registered\"))\n    }\n    pub(crate) fn count(&self) -> usize {\n        self.ordered.len()\n    }\n    pub(crate) fn view(&self) -> &[Oop] {\n        &self.ordered\n    }\n    pub(crate) fn at(&self, index: usize) -> Oop {\n        self.ordered\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {\n        self.by_address\n            .get(&vtable.addr())\n            .map(|record| record.parent)\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn set_parent(&mut self, vtable: Oop, parent: Oop) {\n        boundary::require_invariant(\n            parent.is_null() || self.is_registered(parent),\n            \"vtable parent is not registered\",\n        );\n        let record = self.record_mut(vtable);\n        record.parent = parent;\n        record.sync_raw_view();\n        self.note_mutation();\n    }\n    pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {\n        self.record(vtable).logical_capacity\n    }\n    pub(crate) fn selector_at(&self, vtable: Oop, index: usize) -> Oop {\n        self.record(vtable)\n            .keys\n            .get(index)\n            .copied()\n            .unwrap_or(core::ptr::null_mut())\n    }\n    pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {\n        &self.record(vtable).keys\n    }\n    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        let record = self.record(vtable);\n        record\n            .key_index(selector)\n            // Object-valued internal dictionary entries are not methods.\n            .and_then(|index| record.values[index].as_entry())\n    }\n    pub(crate) fn lookup_head(\n        &self,\n        vtable: Oop,\n        selector: Oop,\n    ) -> Result<Option<NativeEntry>, Oop> {\n        let record = self.record(vtable);\n        if let Some(index) = record.key_index(selector) {\n            return Ok(record.values[index].as_entry());\n        }\n        Err(record.parent)\n    }\n    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        while !vtable.is_null() {\n            // Membership is still checked before consulting a hint. Retirement,\n            // address reuse and slot shifts cannot make an old index authority.\n            let record = self.record(vtable);\n            // Tiny dictionaries already use a cheaper linear scan. Avoid adding\n            // hint hashing to fresh one-method Block behaviors and empty parents.\n            let hint = if record.keys.len() <= 4 { None } else {\n                let hash = (vtable.addr().rotate_left(13) ^ selector.addr())\n                    .wrapping_mul(0x9e3779b97f4a7c15);\n                Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])\n            };\n            if let Some(slot) = hint && let Some(index) = slot.get()\n                && record.keys.get(index) == Some(&selector)\n            {\n                return record.values[index].as_entry();\n            }\n            if let Some(index) = record.key_index(selector) {\n                if let Some(slot) = hint { slot.set(Some(index)); }\n                return record.values[index].as_entry();\n            }\n            // Never memoize inherited resolution or absence: read this live link.\n            vtable = record.parent;\n        }\n        None\n    }\n    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {\n        assert!(method.method.is_some(), \"method binding requires a native entry\");\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(selector) {\n            let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect(\"method dictionary held non-entry\");\n            record.sync_raw_view();\n            return AddMethod::Overwrote(previous);\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(selector);\n        record.values.push(Operand::entry(method));\n        record.weak_keys.push(false);\n        record.index_appended_key();\n        record.sync_raw_view();\n        AddMethod::Added\n    }\n    pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        if let Some(index) = record.key_index(key) {\n            record.values[index] = Operand::object(value);\n            record.weak_keys[index] = true;\n            record.sync_raw_view();\n            return;\n        }\n        if record.keys.len() == record.logical_capacity {\n            record.grow_dictionary();\n        }\n        record.keys.push(key);\n        record.values.push(Operand::object(value));\n        record.weak_keys.push(true);\n        record.index_appended_key();\n        record.sync_raw_view();\n    }\n    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n        self.note_mutation();\n        let record = self.record_mut(vtable);\n        let index = record.key_index(selector)?;\n        record.keys.remove(index);\n        let removed = record.values.remove(index);\n        record.weak_keys.remove(index);\n        record.rebuild_key_indices();\n        record.sync_raw_view();\n        removed.as_entry()\n    }\n    pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {\n        // SAFETY: forwarded caller precondition.\n        unsafe { ObjectMemory::vtable_of_valid_object(object) }\n    }\n    /// Retire dictionary records before the caller releases their allocations.\n    pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {\n        for vtable in dead {\n            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant(\"dead vtable registry record disappeared\"));\n        }\n        self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));\n        if !dead.is_empty() {\n            self.mutation_epoch = self.mutation_epoch.saturating_add(1);\n        }\n    }\n    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {\n        self.record(vtable).values.iter().filter_map(|value| value.as_entry())\n    }\n    pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {\n        let mut removed = 0usize;\n        for record in self.by_address.values_mut() {\n            let original_length = record.keys.len();\n            let mut index = 0usize;\n            while index < record.keys.len() {\n                let key = record.keys[index];\n                let dead = record.weak_keys[index] && dead.contains_key(&key.addr());\n                if dead {\n                    record.keys.remove(index);\n                    record.values.remove(index);\n                    record.weak_keys.remove(index);\n                    removed = removed.saturating_add(1);\n                } else {\n                    index += 1;\n                }\n            }\n            if record.keys.len() != original_length {\n                record.rebuild_key_indices();\n            }\n            record.sync_raw_view();\n        }\n        if removed != 0 {\n            self.note_mutation();\n        }\n        removed\n    }\n}\n\n#[cfg(test)]\nmod core_tests {\n    use super::*;\n    #[test]\n    fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {\n        unsafe extern \"C\" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<NativeEntry> {\n            while !at.is_null() {\n                let row = tables.record(at);\n                for (&candidate, value) in row.keys.iter().zip(&row.values) {\n                    if candidate == key { return value.as_entry(); }\n                }\n                at = row.parent;\n            }\n            None\n        }\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let other = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();\n        let entry = |value| NativeEntry::new(leaf, core::ptr::without_provenance_mut(value));\n        for (i, &key) in keys.iter().enumerate() {\n            tables.add_method(parent, key, entry(i+1));\n            tables.add_method(other, key, entry(i+101));\n        }\n        for round in 0..80 {\n            let key = keys[round % keys.len()];\n            for &lookup in &keys { assert_eq!(tables.lookup(child, lookup), reference(&tables, child, lookup)); }\n            match round % 4 {\n                0 => { tables.add_method(parent, key, entry(round+501)); }\n                1 => { tables.remove_method(parent, key); }\n                2 => { tables.set_parent(child, if round % 8 == 2 {other} else {parent}); }\n                _ => { tables.add_method(child, key, entry(round+901)); }\n            }\n        }\n        // A populated large-dictionary hint must read a newly opaque value,\n        // rather than returning the native entry that used to occupy the slot.\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        tables.add_weak_opaque_binding(other, keys[0], meta);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        let mut removed_key = AddressMap::default(); removed_key.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&removed_key);\n        assert_eq!(tables.lookup(other, keys[0]), None);\n        tables.add_method(other, keys[0], entry(101));\n        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));\n        // An opaque entry shadows an inherited method just as it did before.\n        tables.set_parent(child, other);\n        tables.add_weak_opaque_binding(child, keys[0], meta);\n        assert_eq!(tables.lookup(child, keys[0]), None);\n        let mut dead = AddressMap::default(); dead.insert(keys[0].addr(), ());\n        tables.remove_weak_keys(&dead);\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));\n        // Re-register the same still-allocated payload after retiring its record.\n        // Hints do not keep a record or its previous entries alive.\n        tables.remove_objects(&[child]);\n        unsafe { tables.register(child, parent); }\n        tables.add_method(child, keys[0], entry(9999));\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n        // Force stale/out-of-range entries and cache collisions independently\n        // of the hash, then check fallback against a linear reference.\n        for hint in &tables.slot_hints {\n            hint.set(Some(usize::MAX));\n        }\n        assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));\n        for &key in &keys { assert_eq!(tables.lookup(other, key), reference(&tables, other, key)); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }\n    }\n\n    #[test]\n    fn binding_epoch_detects_aba_but_ignores_dead_behavior_retirement() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        memory.set_vtable(meta, meta);\n        let live = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let dead = tables.create(&mut memory, live, meta);\n        let survivor = tables.create(&mut memory, live, meta);\n        let before = tables.binding_epoch();\n        let global = tables.mutation_epoch();\n        tables.remove_objects(&[dead]);\n        assert_eq!(tables.binding_epoch(), before);\n        assert_eq!(tables.mutation_epoch(), global + 1);\n        assert_eq!(tables.ordered, vec![meta, live, survivor]);\n        tables.set_parent(survivor, meta);\n        tables.set_parent(survivor, live);\n        assert_eq!(tables.parent_of(survivor), live);\n        assert_eq!(tables.binding_epoch(), before + 2, \"ABA must invalidate snapshots\");\n        unsafe extern \"C\" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {\n            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))\n        }\n        let key = memory.allocate(0);\n        let entry = NativeEntry::new(method, core::ptr::null_mut());\n        tables.add_method(live, key, entry);\n        let bound = tables.binding_epoch();\n        tables.remove_method(live, key);\n        tables.add_method(live, key, entry);\n        assert_eq!(tables.direct_lookup(live, key), Some(entry));\n        assert_eq!(tables.binding_epoch(), bound + 2);\n    }\n    #[test]\n    fn behavior_graph_and_dictionary_need_only_id_allocation() {\n        let mut memory = ObjectMemory::new();\n        let mut tables = Vtables::new();\n        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());\n        assert!(memory.set_vtable(meta, meta));\n        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let child = tables.create(&mut memory, parent, meta);\n        assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));\n        unsafe extern \"C\" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }\n        let identity = NativeEntry::new(identity, core::ptr::null_mut());\n        let mut symbols = crate::id::symbol::Symbols::new();\n        let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);\n        let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!(\"key-{index}\").as_bytes()).unwrap()).collect();\n        assert_eq!(symbols.intern(&mut memory, symbol_behavior, b\"key-7\").unwrap(), keys[7]);\n        for &key in &keys { tables.add_method(parent, key, identity); }\n        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(identity)); }\n        tables.remove_method(parent, keys[7]);\n        assert!(tables.lookup(child, keys[7]).is_none());\n        tables.remove_objects(&[child]);\n        assert!(!tables.is_registered(child));\n        assert!(memory.detach(child.addr()).is_some());\n        assert_eq!(tables.count(), 3);\n    }\n}\n",
+    "small_variants": {
+      "driver": "import argparse,importlib.util,json,statistics,sys\nfrom pathlib import Path\nroot=Path.cwd();sys.path.insert(0,str(root/'scripts'))\nfrom validation_support import command,clean_environment,save_json,sha\nspec=importlib.util.spec_from_file_location('lb',root/'scripts/logue-bench.py');lb=importlib.util.module_from_spec(spec);spec.loader.exec_module(lb)\np=argparse.ArgumentParser();p.add_argument('--variants',default='baseline,candidate,candidate,baseline');p.add_argument('--output',required=True);a=p.parse_args()\nbase=Path('/tmp/birnam-selector-investigation')\nprefixes={'baseline':Path('/tmp/birnam-fixed-digests/candidate-prefix'),**{v:Path('/tmp/birnam-method-lookup')/(v+'-prefix') for v in ['inline','packed','hint']}}\nlogue=Path('/tmp/birnam-logue-logfix/acceptance/logue')\nproject=Path('/tmp/birnam-number-bound/acceptance/examples/log-summary/bench')\ndata=Path('/tmp/birnam-number-bound/acceptance/data')\nexpect=json.loads((data/'small.expected.json').read_text())\ncfg=dict(phase='arena',seed=12345,width=16,monsters=8,turns=16,batches=4,samples=1,allocation=False,replace=False)\n(logue/'hash-probe.birnam').write_text('[Globals at: #LogueBenchConfig put: '+lb.literal(cfg)+'];\\n[System load: \"logue-bench.birnam\"]')\nruns=[]\nfor variant in a.variants.split(','):\n binary=prefixes[variant]/'bin/birnam'\n for app in ['logue','json']:\n  args=[binary,'hash-probe.birnam'] if app=='logue' else [binary,'run',project,'--',data/'small.jsonl','3']\n  r=command(args,cwd=logue if app=='logue' else root,env=clean_environment(),timeout=150)\n  assert r['exit_code']==0 and not r['stderr'],r\n  if app=='logue':\n   lines=r['stdout'].splitlines();assert lines[0]=='[logue-core] loaded'\n   report=json.loads(lines[1]);lb.check_report(report,cfg)\n   samples=[b['cpu_ns'] for sample in report['results'] for b in sample]\n  else:\n   report=json.loads(r['stdout']);assert report['report']==expect\n   samples=[b['cpu_ns'] for b in report['samples']]\n  row=dict(variant=variant,app=app,samples=samples,median_ns=statistics.median(samples),checked=True)\n  runs.append(row);print(variant,app,round(row['median_ns']/1e6,3),flush=True)\n  save_json(a.output,dict(runs=runs,driver=Path(__file__).read_text()))\n",
+      "runs": [
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1010512875.0,
+          "samples": [
+            1112996292,
+            1006470666,
+            1009146791,
+            1011878959
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 280829250,
+          "samples": [
+            280829250,
+            279594667,
+            281473458
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1023276000.0,
+          "samples": [
+            1152211833,
+            1014472459,
+            1026321917,
+            1020230083
+          ],
+          "variant": "inline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 282537167,
+          "samples": [
+            283158334,
+            282537167,
+            280371458
+          ],
+          "variant": "inline"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1040135417.0,
+          "samples": [
+            1220649375,
+            1049540292,
+            1020546208,
+            1030730542
+          ],
+          "variant": "packed"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 284521292,
+          "samples": [
+            285594750,
+            284521292,
+            280150000
+          ],
+          "variant": "packed"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1023625166.5,
+          "samples": [
+            1139516250,
+            1024818000,
+            1016256458,
+            1022432333
+          ],
+          "variant": "hint"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 290200375,
+          "samples": [
+            290200375,
+            290400958,
+            280975375
+          ],
+          "variant": "hint"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1024497521.0,
+          "samples": [
+            1122796083,
+            1037837292,
+            1000366583,
+            1011157750
+          ],
+          "variant": "hint"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 285291291,
+          "samples": [
+            285291291,
+            284278542,
+            289284458
+          ],
+          "variant": "hint"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1012915042.0,
+          "samples": [
+            1115491167,
+            997373583,
+            1020990084,
+            1004840000
+          ],
+          "variant": "packed"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 296019583,
+          "samples": [
+            283604541,
+            296019583,
+            302950000
+          ],
+          "variant": "packed"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1028882708.5,
+          "samples": [
+            1127451083,
+            1016296250,
+            1041469167,
+            1010181208
+          ],
+          "variant": "inline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 282728791,
+          "samples": [
+            283224250,
+            282728791,
+            280088250
+          ],
+          "variant": "inline"
+        },
+        {
+          "app": "logue",
+          "checked": true,
+          "median_ns": 1024629520.5,
+          "samples": [
+            1117982667,
+            1005020833,
+            1011889541,
+            1037369500
+          ],
+          "variant": "baseline"
+        },
+        {
+          "app": "json",
+          "checked": true,
+          "median_ns": 281446167,
+          "samples": [
+            282900375,
+            279692209,
+            281446167
+          ],
+          "variant": "baseline"
+        }
+      ]
+    }
+  },
+  "applications_sha256": {
+    "examples/log-summary/bench/main.birnam": "4088a861cc2eb6cd8d59f6a6f45b054da48c5a09c062e64b7653d909852462c4",
+    "examples/log-summary/src/log-summary.birnam": "6bed41e232e72ab16b88b7fe2f91029d5475c40c90efd994707141328ac38875",
+    "examples/logue/logue-bench.birnam": "fbd845fa2f66180742509c77255fadcf7691d01bc6c4130fdc279f6a4405dfe3",
+    "examples/logue/logue-core.birnam": "2906c24690ebd95e7efbe0d930714c9fc28c08f4e3ea3e1ad8b4679067be8c9d",
+    "modules/json.birnam": "98eceabb5a7b3e82011e952612328aaff016811926e79b692cb505c141f7f14f"
+  },
+  "baseline_commit": "29cf6de6",
+  "bootstrap_receipt_sha256": "b52a28f3b67f983cc14cf467fe4e5a2d0b1cdfdef47adcf7b15177d8bd6175ed",
+  "comparison": {
+    "driver": "import argparse,importlib.util,json,statistics,sys\nfrom pathlib import Path\nroot=Path.cwd();sys.path.insert(0,str(root/'scripts'))\nfrom validation_support import command,clean_environment,save_json,sha\nspec=importlib.util.spec_from_file_location('lb',root/'scripts/logue-bench.py');lb=importlib.util.module_from_spec(spec);spec.loader.exec_module(lb)\np=argparse.ArgumentParser();p.add_argument('--variants',default='baseline,candidate,candidate,baseline');p.add_argument('--output',required=True);a=p.parse_args()\nbase=Path('/tmp/birnam-selector-investigation')\nprefixes={'baseline':Path('/tmp/birnam-fixed-digests/candidate-prefix'),'candidate':Path('/tmp/birnam-method-lookup/retained-prefix')}\nlogue=Path('/tmp/birnam-logue-logfix/acceptance/logue')\nproject=Path('/tmp/birnam-number-bound/acceptance/examples/log-summary/bench')\ndata=Path('/tmp/birnam-number-bound/acceptance/data')\nexpect=json.loads((data/'small.expected.json').read_text())\ncfg=dict(phase='arena',seed=12345,width=16,monsters=8,turns=16,batches=4,samples=3,allocation=False,replace=False)\n(logue/'hash-probe.birnam').write_text('[Globals at: #LogueBenchConfig put: '+lb.literal(cfg)+'];\\n[System load: \"logue-bench.birnam\"]')\nruns=[]\nfor variant in a.variants.split(','):\n binary=prefixes[variant]/'bin/birnam'\n for app in ['logue','json']:\n  args=[binary,'hash-probe.birnam'] if app=='logue' else [binary,'run',project,'--',data/'small.jsonl','3']\n  r=command(args,cwd=logue if app=='logue' else root,env=clean_environment(),timeout=150)\n  assert r['exit_code']==0 and not r['stderr'],r\n  if app=='logue':\n   lines=r['stdout'].splitlines();assert lines[0]=='[logue-core] loaded'\n   report=json.loads(lines[1]);lb.check_report(report,cfg)\n   samples=[b['cpu_ns'] for sample in report['results'] for b in sample]\n  else:\n   report=json.loads(r['stdout']);assert report['report']==expect\n   samples=[b['cpu_ns'] for b in report['samples']]\n  row=dict(variant=variant,app=app,samples=samples,median_ns=statistics.median(samples),checked=True)\n  runs.append(row);print(variant,app,round(row['median_ns']/1e6,3),flush=True)\n  save_json(a.output,dict(runs=runs,driver=Path(__file__).read_text()))\n",
+    "runs": [
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 983831333.5,
+        "samples": [
+          1079904000,
+          971684500,
+          979506458,
+          996402208,
+          1066318625,
+          972898458,
+          983051875,
+          977007292,
+          1058291042,
+          996910583,
+          979717250,
+          984610792
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 271008334,
+        "samples": [
+          270114750,
+          271008334,
+          272187542
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1006936896.0,
+        "samples": [
+          1122362750,
+          999831000,
+          1025179250,
+          1010386458,
+          1097186541,
+          996790041,
+          999105958,
+          996897083,
+          1132978416,
+          1012121208,
+          1003487334,
+          993939916
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 281735083,
+        "samples": [
+          282929958,
+          281084875,
+          281735083
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 1005529104.5,
+        "samples": [
+          1122195750,
+          1009928916,
+          997789041,
+          1006892042,
+          1104456666,
+          1001444542,
+          1004166167,
+          1031621375,
+          1096008708,
+          1003296750,
+          1002752125,
+          1001791834
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 280230041,
+        "samples": [
+          280230041,
+          278801625,
+          282407208
+        ],
+        "variant": "baseline"
+      },
+      {
+        "app": "logue",
+        "checked": true,
+        "median_ns": 982931062.5,
+        "samples": [
+          1113557042,
+          967490625,
+          979572000,
+          975236250,
+          1067998417,
+          980899750,
+          1020263875,
+          975784875,
+          1067741709,
+          986108292,
+          984962375,
+          968442833
+        ],
+        "variant": "candidate"
+      },
+      {
+        "app": "json",
+        "checked": true,
+        "median_ns": 269376250,
+        "samples": [
+          267036667,
+          269376250,
+          270737458
+        ],
+        "variant": "candidate"
+      }
+    ]
+  },
+  "date": "2026-10-12",
+  "delivery": "Earlier work committed as 29cf6de6. New lookup change uncommitted; no normal-prefix installation or push.",
+  "formal": {
+    "lean_binary_sha256": "9544be237d91099efe1db8cb97d0c359fa13aa94f565e9972bfb8b63abbcb437",
+    "lean_version": "Lean (version 4.24.0, arm64-apple-darwin23.6.0, commit 797c613eb9b6d4ec95db23e3e00af9ac6657f24b, Release)",
+    "receipt_sha256": "18637cb47faba398fbebcd372748967391e403bfaf19ba67146809d6e844df60",
+    "rejected_mutations": [
+      "omit-first",
+      "leak-on-exit",
+      "skip-materialization",
+      "cached-digest-wrong-name",
+      "digest-collision-aliases-name",
+      "log-keeps-seven",
+      "range-wrong-end-comparison",
+      "json-unsafe-short-bound",
+      "json-ignore-uppercase-exponent",
+      "json-wrong-kind-handler",
+      "json-skip-backslash-scan",
+      "json-reuse-nonempty-identity",
+      "lose-full-cache-fallback",
+      "skip-retained-helper-body",
+      "charge-whole-capacity-again",
+      "unchecked-slot-hint",
+      "freeze-relational-comparison",
+      "reverse-indexed-edge",
+      "ignore-second-batched-entry",
+      "wrong-direct-integer-operation",
+      "float-remainder-handler",
+      "ignore-metadata-current",
+      "accept-unknown-metadata-identity",
+      "omit-owner-local-report",
+      "admit-nonempty-return",
+      "reverse-identity-selection",
+      "drop-capture-reachability",
+      "ignore-bulk-own-binding",
+      "ignore-capture-query-binding",
+      "reverse-branch-choice",
+      "unrooted-local-hint",
+      "cache-false-selector",
+      "drop-uncovered-locals",
+      "ignore-entry-context",
+      "wrong-release-order",
+      "lost-index-mark",
+      "wrong-memo-key",
+      "truncated-borrow",
+      "ignore-observation",
+      "ignore-permission",
+      "free-owner-batch"
+    ],
+    "scope": "Existing abstract contracts rerun; no new source-level rule. Not a proof of the Rust compiler transformation.",
+    "theorems": 200,
+    "tla_configurations": 118,
+    "tla_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
+  },
+  "library_sizes_and_symbols": {
+    "baseline": {
+      "lookup_symbols": [
+        "0000000000008610 t __RNvMs_NtNtCshCN0T7VbJbD_9birnam_id2id6vtableNtB4_7Vtables6lookup"
+      ],
+      "sha256": "921f6da5c742a1f38ef4b4f0bc1a9b74e4d6c87799ba43ec6fe88d279333a963",
+      "size": 470480
+    },
+    "candidate": {
+      "lookup_symbols": [],
+      "sha256": "f80ad2ef9c5528a9bfc7c142912f021df99ba396c4ea8d3d0bcce7aad2a1ddf0",
+      "size": 468784
+    }
+  },
+  "method": "Exploratory symmetric candidate orders; delivery BAAB after validation workloads finished. Same application code and images; only libbirnam_id.dylib differs. Normal automatic GC, fixed 16 MiB. Two processes per variant, three warmed samples each; Logue has four 16-turn batches per sample. Independent Python oracles check every run. No sample exclusions.",
+  "runtime_sha256": {
+    "baseline": {
+      "bin/birnam": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "lib/birnam-bootstrap.image": "4a25ed01404264ac18c5667d65dc5e94a323992681a78e5c7370415506c0ece7",
+      "lib/birnam-tools.image": "12341ef0d9a2e58582533c45d3e98ebdafb4213ff78dc67efe5109165c31b569",
+      "lib/libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+      "lib/libbirnam_alienCompiler.dylib": "2fbce311a9d9772760a416e0291febfddf51d364e29b791df47e3ee8a3905f82",
+      "lib/libbirnam_artifact.dylib": "de642ccf6bc94e6f4f0812f95a31d45becb5e5ba6931f1157765df0a1f80234f",
+      "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+      "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+      "lib/libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+      "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+      "lib/libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+      "lib/libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+      "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+      "lib/libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+      "lib/libbirnam_collect.dylib": "31a8316ff577f116a044a4646faf527439446c59607558a9668e269a48c2d57f",
+      "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+      "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+      "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+      "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+      "lib/libbirnam_doc.dylib": "b54d72dff556c211d2ff8a8ef4fdcc7603212b995f9308b5e1ebc8b178f6e7ea",
+      "lib/libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+      "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+      "lib/libbirnam_execution.dylib": "f5655c4f70172b8e6763273d6933766f911e303fa4f14db6901d0e8965771e79",
+      "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+      "lib/libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+      "lib/libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+      "lib/libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+      "lib/libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+      "lib/libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+      "lib/libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+      "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+      "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+      "lib/libbirnam_id.dylib": "921f6da5c742a1f38ef4b4f0bc1a9b74e4d6c87799ba43ec6fe88d279333a963",
+      "lib/libbirnam_image.dylib": "afa37a577f133fd7b40d410c09a5bb13260450078c91869bd3ad1a3c645b1324",
+      "lib/libbirnam_imageFormat.dylib": "012075ee2f0a1b36d41e67f0e5f4609e64238be3c7a030b49bd35020267d6096",
+      "lib/libbirnam_integer.dylib": "0e81cbcbcb56a7f82df50f4d454d537372f695c26f6dccbda6f91efd12db2ab3",
+      "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+      "lib/libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+      "lib/libbirnam_json.dylib": "136edef2d89a93cfb868fef7a2e3a7c29e482bc19d852245e8ec44c3bea553b0",
+      "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+      "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+      "lib/libbirnam_lsp.dylib": "0aaded060740b1d9b09ed2eb4228e8c529e42d25015d4100c53b94e7c7fa8d74",
+      "lib/libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+      "lib/libbirnam_markdown.dylib": "d5c72bb09dad0081d5dc34e63f33a9de775300035e25594bcb9e2c2c244e93bf",
+      "lib/libbirnam_modules.dylib": "c651c49e261c95a8cbbc2c2fa962fd1e55ef8eee9db3e1a993f627f2c1da1a52",
+      "lib/libbirnam_namespace.dylib": "f286905111c51bdd19c87afa50dd33e96001c302ad0e57aca4daebaab396971e",
+      "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+      "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+      "lib/libbirnam_native_backend.dylib": "5ea3d80abcac129761657357660907ca162dbeb785d81ef0246aba8878d71654",
+      "lib/libbirnam_nativedoc.dylib": "4ef4af3a44216705a04eed9c135048cf93a5affd4368dd36eb88761354f6026b",
+      "lib/libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+      "lib/libbirnam_object_model.dylib": "8476999d63a79a9b2d873535ee417c71105789d610981b2881dffe2e6c5aee89",
+      "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+      "lib/libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+      "lib/libbirnam_portable_code.dylib": "2bf5a6c28d067b22c2c35af95e207dffcd9bb7e72128167bd62fb091ff3ad01a",
+      "lib/libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+      "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+      "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+      "lib/libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+      "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+      "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+      "lib/libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+      "lib/libbirnam_repl.dylib": "f7ffda0bcdc252147e7429a4957e266a69c1c253dd065b6e7a1a8aaeb57f3a21",
+      "lib/libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+      "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+      "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+      "lib/libbirnam_stacklessControl.dylib": "65ab7a4d58b118635c025dabfd861223bed331496865904cd77ac89307ad9084",
+      "lib/libbirnam_stdlib.dylib": "32e7b5ee0ac84e903039484c699c546021901c1f60fa4af191a7680437ab7454",
+      "lib/libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+      "lib/libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+      "lib/libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+      "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+      "lib/libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+      "lib/libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+      "lib/libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+      "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+      "lib/libbirnam_toml.dylib": "a569af7a61f6b45e438fe80e335df9f0b8f3d1c8ba60611203e5c85dbdb3b9ff",
+      "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+      "lib/libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+      "lib/libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4",
+      "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+      "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+    },
+    "candidate": {
+      "bin/birnam": "dcaf29c5c80f7e65314dbbf2ee12a28511166d6a401ca919065bd64687970a38",
+      "lib/birnam-bootstrap.image": "4a25ed01404264ac18c5667d65dc5e94a323992681a78e5c7370415506c0ece7",
+      "lib/birnam-tools.image": "12341ef0d9a2e58582533c45d3e98ebdafb4213ff78dc67efe5109165c31b569",
+      "lib/libbirnam_alien.dylib": "b9121ca8c37fe400c2ffc3cd94e3fdeb1f572785abe111bc7f940e1638c6e0d9",
+      "lib/libbirnam_alienCompiler.dylib": "2fbce311a9d9772760a416e0291febfddf51d364e29b791df47e3ee8a3905f82",
+      "lib/libbirnam_artifact.dylib": "de642ccf6bc94e6f4f0812f95a31d45becb5e5ba6931f1157765df0a1f80234f",
+      "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+      "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+      "lib/libbirnam_boolean.dylib": "92228f0e487bdba21f3a3d4e3ccbd723937df435d65a98ea711afd6f769a46fd",
+      "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+      "lib/libbirnam_bootstrap.dylib": "de7263f7c0ffef7afaed78a98a212237e7bd09ada4c4d28560c16f9bfbd9e825",
+      "lib/libbirnam_bytes.dylib": "00266474f4f8f146cb72eaedf0bb8e253d3a59bb038dab019dbbce9e3b60744a",
+      "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+      "lib/libbirnam_codegen_runtime.dylib": "2d5b5d3d0973428940eeef367cdaa2a7f42b37d440f71ef5a7fadc47d2270bea",
+      "lib/libbirnam_collect.dylib": "31a8316ff577f116a044a4646faf527439446c59607558a9668e269a48c2d57f",
+      "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+      "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+      "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+      "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+      "lib/libbirnam_doc.dylib": "b54d72dff556c211d2ff8a8ef4fdcc7603212b995f9308b5e1ebc8b178f6e7ea",
+      "lib/libbirnam_environment.dylib": "b92f592a7971d9e79a57de4c8964c006b23f7fd3dd3e3f6854d68f4ee9b87734",
+      "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+      "lib/libbirnam_execution.dylib": "f5655c4f70172b8e6763273d6933766f911e303fa4f14db6901d0e8965771e79",
+      "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+      "lib/libbirnam_file_io.dylib": "3312d4f2f117fadf772fc06eece953b1c32310f6f6fb3dc0b9bfb226015f436c",
+      "lib/libbirnam_float.dylib": "588e2a5ea1115bfa71a58fcb3bbd898fb30ce99881ffb4a10b9309a6efe7ecf0",
+      "lib/libbirnam_generation.dylib": "6e8a79d1b146719c5931b25025902f2bcfaf4da4a990053aa78b18a6066cf39c",
+      "lib/libbirnam_host_entry.dylib": "da0e6006ba20baadbf4e2764206601f93a2d1e85ad8b9d57df8667de7fc3cae9",
+      "lib/libbirnam_host_interaction.dylib": "492a03e6cb6f52247197f829e229ee1947e4556e1fd5694b67a941a01a16cd9a",
+      "lib/libbirnam_host_project.dylib": "5d308145fc7f1bab7802b430f041edeca19fafa5d4318b8901c933b1e5efa962",
+      "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+      "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+      "lib/libbirnam_id.dylib": "f80ad2ef9c5528a9bfc7c142912f021df99ba396c4ea8d3d0bcce7aad2a1ddf0",
+      "lib/libbirnam_image.dylib": "afa37a577f133fd7b40d410c09a5bb13260450078c91869bd3ad1a3c645b1324",
+      "lib/libbirnam_imageFormat.dylib": "012075ee2f0a1b36d41e67f0e5f4609e64238be3c7a030b49bd35020267d6096",
+      "lib/libbirnam_integer.dylib": "0e81cbcbcb56a7f82df50f4d454d537372f695c26f6dccbda6f91efd12db2ab3",
+      "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+      "lib/libbirnam_isolate.dylib": "1126d107e00d72635fc462bba2dc207c848e4b65d2bf788c3b8ae2f1dd3d057d",
+      "lib/libbirnam_json.dylib": "136edef2d89a93cfb868fef7a2e3a7c29e482bc19d852245e8ec44c3bea553b0",
+      "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+      "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+      "lib/libbirnam_lsp.dylib": "0aaded060740b1d9b09ed2eb4228e8c529e42d25015d4100c53b94e7c7fa8d74",
+      "lib/libbirnam_map.dylib": "0cfd0aa8f60b000fa4397f5ff7c6faa30ebecb478233c5124c5f610a4529f616",
+      "lib/libbirnam_markdown.dylib": "d5c72bb09dad0081d5dc34e63f33a9de775300035e25594bcb9e2c2c244e93bf",
+      "lib/libbirnam_modules.dylib": "c651c49e261c95a8cbbc2c2fa962fd1e55ef8eee9db3e1a993f627f2c1da1a52",
+      "lib/libbirnam_namespace.dylib": "f286905111c51bdd19c87afa50dd33e96001c302ad0e57aca4daebaab396971e",
+      "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+      "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+      "lib/libbirnam_native_backend.dylib": "5ea3d80abcac129761657357660907ca162dbeb785d81ef0246aba8878d71654",
+      "lib/libbirnam_nativedoc.dylib": "4ef4af3a44216705a04eed9c135048cf93a5affd4368dd36eb88761354f6026b",
+      "lib/libbirnam_nil.dylib": "244424408ad0706ef63978eda0c31370cecc88245f42946b3b330d9dc018e61f",
+      "lib/libbirnam_object_model.dylib": "8476999d63a79a9b2d873535ee417c71105789d610981b2881dffe2e6c5aee89",
+      "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+      "lib/libbirnam_peg.dylib": "6a09bc1f025efbd61e3854e4f277e30a6f19db2db6ae75dfd31f4448f7426a75",
+      "lib/libbirnam_portable_code.dylib": "2bf5a6c28d067b22c2c35af95e207dffcd9bb7e72128167bd62fb091ff3ad01a",
+      "lib/libbirnam_prelude.dylib": "c6f4b01c9d25c25703f4278aca428f3b56e151b4f2a25a5d5ea2fe4c86bbe562",
+      "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+      "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+      "lib/libbirnam_project_build.dylib": "1513f2e41ed93d682bd1f16c69ca557e3698488ccba362b5fc57c8d0ba336760",
+      "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+      "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+      "lib/libbirnam_relational.dylib": "9a62a3a53c7abfc3a6a3798b825669d8b2116f13efda93fffdd2280b96749a15",
+      "lib/libbirnam_repl.dylib": "f7ffda0bcdc252147e7429a4957e266a69c1c253dd065b6e7a1a8aaeb57f3a21",
+      "lib/libbirnam_root_registry.dylib": "ee9d4fd93f67d94db406155cff81271d30849d9a7c0c32491bdcca2ec87d0f33",
+      "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+      "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+      "lib/libbirnam_stacklessControl.dylib": "65ab7a4d58b118635c025dabfd861223bed331496865904cd77ac89307ad9084",
+      "lib/libbirnam_stdlib.dylib": "32e7b5ee0ac84e903039484c699c546021901c1f60fa4af191a7680437ab7454",
+      "lib/libbirnam_storage.dylib": "360a13c0c22928b068826dc4e5964231f517447d321285122acaf492b641ea59",
+      "lib/libbirnam_store.dylib": "1e0c32fa675e6fb48722e2241c3daa33465cf2a7a98a9fbf34590413532c35ab",
+      "lib/libbirnam_string.dylib": "19471f49d9ede9e59d21b423395d5fb9ed956764fd192cd5fd25a07353935b53",
+      "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+      "lib/libbirnam_system_input.dylib": "01f69936f74575420c39b9d14e5441e0898694319d00eb27bfd8cffbf72727fd",
+      "lib/libbirnam_system_output.dylib": "b306fa20c2021c085a0fb4f35aed2f7c347a49aaaf803f273d2967d6770545ea",
+      "lib/libbirnam_tcc.dylib": "f292ba8b03963ad7115c03c2e17677f5f07220e2c6b2b8cdff781364f1845eaa",
+      "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+      "lib/libbirnam_toml.dylib": "a569af7a61f6b45e438fe80e335df9f0b8f3d1c8ba60611203e5c85dbdb3b9ff",
+      "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+      "lib/libbirnam_vector.dylib": "2067c7f075d6a31011e9d883a6096ecdbadd79c4c5c6ed9020b97aa2da34a542",
+      "lib/libbirnam_word.dylib": "8980242f6a8fb3e4a0beea5632b440b89145e033a1ff131fad8b3879439784b4",
+      "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+      "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+    }
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: aarch64-apple-darwin\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+  "scope": "Force inline the private callback-free Rust dictionary walk. Lookup algorithm and mutable-world checks unchanged.",
+  "source_delta": "--- before/vtable.rs\n+++ after/vtable.rs\n@@ -300,6 +300,9 @@\n         }\n         Err(record.parent)\n     }\n+    // Expose this callback-free walk to its callers so the optimizer can\n+    // eliminate helper call/return work. Values and parents are still read live.\n+    #[inline(always)]\n     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {\n         while !vtable.is_null() {\n             // Membership is still checked before consulting a hint. Retirement,\n",
+  "source_sha256": {
+    "rust/birnam-id/src/id/id_dispatch.rs": "69f18089fe549204a225b37d5d9110734de11cecce4f6f578f969bdc9f859f35",
+    "rust/birnam-id/src/id/vtable.rs": "3d84213aa2ac5e7e52b162ce377ac0baac64c08a51b615e47c4d879135447894"
+  },
+  "summary": {
+    "json": {
+      "baseline_median_ns": 281409979.0,
+      "candidate_median_ns": 270426104.0,
+      "reduction_percent": 3.903157606219787
+    },
+    "logue": {
+      "baseline_median_ns": 1005529104.5,
+      "candidate_median_ns": 983831333.5,
+      "reduction_percent": 2.1578461431794427
+    }
+  },
+  "validation": {
+    "id_tests": 11,
+    "json": {
+      "correctness_passed": true,
+      "receipt_sha256": "adb76f431176777d0825a17c26ffda73482443552b1acab01182e8f5ae9fa8ab",
+      "runs": [
+        {
+          "exit_code": 0,
+          "label": "check",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "build",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "tests",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "empty",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "tiny",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "edges",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "escaping",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-malformed",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-missing",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-type",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-range",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "invalid-line-number",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "missing-file",
+          "status": "completed"
+        },
+        {
+          "exit_code": 2,
+          "label": "usage",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "startup-0",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "startup-1",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "startup-2",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "scale-small",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "scale-medium",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "build-warm",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "warm-tiny",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "warm-small",
+          "status": "completed"
+        },
+        {
+          "exit_code": 0,
+          "label": "edit-rebuild-run",
+          "status": "completed"
+        }
+      ]
+    },
+    "logs": {
+      "images.log": {
+        "path": "/tmp/birnam-method-lookup/images.log",
+        "sha256": "b0be97f32d2a396446da7af048b4683a55d3991f31c233e84cec791af8f92caa",
+        "tail": "installed image CLI: saved main, deleted source/assets, nil/false, missing/invalid main and load diagnostics passed\nFrame calls: source-free mapped/rebuilt images, protocol withdrawal, collecting fallback and fresh target lookup passed"
+      },
+      "install.log": {
+        "path": "/tmp/birnam-method-lookup/install.log",
+        "sha256": "bf7757030f7a8f8a8f5b25ba2236b20ec1ec0b01cb547592e3af57f0c18727c4",
+        "tail": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s\n     Running `.cargo-target/decomposition-install/driver/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /tmp/birnam-method-lookup/final-prefix --profile release --build-cache /Users/chazu/dev/zig/birnam/.cargo-target/decomposition-install`\n   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.66s\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.29s\nrust-install: published /private/tmp/birnam-method-lookup/final-prefix (38 native libraries, 4 source bootstrap modules, 23 authored tools)"
+      },
+      "json-acceptance.log": {
+        "path": "/tmp/birnam-method-lookup/json-acceptance.log",
+        "sha256": "7ed231cbb5f5461dcad8dcbcaf41d62da64db5f3167ce2845c820b6a4617dc9c",
+        "tail": "startup-0 completed 0 3.525\nstartup-1 completed 0 3.566\nstartup-2 completed 0 3.532\nscale-small completed 0 3.774\nscale-medium completed 0 6.572\nbuild-warm completed 0 11.334\nwarm-tiny completed 0 4.213\nwarm-small completed 0 5.911\nedit-rebuild-run completed 0 10.522\n/private/tmp/birnam-method-lookup/json-acceptance/results.json"
+      },
+      "logue-acceptance.log": {
+        "path": "/tmp/birnam-method-lookup/logue-acceptance.log",
+        "sha256": "929330767873aa9839eefda4f06ecad4cc515d784df3e5978e85d752592e8f39",
+        "tail": "  checked 4 checkpoints; median CPU ms 678.867\nwide completed 0\n  checked 4 checkpoints; median CPU ms 1062.662\ngeneration completed 0\n  checked 1 checkpoints; median CPU ms 2250.262\ngeneration-alt completed 0\n  checked 1 checkpoints; median CPU ms 1957.933\nreplacement completed 0\n  checked 2 checkpoints; median CPU ms 90.454\n/private/tmp/birnam-method-lookup/logue-acceptance/results.json"
+      },
+      "modules.log": {
+        "path": "/tmp/birnam-method-lookup/modules.log",
+        "sha256": "313082817de26d48e29440c552e9c15c389b4155d1d05f07aab3998123b8497d",
+        "tail": "  ok   CLI config path\n  ok   CLI beats environment and file\n  ok   environment beats file\n  ok   boolean CLI flag\n  ok   CLI origin\n  ok   environment origin\n  ok   selected path is retained\n  ok   TOML value\n  ok   TOML origin\nTOTAL: 672 passed, 0 failed"
+      },
+      "native-tests.log": {
+        "path": "/tmp/birnam-method-lookup/native-tests.log",
+        "sha256": "9f8c2bd0f20f50b4db9e9fbc5167235f72acca0c1fb47e6aba839855d21fdc2f",
+        "tail": "\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running tests/representation_fallback.rs (.cargo-target/decomposition-install/target/debug/deps/representation_fallback-6fb185946aa38fa9)\n\nrunning 1 test\ntest identity_replacement_preserves_numeric_read_and_allocator_failure_order ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s\n"
+      },
+      "retained-unit-tests.log": {
+        "path": "/tmp/birnam-method-lookup/retained-unit-tests.log",
+        "sha256": "ece1307c06aef35e2fea384cda0f9eba45cc675ce96111eef1e1d774acb300b9",
+        "tail": "test id::id_dispatch::tests::saved_primitives_work_without_an_active_message_and_keep_their_registry ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::id_dispatch::tests::actual_initial_graph_installs_invokes_and_forwards_without_runtime ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest id::id_dispatch::tests::c_native_entry_round_trips_typed_operands_through_actual_id ... ok\n\ntest result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n"
+      }
+    },
+    "logue": {
+      "all_requested_passed": true,
+      "checkpoints": 24,
+      "game_assertions": 34,
+      "receipt_sha256": "23cea2976dfddddc589c61a0254e1397c41eee4b67acbebc3623025a0380dfa9"
+    },
+    "module_assertions": 672,
+    "native_binaries": 16,
+    "native_tests": 16
+  }
+}

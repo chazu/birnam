@@ -158,3 +158,8 @@ work. It retains a paired comparison against the original application behavior.
 The [fixed-selector digest follow-up](fixed-selector-digests.md) tests reusing
 per-Id hashes for fixed query names. It holds the Symbol inventory and all method
 lookups live; neither Symbol identities nor binding results are cached.
+
+The [ordinary method-lookup investigation](method-lookup.md) measures registry,
+slot-hint and compiler-inlining alternatives on both applications. The retained
+candidate changes private Rust code generation while keeping the lookup
+algorithm, current bindings and recovery behavior intact.
