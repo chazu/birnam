@@ -1,0 +1,69 @@
+// Same source rows and artifact records in both backends. Deletion is nil.
+// Store holds graph edges as #many facts; Map holds persistent adjacency vectors.
+[Reflect defineMethod: #mapBackend on: BuildPlanner as: [:self |
+  let state := [db localCell: {#sources -> {} #artifacts -> {}}];
+  {#read -> [:checkpoint | [[checkpoint == nil] ifTrue: [| [state value]] ifFalse: [| checkpoint]]]
+   #replace -> [:id :old :row |
+     [state set: [[state value] at: #sources put: [[[state value] at: #sources] at: id put: row]]]]
+   #restore -> [:before :target |
+     [state set: [[state value] at: #sources put: [target at: #sources]]]]
+   #build -> [:id :record |
+     [state set: [[state value] at: #artifacts put: [[[state value] at: #artifacts] at: id put: record]]]]
+   #checkpoint -> [| [state value]]
+   #metrics -> [| {"facts" -> nil "fact_bytes" -> 0}]}
+]];
+[Reflect defineMethod: #storeBackend: on: BuildPlanner as: [:self :ids |
+  let store := [Store new]; [store flip]; [store retainSince: 0];
+  [store assert: #dependency attr: #cardinality value: #many];
+  [#[#digest #dependency #artifact] do: [:attr | [store assert: attr attr: #history value: true]]];
+  let replace := [:id :old :row |
+     // Apply only changed facts; a digest edit does not churn unchanged edges.
+     let oldDeps := [[old == nil] ifTrue: [| #[]] ifFalse: [| [old at: #deps]]];
+     let newDeps := [[row == nil] ifTrue: [| #[]] ifFalse: [| [row at: #deps]]];
+     [[row == nil] ifTrue: [|
+       [self checked: [store retract: id attr: #digest value: [old at: #digest]]]
+     ] ifFalse: [|
+       let changed := [[old == nil] ifTrue: [| true] ifFalse: [| [[[old at: #digest] = [row at: #digest]] not]]];
+       [changed ifTrue: [| [self checked: [store assert: id attr: #digest value: [row at: #digest]]]]]
+     ]];
+     [oldDeps do: [:dep | [[newDeps includes: dep] ifFalse: [|
+       [self checked: [store retract: id attr: #dependency value: dep]]
+     ]]]];
+     [newDeps do: [:dep | [[oldDeps includes: dep] ifFalse: [|
+       [self checked: [store assert: id attr: #dependency value: dep]]
+     ]]]]
+
+   ];
+  {#read -> [:checkpoint |
+     let digests := [db localCell: {}]; let edges := [db localCell: {}]; let artifacts := [db localCell: {}];
+     let visit := [:entity :attr :value |
+       [[attr == #digest] ifTrue: [| [digests set: [[digests value] at: entity put: value]]]];
+       [[attr == #dependency] ifTrue: [|
+         let deps := [[edges value] at: entity ifAbsent: [| #[]]];
+         [edges set: [[edges value] at: entity put: [deps add: value]]]
+       ]];
+       [[attr == #artifact] ifTrue: [| [artifacts set: [[artifacts value] at: entity put: value]]]]
+     ];
+     let result := [[checkpoint == nil] ifTrue: [| [store liveTriplesDo: visit]]
+       ifFalse: [| [store liveTriplesAsOf: checkpoint do: visit]]];
+     [[result isError] ifTrue: [| result] ifFalse: [|
+       let sources := [ids inject: {} into: [:rows :id |
+         let digest := [[digests value] at: id];
+         [[digest == nil] ifTrue: [| rows] ifFalse: [|
+           [rows at: id put: {#digest -> digest #deps -> [[edges value] at: id ifAbsent: [| #[]]]}]
+         ]]
+       ]];
+       {#sources -> sources #artifacts -> [artifacts value]}
+     ]]
+   ]
+   #replace -> replace
+   #restore -> [:before :target |
+     [ids do: [:id |
+       let old := [[before at: #sources] at: id]; let row := [[target at: #sources] at: id];
+       [[self sameSource: old and: row] ifFalse: [| [self checked: [replace value: id value: old value: row]]]]
+     ]]
+   ]
+   #build -> [:id :record | [store assert: id attr: #artifact value: record]]
+   #checkpoint -> [| [store basis]]
+   #metrics -> [| {"facts" -> [store retainedFactCount] "fact_bytes" -> [store retainedFactBytes]}]}
+]];

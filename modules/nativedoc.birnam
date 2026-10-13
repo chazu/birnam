@@ -58,7 +58,8 @@
   r] doc:
   "The declared fn/const/struct/enum/type/trait/mod/static name on a trimmed native-source line, or \"\"."];
 
-// Process one line against the scanner state (cells: #pending doc, #summary).
+// Process one line against invocation-owned local Cells (#pending, #summary).
+// Only the resulting documentation catalog is published as Store facts.
 // //! -> module summary (first one wins); /// -> accumulate a pending docstring;
 // any other line either consumes the pending doc (if it's a declaration) or drops
 // it. Native `#[...]` attributes are transparent so Rust docs remain associated
@@ -67,16 +68,16 @@
   let t := [line trimmed];
   [[line startsWith: "//!"]
     ifTrue: [|
-      [[[[db cellFor: sc attr: #summary] value] isEmpty]
-        ifTrue:  [| [[db cellFor: sc attr: #summary] set: [self after: line mark: "//!"]]]
+      [[[[sc at: #summary] value] isEmpty]
+        ifTrue:  [| [[sc at: #summary] set: [self after: line mark: "//!"]]]
         ifFalse: [| sc]]]
     ifFalse: [|
       [[t startsWith: "///"]
         ifTrue: [|
-          let p := [[db cellFor: sc attr: #pending] value];
-          [[db cellFor: sc attr: #pending] set: [[p , [self after: t mark: "///"]] , " "]]]
+          let p := [[sc at: #pending] value];
+          [[sc at: #pending] set: [[p , [self after: t mark: "///"]] , " "]]]
         ifFalse: [|
-          let p := [[db cellFor: sc attr: #pending] value];
+          let p := [[sc at: #pending] value];
           [[p isEmpty]
             ifTrue:  [| sc]
             ifFalse: [|
@@ -87,7 +88,7 @@
                   [[nm isEmpty]
                     ifTrue:  [| sc]
                     ifFalse: [| [Doc for: [nm asSymbol] in: mod says: [p trimmed]]]];
-                  [[db cellFor: sc attr: #pending] set: ""]]]]]]]]];
+                  [[sc at: #pending] set: ""]]]]]]]]];
   sc] doc:
   "Feed one native-source line to scanner `sc`: //! seeds the module summary, /// accumulates, attributes preserve pending docs, and a declaration consumes them."];
 
@@ -96,14 +97,12 @@
 [Reflect defineMethod: #scan:as:kind:language: on: NativeDoc as: [:self :path :mod :kind :language |
   let text  := [File readText: path];
   let lines := [text split: "\n"];
-  let sc := [Object clone];
-  [[db cellFor: sc attr: #pending] set: ""];
-  [[db cellFor: sc attr: #summary] set: ""];
+  let sc := {#pending -> [db localCell: ""] #summary -> [db localCell: ""]};
   [Reflect docModule: mod is: ""];
   [db assert: mod attr: #docKind value: kind];
   [0 to: [[lines size] - 1] do: [:i |
     [self feedLine: [lines at: i] scanner: sc module: mod]]];
-  let sum := [[db cellFor: sc attr: #summary] value];
+  let sum := [[sc at: #summary] value];
   [[db cellFor: mod attr: #docSummary] set: [[sum isEmpty] ifTrue: [| [[path , " ("] , [language , ")"]]] ifFalse: [| sum]]];
   mod] doc:
   "Scan one native source file into Doc facts under `mod`, marking it with `kind`; answers `mod`."];

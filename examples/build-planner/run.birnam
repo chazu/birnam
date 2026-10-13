@@ -1,0 +1,98 @@
+// Invoked by scripts/build-planner.py in an isolated source copy.
+[Module load: #json]; [Module load: #time]; [Module load: #os];
+[System load: "planner.birnam"]; [System load: "backends.birnam"];
+[Reflect defineMethod: #checked: on: BuildPlanner as: [:self :value |
+  [[value isError] ifTrue: [|
+    [System printErrorText: [[value message] , "\n"]]; [OS exit: 2]
+  ] ifFalse: [| value]]
+]];
+[Reflect defineMethod: #wire:ids: on: BuildPlanner as: [:self :world :ids |
+  // Complete independent state verification, outside all workload timers.
+  [ids collect: [:id |
+    let row := [[world at: #sources] at: id];
+    let artifact := [[world at: #artifacts] at: id];
+    let source := [:r | [[r == nil] ifTrue: [| nil] ifFalse: [|
+      #[[r at: #digest] [[[r at: #deps] collect: [:d | [d printString]]] sortBy: [:d | d]]]
+    ]]];
+    #[[id printString] [source value: row]
+      [[artifact == nil] ifTrue: [| nil] ifFalse: [|
+        #[[artifact at: #revision] [source value: [artifact at: #source]]]
+      ]]]
+  ]]
+]];
+[Reflect defineMethod: #revision:backend:ids:history:index: on: BuildPlanner as: [:self :revision :backend :ids :history :index |
+  let times := [db localCell: {}];
+  let timed := [:name :body |
+    let measured := [self timed: body];
+    [times set: [[times value] at: name put: {"cpu_ns" -> [measured at: 1] "wall_ns" -> [measured at: 2]}]];
+    [self checked: [measured at: 0]]
+  ];
+  let before := [timed value: "edit_read" value: [| [[backend at: #read] value: nil]]];
+  let restore := [revision at: #restore];
+  [[restore == nil] ifTrue: [|
+    [timed value: "edit" value: [|
+      [[revision at: #edits] do: [:edit |
+        let id := [edit at: 0]; let row := [edit at: 1]; let old := [[before at: #sources] at: id];
+        [[self sameSource: old and: row] ifFalse: [|
+          [self checked: [[backend at: #replace] value: id value: old value: row]]
+        ]]
+      ]]
+    ]]
+  ] ifFalse: [|
+    let target := [timed value: "restore_read" value: [| [[backend at: #read] value: [[history value] at: restore]]]];
+    [timed value: "edit" value: [| [[backend at: #restore] value: before value: target]]]
+  ]];
+  let world := [timed value: "read" value: [| [[backend at: #read] value: nil]]];
+  let plan := [timed value: "plan" value: [| [self plan: world ids: ids]]];
+  [timed value: "checkpoint" value: [|
+    [history set: [[history value] add: [[backend at: #checkpoint] value]]]]
+  ];
+  [timed value: "publish" value: [|
+    [[plan at: "valid"] ifTrue: [|
+      [[plan at: "order"] do: [:id |
+        [self checked: [[backend at: #build] value: id value:
+          {#source -> [[world at: #sources] at: id] #revision -> index}]]
+      ]]
+    ]]
+  ]];
+  [System println: [Json stringify: {"kind" -> "revision" "index" -> index "label" -> [revision at: #label]
+    "plan" -> plan "world" -> [self wire: world ids: ids] "times" -> [times value]}]];
+  nil
+]];
+[Reflect defineMethod: #past:backend:ids:history: on: BuildPlanner as: [:self :index :backend :ids :history |
+  let read := [self timed: [| [[backend at: #read] value: [[history value] at: index]]]];
+  let world := [self checked: [read at: 0]];
+  let plan := [self timed: [| [self plan: world ids: ids]]];
+  [System println: [Json stringify: {"kind" -> "historical" "index" -> index
+    "plan" -> [plan at: 0] "world" -> [self wire: world ids: ids]
+    "read_cpu_ns" -> [read at: 1] "plan_cpu_ns" -> [plan at: 1]}]];
+  nil
+]];
+let config := [Globals at: #BuildPlannerConfig];
+let fixture := [BuildPlanner checked: [Json parse: [System readFile: [config at: #fixture]]]];
+let ids := [[fixture at: "ids"] collect: [:id | [id asSymbol]]];
+let revisions := [[fixture at: "revisions"] collect: [:rev |
+  {#label -> [rev at: "label"] #restore -> [rev at: "restore"]
+   #edits -> [[rev at: "edits"] collect: [:pair |
+     let row := [pair at: 1];
+     #[[[pair at: 0] asSymbol] [[row == nil] ifTrue: [| nil] ifFalse: [|
+       {#digest -> [row at: "digest"] #deps -> [[row at: "deps"] collect: [:d | [d asSymbol]]]}
+     ]]]
+   ]]}
+]];
+let history := [db localCell: #[]];
+let backend := [[[config at: #backend] = "store"] ifTrue: [| [BuildPlanner storeBackend: ids]] ifFalse: [| [BuildPlanner mapBackend]]];
+[System gc];
+let memory := [:index |
+  [System gc];
+  let objects := [System liveObjects];
+  [System println: [Json stringify: {"kind" -> "memory" "index" -> index "objects" -> objects
+    "backend" -> [[backend at: #metrics] value]}]]
+];
+[memory value: -1];
+[0 to: [[revisions size] - 1] do: [:i |
+  [BuildPlanner revision: [revisions at: i] backend: backend ids: ids history: history index: i];
+  [memory value: i]
+]];
+[[fixture at: "queries"] do: [:i | [BuildPlanner past: i backend: backend ids: ids history: history]]];
+[System println: "done"]

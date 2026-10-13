@@ -1,0 +1,67 @@
+// Shared graph policy. Backends only own state, mutations and checkpoints.
+[Globals at: #BuildPlanner put: [Object clone]];
+[Reflect defineMethod: #sameSource:and: on: BuildPlanner as: [:self :a :b |
+  [[a == nil] ifTrue: [| [b == nil]] ifFalse: [|
+    [[b == nil] ifTrue: [| false] ifFalse: [|
+      [[[a at: #digest] = [b at: #digest]] and: [|
+        let ad := [a at: #deps]; let bd := [b at: #deps];
+        [[[ad size] = [bd size]] and: [| [ad allSatisfy: [:d | [bd includes: d]]]]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #plan:ids: on: BuildPlanner as: [:self :world :ids |
+  let sources := [world at: #sources]; let artifacts := [world at: #artifacts];
+  let active := [ids select: [:id | [[[sources at: id] == nil] not]]];
+  let counts := [db localCell: {}]; let users := [db localCell: {}];
+  let dirty := [db localCell: {}]; let changed := [db localCell: #[]];
+  let missing := [db localCell: #[]];
+  [active do: [:id |
+    let row := [sources at: id]; let artifact := [artifacts at: id];
+    let old := [[artifact == nil] ifTrue: [| nil] ifFalse: [| [artifact at: #source]]];
+    [[self sameSource: row and: old] ifFalse: [|
+      let reason := [[old == nil] ifTrue: [| "unbuilt"] ifFalse: [|
+        [[[old at: #digest] = [row at: #digest]] ifTrue: [| "dependencies"] ifFalse: [| "source"]]
+      ]];
+      [dirty set: [[dirty value] at: id put: true]];
+      [changed set: [[changed value] add: #[id reason]]]
+    ]];
+    let count := [db localCell: 0];
+    [[row at: #deps] do: [:dep |
+      [[[sources at: dep] == nil] ifTrue: [|
+        [missing set: [[missing value] add: #[id dep]]]
+      ] ifFalse: [|
+        [count set: [[count value] + 1]];
+        let dependents := [[users value] at: dep ifAbsent: [| #[]]];
+        [users set: [[users value] at: dep put: [dependents add: id]]]
+      ]]
+    ]];
+    [counts set: [[counts value] at: id put: [count value]]]
+  ]];
+  let queue := [db localCell: [active select: [:id | [[[counts value] at: id] = 0]]]];
+  let cursor := [db localCell: 0]; let visited := [db localCell: {}]; let order := [db localCell: #[]];
+  [[| [[cursor value] < [[queue value] size]]] whileTrue: [|
+    let id := [[queue value] at: [cursor value]];
+    [cursor set: [[cursor value] + 1]];
+    [visited set: [[visited value] at: id put: true]];
+    let affected := [[[dirty value] at: id] == true];
+    [affected ifTrue: [| [order set: [[order value] add: id]]]];
+    [[[users value] at: id ifAbsent: [| #[]]] do: [:dependent |
+      [affected ifTrue: [| [dirty set: [[dirty value] at: dependent put: true]]]];
+      let n := [[[counts value] at: dependent] - 1];
+      [counts set: [[counts value] at: dependent put: n]];
+      [[n = 0] ifTrue: [| [queue set: [[queue value] add: dependent]]]]
+    ]]
+  ]];
+  let blocked := [active select: [:id | [[[[visited value] at: id] == true] not]]];
+  let valid := [[[missing value] size] = 0];
+  let ok := [valid and: [| [[blocked size] = 0]]];
+  {"changed" -> [changed value] "order" -> [ok ifTrue: [| [order value]] ifFalse: [| #[]]]
+   "missing" -> [[missing value] sortBy: [:pair | [[[pair at: 0] printString] , [[pair at: 1] printString]]]] "blocked" -> blocked "valid" -> ok}
+]];
+[Reflect defineMethod: #timed: on: BuildPlanner as: [:self :body |
+  let cpu := [16 clockNanos]; let wall := [6 clockNanos];
+  let value := [body value];
+  let elapsed := [[6 clockNanos] - wall]; let used := [[16 clockNanos] - cpu];
+  #[value used elapsed]
+]];

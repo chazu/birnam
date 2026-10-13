@@ -28,4 +28,7 @@ test -x "$prefix/bin/birnam"
 # own exit code, and </dev/null keeps the runner off an interactive stdin.
 "$prefix/bin/birnam" modules/run-tests.birnam </dev/null
 
+# Private scratch must stay collectible while published Store records survive.
+python3 scripts/scratch-state-test.py "$prefix"
+
 echo "birnam-test: module suites passed"

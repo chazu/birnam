@@ -230,3 +230,19 @@ version and element; the next read uses current contents. Negative cases require
 counterexamples for replay, stale reads, missing roots and premature nil return.
 Executable collection-search tests connect these abstract contracts to installed
 Birnam, including one-step Machine budgets and mapped/rebuilt saved images.
+
+## Private scratch state
+
+`PrivateScratch.lean` models separating private Cell identities from public fact
+keys. It proves field-update simulation, alias visibility, independence of other
+Cells, preservation of public state by private writes, and preservation of
+interleaved publication (such as NativeDoc catalog writes). Every finite action
+prefix has the same scratch read answers and projected public values.
+
+The precondition is genuinely private scratch: public queries of removed scratch
+facts are outside the model. It does not prove the Birnam compiler, GC/rooting,
+constructor callbacks, allocation counts, Store basis equality, image behavior,
+or equality of the algorithms' internal sends. Production tests cover outputs,
+error cases, retained facts/objects, public records, and collecting/reentrant live
+helpers. The standard runner audits the six theorem axioms and rejects mutations
+that overwrite public state or discard catalog publication.

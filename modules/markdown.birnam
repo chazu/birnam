@@ -16,9 +16,9 @@
 //   [Markdown toHtml: "# Hi\n\nsome `code` here"]
 //   [Markdown toHtml: md shiftHeadings: 1]   "# -> <h2> (for embedding in a page)"
 //
-// Line-based state machine, the NativeDoc pattern: a scanner object holds the
-// mode + buffers in cells, every line feeds through once, a final flush closes
-// whatever is open. Rendering is offline (docgen), so per-line birnam work is
+// Line-based state machine: an invocation-owned Map holds local Cells for the
+// mode and buffers. No scratch facts enter the global Store. Every line feeds
+// through once; a final flush closes whatever is open. Rendering is offline (docgen), so per-line birnam work is
 // fine — the perf gate concerns hot paths, not site builds.
 
 [Module named: #markdown requires: #[#html]];
@@ -60,25 +60,25 @@
 
 // Close an open paragraph / list; a no-op when nothing is open.
 [Reflect defineMethod: #flush:out: on: Markdown as: [:self :sc :out |
-  let mode := [[db cellFor: sc attr: #mode] value];
+  let mode := [[sc at: #mode] value];
   [[mode = #para]
-    ifTrue: [| [out add: [Html tag: "p" body: [self inlineHtml: [[[db cellFor: sc attr: #buf] value] asString]]]]]
+    ifTrue: [| [out add: [Html tag: "p" body: [self inlineHtml: [[[sc at: #buf] value] asString]]]]]
     ifFalse: [| nil]];
   [[mode = #list]
     ifTrue: [|
       let items := [StringBuilder new];
       let me := self;
-      [[[db cellFor: sc attr: #items] value] do: [:it |
+      [[[sc at: #items] value] do: [:it |
         [items add: [Html tag: "li" body: [me inlineHtml: it]]]]];
       [out add: [Html tag: "ul" body: [items asString]]]]
     ifFalse: [| nil]];
-  [[db cellFor: sc attr: #mode] set: #none];
+  [[sc at: #mode] set: #none];
   self] doc:
   "Close the scanner's open paragraph or list into `out`; a no-op when nothing is open."];
 
 [Reflect defineMethod: #heading:level:scanner:out: on: Markdown as: [:self :txt :level :sc :out |
   [self flush: sc out: out];
-  let shift := [[db cellFor: sc attr: #shift] value];
+  let shift := [[sc at: #shift] value];
   let n := [level + shift];
   let tag := ["h" , [[[n < 6] ifTrue: [| n] ifFalse: [| 6]] printString]];
   [out add: [Html tag: tag
@@ -91,37 +91,37 @@
 [Reflect defineMethod: #codeLine:scanner:out: on: Markdown as: [:self :line :sc :out |
   [[line startsWith: "```"]
     ifTrue:  [|
-      [out add: [Html tag: "pre" body: [Html tag: "code" text: [[[db cellFor: sc attr: #buf] value] asString]]]];
-      [[db cellFor: sc attr: #mode] set: #none]]
+      [out add: [Html tag: "pre" body: [Html tag: "code" text: [[[sc at: #buf] value] asString]]]];
+      [[sc at: #mode] set: #none]]
     ifFalse: [|
-      let b := [[db cellFor: sc attr: #buf] value];
+      let b := [[sc at: #buf] value];
       [[b isEmpty] ifTrue: [| [b add: line]] ifFalse: [| [[b add: "\n"] add: line]]]]];
   self] doc:
   "One line while inside a fence: ``` closes and emits the <pre><code>; others accumulate verbatim."];
 
 // A list item: open the list if needed, append the item text (raw; inline at flush).
 [Reflect defineMethod: #listLine:scanner:out: on: Markdown as: [:self :line :sc :out |
-  [[[[db cellFor: sc attr: #mode] value] = #list]
+  [[[[sc at: #mode] value] = #list]
     ifTrue:  [| nil]
     ifFalse: [|
       [self flush: sc out: out];
-      [[db cellFor: sc attr: #mode] set: #list];
-      [[db cellFor: sc attr: #items] set: #[]]]];
-  let items := [[db cellFor: sc attr: #items] value];
-  [[db cellFor: sc attr: #items] set: [items add: [line copyFrom: 2 to: [line size]]]];
+      [[sc at: #mode] set: #list];
+      [[sc at: #items] set: #[]]]];
+  let items := [[sc at: #items] value];
+  [[sc at: #items] set: [items add: [line copyFrom: 2 to: [line size]]]];
   self] doc:
   "One `- ` line: opens a list (closing other prose) if needed, then appends the item text."];
 
 // A prose line: continue the open paragraph or start a fresh one.
 [Reflect defineMethod: #paraLine:scanner:out: on: Markdown as: [:self :line :sc :out |
-  [[[[db cellFor: sc attr: #mode] value] = #para]
-    ifTrue:  [| [[[[db cellFor: sc attr: #buf] value] add: " "] add: [line trimmed]]]
+  [[[[sc at: #mode] value] = #para]
+    ifTrue:  [| [[[[sc at: #buf] value] add: " "] add: [line trimmed]]]
     ifFalse: [|
       [self flush: sc out: out];
-      [[db cellFor: sc attr: #mode] set: #para];
+      [[sc at: #mode] set: #para];
       let b := [StringBuilder new];
       [b add: [line trimmed]];
-      [[db cellFor: sc attr: #buf] set: b]]];
+      [[sc at: #buf] set: b]]];
   self] doc:
   "One plain line: joins the open paragraph with a space, or starts a new one."];
 
@@ -141,8 +141,8 @@
   [[line startsWith: "```"]
     ifTrue:  [|
       [self flush: sc out: out];
-      [[db cellFor: sc attr: #mode] set: #code];
-      [[db cellFor: sc attr: #buf] set: [StringBuilder new]]]
+      [[sc at: #mode] set: #code];
+      [[sc at: #buf] set: [StringBuilder new]]]
     ifFalse: [|
       [[line startsWith: "#### "]
         ifTrue:  [| [self heading: [line copyFrom: 5 to: [line size]] level: 4 scanner: sc out: out]]
@@ -160,7 +160,7 @@
   "One line outside a fence: ``` opens one, `#`-prefixes emit headings, everything else takes the prose tail."];
 
 [Reflect defineMethod: #feedLine:scanner:out: on: Markdown as: [:self :line :sc :out |
-  [[[[db cellFor: sc attr: #mode] value] = #code]
+  [[[[sc at: #mode] value] = #code]
     ifTrue:  [| [self codeLine: line scanner: sc out: out]]
     ifFalse: [| [self proseLine: line scanner: sc out: out]]];
   self] doc:
@@ -169,16 +169,13 @@
 // -- entry points -----------------------------------------------------------------
 
 [Reflect defineMethod: #toHtml:shiftHeadings: on: Markdown as: [:self :md :shift |
-  let sc := [Object clone];
-  [[db cellFor: sc attr: #mode]  set: #none];
-  [[db cellFor: sc attr: #buf]   set: [StringBuilder new]];
-  [[db cellFor: sc attr: #items] set: #[]];
-  [[db cellFor: sc attr: #shift] set: shift];
+  let sc := {#mode -> [db localCell: #none] #buf -> [db localCell: [StringBuilder new]]
+             #items -> [db localCell: #[]] #shift -> [db localCell: shift]};
   let out := [StringBuilder new];
   let me := self;
   [[md split: "\n"] do: [:line | [me feedLine: line scanner: sc out: out]]];
-  [[[[db cellFor: sc attr: #mode] value] = #code]
-    ifTrue:  [| [out add: [Html tag: "pre" body: [Html tag: "code" text: [[[db cellFor: sc attr: #buf] value] asString]]]]]
+  [[[[sc at: #mode] value] = #code]
+    ifTrue:  [| [out add: [Html tag: "pre" body: [Html tag: "code" text: [[[sc at: #buf] value] asString]]]]]
     ifFalse: [| [self flush: sc out: out]]];
   [out asString]] doc:
   "Render `md` to an HTML fragment with headings shifted down `shift` levels (an unclosed fence still emits)."];

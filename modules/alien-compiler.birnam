@@ -46,16 +46,18 @@ let digits := "0123456789abcdef";
 [self error: [self concat: #[message [self hexByte: byte]]] offset: offset]
 ]];
 
+// Private parser/classification records contain local Cells. Their lifetime
+// follows the invocation; neither records nor loop temporaries publish facts.
 [Reflect defineMethod: #state:at: on: AlienCompiler as: [:self :parser :key |
-[[db cellFor: parser attr: key] value]
+[[parser at: key] value]
 ]];
 
 [Reflect defineMethod: #state:at:put: on: AlienCompiler as: [:self :parser :key :value |
-[[db cellFor: parser attr: key] set: value]; value
+[[parser at: key] set: value]; value
 ]];
 
 [Reflect defineMethod: #cell: on: AlienCompiler as: [:self :value |
-let cell := [db cellFor: [Object clone] attr: #value]; [cell set: value]; cell
+[db localCell: value]
 ]];
 
 [Reflect defineMethod: #position: on: AlienCompiler as: [:self :p |
@@ -122,8 +124,7 @@ let compact := [StringBuilder new]; let i := [self cell: 0];
  [[[[byte = 32] not] & [[byte = 9] not]] ifTrue: [| [compact addByte: byte]]]; [i set: [[i value] + 1]]]];
 let text := [compact asString];
 [[[text size] = 0] ifTrue: [| [self fail: "signature is empty"]] ifFalse: [|
- let p := [Object clone]; [self state: p at: #input put: text];
- [self state: p at: #offset put: 0]; [self state: p at: #aggregates put: #[]];
+ let p := {#input -> [self cell: text] #offset -> [self cell: 0] #aggregates -> [self cell: #[]]};
  let result := [self cell: [self parseTop: p return: true]]; let args := [self cell: #[]];
  [[| [[[self position: p] < [text size]] & [[[result value] isError] not]]] whileTrue: [|
   let arg := [self parseTop: p return: false];
@@ -335,7 +336,7 @@ let count := [[[field at: 0] == #array] ifTrue: [|
 ]];
 
 [Reflect defineMethod: #hfa:aggregates: on: AlienCompiler as: [:self :index :aggregates |
-let state := [Object clone]; [self state: state at: #kind put: nil]; [self state: state at: #count put: 0]; [self state: state at: #valid put: true];
+let state := {#kind -> [self cell: nil] #count -> [self cell: 0] #valid -> [self cell: true]};
 [self indexes: [aggregates at: index] do: [:field :i |
  let members := [self floatMembers: field aggregates: aggregates];
 [[members isNil] ifTrue: [| [self state: state at: #valid put: false]] ifFalse: [| let old := [self state: state at: #kind]; let kind := [members at: 0];
@@ -353,7 +354,7 @@ let count := [self state: state at: #count];
 ]];
 
 [Reflect defineMethod: #classify: on: AlienCompiler as: [:self :signature |
-let classes := [Object clone]; [self state: classes at: #arguments put: #[]];
+let classes := {#arguments -> [self cell: #[]]};
 [self indexes: [signature at: 1] do: [:arg :i |
  [self state: classes at: #arguments put: [[self state: classes at: #arguments] add: [self classifyType: arg aggregates: [signature at: 2]]]]]];
 #[[self classifyType: [signature at: 0] aggregates: [signature at: 2]] [self state: classes at: #arguments]]

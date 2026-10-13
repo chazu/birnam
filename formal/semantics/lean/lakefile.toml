@@ -1,6 +1,6 @@
 name = "birnam_semantics"
 version = "0.1.0"
-defaultTargets = ["Semantics", "SemanticsExamples", "SemanticsAudit", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "CollectionSearch"]
+defaultTargets = ["Semantics", "SemanticsExamples", "SemanticsAudit", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "CollectionSearch", "PrivateScratch"]
 
 [[require]]
 name = "birnam_rooting"
@@ -29,3 +29,6 @@ name = "SlotHints"
 
 [[lean_lib]]
 name = "CollectionSearch"
+
+[[lean_lib]]
+name = "PrivateScratch"

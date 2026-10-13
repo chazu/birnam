@@ -1,3 +1,4 @@
+import PrivateScratch
 import CollectionSearch
 import LogMessages
 import RangeHandlers
@@ -125,3 +126,9 @@ import Admission
 #print axioms Birnam.CollectionSearch.matching_nil_continues
 #print axioms Birnam.CollectionSearch.predicate_state_is_live
 #print axioms Birnam.CollectionSearch.direct_branch_equivalent
+#print axioms Birnam.PrivateScratch.private_write_related
+#print axioms Birnam.PrivateScratch.publication_related
+#print axioms Birnam.PrivateScratch.private_write_preserves_world
+#print axioms Birnam.PrivateScratch.alias_sees_update
+#print axioms Birnam.PrivateScratch.other_cell_preserved
+#print axioms Birnam.PrivateScratch.simulation
