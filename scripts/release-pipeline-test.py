@@ -163,7 +163,7 @@ class Qualification(unittest.TestCase):
         self.assertNotIn('--build-cache', build[0]['argv'])
         self.assertIn('--build-cache', next(s for s in ordinary if s['name']=='install')['argv'])
         self.assertIn(str(self.root/'candidate-source.json'), build[0]['inputs'])
-        self.assertEqual(len([s for s in candidate if s['name'].startswith('host-')]), 5)
+        self.assertEqual(len([s for s in candidate if s['name'].startswith('host-') and s['name'] != 'host-test-binaries']), 5)
         self.assertIn('cold-source', [s['name'] for s in candidate])
         with self.assertRaises(ValueError): plan('routine', self.prefix, self.root, candidate=True)
 

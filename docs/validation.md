@@ -417,12 +417,11 @@ plans. Dirty-tree checks remain available for local development and cannot
 produce a promotable archive receipt. Version/tag/push/publish actions are not
 part of the nonpublishing validation commands.
 
-This first change removes two repeated installed matrices and the redundant
+The initial change removes two repeated installed matrices and the redundant
 shipping build from the previous release path. It adds pipeline regressions to
-the mandatory plan. It preserves all existing gates; it does not introduce local
-parallel execution or merge the independent bootstrap proof builds. Those are
-separate follow-ups. Full release duration must be measured on the next actual
-candidate rather than inferred from the removal of duplicate steps.
+the mandatory plan and preserves all existing gates. Independent bootstrap proof
+builds remain separate. Full release duration is measured on the actual candidate
+rather than inferred from the removal of duplicate steps.
 
 Implementation evidence: [release workflow checks, 2026-10-13](measurements/release-workflow-20261013.json).
 The 31 tooling regressions pass, including candidate-build reuse, commit
@@ -432,3 +431,34 @@ archive smoke gate also passed; repeating packaging reused the same archive in
 2.16 seconds. This is component qualification of the tooling, not a full release
 qualification or an end-to-end release duration measurement. No version was
 bumped and no release was published for these checks.
+
+
+### Two installed-test lanes
+
+The local planner defaults to `--jobs 2`; `--jobs 1` retains serial execution for
+comparison. The fixed lanes are interaction/CLI and tasks/image/generation.
+Build and native preparation steps finish before either lane starts. Each group
+gets its own copied runtime and temporary fixtures. The `host-test-binaries`
+gate copies all shared Rust test executables into a hash-verified snapshot;
+self-spawned test processes use these immutable copies. Cargo output replacement
+cannot change an executable under a running test. CLI-only reference/oracle
+builds retain their independent Cargo target directories.
+
+Both lanes use the existing complete gate receipts and final audit. A failed
+lane cancels its peer's process group and prevents new checks from starting;
+completed gates remain available for resume. Aggregate receipt updates are
+serialized, while the subprocesses execute concurrently. The total recorded
+`wall_ns` measures actual plan duration, including cache checks and preparation,
+not the sum of overlapping group times.
+
+Every installed command reports a label and elapsed time. The group timing files
+live under `timings/` beside the qualification receipt and are bound as gate
+artifacts. They retain failures and incomplete commands rather than treating a
+partial group as passed. CI keeps its existing shards and includes the prepared
+executables in the shared validation artifacts.
+
+Measured two-lane qualification: **34.7 minutes** for all 21 gates,
+including native integration, all five installed groups and independent cold
+bootstrap builds. See [the pre-commit qualification receipt](measurements/release-lanes-20261013.json).
+The earlier attempt stopped for a cache-input correction is excluded from this
+completed-run duration and is not claimed as passed.

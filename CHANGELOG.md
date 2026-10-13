@@ -8,6 +8,36 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Port Trace graph traversal and observation policy to Birnam while preserving
+  scoped roots, explicit coverage gaps, saved images and live method replacement.
+
+- Reduce guarded resumable-call preparation and trailing frame-copy work, with
+  recovery after binding or optional-protocol changes. Retain late-bound sends,
+  entered-code lifetimes and observable language behavior.
+
+- Reduce native code and image-loading memory costs: account external byte
+  storage, use dedicated macOS code mappings, omit unused generated helpers and
+  size selector tables to the compiled unit's demand.
+
+- Reuse private selector digests and simplify method-lookup mechanics without
+  caching executable entries, parent resolution or negative lookup results.
+
+- Improve authored JSON string decoding, value dispatch and numeric classification,
+  and reuse Range branch handlers while keeping bounds and operations live.
+
+- Make shared Vector, Range and String first-match search stop at a non-nil hit;
+  Map searches its values projection. Preserve matching-nil behavior, predicate
+  effects, GC, suspension and cancellation, with a fold fallback for custom
+  collections. Simplify Logue's first-match queries and bounded message log.
+
+- Add unattended JSON-log and deterministic Logue workloads with independent
+  oracles, paired measurements and Lean/TLA+ models for retained optimizations.
+
+- Qualify one cold release candidate, package the same bytes and reuse audited
+  evidence for bounded archive acceptance. Resume interrupted releases without
+  another version bump, defer tagging until acceptance, and run installed tests
+  in two isolated lanes with immutable test executables and per-check timings.
+
 ## [0.16.0] — 2026-10-09
 
 - Expand Birnam implementations of Lang, AlienCompiler, ImageFormat, SourceLoader,

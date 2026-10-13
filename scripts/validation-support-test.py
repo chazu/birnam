@@ -76,10 +76,14 @@ class ValidationTests(unittest.TestCase):
             for steps in (routine, release):
                 native = next(s for s in steps if s['name'] == 'native')
                 self.assertEqual(native['argv'], ['bash', 'scripts/native-message-test.sh'])
-                hosts = [s for s in steps if s['name'].startswith('host-')]
+                hosts = [s for s in steps if s['name'].startswith('host-') and s['name'] != 'host-test-binaries']
                 self.assertEqual({s['name'] for s in hosts},
                                  {'host-cli', 'host-image', 'host-interaction', 'host-generation', 'host-tasks'})
-                self.assertTrue(all(s['depends'] == ('install',) for s in hosts))
+                self.assertTrue(all(s['depends'] == ('install', 'host-test-binaries') for s in hosts))
+                prepared = next(s for s in steps if s['name'] == 'host-test-binaries')
+                self.assertIn('scripts/**/*.birnam', prepared['inputs'])
+                self.assertIn('tests/**/*', prepared['inputs'])
+                self.assertTrue(all('scripts/**/*.birnam' in s['inputs'] for s in hosts))
                 self.assertNotIn('birnam-runtime', json.dumps(steps))
 
     def test_plan_audit_rejects_receipts_for_another_command_or_dependency(self):
@@ -150,6 +154,87 @@ class ValidationTests(unittest.TestCase):
             process = subprocess.run(['bash', str(ROOT/'scripts/rust-install.sh'), 'install', '--build-cache', str(root/'cache')], env=dict(env, CODE='0'))
             self.assertEqual(process.returncode, 0)
             self.assertTrue(Path((root/'probe').read_text()).is_dir())
+
+
+class HostLanes(unittest.TestCase):
+    def test_two_lanes_overlap_and_all_receipts_survive(self):
+        from validate import run_plan, HOST_GROUPS
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source=root/'source';source.write_text('same inputs')
+            runner=PlanRunner(root/'evidence',deadline=20)
+            first=root/'first';second=root/'second'
+            steps=[]
+            for name, own, peer in [('host-interaction',first,second),('host-tasks',second,first)]:
+                code=('from pathlib import Path; import time; '
+                      f'Path({str(own)!r}).touch(); p=Path({str(peer)!r}); '
+                      'deadline=time.monotonic()+5\n'
+                      'while not p.exists():\n'
+                      ' assert time.monotonic()<deadline,"other lane never started"\n'
+                      ' time.sleep(.01)\n')
+                steps.append(dict(name=name,argv=[sys.executable,'-c',code],inputs=(str(source),)))
+            for name in ('cli','image','generation'):
+                steps.append(dict(name='host-'+name,argv=[sys.executable,'-c','print("checked")'],inputs=(str(source),)))
+            run_plan(runner,steps,2)
+            audit_plan(runner.rows,steps)
+            self.assertEqual(set(runner.rows),{'host-'+name for name in HOST_GROUPS})
+            saved=json.loads((root/'evidence/run.json').read_text())
+            self.assertEqual(set(saved['steps']),set(runner.rows))
+            self.assertTrue(all(row['status']=='passed' for row in saved['steps'].values()))
+
+    def test_lane_failure_cancels_peer_descendants_and_never_starts_followup(self):
+        from validate import run_plan
+        import time
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); source=root/'source';source.write_text('input')
+            runner=PlanRunner(root/'evidence',deadline=10)
+            # Exercise the top-level qualification process-group ownership.
+            runner.env.pop('BIRNAM_VALIDATION_CHILD',None)
+            started=root/'started';orphan=root/'orphan';unstarted=root/'unstarted'
+            child=f'import time; from pathlib import Path; time.sleep(1); Path({str(orphan)!r}).touch()'
+            slow=('import subprocess,sys,time; from pathlib import Path; '
+                  f'subprocess.Popen([sys.executable,"-c",{child!r}]); Path({str(started)!r}).touch(); time.sleep(20)')
+            failed=('from pathlib import Path; import time; '+f'p=Path({str(started)!r})\n'
+                    'while not p.exists(): time.sleep(.01)\nraise SystemExit(7)')
+            steps=[dict(name='host-interaction',argv=[sys.executable,'-c',failed],inputs=(str(source),)),
+                   dict(name='host-tasks',argv=[sys.executable,'-c',slow],inputs=(str(source),)),
+                   dict(name='host-cli',argv=[sys.executable,'-c',f'from pathlib import Path; Path({str(unstarted)!r}).touch()'],inputs=(str(source),))]
+            with self.assertRaises(RuntimeError): run_plan(runner,steps,2)
+            time.sleep(1.1)
+            self.assertTrue(started.exists())
+            self.assertEqual(runner.rows['host-interaction']['exit_code'],7)
+            self.assertFalse(orphan.exists())
+            self.assertFalse(unstarted.exists())
+            self.assertEqual(runner.rows['host-interaction']['status'],'failed')
+            self.assertEqual(runner.rows['host-tasks']['status'],'failed')
+
+    def test_snapshot_survives_cargo_output_replacement_and_rejects_tampering(self):
+        import host_test_binaries as host
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);original=root/'cargo-output';original.write_text('#!/bin/sh\nexit 0\n');original.chmod(0o755)
+            def cargo(argv,**kwargs):
+                key=argv[argv.index('-p')+1]
+                target=argv[argv.index('--test')+1] if '--test' in argv else key.replace('-','_')
+                return subprocess.CompletedProcess(argv,0,stdout=json.dumps(dict(reason='compiler-artifact',
+                    executable=str(original),profile=dict(test=True),target=dict(name=target)))+'\n')
+            with patch.object(host.subprocess,'run',side_effect=cargo): host.prepare(root/'frozen')
+            manifest=root/'frozen/manifest.json'
+            frozen=host.executable(manifest,'host-lib')
+            original.write_text('new Cargo output')
+            self.assertEqual(frozen.read_text(),'#!/bin/sh\nexit 0\n')
+            frozen.write_text('tampered snapshot')
+            with self.assertRaisesRegex(ValueError,'changed'): host.executable(manifest,'host-lib')
+
+    def test_timing_records_success_and_failure_exit_status(self):
+        from validation_timed import run
+        with tempfile.TemporaryDirectory() as temporary:
+            output=Path(temporary)/'timings.json'
+            self.assertEqual(run(output,'success',[sys.executable,'-c','print("ok")']),0)
+            self.assertEqual(run(output,'failure',[sys.executable,'-c','raise SystemExit(9)']),9)
+            rows=json.loads(output.read_text())['checks']
+            self.assertEqual([r['status'] for r in rows],['passed','failed'])
+            self.assertEqual([r['exit_code'] for r in rows],[0,9])
+            self.assertTrue(all(r['wall_ns']>0 for r in rows))
 
 
 if __name__ == '__main__':

@@ -7,12 +7,17 @@ import json
 from pathlib import Path
 import tempfile
 import subprocess
+import signal
+from concurrent.futures import ThreadPoolExecutor, as_completed, CancelledError
 from install_contract import verify
 from validation_support import ROOT, PlanRunner, audit_plan, save_json
 
 PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'modules/**/*',
               'vendor/libtcc-src/**/*', 'wrapped/**/*.dylib')
 HOST_GROUPS = ('cli', 'image', 'interaction', 'generation', 'tasks')
+# Source and embedded fixtures, excluding generated Python bytecode caches.
+SCRIPT_INPUTS = ('scripts/*', 'scripts/**/*.py', 'scripts/**/*.sh',
+                 'scripts/**/*.birnam', 'scripts/fixtures/**/*')
 
 
 def source_identity():
@@ -29,7 +34,7 @@ def plan(suite, prefix, output, *, candidate=False):
         return dict(name=name, argv=[str(a) for a in argv], inputs=inputs, **kwargs)
     result = [step('tool-tests', ['python3', 'scripts/validation-support-test.py'],
                    ('scripts/validation*.py', 'scripts/validate.py', 'scripts/host-cli-test.sh',
-                    'scripts/rust-install.sh', 'scripts/*timing*.py', 'scripts/release*.py', 'scripts/release.sh', 'scripts/dist.sh')),
+                    'scripts/rust-install.sh', 'scripts/*timing*.py', 'scripts/release*.py', 'scripts/release.sh', 'scripts/dist.sh', 'scripts/host_test_binaries.py')),
               step('workspace', ['cargo', 'test', '--workspace', '--locked', '--offline'],
                    PRODUCTION, timeout=600)]
     for fixture in ('stackless-s2', 'portable-code-v1'):
@@ -50,13 +55,21 @@ def plan(suite, prefix, output, *, candidate=False):
                        PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'docs/guide/**/*') +
                        ((str(output / 'candidate-source.json'),) if candidate else ()),
                        artifacts=(str(prefix),), timeout=900))
-    # Keep all installed checks in every suite. CI shards the groups, while local
-    # execution is serial so self-spawning Host tests never race a binary rebuild.
+    test_directory = output / 'artifacts/host-tests'
+    result.append(step('host-test-binaries', ['python3', 'scripts/host_test_binaries.py',
+                       'prepare', test_directory],
+                       PRODUCTION + ('VERSION', 'tests/**/*') + SCRIPT_INPUTS,
+                       artifacts=(str(test_directory),), timeout=600))
+    # Immutable shared test executables and per-group runtime copies permit two
+    # bounded lanes. Fixture-specific oracle builds use their own Cargo targets.
     for group in HOST_GROUPS:
         result.append(step('host-' + group,
-                           ['bash', 'scripts/host-cli-test.sh', '--prefix', prefix, '--group', group],
-                           PRODUCTION + ('scripts/*', 'tests/**/*', 'examples/**/*'),
-                           depends=('install',), timeout={'cli': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
+                           ['bash', 'scripts/host-cli-test.sh', '--prefix', prefix, '--group', group,
+                            '--prepared-binaries', test_directory / 'manifest.json',
+                            '--timings', output / 'timings' / (group + '.json')],
+                           PRODUCTION + ('tests/**/*', 'examples/**/*') + SCRIPT_INPUTS,
+                           depends=('install', 'host-test-binaries'),
+                           artifacts=(str(output / 'timings' / (group + '.json')),), timeout={'cli': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
     if suite == 'release':
         result.append(step('dylib-audit', ['bash', 'scripts/rust-dylib-audit.sh'],
                            PRODUCTION + ('scripts/rust-dylib-audit.sh', 'rust/birnam-id/exports.json'), timeout=300))
@@ -66,9 +79,56 @@ def plan(suite, prefix, output, *, candidate=False):
     return result
 
 
+# Static lanes are intentionally small and explicit. Balance uses recorded group
+# costs; this is not an inferred dependency scheduler. Serial mode remains useful
+# for comparison or machines with constrained resources.
+HOST_LANES = (('host-interaction', 'host-cli'),
+              ('host-tasks', 'host-image', 'host-generation'))
+
+
+def run_plan(runner, steps, jobs=2):
+    hosts = {s['name']: s for s in steps if s['name'].startswith('host-') and s['name'] != 'host-test-binaries'}
+    if set(hosts) - {name for lane in HOST_LANES for name in lane}:
+        raise ValueError('Host group is missing a lane assignment')
+    launched = False
+    for step in steps:
+        if step['name'] not in hosts:
+            runner.run(**step)
+            continue
+        if launched: continue
+        launched = True
+        if jobs == 1:
+            for host in hosts.values(): runner.run(**host)
+            continue
+        # All prerequisites must already have completed; no compiler/build work
+        # is scheduled by this executor while the Host groups are running.
+        for host in hosts.values():
+            if not set(host.get('depends', ())) <= runner.rows.keys():
+                raise ValueError('Host lane prerequisite has not completed')
+        def lane(names):
+            try:
+                for name in names:
+                    if name in hosts: runner.run(**hosts[name])
+            except BaseException:
+                runner.cancel_event.set()
+                raise
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(lane, names) for names in HOST_LANES]
+            try:
+                for future in as_completed(futures):
+                    try: future.result()
+                    except CancelledError: continue
+                if runner.cancel_event.is_set():
+                    raise CancelledError('Host lanes cancelled')
+            except BaseException:
+                runner.cancel_event.set()
+                raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--suite', choices=('routine', 'exhaustive', 'release'), default='routine')
+    parser.add_argument('--jobs', type=int, choices=(1, 2), default=2, help='installed Host lanes (default: 2)')
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--deadline', type=int, help='Total seconds; expiry is incomplete, never a pass')
     parser.add_argument('--candidate', action='store_true', help='qualify one cold release candidate, without a second production build')
@@ -96,7 +156,7 @@ def main():
     deadline = args.deadline if args.deadline is not None else 14400
     if deadline <= 0: parser.error('deadline must be positive')
     if args.plan:
-        print(json.dumps(dict(suite=args.suite, deadline_seconds=deadline, steps=steps), indent=2))
+        print(json.dumps(dict(suite=args.suite, deadline_seconds=deadline, jobs=args.jobs, host_lanes=HOST_LANES, steps=steps), indent=2))
         return
     args.output.mkdir(parents=True, exist_ok=True)
     (ROOT / '.cargo-target').mkdir(exist_ok=True)
@@ -107,11 +167,14 @@ def main():
         if args.candidate:
             save_json(args.output / 'candidate-source.json', identity)
         runner = PlanRunner(args.output, deadline=deadline, resume=not args.no_resume)
-        runner.receipt.update(suite=args.suite, selected_steps=[s['name'] for s in steps])
+        runner.receipt.update(suite=args.suite, selected_steps=[s['name'] for s in steps], jobs=args.jobs, host_lanes=HOST_LANES)
         if args.candidate:
             runner.receipt.update(candidate=True, prefix=str(prefix), source=identity)
+        def terminated(signum, frame):
+            raise SystemExit(128 + signum)
+        old_term = signal.signal(signal.SIGTERM, terminated)
         try:
-            for step in steps: runner.run(**step)
+            run_plan(runner, steps, args.jobs)
             audit_plan(runner.rows, steps)
             if args.candidate:
                 install = verify(prefix)
@@ -123,7 +186,9 @@ def main():
         except BaseException as error:
             runner.receipt.update(status='failed', error=str(error))
             raise
-        finally: runner.save()
+        finally:
+            signal.signal(signal.SIGTERM, old_term)
+            runner.save()
         print(f'validate: {args.suite}: {len(steps)} steps passed; {args.output / "run.json"}')
 
 

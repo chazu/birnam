@@ -7,6 +7,8 @@ import signal
 import subprocess
 import tempfile
 import time
+import threading
+from concurrent.futures import CancelledError
 from measurement_archive import read_bytes
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,7 +62,7 @@ def file_hashes(patterns, root=ROOT):
     return {str(p): sha(p) for p in sorted(paths)}
 
 
-def command(argv, *, cwd=ROOT, env=None, timeout=300, log=None):
+def command(argv, *, cwd=ROOT, env=None, timeout=300, log=None, cancel_event=None):
     """Run with a deadline; stop the owned process group on timeout/cancellation."""
     argv = [str(a) for a in argv]
     environment = dict(os.environ if env is None else env)
@@ -94,7 +96,21 @@ def command(argv, *, cwd=ROOT, env=None, timeout=300, log=None):
                 except ProcessLookupError: pass
         process.wait()
     try:
-        stdout, stderr = process.communicate(timeout=timeout)
+        if cancel_event is None:
+            stdout, stderr = process.communicate(timeout=timeout)
+        else:
+            end = time.monotonic() + timeout
+            while True:
+                if cancel_event.is_set():
+                    raise CancelledError('validation lane cancelled')
+                remaining = end - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                try:
+                    stdout, stderr = process.communicate(timeout=min(.2, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
     except BaseException:
         stop()
         raise
@@ -157,6 +173,9 @@ def audit_plan(rows, steps):
 class PlanRunner:
     """One plan owns execution; cache entries bind commands, inputs and outputs."""
     def __init__(self, directory, *, deadline=900, resume=True):
+        self.lock = threading.RLock()
+        self.cancel_event = threading.Event()
+        self.started = time.monotonic_ns()
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.stop_at = time.monotonic() + deadline
@@ -170,17 +189,23 @@ class PlanRunner:
         self.save()
 
     def save(self):
-        save_json(self.directory / 'run.json', self.receipt)
+        with self.lock:
+            self.receipt['wall_ns'] = time.monotonic_ns() - self.started
+            save_json(self.directory / 'run.json', self.receipt)
 
     def run(self, name, argv, *, inputs, artifacts=(), depends=(), timeout=300):
         remaining = self.stop_at - time.monotonic()
         if remaining <= 0:
             raise TimeoutError('validation deadline exhausted before ' + name)
+        if self.cancel_event.is_set():
+            raise CancelledError('validation lane cancelled before ' + name)
         paths = tuple(inputs) + ('scripts/validation_support.py', 'scripts/validate.py')
         before = file_hashes(paths)
+        with self.lock:
+            dependencies = {n: self.rows[n]['evidence_sha256'] for n in depends}
         binding = dict(argv=[str(a) for a in argv], inputs=before, patterns=list(paths),
                        toolchain=self.toolchain, environment=environment_binding(self.env),
-                       dependencies={n: self.rows[n]['evidence_sha256'] for n in depends})
+                       dependencies=dependencies)
         key = hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest()
         directory = self.directory / name / key
         directory.mkdir(parents=True, exist_ok=True)
@@ -194,33 +219,42 @@ class PlanRunner:
                     and (not artifacts or outputs)
                     and Path(prior['log']).is_file()
                     and sha(prior['log']) == prior['log_sha256']):
-                self.rows[name] = dict(prior, reused=True, evidence_sha256=sha(receipt_path))
-                self.save()
+                with self.lock:
+                    self.rows[name] = dict(prior, reused=True, evidence_sha256=sha(receipt_path))
+                    self.save()
                 print(f'validate: {name}: reused matching passed evidence', flush=True)
                 return
         log = directory / 'output.log'
-        self.rows[name] = row
-        self.save()
+        with self.lock:
+            self.rows[name] = row
+            self.save()
         save_json(receipt_path, row)
         print(f'validate: {name}: running (limit {min(timeout, remaining):.0f}s; {log})', flush=True)
+        started = time.monotonic_ns()
         try:
-            result = command(argv, env=self.env, timeout=min(timeout, remaining), log=log)
-            row.update({k: result[k] for k in ('argv', 'exit_code', 'wall_ns')})
+            result = command(argv, env=self.env, timeout=min(timeout, remaining), log=log,
+                             cancel_event=self.cancel_event)
+            with self.lock:
+                row.update({k: result[k] for k in ('argv', 'exit_code', 'wall_ns')})
             if result['exit_code']:
                 raise RuntimeError(f'{name} failed ({result["exit_code"]}); see {log}')
             if before != file_hashes(paths):
                 raise RuntimeError(name + ': inputs changed during execution')
-            row['artifacts'] = file_hashes(artifacts)
-            if artifacts and not row['artifacts']:
+            outputs = file_hashes(artifacts)
+            if artifacts and not outputs:
                 raise RuntimeError(name + ': expected outputs are missing')
-            row['status'] = 'passed'
+            with self.lock:
+                row.update(artifacts=outputs, status='passed')
         except BaseException as error:
-            row.update(status='failed', error=str(error))
+            with self.lock:
+                row.update(status='failed', error=str(error))
             raise
         finally:
-            row['log'] = str(log)
-            if log.is_file(): row['log_sha256'] = sha(log)
-            save_json(receipt_path, row)
-            row['evidence_sha256'] = sha(receipt_path)
-            self.save()
+            with self.lock:
+                row.setdefault('wall_ns', time.monotonic_ns() - started)
+                row['log'] = str(log)
+                if log.is_file(): row['log_sha256'] = sha(log)
+                save_json(receipt_path, row)
+                row['evidence_sha256'] = sha(receipt_path)
+                self.save()
         print(f'validate: {name}: passed in {row["wall_ns"] / 1e9:.1f}s', flush=True)
