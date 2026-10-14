@@ -12,7 +12,7 @@ structure State where
   world : Nat → Nat
   cells : Nat → Nat
 
-def put {Key : Type} [DecidableEq Key] (fields : Key → Nat) (key : Key) (value : Nat) :=
+def put {Key Value : Type} [DecidableEq Key] (fields : Key → Value) (key : Key) (value : Value) :=
   fun queried => if queried = key then value else fields queried
 
 def separate (store : Store) : State :=
@@ -120,5 +120,23 @@ theorem distinct_default_cells_are_independent (s : State) (key other value : Na
     (different : other ≠ key) :
     readCell (writeCell s (defaultCell key) value) (defaultCell other) = s.cells other := by
   simp [readCell, writeCell, defaultCell, writePrivate, put, different]
+
+/-- The local Cell representation is one ordinary reference slot. Values stand
+    for opaque identities, so cloning the container does not clone its contents. -/
+def slotStorage (s : State) : Nat → Nat → Nat :=
+  fun identity slot => if slot = 0 then s.cells identity else 0
+
+theorem ordinary_slot_reads_local_value (s : State) (identity : Nat) :
+    slotStorage s identity 0 = s.cells identity := by simp [slotStorage]
+
+theorem ordinary_slot_write_matches_local (s : State) (key value : Nat) :
+    slotStorage (writePrivate s key value) =
+      put (slotStorage s) key (put (slotStorage s key) 0 value) := by
+  funext identity slot
+  by_cases same : identity = key <;> by_cases zero : slot = 0 <;>
+    simp_all [slotStorage, writePrivate, put]
+
+theorem clone_container_preserves_value (s : State) (source target : Nat) :
+    (put s.cells target (s.cells source)) target = s.cells source := by simp [put]
 
 end Birnam.PrivateScratch

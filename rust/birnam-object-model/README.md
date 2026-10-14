@@ -62,7 +62,7 @@ Native operations on the ObjectModel receiver are:
 | `slotKindOf:at:` | behavior Object, word-index Word | Kind Word; zero for an unset description. |
 | `allOopLayoutOf:words:` | behavior Object, extent Word | Word 1 iff an explicit description marks the entire extent as Oops, otherwise 0. |
 | `slotAt:in:` | word-index Word, ordinary Object | Referenced Object, or Unit for null. Reject out-of-bounds and explicitly non-Oop slots. |
-| `slotAt:in:put:` | word-index Word, ordinary Object, referenced Object or Unit | The ordinary Object. Retain inputs and admit mutation before writing. |
+| `slotAt:in:put:` | word-index Word, ordinary Object, referenced Object or Unit | The ordinary Object. Protect inputs and admit mutation before writing. |
 
 These are native construction/access operations. Word indexes and kind codes do
 not introduce dependencies on Integer or a shared API catalog. The copied layout
@@ -153,8 +153,12 @@ cloning and ordinary slot mutation retain their existing phase admission.
 `allocate:bytes:` borrows its caller-held behavior input. It installs the fresh
 result in a nested owner-local inventory before identity/shape queries. Its
 registered `rootsDo:` reports a copied snapshot of that inventory through Id
-visitor messages; return and failure restore the prior scope length. Other
-registry-based ObjectModel operations retain their existing path. See
+visitor messages; return and failure restore the prior scope length. Ordinary
+slot, clone and image operations now use the same nested inventory
+for private temporary protection; explicit program Root sends are unchanged.
+The boxed slot adapter retains fixed Symbol names, while namespace bindings,
+numeric conversion and raw slot access remain current sends. See
+[the slot and String cost slice](../../docs/design/slot-and-string-cost.md). See
 [the lifetime and boxing slice](../../docs/design/helper-lifetime-and-boxing.md).
 
 ## Atomic representation facts

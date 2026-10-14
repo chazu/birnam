@@ -8,6 +8,17 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove mutable Cell traffic from String ordering by carrying progress through
+  ordinary resumable method arguments. Reduce generic ObjectModel slot overhead
+  with GC-visible temporary scopes, retained selector names and stack argument
+  buffers; numeric conversion and slot operations remain late-bound.
+
+- Implement local Cells in Birnam over ordinary object slots. `Cell with:` and
+  `asCell` no longer use Store allocation; core scratch users follow the same
+  owner. Cell construction supports replaced setters that suspend and resume.
+  Keep existing Store Cells and their image representation for compatibility.
+  Preserve the Module manager source/artifact identity when registering Cell.
+
 - Change `asCell` to create local mutable state without facts or implicit history.
   `value`, `set:`, `inc`, `dec` and shared aliases continue to work; `history`
   answers zero for these Cells. Use `cellFor:attr:` on a Store and explicitly

@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 // Bootstrap artifacts are admitted before the source parser exists.
 const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("error", "modules/error.birnam"),
+    ("cell", "modules/cell.birnam"),
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
     ("nativeValues", "modules/native-values.birnam"),

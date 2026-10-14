@@ -24,11 +24,31 @@ def main():
     parser.add_argument('baseline', type=Path)
     parser.add_argument('candidate', type=Path)
     parser.add_argument('--samples', type=int, default=3)
+    parser.add_argument('--extended', action='store_true', help='also measure generic slots and varied String prefixes; requires --baseline-local')
+    parser.add_argument('--baseline-local', action='store_true', help='baseline already uses non-fact Cells')
     args = parser.parse_args()
     if args.samples < 1: parser.error('samples must be positive')
+    if args.extended:
+        if not args.baseline_local: parser.error('--extended requires --baseline-local')
+        CASES['slots'] = (1000, 501500, '''[:count |
+          let object := [ObjectModel newSlots: #[0] parent: ObjectVt];
+          [[1 to: count] inject: 0 into: [:sum :i |
+            [ObjectModel slot: 0 in: object put: [i + 1]];
+            [sum + [ObjectModel slot: 0 in: object]]]]
+        ]''')
+        for name, count, left, right, expected in [
+            ('string-empty', 500, '', '', False),
+            ('string-first', 500, 'b' + 'a'*127, 'a'*128, False),
+            ('string-prefix', 20, 'a'*127 + 'b', 'a'*127 + 'c', True),
+            ('string-equal', 20, 'a'*128, 'a'*128, False),
+        ]:
+            CASES[name] = (count, count if expected else 0,
+                '[:count | [[1 to: count] inject: 0 into: [:sum :i | '
+                '[sum + [[' + json.dumps(left) + ' < ' + json.dumps(right) + '] '
+                'ifTrue: [| 1] ifFalse: [| 0]]]]]]')
     prefixes = {k: getattr(args,k).resolve() for k in ('baseline','candidate')}
     work = Path(tempfile.mkdtemp(prefix='birnam-local-cell-bench-'))
-    receipt = {'runs':[], 'passed':False, 'prefixes':{k:str(p) for k,p in prefixes.items()},
+    receipt = {'runs':[], 'passed':False, 'baseline_local':args.baseline_local, 'extended':args.extended, 'prefixes':{k:str(p) for k,p in prefixes.items()},
         'runner_sha256':sha(Path(__file__).resolve()), 'runtime_sha256':{}, 'sources':{}}
     for label,prefix in prefixes.items():
         paths = [prefix/'bin/birnam', *sorted((prefix/'lib').glob('*.dylib')), *sorted((prefix/'lib').glob('*.image'))]
@@ -61,7 +81,7 @@ let retained := [[System liveObjects] - objects];
                 assert run['exit_code']==0 and not run['stderr'], (label,case,work)
                 row=json.loads(run['stdout']); assert row['answer']==expected
                 assert row['cpu_ns']>0 and row['wall_ns']>0
-                expected_facts = 0 if label=='candidate' else count*(2 if case=='string-order' else 1)
+                expected_facts = 0 if label=='candidate' or args.baseline_local else count*(2 if case=='string-order' else 1)
                 assert row['fact_delta']==expected_facts, (label,case,row)
                 receipt['runs'][-1]['observation']=row
     summary={}

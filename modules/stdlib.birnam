@@ -220,10 +220,9 @@
 // -- Cell: ordinary local mutation ----------------------------------------------
 // `:=` introduces a binding; mutable values live in shared Cells. asCell creates
 // local state without publishing a fact. Explicit database handles still use
-// `[store cellFor: entity attr: attribute]`. The local Cell implementation remains
-// packaged with Store during the ownership migration.
+// `[store cellFor: entity attr: attribute]`. Cell is an ordinary authored object.
 [Reflect defineMethod: #asCell on: Object as: [:self |
-  [db localCell: self]] doc:
+  [Cell with: self]] doc:
   "A fresh local mutable Cell holding self. value/set: share its state through aliases; no facts or implicit history (history answers zero). Use cellFor:attr: on a Store for fact-backed state."];
 [Reflect defineMethod: #inc on: CellVt as: [:self |
   [self set: [[self value] + 1]];
@@ -610,17 +609,21 @@ let reflectNameCollector := [ObjectModel newSlots: #[#[] nil] parent: ObjectVt];
 // decides the result; no later byte reads are needed.
 [Reflect defineMethod: #< on: String as: [:self :other |
    let lim := [[[self size] < [other size]] ifTrue: [| [self size]] ifFalse: [| [other size]]];
-   let index := [0 asCell];
-   let verdict := [nil asCell];
-   [[| [[[index value] < lim] & [[verdict value] isNil]]] whileTrue: [|
-      let ba := [self byteAt: [index value]];
-      let bb := [other byteAt: [index value]];
-      [[ba = bb] ifTrue: [| [index inc]] ifFalse: [| [verdict set: [ba < bb]]]]
-   ]];
-   [[[verdict value] isNil]
-      ifTrue: [| [[self size] < [other size]]]
-      ifFalse: [| [verdict value]]] ] doc:
+   [self byteOrderBefore: other from: 0 limit: lim]] doc:
    "True iff the receiver sorts strictly before `other` in byte order (shared prefix: shorter first)."];
+
+// Carry progress in ordinary arguments: no mutable Cells or suffix traversal.
+// The recursive branch is a tail send; byte access, equality and order remain
+// current sends, including after a callback suspends or replaces a method.
+[Reflect defineMethod: #byteOrderBefore:from:limit: on: String as: [:self :other :index :lim |
+   [[index < lim]
+      ifTrue: [|
+         let ba := [self byteAt: index];
+         let bb := [other byteAt: index];
+         [[ba = bb]
+            ifTrue: [| [self byteOrderBefore: other from: [index + 1] limit: lim]]
+            ifFalse: [| [ba < bb]]]]
+      ifFalse: [| [[self size] < [other size]]]]]];
 
 // Internal: the six ASCII whitespace bytes (space \t \n \v \f \r), as trimmed/
 // words define them — matching the native set exactly.

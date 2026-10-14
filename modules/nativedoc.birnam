@@ -97,7 +97,7 @@
 [Reflect defineMethod: #scan:as:kind:language: on: NativeDoc as: [:self :path :mod :kind :language |
   let text  := [File readText: path];
   let lines := [text split: "\n"];
-  let sc := {#pending -> [db localCell: ""] #summary -> [db localCell: ""]};
+  let sc := {#pending -> [Cell with: ""] #summary -> [Cell with: ""]};
   [Reflect docModule: mod is: ""];
   [db assert: mod attr: #docKind value: kind];
   [0 to: [[lines size] - 1] do: [:i |

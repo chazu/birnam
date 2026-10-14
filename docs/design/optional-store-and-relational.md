@@ -107,7 +107,8 @@ history. Explicit database-backed mutation remains available through
 transition does not rewrite existing fact-backed Cell objects or remove their
 facts. The implementation and validation scope are recorded in
 [local Cells by default](local-cells-by-default.md). Local Cell construction
-still uses Store's existing non-fact Cell owner during the packaging migration.
+now uses the [authored Cell owner](standalone-cells.md) over ordinary reference
+slots. Legacy Store Cells remain supported for explicit callers and old images.
 
 ## Reflection and code descriptions
 

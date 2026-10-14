@@ -112,6 +112,12 @@ fn source_loading_uses_live_owners() {
         );
         assert_ne!(h.call(result, b"isError", &[]), h.named(b"true"));
         assert_eq!(h.eval(b"[Module isLoaded: #modules]"), h.named(b"true"));
+        assert_eq!(h.eval(b"[Module isLoaded: #cell]"), h.named(b"true"));
+        assert_eq!(h.eval(b"[Module kindOf: #cell]"), id.intern_name(b"selfHosted").unwrap());
+        let artifact_path = directory().join("libbirnam_modules.dylib");
+        let descriptor = h.call(h.named(b"Artifact"), b"inspect:",
+            &[h.string(artifact_path.as_os_str().as_bytes())]);
+        assert_eq!(h.call(descriptor, b"identity", &[]), id.intern_name(b"modules").unwrap());
         h.eval(b"[Module named: #a requires: #[]]; [Module named: #b requires: #[#a]]");
         let order = h.eval(b"[Module loadOrder: #[#b]]");
         assert_eq!(

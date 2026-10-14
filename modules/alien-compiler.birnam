@@ -57,7 +57,7 @@ let digits := "0123456789abcdef";
 ]];
 
 [Reflect defineMethod: #cell: on: AlienCompiler as: [:self :value |
-[db localCell: value]
+[Cell with: value]
 ]];
 
 [Reflect defineMethod: #position: on: AlienCompiler as: [:self :p |

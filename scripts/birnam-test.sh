@@ -34,5 +34,6 @@ python3 scripts/scratch-state-test.py "$prefix"
 "$prefix/bin/birnam" tests/fixtures/reflect-owner.birnam </dev/null
 python3 scripts/code-inspector.py "$prefix" --samples 1
 python3 scripts/local-cell-test.py "$prefix" --skip-images
+"$prefix/bin/birnam" tests/fixtures/cell-owner.birnam </dev/null
 
 echo "birnam-test: module suites passed"

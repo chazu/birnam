@@ -1,0 +1,23 @@
+// Ordinary local mutation. Loaded before Module and stdlib; no Store operations.
+// Keep the prototype in Globals, not as a new native image family. Its ordinary
+// slots, private vtable and authored methods use existing object/image protocols.
+[[Globals includes: #Cell] ifTrue: [| [Globals at: #Cell]] ifFalse: [|
+let cellPrototype := [ObjectModel newSlots: #[nil] parent: ObjectVt];
+[Reflect defineMethod: #with: on: cellPrototype as: [:self :value |
+  let result := [self clone];
+  [result set: value]; result
+]];
+[Reflect defineMethod: #value on: cellPrototype as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #set: on: cellPrototype as: [:self :value |
+  [ObjectModel slot: 0 in: self put: value]; self
+]];
+[Reflect defineMethod: #history on: cellPrototype as: [:self | 0]];
+[Reflect defineMethod: #inc on: cellPrototype as: [:self |
+  [self set: [[self value] + 1]]; [self value]
+]];
+[Reflect defineMethod: #dec on: cellPrototype as: [:self |
+  [self set: [[self value] - 1]]; [self value]
+]];
+[Globals at: #Cell put: cellPrototype];
+cellPrototype
+]]

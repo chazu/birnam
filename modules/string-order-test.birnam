@@ -1,0 +1,65 @@
+// Ordering uses ordinary resumable sends and stops at the first unequal byte.
+[[Globals includes: #TestSuite] ifFalse: [| [System load: "modules/test.birnam"]]];
+let s := [TestSuite named: "String ordering" module: #stdlib];
+
+[s test: "ordering reads each pair once and never reads the suffix" do: [:t |
+  let a := ["abcd" , ""]; let b := ["azzz" , ""];
+  let reads := [#[] asCell]; let byteAt := [String methodFor: #byteAt:];
+  [Reflect defineMethod: #byteAt: on: a as: [:self :i |
+    [reads set: [[reads value] add: #[#left i]]];
+    [byteAt invokeOn: self arguments: #[i]]]];
+  [Reflect defineMethod: #byteAt: on: b as: [:self :i |
+    [reads set: [[reads value] add: #[#right i]]];
+    [byteAt invokeOn: self arguments: #[i]]]];
+  [t expect: [a < b] equals: true describes: "first differing byte decides"];
+  [t expect: [reads value] equals: #[#[#left 0] #[#right 0] #[#left 1] #[#right 1]] describes: "ordered reads without suffix"];
+  [t expect: ["é" < "z"] equals: false describes: "unsigned UTF-8 bytes"];
+  [t expect: ["z" < "é"] equals: true describes: "unsigned UTF-8 reverse"]]];
+
+[s test: "ordering byte equality and ordering are live sends" do: [:t |
+  let a := ["a" , ""]; let byte := [Object clone]; let calls := [#[] asCell];
+  [Reflect defineMethod: #byteAt: on: a as: [:self :i | byte]];
+  [Reflect defineMethod: #= on: byte as: [:self :other |
+    [calls set: [[calls value] add: #equal]];
+    [Reflect defineMethod: #< on: self as: [:next :rhs | [calls set: [[calls value] add: #less]]; true]];
+    [System gc]; false]];
+  [t expect: [a < "b"] equals: true describes: "comparison installed by equality takes effect"];
+  [t expect: [calls value] equals: #[#equal #less] describes: "byte callbacks run once"];
+  [Reflect defineMethod: #byteOrderBefore:from:limit: on: a as: [:self :other :index :limit | #replacement]];
+  [t expect: [a < "b"] equals: #replacement describes: "public ordering uses current helper"]]];
+
+[s test: "ordering can park collect replace and resume without replay" do: [:t |
+  let a := ["abz" , ""]; let calls := [#[] asCell];
+  [Reflect defineMethod: #byteAt: on: a as: [:self :i |
+    [calls set: [[calls value] add: i]];
+    [[TaskExecutor current] wait]]];
+  let task := [TaskControl start: [:task | [a < "acz"]]];
+  let first := [task waitToken];
+  [t assert: [first notNil] describes: "byte reader may suspend"];
+  [System gc];
+  [Reflect defineMethod: #byteAt: on: a as: [:self :i |
+    [calls set: [[calls value] add: i]]; 98]];
+  [task resolve: first with: 97];
+  [t expect: [task pollOutcome] equals: #[#success true] describes: "next byte uses replacement after resume"];
+  [t expect: [calls value] equals: #[0 1] describes: "no replay or suffix"]]];
+
+[s test: "ordering cancellation and single-step execution retain progress" do: [:t |
+  let a := ["ab" , ""]; let calls := [0 asCell]; let cleaned := [0 asCell];
+  [Reflect defineMethod: #byteAt: on: a as: [:self :i | [calls inc]; [[TaskExecutor current] wait]]];
+  let task := [TaskControl start: [:task |
+    [task ensure: [| [a < "ac"]] cleanup: [| [cleaned inc]]]]];
+  let token := [task waitToken]; [System gc]; [task cancel: #stopOrder];
+  [t expect: [task pollOutcome] equals: #[#cancelled #stopOrder] describes: "cancelled ordering settles"];
+  [t expect: [calls value] equals: 1 describes: "cancelled reader is not replayed"];
+  [t expect: [cleaned value] equals: 1 describes: "cleanup once"];
+  [t expect: [task resolve: token with: 97] equals: false describes: "stale resume rejected"];
+  let answer := [nil asCell]; let machine := [Machine new];
+  [machine runBlock: [| [answer set: ["abc" < "abd"]]] budget: 0];
+  [[| [machine isRunnable]] whileTrue: [| [machine continueWithBudget: 1]; [System gc]]];
+  [t expect: [answer value] equals: true describes: "one-step budgets preserve ordering"]]];
+
+[s test: "long equal prefixes finish without growing the native stack" do: [:t |
+  let builder := [StringBuilder new]; [10000 timesRepeat: [| [builder add: "a"]]];
+  let prefix := [builder asString];
+  [t expect: [prefix < prefix] equals: false describes: "long equal strings"];
+  [t expect: [[prefix , "b"] < [prefix , "c"]] equals: true describes: "long shared prefix"]]];

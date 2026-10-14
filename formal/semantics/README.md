@@ -265,3 +265,16 @@ cover isolation, aliases, explicit publication and distinct handles. The
 `default-cell-publishes-facts` mutation rejects accidentally choosing a fact handle.
 The model does not claim to preserve the old public `asCell` history/fact behavior,
 nor prove allocation, collection or image encoding.
+
+The ordinary-slot extension models a local Cell as one reference slot. Its three
+additional theorems cover reading that slot, simulating a local update, and
+shallow-cloning a container while preserving its value identity. The
+`cell-reads-wrong-slot` mutation is rejected. Runtime tests separately exercise
+the exported authored method bodies with Store absent, and ordinary image recovery.
+
+`StringOrder.lean` relates Cell-based byte traversal to direct recursion, preserving
+results, callback state and ordered byte steps under canonical control/index
+contracts. Decisive false stops; equal bytes continue with current callback state.
+Mutations reject replayed reads and lost callback effects. Owner-local slot
+protection reuses Invocation's coverage/nested-exit proofs and NativeOwnerScopes
+TLA+ cases; runtime tests check precise collection, reentry, failure and reclamation.

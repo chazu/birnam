@@ -169,8 +169,8 @@
 // -- entry points -----------------------------------------------------------------
 
 [Reflect defineMethod: #toHtml:shiftHeadings: on: Markdown as: [:self :md :shift |
-  let sc := {#mode -> [db localCell: #none] #buf -> [db localCell: [StringBuilder new]]
-             #items -> [db localCell: #[]] #shift -> [db localCell: shift]};
+  let sc := {#mode -> [Cell with: #none] #buf -> [Cell with: [StringBuilder new]]
+             #items -> [Cell with: #[]] #shift -> [Cell with: shift]};
   let out := [StringBuilder new];
   let me := self;
   [[md split: "\n"] do: [:line | [me feedLine: line scanner: sc out: out]]];

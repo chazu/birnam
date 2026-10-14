@@ -111,7 +111,7 @@
 // deps precede it; a cycle answers #circularDependency (naming the offender).
 // Scratch belongs to this traversal, including collecting/reentrant calls.
 [Reflect defineMethod: #loadOrder: on: Module as: [:self :names |
-  let ord := [db localCell: #[]];
+  let ord := [Cell with: #[]];
   let me := self;
   let r := [names inject: nil into: [:acc :nm |
     [[acc isNil]
@@ -254,4 +254,9 @@
 // -- self-registration (deliberately LAST — see the header) ----------------------
 
 [Module named: #modules requires: #[]];
+// Early owner registration is runtime work, not another source declaration.
+// This document and its compiled artifact must retain the identity #modules.
+let earlyModuleManager := Module;
+[earlyModuleManager named: #cell requires: #[]];
+[earlyModuleManager markLoaded: #cell];
 [Module markLoaded: #modules]

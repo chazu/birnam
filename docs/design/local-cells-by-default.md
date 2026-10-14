@@ -4,6 +4,10 @@
 [optional Store and Relational](optional-store-and-relational.md), following the
 [owner-based reflection slice](reflect-without-store.md).
 
+**Ownership update, 2026-10-14:** [authored standalone Cells](standalone-cells.md)
+now replace the Store-owned local representation for new core Cells. This document
+records the preceding default-API transition and its measurements.
+
 ## API transition
 
 `[value asCell]` now returns a local Cell through the existing `db localCell:`

@@ -1,0 +1,58 @@
+[Module load: #os]; [Module load: #markdown]; [Module load: #alienCompiler];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let value := [Object clone]; let cell := [Cell with: value]; let copy := [cell clone];
+[check value: [[copy == cell] not] value: "clone must have distinct identity"];
+[check value: [[copy value] == value] value: "clone must retain the same value"];
+[copy set: nil]; [System gc];
+[check value: [[cell value] == value] value: "clone changed original Cell"];
+[check value: [[copy value] == nil] value: "clone did not accept nil"];
+[check value: [[cell history] = 0] value: "unexpected history"];
+
+let setter := [Cell methodFor: #set:]; let calls := [Cell with: 0];
+let special := [Cell with: #original];
+[Reflect defineMethod: #set: on: special as: [:self :value |
+  [System gc]; [calls inc]; [setter invokeOn: self arguments: #[value]]
+]];
+let made := [special with: #changed];
+[check value: [[calls value] = 1] value: "constructor bypassed current setter"];
+[check value: [[made value] == #changed] value: "derived Cell value"];
+[check value: [[special value] == #original] value: "derived construction changed prototype"];
+
+// Ordinary constructor sends must support a replacement setter that suspends.
+let waitingCell := [Cell with: #before];
+[Reflect defineMethod: #set: on: waitingCell as: [:self :value |
+  [[TaskExecutor current] wait];
+  [setter invokeOn: self arguments: #[value]]
+]];
+let task := [TaskControl start: [:task | [waitingCell with: #after]]];
+let token := [task waitToken];
+[check value: [token notNil] value: "constructor introduced a native suspension barrier"];
+[System gc]; [task resolve: token with: nil];
+let outcome := [task pollOutcome];
+[check value: [[outcome at: 0] == #success] value: "constructor did not resume"];
+[check value: [[[outcome at: 1] value] == #after] value: "resumed Cell value"];
+[check value: [[waitingCell value] == #before] value: "suspended construction changed prototype"];
+
+let constructor := [Cell methodFor: #with:]; let constructions := [Cell with: 0];
+[Reflect defineMethod: #with: on: Cell as: [:self :value |
+  [System gc]; [constructions inc]; [constructor invokeOn: self arguments: #[value]]
+]];
+[check value: [[[7 asCell] value] = 7] value: "asCell value"];
+[check value: [[constructions value] = 1] value: "asCell bypassed current Cell factory"];
+
+// Core users must no longer ask Store to allocate local state. Legacy explicit
+// Store cells remain a separate API, covered by old-image and native Store tests.
+[Reflect defineMethod: #localCell: on: Store as: [:self :value |
+  [Error kind: #unexpectedStoreCell]
+]];
+[check value: [[[17 asCell] value] = 17] value: "default Cell depends on Store factory"];
+[check value: [[Module loadOrder: #[#cellOwnerLeaf]] = #[#cellOwnerLeaf]] value: "Module depends on Store factory"];
+[check value: ["ab" < "ac"] value: "String comparison depends on Store factory"];
+[check value: [[Markdown toHtml: "hello"] = "<p>hello</p>"] value: "Markdown depends on Store factory"];
+[check value: [[AlienCompiler parse: "i i"] = #[#[#scalar "i"] #[#[#scalar "i"]] #[]]] value: "AlienCompiler depends on Store factory"];
+[System println: "cell-owner: passed"];
+nil
+] value]

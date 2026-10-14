@@ -1,5 +1,10 @@
 # Store and Cells over Id messages
 
+Local mutation now defaults to the authored [Cell owner](../../modules/cell.birnam)
+over ObjectModel slots. Store's `localCell:` variants and tagged local records
+remain for explicit legacy callers and image compatibility; core authored modules
+no longer use them. `CellVt` here is the Store-owned legacy/fact-handle family.
+
 Bootstrap loads `libbirnam_store.dylib` with Namespace after the value and
 collection owners, before Execution and the compiler. Store depends only on the
 common Id ABI. It publishes completed `Store`, `StoreVt`, `CellVt`, `db`, `Globals`

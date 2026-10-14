@@ -1,3 +1,4 @@
+import StringOrder
 import PrivateIndex
 import PrivateScratch
 import CollectionSearch
@@ -138,8 +139,15 @@ import Admission
 #print axioms Birnam.PrivateScratch.explicit_fact_cell_publishes
 #print axioms Birnam.PrivateScratch.local_and_fact_handles_are_distinct
 #print axioms Birnam.PrivateScratch.distinct_default_cells_are_independent
+#print axioms Birnam.PrivateScratch.ordinary_slot_reads_local_value
+#print axioms Birnam.PrivateScratch.ordinary_slot_write_matches_local
+#print axioms Birnam.PrivateScratch.clone_container_preserves_value
 #print axioms Birnam.PrivateIndex.collision_safe
 #print axioms Birnam.PrivateIndex.changing_hash_preserves_lookup
 #print axioms Birnam.PrivateIndex.colliding_keys_remain_distinct
 #print axioms Birnam.PrivateIndex.unknown_key_cannot_release_another_token
 #print axioms Birnam.PrivateIndex.reindex_preserves_order_and_duplicates
+
+#print axioms Birnam.StringOrder.same_result_state_reads
+#print axioms Birnam.StringOrder.mismatch_stops_even_when_false
+#print axioms Birnam.StringOrder.equal_prefix_continues_in_current_state

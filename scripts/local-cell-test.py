@@ -12,6 +12,7 @@ def main():
     parser.add_argument('prefix', type=Path)
     parser.add_argument('--skip-images', action='store_true')
     parser.add_argument('--legacy-prefix', type=Path, help='old asCell runtime used to save a compatibility image')
+    parser.add_argument('--legacy-local', action='store_true', help='legacy runtime uses Store-owned local Cells')
     args = parser.parse_args()
     prefix = args.prefix.resolve()
     work = Path(tempfile.mkdtemp(prefix='birnam-local-cells-'))
@@ -87,7 +88,8 @@ let cell := [17 asCell]; let alias := cell;
             run('legacy-save', [args.legacy_prefix.resolve()/'bin/birnam',legacy_source], '#saved\n')
             legacy_source.unlink()
             for name, flags in [('legacy-mapped', []), ('legacy-rebuilt', ['--rebuild'])]:
-                run(name, [prefix/'bin/birnam',*flags,legacy_image], 'true\n17\n19\n2\ntrue\n0\n')
+                expected = 'true\n17\n19\n0\nfalse\n0\n' if args.legacy_local else 'true\n17\n19\n2\ntrue\n0\n'
+                run(name, [prefix/'bin/birnam',*flags,legacy_image], expected)
             receipt['legacy_image_sha256'] = sha(legacy_image)
     receipt['passed'] = True; receipt['images_checked'] = not args.skip_images
     save_json(work/'results.json',receipt)

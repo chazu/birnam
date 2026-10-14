@@ -83,27 +83,15 @@ impl Model {
         values: &[Oop],
         operation: impl FnOnce() -> Result<Operand, Outcome>,
     ) -> Result<Operand, Outcome> {
-        let mut tokens = Vec::new();
-        let answer = (|| unsafe {
-            for value in values.iter().filter(|v| !v.is_null()) {
-                tokens.push(
-                    self.send(self.roots, b"retain:", &[Operand::object(*value)])?
-                        .as_word()
-                        .filter(|n| *n != 0)
-                        .ok_or_else(invalid)?,
-                );
-            }
-            operation()
-        })();
-        for token in tokens {
-            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
-                != Some(1)
-            {
-                return Err(invalid());
-            }
-        }
-        answer
+        // This owner is a registered root provider. Publish the entire scope
+        // before any callback, and restore exactly the parent's scope on every
+        // return path. No send occurs between popping a result and returning it.
+        let start = self.scoped.borrow().len();
+        self.scoped.borrow_mut().extend(values.iter().copied().filter(|v| !v.is_null()));
+        let _scope = Scope { values: &self.scoped, start };
+        operation()
     }
+
     unsafe fn owner(&self, behavior: Oop) -> Result<Option<Oop>, Outcome> {
         let record = self.owners.borrow().get(&behavior.addr()).cloned();
         match record {
@@ -554,7 +542,7 @@ unsafe extern "C" fn all_oop(
 // Language-facing reference storage. Vector/Integer representations remain
 // opaque; this owner alone allocates, describes and accesses ordinary slots.
 unsafe fn named(m: &Model, name: &[u8]) -> Result<Oop, Outcome> {
-    unsafe { object(m.id.send_named(m.namespace, b"at:", &[Operand::object(m.id.intern_name(name)?)])?) }
+    unsafe { object(m.send(m.namespace, b"at:", &[Operand::object(m.names[name])])?) }
 }
 unsafe extern "C" fn new_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
@@ -592,14 +580,14 @@ unsafe fn language_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize, put
         let m = model(c)?;
         let args = borrowed_slice(a, n).ok_or_else(invalid)?;
         if n != if put { 3 } else { 2 } { return Err(invalid()); }
-        let values = args.iter().copied().map(object).collect::<Result<Vec<_>, _>>()?;
+        let values = [r, object(args[0])?, object(args[1])?,
+            if put { object(args[2])? } else { ptr::null_mut() }];
         m.rooted(&values, || {
             let integer = named(m, b"Integer")?;
-            m.rooted(&[r, integer], || {
-                let index = m.id.send_named(integer, b"wordOf:", &args[..1])?.as_word().ok_or_else(invalid)?;
-                let mut raw = vec![Operand::word(index), args[1]];
-                if put { raw.push(args[2]); }
-                let value = m.send(r, if put { b"slotAt:in:put:" } else { b"slotAt:in:" }, &raw)?;
+            m.rooted(&[integer], || {
+                let index = m.send(integer, b"wordOf:", &args[..1])?.as_word().ok_or_else(invalid)?;
+                let raw = [Operand::word(index), args[1], if put { args[2] } else { Operand::unit() }];
+                let value = m.send(r, if put { b"slotAt:in:put:" } else { b"slotAt:in:" }, &raw[..n])?;
                 if value.kind() == native::UNIT { Ok(Operand::object(named(m, b"nil")?)) } else { Ok(value) }
             })
         })
@@ -739,6 +727,7 @@ unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usi
     })())
 }
 const NAMES: &[&[u8]] = &[
+    b"Integer", b"nil", b"at:", b"wordOf:",
     b"newSlots:parent:", b"slot:in:", b"slot:in:put:",
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",

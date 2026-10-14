@@ -2,7 +2,7 @@
 // Image owns live heap restoration. CodeObject owns portable program formats.
 // Hashes and bounded byte reads are generic Bytes operations.
 [Module named: #imageFormat requires: #[]];
-[Globals at: #ImageFormat put: [db localCell: nil]];
+[Globals at: #ImageFormat put: [Cell with: nil]];
 
 // Validation labels are also immutable; avoid creating Strings per field.
 let sliceContext := "slice:from:to:";
@@ -63,7 +63,7 @@ let blockMask := "0000000000001000001";
   [[a isNil] ifTrue: [| false] ifFalse: [| [a = b]]]
 ]];
 [Reflect defineMethod: #cell: on: ImageFormat as: [:self :value |
-  [db localCell: value]
+  [self with: value]
 ]];
 // Integer owns bounded iteration; avoid a mutable Cell and condition Block
 // for every index. Returning the request error stops to:do: immediately.
@@ -580,7 +580,7 @@ let blockMask := "0000000000001000001";
   ifFalse: [| [self failure]]]
 ]];
 [Reflect defineMethod: #worker on: ImageFormat as: [:self |
-  [db localCell: nil prototype: self]
+  [self with: nil]
 ]];
 [Reflect defineMethod: #inspect:architecture:abi: on: ImageFormat as: [:self :bytes :architecture :abi |
   [[self worker] inspectBytes: bytes architecture: architecture abi: abi]
