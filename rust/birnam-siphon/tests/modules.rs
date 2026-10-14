@@ -62,6 +62,9 @@ unsafe extern "C" fn binding_snapshot(
         Outcome::loaded(Operand::unit())
     }
 }
+unsafe extern "C" fn rejected_binding(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 79)
+}
 struct Snapshot {
     id: Protocol,
     roots: Oop,
@@ -268,6 +271,20 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
             (&raw mut bindings).cast(),
         );
         send(&id, namespace, b"bindingsDo:", &[visitor]);
+        assert!(bindings.contains(&(key, value)));
+        // The language-facing inventory omits raw absence, retaining bound nil.
+        let missing_key = id.intern_name(b"inventoryAbsent").unwrap();
+        send(&id, namespace, b"at:put:", &[Operand::object(missing_key), Operand::unit()]);
+        bindings.clear();
+        send(&id, namespace, b"liveBindingsDo:", &[visitor]);
+        assert!(bindings.contains(&(key, value)));
+        assert!(!bindings.iter().any(|(name, _)| *name == missing_key));
+        // Rejection drops the temporary root inventory; a later call still works.
+        support::install(id, visitor_behavior, b"binding:value:", rejected_binding, core::ptr::null_mut());
+        assert!(id.send_named(namespace, b"liveBindingsDo:", &[visitor]).is_err());
+        support::install(id, visitor_behavior, b"binding:value:", binding_snapshot, (&raw mut bindings).cast());
+        bindings.clear();
+        send(&id, namespace, b"liveBindingsDo:", &[visitor]);
         assert!(bindings.contains(&(key, value)));
         assert!(
             id.send_named(namespace, b"bindingsDo:", &[Operand::entry(original)])

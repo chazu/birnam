@@ -363,6 +363,29 @@
 [Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == StringExemplarVt]] doc:
    "True iff `x` is a String (a mirror query: compares x's vtable to the String exemplar's)."];
 
+// Binding reflection consumes an owner's rooted snapshot. The collector is an
+// ordinary object, so inspection publishes no scratch facts.
+let reflectBindingCollector := [ObjectModel newSlots: #[#[]] parent: ObjectVt];
+[Reflect defineMethod: #binding:value: on: reflectBindingCollector as: [:self :name :value |
+  [ObjectModel slot: 0 in: self put:
+    [[ObjectModel slot: 0 in: self] add: {#name -> name #value -> value}]];
+  self]];
+[Reflect defineMethod: #bindingsIn: on: Reflect as: [:self :owner |
+  let collector := [ObjectModel newSlots: #[#[]] parent: [self vtableOf: reflectBindingCollector]];
+  let result := [owner liveBindingsDo: collector];
+  [[result isError] ifTrue: [| result] ifFalse: [| [ObjectModel slot: 0 in: collector]]]
+] doc: "Snapshot an owner's live bindings as name/value Maps; bound nil is present. No facts are created."];
+let reflectNameCollector := [ObjectModel newSlots: #[#[] nil] parent: ObjectVt];
+[Reflect defineMethod: #binding:value: on: reflectNameCollector as: [:self :name :value |
+  [[value == [ObjectModel slot: 1 in: self]] ifTrue: [|
+    [ObjectModel slot: 0 in: self put: [[ObjectModel slot: 0 in: self] add: name]]
+  ]]; self]];
+[Reflect defineMethod: #namesOf:in: on: Reflect as: [:self :object :owner |
+  let collector := [ObjectModel newSlots: #[#[] object] parent: [self vtableOf: reflectNameCollector]];
+  let result := [owner liveBindingsDo: collector];
+  [[result isError] ifTrue: [| result] ifFalse: [| [ObjectModel slot: 0 in: collector]]]
+] doc: "All names bound to this exact object in the selected owner, in that owner's order."];
+
 // Fact reflection composes Store's rooted live snapshot with ordinary Blocks.
 // It does not inspect Store payloads or change collection settings.
 [Reflect defineMethod: #factsOf: on: Reflect as: [:self :entity |

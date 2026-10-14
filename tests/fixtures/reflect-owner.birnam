@@ -1,0 +1,59 @@
+// Binding snapshots remain valid if a visitor replaces later values and collects.
+[Module load: #os];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let exercise := [:owner |
+  [owner at: #ReflectTrigger put: true];
+  [owner at: #ReflectLater put: ["kept" , " snapshot"]];
+  [owner at: #ReflectBoundNil put: nil];
+  let visitor := [ObjectModel newSlots: #[false false false] parent: ObjectVt];
+  [Reflect defineMethod: #binding:value: on: visitor as: [:self :name :value |
+    [[name == #ReflectTrigger] ifTrue: [|
+      [owner at: #ReflectLater put: "replacement"];
+      [System gc];
+      let nested := [Reflect bindingsIn: owner];
+      [check value: [nested anySatisfy: [:row |
+        [[[row at: #name] == #ReflectLater] & [[row at: #value] = "replacement"]]
+      ]] value: "reentrant snapshot did not see new state"];
+      [ObjectModel slot: 0 in: self put: true]
+    ]];
+    [[name == #ReflectLater] ifTrue: [|
+      [check value: [value = "kept snapshot"] value: "outer snapshot lost replaced value"];
+      [ObjectModel slot: 1 in: self put: true]
+    ]];
+    [[name == #ReflectBoundNil] ifTrue: [|
+      [check value: [value == nil] value: "bound nil changed"];
+      [ObjectModel slot: 2 in: self put: true]
+    ]]; self
+  ]];
+  [owner liveBindingsDo: visitor];
+  [check value: [ObjectModel slot: 0 in: visitor] value: "trigger not visited"];
+  [check value: [ObjectModel slot: 1 in: visitor] value: "later value not visited"];
+  [check value: [ObjectModel slot: 2 in: visitor] value: "nil not visited"]
+];
+[exercise value: Globals]; [exercise value: Namespace];
+
+// Equal Strings are distinct bindings by identity; every alias remains visible.
+let left := ["equal" , " text"]; let right := ["equal " , "text"];
+[Globals at: #ReflectLeft put: left]; [Globals at: #ReflectRight put: right];
+[check value: [[Reflect namesOf: left in: Globals] = #[#ReflectLeft]] value: "reverse lookup used value equality"];
+
+// An ordinary replaceable owner protocol can supply a different inventory.
+let alternate := [Object clone];
+[Reflect defineMethod: #liveBindingsDo: on: alternate as: [:self :visitor |
+  [System gc]; [visitor binding: #custom value: nil]; self
+]];
+[check value: [[Reflect bindingsIn: alternate] = #[{#name -> #custom #value -> nil}]] value: "owner send bypassed"];
+[Reflect defineMethod: #liveBindingsDo: on: alternate as: [:self :visitor | [Error kind: #inventoryUnavailable]]];
+[check value: [[[Reflect bindingsIn: alternate] kind] == #inventoryUnavailable] value: "owner Error lost"];
+
+// No fact publication from repeated inspection, including private collectors.
+let before := [db retainedFactCount];
+[1 to: 20 do: [:i | [Reflect bindingsIn: Globals]; [Reflect namesOf: left in: Globals]]];
+[System gc];
+[check value: [[db retainedFactCount] = before] value: "binding inspection leaked facts"];
+[System println: "reflect-owner: passed"];
+nil
+] value]

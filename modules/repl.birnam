@@ -217,26 +217,21 @@
 // `__`-prefixed entries (block stashes, etc). Symbols print as `#name`, so the
 // filter looks for `#__` and the display drops the sigil.
 [Reflect defineMethod: #printGlobals on: Repl as: [:self |
-  let n := [db attrCount: #__globals__];
-  let shown := [db cellFor: self attr: #gshown];
-  [shown set: 0];
-  [0 to: [n - 1] do: [:i |
-    let attr := [db attrAt: #__globals__ index: i];
-    let nm := [attr printString];
-    // internal = "#__…": byte 0 is the sigil, bytes 1-2 are underscores (95).
-    let internal := [[[nm size] > 2]
-      ifTrue:  [| [[[nm byteAt: 1] = 95] & [[nm byteAt: 2] = 95]]]
-      ifFalse: [| false]];
-    [internal
-      ifTrue:  [| self]
-      ifFalse: [|
-        [System print: ["  " , [[nm split: "#"] at: 1]]];
-        [System print: " = "];
-        [System println: [self resultString: [db currentValue: #__globals__ attr: attr]]];
-        [shown set: [[shown value] + 1]]]]]];
-  [[[shown value] = 0]
-    ifTrue:  [| [System println: "  (no globals defined yet)"]]
-    ifFalse: [| self]];
+  let bindings := [Reflect bindingsIn: Globals];
+  [[bindings isError] ifTrue: [| bindings] ifFalse: [|
+    let shown := [bindings select: [:row |
+      let nm := [[row at: #name] printString];
+      [[[nm size] > 2]
+        ifTrue: [| [[[[nm byteAt: 1] = 95] & [[nm byteAt: 2] = 95]] not]]
+        ifFalse: [| true]]
+    ]];
+    [shown do: [:row |
+      [System print: ["  " , [Reflect nameOf: [row at: #name]]]];
+      [System print: " = "];
+      [System println: [self resultString: [row at: #value]]]
+    ]];
+    [[shown isEmpty] ifTrue: [| [System println: "  (no globals defined yet)"]]]
+  ]];
   self] doc:
   "Prints the user-visible globals (persisted bindings), skipping internal `__`-prefixed entries."];
 

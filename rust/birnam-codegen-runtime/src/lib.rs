@@ -279,11 +279,14 @@ unsafe extern "C" fn operation(
         if a.len() != count {
             return Err(invalid());
         }
-        if matches!(e.op, Op::Reflection(reflection::Op::Behavior)) {
+        if matches!(e.op, Op::Reflection(reflection::Op::Behavior | reflection::Op::Parent)) {
             // A fixed forwarding query has only caller-covered inputs and no
             // cleanup callback after its result. Other reflection ops keep scopes.
             object(a[0])?;
-            return s.send(s.id.receiver, b"behaviorOf:", a);
+            let selector = if matches!(e.op, Op::Reflection(reflection::Op::Parent)) {
+                b"parentOf:".as_slice()
+            } else { b"behaviorOf:".as_slice() };
+            return s.send(s.id.receiver, selector, a);
         }
         let scope = Scope {
             s,
@@ -309,7 +312,17 @@ unsafe extern "C" fn operation(
             return source::operation(s, &scope, op, a);
         }
         if let Op::Reflection(op) = e.op {
-            return reflection::operation(s, &scope, op, a);
+            let result = reflection::operation(s, &scope, op, a);
+            let protect = result.as_ref().ok().and_then(|v| v.as_object()).unwrap_or(receiver);
+            let mut tokens = scope.tokens.take();
+            // Roots releases in reverse order. Keep this facade's existing
+            // forward cleanup order, with the answer covered through handoff.
+            tokens.reverse();
+            let bytes = core::slice::from_raw_parts(tokens.as_ptr().cast::<u8>(), tokens.len() * size_of::<usize>());
+            s.send(s.roots, b"releaseMany:protecting:batch:", &[
+                Operand::bytes(bytes), Operand::object(protect), Operand::word(0),
+            ])?;
+            return result;
         }
         if matches!(e.op, Op::NameOf) {
             let name = object(a[0])?;
@@ -577,6 +590,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (reflect_vt, b"removeMethod:on:".as_slice(), Op::Remove),
             (vt, b"emit:", Op::Emit),
             (reflect_vt, b"nameOf:", Op::NameOf),
+            (reflect_vt, b"directMethodsOf:", Op::Reflection(reflection::Op::DirectMethods)),
+            (reflect_vt, b"parentOf:", Op::Reflection(reflection::Op::Parent)),
             (
                 reflect_vt,
                 b"vtableOf:",

@@ -47,6 +47,17 @@ requested fact or advancing the basis. Physical compaction may already have run.
 
 ## Globals and method hooks
 
+Globals now also answers `liveBindingsDo:` and `nameOf:`. `liveBindingsDo:` takes
+a visitor Object receiving `binding:value:` and snapshots the owner's current
+bindings in existing attribute order, retaining names and values across collecting
+or reentrant callbacks. It excludes absent values and includes bound nil. This
+enumerates owned storage, rather than calling a potentially customized `at:` for
+each row. Callback native failures propagate; ordinary callback return values are
+ignored. No fact is created by inspection. `nameOf:` returns the first identity
+alias or native Unit for absence, through the existing replaceable Store
+attribute/read methods. These interfaces hide the `__globals__` representation
+from Reflect and tools while retaining the current fact-backed storage.
+
 Globals retains its Store-backed `__globals__` facts. `at:`, `at:put:`,
 `at:ifAbsent:` and `includes:` send to Store's current read/assert/presence methods.
 Global values participate in ordinary Store queries, prospective history and image

@@ -1,7 +1,8 @@
 # Reflect without mandatory Store
 
-2026-10-13. **Status: investigation and proposed API direction.** Implements no
-runtime change. This elaborates the reflection guarantee in
+2026-10-13. **Status: design with first inspection slice implemented.** The
+implementation record below distinguishes delivered APIs from remaining proposals.
+This elaborates the reflection guarantee in
 [Store and Relational as optional language facilities](optional-store-and-relational.md).
 Existing selectors below were checked against current source; additional selector
 names are explicitly proposals.
@@ -46,7 +47,7 @@ Primary source: [reflection operations](../../rust/birnam-codegen-runtime/src/re
 | `[Reflect nameOf: symbol]` | Converts a Symbol to a String; rejects other kinds | No fact access; retain. This is not reverse naming of arbitrary objects |
 | `[Reflect globalNamed: name]` | Tries Namespace, then Globals when Namespace is absent | Globals is fact-backed; move its storage and preserve lookup precedence |
 | `[Reflect allGlobalNames]` | Enumerates Namespace exports only | No fact access, but does not enumerate source-owned Globals; address the coverage gap explicitly |
-| `[Reflect allMethodsOf: object]` | Walks actual vtable dictionaries from child to parent, deduplicating selectors | Uses Store to find target names after Namespace reverse lookup fails; replace this naming dependency |
+| `[Reflect allMethodsOf: object]` | Walks actual vtable dictionaries from child to parent, deduplicating selectors | Now names through Globals after Namespace reverse lookup fails; Globals remains fact-backed |
 | `[Reflect defineMethod: selector on: target as: block]` | Checks Generation policy, constructs a Method, obtains a private vtable when needed, then publishes through Store | Move publication responsibilities intact; keep the public operation |
 | `[Reflect removeMethod: selector on: target]` | Checks Generation policy and requests direct-entry removal through Store | Move publication responsibilities intact; preserve exact removal and inheritance behavior |
 | `[Reflect factsOf: entity]` | Enumerates actual global `db` triples into Maps | Explicit Store extension; keep its fact meaning |
@@ -98,10 +99,11 @@ results; add live mirror objects only where a concrete editing tool benefits.
 
 ### Inspection gaps to close
 
-The following are proposed capabilities and illustrative spellings, not existing
-Reflect APIs or finalized schemas:
+The first four interfaces below are now implemented by the inspection slice.
+Slot discovery/access through Reflect remains proposed; its spellings and schemas
+are illustrative rather than finalized:
 
-| Proposed message | Required meaning |
+| Message | Required meaning |
 | --- | --- |
 | `[Reflect directMethodsOf: object]` | Direct dictionary entries on the object's vtable, including their owning vtable identity; no inherited deduplication |
 | `[Reflect parentOf: vtable]` | Expose delegation structure through the owner, enabling traversal of shadowed definitions |
@@ -211,3 +213,105 @@ Relational loaded, and separate extension tests with them enabled. Model new
 publication/recovery state transitions with Lean/TLA+ as appropriate, alongside
 real active/suspended-code, callback and image acceptance. No speedup or complete
 semantic equivalence is established by this design investigation alone.
+
+## First inspection slice implemented
+
+The first slice adds these public messages:
+
+| Receiver and message | Delivered contract |
+| --- | --- |
+| Namespace or Globals `liveBindingsDo: visitor` | Owner snapshot in existing order; sends `binding:value:` for each present binding, including bound nil |
+| Globals `nameOf: object` | First identity alias or native Unit; preserves the former reflection naming path's replaceable Store reads |
+| Reflect `bindingsIn: owner` | Authored facade returning a Vector of `#name`/`#value` Maps through the owner's current `liveBindingsDo:` |
+| Reflect `namesOf: object in: owner` | Authored visitor selecting all identity aliases without constructing Maps for other bindings |
+| Reflect `directMethodsOf: objectOrVtable` | Direct dictionary inventory only; accepts a vtable itself, or obtains an object's vtable; adds exact `#vtable` identity to the existing selector/target/method row shape |
+| Reflect `parentOf: vtable` | Forwards to Id's current parent query; absent parent becomes language nil |
+
+`allMethodsOf:` now asks Globals for reverse naming instead of naming Store's
+internal `__globals__` entity. Its inherited/deduplicated result shape remains
+unchanged. `allGlobalNames` and `globalNamed:` retain their existing semantics;
+explicit owner enumeration supplies the missing source-binding inventory without
+silently changing collision or source-resolution behavior.
+
+REPL global listing uses Reflect's new inventory; Doc uses Globals' first-alias
+query, avoiding full inventory construction when it needs just one name. REPL's
+`#gshown` scratch fact is no longer needed. The collectors for `bindingsIn:` and
+`namesOf:in:` use ordinary ObjectModel slots, with shared prototypes and per-call state, so
+inspection itself asserts no facts. Public `asCell`, `factsOf:`, method publication,
+compiler metadata and Globals' underlying fact representation remain unchanged.
+
+Globals' snapshot reads its owned binding storage, not customized `at:` behavior.
+This is a new inventory contract, distinct from evaluating a getter repeatedly.
+Namespace's existing `bindingsDo:` still includes native Unit entries; the new
+`liveBindingsDo:` excludes them. Both Namespace paths now explicitly retain the
+copied pairs and visitor across callbacks. This closes a rooting gap where a
+callback could overwrite a later export and collect its only remaining value.
+
+A native regression also reproduced a return-handoff gap in reflection's temporary
+root cleanup: collecting when the final inventory token was released reclaimed
+the result before its caller received it. Inventory and binding-query operations now use
+Roots' existing `releaseMany:protecting:batch:` protocol, preserving their forward
+release order and individual replaceable `release:` sends. The result remains
+covered through cleanup; failure drains the scope and propagates. `parentOf:`,
+like `vtableOf:`, directly forwards with caller-covered inputs and no cleanup
+callback after obtaining the result. No new monkeypatch admission check is added.
+
+The regression exercises direct and inherited inventories and global-name results,
+plus collecting cleanup failure and subsequent reclamation. Existing rooting and
+handoff formal models apply to this ownership pattern; they do not prove the
+Rust implementation. The checked `BorrowedSnapshots` TLC model likewise captures
+why copied references must survive removal of the original owner's edges.
+
+The [code inspector](../../examples/code-inspector/README.md) exercises a controlled
+three-stage world and deliberately exports selected descriptions into a separate
+Store. A join finds undocumented direct methods; explicitly retained value
+history reproduces 20, 42 and the inherited 10 after removal. This demonstrates
+that direct reflection and optional relational use can compose without automatic
+publication by the new inspection calls. It does not establish a Store-free
+bootstrap, automatic live mirroring, whole-world atomicity or a speedup.
+
+The separate [owner regression](../../tests/fixtures/reflect-owner.birnam) covers
+replaced values during collection, nested snapshots, bound nil, identity aliases,
+an alternate replaceable binding owner, owner Error propagation and repeated
+inspection without fact growth. Namespace's native integration adds raw-absence
+and failure/unwind checks.
+
+## Acceptance and workload observations
+
+[Source-bound receipt](../measurements/reflect-owner-inspection-20261013.json).
+The final prefix was rebuilt with the development Cargo cache; authored bootstrap
+modules, tools and startup images were regenerated. This is not clean-cache release
+qualification, and the normal installed version was not changed.
+
+- 718 language checks passed, followed by the private-scratch gate, the new
+  collecting/reentrant owner fixture and the inspector application.
+- All 26 REPL golden checks passed, including global listing and mapped-image
+  behavior.
+- An earlier broad native run passed all 66 integration binaries. After the final
+  handoff fix, eight affected binaries were rerun successfully: compiler, modules,
+  global resolution, method observation, roots, root batches, root reuse and
+  result cleanup. The final native test prefix overlays the unchanged TCC module's
+  resource-metrics build onto the rebuilt prefix; its provenance and hash are in
+  the receipt. It is separate from the application timing prefix.
+- 13 Store/Namespace unit tests passed (three existing manual tests ignored), and
+  three Python checker tests passed, including rejection of corrupt observations.
+- The existing formal gate passed 218 Lean theorems and axiom auditing, rejected
+  47 Lean mutations, and obtained the expected outcomes from 123 TLC configurations.
+  No new formal model or production implementation proof is claimed.
+- The final cleanup regression fails against the pre-fix native prefix with
+  `Reflect returned an inventory collected during cleanup`, then passes against
+  the fixed implementation, including failure propagation and reclamation.
+
+Three additional fresh application processes ran sequentially, without concurrent
+qualification or builds. Every scenario passed its independent Python checks.
+Median inspection CPU was 167.48 ms initially, 167.71 ms after replacement and
+168.02 ms after removal. Each measured phase includes direct/inherited inventories
+and alias discovery; it excludes startup, export, query evaluation and validation.
+All phases created zero global Store facts. These are measurements of one controlled
+workload, not a before/after speedup or a claim that relational export is free.
+
+The application supports keeping both capabilities: direct inspection is useful
+on its own, and a deliberately selected relational description supports joins
+and retained observations. The next storage migration can use these interfaces
+and this workload as acceptance; slot discovery, publication ownership and a
+Store-independent bootstrap remain unfinished.

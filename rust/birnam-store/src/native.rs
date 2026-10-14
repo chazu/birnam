@@ -323,6 +323,8 @@ enum OpCode {
     GlobalElse,
     GlobalPut,
     GlobalHas,
+    GlobalBindings,
+    GlobalName,
     SetObserver,
     SetAuthorizer,
     AddMethod,
@@ -453,6 +455,39 @@ unsafe fn execute(
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op {
+            GlobalBindings => {
+                if r != s.globals.get() { return Err(invalid()); }
+                let entity = s.names[b"__globals__".as_slice()];
+                // Snapshot only this owner's bindings, in existing attribute order.
+                // No borrow crosses a visitor send; nil is a real bound value.
+                let rows = s.read(s.receiver.get(), |st| {
+                    live_attributes(st, entity, p).into_iter().filter_map(|name| {
+                        let value = current_value_raw(st, entity, name);
+                        (!value.is_null()).then_some((name, value))
+                    }).collect::<Vec<_>>()
+                })?;
+                scope.keep_all(rows.iter().flat_map(|&(name, value)| [name, value]));
+                for (name, value) in rows {
+                    s.send(a[0], b"binding:value:", &[Operand::object(name), Operand::object(value)])?;
+                }
+                return Ok(Operand::object(r));
+            }
+            GlobalName => {
+                if r != s.globals.get() { return Err(invalid()); }
+                let store = s.receiver.get();
+                let entity = s.names[b"__globals__".as_slice()];
+                // Preserve the previous reflection naming path's replaceable reads.
+                let count = scope.keep(object(s.send(store, b"attrCount:", &[Operand::object(entity)])?)?);
+                let count = s.number(count)?;
+                for index in 0..count {
+                    let index = scope.keep(object(s.integer(index as usize)?)?);
+                    let Some(name) = s.send(store, b"attrAt:index:", &[Operand::object(entity), Operand::object(index)])?.as_object() else { break };
+                    scope.keep(name);
+                    let value = s.send(store, b"rawCurrentValue:attr:", &[Operand::object(entity), Operand::object(name)])?;
+                    if value.as_object() == Some(a[0]) { return Ok(Operand::object(name)); }
+                }
+                return Ok(Operand::unit());
+            }
             New => return Ok(Operand::object(s.fresh(scope)?)),
             LocalCell | LocalCellPrototype => {
                 s.read(r, |_| ())?;
@@ -1101,6 +1136,8 @@ entry!(global_read, GlobalRead, 1);
 entry!(global_else, GlobalElse, 2);
 entry!(global_put, GlobalPut, 2);
 entry!(global_has, GlobalHas, 1);
+entry!(global_bindings, GlobalBindings, 1);
+entry!(global_name, GlobalName, 1);
 entry!(set_observer, SetObserver, 1);
 entry!(set_authorizer, SetAuthorizer, 1);
 entry!(tracked_add_method, AddMethod, 3);
@@ -1171,12 +1208,16 @@ const CELL_METHODS: &[(&[u8], Method)] = &[
     (b"history", cell_history),
 ];
 const GLOBAL_METHODS: &[(&[u8], Method)] = &[
+    (b"liveBindingsDo:", global_bindings),
+    (b"nameOf:", global_name),
     (b"at:", global_read),
     (b"at:ifAbsent:", global_else),
     (b"at:put:", global_put),
     (b"includes:", global_has),
 ];
 const NAMES: &[&[u8]] = &[
+    b"liveBindingsDo:",
+    b"binding:value:",
     b"imageFieldAt:",
     b"restoreImageStore:entity:attr:",
     b"visit:",

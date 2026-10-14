@@ -1,0 +1,92 @@
+// Unattended live-code inspection and explicit relational export.
+[Module load: #json]; [Module load: #time]; [Module load: #os]; [Module load: #doc];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+[Doc module: #inspectorDemo is: "Controlled live-code inspection fixture."];
+let base := [ObjectModel newSlots: #[] parent: ObjectVt];
+[Reflect defineMethod: #answer on: base as: [:self | 10] doc: "The inherited answer."];
+let child := [ObjectModel newSlots: #[] parent: [Reflect vtableOf: base]];
+[Reflect defineMethod: #answer on: child as: [:self | 20] doc: "The child's override."];
+[Globals at: #InspectorChild put: child];
+[Globals at: #InspectorAlias put: child];
+[Globals at: #InspectorNil put: nil];
+[Namespace at: #InspectorCollision put: #native];
+[Globals at: #InspectorCollision put: #source];
+[check value: [[Reflect globalNamed: #InspectorCollision] == #native] value: "reflection precedence"];
+[check value: [InspectorCollision == #source] value: "source precedence"];
+[check value: [[Reflect parentOf: [Reflect vtableOf: child]] == [Reflect vtableOf: base]] value: "delegation"];
+[check value: [[Doc globalNameOf: child] = "InspectorChild"] value: "Doc reverse naming"];
+
+let bindings := [Reflect bindingsIn: Globals];
+let nilRows := [bindings select: [:row | [[row at: #name] == #InspectorNil]]];
+[check value: [[nilRows size] = 1] value: "bound nil missing"];
+[check value: [[[nilRows at: 0] at: #value] == nil] value: "bound nil changed"];
+[check value: [[bindings anySatisfy: [:row | [[row at: #name] == #InspectorAbsent]]] not] value: "absent binding invented"];
+[check value: [[Reflect namesOf: child in: Globals] = #[#InspectorChild #InspectorAlias]] value: "aliases"];
+[check value: [[Reflect namesOf: [Object clone] in: Globals] isEmpty] value: "unnamed object"];
+let nativeRows := [Reflect bindingsIn: Namespace];
+[check value: [nativeRows anySatisfy: [:row |
+  [[[row at: #name] == #InspectorCollision] & [[row at: #value] == #native]]
+]] value: "Namespace inventory"];
+
+// This Store belongs to the application. No core mirror is being enabled.
+let catalog := [Store new];
+let documentation := [Doc methodsOf: #inspectorDemo];
+[catalog assert: child attr: #module value: #inspectorDemo];
+[catalog assert: #answerValue attr: #history value: true];
+let historyEntity := [Object clone];
+let basis := [ObjectModel newSlots: #[#[]] parent: ObjectVt];
+let capture := [:phase |
+  let before := [db retainedFactCount];
+  let begin := [16 clockNanos];
+  let direct := [Reflect directMethodsOf: child];
+  let inherited := [Reflect allMethodsOf: child];
+  let names := [Reflect namesOf: child in: Globals];
+  let cpu := [[16 clockNanos] - begin];
+  [check value: [[db retainedFactCount] = before] value: "inspection published facts"];
+  [check value: [direct allSatisfy: [:row | [[row at: #vtable] == [Reflect vtableOf: child]]]] value: "direct owner"];
+  [check value: [[[inherited select: [:row | [[row at: #selector] == #answer]]] size] = 1] value: "inherited selector duplicated"];
+  let parentDirect := [Reflect directMethodsOf: [Reflect vtableOf: base]];
+  [check value: [[[parentDirect at: 0] at: #selector] == #answer] value: "parent direct entry"];
+  [direct do: [:row |
+    let entry := [Object clone];
+    [catalog assert: entry attr: #target value: child];
+    [catalog assert: entry attr: #phase value: phase];
+    [catalog assert: entry attr: #selector value: [row at: #selector]];
+    let documented := [documentation anySatisfy: [:doc |
+      [[[db currentValue: doc attr: #proto] == child]
+        & [[db currentValue: doc attr: #sel] == [row at: #selector]]]
+    ]];
+    [catalog assert: entry attr: #documented value: documented]
+  ]];
+  [catalog assert: historyEntity attr: #answerValue value: [child answer]];
+  [ObjectModel slot: 0 in: basis put: [[ObjectModel slot: 0 in: basis] add: [catalog basis]]];
+  let undocumented := [catalog findAll: ?s where: #[
+    #[?entry #phase phase] #[?entry #target ?target] #[?target #module #inspectorDemo]
+    #[?entry #documented false] #[?entry #selector ?s]
+  ]];
+  [System println: [Json stringify: {"phase" -> [Reflect nameOf: phase]
+    "direct" -> [direct collect: [:row | [Reflect nameOf: [row at: #selector]]]]
+    "aliases" -> [names collect: [:name | [Reflect nameOf: name]]]
+    "answer" -> [child answer]
+    "undocumented" -> [undocumented collect: [:sel | [Reflect nameOf: sel]]]
+    "inspection_cpu_ns" -> cpu "inspection_fact_delta" -> [[db retainedFactCount] - before]}]];
+  direct
+];
+let original := [capture value: #initial];
+[Reflect defineMethod: #answer on: child as: [:self | 42]];
+[Reflect defineMethod: #extra on: child as: [:self | 7]];
+let replacement := [capture value: #replaced];
+[check value: [[[[original at: 0] at: #method] == [[replacement at: 0] at: #method]] not] value: "replaced implementation not observed"];
+[Reflect removeMethod: #answer on: child];
+[capture value: #removed];
+[check value: [[[original at: 0] at: #selector] == #answer] value: "saved description changed"];
+let historical := [[ObjectModel slot: 0 in: basis] collect: [:b |
+  [catalog valueOf: historyEntity attr: #answerValue asOf: b]
+]];
+[check value: [historical = #[20 42 10]] value: "explicit history"];
+[System println: [Json stringify: {"history" -> historical "passed" -> true}]];
+nil
+] value]

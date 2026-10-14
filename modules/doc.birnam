@@ -120,15 +120,12 @@
 
 // The Globals name whose binding IS `obj` (identity), or "" if it has none —
 // the reverse of `Globals at:`, for showing a prototype (prototypes print as
-// anObject). Reads the `#__globals__` facts codegen records for every binding.
+// anObject). The binding owner supplies its first identity alias.
 [Reflect defineMethod: #globalNameOf: on: Doc as: [:self :obj |
-  let names := [db findAll: ?n where: #[ #[ #__globals__ ?n ?v ] ]];
-  [names inject: "" into: [:acc :n |
-    [[acc isEmpty]
-      ifTrue:  [| [[[Globals at: n ifAbsent: [| nil]] == obj]
-                    ifTrue:  [| [Reflect nameOf: n]]
-                    ifFalse: [| acc]]]
-      ifFalse: [| acc]]]]] doc:
+  let name := [Globals nameOf: obj];
+  [[name isError] ifTrue: [| name] ifFalse: [|
+    [[name isNil] ifTrue: [| ""] ifFalse: [| [Reflect nameOf: name]]]
+  ]]] doc:
   "The Globals name whose binding IS `obj` (identity), or \"\" — the reverse of `Globals at:`, for naming prototypes (they print as anObject)."];
 
 // -- source view: derived from recorded module sources ---------------------------

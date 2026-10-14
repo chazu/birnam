@@ -31,4 +31,7 @@ test -x "$prefix/bin/birnam"
 # Private scratch must stay collectible while published Store records survive.
 python3 scripts/scratch-state-test.py "$prefix"
 
+"$prefix/bin/birnam" tests/fixtures/reflect-owner.birnam </dev/null
+python3 scripts/code-inspector.py "$prefix" --samples 1
+
 echo "birnam-test: module suites passed"

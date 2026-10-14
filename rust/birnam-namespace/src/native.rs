@@ -221,18 +221,36 @@ unsafe extern "C" fn bindings(
     args: *const Operand,
     count: usize,
 ) -> Outcome {
+    unsafe { visit_bindings(context, args, count, false) }
+}
+unsafe extern "C" fn live_bindings(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    unsafe { visit_bindings(context, args, count, true) }
+}
+unsafe fn visit_bindings(context: *mut c_void, args: *const Operand, count: usize, live_only: bool) -> Outcome {
     let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
     };
     let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
         return invalid();
     };
-    let snapshot = unsafe { &*context.cast::<Namespace>() }
-        .storage
-        .borrow()
-        .bindings()
-        .to_vec();
+    let namespace = unsafe { &*context.cast::<Namespace>() };
+    let scope = Scope { namespace, start: namespace.active.borrow().len() };
+    scope.keep(namespace.receiver);
+    scope.keep(visitor);
+    let snapshot = namespace.storage.borrow().bindings().to_vec();
+    // Replacement can remove the original namespace edges and collect in a
+    // visitor. Retain both halves of every copied pair before the first send.
+    for binding in &snapshot {
+        scope.keep(binding.name);
+        if !binding.value.is_null() { scope.keep(binding.value); }
+    }
     for binding in snapshot {
+        if live_only && binding.value.is_null() { continue; }
         let arguments = [Operand::object(binding.name), value(binding.value)];
         let result = unsafe {
             (&*context.cast::<Namespace>()).id.send_named(visitor, b"binding:value:", &arguments)
@@ -298,6 +316,7 @@ unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
                 (b"nameOf:", reverse),
                 (b"rootsDo:", roots),
                 (b"bindingsDo:", bindings),
+                (b"liveBindingsDo:", live_bindings),
                 (b"isCanonicalLookup:", lookup_semantics),
             ] {
                 id.send_named(

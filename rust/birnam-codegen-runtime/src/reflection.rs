@@ -7,6 +7,8 @@ pub(super) enum Op {
     Global,
     Names,
     Methods,
+    DirectMethods,
+    Parent,
 }
 impl Op {
     pub fn count(self) -> usize {
@@ -29,23 +31,9 @@ unsafe fn target_name(s: &State, q: &Scope<'_>, target: Oop) -> Result<Option<Oo
         if let Some(name) = s.send(s.ns, b"nameOf:", &[Operand::object(target)])?.as_object() {
             return q.keep(name).map(Some);
         }
-        let db = q.keep(s.named(b"db")?)?;
-        let globals = q.keep(s.id.intern_name(b"__globals__")?)?;
-        let count = call(s, q, db, b"attrCount:", &[Operand::object(globals)])?;
-        let count = s.send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(count)])?
-            .as_word().ok_or_else(invalid)?;
-        for index in 0..count {
-            let index = call(s, q, s.named(b"Integer")?, b"fromWord:", &[Operand::word(index)])?;
-            let Some(name) = s.send(db, b"attrAt:index:",
-                &[Operand::object(globals), Operand::object(index)])?.as_object() else { break };
-            q.keep(name)?;
-            let value = s.send(db, b"rawCurrentValue:attr:",
-                &[Operand::object(globals), Operand::object(name)])?;
-            if value.as_object() == Some(target) {
-                return Ok(Some(name));
-            }
-        }
-        Ok(None)
+        let globals = q.keep(s.named(b"Globals")?)?;
+        s.send(globals, b"nameOf:", &[Operand::object(target)])?
+            .as_object().map(|name| q.keep(name)).transpose()
     }
 }
 pub(super) unsafe fn operation(
@@ -58,6 +46,9 @@ pub(super) unsafe fn operation(
         let nil = s.named(b"nil")?;
         if matches!(op, Op::Behavior) {
             return s.send(s.id.receiver, b"behaviorOf:", args);
+        }
+        if matches!(op, Op::Parent) {
+            return s.send(s.id.receiver, b"parentOf:", args);
         }
         if matches!(op, Op::Global) {
             let exported = s.send(s.ns, b"at:", args)?;
@@ -76,7 +67,10 @@ pub(super) unsafe fn operation(
             }
             return Ok(Operand::object(out));
         }
-        let mut behavior = call(s, q, s.id.receiver, b"behaviorOf:", args)?;
+        let direct = matches!(op, Op::DirectMethods);
+        let mut behavior = if direct && s.send(s.id.receiver, b"isBehavior:", args)?.as_word() == Some(1) {
+            object(args[0])?
+        } else { call(s, q, s.id.receiver, b"behaviorOf:", args)? };
         let mut seen = HashSet::new();
         let mut visited = HashSet::new();
         loop {
@@ -139,8 +133,13 @@ pub(super) unsafe fn operation(
                         &[Operand::object(key), Operand::object(value)],
                     )?;
                 }
+                if direct {
+                    let key = q.keep(s.id.intern_name(b"vtable")?)?;
+                    row = call(s, q, row, b"at:put:", &[Operand::object(key), Operand::object(behavior)])?;
+                }
                 out = call(s, q, out, b"add:", &[Operand::object(row)])?;
             }
+            if direct { break; }
             let Some(parent) = s
                 .send(s.id.receiver, b"parentOf:", &[Operand::object(behavior)])?
                 .as_object()
