@@ -1,10 +1,6 @@
-// modules-test.birnam — the suite for the self-hosted module manager
-// (modules/modules.birnam, docs/44 Phase 5b): the store-native dependency graph,
-// the topological loadOrder:, and the cycle error. Ported from the retired
-// the old native manager tests when the manager moved to birnam — these assertions
-// pin the OLD native semantics byte-for-byte. Test modules use tt-prefixed
-// names: the graph is store facts, and the suite process is one transactor.
-// Loading only registers the suite; run via modules/run-tests.birnam.
+// Owned Module registry, traversal and scheduling contracts. Test records live
+// in the manager's persistent Maps; no automatic fact projection is required.
+// Loading this file registers the suite; run through modules/run-tests.birnam.
 
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
 
@@ -75,3 +71,117 @@ let s := [TestSuite named: "Modules" module: #modules];
   [t expect: [manager dylibPathFor: #sample] equals: "/two/libbirnam_sample.dylib" describes: "mirror edit changes real module lookup"];
   [t expect: [Module libDir] equals: original describes: "clone does not mutate the host manager"];
   [t expect: [[Module requiresOf: #stdlib] size] equals: 0 describes: "dependency registry remains available"]]];
+
+[s test: "owned registry preserves flags partial records and extensions" do: [:t |
+  let manager := [Module clone]; [manager registry: [Map new]];
+  [t expect: [manager recordNames] equals: #[] describes: "empty registry is enumerable"];
+  [t expect: [manager recordOf: #absent] equals: nil describes: "absent record"];
+  [manager markLoaded: #late];
+  [t expect: [manager isLoaded: #late] equals: true describes: "loaded-only record"];
+  [t expect: [manager isRegistered: #late] equals: false describes: "loaded does not imply registered"];
+  [manager field: #extension of: #late put: #kept];
+  [manager named: #late requires: #[#dep]];
+  [t expect: [manager isLoaded: #late] equals: true describes: "declaration preserves loaded"];
+  [t expect: [manager field: #extension of: #late] equals: #kept describes: "declaration preserves custom fields"];
+  [manager kernel: #late];
+  [t expect: [manager requiresOf: #late] equals: #[#dep] describes: "kernel conversion preserves existing dependencies"];
+  [t expect: [manager kindOf: #late] equals: #kernel describes: "kernel kind"];
+  [manager field: #loaded of: #late put: false];
+  [manager field: #registered of: #late put: nil];
+  [manager field: #requires of: #late put: nil];
+  [t expect: [manager isLoaded: #late] equals: false describes: "false flag is preserved"];
+  [t expect: [manager isRegistered: #late] equals: false describes: "nil flag defaults false"];
+  [t expect: [manager requiresOf: #late] equals: #[] describes: "nil requirements default empty"];
+  [t assert: [[manager recordOf: #late] includesKey: #requires] describes: "raw Map distinguishes a bound nil field"];
+  [manager record: #nilRecord put: nil];
+  [t assert: [[manager registry] includesKey: #nilRecord] describes: "bound nil record remains discoverable"];
+  [t expect: [manager field: #kind of: #nilRecord] equals: nil describes: "nil record getter"];
+  [t assert: [[manager removeRecord: #late] == manager] describes: "removal returns manager"];
+  [t expect: [manager recordOf: #late] equals: nil describes: "removal deletes record"];
+  [t assert: [[manager registry] includesKey: #nilRecord] describes: "removal preserves unrelated record"]]];
+
+[s test: "registry snapshots clones and Reflect edits have explicit ownership" do: [:t |
+  let manager := [Module clone]; [manager registry: [Map new]];
+  [manager named: #a requires: #[]];
+  let snapshot := [manager registry]; let record := [manager recordOf: #a]; let clone := [manager clone];
+  [manager markLoaded: #a];
+  [t expect: [record at: #loaded] equals: nil describes: "record snapshot stays unchanged"];
+  [t expect: [[snapshot at: #a] at: #loaded] equals: nil describes: "registry snapshot stays unchanged"];
+  [t expect: [clone isLoaded: #a] equals: false describes: "clone has an independent registry root"];
+  [Reflect slot: #registry in: manager put: {#b -> {#registered -> true #requires -> #[#a]}}];
+  [t expect: [manager recordNames] equals: #[#b] describes: "generic replacement is authoritative"];
+  [t expect: [manager loadOrder: #[#b]] equals: #[#a #b] describes: "traversal uses edited records"];
+  [t expect: [clone recordNames] equals: #[#a] describes: "generic replacement leaves clone alone"];
+  [manager record: #b put: [[manager recordOf: #b] at: #kind put: #custom]];
+  [t expect: [manager kindOf: #b] equals: #custom describes: "edited record can be installed"]]];
+
+[s test: "registry reads can reenter park and observe later edits" do: [:t |
+  let manager := [Module clone]; [manager registry: [Map new]];
+  [manager named: #a requires: #[#b]]; [manager named: #b requires: #[]];
+  let reader := [manager methodFor: #requiresOf:]; let visits := [#[] asCell];
+  [Reflect defineMethod: #requiresOf: on: manager as: [:self :name |
+    [visits set: [[visits value] add: name]];
+    [[name == #a] ifTrue: [|
+      [self named: #nested requires: #[]];
+      [self loadOrder: #[#nested]];
+      [self field: #requires of: #b put: #[#c]]; [System gc]]];
+    [reader invokeOn: self arguments: #[name]]]];
+  [t expect: [manager loadOrder: #[#a]] equals: #[#c #b #a] describes: "later dependency reads see current records"];
+  [t expect: [visits value] equals: #[#a #nested #b #c] describes: "reentry leaves outer traversal independent"];
+  [Reflect defineMethod: #requiresOf: on: manager as: [:self :name |
+    [[TaskExecutor current] wait]; [reader invokeOn: self arguments: #[name]]]];
+  let task := [TaskControl start: [:task | [manager requiresOf: #a]]];
+  let token := [task waitToken];
+  [t assert: [token notNil] describes: "read replacement may suspend"];
+  [manager field: #requires of: #a put: #[#changed]]; [System gc];
+  [task resolve: token with: nil];
+  [t expect: [task pollOutcome] equals: #[#success #[#changed]] describes: "resumed read sees current owned state"]]];
+
+[s test: "timesliced registry updates do not lose records or fields" do: [:t |
+  let quantum := [TaskExecutor quantum];
+  [#[128 1] do: [:budget |
+    [[TaskExecutor field: #quantum] set: budget];
+    let manager := [Module clone]; [manager registry: [Map new]];
+    let task := [TaskControl start: [:parent |
+      [TaskExecutor transition: [|
+        [parent fork: [:child |
+          [manager field: #left of: #shared put: 1];
+          [manager named: #left requires: #[]]; #left]];
+        [parent fork: [:child |
+          [manager field: #right of: #shared put: 2];
+          [manager named: #right requires: #[]]; #right]]
+      ]]; #joined
+    ]];
+    [t expect: [task pollOutcome] equals: #[#success #joined] describes: "both tasks complete"];
+    [t expect: [manager field: #left of: #shared] equals: 1 describes: "left field survives interleaving"];
+    [t expect: [manager field: #right of: #shared] equals: 2 describes: "right field survives interleaving"];
+    [t assert: [[manager isRegistered: #left] & [manager isRegistered: #right]] describes: "different records survive interleaving"]
+  ]];
+  [[TaskExecutor field: #quantum] set: quantum]]];
+
+[s test: "failed Map updates preserve the registry and unwind transitions" do: [:t |
+  let manager := [Module clone]; let original := [manager registry];
+  let broken := [Object clone]; let failure := [Error kind: #registryWriteFailed];
+  [Reflect defineMethod: #at: on: broken as: [:self :key | nil]];
+  [Reflect defineMethod: #at:put: on: broken as: [:self :key :value | failure]];
+  [Reflect defineMethod: #registry on: manager as: [:self | broken]];
+  [t assert: [[manager record: #a put: [Map new]] == failure] describes: "record edit returns Map failure"];
+  [t assert: [[Reflect slot: #registry in: manager] == original] describes: "failed record edit preserves storage"];
+  [t assert: [[manager field: #kind of: #a put: #custom] == failure] describes: "field edit returns outer Map failure"];
+  [t assert: [[Reflect slot: #registry in: manager] == original] describes: "failed field edit preserves storage"];
+  let recordOwner := [Module clone];
+  [recordOwner registry: {#a -> broken}]; let before := [recordOwner registry];
+  [t assert: [[recordOwner field: #kind of: #a put: #custom] == failure] describes: "inner record failure propagates"];
+  [t assert: [[recordOwner registry] == before] describes: "inner failure preserves whole registry"];
+  let task := [TaskControl start: [:task |
+    let answer := [manager record: #a put: [Map new]];
+    let depth := [[task field: #transitionDepth] value];
+    #[answer depth]
+  ]];
+  let outcome := [task pollOutcome];
+  [t expect: [outcome at: 0] equals: #success describes: "ordinary Error return is not a task failure"];
+  [t assert: [[[outcome at: 1] at: 0] == failure] describes: "task receives original error"];
+  [t expect: [[outcome at: 1] at: 1] equals: 0 describes: "failure releases transition depth"];
+  let values := [Module clone]; [values registry: [Map new]];
+  [values field: #payload of: #a put: failure];
+  [t assert: [[values field: #payload of: #a] == failure] describes: "Error remains valid field data"]]];

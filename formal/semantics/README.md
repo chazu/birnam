@@ -284,3 +284,10 @@ live naming with snapshot descriptions, and Module's nil-default/rebase laws.
 Mutations reject the wrong slot and a rename that overwrites data. Existing
 NativeOwnerScopes TLC cases apply to the inventory constructor's nested roots;
 there is no new publication/recovery state machine or proof of native code here.
+
+`ModuleRegistry.lean` relates flat getters to nested owner records, preserving
+other fields/records, explicit facts, loaded state on declaration, and requirements
+on kernel registration. `ModuleRegistry.tla` checks the protected read/publish
+sequence; unprotected or wrong-field publication must violate completed edits.
+This is a two-task bounded scheduling model, not a proof of arbitrary replacement
+callbacks, the existing executor implementation, or image recovery.

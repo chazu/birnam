@@ -69,8 +69,10 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     let cell=h.call(model,b"newSlots:parent:",&[values,vt]); h.publish(b"Cell",cell);
     let captures=h.call(h.named(b"Vector"),b"new",&[]);
     let with_slots=std::env::var_os("BIRNAM_CELL_SLOTS").is_some();
+    let with_registry=std::env::var_os("BIRNAM_MODULE_REGISTRY").is_some();
     let manager=if with_slots {
-        let manager=h.call(model,b"newSlots:parent:",&[values,vt]); h.publish(b"Module",manager);
+        let fields=h.call(values,b"add:",&[h.call(h.named(b"Map"),b"new",&[])]);
+        let manager=h.call(model,b"newSlots:parent:",&[fields,vt]); h.publish(b"Module",manager);
         h.publish(b"SymbolExemplarVt",h.named(b"SymbolVt")); manager
     } else { nil };
     let mut requests=vec![(cell,b"with:".as_slice(),1),(cell,b"value",0),(cell,b"set:",1),
@@ -81,6 +83,18 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
             (reflect,b"isSymbol:",1),(reflect,b"slotsOf:",1),(reflect,b"slotIndex:in:",2),
             (reflect,b"slot:in:",2),(reflect,b"slot:in:put:",3),
             (manager,b"slotNames",0),(manager,b"libDir",0),(manager,b"libDir:",1)]);
+    }
+    if with_registry {
+        // Real Globals reads missing names as nil; this small floor aliases
+        // Namespace, whose at: exposes native Unit for absence. Bind the absent
+        // optional executor to nil rather than supplying a scheduler or Store.
+        h.publish(b"TaskExecutor",nil);
+        requests.extend([(manager,b"registry".as_slice(),0),(manager,b"registry:",1),(manager,b"recordNames",0),
+            (manager,b"recordOf:",1),(manager,b"registryMutation:",1),(manager,b"record:put:",2),
+            (manager,b"field:of:",2),(manager,b"field:of:put:",3),(manager,b"removeRecord:",1),
+            (manager,b"named:requires:",2),(manager,b"kernel:",1),(manager,b"requiresOf:",1),
+            (manager,b"kindOf:",1),(manager,b"isRegistered:",1),(manager,b"isLoaded:",1),
+            (manager,b"markLoaded:",1),(manager,b"loadOrder:",1),(manager,b"visit:order:path:",3)]);
     }
     for (index,(target,selector,arity)) in requests.into_iter().enumerate() {
         let behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)]));
@@ -103,7 +117,7 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
         let reflect=h.named(b"Reflect");
         let key=h.keep(id.intern_name(b"libDir").unwrap());
         let rows=h.call(reflect,b"slotsOf:",&[manager]);
-        assert_eq!(h.number(h.call(rows,b"size",&[])),1);
+        assert_eq!(h.number(h.call(rows,b"size",&[])),2);
         let row=h.call(rows,b"at:",&[h.integer(0)]);
         assert_eq!(h.call(row,b"at:",&[id.intern_name(b"name").unwrap()]),key);
         assert_eq!(h.call(reflect,b"slot:in:",&[key,manager]),nil);
@@ -118,6 +132,33 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
         assert_eq!(birnam_abi::borrowed_bytes(bytes.pointer,bytes.length).unwrap(),b"lib");
         // Foreign native storage is explicitly unsupported, never decoded.
         assert_eq!(h.call(reflect,b"slotsOf:",&[path]),nil);
+    }
+    if with_registry {
+        let a=h.keep(id.intern_name(b"a").unwrap()); let b=h.keep(id.intern_name(b"b").unwrap());
+        let empty=h.call(h.named(b"Vector"),b"new",&[]);
+        let deps=h.call(empty,b"add:",&[b]);
+        h.call(manager,b"markLoaded:",&[a]);
+        h.call(manager,b"named:requires:",&[a,deps]); h.call(manager,b"kernel:",&[b]);
+        assert_eq!(h.call(manager,b"isLoaded:",&[a]),h.named(b"true"));
+        assert_eq!(h.call(manager,b"requiresOf:",&[a]),deps);
+        let names=h.call(empty,b"add:",&[a]);
+        let order=h.call(manager,b"loadOrder:",&[names]);
+        assert_eq!(h.call(order,b"at:",&[h.integer(0)]),b);
+        assert_eq!(h.call(order,b"at:",&[h.integer(1)]),a);
+        let snapshot=h.call(manager,b"registry",&[]);
+        let clone=h.call(manager,b"clone",&[]);
+        h.call(manager,b"removeRecord:",&[a]); collect(id,gc);
+        assert_eq!(h.call(manager,b"recordOf:",&[a]),nil);
+        assert_ne!(h.call(snapshot,b"at:",&[a]),nil);
+        assert_eq!(h.call(clone,b"isRegistered:",&[a]),h.named(b"true"));
+        // Registry ownership is ordinary reachability, not a database root.
+        let start=h.tokens.borrow().len();
+        let private=h.call(manager,b"clone",&[]);
+        let key=h.keep(id.intern_name(b"privateRecord").unwrap());
+        h.call(private,b"named:requires:",&[key,empty]);
+        let record=h.call(private,b"recordOf:",&[key]);
+        h.clear_from(start); collect(id,gc);
+        assert!(!present(id,private) && !present(id,record));
     }
     let floor=h.tokens.borrow().len();
     let value=h.call(prototype,b"clone",&[]);

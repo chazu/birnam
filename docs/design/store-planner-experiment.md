@@ -810,3 +810,13 @@ small migration confirms that a meaningful generic edit path can precede fact
 removal; it does not complete the registry migration or Store-free core bootstrap.
 The next Module slice should move those remaining records with explicit registry
 enumeration/editing and the same loading, reentry and recovery contracts.
+
+### Owned Module registry, 2026-10-14
+
+[The registry slice](module-owned-registry.md) moves registration, kind, dependency
+Vectors and loaded flags to persistent Maps in the Module owner. Generic record
+inspection/editing and Reflect expose the authoritative state. Explicit Store
+facts remain separate data; saved old worlds keep their old fact-backed methods.
+Task transitions protect Map updates from lost writes under time slicing. This
+removes Module's direct Store operations, not Globals/publication/task dependencies
+from the complete bootstrap. No CPU speedup is inferred from this ownership change.

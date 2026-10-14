@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move Module registration, kind, dependencies and loaded flags into its owned
+  registry. Expose persistent records through Module and Reflect, preserve live
+  loading protocols, and protect field updates with existing task transitions.
+  Explicit database facts are independent; old images retain their saved methods.
+
 - Add ordinary reference-slot discovery and named/indexed mutation through Reflect.
   Keep names as replaceable Birnam metadata and reject foreign storage explicitly.
   Move Module's library directory to an ordinary slot; explicit Store facts at the

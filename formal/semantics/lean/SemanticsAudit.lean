@@ -1,3 +1,4 @@
+import ModuleRegistry
 import SlotReflection
 import StringOrder
 import PrivateIndex
@@ -161,3 +162,13 @@ import Admission
 #print axioms Birnam.SlotReflection.old_description_is_snapshot
 #print axioms Birnam.SlotReflection.nil_directory_uses_default
 #print axioms Birnam.SlotReflection.directory_rebase_uses_new_path
+
+#print axioms Birnam.ModuleRegistry.field_write_matches_flat_getters
+#print axioms Birnam.ModuleRegistry.field_read_after_write
+#print axioms Birnam.ModuleRegistry.unrelated_field_preserved
+#print axioms Birnam.ModuleRegistry.unrelated_record_preserved
+#print axioms Birnam.ModuleRegistry.explicit_facts_unchanged
+#print axioms Birnam.ModuleRegistry.declaration_preserves_loaded
+#print axioms Birnam.ModuleRegistry.kernel_preserves_requirements
+#print axioms Birnam.ModuleRegistry.loaded_does_not_register
+#print axioms Birnam.ModuleRegistry.snapshot_is_not_replaced

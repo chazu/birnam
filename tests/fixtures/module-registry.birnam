@@ -1,0 +1,33 @@
+[Module load: #os]; [Module load: #json];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let manager := [Module clone]; [manager registry: [Map new]];
+[db assert: #registryIndependent attr: #requires value: #[#fact]];
+[manager named: #registryIndependent requires: #[#owned]];
+[check value: [[manager requiresOf: #registryIndependent] = #[#owned]] value: "registry still reads facts"];
+[check value: [[db currentValue: #registryIndependent attr: #requires] = #[#fact]] value: "registry overwrote explicit facts"];
+let batch := [:count |
+  let before := [db retainedFactCount];
+  [[0 to: [count - 1]] do: [:i |
+    let local := [Module clone]; [local registry: [Map new]];
+    [local named: #a requires: #[#b]]; [local kernel: #b]; [local markLoaded: #a];
+    [check value: [[local loadOrder: #[#a]] = #[#b #a]] value: "owned dependency order"];
+    let records := [Reflect slot: #registry in: local];
+    [check value: [[[records at: #a] at: #loaded] == true] value: "loaded record not discoverable"];
+    [local removeRecord: #b];
+    [check value: [[[local recordNames] size] = 1] value: "record removal"]
+  ]];
+  [[db retainedFactCount] - before]
+];
+[batch value: 2]; [System gc];
+let rows := [#[0 1 30 100] inject: #[] into: [:rows :count |
+  [System gc]; let before := [System liveObjects];
+  let facts := [batch value: count]; [System gc];
+  let objects := [[System liveObjects] - before];
+  [rows add: {"calls" -> count "fact_delta" -> facts "object_delta" -> objects}]
+]];
+[System println: [Json stringify: {"passed" -> true "batches" -> rows}]];
+nil
+] value]
