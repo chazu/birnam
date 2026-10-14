@@ -1,5 +1,12 @@
 # Store versus persistent snapshots: build-planning experiment
 
+**Direction update, 2026-10-13:** retain Store and Relational with their
+self-describing bootstrap, and remove their mandatory role in core language
+operations. Code description through them becomes opt-in. See the
+[draft decision](optional-store-and-relational.md) for ownership, compatibility
+and migration boundaries. The measurements and implementation records below
+remain evidence; proposed public-state removals are not completed migrations.
+
 2026-10-13. Birnam 0.17.0, release `cae9aa0835f33de1c30b5485665c12187d4ca5cc`,
 Apple M3, 24 GiB RAM, macOS 14.6. This is an application experiment, not a runtime
 optimization or language change. See [the runnable application](../../examples/build-planner/README.md)
@@ -763,3 +770,11 @@ All after runs added zero scratch facts. Corresponding before batches retained
 on these workloads, alongside the more substantial lifetime improvement: temporary
 working state no longer accumulates as reachable database records. Longer-running
 performance has not been quantified by these short batches.
+
+
+## Runtime follow-up
+
+The next language-wide optimization keeps public Store behavior intact and changes
+only two owner-private integer indexes. See [private runtime integer indexes](private-runtime-indexes.md)
+for its scope, invariant checks and application measurements. It is separate from
+further removal of public Store-backed state.

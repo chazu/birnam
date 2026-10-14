@@ -874,6 +874,9 @@ The active design documents describe contracts and remaining work:
 - [Object authority](docs/design/42-object-canonical-relational-derived.md) and
   [relational semantics](docs/design/37-the-relational-reading.md) define the
   relationship between objects, Store facts and queries.
+  The [optional Store and Relational draft](docs/design/optional-store-and-relational.md)
+  records the agreed direction to retain their self-description while removing
+  mandatory core dependence and making relational code description opt-in.
 - [Compiled units](docs/design/45-compiled-units.md) and
   [their lifecycle](docs/design/47-compiled-unit-lifecycle.md) define executable
   authority, staged activation, rollback and active-code lifetimes.

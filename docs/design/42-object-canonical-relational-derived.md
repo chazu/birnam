@@ -1,5 +1,12 @@
 # 42 — The Object Model is Canonical; the Relational Reading is Derived
 
+> **Direction update (2026-10-13):** the agreed direction in
+> [Store and Relational as optional language facilities](optional-store-and-relational.md)
+> retains object authority and the modules' self-description, but changes this
+> document's mandatory Store-arbitrated MOP and system-wide mirror direction to
+> opt-in relational description. That decision document is a draft; current
+> publication and compatibility contracts remain in force until migrated.
+
 > **Status:** decision **accepted 2026-07-05**. **Supersedes the primacy claim of
 > [10a — The Cell Refounding](../archive/legacy-kernel/10a-north-star-cell-model.md)** (and the "code is a
 > cache of facts" thesis it carries). It does **not** delete 10a's *mirror
