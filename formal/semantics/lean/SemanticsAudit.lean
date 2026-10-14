@@ -1,3 +1,4 @@
+import PrivateIndex
 import PrivateScratch
 import CollectionSearch
 import LogMessages
@@ -132,3 +133,8 @@ import Admission
 #print axioms Birnam.PrivateScratch.alias_sees_update
 #print axioms Birnam.PrivateScratch.other_cell_preserved
 #print axioms Birnam.PrivateScratch.simulation
+#print axioms Birnam.PrivateIndex.collision_safe
+#print axioms Birnam.PrivateIndex.changing_hash_preserves_lookup
+#print axioms Birnam.PrivateIndex.colliding_keys_remain_distinct
+#print axioms Birnam.PrivateIndex.unknown_key_cannot_release_another_token
+#print axioms Birnam.PrivateIndex.reindex_preserves_order_and_duplicates

@@ -9,16 +9,15 @@ use birnam_abi::id_protocol::{
 };
 use birnam_abi::{Oop, borrowed_slice};
 use core::{cell::RefCell, ffi::c_void, ptr};
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicPtr, Ordering},
-};
+use std::sync::atomic::{AtomicPtr, Ordering};
+mod word_index;
+use word_index::WordIndex;
 
 #[derive(Default)]
 struct Roots {
     providers: Vec<Oop>,
     retained: Vec<(usize, Oop)>,
-    positions: HashMap<usize, usize>,
+    positions: WordIndex<usize>,
     next: usize,
 }
 impl Roots {
@@ -463,6 +462,53 @@ mod tests {
             assert!(roots.retained.is_empty());
             assert!(roots.positions.is_empty());
         }
+    }
+    #[test]
+    fn index_preserves_exact_swap_removal_order_under_mixed_operations() {
+        let mut roots = Roots::default();
+        let mut expected = Vec::new();
+        let mut next = 0;
+        let mut random = 0x1234_5678u64;
+        for step in 0..8192 {
+            random ^= random << 13;
+            random ^= random >> 7;
+            random ^= random << 17;
+            if expected.is_empty() || random % 3 == 0 {
+                let object = ptr::without_provenance_mut(8 * (step % 17 + 1));
+                next += 1;
+                assert_eq!(roots.retain(object), Some(next));
+                expected.push((next, object));
+            } else {
+                let token = if random % 5 == 0 { usize::MAX }
+                    else { expected[random as usize % expected.len()].0 };
+                let position = expected.iter().position(|(t, _)| *t == token);
+                assert_eq!(roots.release(token), position.is_some());
+                if let Some(position) = position { expected.swap_remove(position); }
+                assert!(!roots.release(token));
+            }
+            assert_eq!(roots.retained, expected);
+            assert_eq!(roots.positions.len(), expected.len());
+            for (index, (token, _)) in expected.iter().enumerate() {
+                assert_eq!(roots.positions.get(token), Some(&index));
+            }
+            assert_eq!(roots.retain(ptr::null_mut()), None);
+            assert_eq!(roots.next, next);
+        }
+    }
+    #[test]
+    fn high_tokens_remain_exact_without_reusing_released_leases() {
+        let mut roots = Roots { next: usize::MAX - 3, ..Roots::default() };
+        let object = ptr::without_provenance_mut(8);
+        assert_eq!(roots.retain(object), Some(usize::MAX - 2));
+        assert_eq!(roots.retain(object), Some(usize::MAX - 1));
+        assert!(roots.release(usize::MAX - 2));
+        assert_eq!(roots.retain(object), Some(usize::MAX));
+        assert_eq!(roots.retain(object), None);
+        assert!(!roots.release(usize::MAX - 2));
+        assert!(roots.release(usize::MAX));
+        assert!(roots.release(usize::MAX - 1));
+        assert!(roots.retained.is_empty());
+        assert!(roots.positions.is_empty());
     }
     #[test]
     fn registration_grows_preserving_order_duplicates_and_null_rejection() {

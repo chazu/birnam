@@ -15,6 +15,7 @@ mod word_helper;
 mod numeric;
 mod numeric_operator;
 mod numeric_predicate;
+mod word_index;
 mod objects;
 mod recovery;
 mod recovery_graph;

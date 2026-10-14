@@ -246,3 +246,14 @@ or equality of the algorithms' internal sends. Production tests cover outputs,
 error cases, retained facts/objects, public records, and collecting/reentrant live
 helpers. The standard runner audits the six theorem axioms and rejects mutations
 that overwrite public state or discard catalog publication.
+
+## Private integer indexes
+
+`PrivateIndex.lean` treats a hash as an arbitrary bucket selector, including a
+constant hash. Full key equality remains authoritative. It proves collision-safe
+lookup, equivalence under hash replacement, distinct colliding keys, rejection of
+unknown tokens, and preservation of the authoritative root sequence during
+reindexing. It does not verify Rust's HashMap or the integer mixer's speed.
+Owner tests compare retirement/address reuse and exact root-vector ordering with
+independent reference structures. Mutation checks reject treating collisions as
+identity and reordering root enumeration.
