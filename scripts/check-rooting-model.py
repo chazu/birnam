@@ -308,6 +308,7 @@ def check_lean(lean, out):
         "private-index-reorders-roots": ("PrivateIndex", "⟨s.roots, hash⟩", "⟨s.roots.reverse, hash⟩"),
         "scratch-overwrites-public-world": ("PrivateScratch", "⟨s.world, put s.cells key value⟩", "⟨fun _ => value, put s.cells key value⟩"),
         "scratch-drops-catalog-publication": ("PrivateScratch", "⟨put s.world key value, s.cells⟩", "⟨s.world, s.cells⟩"),
+        "default-cell-publishes-facts": ("PrivateScratch", "def defaultCell (identity : Nat) : CellHandle := .local identity", "def defaultCell (identity : Nat) : CellHandle := .fact identity"),
         "search-replays-hit": ("CollectionSearch", "| some answer => (next, some answer, [each])", "| some answer => (next, some answer, [each, each])"),
         "search-drops-effects": ("CollectionSearch", "| some answer => (next, some answer, [each])", "| some answer => (state, some answer, [each])"),
         "cached-digest-wrong-name": ("SymbolNames", "digest row.1 == cache name", "digest row.1 == cache 0"),

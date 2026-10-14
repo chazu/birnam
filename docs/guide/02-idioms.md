@@ -2,7 +2,7 @@
 
 The language chapter tells you what parses; this one tells you what the
 codebase itself does. The style is Self-like: prototypes, small methods hung
-on singletons, state as facts, errors as values.
+on singletons, local mutable Cells, explicit facts, errors as values.
 
 ## Prototypes, not classes
 
@@ -12,13 +12,15 @@ hierarchy to design; you clone an object and teach it methods.
 
 ```
 let counter := [Object clone];
+[db assert: counter attr: #n value: 0];
 [Reflect defineMethod: #bump on: counter as: [:self |
   let c := [db cellFor: self attr: #n];
   [c set: [[c value] + 1]];
   [c value]]];
 ```
 
-`clone` is the one creation verb (`new` is an alias). The block's first
+This example deliberately stores its count as a fact. `clone` is the ordinary
+object creation verb (`new` is an alias). The block's first
 parameter is always the receiver — name it `self`.
 
 ## The module pattern
@@ -49,20 +51,22 @@ Two hard rules learned the slow way:
 ## State lives in cells
 
 Bindings don't reassign, and objects have no instance-variable syntax. Mutable
-state is a **cell** — a named, historied slot in the fact store, keyed by
-object and attribute:
+state can live in a **local Cell**, without database facts or implicit history:
 
 ```
-let c := [db cellFor: self attr: #count];
-[c set: 0];
+let c := [0 asCell];
 [c set: [[c value] + 1]];
 [c value]
 ```
 
-This is also the loop-state idiom: a `whileTrue:` body updates cells, not
-locals. Seed a cell before reading it — an unset cell answers a raw sentinel,
-not nil. `nil` itself is a legal cell VALUE (absence and bound-nil are
-distinct; use `ifAbsent:` forms where the protocol offers them).
+This is also the loop-state idiom: a `whileTrue:` body updates a Cell, while the
+binding still names that same Cell. Capturing or sharing it preserves aliases;
+creating another Cell produces independent state. Local Cells accept nil and
+their `history` answers zero. Their lifetime follows ordinary reachability.
+
+Use `[store cellFor: entity attr: attribute]` when mutation should publish a fact.
+Enable attribute history deliberately if old values must remain queryable. Use
+the Store presence/absence protocol to distinguish an absent fact from bound nil.
 
 ## Collections are persistent
 

@@ -8,6 +8,15 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Change `asCell` to create local mutable state without facts or implicit history.
+  `value`, `set:`, `inc`, `dec` and shared aliases continue to work; `history`
+  answers zero for these Cells. Use `cellFor:attr:` on a Store and explicitly
+  enable attribute history when database-backed mutation is intended. Existing
+  fact-backed Cell objects and retained facts are not converted or deleted.
+
+- Keep Module load-order traversal state local to each invocation, including
+  reentrant calls, instead of writing its private `#topoOrder` fact.
+
 ## [0.17.0] — 2026-10-13
 
 - Port Trace graph traversal and observation policy to Birnam while preserving

@@ -6,6 +6,9 @@ remove their mandatory role in core language operations. The migration contracts
 and sequence below are proposed; the current implementation has not made this
 transition.
 
+The first delivered slices provide owner-based reflection and local default Cells.
+Globals storage, publication and several bootstrap dependencies still use Store.
+
 ## Decision
 
 Birnam's canonical environment is its live, malleable objects. Ordinary state,
@@ -94,14 +97,17 @@ must not be mistaken for weak references or cleanup rules.
 
 Local Cells must be usable independently of Store. The target default mutable-cell
 abstraction is local; a fact-backed Cell is an explicit database choice. The
-existing public `asCell` creates facts and advertises history, so changing its
-meaning requires an API transition rather than a silent implementation swap.
+previous public `asCell` created facts and advertised history. The implementation
+now selects local Cells; this is the deliberate API transition described below.
 
-The proposed everyday spelling remains `[value asCell]`, followed by `value`
-and `set:` on the resulting Cell. It would create no facts and retain no implicit
+The everyday spelling remains `[value asCell]`, followed by `value`
+and `set:` on the resulting Cell. It creates no facts and retains no implicit
 history. Explicit database-backed mutation remains available through
 `[db cellFor: entity attr: attribute]`, with history enabled deliberately. This
-spelling recommendation is not an implemented change to `asCell`.
+transition does not rewrite existing fact-backed Cell objects or remove their
+facts. The implementation and validation scope are recorded in
+[local Cells by default](local-cells-by-default.md). Local Cell construction
+still uses Store's existing non-fact Cell owner during the packaging migration.
 
 ## Reflection and code descriptions
 
@@ -199,7 +205,7 @@ unbounded compatibility mirror in the normal execution path.
 
 ## Migration sequence
 
-1. **Establish the contract.** Resolve the default Cell API transition and define
+1. **Establish the contract.** Record the default Cell API transition and define
    owner-level inspection and mutation requirements. Inventory public fact
    consumers separately from private scratch. Record changes to Design 42 and
    user documentation alongside the corresponding implementation slices.
@@ -247,8 +253,9 @@ their self-description, opt into code description and verify its declared
 mutation/history/lifetime behavior. Exact prefix composition and test commands
 will follow the dependency migration.
 
-The remaining decisions are the public Cell spelling and transition, the first
-code-description mechanism, compatibility for existing writable fact interfaces,
+The local Cell default is implemented and the first code-description experiment
+uses explicit snapshots. Remaining decisions include live code-description
+mechanisms, compatibility for existing writable fact interfaces,
 image/version policy, and default module-loading policy. These are bounded API
 and delivery decisions; the destination is fixed: **relational facilities remain
 available and self-describing, while ordinary language operation is independent

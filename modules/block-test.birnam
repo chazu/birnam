@@ -2,8 +2,8 @@
 // whileTrue:/whileFalse:, birnam's native stack-flat iteration construct. The
 // 10k-iteration loop is the load-bearing case — a recursion-styled "loop" at
 // that depth overflows the native stack, so completing it at all proves the
-// loop frame is constant. Loop state rides store cells ([db cellFor:attr:]),
-// the mutable primitive — the grammar has no local re-assignment. Loading only
+// loop frame is constant. Both explicit Store handles and ordinary local Cells
+// provide mutation — the grammar has no local re-assignment. Loading only
 // registers the suite; run via modules/run-tests.birnam.
 
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
@@ -42,7 +42,11 @@ let s := [TestSuite named: "Block" module: #block];
   [t expect: [n dec] equals: 999 describes: "dec answers the new value"];
   let m := [5 asCell];
   [n set: 1];
-  [t expect: [m value] equals: 5 describes: "cells are independent (fresh entity each)"]]];
+  [t expect: [m value] equals: 5 describes: "fresh Cells are independent"];
+  let alias := n;
+  [alias set: nil];
+  [t expect: [n value] equals: nil describes: "aliases share local state, including nil"];
+  [t expect: [n history] equals: 0 describes: "local mutation has no implicit history"]]];
 
 [s test: "timesRepeat: runs the body n times; <=0 no-op; errors propagate" do: [:t |
   let n := [0 asCell];

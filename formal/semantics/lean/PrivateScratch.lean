@@ -84,4 +84,41 @@ theorem simulation (actions : List Action) (store : Store) :
     | emit key value =>
       simpa [oldRun, newRun, publication_related] using ih (put store (.inl key) value)
 
+/-! Default local Cells and deliberately requested fact handles. This is the new
+    API contract, not equivalence with the old public asCell fact/history behavior.
+    Id freshness, GC, image encoding and history retention are outside this model. -/
+inductive CellHandle where
+  | local (identity : Nat)
+  | fact (key : Nat)
+
+def defaultCell (identity : Nat) : CellHandle := .local identity
+
+def readCell (s : State) : CellHandle → Nat
+  | .local key => s.cells key
+  | .fact key => s.world key
+
+def writeCell (s : State) (handle : CellHandle) (value : Nat) : State :=
+  match handle with
+  | .local key => writePrivate s key value
+  | .fact key => publish s key value
+
+theorem default_cell_preserves_world (s : State) (key value : Nat) :
+    (writeCell s (defaultCell key) value).world = s.world := by rfl
+
+theorem cell_alias_reads_write (s : State) (handle : CellHandle) (value : Nat) :
+    readCell (writeCell s handle value) handle = value := by
+  cases handle <;> simp [readCell, writeCell, writePrivate, publish, put]
+
+theorem explicit_fact_cell_publishes (s : State) (key value : Nat) :
+    (writeCell s (.fact key) value).world key = value := by
+  simp [writeCell, publish, put]
+
+theorem local_and_fact_handles_are_distinct (s : State) (key value : Nat) :
+    readCell (writeCell s (defaultCell key) value) (.fact key) = s.world key := by rfl
+
+theorem distinct_default_cells_are_independent (s : State) (key other value : Nat)
+    (different : other ≠ key) :
+    readCell (writeCell s (defaultCell key) value) (defaultCell other) = s.cells other := by
+  simp [readCell, writeCell, defaultCell, writePrivate, put, different]
+
 end Birnam.PrivateScratch

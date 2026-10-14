@@ -133,6 +133,11 @@ import Admission
 #print axioms Birnam.PrivateScratch.alias_sees_update
 #print axioms Birnam.PrivateScratch.other_cell_preserved
 #print axioms Birnam.PrivateScratch.simulation
+#print axioms Birnam.PrivateScratch.default_cell_preserves_world
+#print axioms Birnam.PrivateScratch.cell_alias_reads_write
+#print axioms Birnam.PrivateScratch.explicit_fact_cell_publishes
+#print axioms Birnam.PrivateScratch.local_and_fact_handles_are_distinct
+#print axioms Birnam.PrivateScratch.distinct_default_cells_are_independent
 #print axioms Birnam.PrivateIndex.collision_safe
 #print axioms Birnam.PrivateIndex.changing_hash_preserves_lookup
 #print axioms Birnam.PrivateIndex.colliding_keys_remain_distinct

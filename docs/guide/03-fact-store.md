@@ -1,15 +1,27 @@
 # The fact store
 
-Under every birnam program sits `db` — a historied store of
-**entity–attribute–value facts**. Cells refer to an entity and attribute in that
-store; globals, application state and metadata use the same fact model.
+`db` is the standard store of **entity–attribute–value facts**. Use it deliberately
+when data should participate in queries or retained history. Ordinary local
+mutation does not require asserting facts:
 
-During Design 90, the [native Store and Cell protocol](../../rust/birnam-store/README.md)
-is available through Bootstrap, including compiled source, history and retention.
-Globals retains its `__globals__` facts. [Relational queries](../../rust/birnam-relational/README.md)
-also run through Id messages. Compiled top-level bindings now write Store-backed
-Globals and are visible to fact queries and history. Remaining self-hosted
-conveniences, full CLI and image startup are not yet restored.
+```birnam
+let count := [0 asCell];
+[count inc];
+[count value]                   // 1
+[count history]                 // 0
+```
+
+These Cells follow ordinary object reachability, preserve shared aliases and
+create no facts. Store-backed Cells are explicit handles to an entity/attribute,
+as shown below. Globals and several language facilities still use Store during
+the [optional Store migration](../design/optional-store-and-relational.md).
+
+The [Store and Cell protocol](../../rust/birnam-store/README.md) remains available
+through Bootstrap, including history and retention. Globals still retains its
+`__globals__` facts: top-level binding writes are currently visible to fact queries
+and opted-in history. [Relational queries](../../rust/birnam-relational/README.md)
+run through owner messages. Changing the default Cell does not yet make Store
+optional during core bootstrap.
 
 ## Asserting facts
 

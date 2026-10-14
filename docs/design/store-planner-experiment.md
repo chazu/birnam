@@ -778,3 +778,18 @@ The next language-wide optimization keeps public Store behavior intact and chang
 only two owner-private integer indexes. See [private runtime integer indexes](private-runtime-indexes.md)
 for its scope, invariant checks and application measurements. It is separate from
 further removal of public Store-backed state.
+
+## Default mutation and image follow-up
+
+The next authored slice implements the agreed local `asCell` default and removes
+Module's fixed traversal scratch. See [local Cells by default](local-cells-by-default.md)
+for the explicit API transition, tests and remaining Store packaging dependency.
+Existing fact-backed Cells and facts are retained; this supersedes the earlier
+implementation boundary that deliberately left public `asCell` unchanged.
+
+Its image tests also reproduced a limitation on both old and new runtimes:
+independent `[Store new]` instances captured by a saved program are rejected by
+Image admission, while the global Store and its fact-backed Cells are supported.
+The explicit Store-owner transfer API does not by itself establish generic image
+persistence for every Store instance. The later persistence phase must address
+this if optional application-owned Stores are to behave as fully imageable data.

@@ -109,10 +109,9 @@
 
 // The given names plus their transitive dependencies, sorted so every module's
 // deps precede it; a cycle answers #circularDependency (naming the offender).
-// Scratch rides a fixed cell on Module — single transactor, reset per call.
+// Scratch belongs to this traversal, including collecting/reentrant calls.
 [Reflect defineMethod: #loadOrder: on: Module as: [:self :names |
-  let ord := [db cellFor: self attr: #topoOrder];
-  [ord set: #[]];
+  let ord := [db localCell: #[]];
   let me := self;
   let r := [names inject: nil into: [:acc :nm |
     [[acc isNil]

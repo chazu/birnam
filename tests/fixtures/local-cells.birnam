@@ -1,0 +1,77 @@
+// Default mutation is local. Database handles remain an explicit choice.
+[Module load: #os]; [Module load: #json];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+[db assert: #value attr: #history value: true];
+let before := [db retainedFactCount]; let basis := [db basis];
+let cell := [7 asCell]; let alias := cell; let independent := [7 asCell];
+[alias set: nil]; [System gc];
+[check value: [[cell value] == nil] value: "alias lost nil update"];
+[check value: [[independent value] = 7] value: "distinct Cell was changed"];
+[cell set: 10];
+[check value: [[alias inc] = 11] value: "inc result"];
+[check value: [[cell dec] = 10] value: "dec result"];
+[check value: [[cell history] = 0] value: "default Cell retained history"];
+[check value: [[db retainedFactCount] = before] value: "default Cell published facts"];
+[check value: [[db basis] = basis] value: "default Cell advanced Store basis"];
+
+// Explicit history uses a separately selected Store. Existing handles retain
+// their semantics; neither the API transition nor local writes delete facts.
+let store := [Store new];
+[store assert: #amount attr: #history value: true];
+let account := [Object clone]; let balance := [store cellFor: account attr: #amount];
+[balance set: 41]; let oldBasis := [store basis]; [balance set: nil];
+[check value: [store hasValue: account attr: #amount] value: "fact-bound nil became absent"];
+[check value: [[store valueOf: account attr: #amount asOf: oldBasis] = 41] value: "explicit history lost"];
+[check value: [[balance history] = 2] value: "explicit transition count"];
+[check value: [[cell value] = 10] value: "fact mutation changed local Cell"];
+
+// Exercise existing language consumers of asCell, not just its constructor.
+let entity := [Object clone]; [db assert: entity attr: #visible value: 17];
+let operation := [|
+  let temporary := [0 asCell]; [temporary inc];
+  [check value: [[temporary value] = 1] value: "temporary value"];
+  [check value: ["ab" < "ac"] value: "String ordering"];
+  let rows := [Reflect factsOf: entity];
+  [check value: [[rows size] = 1] value: "fact reflection"]
+];
+[operation value];
+let batches := [#[0 1 50 200] collect: [:calls |
+  [System gc]; let facts := [db retainedFactCount]; let objects := [System liveObjects];
+  [1 to: calls do: [:i | [operation value]]];
+  [System gc]; let factDelta := [[db retainedFactCount] - facts];
+  let objectDelta := [[System liveObjects] - objects];
+  [check value: [factDelta = 0] value: "local consumers accumulated facts"];
+  {"calls" -> calls "fact_delta" -> factDelta "object_delta" -> objectDelta}
+]];
+// The enclosing measurement frame retains fixed temporaries. Compare against
+// an otherwise identical zero-call batch instead of treating those as a leak.
+let control := [[batches at: 0] at: "object_delta"];
+[check value: [batches allSatisfy: [:batch |
+  [[batch at: "object_delta"] <= [control + 4]]
+]] value: "local consumers retained discarded state"];
+
+// Module is available before stdlib: its traversal uses the native localCell:
+// protocol directly. A nested traversal must not replace the outer order.
+[Module named: #cellOuter requires: #[#cellOuterB #cellOuterC]];
+[Module named: #cellOuterB requires: #[]]; [Module named: #cellOuterC requires: #[]];
+[Module named: #cellInner requires: #[#cellLeaf]]; [Module named: #cellLeaf requires: #[]];
+[db assert: Module attr: #topoOrder value: #retainedLegacyFact];
+let original := [Module methodFor: #requiresOf:]; let nested := [nil asCell];
+[Reflect defineMethod: #requiresOf: on: Module as: [:self :name |
+  [[name == #cellOuterB] ifTrue: [|
+    [System gc]; [nested set: [self loadOrder: #[#cellInner]]]; [System gc]
+  ]];
+  [original invokeOn: self arguments: #[name]]
+]];
+let facts := [db retainedFactCount]; let traversalBasis := [db basis];
+[check value: [[Module loadOrder: #[#cellOuter]] = #[#cellOuterB #cellOuterC #cellOuter]] value: "outer traversal changed"];
+[check value: [[nested value] = #[#cellLeaf #cellInner]] value: "nested traversal changed"];
+[check value: [[db currentValue: Module attr: #topoOrder] == #retainedLegacyFact] value: "legacy fact was modified"];
+[check value: [[db retainedFactCount] = facts] value: "traversal published scratch"];
+[check value: [[db basis] = traversalBasis] value: "traversal advanced Store basis"];
+[System println: [Json stringify: {"batches" -> batches "passed" -> true}]];
+nil
+] value]

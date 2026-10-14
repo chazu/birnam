@@ -217,17 +217,14 @@
   [[r isError] ifTrue: [| r] ifFalse: [| self]]] doc:
   "Run aBlock self times (a no-op when self <= 0). Answers self, or the first error the body answers."];
 
-// -- Cell: light mutable state — the store cell, one send away --------------------
-// The grammar has NO local re-assignment (`:=` binds only inside `let`) and the
-// collections are persistent, so mutable state lives in the historied fact store.
-// `[db cellFor: e attr: a]` is the primitive handle; `[v asCell]` (the asString /
-// asSymbol family) mints an independent one on a fresh anonymous entity, making
-// loop state one send:  let n := [0 asCell]; … [n inc] / [n set: …] / [n value].
+// -- Cell: ordinary local mutation ----------------------------------------------
+// `:=` introduces a binding; mutable values live in shared Cells. asCell creates
+// local state without publishing a fact. Explicit database handles still use
+// `[store cellFor: entity attr: attribute]`. The local Cell implementation remains
+// packaged with Store during the ownership migration.
 [Reflect defineMethod: #asCell on: Object as: [:self |
-  let c := [db cellFor: [Object clone] attr: #value];
-  [c set: self];
-  c] doc:
-  "A fresh, independent store cell holding self — [c value] reads, [c set: x] writes, [c history] remembers."];
+  [db localCell: self]] doc:
+  "A fresh local mutable Cell holding self. value/set: share its state through aliases; no facts or implicit history (history answers zero). Use cellFor:attr: on a Store for fact-backed state."];
 [Reflect defineMethod: #inc on: CellVt as: [:self |
   [self set: [[self value] + 1]];
   [self value]] doc:

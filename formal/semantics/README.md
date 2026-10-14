@@ -257,3 +257,11 @@ reindexing. It does not verify Rust's HashMap or the integer mixer's speed.
 Owner tests compare retirement/address reuse and exact root-vector ordering with
 independent reference structures. Mutation checks reject treating collisions as
 identity and reordering root enumeration.
+
+The default-Cell extension in `PrivateScratch.lean` models the agreed public API
+transition separately from its earlier simulation: default handles write local
+state, while explicitly selected fact handles publish to the world. Five theorems
+cover isolation, aliases, explicit publication and distinct handles. The
+`default-cell-publishes-facts` mutation rejects accidentally choosing a fact handle.
+The model does not claim to preserve the old public `asCell` history/fact behavior,
+nor prove allocation, collection or image encoding.

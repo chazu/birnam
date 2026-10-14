@@ -51,12 +51,15 @@ let measure := [:name :operation :expected |
 [check value: [[db currentValue: #scratchDeclaration attr: #docSummary] = "Public declaration summary."] value: "lost summary fact"];
 [#[#mode #buf #items #shift #pending #summary #input #offset #aggregates #kind #count #valid #arguments #value]
   do: [:key | [check value: [[db currentValue: sentinel attr: key] == #untouched] value: "unrelated Store user changed"]]];
-// Keep public asCell fact-backed. This patch changes private callers only.
+// The default Cell is local; explicitly requested database handles still publish.
 [[|
 let facts := [db retainedFactCount];
 let publicCell := [7 asCell];
-[check value: [[db retainedFactCount] = [facts + 1]] value: "public asCell changed"];
-[check value: [[publicCell value] = 7] value: "public Cell lost value"]
+[check value: [[db retainedFactCount] = facts] value: "asCell published a fact"];
+[check value: [[publicCell value] = 7] value: "public Cell lost value"];
+let factCell := [db cellFor: [Object clone] attr: #value];
+[factCell set: 7];
+[check value: [[db retainedFactCount] = [facts + 1]] value: "explicit Cell lost publication"]
 ] value];
 // Collect and reenter during ordinary replaceable helper sends. Inner scanners
 // must not overwrite the outer invocation's state. These overrides are last so
