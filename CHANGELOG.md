@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Add ordinary reference-slot discovery and named/indexed mutation through Reflect.
+  Keep names as replaceable Birnam metadata and reject foreign storage explicitly.
+  Move Module's library directory to an ordinary slot; explicit Store facts at the
+  former key remain independent data, and old images retain their saved behavior.
+
 - Remove mutable Cell traffic from String ordering by carrying progress through
   ordinary resumable method arguments. Reduce generic ObjectModel slot overhead
   with GC-visible temporary scopes, retained selector names and stack argument

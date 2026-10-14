@@ -27,6 +27,7 @@ let loadTestSource := [:path |
 [loadTestSource value: "modules/doc-test.birnam"];
 [loadTestSource value: "modules/cli-test.birnam"];
 [loadTestSource value: "modules/stdlib-test.birnam"];
+[loadTestSource value: "modules/reflect-slots-test.birnam"];
 [loadTestSource value: "modules/string-order-test.birnam"];
 [loadTestSource value: "modules/collection-search-test.birnam"];
 [loadTestSource value: "modules/block-test.birnam"];

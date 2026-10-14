@@ -278,3 +278,9 @@ contracts. Decisive false stops; equal bytes continue with current callback stat
 Mutations reject replayed reads and lost callback effects. Owner-local slot
 protection reuses Invocation's coverage/nested-exit proofs and NativeOwnerScopes
 TLA+ cases; runtime tests check precise collection, reentry, failure and reclamation.
+
+`SlotReflection.lean` records actual-storage edits, unrelated-slot/fact preservation,
+live naming with snapshot descriptions, and Module's nil-default/rebase laws.
+Mutations reject the wrong slot and a rename that overwrites data. Existing
+NativeOwnerScopes TLC cases apply to the inventory constructor's nested roots;
+there is no new publication/recovery state machine or proof of native code here.

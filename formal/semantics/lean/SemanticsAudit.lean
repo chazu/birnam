@@ -1,3 +1,4 @@
+import SlotReflection
 import StringOrder
 import PrivateIndex
 import PrivateScratch
@@ -151,3 +152,12 @@ import Admission
 #print axioms Birnam.StringOrder.same_result_state_reads
 #print axioms Birnam.StringOrder.mismatch_stops_even_when_false
 #print axioms Birnam.StringOrder.equal_prefix_continues_in_current_state
+
+#print axioms Birnam.SlotReflection.edit_is_actual_storage
+#print axioms Birnam.SlotReflection.edit_preserves_other_slots
+#print axioms Birnam.SlotReflection.edit_does_not_publish_facts
+#print axioms Birnam.SlotReflection.rename_preserves_storage
+#print axioms Birnam.SlotReflection.new_description_uses_current_name
+#print axioms Birnam.SlotReflection.old_description_is_snapshot
+#print axioms Birnam.SlotReflection.nil_directory_uses_default
+#print axioms Birnam.SlotReflection.directory_rebase_uses_new_path

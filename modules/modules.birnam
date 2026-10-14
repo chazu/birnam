@@ -15,7 +15,8 @@
 // sequence that set, and every self-hosted source opens with `named:requires:`.
 // Consequences, both deliberate:
 //   * NATIVE FLOOR ONLY. No stdlib is up yet, so everything here rides native
-//     sends (cells via `[db cellFor:attr:]`, Vector add:/indexOf:/inject:into:,
+//     sends (ordinary ObjectModel slots, the early Cell owner,
+//     Vector add:/indexOf:/inject:into:,
 //     the split:/trimmed scanners, `[Reflect nameOf:]`) — the same discipline as
 //     the console REPL, and doubly so: this file IS the bring-up. Membership is
 //     `indexOf: … notNil`, NOT `includes:` — includes: is stdlib (tier-B lift).
@@ -34,10 +35,10 @@
 // as ID values ([Artifact inspect:], no install), validate the
 // requested identity and native requirements, load each module dependency, then
 // install via `[Codegen load:]`. Idempotent (a `#loaded` fact) and cycle-guarded.
-// The verified graph serializes into the image for free — it is ordinary store
-// facts.
+// The registry remains Store-backed in this slice. The library directory and
+// traversal scratch use ordinary slots/Cells and persist through their owners.
 
-[Globals at: #Module put: [Object clone]];
+[Globals at: #Module put: [ObjectModel newSlots: #[nil] parent: ObjectVt]];
 
 // -- declaration + query -------------------------------------------------------
 
@@ -123,12 +124,14 @@
 
 // The directory searched for module dylibs; the driver sets it at every boot
 // (fresh-resolved, so an image moved between trees still loads from ITS tree).
+[Reflect defineMethod: #slotNames on: Module as: [:self | #[#libDir]]];
+
 [Reflect defineMethod: #libDir: on: Module as: [:self :dir |
-  [[db cellFor: self attr: #libDir] set: dir];
+  [ObjectModel slot: 0 in: self put: dir];
   self]];
 
 [Reflect defineMethod: #libDir on: Module as: [:self |
-  let d := [[db cellFor: self attr: #libDir] value];
+  let d := [ObjectModel slot: 0 in: self];
   [[d isNil] ifTrue: [| "lib"] ifFalse: [| d]]]];
 
 [Reflect defineMethod: #dylibPathFor: on: Module as: [:self :name |

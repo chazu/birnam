@@ -7,7 +7,9 @@ and sequence below are proposed; the current implementation has not made this
 transition.
 
 The first delivered slices provide owner-based reflection and local default Cells.
-Globals storage, publication and several bootstrap dependencies still use Store.
+Ordinary slot reflection and the first Module field migration now follow those
+slices. Globals storage, the remaining Module registry, publication and several
+bootstrap dependencies still use Store. See [the slot contract](reflect-slots-and-module-state.md).
 
 ## Decision
 

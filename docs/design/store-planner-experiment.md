@@ -793,3 +793,20 @@ Image admission, while the global Store and its fact-backed Cells are supported.
 The explicit Store-owner transfer API does not by itself establish generic image
 persistence for every Store instance. The later persistence phase must address
 this if optional application-owned Stores are to behave as fully imageable data.
+
+### Ordinary slot reflection and Module directory, 2026-10-14
+
+[The next slice](reflect-slots-and-module-state.md) gives ordinary reference slots
+an owner inventory plus named/indexed Reflect reads and writes. Names are authored,
+replaceable `slotNames` methods, not another fact schema. Module's `libDir` is the
+first migrated public field: it is discoverable as `#libDir`, editable through
+Module or Reflect, and persists/rebases through ordinary object images. New
+objects no longer treat an explicit `db` fact at that key as a live field alias;
+old images retain their saved fact-backed methods. Ordinary clones now copy the
+field's initial value, as they do other ordinary slots.
+
+The registration, kind, dependency and loaded flags still live in Store. The
+small migration confirms that a meaningful generic edit path can precede fact
+removal; it does not complete the registry migration or Store-free core bootstrap.
+The next Module slice should move those remaining records with explicit registry
+enumeration/editing and the same loading, reentry and recovery contracts.

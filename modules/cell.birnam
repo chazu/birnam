@@ -7,6 +7,7 @@ let cellPrototype := [ObjectModel newSlots: #[nil] parent: ObjectVt];
   let result := [self clone];
   [result set: value]; result
 ]];
+[Reflect defineMethod: #slotNames on: cellPrototype as: [:self | #[#value]]];
 [Reflect defineMethod: #value on: cellPrototype as: [:self | [ObjectModel slot: 0 in: self]]];
 [Reflect defineMethod: #set: on: cellPrototype as: [:self :value |
   [ObjectModel slot: 0 in: self put: value]; self

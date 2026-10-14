@@ -575,6 +575,64 @@ unsafe extern "C" fn new_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usi
         })
     })())
 }
+// Snapshot the owned reference-slot indices before allocating language results.
+// Foreign payloads are never read; private vtables inherit their nearest layout.
+unsafe extern "C" fn reference_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let value = object(*value)?;
+        m.rooted(&[r, value], || {
+            let owned = m.instances.borrow().contains_key(&value.addr());
+            if !owned && (m.is_behavior(value)? || m.send(m.id.receiver, b"allocationSizeOf:",
+                &[Operand::object(value)])?.as_word() != Some(0)) {
+                return Ok(Operand::object(named(m, b"nil")?));
+            }
+            let words = m.extent(value)?.div_ceil(size_of::<Oop>());
+            let indices = if words == 0 { Vec::new() } else {
+                let start = m.scoped.borrow().len();
+                let _scope = Scope { values: &m.scoped, start };
+                let mut behavior = m.behavior(value)?;
+                let mut seen = HashSet::new();
+                let layout = loop {
+                    // A live metadata callback may detach this behavior from the
+                    // object before collecting. The traversal owns its snapshot.
+                    m.scoped.borrow_mut().push(behavior);
+                    if !seen.insert(behavior) { break None; }
+                    if let Some(layout) = m.layout(behavior)? { break Some(layout); }
+                    let parent = m.send(m.id.receiver, b"parentOf:", &[Operand::object(behavior)])?;
+                    match parent.as_object().filter(|p| !p.is_null()) {
+                        Some(parent) => behavior = parent,
+                        None if parent.kind() == native::UNIT => break None,
+                        _ => return Err(invalid()),
+                    }
+                };
+                let Some(layout) = layout else { return Ok(Operand::object(named(m, b"nil")?)); };
+                (0..words).filter(|index| layout.kind(*index) == OOP).collect::<Vec<_>>()
+            };
+            let vector = named(m, b"Vector")?;
+            m.rooted(&[vector], || {
+                let integer = named(m, b"Integer")?;
+                m.rooted(&[integer], || {
+                    let mut result = object(m.send(vector, b"new", &[])?)?;
+                    // Keep all intermediates in this owner's nested scope before
+                    // constructors or persistent Vector additions can collect.
+                    let start = m.scoped.borrow().len();
+                    let _scope = Scope { values: &m.scoped, start };
+                    m.scoped.borrow_mut().push(result);
+                    for index in indices {
+                        let index = object(m.send(integer, b"fromWord:", &[Operand::word(index)])?)?;
+                        m.scoped.borrow_mut().push(index);
+                        result = object(m.send(result, b"add:", &[Operand::object(index)])?)?;
+                        m.scoped.borrow_mut().push(result);
+                    }
+                    Ok(Operand::object(result))
+                })
+            })
+        })
+    })())
+}
+
 unsafe fn language_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize, put: bool) -> Result<Operand, Outcome> {
     unsafe {
         let m = model(c)?;
@@ -727,7 +785,8 @@ unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usi
     })())
 }
 const NAMES: &[&[u8]] = &[
-    b"Integer", b"nil", b"at:", b"wordOf:",
+    b"Integer", b"nil", b"Vector", b"at:", b"wordOf:", b"fromWord:", b"add:",
+    b"referenceSlotsOf:",
     b"newSlots:parent:", b"slot:in:", b"slot:in:put:",
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",
@@ -843,6 +902,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"slotAt:in:", slot_at),
             (behavior, b"newSlots:parent:", new_slots),
             (behavior, b"slot:in:", boxed_slot),
+            (behavior, b"referenceSlotsOf:", reference_slots),
             (behavior, b"slot:in:put:", boxed_slot_put),
             (behavior, b"imageSizeOf:", image_size),
             (behavior, b"imageSlotAt:in:", image_slot),

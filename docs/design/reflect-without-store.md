@@ -99,9 +99,10 @@ results; add live mirror objects only where a concrete editing tool benefits.
 
 ### Inspection gaps to close
 
-The first four interfaces below are now implemented by the inspection slice.
-Slot discovery/access through Reflect remains proposed; its spellings and schemas
-are illustrative rather than finalized:
+The first four interfaces below were implemented by the initial inspection slice.
+Ordinary reference-slot discovery and access are now implemented by the
+[slot and Module field slice](reflect-slots-and-module-state.md); that document
+defines the index/name keys, snapshot rows and unsupported-storage boundary:
 
 | Message | Required meaning |
 | --- | --- |
@@ -315,3 +316,12 @@ on its own, and a deliberately selected relational description supports joins
 and retained observations. The next storage migration can use these interfaces
 and this workload as acceptance; slot discovery, publication ownership and a
 Store-independent bootstrap remain unfinished.
+
+## Ordinary reference slots and Module directory
+
+The [next slice](reflect-slots-and-module-state.md) adds `slotsOf:`, `slot:in:`
+and `slot:in:put:` in Birnam over ObjectModel's owned reference inventory. Optional
+`slotNames` metadata is an ordinary method; anonymous slots retain index access.
+Module's directory moves to an ordinary slot while keeping a named generic edit
+path. Registry facts, binding/publication ownership and native-family logical
+inspection remain separate work. Existing images retain their saved old methods.

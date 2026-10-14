@@ -382,6 +382,42 @@ let reflectNameCollector := [ObjectModel newSlots: #[#[] nil] parent: ObjectVt];
   [[result isError] ifTrue: [| result] ifFalse: [| [ObjectModel slot: 0 in: collector]]]
 ] doc: "All names bound to this exact object in the selected owner, in that owner's order."];
 
+// Names describe ordinary storage; no separate fact schema or value mirror.
+[Reflect defineMethod: #slotNames on: Object as: [:self | #[]]];
+[Reflect defineMethod: #slotsOf: on: Reflect as: [:self :object |
+  let owner := ObjectModel;
+  let indices := [owner referenceSlotsOf: object];
+  [[[indices isNil] | [indices isError]] ifTrue: [| indices] ifFalse: [|
+    let names := [object slotNames];
+    [[names isError] ifTrue: [| names] ifFalse: [|
+      [indices inject: #[] into: [:rows :index |
+        [rows add: {#slot -> index #name -> [names at: index] #owner -> owner
+                    #readable -> true #writable -> true}]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #slotIndex:in: on: Reflect as: [:self :key :object |
+  let indices := [ObjectModel referenceSlotsOf: object];
+  [[indices isError] ifTrue: [| indices] ifFalse: [|
+    [[indices isNil] ifTrue: [| [Error kind: #unsupportedSlots]] ifFalse: [|
+      let index := [[self isSymbol: key]
+        ifTrue: [| [[object slotNames] indexOf: key]] ifFalse: [| key]];
+      [[index isError] ifTrue: [| index] ifFalse: [|
+        [[[indices indexOf: index] isNil]
+          ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [| index]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #slot:in: on: Reflect as: [:self :key :object |
+  let index := [self slotIndex: key in: object];
+  [[index isError] ifTrue: [| index] ifFalse: [| [ObjectModel slot: index in: object]]]
+]];
+[Reflect defineMethod: #slot:in:put: on: Reflect as: [:self :key :object :value |
+  let index := [self slotIndex: key in: object];
+  [[index isError] ifTrue: [| index] ifFalse: [| [ObjectModel slot: index in: object put: value]]]
+]];
+
 // Fact reflection composes Store's rooted live snapshot with ordinary Blocks.
 // It does not inspect Store payloads or change collection settings.
 [Reflect defineMethod: #factsOf: on: Reflect as: [:self :entity |

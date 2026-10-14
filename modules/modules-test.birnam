@@ -60,3 +60,18 @@ let s := [TestSuite named: "Modules" module: #modules];
   [t expect: [source isError] equals: false describes: "composition returns source text"];
   [t assert: [source includesSubstring: "#ttcompose"] describes: "entry source is present"];
   [t assert: [source includesSubstring: "compose-part"] describes: "part source is present"]]];
+
+[s test: "library directory is discoverable independent ordinary state" do: [:t |
+  let manager := [Module clone]; let original := [Module libDir];
+  [t expect: [manager libDir] equals: original describes: "ordinary clone copies the current directory value"];
+  [manager libDir: nil];
+  [t expect: [manager libDir] equals: "lib" describes: "nil retains the default directory"];
+  [t expect: [Reflect slot: #libDir in: manager] equals: nil describes: "reflection exposes stored nil"];
+  [t expect: [[[Reflect slotsOf: manager] at: 0] at: #name] equals: #libDir describes: "directory is named"];
+  [t assert: [[manager libDir: "/one"] == manager] describes: "setter answers manager"];
+  [t expect: [Reflect slot: #libDir in: manager] equals: "/one" describes: "setter and mirror share storage"];
+  [Reflect slot: #libDir in: manager put: "/two"];
+  [System gc];
+  [t expect: [manager dylibPathFor: #sample] equals: "/two/libbirnam_sample.dylib" describes: "mirror edit changes real module lookup"];
+  [t expect: [Module libDir] equals: original describes: "clone does not mutate the host manager"];
+  [t expect: [[Module requiresOf: #stdlib] size] equals: 0 describes: "dependency registry remains available"]]];

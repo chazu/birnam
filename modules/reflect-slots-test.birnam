@@ -1,0 +1,66 @@
+// Discoverable ordinary reference storage remains live and malleable.
+[[Globals includes: #TestSuite] ifFalse: [| [System load: "modules/test.birnam"]]];
+let s := [TestSuite named: "Reflect slots" module: #stdlib];
+
+[s test: "unnamed references are discoverable without reading values" do: [:t |
+  let value := [Object clone];
+  let object := [ObjectModel newSlots: #[nil value] parent: ObjectVt];
+  let rows := [Reflect slotsOf: object];
+  [t expect: [rows size] equals: 2 describes: "both reference slots are enumerated"];
+  [t expect: [[rows at: 0] at: #slot] equals: 0 describes: "first stable index"];
+  [t expect: [[rows at: 1] at: #slot] equals: 1 describes: "index order"];
+  [t expect: [[rows at: 0] at: #name] equals: nil describes: "unnamed is explicit"];
+  [t assert: [[[rows at: 0] at: #owner] == ObjectModel] describes: "storage owner is exposed"];
+  [t assert: [[[rows at: 1] at: #readable] & [[rows at: 1] at: #writable]] describes: "reference capabilities"];
+  [t expect: [Reflect slot: 0 in: object] equals: nil describes: "present nil is readable"];
+  [t assert: [[Reflect slot: 1 in: object] == value] describes: "reference identity preserved"];
+  [t assert: [[Reflect slot: 0 in: object put: value] == object] describes: "write returns receiver"];
+  [System gc];
+  [t assert: [[Reflect slot: 0 in: object] == value] describes: "written edge survives collection"];
+  [t expect: [Reflect slotsOf: [Object clone]] equals: #[] describes: "empty ordinary storage"];
+  [t expect: [Reflect slotsOf: "foreign"] equals: nil describes: "foreign payload is not decoded"];
+  [t expect: [[Reflect slot: 0 in: "foreign"] kind] equals: #unsupportedSlots describes: "unsupported access is explicit"];
+  [#[-1 2 #absent "0"] do: [:key |
+    [t expect: [[Reflect slot: key in: object] kind] equals: #unknownSlot describes: "bad reference key rejected"]]]]];
+
+[s test: "names are current metadata and old descriptions are snapshots" do: [:t |
+  let cell := [Cell with: #before]; let alias := cell; let clone := [cell clone];
+  let rows := [Reflect slotsOf: cell];
+  [t expect: [[rows at: 0] at: #name] equals: #value describes: "Cell has a meaningful name"];
+  [Reflect slot: #value in: alias put: #after];
+  [t expect: [cell value] equals: #after describes: "generic writes reach the actual Cell"];
+  [t expect: [clone value] equals: #before describes: "clone has independent storage"];
+  [Reflect defineMethod: #slotNames on: cell as: [:self | #[#renamed]]];
+  [t expect: [Reflect slot: #renamed in: cell] equals: #after describes: "name replacement is live"];
+  [t expect: [[Reflect slot: #value in: cell] kind] equals: #unknownSlot describes: "old name is no longer authoritative"];
+  [t expect: [Reflect slot: 0 in: cell] equals: #after describes: "renaming preserves index and value"];
+  [t expect: [[rows at: 0] at: #name] equals: #value describes: "prior row remains a snapshot"];
+  [t expect: [[[Reflect slotsOf: cell] at: 0] at: #name] equals: #renamed describes: "new inventory sees current names"]]];
+
+[s test: "naming can wait and resume without freezing the reader" do: [:t |
+  let cell := [Cell with: #payload]; let calls := [0 asCell];
+  [Reflect defineMethod: #slotNames on: cell as: [:self |
+    [calls inc]; [[TaskExecutor current] wait]]];
+  let task := [TaskControl start: [:task | [Reflect slot: #parked in: cell]]];
+  let token := [task waitToken];
+  [t assert: [token notNil] describes: "naming is an ordinary resumable send"];
+  [cell set: #changed]; [System gc];
+  [task resolve: token with: #[#parked]];
+  [t expect: [task pollOutcome] equals: #[#success #changed] describes: "read observes the value after resume"];
+  [t expect: [calls value] equals: 1 describes: "naming callback not replayed"]]];
+
+[s test: "Reflect access follows the current mirror resolver" do: [:t |
+  let object := [ObjectModel newSlots: #[#first #second] parent: ObjectVt];
+  let mirror := [Reflect clone];
+  [Reflect defineMethod: #slotIndex:in: on: mirror as: [:self :key :target | 1]];
+  [t expect: [mirror slot: #any in: object] equals: #second describes: "current resolver selects the actual slot"];
+  [mirror slot: #any in: object put: #changed];
+  [t expect: [Reflect slot: 1 in: object] equals: #changed describes: "write also follows current resolver"];
+  [t expect: [Reflect slot: 0 in: object] equals: #first describes: "other slot preserved"]]];
+
+[s test: "name-provider errors propagate without disabling indexed access" do: [:t |
+  let cell := [Cell with: #payload]; let error := [Error kind: #slotNameFailure];
+  [Reflect defineMethod: #slotNames on: cell as: [:self | error]];
+  [t assert: [[Reflect slotsOf: cell] == error] describes: "inventory propagates name failure"];
+  [t assert: [[Reflect slot: #value in: cell] == error] describes: "named read propagates name failure"];
+  [t expect: [Reflect slot: 0 in: cell] equals: #payload describes: "indexed access does not consult names"]]];

@@ -67,9 +67,23 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     let values=h.call(h.named(b"Vector"),b"new",&[]);
     let values=h.call(values,b"add:",&[nil]);
     let cell=h.call(model,b"newSlots:parent:",&[values,vt]); h.publish(b"Cell",cell);
-    let behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(cell)]));
     let captures=h.call(h.named(b"Vector"),b"new",&[]);
-    for (index,selector,arity) in [(0,b"with:".as_slice(),1),(1,b"value",0),(2,b"set:",1),(3,b"history",0),(4,b"inc",0),(5,b"dec",0)] {
+    let with_slots=std::env::var_os("BIRNAM_CELL_SLOTS").is_some();
+    let manager=if with_slots {
+        let manager=h.call(model,b"newSlots:parent:",&[values,vt]); h.publish(b"Module",manager);
+        h.publish(b"SymbolExemplarVt",h.named(b"SymbolVt")); manager
+    } else { nil };
+    let mut requests=vec![(cell,b"with:".as_slice(),1),(cell,b"value",0),(cell,b"set:",1),
+        (cell,b"history",0),(cell,b"inc",0),(cell,b"dec",0)];
+    if with_slots {
+        let reflect=h.named(b"Reflect");
+        requests.extend([(cell,b"slotNames".as_slice(),0),(prototype,b"slotNames",0),(prototype,b"isError",0),
+            (reflect,b"isSymbol:",1),(reflect,b"slotsOf:",1),(reflect,b"slotIndex:in:",2),
+            (reflect,b"slot:in:",2),(reflect,b"slot:in:put:",3),
+            (manager,b"slotNames",0),(manager,b"libDir",0),(manager,b"libDir:",1)]);
+    }
+    for (index,(target,selector,arity)) in requests.into_iter().enumerate() {
+        let behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)]));
         let bytes=std::fs::read(programs.join(format!("{index}.bin"))).unwrap();
         let bytes=h.keep(object(send(id,h.named(b"Bytes"),b"fromBytes:",&[Operand::bytes(&bytes)])));
         let code=h.call(h.named(b"CodeObject"),b"fromCanonicalBytes:",&[bytes]);
@@ -84,6 +98,26 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     }
     for name in [b"Store".as_slice(),b"db",b"Relational",b"Lang",b"Generation"] {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
+    }
+    if with_slots {
+        let reflect=h.named(b"Reflect");
+        let key=h.keep(id.intern_name(b"libDir").unwrap());
+        let rows=h.call(reflect,b"slotsOf:",&[manager]);
+        assert_eq!(h.number(h.call(rows,b"size",&[])),1);
+        let row=h.call(rows,b"at:",&[h.integer(0)]);
+        assert_eq!(h.call(row,b"at:",&[id.intern_name(b"name").unwrap()]),key);
+        assert_eq!(h.call(reflect,b"slot:in:",&[key,manager]),nil);
+        let path=h.keep(object(send(id,h.named(b"String"),b"fromBytes:",&[Operand::bytes(b"/owned")])));
+        assert_eq!(h.call(reflect,b"slot:in:put:",&[key,manager,path]),manager);
+        collect(id,gc);
+        assert_eq!(h.call(manager,b"libDir",&[]),path);
+        h.call(manager,b"libDir:",&[nil]);
+        assert_eq!(h.call(reflect,b"slot:in:",&[h.integer(0),manager]),nil);
+        let default=h.call(manager,b"libDir",&[]);
+        let bytes=send(id,default,b"bytes",&[]).as_bytes().unwrap();
+        assert_eq!(birnam_abi::borrowed_bytes(bytes.pointer,bytes.length).unwrap(),b"lib");
+        // Foreign native storage is explicitly unsupported, never decoded.
+        assert_eq!(h.call(reflect,b"slotsOf:",&[path]),nil);
     }
     let floor=h.tokens.borrow().len();
     let value=h.call(prototype,b"clone",&[]);

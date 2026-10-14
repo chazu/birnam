@@ -1,0 +1,38 @@
+[Module load: #os]; [Module load: #json];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+// Deliberately asserted facts remain independent data; they are not live aliases.
+let manager := [Module clone];
+[manager libDir: "/owner"];
+let fact := [db cellFor: manager attr: #libDir]; [fact set: "/database"];
+[check value: [[manager libDir] = "/owner"] value: "database write changed owned directory"];
+[Reflect slot: #libDir in: manager put: "/mirror"];
+[check value: [[fact value] = "/database"] value: "mirror overwrote explicit fact"];
+[check value: [[manager libDir] = "/mirror"] value: "mirror did not update Module"];
+[check value: [[[Reflect factsOf: manager] size] > 0] value: "factsOf lost explicit facts"];
+let batch := [:count |
+  let before := [db retainedFactCount];
+  [[0 to: [count - 1]] do: [:i |
+    let manager := [Module clone]; [manager libDir: nil];
+    let rows := [Reflect slotsOf: manager];
+    [check value: [[[rows at: 0] at: #name] == #libDir] value: "missing field description"];
+    [Reflect slot: #libDir in: manager put: "/local"];
+    [check value: [[manager libDir] = "/local"] value: "lost owned edit"];
+    let cell := [Cell with: manager];
+    [check value: [[Reflect slot: #value in: cell] == manager] value: "lost slot alias"];
+    [Reflect slot: 0 in: cell put: nil]
+  ]];
+  [[db retainedFactCount] - before]
+];
+[batch value: 3]; [System gc];
+let rows := [#[0 1 30 100] inject: #[] into: [:rows :count |
+  [System gc]; let objects := [System liveObjects];
+  let facts := [batch value: count]; [System gc];
+  let retained := [[System liveObjects] - objects];
+  [rows add: {"calls" -> count "fact_delta" -> facts "object_delta" -> retained}]
+]];
+[System println: [Json stringify: {"passed" -> true "batches" -> rows}]];
+nil
+] value]
