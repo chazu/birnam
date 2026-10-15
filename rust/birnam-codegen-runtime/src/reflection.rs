@@ -32,8 +32,9 @@ unsafe fn target_name(s: &State, q: &Scope<'_>, target: Oop) -> Result<Option<Oo
             return q.keep(name).map(Some);
         }
         let globals = q.keep(s.named(b"Globals")?)?;
+        let nil = q.keep(s.named(b"nil")?)?;
         s.send(globals, b"nameOf:", &[Operand::object(target)])?
-            .as_object().map(|name| q.keep(name)).transpose()
+            .as_object().filter(|name| *name != nil).map(|name| q.keep(name)).transpose()
     }
 }
 pub(super) unsafe fn operation(

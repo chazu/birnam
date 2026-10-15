@@ -309,3 +309,34 @@ impl Drop for CompiledFloor {
         }
     }
 }
+
+// Tests that intentionally discard a complete world must clear source bindings
+// through their owner. Clearing Store no longer implicitly clears Globals.
+pub unsafe fn clear_source_bindings(id: Protocol, ns: Oop) {
+    unsafe {
+        let named = |name: &[u8]| object(send(id, ns, b"at:", &[Operand::object(id.intern_name(name).unwrap())]));
+        let roots = named(b"Roots"); let globals = named(b"Globals"); let integer = named(b"Integer");
+        // Restore resident authored policy only at teardown. Pinning its old
+        // captured state across image loads would keep an entire obsolete world
+        // alive and serialize it again on every resave.
+        let path = object(send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(
+            directory().join("libbirnam_globals.dylib").as_os_str().as_bytes()
+        )]));
+        let path_token = retain(id, roots, path);
+        let result = object(send(id, named(b"Codegen"), b"load:", &[Operand::object(path)]));
+        assert_ne!(result, named(b"nil"));
+        release(id, roots, path_token);
+        let names = object(send(id, globals, b"bindingNames", &[]));
+        let token = retain(id, roots, names);
+        let count = object(send(id, names, b"size", &[]));
+        let count = send(id, integer, b"wordOf:", &[Operand::object(count)]).as_word().unwrap();
+        for index in 0..count {
+            let index = object(send(id, integer, b"fromWord:", &[Operand::word(index)]));
+            let held = retain(id, roots, index);
+            let name = object(send(id, names, b"at:", &[Operand::object(index)]));
+            assert_eq!(object(send(id, globals, b"remove:", &[Operand::object(name)])), globals);
+            release(id, roots, held);
+        }
+        release(id, roots, token);
+    }
+}

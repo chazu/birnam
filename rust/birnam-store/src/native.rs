@@ -413,6 +413,174 @@ unsafe extern "C" fn restore_value(c: *mut c_void, r: Oop, a: *const Operand, n:
     })())
 }
 
+// Transitional binding-owner adapters. Generation speaks this object-valued
+// protocol rather than naming the Store entity. The backend is deliberately
+// still the legacy Store until reservation and image ownership move together.
+unsafe fn binding_option(s: &State, scope: &Scope<'_>, row: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let size = scope.keep(object(s.id.send_named(row, b"size", &[])?)?);
+        match s.number(size)? {
+            0 => Ok(Operand::unit()),
+            1 => {
+                let zero = scope.keep(object(s.integer(0)?)?);
+                let value = scope.keep(object(s.send(row, b"at:", &[Operand::object(zero)])?)?);
+                Ok(Operand::object(value))
+            }
+            _ => Err(invalid()),
+        }
+    }
+}
+unsafe extern "C" fn global_binding(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([name]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let name = object(*name)?;
+        if r != s.globals.get() {
+            return Err(invalid());
+        }
+        let scope = Scope::new(s, vec![r, name]);
+        let value = s.send(
+            s.receiver.get(),
+            b"rawCurrentValue:attr:",
+            &[
+                Operand::object(s.names[b"__globals__".as_slice()]),
+                Operand::object(name),
+            ],
+        )?;
+        if let Some(value) = value.as_object() {
+            scope.keep(value);
+        } else if value.kind() != native::UNIT {
+            return Err(invalid());
+        }
+        let vector = scope.keep(object(s.id.send_named(
+            s.namespace,
+            b"at:",
+            &[Operand::object(s.id.intern_name(b"Vector")?)],
+        )?)?);
+        let row = scope.keep(object(s.send(vector, b"new", &[])?)?);
+        if value.kind() == native::UNIT {
+            Ok(Operand::object(row))
+        } else {
+            s.id.send_named(row, b"add:", &[value])
+        }
+    })())
+}
+unsafe extern "C" fn global_basis(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        if n != 0 || r != s.globals.get() {
+            return Err(invalid());
+        }
+        let _scope = Scope::new(s, vec![r]);
+        s.send(s.receiver.get(), b"basis", &[])
+    })())
+}
+unsafe extern "C" fn global_restore(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([name, expected, previous, reservation]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let [name, expected, previous, reservation] = [
+            object(*name)?,
+            object(*expected)?,
+            object(*previous)?,
+            object(*reservation)?,
+        ];
+        if r != s.globals.get() {
+            return Err(invalid());
+        }
+        let scope = Scope::new(s, vec![r, name, expected, previous, reservation]);
+        let expected = binding_option(s, &scope, expected)?;
+        let previous = binding_option(s, &scope, previous)?;
+        let result = s.send(
+            s.receiver.get(),
+            b"restoreValue:attr:expected:previous:reservation:",
+            &[
+                Operand::object(s.names[b"__globals__".as_slice()]),
+                Operand::object(name),
+                expected,
+                previous,
+                Operand::object(reservation),
+            ],
+        )?;
+        Ok(if result.as_object() == Some(s.receiver.get()) {
+            Operand::object(r)
+        } else {
+            result
+        })
+    })())
+}
+
+unsafe fn legacy_binding_reservation(c: *mut c_void, r: Oop, a: *const Operand, n: usize, selector: &'static [u8], count: usize, query: bool) -> Result<Operand, Outcome> {
+    unsafe {
+        let s = state(c)?;
+        if n != count || r != s.globals.get() { return Err(invalid()) }
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let mut values = vec![r];
+        for a in args { values.push(object(*a)?); }
+        let _scope = Scope::new(s, values);
+        let result = s.send(s.receiver.get(), selector, args)?;
+        Ok(if !query && result.as_object() == Some(s.receiver.get()) { Operand::object(r) } else { result })
+    }
+}
+unsafe extern "C" fn global_reserved(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done(unsafe { legacy_binding_reservation(c, r, a, n, b"reservedCompensationFor:", 1, true) })
+}
+unsafe extern "C" fn global_reserve(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done(unsafe { legacy_binding_reservation(c, r, a, n, b"reserveCompensationFor:count:", 2, false) })
+}
+unsafe extern "C" fn global_release(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done(unsafe { legacy_binding_reservation(c, r, a, n, b"releaseCompensationFor:", 1, false) })
+}
+unsafe extern "C" fn global_recovered(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        if n != 0 || r != s.globals.get() { return Err(invalid()) }
+        // Store image recovery already discarded its ephemeral reservations.
+        Ok(Operand::object(r))
+    })())
+}
+
+unsafe extern "C" fn global_checkpoint(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        if n != 0 || r != s.globals.get() { return Err(invalid()) }
+        Ok(Operand::object(s.nil()))
+    })())
+}
+unsafe extern "C" fn global_restore_checkpoint(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([checkpoint]) = borrowed_slice(a, n) else { return Err(invalid()) };
+        if r != s.globals.get() || checkpoint.as_object() != Some(s.nil()) { return Err(invalid()) }
+        Ok(Operand::object(r))
+    })())
+}
+
+unsafe extern "C" fn global_transient(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let Some([name, flag])=borrowed_slice(a,n) else { return Err(invalid()) };
+        let (name,flag)=(object(*name)?,object(*flag)?);
+        if r != s.globals.get() { return Err(invalid()) }
+        let _scope=Scope::new(s,vec![r,name,flag]);
+        let result=s.send(s.receiver.get(),b"assert:attr:value:",&[Operand::object(name),Operand::object(s.names[b"imageTransient".as_slice()]),Operand::object(flag)])?;
+        Ok(if result.as_object()==Some(s.receiver.get()) {Operand::object(r)} else {result})
+    })())
+}
 unsafe fn execute(
     s: &State,
     scope: &Scope<'_>,
@@ -1208,6 +1376,17 @@ const CELL_METHODS: &[(&[u8], Method)] = &[
     (b"history", cell_history),
 ];
 const GLOBAL_METHODS: &[(&[u8], Method)] = &[
+    (b"imageBindingProjection", global_checkpoint),
+    (b"transientBinding:put:", global_transient),
+    (b"imageBindingCheckpoint", global_checkpoint),
+    (b"restoreImageBindings:", global_restore_checkpoint),
+    (b"reservedBindingCompensationFor:", global_reserved),
+    (b"reserveBindingCompensationFor:count:", global_reserve),
+    (b"releaseBindingCompensationFor:", global_release),
+    (b"releaseImageReservations", global_recovered),
+    (b"bindingAt:", global_binding),
+    (b"bindingBasis", global_basis),
+    (b"restoreBinding:expected:previous:reservation:", global_restore),
     (b"liveBindingsDo:", global_bindings),
     (b"nameOf:", global_name),
     (b"at:", global_read),
@@ -1216,6 +1395,17 @@ const GLOBAL_METHODS: &[(&[u8], Method)] = &[
     (b"includes:", global_has),
 ];
 const NAMES: &[&[u8]] = &[
+    b"imageBindingProjection",
+    b"transientBinding:put:",
+    b"imageBindingCheckpoint",
+    b"restoreImageBindings:",
+    b"reservedBindingCompensationFor:",
+    b"reserveBindingCompensationFor:count:",
+    b"releaseBindingCompensationFor:",
+    b"releaseImageReservations",
+    b"bindingAt:",
+    b"bindingBasis",
+    b"restoreBinding:expected:previous:reservation:",
     b"liveBindingsDo:",
     b"binding:value:",
     b"imageFieldAt:",

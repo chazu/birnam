@@ -170,6 +170,16 @@ impl Vtables {
         object
     }
 
+    /// Atomically construct a fresh behavior with its initial method. No caller
+    /// can have observed this allocation yet, so no existing lookup changes.
+    /// Subsequent edits still use add_method and advance both epochs.
+    pub(crate) fn create_with_method(&mut self, memory: &mut ObjectMemory, parent: Oop, meta: Oop, selector: Oop, method: NativeEntry) -> Oop {
+        assert!(method.method.is_some());
+        let object = self.create(memory, parent, meta);
+        self.insert_method(object, selector, method);
+        object
+    }
+
     /// Register a fresh behavior allocation supplied by the caller.
     /// # Safety
     /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.
@@ -332,6 +342,9 @@ impl Vtables {
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {
         assert!(method.method.is_some(), "method binding requires a native entry");
         self.note_mutation();
+        self.insert_method(vtable, selector, method)
+    }
+    fn insert_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(selector) {
             let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect("method dictionary held non-entry");
@@ -528,6 +541,28 @@ mod core_tests {
         tables.add_method(live, key, entry);
         assert_eq!(tables.direct_lookup(live, key), Some(entry));
         assert_eq!(tables.binding_epoch(), bound + 2);
+    }
+    #[test]
+    fn initialized_behavior_does_not_change_live_bindings_but_later_edits_do() {
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
+        memory.set_vtable(meta, meta);
+        unsafe extern "C" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {
+            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))
+        }
+        let key = memory.allocate(0);
+        let entry = NativeEntry::new(method, core::ptr::null_mut());
+        let before = (tables.binding_epoch(), tables.mutation_epoch());
+        let fresh = tables.create_with_method(&mut memory, meta, meta, key, entry);
+        assert_eq!(tables.direct_lookup(fresh, key), Some(entry));
+        assert_eq!(tables.parent_of(fresh), meta);
+        assert_eq!((tables.binding_epoch(), tables.mutation_epoch()), before);
+        tables.remove_method(fresh, key);
+        tables.add_method(fresh, key, entry);
+        assert_eq!(tables.binding_epoch(), before.0 + 2);
+        assert_eq!(tables.mutation_epoch(), before.1 + 2);
+        assert_eq!(tables.direct_lookup(fresh, key), Some(entry));
     }
     #[test]
     fn behavior_graph_and_dictionary_need_only_id_allocation() {

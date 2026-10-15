@@ -820,3 +820,43 @@ facts remain separate data; saved old worlds keep their old fact-backed methods.
 Task transitions protect Map updates from lost writes under time slicing. This
 removes Module's direct Store operations, not Globals/publication/task dependencies
 from the complete bootstrap. No CPU speedup is inferred from this ownership change.
+
+
+## 2026-10-14: LSP ownership and Globals transaction boundary
+
+All thirteen LSP state fields moved to ordinary named slots, with fresh `new`
+instances and independent shallow clones. Generic Reflect edits reach the actual
+state. Protocol/cache algorithms and legacy image semantics remain intact.
+See [the slice report](lsp-and-globals-owners.md) for tests and limitations,
+including existing nil URI keys after close.
+
+Generation no longer names `#__globals__` or treats binding writes as fact-journal
+entries. It uses `Globals bindingAt:`, `bindingBasis`, and conditional
+`restoreBinding:expected:previous:reservation:`. The initial owner adapters still
+use Store. This is preparation for the storage transition, not removal of its
+current authority, fact aliases or reserved-compensation obligations.
+
+The capture/image prototype shows an authored owner is feasible. It does not
+establish atomic recovery or the inverse-capacity contract. The recommendation
+remains to remove Store as Globals' primary storage, with reservation and image
+ownership moved coherently; no compatibility mirror or permanent foreign registry
+has been introduced. Store and Relational remain valuable opt-in facilities.
+
+
+## 2026-10-14: default Globals cutover
+
+[Owned Globals](owned-globals.md) now implements reads, writes, identity keys,
+inventories, mutation revision and rollback banks in Birnam. Ordinary bindings
+create no facts; explicit Store descriptions remain independent. Image transports
+the captured owner, projects declared transient bindings/banks without mutating
+live state, and restores an owner checkpoint on failed publication. JSON/TOML
+parser caches now declare transience with Globals. Legacy images retain the native
+fact-backed adapter. This completes binding storage ownership, not the remaining
+Store dependencies of method publication, compiler metadata, tasks or full bootstrap.
+
+The conversion exposed fresh-dictionary epoch noise, recursive missing optional
+optimization hooks, and recovery scopes that rejected balanced authored reentry.
+The accompanying generic runtime fixes retain Id's authority, late lookup, GC
+accounting, selected-code lifetime and stale-action checks. Final acceptance and
+measured runtime costs are recorded in the linked report; this is not claimed as
+a performance optimization.

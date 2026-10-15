@@ -75,7 +75,7 @@ pub(super) unsafe fn invoke(
         };
         let warm = arguments.len() == 1 && s.numeric.borrow_mut().observe(executable);
         if warm {
-            let answer = s.send(
+            let answer = s.optional_query(
                 s.integer_factory()?,
                 b"evaluate:receiver:argument:with:",
                 &[

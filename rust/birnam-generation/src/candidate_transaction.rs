@@ -1,4 +1,4 @@
-//! Generation publication and exact inverse journals through Store messages.
+//! Generation publication and exact inverse journals through their owners.
 use super::*;
 use preparation::{Binding, Global, Prepared};
 
@@ -29,24 +29,32 @@ struct FactWrite {
     after: Option<Oop>,
 }
 #[derive(Clone)]
+struct GlobalWrite {
+    name: Oop,
+    before: Option<Oop>,
+    after: Option<Oop>,
+}
+#[derive(Clone)]
 pub(super) struct Activation {
     before: ledger::Ledger,
     after: ledger::Ledger,
     bindings_before: Vec<Binding>,
     bindings_after: Vec<Binding>,
-    globals: Vec<FactWrite>,
+    globals: Vec<GlobalWrite>,
+    binding_reservation: Oop,
     sources_before: Vec<(Oop, Oop)>,
 }
 impl Activation {
     pub(super) fn roots(&self) -> Vec<Oop> {
         let mut values = self.before.roots();
+        values.push(self.binding_reservation);
         values.extend(self.after.roots());
         for b in self.bindings_before.iter().chain(&self.bindings_after) {
             values.extend([b.name, b.target, b.behavior, b.selector]);
             values.extend(b.method);
         }
         for f in &self.globals {
-            values.extend([f.entity, f.attribute]);
+            values.push(f.name);
             values.extend(f.before);
             values.extend(f.after);
         }
@@ -59,6 +67,7 @@ impl Activation {
 #[derive(Clone)]
 enum Write {
     Fact(FactWrite),
+    Global(GlobalWrite),
     Binding {
         before: Binding,
         method: Option<Oop>,
@@ -157,6 +166,34 @@ unsafe fn reserve(s: &State, q: &Scope<'_>, owner: Oop, required: usize) -> Resu
 unsafe fn release(s: &State, q: &Scope<'_>, owner: Oop) -> Result<(), Outcome> {
     unsafe { checked_store(s, q, b"releaseCompensationFor:", &[Operand::object(owner)]) }
 }
+unsafe fn checked_globals(s: &State, q: &Scope<'_>, selector: &[u8], args: &[Operand]) -> Result<(), Outcome> {
+    unsafe {
+        let globals = q.keep(s.named(b"Globals")?)?;
+        let value = call(s, q, globals, selector, args)?;
+        if value == globals { Ok(()) }
+        else if s.is_error(value)? { Err(Outcome::loaded(Operand::object(value))) }
+        else { Err(failure(s, q, b"candidateCommitFailed", b"Globals did not accept the reservation operation")) }
+    }
+}
+unsafe fn reserve_bindings(s: &State, q: &Scope<'_>, token: Oop, required: usize) -> Result<(), Outcome> {
+    unsafe {
+        if required == 0 { return Ok(()) }
+        let available = call(s, q, s.named(b"Globals")?, b"reservedBindingCompensationFor:", &[Operand::object(token)])?;
+        let available = preparation::number(s, available)?;
+        if available >= required { return Ok(()) }
+        let count = call(s, q, s.named(b"Integer")?, b"fromWord:", &[Operand::word(required - available)])?;
+        checked_globals(s, q, b"reserveBindingCompensationFor:count:", &[Operand::object(token), Operand::object(count)])
+    }
+}
+unsafe fn release_publication(s: &State, q: &Scope<'_>, unit: Oop, binding_token: Oop, binding_count: usize) -> Result<(), Outcome> {
+    unsafe {
+        release(s, q, unit)?;
+        if binding_count != 0 {
+            checked_globals(s, q, b"releaseBindingCompensationFor:", &[Operand::object(binding_token)])?;
+        }
+        Ok(())
+    }
+}
 pub(super) unsafe fn discard_facts(s: &State, q: &Scope<'_>, unit: Oop) -> Result<(), Outcome> {
     unsafe {
         let change = fact_write(s, q, unit, b"state", symbol(s, q, b"discarded")?)?;
@@ -174,7 +211,7 @@ pub(super) unsafe fn discard_facts(s: &State, q: &Scope<'_>, unit: Oop) -> Resul
                 q.keep(value)?;
             }
             reserve(s, q, unit, 1)?;
-            let restored = compensate(s, q, unit, &[Write::Fact(change)]);
+            let restored = compensate(s, q, unit, s.named(b"nil")?, &[Write::Fact(change)]);
             release(s, q, unit)?;
             if !restored {
                 return Err(failure(
@@ -266,12 +303,73 @@ unsafe fn put_method(
         checked_store(s, q, selector, &args)
     }
 }
-unsafe fn compensate(s: &State, q: &Scope<'_>, owner: Oop, writes: &[Write]) -> bool {
+unsafe fn restore_global(
+    s: &State,
+    q: &Scope<'_>,
+    owner: Oop,
+    f: &GlobalWrite,
+    inverse: bool,
+) -> Result<(), Outcome> {
+    unsafe {
+        let (expected, previous) = if inverse {
+            (f.after, f.before)
+        } else {
+            (f.before, f.after)
+        };
+        let mut rows = vec![];
+        for value in [expected, previous] {
+            let mut row = call(s, q, s.named(b"Vector")?, b"new", &[])?;
+            if let Some(value) = value {
+                row = call(s, q, row, b"add:", &[Operand::object(value)])?;
+            }
+            rows.push(row);
+        }
+        let globals = q.keep(s.named(b"Globals")?)?;
+        let result = call(
+            s,
+            q,
+            globals,
+            b"restoreBinding:expected:previous:reservation:",
+            &[
+                Operand::object(f.name),
+                Operand::object(rows[0]),
+                Operand::object(rows[1]),
+                Operand::object(owner),
+            ],
+        )?;
+        if result == globals {
+            Ok(())
+        } else if s.is_error(result)? {
+            Err(Outcome::loaded(Operand::object(result)))
+        } else {
+            Err(failure(
+                s,
+                q,
+                b"candidateCommitFailed",
+                b"Globals did not accept the candidate operation",
+            ))
+        }
+    }
+}
+unsafe fn compensate(s: &State, q: &Scope<'_>, owner: Oop, binding_token: Oop, writes: &[Write]) -> bool {
     unsafe {
         let mut complete = true;
         for write in writes.iter().rev() {
             let restored = (|| {
                 match write {
+                    Write::Global(f) => {
+                        let current = preparation::global(s, q, f.name)?;
+                        if current == f.before {
+                            return Ok(());
+                        }
+                        if current != f.after {
+                            return Err(invalid());
+                        }
+                        restore_global(s, q, binding_token, f, true)?;
+                        if preparation::global(s, q, f.name)? != f.before {
+                            return Err(invalid());
+                        }
+                    }
                     Write::Fact(f) => {
                         let current = raw_fact(s, q, f.entity, f.attribute)?;
                         if current == f.before {
@@ -566,9 +664,8 @@ pub(super) unsafe fn commit(
             let globals = saved
                 .globals
                 .iter()
-                .map(|f| FactWrite {
-                    entity: f.entity,
-                    attribute: f.attribute,
+                .map(|f| GlobalWrite {
+                    name: f.name,
                     before: f.after,
                     after: f.before,
                 })
@@ -591,7 +688,6 @@ pub(super) unsafe fn commit(
             // Globals, Store basis and full ledger are still revalidated below.
             p.epoch = preparation::epoch(s)?;
             let mut globals = vec![];
-            let entity = symbol(s, q, b"__globals__")?;
             for g in &c.globals {
                 let prior = p
                     .globals
@@ -610,9 +706,8 @@ pub(super) unsafe fn commit(
                         b"projected Global replaces a managed target",
                     );
                 }
-                globals.push(FactWrite {
-                    entity,
-                    attribute: g.name,
+                globals.push(GlobalWrite {
+                    name: g.name,
                     before: prior.value,
                     after: g.value,
                 });
@@ -636,17 +731,34 @@ pub(super) unsafe fn commit(
         // Reserve forward writes, their failure compensation, and one rollback
         // attempt including compensation. Reservations survive successful
         // activation; later ordinary writes cannot consume those inverse slots.
-        let required = (global_writes.len() + facts.len())
-            .checked_mul(if rollback { 2 } else { 4 })
-            .ok_or_else(invalid)?;
-        reserve(s, q, p.unit, required)?;
+        let multiplier = if rollback { 2 } else { 4 };
+        let required = facts.len().checked_mul(multiplier).ok_or_else(invalid)?;
+        let binding_required = global_writes.len().checked_mul(multiplier).ok_or_else(invalid)?;
+        // Distinct tokens keep both owners' credits independent, including the
+        // legacy image adapter which still routes binding inverses through Store.
+        let binding_reservation = if rollback {
+            saved.as_ref().ok_or_else(invalid)?.binding_reservation
+        } else if binding_required == 0 {
+            s.named(b"nil")?
+        } else {
+            call(s, q, s.named(b"Object")?, b"clone", &[])?
+        };
+        let reserved = (|| {
+            reserve(s, q, p.unit, required)?;
+            reserve_bindings(s, q, binding_reservation, binding_required)
+        })();
+        if let Err(error) = reserved {
+            if let Some(value) = error.value.as_object() { q.keep(value)?; }
+            if !rollback { release_publication(s, q, p.unit, binding_reservation, binding_required)?; }
+            return Err(error);
+        }
         let live = ledger::reconcile(s, q)?.0;
         if !preparation::current_snapshot(s, q, &p)?
             || !live
             || *s.registry.entries.borrow() != old_sources
         {
             if !rollback {
-                release(s, q, p.unit)?;
+                release_publication(s, q, p.unit, binding_reservation, binding_required)?;
             }
             return fail(
                 s,
@@ -659,8 +771,8 @@ pub(super) unsafe fn commit(
         let mut post = vec![];
         let applied = (|| {
             for f in &global_writes {
-                attempted.push(Write::Fact(f.clone()));
-                restore_fact(s, q, p.unit, f, false)?;
+                attempted.push(Write::Global(f.clone()));
+                restore_global(s, q, binding_reservation, f, false)?;
             }
             let indices: Vec<_> = if rollback {
                 (0..p.bindings.len()).rev().collect()
@@ -708,11 +820,11 @@ pub(super) unsafe fn commit(
                     });
                 }
                 for f in &global_writes {
-                    after.globals.retain(|v| v.global.name != f.attribute);
+                    after.globals.retain(|v| v.global.name != f.name);
                     after.globals.push(ledger::ManagedGlobal {
                         unit: p.unit,
                         global: Global {
-                            name: f.attribute,
+                            name: f.name,
                             value: f.after,
                         },
                     });
@@ -735,7 +847,7 @@ pub(super) unsafe fn commit(
             }
             if rollback {
                 let cleanup = (|| {
-                    release(s, q, p.unit)?;
+                    release_publication(s, q, p.unit, binding_reservation, binding_required)?;
                     if ledger::has_drifted(s)
                         || ledger::matches(s, q, &after)? != Some(true)
                         || *s.registry.entries.borrow() != old_sources
@@ -757,6 +869,7 @@ pub(super) unsafe fn commit(
                     // consuming the bank. Reacquire inverse capacity before
                     // compensating this already-published rollback.
                     reserve(s, q, p.unit, required)?;
+                    reserve_bindings(s, q, binding_reservation, binding_required)?;
                     return Err(error);
                 }
             }
@@ -766,9 +879,9 @@ pub(super) unsafe fn commit(
             if let Some(value) = error.value.as_object() {
                 q.keep(value)?;
             }
-            let restored = compensate(s, q, p.unit, &attempted);
+            let restored = compensate(s, q, p.unit, binding_reservation, &attempted);
             if !rollback {
-                release(s, q, p.unit)?;
+                release_publication(s, q, p.unit, binding_reservation, binding_required)?;
             }
             if !restored || ledger::matches(s, q, &before)? != Some(true) {
                 let _ = ledger::reconcile(s, q);
@@ -802,6 +915,7 @@ pub(super) unsafe fn commit(
                 bindings_before: p.bindings,
                 bindings_after: post,
                 globals: global_writes,
+                binding_reservation,
                 sources_before: old_sources,
             });
         } else {
@@ -893,13 +1007,14 @@ pub(super) unsafe fn prepare_rollback(
             unit,
             plan,
             basis: preparation::number(s, plan[5])?,
+            global_basis: preparation::global_basis(s, q)?,
             epoch: preparation::epoch(s)?,
             bindings: saved.bindings_after.clone(),
             globals: saved
                 .globals
                 .iter()
                 .map(|f| Global {
-                    name: f.attribute,
+                    name: f.name,
                     value: f.after,
                 })
                 .collect(),

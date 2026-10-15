@@ -28,8 +28,7 @@
 // (document/table/keyval/key and the typed value rules) produce CST nodes.
 
 // PEG handles are process-local. Persist the factory, rebuild the cache lazily.
-[db assert: #imageTransient attr: #cardinality value: #one];
-[db assert: #tomlGrammar attr: #imageTransient value: true];
+[Globals transientBinding: #tomlGrammar put: true];
 [Globals at: #tomlGrammarFactory put: [|
   let g := [Peg newGrammar];
 

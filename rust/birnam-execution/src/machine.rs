@@ -490,8 +490,6 @@ unsafe fn new_block_values(s: &Execution, method: Oop, code: Option<Oop>, input:
     };
     if expected.is_some_and(|n| n != captures.len()) { return Err(invalid()); }
     let base = s.machines.borrow().block_behavior;
-    let b = object(unsafe { s.send(base, b"delegated", &[]) }?)?;
-    roots.keep(b);
     let selector = match arity {
         0 => s.names[b"value".as_slice()],
         1 => s.names[b"value:".as_slice()],
@@ -500,16 +498,11 @@ unsafe fn new_block_values(s: &Execution, method: Oop, code: Option<Oop>, input:
         _ => unsafe { s.id.intern_name(&b"value:".repeat(arity)) }?,
     };
     roots.keep(selector);
-    unsafe {
-        s.send(
-            b,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(s.entry(method, false)?),
-            ],
-        )
-    }?;
+    let b = object(unsafe {
+        s.send(base, b"delegatedWith:as:", &[
+            Operand::entry(s.entry(method, false)?), Operand::object(selector)])
+    }?)?;
+    roots.keep(b);
     let block = unsafe { allocate(s, b, captures.len() + 1) }?;
     roots.keep(block);
     let mut state = s.machines.borrow_mut();
@@ -1729,6 +1722,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"currentFrameView",
     b"currentSynchronousBoundaryDepth",
     b"delegated",
+    b"delegatedWith:as:",
     b"delimiterGeneration",
     b"delimiterIndex",
     b"destroy",

@@ -573,9 +573,9 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                     Some(old_behavior)
                 );
                 call(
-                    db,
-                    b"retract:attr:value:",
-                    &[symbol(b"__globals__"), symbol(b"Integer"), temporary],
+                    globals,
+                    b"remove:",
+                    &[symbol(b"Integer")],
                 );
                 let readoption = call(
                     named(b"Generation"),

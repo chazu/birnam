@@ -238,6 +238,33 @@ unsafe extern "C" fn fail_after_release(
         result
     }
 }
+// Independent owner observations must be consulted even while the transitional
+// owner happens to store its values in db. Collect inside each replaced send.
+struct GlobalProbe {
+    vm: Vm,
+    original: NativeEntry,
+    calls: Cell<usize>,
+    basis_offset: std::rc::Rc<Cell<usize>>,
+    bump_after_read: Cell<bool>,
+    is_basis: bool,
+}
+unsafe extern "C" fn probe_global(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<GlobalProbe>();
+        p.calls.set(p.calls.get() + 1);
+        collect(p.vm.id, p.vm.named(b"GC"));
+        let result = p.original.method.unwrap()(p.original.context, r, a, n);
+        if p.bump_after_read.replace(false) {
+            p.basis_offset.set(p.basis_offset.get() + 1);
+        }
+        if p.is_basis && p.basis_offset.get() != 0 && result.value.as_object().is_some() {
+            return Outcome::loaded(Operand::object(
+                p.vm.integer(p.vm.number(object(result.value)) + p.basis_offset.get()),
+            ));
+        }
+        result
+    }
+}
 #[test]
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
 fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_facts() {
@@ -253,6 +280,43 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
         let db = v.named(b"db");
         let nil = v.named(b"nil");
         let yes = v.named(b"true");
+        let mut global_probes = Vec::new();
+        let owner_basis_offset = std::rc::Rc::new(Cell::new(0));
+        for selector in [
+            b"bindingAt:".as_slice(),
+            b"bindingBasis",
+            b"restoreBinding:expected:previous:reservation:",
+        ] {
+            let original = send(
+                id,
+                id.receiver,
+                b"bindingOf:in:",
+                &[
+                    Operand::object(v.sym(selector)),
+                    Operand::object(object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))]))),
+                ],
+            )
+            .as_entry()
+            .unwrap();
+            if let Some(method) = send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original)]).as_object() { v.keep(method); }
+            let mut probe = Box::new(GlobalProbe {
+                vm: Vm { id, ns },
+                original,
+                calls: Cell::new(0),
+                basis_offset: owner_basis_offset.clone(),
+                bump_after_read: Cell::new(false),
+                is_basis: selector == b"bindingBasis",
+            });
+            install(
+                id,
+                object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))])),
+                selector,
+                probe_global,
+                core::ptr::from_mut(&mut *probe).cast(),
+            );
+            global_probes.push((selector, probe));
+        }
+
         for (commit, kind) in [
             (
                 b"commitPrepared:".as_slice(),
@@ -285,6 +349,17 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
         let projection = v.call(cg, b"initialGenerationProjection", &[]);
         let generation = v.carrier(projection, nil, nil);
         v.set(v.sym(b"dispatch"), b"activeGeneration", generation);
+        // A binding callback changes only its owner's revision. Neither adoption
+        // nor later reconciliation may call that a coherent observation.
+        global_probes[0].1.bump_after_read.set(true);
+        let unstable = v.call(
+            v.named(b"Generation"),
+            b"adoptInitialGeneration:",
+            &[generation],
+        );
+        assert_eq!(v.call(unstable, b"kind", &[]), v.sym(b"staleGeneration"));
+        owner_basis_offset.set(0);
+
         assert_eq!(
             v.call(
                 v.named(b"Generation"),
@@ -294,6 +369,23 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             generation
         );
         v.call(cg, b"sealInitialGeneration", &[]);
+        global_probes[0].1.bump_after_read.set(true);
+        let unstable = v.call(
+            v.named(b"Generation"),
+            b"reconcileCandidate:",
+            &[generation],
+        );
+        assert_eq!(v.call(unstable, b"kind", &[]), v.sym(b"staleGeneration"));
+        owner_basis_offset.set(0);
+        assert_eq!(
+            v.call(
+                v.named(b"Generation"),
+                b"reconcileCandidate:",
+                &[generation]
+            ),
+            generation
+        );
+
         let original_helper = v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]);
         let original_replace = v.direct(b"txReplace").as_entry().unwrap();
         let original_remove = v.direct(b"txRemove").as_entry().unwrap();
@@ -347,6 +439,17 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 ],
             );
             let next = v.carrier(projected, generation, unit);
+            let owner_token = v.call(
+                v.named(b"Generation"),
+                b"prepareActivation:plan:",
+                &[unit, v.plan(b"activate", unit, generation, next)],
+            );
+            let store_basis = v.number(v.call(db, b"basis", &[]));
+            global_probes[1].1.basis_offset.set(1);
+            let stale_owner = v.call(v.named(b"Generation"), b"commitPrepared:", &[owner_token]);
+            assert_eq!(v.call(stale_owner, b"kind", &[]), v.sym(b"staleGeneration"));
+            assert_eq!(v.number(v.call(db, b"basis", &[])), store_basis);
+            global_probes[1].1.basis_offset.set(0);
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareActivation:plan:",
@@ -690,6 +793,22 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), changed);
                 assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
             }
+        }
+        for (selector, probe) in global_probes {
+            assert!(
+                probe.calls.get() > 0,
+                "binding owner send was bypassed: {:?}",
+                selector
+            );
+            send(
+                id,
+                object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))])),
+                b"addMethod",
+                &[
+                    Operand::object(v.sym(selector)),
+                    Operand::entry(probe.original),
+                ],
+            );
         }
         std::fs::remove_dir_all(dir).unwrap();
     }

@@ -1,5 +1,5 @@
 //! Inert publication-plan snapshots. No candidate factory runs here. Each token
-//! roots the precise inverse bindings and is bound to Store and Id observations.
+//! roots the precise inverse bindings and is bound to Globals, Store and Id observations.
 use super::*;
 
 #[derive(Clone)]
@@ -22,6 +22,7 @@ pub(super) struct Prepared {
     pub unit: Oop,
     pub plan: [Oop; 8],
     pub basis: usize,
+    pub global_basis: usize,
     pub epoch: usize,
     pub bindings: Vec<Binding>,
     pub globals: Vec<Global>,
@@ -80,18 +81,23 @@ pub(super) unsafe fn direct(
 }
 pub(super) unsafe fn global(s: &State, q: &Scope<'_>, name: Oop) -> Result<Option<Oop>, Outcome> {
     unsafe {
-        let entity = symbol(s, q, b"__globals__")?;
-        let value = s.send(
-            s.named(b"db")?,
-            b"rawCurrentValue:attr:",
-            &[Operand::object(entity), Operand::object(name)],
+        let row = call(
+            s,
+            q,
+            s.named(b"Globals")?,
+            b"bindingAt:",
+            &[Operand::object(name)],
         )?;
-        if value.kind() == native::UNIT {
-            Ok(None)
-        } else {
-            q.keep(object(value)?).map(Some)
+        let values = seq(s, q, row)?;
+        match values.as_slice() {
+            [] => Ok(None),
+            [value] => Ok(Some(*value)),
+            _ => Err(invalid()),
         }
     }
+}
+pub(super) unsafe fn global_basis(s: &State, q: &Scope<'_>) -> Result<usize, Outcome> {
+    unsafe { number(s, call(s, q, s.named(b"Globals")?, b"bindingBasis", &[])?) }
 }
 pub(super) unsafe fn target(
     s: &State,
@@ -127,15 +133,19 @@ pub(super) unsafe fn target(
         Ok((owner.as_object() == Some(target)).then_some((target, behavior)))
     }
 }
-/// Numeric Store basis catches callbacks/finalizers even if they restore facts;
-/// the binding epoch also catches raw dictionary mutation/ABA without a Store write.
+/// Store and binding-owner bases catch intervening data edits even when values
+/// are restored; the Id epoch independently catches raw dictionary mutation/ABA.
 pub(super) unsafe fn current_snapshot(
     s: &State,
     q: &Scope<'_>,
     p: &Prepared,
 ) -> Result<bool, Outcome> {
     unsafe {
-        if current(s, q)? != p.plan[6] || basis(s, q)? != p.basis || epoch(s)? != p.epoch {
+        if current(s, q)? != p.plan[6]
+            || basis(s, q)? != p.basis
+            || global_basis(s, q)? != p.global_basis
+            || epoch(s)? != p.epoch
+        {
             return Ok(false);
         }
         for b in &p.bindings {
@@ -150,7 +160,10 @@ pub(super) unsafe fn current_snapshot(
                 return Ok(false);
             }
         }
-        Ok(current(s, q)? == p.plan[6] && basis(s, q)? == p.basis && epoch(s)? == p.epoch)
+        Ok(current(s, q)? == p.plan[6]
+            && basis(s, q)? == p.basis
+            && global_basis(s, q)? == p.global_basis
+            && epoch(s)? == p.epoch)
     }
 }
 unsafe fn generation_plan(
@@ -325,6 +338,7 @@ pub(super) unsafe fn prepare(
             unit,
             plan,
             basis: number(s, plan[5])?,
+            global_basis: global_basis(s, q)?,
             epoch: epoch(s)?,
             bindings: vec![],
             globals: vec![],

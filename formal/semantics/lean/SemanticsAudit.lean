@@ -1,3 +1,4 @@
+import GlobalsBinding
 import ModuleRegistry
 import SlotReflection
 import StringOrder
@@ -172,3 +173,23 @@ import Admission
 #print axioms Birnam.ModuleRegistry.kernel_preserves_requirements
 #print axioms Birnam.ModuleRegistry.loaded_does_not_register
 #print axioms Birnam.ModuleRegistry.snapshot_is_not_replaced
+
+#print axioms Birnam.GlobalsBinding.snapshot_roundtrip
+#print axioms Birnam.GlobalsBinding.nil_is_not_absence
+#print axioms Birnam.GlobalsBinding.malformed_snapshot_rejected
+#print axioms Birnam.GlobalsBinding.conflict_preserves_world
+#print axioms Birnam.GlobalsBinding.exact_inverse
+#print axioms Birnam.GlobalsBinding.foreign_binding_preserved
+
+#print axioms Birnam.GlobalsBinding.stale_root_not_overwritten
+#print axioms Birnam.GlobalsBinding.matched_root_published
+#print axioms Birnam.GlobalsBinding.image_preserves_bindings
+#print axioms Birnam.GlobalsBinding.image_drops_reservations
+#print axioms Birnam.GlobalsBinding.construction_preserves_old_lookup
+#print axioms Birnam.GlobalsBinding.construction_preserves_epoch
+#print axioms Birnam.GlobalsBinding.aba_advances_epoch
+#print axioms Birnam.GlobalsBinding.equal_spelling_does_not_alias
+#print axioms Birnam.GlobalsBinding.same_identity_is_same_key
+
+#print axioms Birnam.GlobalsBinding.projection_keeps_persistent
+#print axioms Birnam.GlobalsBinding.projection_omits_transient

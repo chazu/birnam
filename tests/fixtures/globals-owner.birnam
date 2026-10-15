@@ -1,0 +1,38 @@
+[Module load: #os];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let name := #bindingOwnerFixture; let reservation := [Object clone];
+[check value: [[Globals bindingAt: name] = #[]] value: "absence lost"];
+[Globals reserveBindingCompensationFor: reservation count: 5];
+[check value: [[Globals restoreBinding: name expected: #[] previous: #[nil] reservation: reservation] == Globals] value: "absent to nil failed"];
+[check value: [[Globals includes: name] == true] value: "nil presence lost"];
+[check value: [[Globals bindingAt: name] = #[nil]] value: "nil encoded as absent"];
+let snapshot := [Globals bindingAt: name];
+let basis := [Globals bindingBasis];
+[check value: [[Globals restoreBinding: name expected: #[nil] previous: #[17] reservation: reservation] == Globals] value: "nil to value failed"];
+[check value: [[Globals bindingBasis] > basis] value: "binding mutation not observed"];
+[check value: [snapshot = #[nil]] value: "binding snapshot changed"];
+let installed := [Globals bindingAt: name];
+let available := [Globals reservedBindingCompensationFor: reservation];
+let rejected := [Globals restoreBinding: name expected: #[nil] previous: #[99] reservation: reservation];
+[check value: [[rejected kind] == #compensationConflict] value: "conditional inverse overwrote foreign value"];
+[check value: [[Globals at: name] = 17] value: "conflict changed binding"];
+[check value: [[Globals reservedBindingCompensationFor: reservation] = available] value: "conflict spent reservation"];
+[Globals at: #bindingOwnerForeign put: #preserve];
+[check value: [[Globals restoreBinding: name expected: installed previous: #[] reservation: reservation] == Globals] value: "removal failed"];
+[check value: [[Globals includes: name] == false] value: "removal retained presence"];
+[check value: [[Globals at: #bindingOwnerForeign] == #preserve] value: "inverse overwrote unrelated binding"];
+// Explicit facts are independent descriptions, not binding aliases.
+[db assert: #__globals__ attr: name value: 22];
+[check value: [[Globals bindingAt: name] = #[]] value: "explicit fact changed a binding"];
+[Globals at: name put: 23];
+[check value: [[db currentValue: #__globals__ attr: name] = 22] value: "binding changed explicit fact"];
+[Globals releaseBindingCompensationFor: reservation];
+let denied := [Globals restoreBinding: name expected: [Globals bindingAt: name] previous: #[] reservation: reservation];
+[check value: [[denied kind] == #compensationConflict] value: "unreserved inverse accepted"];
+[check value: [[Globals at: name] = 23] value: "unreserved inverse mutated binding"];
+[System println: "globals-owner: passed"];
+nil
+] value]

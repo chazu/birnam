@@ -58,7 +58,10 @@ fn reserved_compensation_survives_capacity_exhaustion_and_preserves_other_facts(
                 .unwrap()
         };
         let db = named(b"db");
-        call(db, b"retainSince:", &[integer(0)]);
+        // Bootstrap may have compacted seed facts. Retain from the current
+        // available basis rather than requesting already-discarded history.
+        let basis = call(db, b"basis", &[]);
+        assert_eq!(call(db, b"retainSince:", &[basis]), db);
         let yes = named(b"true");
         let no = named(b"false");
         let owner = object(send(id, named(b"Object"), b"clone", &[]));

@@ -347,6 +347,7 @@ struct Graph<'a, 'b> {
     objects: Vec<Oop>,
     indices: HashMap<usize, u32>,
     nodes: Vec<Node>,
+    projection: Option<(Oop, Oop)>,
     behaviors: Vec<super::behavior_links::Link>,
 }
 impl Graph<'_, '_> {
@@ -390,6 +391,7 @@ impl Graph<'_, '_> {
             let mut i = 0;
             while i < self.objects.len() {
                 let o = self.objects[i];
+                let payload = self.projection.filter(|(original,_)| *original==o).map_or(o,|(_,projected)|projected);
                 // Authored capabilities can have an ordinary Object layout but
                 // process-local state. Store owns the declaration; omitted facts
                 // alone must never turn a retained handle into an empty snapshot.
@@ -569,7 +571,7 @@ impl Graph<'_, '_> {
                         }
                         let bytes = self
                             .s
-                            .send(self.s.model, b"imageSizeOf:", &[Operand::object(o)])?
+                            .send(self.s.model, b"imageSizeOf:", &[Operand::object(payload)])?
                             .as_word()
                             .ok_or_else(bad)?;
                         // Prelude owns System as an empty Object. Native service state
@@ -584,7 +586,7 @@ impl Graph<'_, '_> {
                             let v = self.s.send(
                                 self.s.model,
                                 b"imageSlotAt:in:",
-                                &[Operand::word(slot), Operand::object(o)],
+                                &[Operand::word(slot), Operand::object(payload)],
                             )?;
                             node.fields.push(match v.kind() {
                                 abi::UNIT => Value::Null,
@@ -654,12 +656,20 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         let facts = s.facts.borrow().clone();
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let rows = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
+        let projected = s.call(q, s.named(b"Globals")?, b"imageBindingProjection", &[])?;
+        let projection = if projected == s.named(b"nil")? { None } else {
+            if s.is_error(projected)? { return Err(Outcome::loaded(Operand::object(projected))); }
+            let values=s.sequence(q,projected)?;
+            let [original, replacement]=values.as_slice() else { return Err(bad()) };
+            Some((*original,*replacement))
+        };
         let mut graph = Graph {
             s,
             q,
             objects: Vec::new(),
             indices: HashMap::new(),
             nodes: Vec::new(),
+            projection,
             behaviors: Vec::new(),
         };
         let mut fact_values = Vec::new();
@@ -1447,6 +1457,11 @@ unsafe fn load(
                 bad()
             });
         }
+        let globals = q.keep(s.named(b"Globals")?)?;
+        let binding_checkpoint = s.call(q, globals, b"imageBindingCheckpoint", &[])?;
+        if s.is_error(binding_checkpoint)? {
+            return Err(Outcome::loaded(Operand::object(binding_checkpoint)));
+        }
         let swapped = s.call(q, store, b"swapImageStateWith:", &[staged])?;
         if swapped != store {
             return Err(bad());
@@ -1490,6 +1505,10 @@ unsafe fn load(
             }
             for &o in &maps {
                 s.call(q, s.named(b"Map")?, b"rehashImage:", &[o])?;
+            }
+            let globals = q.keep(s.named(b"Globals")?)?;
+            if s.call(q, globals, b"releaseImageReservations", &[])? != globals {
+                return Err(bad());
             }
             let recovered = s.call(
                 q,
@@ -1545,6 +1564,9 @@ unsafe fn load(
                 return Err(bad());
             }
             if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
+                return Err(bad());
+            }
+            if s.call(q, globals, b"restoreImageBindings:", &[binding_checkpoint])? != globals {
                 return Err(bad());
             }
             return Err(error);

@@ -91,6 +91,9 @@ pub(super) unsafe fn check(h: &mut H) {
         );
         let origin = h.compile(b"let compiledAnswer := [20 + 22]; compiledAnswer");
         let block = h.block(origin);
+        // Both cold and warm runs update an existing binding. Authored Globals
+        // deliberately takes a different path when inserting a new name.
+        h.publish(b"compiledAnswer", h.named(b"nil"));
         let integer = h.named(b"Integer");
         let integer_vt = object(send(
             h.id,

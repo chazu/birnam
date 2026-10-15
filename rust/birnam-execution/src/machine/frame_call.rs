@@ -17,11 +17,7 @@ unsafe fn canonical_namespace(s: &Execution, namespace: Oop) -> Result<bool, Out
         let Some(entry) = lookup_target(s, namespace, s.names[b"at:".as_slice()])? else {
             return Ok(false);
         };
-        match s.send(namespace, b"isCanonicalLookup:", &[Operand::entry(entry)]) {
-            Ok(v) => Ok(v.as_word() == Some(1)),
-            Err(e) if e.status == native::UNBOUND => Ok(false),
-            Err(e) => Err(e),
-        }
+        Ok(s.optional_query(namespace, b"isCanonicalLookup:", &[Operand::entry(entry)])?.as_word() == Some(1))
     }
 }
 
@@ -138,11 +134,8 @@ pub(super) unsafe fn prepare(
         if s.integer_factory()? != integers {
             return Ok(Operand::unit());
         }
-        match s.send(integers, b"canOmitIndexing", &[]) {
-            Ok(v) if v.as_word() == Some(1) => (),
-            Ok(_) => return Ok(Operand::unit()),
-            Err(e) if e.status == native::UNBOUND => return Ok(Operand::unit()),
-            Err(e) => return Err(e),
+        if s.optional_query(integers, b"canOmitIndexing", &[])?.as_word() != Some(1) {
+            return Ok(Operand::unit());
         }
         let expected = {
             let state = s.machines.borrow();

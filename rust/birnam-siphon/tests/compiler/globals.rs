@@ -57,7 +57,7 @@ unsafe extern "C" fn replacing(c: *mut c_void, r: Oop, a: *const Operand, n: usi
 }
 unsafe fn save(h: &H, selector: &[u8], alias: &[u8]) -> NativeEntry {
     unsafe {
-        let vt = h.named(b"GlobalsVt");
+        let vt = object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(h.named(b"Globals"))]));
         let original = send(
             h.id,
             h.id.receiver,
@@ -77,7 +77,7 @@ unsafe fn save(h: &H, selector: &[u8], alias: &[u8]) -> NativeEntry {
 }
 unsafe fn restore(h: &H, selector: &[u8], alias: &[u8], original: NativeEntry) {
     unsafe {
-        let vt = h.named(b"GlobalsVt");
+        let vt = object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(h.named(b"Globals"))]));
         send(
             h.id,
             vt,
@@ -159,37 +159,21 @@ pub(super) unsafe fn check(h: &mut H) {
                 h.named(b"false")
             );
         }
-        // Source writes are real historied Store facts, visible to normal queries.
-        send(
-            h.id,
-            store,
-            b"assert:attr:value:",
-            &[
-                Operand::object(key(h, b"historiedSourceGlobal")),
-                Operand::object(key(h, b"history")),
-                Operand::object(h.named(b"true")),
-            ],
-        );
-        h.eval(b"let historiedSourceGlobal := 11");
-        let basis = object(send(h.id, store, b"basis", &[]));
-        h.keep(basis);
+        // Source bindings do not implicitly enroll in Store history. Explicit
+        // descriptions retain normal temporal/query behavior independently.
+        let v = h.eval(b"let historiedSourceGlobal := 11; [db assert: #historiedSourceGlobal attr: #history value: true]; [db assert: #__globals__ attr: #historiedSourceGlobal value: historiedSourceGlobal]");
+        h.keep(v);
+        let basis = object(send(h.id, store, b"basis", &[])); h.keep(basis);
         h.eval(b"let historiedSourceGlobal := 22");
-        let old = object(send(
-            h.id,
-            store,
-            b"valueOf:attr:asOf:",
-            &[
-                Operand::object(key(h, b"__globals__")),
-                Operand::object(key(h, b"historiedSourceGlobal")),
-                Operand::object(basis),
-            ],
-        ));
+        let described = h.eval(b"[db currentValue: #__globals__ attr: #historiedSourceGlobal]");
+        assert_eq!(h.integer(described), 11);
+        h.eval(b"[db assert: #__globals__ attr: #historiedSourceGlobal value: 99]");
+        let old = object(send(h.id, store, b"valueOf:attr:asOf:", &[
+            Operand::object(key(h, b"__globals__")), Operand::object(key(h, b"historiedSourceGlobal")), Operand::object(basis)]));
         assert_eq!(h.integer(old), 11);
         assert_eq!(h.integer(read(h, b"historiedSourceGlobal")), 22);
-        let v = h.eval(
-            b"[[db findAll: ?v where: #[ #[#__globals__ #historiedSourceGlobal ?v] ]] at: 0]",
-        );
-        assert_eq!(h.integer(v), 22);
+        let described = h.eval(b"[[db findAll: ?v where: #[ #[#__globals__ #historiedSourceGlobal ?v] ]] at: 0]");
+        assert_eq!(h.integer(described), 99);
         // A previously compiled reader observes a replacement getter and survives GC.
         let original = save(h, b"at:", b"savedCompilerGlobalAt:");
         let mut replacement = Replacement {
@@ -203,7 +187,7 @@ pub(super) unsafe fn check(h: &mut H) {
         };
         install(
             h.id,
-            h.named(b"GlobalsVt"),
+            object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(h.named(b"Globals"))])),
             b"at:",
             replacing,
             ptr::from_mut(&mut replacement).cast(),
@@ -234,7 +218,7 @@ pub(super) unsafe fn check(h: &mut H) {
         replacement.calls.set(0);
         install(
             h.id,
-            h.named(b"GlobalsVt"),
+            object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(h.named(b"Globals"))])),
             b"at:put:",
             replacing,
             ptr::from_mut(&mut replacement).cast(),
@@ -259,7 +243,7 @@ pub(super) unsafe fn check(h: &mut H) {
         let setter = save(h, b"at:put:", b"savedCompilerGlobalAt:put:");
         install(
             h.id,
-            h.named(b"GlobalsVt"),
+            object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(h.named(b"Globals"))])),
             b"at:put:",
             replacing,
             ptr::from_mut(&mut replacement).cast(),

@@ -1,0 +1,75 @@
+[Module load: #lsp]; [Module load: #os];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let server := [Lsp new]; let other := [Lsp new];
+[check value: [[[Reflect slotsOf: server] size] = 13] value: "missing server fields"];
+[check value: [[server versionOf: "file:///test"] = 0] value: "missing version default"];
+[server storeDoc: "file:///test" text: "first" version: 1];
+let snapshot := [server docsMap]; let copy := [server clone];
+[server storeDoc: "file:///test" text: "second" version: 2];
+[check value: [[[copy docsMap] at: "file:///test"] = "first"] value: "clone lost snapshot"];
+[check value: [[snapshot at: "file:///test"] = "first"] value: "persistent Map changed"];
+[check value: [[[other docsMap] size] = 0] value: "instances share writes"];
+[Reflect slot: #docs in: server put: {"file:///test" -> "reflected"}];
+[check value: [[[server docsMap] at: "file:///test"] = "reflected"] value: "reflection did not edit owner"];
+[db assert: server attr: #docs value: #independentFact];
+[check value: [[[server docsMap] at: "file:///test"] = "reflected"] value: "fact changed owned field"];
+[server onDidChange: {"textDocument" -> {"uri" -> "file:///test" "version" -> 1} "contentChanges" -> #[{"text" -> "stale"}]}];
+[check value: [[[server docsMap] at: "file:///test"] = "reflected"] value: "stale edit accepted"];
+[server rememberCompletion: #cached text: "reflected" uri: "file:///test" position: {"line" -> 0 "character" -> 0}];
+[server storeDoc: "file:///test" text: "third" version: 3];
+[check value: [[server cachedCompletionFor: "third" uri: "file:///test" position: {"line" -> 0 "character" -> 0}] isNil] value: "edit reused stale completion response"];
+[server inputBuffer: "Content-Length: 2\r\n\r\n{"];
+[check value: [[server takeBufferedMessage] isNil] value: "partial frame consumed"];
+[server inputBuffer: [[server inputBuffer] , "}Content-Length: 2\r\n\r\n[]"]];
+[check value: [[server takeBufferedMessage] = "{}"] value: "first frame wrong"];
+[check value: [[server takeBufferedMessage] = "[]"] value: "second frame wrong"];
+[check value: [[server inputBuffer] = ""] value: "framing did not drain"];
+let items := [server runtimeGlobalCompletionItems];
+[check value: [[server runtimeGlobalCompletionItems] == items] value: "completion snapshot rebuilt"];
+[check value: [[server runtimeGlobalCompletionBuildCount] = 1] value: "completion count wrong"];
+[server clearRuntimeGlobalCompletionCache];
+[check value: [[server runtimeGlobalCompletionBuildCount] = 0] value: "completion reset wrong"];
+// Methods remain ordinary and resumable, including construction policy.
+let original := [Lsp methodFor: #initialState]; let special := [Lsp new];
+[Reflect defineMethod: #initialState on: special as: [:self |
+  [[TaskExecutor current] wait];
+  [original invokeOn: self arguments: #[]]
+]];
+let task := [TaskControl start: [:task | [special new]]]; let token := [task waitToken];
+[check value: [token notNil] value: "constructor cannot suspend"];
+[System gc]; [task resolve: token with: nil];
+let outcome := [task pollOutcome];
+[check value: [[outcome at: 0] == #success] value: "constructor did not resume"];
+[check value: [[[[outcome at: 1] docsMap] size] = 0] value: "resumed constructor state"];
+// Override transport only; close must still release payloads and caches.
+let notices := [Cell with: nil];
+[Reflect defineMethod: #sendNote:params: on: server as: [:self :method :params | [notices set: #[method params]]; self]];
+[server onDidClose: {"textDocument" -> {"uri" -> "file:///test"}}];
+[System gc];
+[check value: [[[server docsMap] at: "file:///test"] isNil] value: "close retained text"];
+[check value: [[server versionOf: "file:///test"] = 0] value: "close retained version"];
+[check value: [[[notices value] at: 0] = "textDocument/publishDiagnostics"] value: "close bypassed live transport"];
+[check value: [[db currentValue: server attr: #docs] == #independentFact] value: "owner overwrote explicit fact"];
+let batch := [:count |
+  let before := [db retainedFactCount];
+  [[0 to: [count - 1]] do: [:i |
+    let local := [Lsp new];
+    [local storeDoc: "file:///bounded" text: "temporary" version: i];
+    [local inputBuffer: "bytes"];
+    [Reflect slot: #workspaceUri in: local put: "file:///workspace"];
+    [check value: [[local workspaceUri] = "file:///workspace"] value: "workspace reflection"]
+  ]];
+  [[db retainedFactCount] - before]
+];
+[batch value: 2]; [System gc];
+let rows := [#[0 1 30 100] inject: #[] into: [:rows :count |
+  [System gc]; let before := [System liveObjects];
+  let facts := [batch value: count]; [System gc];
+  [rows add: {"calls" -> count "fact_delta" -> facts "object_delta" -> [[System liveObjects] - before]}]
+]];
+[System println: [Json stringify: {"passed" -> true "batches" -> rows}]];
+nil
+] value]

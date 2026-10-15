@@ -1,0 +1,2744 @@
+{
+  "schema": 1,
+  "passed": true,
+  "base_commit": "777df40abd0d5d43aaf90bf5e11789f922c04f11",
+  "scope": "Default authored Globals ownership, including reservations and transactional images; includes the preceding uncommitted LSP/binding-owner slice. No commit, push, or installed-prefix replacement.",
+  "source_sha256": {
+    "docs/design/lsp-and-globals-owners.md": "7be80707276c21f5e78b8b8b870a06a1a09a787ba0db557a45c006a019f98d00",
+    "docs/design/optional-store-and-relational.md": "b1d9c8cc95e83cbc9ecdb545aaca2856e5e46f99eab5aef48fe65f75c13f5488",
+    "docs/design/owned-globals.md": "bdba3448fccf3de8d583e89fffc1c362567c39b9133d4bae0f74871c75665be3",
+    "docs/design/store-planner-experiment.md": "15463d24a248443ba3fa89a295f3ac1a024f2c2a961eea334c138d08c95e4b68",
+    "formal/semantics/lean/GlobalsBinding.lean": "4a2d37b4a9815eb457aec3bd9cb3924acb9ae0d216127f32d802f87f6cf67ae6",
+    "formal/semantics/lean/SemanticsAudit.lean": "35869d1f1abcfc1e5f2eb7f0104c63dc89b831a1f89e634de602bbb939351427",
+    "formal/semantics/tla/DriveAction.cfg": "1e7e3675c946d7c6d07ac426cc18790335e7151a21a4b46d9394a553254345bb",
+    "formal/semantics/tla/DriveEpoch.cfg": "f32409e79d240db40ca6d5edb35fdbc192c17eae33894ced08cc46bc037649ba",
+    "formal/semantics/tla/DriveFrame.cfg": "6dc17b036bf8c17bd6a7c87fa9264de72219edd7932418c80a7bcfc7d624e3e5",
+    "formal/semantics/tla/DriveLease.cfg": "b4f6095a4a6283a83b49b6e11f6cff331366e0c77c8eb8093087b899fe0c2089",
+    "formal/semantics/tla/DriveSafe.cfg": "a109014ce9f7e37b2fb07fac975037b53681f5ca634c06d41fd61d17175a3628",
+    "formal/semantics/tla/DriveScope.cfg": "26d7ae228c0c1f477937b99a1de721ee6455cd16357d66124855d251335294a0",
+    "formal/semantics/tla/GlobalsOwner.tla": "65994032f4b7c1347764742ce65d3d0ea770732f9bb5f3e27e520dce3f8da323",
+    "formal/semantics/tla/OwnedABA.cfg": "bf7e27501289e7c1b976ce41262b5cd2ea02f8733252597ef2016b4f72b04d16",
+    "formal/semantics/tla/OwnedConstruction.cfg": "beb23ccbf5550dd4292c447cf5cda775b65c655aa64b0918f9e1256024055eda",
+    "formal/semantics/tla/OwnedCredits.cfg": "ad55dfa1d130422d8ed2ed0509b0dc7d079168d38a1b5aea2731cf08a8252a81",
+    "formal/semantics/tla/OwnedForeign.cfg": "496be6b38a34a91215958d9dff257c68d7db31bfcf1d3ecbc660c00656f52ef3",
+    "formal/semantics/tla/OwnedImage.cfg": "e9dda9d908807e994a5f7272484cb7981f8814e2bb1443aee0a06a78f28117c0",
+    "formal/semantics/tla/OwnedLost.cfg": "bd8d1061f78a1b8da1f423ee845465fd304f8a0771269ce38571a28c6def331b",
+    "formal/semantics/tla/OwnedSafe.cfg": "25b7d79e7951631ab205ed4ab089d3b1843f58c6a0f1ed8fab7346239570547e",
+    "formal/semantics/tla/RecoveryDrive.tla": "33d3aeb0df9f6cd81f8acfe8eba02ebaf16c9dd5c7ebbba60a553a307e553fd6",
+    "modules/globals.birnam": "98cbf951356c6e9882000a6c80dd18f99b351014084ff52aec481679e2854f13",
+    "modules/json.birnam": "9461985d7c7435843957f569442a5ab9c32ffa6911499ab3aab05a63a89d10d7",
+    "modules/lsp.birnam": "bd02b786572b91aee428e4d9f1219429a1d05ff1883e3953781f1c8b131e9bc3",
+    "modules/toml.birnam": "2af56b9616db014cb632509083f219410c1e7d24fa830b12e558e99a9562a433",
+    "rust/birnam-bootstrap/src/lib.rs": "e2cce5df9f6c60f611de811969832f260e5e66fad1b24d5a0cc190b013dcad48",
+    "rust/birnam-build/src/main.rs": "0ced900d96c3289fafea5ad662933248903e2f36c2be001999a8a3573c42393b",
+    "rust/birnam-codegen-runtime/src/reflection.rs": "a7cd73f9983026f0ec644d6bd8a29898ee7c4bcad99242491438a3e738ed965a",
+    "rust/birnam-collect/src/construction.rs": "a344409ef00f365d8a765c8369d9f212ccc88df26b3b1a230ac0bceba1b78f2a",
+    "rust/birnam-collect/src/lib.rs": "6b04e147500612f6b3f1807e255858b3bb8337c3001ac62721b73fa5a5cca3ec",
+    "rust/birnam-execution/src/execution.rs": "7efa69dc07e1512918630ca7342bb77b888ea206e301f9f04a9df80c1e276dff",
+    "rust/birnam-execution/src/execution/recovery.rs": "cd4c0544f2de38b3c71e4d3eef298df72fbf3e3dcf012679013d431ecf3e9bd8",
+    "rust/birnam-execution/src/lib.rs": "04cfe078969a593f017b0b44141466fcdba6aee8f84e5c72251ee7af572111cc",
+    "rust/birnam-execution/src/machine.rs": "1e49ecdfd75c5e2c2405d8e6fc17a37cbd0e6669ad26a49bb758f865a82355d4",
+    "rust/birnam-execution/src/machine/frame_call.rs": "f1f5dd84d27d34084bcd6e7eec47ac460bbbe399b123a7220d4854938edf941b",
+    "rust/birnam-execution/src/numeric.rs": "c5e6ee16a7d93ecb18e4332824c7c8d86cd2962027392ec740203530e0a77b06",
+    "rust/birnam-execution/src/word_helper.rs": "fe61e697d65a7b9a993c9e27a402a3e668e89865afcd7836565d4370de408f5f",
+    "rust/birnam-generation/src/candidate_ledger.rs": "99ab68845cc324ca8b86d290a69f6f7a63c5e6777bca9d07d02248d1e97b5ad7",
+    "rust/birnam-generation/src/candidate_preparation.rs": "4729d5e65f1b286360495c53ec23e22b8b2d5036b3bd0517e918b00e0fad91f0",
+    "rust/birnam-generation/src/candidate_transaction.rs": "8bdbd1303ab370e7193e8829e783107ca5db0be64e0fd8f470af24df058f6c76",
+    "rust/birnam-id/src/id/native_id/objects.rs": "c12a253c4f037b618e66bf07013ce27d9cada8f1ef3445963a9d093e0c68135c",
+    "rust/birnam-id/src/id/vtable.rs": "6e06b218709bab5fedd0a64926d0cc7a1dc22d4578372d643f13bf5821164774",
+    "rust/birnam-image/src/native.rs": "932b085f8273b683db410a9611879ea5b01a14d70fc5603d4e26133357f0386a",
+    "rust/birnam-object-model/src/native.rs": "76efa03083be4a14f8c505932a4a392aac0846f199e14500bec207a25af92b61",
+    "rust/birnam-siphon/tests/candidate.rs": "f5fcec40c395e9320cee4ad119507b9c4dd5a70f83c79aafcfd5ac227006f1f7",
+    "rust/birnam-siphon/tests/compiler/dispatch.rs": "a3610cfbe0b901263535081f5f4fe5b21bae815184fa4c69ef6dfe5f35ad48a9",
+    "rust/birnam-siphon/tests/compiler/globals.rs": "20696def1485ac411684d2e92d4270a317df8d190ec780eec29ef1aeb63472e8",
+    "rust/birnam-siphon/tests/compiler/numeric_predicate.rs": "828884367175b2b6910e6e1e421d2b65e1e5a244dd89c216b86330b2225f0eb0",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "8282d88afc9c3a3471c03b3f59055ffd36b5891d5614197595a741775d4f069a",
+    "rust/birnam-siphon/tests/globals_without_store.rs": "c9fee5237c4651b25640910dc301daf6c9ee2dffbd53ed84de7e4a593cf7cf34",
+    "rust/birnam-siphon/tests/image.rs": "649131aa3cbde446f972535b14d46aaa9c89caf1e3afeb549e929d1c3a06c229",
+    "rust/birnam-siphon/tests/materialization.rs": "305da14cf8a752d5fdf8e4848660211c9ddf2e7317692e8be494717c0174de51",
+    "rust/birnam-siphon/tests/owned_globals.rs": "d4e0ee7d28a3d03cfee9abd985623c12c24a011adb1086b33cf89a4a36909b2b",
+    "rust/birnam-siphon/tests/store.rs": "c234777fa8b9145995c8464356e86fd43e682fb600b4e328ce637f22b8c4b121",
+    "rust/birnam-siphon/tests/store_compensation.rs": "a2816da8c25837a08486a2f6e4716900eb8e4d6506da72a2980a34f528c85a73",
+    "rust/birnam-siphon/tests/support/mod.rs": "47cb5339fce88a7588ccfe0d80252fb62ec7f13402af4d47d6b1337c1577ec19",
+    "rust/birnam-store/README.md": "92efbbe966f3f85ea70de70a795f9df4271ddc13b688bf6d4782603995a8f6c7",
+    "rust/birnam-store/src/native.rs": "71c273e8afa54259bbfee7ac064e2c34ea97989cbd8ab66a257afd818bc7e79b",
+    "scripts/birnam-test.sh": "4c9b84e5261110342ab4f919576454b670f4cae262ad53a92eac362da3f8ff9e",
+    "scripts/check-rooting-model.py": "81ade2bce29f537fb0da3845aaf3b09aca50e9176c2417b6c7b090d046d16b68",
+    "scripts/globals-owner-bench.py": "08c4035ea56cd8bb79e87e5ba00043894cec7ca5eafe5501147be96d2708d910",
+    "scripts/globals-without-store-test.py": "31500d745ede847c3375a28a7c8a29bb01244fe8b37ea765b3bb6d4345904a07",
+    "scripts/host-cli-test.py": "54beb3cfecfd07ebdcc299a4d484104f754e0d39e8722d49f025aecb241da664",
+    "scripts/lsp-owner-test.py": "66c051956876f57681bb7e27a136156dcfcefad9b505bc22d21408f834d883f2",
+    "scripts/native-message-test.sh": "ee0f525bf2f93f53c742094e52d656e3c2f8ae64c448bee651d6cc178fb50205",
+    "scripts/owned-globals-test.py": "6670520ee1e78a7a774fe193c258df760e95daf48da824435726ca871d43d373",
+    "tests/fixtures/globals-owner.birnam": "0c32d9b636a71450d9a918c70b6f4af0df156de1ac04c9ce7b29ca2cfd5aa142",
+    "tests/fixtures/lsp-owner.birnam": "93b9a1c969b5071748c97f829a72569cfad3bbb220441ae50f4a57bace900c95",
+    "tests/fixtures/owned-globals.birnam": "686d590e3b5c525c5bacaf59375e497728b743bf51ff0ffb47dec4feea79f7d7"
+  },
+  "checks": {
+    "delivery-build": {
+      "path": "/tmp/birnam-owned-globals/delivery-build.log",
+      "sha256": "533d8c2ca02d80d03233589d0e1406f94ef53e758bbb10e3ea8cbe2414e83dbe",
+      "tail": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s",
+        "     Running `.cargo-target/install/driver/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /tmp/birnam-owned-globals/delivery-prefix --profile release --build-cache /Users/chazu/dev/zig/birnam/.cargo-target/install`",
+        "   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)",
+        "    Finished `release` profile [optimized] target(s) in 1.27s",
+        "   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)",
+        "    Finished `release` profile [optimized] target(s) in 0.63s",
+        "rust-install: published /private/tmp/birnam-owned-globals/delivery-prefix (38 native libraries, 4 source bootstrap modules, 23 authored tools)"
+      ]
+    },
+    "delivery-owner": {
+      "path": "/tmp/birnam-owned-globals/delivery-owner.log",
+      "sha256": "6797d5108501e93d65bc96935ad95c63403c705ea75bb5e9489c3d5f29793e6c",
+      "tail": [
+        "owned-globals: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-owned-globals-7tkyg1yv/results.json"
+      ]
+    },
+    "language-complete": {
+      "path": "/tmp/birnam-owned-globals/language-complete.log",
+      "sha256": "e07c10ce3a78e146cf1ec12c0488a1b3fe282ab5f89855c6a689faa1ed77fcd5",
+      "tail": [
+        "local-cells: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-uxqkzinq/results.json",
+        "reflect-slots: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-reflect-slots-vuewbm_t/results.json",
+        "module-registry: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-module-registry-09np1g97/results.json",
+        "cell-owner: passed",
+        "lsp-owner: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-lsp-owner-yrs3s2qr/results.json",
+        "globals-owner: passed",
+        "owned-globals: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-owned-globals-o_ylh0s3/results.json",
+        "birnam-test: module suites passed"
+      ]
+    },
+    "repl-complete": {
+      "path": "/tmp/birnam-owned-globals/repl-complete.log",
+      "sha256": "277c172610aa2e7128f2eabc580868604aa5c80217ebc41bef3d4957b76d3d99",
+      "tail": [
+        "ok   config: ancestor discovery + load-before-root-relative-main",
+        "ok   image boot: REPL over a mapped image sees its bindings",
+        "ok   image boot: doc'd stdlib string protocol survives (incl. guards)",
+        "ok   image boot: a module singleton and its Alien wraps survive",
+        "ok   image boot: G0 module survives and post-G0 introduction is rejected",
+        "ok   store surface: absent fact reads answer nil (no VM panic)",
+        "----",
+        "repl-golden: 26 passed, 0 failed"
+      ]
+    },
+    "images-complete": {
+      "path": "/tmp/birnam-owned-globals/images-complete.log",
+      "sha256": "378db797ce886527ece30baef63a6feb87ece35f04e9751728a277d6769bce43",
+      "tail": [
+        "owned-globals: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-owned-globals-8zsl1w6e/results.json"
+      ]
+    },
+    "host-complete": {
+      "path": "/tmp/birnam-owned-globals/host-complete.log",
+      "sha256": "0b90f67b6a18f161a156ffac52449ca7998f9f639c3cbafa729d68aa6282f5ae",
+      "tail": [
+        "installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and early mode validation passed"
+      ]
+    },
+    "artifacts-complete": {
+      "path": "/tmp/birnam-owned-globals/artifacts-complete.log",
+      "sha256": "8a0884f3183642dfa608adf99a4641fe8f7ccda9a40d2b02e0775771e96f3f21",
+      "tail": [
+        "installed artifacts: inert compile, removed source/assets, nested globals, dependency order, preflight and failures passed"
+      ]
+    },
+    "formal-complete": {
+      "path": "/tmp/birnam-owned-globals/formal-complete.log",
+      "sha256": "1ec95b5e6beebb5eb04edb8deb037d4f3267264e0519aca1fa4e1dcad0f067c9",
+      "tail": [
+        "Lean ignore-observation: rejected",
+        "Lean ignore-permission: rejected",
+        "Lean free-owner-batch: rejected",
+        "Lean omit-first: rejected",
+        "Lean leak-on-exit: rejected",
+        "Lean skip-materialization: rejected",
+        "Lean: 263 theorems checked; only standard kernel axioms",
+        "Rooting verification passed: /Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-th4w9h9q/summary.json"
+      ]
+    },
+    "floor-complete": {
+      "path": "/tmp/birnam-owned-globals/floor-complete.log",
+      "sha256": "004b4c443a84afee746fdaec1e9f16fdb5a594c4cc0518710360cdae7f68de12",
+      "tail": [
+        "globals-without-store: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-floor-jj5i0t5z/results.json"
+      ]
+    },
+    "cell-floor-complete": {
+      "path": "/tmp/birnam-owned-globals/cell-floor-complete.log",
+      "sha256": "c8bd3f3bd31d8cdf5ca19018e0e9d4dcdc2ef48a4b7cbd30d2eaa3a2c3348ead",
+      "tail": [
+        "cell-without-store: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-cell-without-store-aw24cip9/results.json"
+      ]
+    },
+    "lifecycle-complete-mise": {
+      "path": "/tmp/birnam-owned-globals/lifecycle-complete-mise.log",
+      "sha256": "f35657978f8092008c2852bb8edb410bb4a74d916f9403483331ffc1ea57cb42",
+      "tail": [
+        "generation: running mutation guard, console intent activation and exact rollback passed",
+        "generation: TCP activation/rollback, guard, multiline, diagnostics and successive sessions passed"
+      ]
+    },
+    "lsp-protocol-complete": {
+      "path": "/tmp/birnam-owned-globals/lsp-protocol-complete.log",
+      "sha256": "6f4cfeade9bd4c4265c6c3d0befff136195b6d0229272146a75d557475c610cb",
+      "tail": [
+        "perl: warning: Setting locale failed.",
+        "perl: warning: Please check that your locale settings:",
+        "\tLC_ALL = \"C.UTF-8\",",
+        "\tLC_CTYPE = \"C.UTF-8\",",
+        "\tLANG = \"en_US.UTF-8\"",
+        "    are supported and installed on your system.",
+        "perl: warning: Falling back to a fallback locale (\"en_US.UTF-8\").",
+        "lsp-project smoke: workspace, shared diagnostics, UTF-16, versions, and close passed"
+      ]
+    },
+    "lsp-complete-correct-legacy": {
+      "path": "/tmp/birnam-owned-globals/lsp-complete-correct-legacy.log",
+      "sha256": "300ad72318933bf318b049cbf1cbb04f1c8c32f8075848886f055e953a0cdddf",
+      "tail": [
+        "lsp-owner: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-lsp-owner-xjanbz4z/results.json"
+      ]
+    },
+    "image-chain-cleanup": {
+      "path": "/tmp/birnam-owned-globals/image-chain-cleanup.log",
+      "sha256": "4142bf2678c3aec1aebcee99316c0af7d4d4909d0c15ea6bd6b756f0ddb2e979",
+      "tail": [
+        "test repeated_image_resaves_keep_a_fixed_live_set ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 29.21s",
+        "",
+        "test repeated_image_resaves_keep_a_fixed_live_set ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 730.16s",
+        ""
+      ]
+    },
+    "image-owner-cleanup": {
+      "path": "/tmp/birnam-owned-globals/image-owner-cleanup.log",
+      "sha256": "9e4dc52551cc5d33eaa665c3176236714643749d4c2acecea3110065d213dafa",
+      "tail": [
+        "test image_owner_roundtrip ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 165.11s",
+        "",
+        "test image_owner_roundtrip ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 387.35s",
+        ""
+      ]
+    },
+    "native-floor-recheck": {
+      "path": "/tmp/birnam-owned-globals/native-floor-recheck.log",
+      "sha256": "8197f93314074de72864662652129bf02edc12d607ae8de8ccd0623e83a47b2a",
+      "tail": [
+        "",
+        "     Running tests/global_resolution.rs (.cargo-target/native-message-tests/debug/deps/global_resolution-3c3396a61dc4ba59)",
+        "",
+        "running 1 test",
+        "test global_resolution_preserves_precedence_getter_order_rebinding_gc_and_failures ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s",
+        ""
+      ]
+    },
+    "native-remaining-3": {
+      "path": "/tmp/birnam-owned-globals/native-remaining-3.log",
+      "sha256": "efc1dd09c4c7a3ec361d448efd00b5c905088ab5e166449857a65a3091052fcc",
+      "tail": [
+        "",
+        "     Running tests/word_representation_order.rs (.cargo-target/native-message-tests/debug/deps/word_representation_order-62a8c328da9d1804)",
+        "",
+        "running 1 test",
+        "test ordered_fallback_and_left_failure_precede_bad_right_carriers ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s",
+        ""
+      ]
+    },
+    "units-qualified": {
+      "path": "/tmp/birnam-owned-globals/units-qualified.log",
+      "sha256": "ebf1645c1b4d8c88e687c3254a3302fa2cd48e5d29327ff3dee486baa1f2c3c4",
+      "tail": [
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "",
+        "   Doc-tests birnam_object_model",
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    }
+  },
+  "native_tests": {
+    "alien": {
+      "log": "native-floor-recheck.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 108.86s"
+    },
+    "allocation_accounting": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.49s"
+    },
+    "artifact": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.02s"
+    },
+    "artifact_activation": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s"
+    },
+    "binding_proof": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    "block_loop": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.31s"
+    },
+    "boolean_values": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s"
+    },
+    "byte_abi": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s"
+    },
+    "candidate": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.28s"
+    },
+    "candidate_retirement": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.15s"
+    },
+    "capture_access": {
+      "log": "native-floor-recheck.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.44s"
+    },
+    "capture_dependencies": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s"
+    },
+    "closure_construction": {
+      "log": "native-floor-recheck.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.72s"
+    },
+    "collections": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.06s"
+    },
+    "compiler": {
+      "log": "native-floor-recheck.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 102.22s"
+    },
+    "embedding": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.68s"
+    },
+    "execution_machines": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.89s"
+    },
+    "execution_methods": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s"
+    },
+    "external_allocation": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.20s"
+    },
+    "fixed_abi": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.27s"
+    },
+    "generation": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.00s"
+    },
+    "generation_ledger": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.89s"
+    },
+    "generation_transaction": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 78.12s"
+    },
+    "global_resolution": {
+      "log": "native-floor-recheck.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s"
+    },
+    "guard_batch": {
+      "log": "native-complete.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s"
+    },
+    "integer_box_observability": {
+      "log": "native-remaining.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s"
+    },
+    "integer_operation_objects": {
+      "log": "native-remaining.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s"
+    },
+    "integer_values": {
+      "log": "native-remaining.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s"
+    },
+    "invocation_inputs": {
+      "log": "native-remaining.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s"
+    },
+    "isolate": {
+      "log": "native-remaining.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.89s"
+    },
+    "materialization": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.67s"
+    },
+    "memory": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.31s"
+    },
+    "memory_activation": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    "method_observation": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s"
+    },
+    "modules": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s"
+    },
+    "native_incoming": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s"
+    },
+    "native_loader": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 501.53s"
+    },
+    "native_numeric_inputs": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s"
+    },
+    "native_values": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s"
+    },
+    "numbers": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.95s"
+    },
+    "numbers_loading": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s"
+    },
+    "object_model": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s"
+    },
+    "object_model_scopes": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s"
+    },
+    "object_model_slots": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s"
+    },
+    "owned_globals": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.41s"
+    },
+    "portable_code": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.28s"
+    },
+    "relational": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.00s"
+    },
+    "representation": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    "representation_batch": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    "representation_fallback": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s"
+    },
+    "result_cleanup": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.81s"
+    },
+    "root_batches": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    "root_reuse": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s"
+    },
+    "roots": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s"
+    },
+    "source_loader": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.72s"
+    },
+    "storage_trace": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s"
+    },
+    "store": {
+      "log": "native-remaining-2.log",
+      "result": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.39s"
+    },
+    "store_compensation": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s"
+    },
+    "system_gc": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.51s"
+    },
+    "system_output": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s"
+    },
+    "system_services": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.74s"
+    },
+    "tagged_rows": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s"
+    },
+    "text_error": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.35s"
+    },
+    "trace_graphs": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.55s"
+    },
+    "trace_heap": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.28s"
+    },
+    "word_expression": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s"
+    },
+    "word_helper": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s"
+    },
+    "word_representation_order": {
+      "log": "native-remaining-3.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s"
+    },
+    "borrowed_read_inputs": {
+      "log": "native-floor-recheck.log",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s"
+    },
+    "image": {
+      "logs": [
+        "image-owner-cleanup.log",
+        "image-chain-cleanup.log"
+      ],
+      "result": "Both image tests passed separately after correcting teardown; exact reclamation and all 20 resave epoch checks retained."
+    }
+  },
+  "native_evidence_logs": {
+    "native-complete": {
+      "path": "/tmp/birnam-owned-globals/native-complete.log",
+      "sha256": "99fe7037d1c43e7760d99583a3255b387b7f4a844b37be80136d1ee8b41c12ce",
+      "tail": [
+        "",
+        "",
+        "failures:",
+        "    repeated_image_resaves_keep_a_fixed_live_set",
+        "",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 265.56s",
+        "",
+        "error: test failed, to rerun pass `-p birnam-siphon --test image`"
+      ]
+    },
+    "native-remaining": {
+      "path": "/tmp/birnam-owned-globals/native-remaining.log",
+      "sha256": "cd070511ee06a0c55e741044d5f2fc3bc7424349bf3951f35fc3f78e419c7c00",
+      "tail": [
+        "",
+        "",
+        "failures:",
+        "    portable_materialization_preserves_identity_control_and_lifetime",
+        "",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s",
+        "",
+        "error: test failed, to rerun pass `-p birnam-siphon --test materialization`"
+      ]
+    },
+    "native-remaining-2": {
+      "path": "/tmp/birnam-owned-globals/native-remaining-2.log",
+      "sha256": "e6115f0fbf2d2958a252452896ba4d8406f1508dd40428334b66a51832fcf7cf",
+      "tail": [
+        "",
+        "",
+        "failures:",
+        "    reserved_compensation_survives_capacity_exhaustion_and_preserves_other_facts",
+        "",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s",
+        "",
+        "error: test failed, to rerun pass `-p birnam-siphon --test store_compensation`"
+      ]
+    },
+    "native-remaining-3": {
+      "path": "/tmp/birnam-owned-globals/native-remaining-3.log",
+      "sha256": "efc1dd09c4c7a3ec361d448efd00b5c905088ab5e166449857a65a3091052fcc",
+      "tail": [
+        "",
+        "     Running tests/word_representation_order.rs (.cargo-target/native-message-tests/debug/deps/word_representation_order-62a8c328da9d1804)",
+        "",
+        "running 1 test",
+        "test ordered_fallback_and_left_failure_precede_bad_right_carriers ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s",
+        ""
+      ]
+    },
+    "native-floor-recheck": {
+      "path": "/tmp/birnam-owned-globals/native-floor-recheck.log",
+      "sha256": "8197f93314074de72864662652129bf02edc12d607ae8de8ccd0623e83a47b2a",
+      "tail": [
+        "",
+        "     Running tests/global_resolution.rs (.cargo-target/native-message-tests/debug/deps/global_resolution-3c3396a61dc4ba59)",
+        "",
+        "running 1 test",
+        "test global_resolution_preserves_precedence_getter_order_rebinding_gc_and_failures ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s",
+        ""
+      ]
+    }
+  },
+  "native_evidence_scope": "Coverage is assembled from successful per-test sections. Earlier image, materialization, and Store-capacity fixture failures are superseded by the corrected runs, not counted as passes.",
+  "image_chain_observations": {
+    "path": "/tmp/birnam-owned-globals/image-chain-observations.json",
+    "sha256": "51289e143394ffbc8d593ebc3b920b03f3ee96c2c5aa1a968900bd617a0315a7",
+    "result": {
+      ".epoch-16": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-2": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-11": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-5": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-18": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-10": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-4": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-17": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-3": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-12": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-6": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-15": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-1": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-8": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-9": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-14": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-0": [
+        311,
+        960,
+        307,
+        112978440
+      ],
+      ".epoch-13": [
+        311,
+        960,
+        623,
+        112978440
+      ],
+      ".epoch-7": [
+        311,
+        960,
+        623,
+        112978440
+      ]
+    }
+  },
+  "formal": {
+    "summary_path": "/Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-th4w9h9q/summary.json",
+    "theorems": 263,
+    "rejected_mutations": 60,
+    "tlc_outcomes": 140,
+    "scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+  },
+  "microbench": {
+    "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/results.json",
+    "sha256": "8d4f1c0fc472805c4cfeea4c262b4cf988f609f9ef4145f501a4c78f513d5c04",
+    "result": {
+      "passed": true,
+      "prefixes": {
+        "baseline": "/private/tmp/birnam-lsp-owner/qualified-prefix",
+        "candidate": "/private/tmp/birnam-owned-globals/complete-prefix"
+      },
+      "runner_sha256": "08c4035ea56cd8bb79e87e5ba00043894cec7ca5eafe5501147be96d2708d910",
+      "runs": [
+        {
+          "case": "read",
+          "label": "baseline",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 2525326209,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":2525326209,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":2525326209,\"answer\":14000}\n",
+            "wall_ns": 11529655667
+          },
+          "sample": 0
+        },
+        {
+          "case": "source-read",
+          "label": "baseline",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 2587126875,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/source-read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":2587126875,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":2587126875,\"answer\":14000}\n",
+            "wall_ns": 11162590250
+          },
+          "sample": 0
+        },
+        {
+          "case": "write",
+          "label": "baseline",
+          "observation": {
+            "answer": 500,
+            "cpu_ns": 432602708,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/write.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":432602708,\"answer\":500}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":432602708,\"answer\":500}\n",
+            "wall_ns": 7653105250
+          },
+          "sample": 0
+        },
+        {
+          "case": "read",
+          "label": "candidate",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 3582254250,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":3582254250,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":3582254250,\"answer\":14000}\n",
+            "wall_ns": 12593077333
+          },
+          "sample": 0
+        },
+        {
+          "case": "source-read",
+          "label": "candidate",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 3527801416,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/source-read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":3527801416,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":3527801416,\"answer\":14000}\n",
+            "wall_ns": 12406923667
+          },
+          "sample": 0
+        },
+        {
+          "case": "write",
+          "label": "candidate",
+          "observation": {
+            "answer": 500,
+            "cpu_ns": 1437568083,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/write.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1437568083,\"answer\":500}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1437568083,\"answer\":500}\n",
+            "wall_ns": 10427061750
+          },
+          "sample": 0
+        },
+        {
+          "case": "read",
+          "label": "candidate",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 3744867000,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":3744867000,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":3744867000,\"answer\":14000}\n",
+            "wall_ns": 13020230375
+          },
+          "sample": 1
+        },
+        {
+          "case": "source-read",
+          "label": "candidate",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 3666962334,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/source-read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":3666962334,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":3666962334,\"answer\":14000}\n",
+            "wall_ns": 13304489834
+          },
+          "sample": 1
+        },
+        {
+          "case": "write",
+          "label": "candidate",
+          "observation": {
+            "answer": 500,
+            "cpu_ns": 1350065042,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/write.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1350065042,\"answer\":500}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1350065042,\"answer\":500}\n",
+            "wall_ns": 8965199875
+          },
+          "sample": 1
+        },
+        {
+          "case": "read",
+          "label": "baseline",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 1842377375,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1842377375,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1842377375,\"answer\":14000}\n",
+            "wall_ns": 8046722666
+          },
+          "sample": 1
+        },
+        {
+          "case": "source-read",
+          "label": "baseline",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 1823122333,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/source-read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1823122333,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1823122333,\"answer\":14000}\n",
+            "wall_ns": 7881183416
+          },
+          "sample": 1
+        },
+        {
+          "case": "write",
+          "label": "baseline",
+          "observation": {
+            "answer": 500,
+            "cpu_ns": 402272042,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/write.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":402272042,\"answer\":500}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":402272042,\"answer\":500}\n",
+            "wall_ns": 6728506000
+          },
+          "sample": 1
+        },
+        {
+          "case": "read",
+          "label": "baseline",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 1712216875,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1712216875,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1712216875,\"answer\":14000}\n",
+            "wall_ns": 7757973875
+          },
+          "sample": 2
+        },
+        {
+          "case": "source-read",
+          "label": "baseline",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 1719595333,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/source-read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1719595333,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1719595333,\"answer\":14000}\n",
+            "wall_ns": 7169948833
+          },
+          "sample": 2
+        },
+        {
+          "case": "write",
+          "label": "baseline",
+          "observation": {
+            "answer": 500,
+            "cpu_ns": 346937625,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/write.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":346937625,\"answer\":500}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":346937625,\"answer\":500}\n",
+            "wall_ns": 5676059791
+          },
+          "sample": 2
+        },
+        {
+          "case": "read",
+          "label": "candidate",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 2681926708,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":2681926708,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":2681926708,\"answer\":14000}\n",
+            "wall_ns": 9728321000
+          },
+          "sample": 2
+        },
+        {
+          "case": "source-read",
+          "label": "candidate",
+          "observation": {
+            "answer": 14000,
+            "cpu_ns": 2693037917,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/source-read.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":2693037917,\"answer\":14000}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":2693037917,\"answer\":14000}\n",
+            "wall_ns": 10006291542
+          },
+          "sample": 2
+        },
+        {
+          "case": "write",
+          "label": "candidate",
+          "observation": {
+            "answer": 500,
+            "cpu_ns": 1259699625,
+            "fact_delta": 0
+          },
+          "run": {
+            "argv": [
+              "/private/tmp/birnam-owned-globals/complete-prefix/bin/birnam",
+              "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-pds_muvw/write.birnam"
+            ],
+            "exit_code": 0,
+            "output": "{\"fact_delta\":0,\"cpu_ns\":1259699625,\"answer\":500}\n",
+            "stderr": "",
+            "stdout": "{\"fact_delta\":0,\"cpu_ns\":1259699625,\"answer\":500}\n",
+            "wall_ns": 8736823083
+          },
+          "sample": 2
+        }
+      ],
+      "scope": "Darwin thread CPU clock 16. Normal GC. Startup, setup and explicit final GC excluded. These are operation microbenchmarks, not whole-language speedups.",
+      "sources": {
+        "read": "[Module load: #time]; [Module load: #json];\n[[|\nlet owner := Globals; [owner at: #globalsBenchValue put: 7];\nlet operation := [:count | [[1 to: count] inject: 0 into: [:sum :i | [sum + [owner at: #globalsBenchValue]]]]]; [operation value: 10]; [System gc];\nlet facts := [db retainedFactCount]; let cpu := [16 clockNanos];\nlet answer := [operation value: 2000]; let elapsed := [[16 clockNanos] - cpu];\n[System gc];\n[System println: [Json stringify: {\"answer\" -> answer \"cpu_ns\" -> elapsed \"fact_delta\" -> [[db retainedFactCount] - facts]}]]\n] value]\n",
+        "source-read": "[Module load: #time]; [Module load: #json];\n[[|\nlet owner := Globals; [owner at: #globalsBenchValue put: 7];\nlet operation := [:count | [[1 to: count] inject: 0 into: [:sum :i | [sum + globalsBenchValue]]]]; [operation value: 10]; [System gc];\nlet facts := [db retainedFactCount]; let cpu := [16 clockNanos];\nlet answer := [operation value: 2000]; let elapsed := [[16 clockNanos] - cpu];\n[System gc];\n[System println: [Json stringify: {\"answer\" -> answer \"cpu_ns\" -> elapsed \"fact_delta\" -> [[db retainedFactCount] - facts]}]]\n] value]\n",
+        "write": "[Module load: #time]; [Module load: #json];\n[[|\nlet owner := Globals; [owner at: #globalsBenchValue put: 7];\nlet operation := [:count | [[1 to: count] do: [:i | [owner at: #globalsBenchWrite put: i]]]; [owner at: #globalsBenchWrite]]; [operation value: 10]; [System gc];\nlet facts := [db retainedFactCount]; let cpu := [16 clockNanos];\nlet answer := [operation value: 500]; let elapsed := [[16 clockNanos] - cpu];\n[System gc];\n[System println: [Json stringify: {\"answer\" -> answer \"cpu_ns\" -> elapsed \"fact_delta\" -> [[db retainedFactCount] - facts]}]]\n] value]\n"
+      },
+      "summary": {
+        "read": {
+          "candidate_over_baseline": 1.9443650896983036,
+          "median_cpu_ns": {
+            "baseline": 1842377375,
+            "candidate": 3582254250
+          }
+        },
+        "source-read": {
+          "candidate_over_baseline": 1.9350327469220905,
+          "median_cpu_ns": {
+            "baseline": 1823122333,
+            "candidate": 3527801416
+          }
+        },
+        "write": {
+          "candidate_over_baseline": 3.3560996068426747,
+          "median_cpu_ns": {
+            "baseline": 402272042,
+            "candidate": 1350065042
+          }
+        }
+      }
+    }
+  },
+  "logue-paired-baseline": {
+    "path": "/tmp/birnam-owned-globals/logue-paired-baseline/results.json",
+    "sha256": "96abbe784bb42768f1b9942c21a65b44ad7c104fc5b7ba73e8fa4a903ce51c30",
+    "result": {
+      "all_requested_passed": true,
+      "completed_correctness_passed": true,
+      "platform": "macOS-14.6-arm64-arm-64bit-Mach-O",
+      "prefix": "/private/tmp/birnam-lsp-owner/qualified-prefix",
+      "qualification": "Script loader path; startup/source loading, fixture setup, GC between batches, snapshots and JSON are outside phase timers. Timing keeps normal GC and Store history. Allocation mode disables automatic GC for one batch and is not a timing baseline. Live counters are process-wide and include retained harness output; charge is GC accounting, not RSS.",
+      "regression_requested": true,
+      "revision": "777df40abd0d5d43aaf90bf5e11789f922c04f11",
+      "runs": [
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-baseline/regression.time",
+            "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+            "logue-test.birnam"
+          ],
+          "correctness_passed": true,
+          "exit_code": 0,
+          "label": "regression",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-baseline/regression.log",
+          "log_sha256": "733b6496d7725ebec35d7c1b0fe393b8b592b09e0d283ca4457c4a97ba0c5872",
+          "peak_rss_bytes": 1243168768,
+          "status": "completed",
+          "wall_ns": 20590033834
+        },
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-baseline/sparse.time",
+            "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+            "sparse.birnam"
+          ],
+          "batch_median_cpu_ns": {
+            "1": 150704125,
+            "2": 140705000,
+            "3": 140737166,
+            "4": 140812750
+          },
+          "config": {
+            "allocation": false,
+            "batches": 4,
+            "monsters": 2,
+            "phase": "arena",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "correctness_passed": true,
+          "exit_code": 0,
+          "fixture_sha256": "e9d4e076c02e925cef662b9d2a2a66b100ea17ac16adb5c59741bcb047ff6a6c",
+          "label": "sparse",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-baseline/sparse.log",
+          "log_sha256": "be5fac242607ca7bf1bf161001bf783c95d73d9ad36c9cd3cda5c9b68a6499c1",
+          "median_cpu_ns": 141982958.5,
+          "median_cpu_ns_per_turn": 8873934.90625,
+          "peak_rss_bytes": 1254260736,
+          "status": "completed",
+          "wall_ns": 9291221292
+        },
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-baseline/generation.time",
+            "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+            "generation.birnam"
+          ],
+          "batch_median_cpu_ns": {
+            "1": 2034401167
+          },
+          "config": {
+            "allocation": false,
+            "batches": 1,
+            "monsters": 2,
+            "phase": "generation",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "correctness_passed": true,
+          "exit_code": 0,
+          "fixture_sha256": "7fffa0a9bc4bfb0948ef589eafcad5ea76980fa4fdfb681f406fb6cb56eef141",
+          "label": "generation",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-baseline/generation.log",
+          "log_sha256": "c1003bba8379b4358a7afbcae52a76058ca7ee83f0033fed4c3a71b6fe60d679",
+          "median_cpu_ns": 2034401167,
+          "peak_rss_bytes": 1257570304,
+          "status": "completed",
+          "wall_ns": 18742833583
+        },
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-baseline/replacement.time",
+            "/private/tmp/birnam-lsp-owner/qualified-prefix/bin/birnam",
+            "replacement.birnam"
+          ],
+          "batch_median_cpu_ns": {
+            "1": 75284125,
+            "2": 70766208
+          },
+          "config": {
+            "allocation": false,
+            "batches": 2,
+            "monsters": 2,
+            "phase": "arena",
+            "replace": true,
+            "samples": 1,
+            "seed": 12345,
+            "turns": 8,
+            "width": 8
+          },
+          "correctness_passed": true,
+          "exit_code": 0,
+          "fixture_sha256": "41bbbebb422fec0016ee7c5ed4f2245ff04d6980882a307a637d64ef7490606c",
+          "label": "replacement",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-baseline/replacement.log",
+          "log_sha256": "1698b117f93099cf7aed2eba4a9eec610a73d0740fc9c5c379fa60a801c0373e",
+          "median_cpu_ns": 73025166.5,
+          "median_cpu_ns_per_turn": 9128145.8125,
+          "peak_rss_bytes": 1252835328,
+          "status": "completed",
+          "wall_ns": 5571571209
+        }
+      ],
+      "runtime_sha256": {
+        "bin/birnam": "d14d8424bfa99e0b7dd584838f4b287f2e2dd7a3f2678eb420d13d48135b459c",
+        "lib/birnam-bootstrap.image": "c2ed472330bf83e5180df3dbe3e11451c32804aa9c212c693584e12edca47a1d",
+        "lib/birnam-tools.image": "12572e4ecb495e9d949f9ab436607ba2ee7f7e5d98bc31f1ab7028536c47ee93",
+        "lib/libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "lib/libbirnam_alienCompiler.dylib": "0f530fa59a8e6c9185aef4b21b963bacf5e0910441ade09238ae4f6230866535",
+        "lib/libbirnam_artifact.dylib": "1f5fd77bdc66f859b5c9ed422c6180db8c5eefbf5f3860d07166a7441d65d2c1",
+        "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+        "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+        "lib/libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+        "lib/libbirnam_bootstrap.dylib": "abce153c7b4eefd3de069f7bd71b5495293458c20ced01d08ec715554e0f10f7",
+        "lib/libbirnam_bytes.dylib": "8383ab62ed8b43298e6051520319f3ed77578f86fc221a8e47567e42a2457167",
+        "lib/libbirnam_cell.dylib": "2e290f3a93f87e498424b56ca846d66203d04a81e09873e93194b55bca5414de",
+        "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+        "lib/libbirnam_codegen_runtime.dylib": "dbf046b9ffba639f602e0e869806e07eed3c1f9e7d7a1df8f120bcf6b83d529e",
+        "lib/libbirnam_collect.dylib": "de9b14ca9ebd7feac4538fba986e3efb87e84016ada176a1241174ee40774078",
+        "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+        "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+        "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+        "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+        "lib/libbirnam_doc.dylib": "16e5d75a0474f6897bad1a64cdfef060b5b55baeebbcbef1474527419ef6f933",
+        "lib/libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+        "lib/libbirnam_execution.dylib": "4eee01a47c227663313a53f9a63aa8d354e41c3f99eddd76d6077d8a2a34129d",
+        "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+        "lib/libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "lib/libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "lib/libbirnam_generation.dylib": "7313f1a40de00a5e118c06296d14c11a6062ff5762743fb0c1f4c8f24322a5f4",
+        "lib/libbirnam_host_entry.dylib": "0c725ea9a0a050f4131161cc8544208ab76f7e7814b3dc7e160ba3bd5bfa15e5",
+        "lib/libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "lib/libbirnam_host_project.dylib": "2282ad9800ec1b4b07bdc3dc6b926be935122f5baef52fd6ea8c077b490bda8e",
+        "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+        "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+        "lib/libbirnam_id.dylib": "b64658f2cf9f87ad0aab3c1c057dc47a123274761d1a56bcfb431149493ca1dd",
+        "lib/libbirnam_image.dylib": "8b731265ca6cc98f56b2a92954acb78781c027d479392d9d74c680270ea7993f",
+        "lib/libbirnam_imageFormat.dylib": "67431af04d3c8c84fb4603ad19ea20a7fed5109e9abe5920cde21b517ca6cbf4",
+        "lib/libbirnam_integer.dylib": "cef4c1470e87071caacfea727ccfa11ed274954d3e0b7289503ea0bf888d79dc",
+        "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+        "lib/libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "lib/libbirnam_json.dylib": "136edef2d89a93cfb868fef7a2e3a7c29e482bc19d852245e8ec44c3bea553b0",
+        "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+        "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+        "lib/libbirnam_lsp.dylib": "a238dbf9998d3341aff5c9d37b559919006d8796bc7d396e5bb15f6211823159",
+        "lib/libbirnam_map.dylib": "e3585179d7c068acdd3912c8bfa8caf65dd533210bbf09e8c4705bf3d7110233",
+        "lib/libbirnam_markdown.dylib": "4ebcf16033f5022d6daa42d2c264a13eda0c20a177822a1ab8ac37b2892e07ec",
+        "lib/libbirnam_modules.dylib": "bce70286d7c3980a59eda0782770ecfd6d467b56bc234764b41165527a472558",
+        "lib/libbirnam_namespace.dylib": "e1609177019694e804b9ac06a5a4cb2bee4fef8812611f0c2315a63b8ec8a869",
+        "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+        "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+        "lib/libbirnam_native_backend.dylib": "bc7172e2b64d05f22b115b176398c172faa88750a1faa911a03b370a37196413",
+        "lib/libbirnam_nativedoc.dylib": "bede7442ee52cf6ee062de072a4d5feafd43a7237a985cd0435ac028e35a2c21",
+        "lib/libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "lib/libbirnam_object_model.dylib": "dcd0081f21d97849bfce0628a4bdf1db1031f9de70252538a50ad0b167e32bef",
+        "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+        "lib/libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "lib/libbirnam_portable_code.dylib": "02a91468b99275e7a18ceef46c50e0cd4724a478782a627a810e655f97dd9500",
+        "lib/libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+        "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+        "lib/libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+        "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+        "lib/libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "lib/libbirnam_repl.dylib": "2ec9c3bc9e18c58b37ef470ac5c7140c07c6651b67a12b479c493b5daffcee46",
+        "lib/libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+        "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+        "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+        "lib/libbirnam_stacklessControl.dylib": "7ac37eea734cc1354e0b3e29ec966a3cd67a759407ffa0cef95c6f7298c54c7b",
+        "lib/libbirnam_stdlib.dylib": "6cb5ff9bb6cefe9397a36ee70375ba533c9310ec88e82fef6eee40766456d124",
+        "lib/libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "lib/libbirnam_store.dylib": "1bfa2d5e400d67e4c895d65da9cc91d29022fb9c05324aba249a317cab74af4a",
+        "lib/libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+        "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+        "lib/libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "lib/libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "lib/libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514",
+        "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+        "lib/libbirnam_toml.dylib": "a569af7a61f6b45e438fe80e335df9f0b8f3d1c8ba60611203e5c85dbdb3b9ff",
+        "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+        "lib/libbirnam_vector.dylib": "2f3b3f8e066a6fc6e3af04ccd908b79f48f88f4139bcb37971e6d22c6383df07",
+        "lib/libbirnam_word.dylib": "2e11a15d43e434c977d95ae3143716ad3073c56e5c8a64d29e54c3f4d1d0d3eb",
+        "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+      },
+      "schema": 1,
+      "source_sha256": {
+        "examples/logue/logue-bench.birnam": "fbd845fa2f66180742509c77255fadcf7691d01bc6c4130fdc279f6a4405dfe3",
+        "examples/logue/logue-core.birnam": "9effd9a222997de6f9065d5f4e0ab9f2242f691b1118ad91cd26edc054cbec11",
+        "examples/logue/logue-test.birnam": "459381490466ac871e500189a2881c6fb20b08ea7fe009596552b9cf3c669525",
+        "scripts/logue-bench-test.py": "08eebeb237061802689b0357dda6a1b2332506a5d61b669efafa3a51b6e20930",
+        "scripts/logue-bench.py": "ac59843ab23b8e8a1b986ceb2b3f4c29302823814769f0bfe86d5a887d27774a",
+        "scripts/logue_oracle.py": "098627b3b156d455309f0ef2888e0827c66c878286ba86488ec6cb39c8f1a24a",
+        "scripts/validation_support.py": "0ddec3dd76aac4e60df0186b954aac9c8573f72f76c3346914b2ee0ef2ef9835"
+      }
+    }
+  },
+  "logue-paired-candidate": {
+    "path": "/tmp/birnam-owned-globals/logue-paired-candidate/results.json",
+    "sha256": "409543721e905e7c9cd465b34fd84edac86a4934f4c77bd1ed27eb518d422cf7",
+    "result": {
+      "all_requested_passed": true,
+      "completed_correctness_passed": true,
+      "platform": "macOS-14.6-arm64-arm-64bit-Mach-O",
+      "prefix": "/private/tmp/birnam-owned-globals/delivery-prefix",
+      "qualification": "Script loader path; startup/source loading, fixture setup, GC between batches, snapshots and JSON are outside phase timers. Timing keeps normal GC and Store history. Allocation mode disables automatic GC for one batch and is not a timing baseline. Live counters are process-wide and include retained harness output; charge is GC accounting, not RSS.",
+      "regression_requested": true,
+      "revision": "777df40abd0d5d43aaf90bf5e11789f922c04f11",
+      "runs": [
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-candidate/regression.time",
+            "/private/tmp/birnam-owned-globals/delivery-prefix/bin/birnam",
+            "logue-test.birnam"
+          ],
+          "correctness_passed": true,
+          "exit_code": 0,
+          "label": "regression",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-candidate/regression.log",
+          "log_sha256": "733b6496d7725ebec35d7c1b0fe393b8b592b09e0d283ca4457c4a97ba0c5872",
+          "peak_rss_bytes": 1375420416,
+          "status": "completed",
+          "wall_ns": 28158397125
+        },
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-candidate/sparse.time",
+            "/private/tmp/birnam-owned-globals/delivery-prefix/bin/birnam",
+            "sparse.birnam"
+          ],
+          "batch_median_cpu_ns": {
+            "1": 189588792,
+            "2": 178552084,
+            "3": 179456959,
+            "4": 175012000
+          },
+          "config": {
+            "allocation": false,
+            "batches": 4,
+            "monsters": 2,
+            "phase": "arena",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "correctness_passed": true,
+          "exit_code": 0,
+          "fixture_sha256": "e9d4e076c02e925cef662b9d2a2a66b100ea17ac16adb5c59741bcb047ff6a6c",
+          "label": "sparse",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-candidate/sparse.log",
+          "log_sha256": "95b3514c98d6007d97b3ff0f3b76ebc41ebf90d1a990b1a93d7d71d1ab87caaa",
+          "median_cpu_ns": 179794687.5,
+          "median_cpu_ns_per_turn": 11237167.96875,
+          "peak_rss_bytes": 1390821376,
+          "status": "completed",
+          "wall_ns": 11698021750
+        },
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-candidate/generation.time",
+            "/private/tmp/birnam-owned-globals/delivery-prefix/bin/birnam",
+            "generation.birnam"
+          ],
+          "batch_median_cpu_ns": {
+            "1": 2841976584
+          },
+          "config": {
+            "allocation": false,
+            "batches": 1,
+            "monsters": 2,
+            "phase": "generation",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "correctness_passed": true,
+          "exit_code": 0,
+          "fixture_sha256": "7fffa0a9bc4bfb0948ef589eafcad5ea76980fa4fdfb681f406fb6cb56eef141",
+          "label": "generation",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-candidate/generation.log",
+          "log_sha256": "a37e0ca8d9d95568a4397d64612f85d6e9554c1ee01377483a11944439706ba2",
+          "median_cpu_ns": 2841976584,
+          "peak_rss_bytes": 1388675072,
+          "status": "completed",
+          "wall_ns": 24736758708
+        },
+        {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "-o",
+            "/private/tmp/birnam-owned-globals/logue-paired-candidate/replacement.time",
+            "/private/tmp/birnam-owned-globals/delivery-prefix/bin/birnam",
+            "replacement.birnam"
+          ],
+          "batch_median_cpu_ns": {
+            "1": 98563750,
+            "2": 94041000
+          },
+          "config": {
+            "allocation": false,
+            "batches": 2,
+            "monsters": 2,
+            "phase": "arena",
+            "replace": true,
+            "samples": 1,
+            "seed": 12345,
+            "turns": 8,
+            "width": 8
+          },
+          "correctness_passed": true,
+          "exit_code": 0,
+          "fixture_sha256": "41bbbebb422fec0016ee7c5ed4f2245ff04d6980882a307a637d64ef7490606c",
+          "label": "replacement",
+          "log": "/private/tmp/birnam-owned-globals/logue-paired-candidate/replacement.log",
+          "log_sha256": "a6ff4f8267598c6f19c3bd8a02d51395b4507c1bf6a00df344731f357a297744",
+          "median_cpu_ns": 96302375.0,
+          "median_cpu_ns_per_turn": 12037796.875,
+          "peak_rss_bytes": 1385365504,
+          "status": "completed",
+          "wall_ns": 6766562667
+        }
+      ],
+      "runtime_sha256": {
+        "bin/birnam": "d14d8424bfa99e0b7dd584838f4b287f2e2dd7a3f2678eb420d13d48135b459c",
+        "lib/birnam-bootstrap.image": "6903e29a433cc72534aad0bac01ab31257b0949e4223548c3043b2d91bbe366a",
+        "lib/birnam-tools.image": "469bb9bb4bd5fa734b3cd91eae388d182f3534bc7d2e7c9f0a199a5d8a8f4a8d",
+        "lib/libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "lib/libbirnam_alienCompiler.dylib": "0f530fa59a8e6c9185aef4b21b963bacf5e0910441ade09238ae4f6230866535",
+        "lib/libbirnam_artifact.dylib": "1f5fd77bdc66f859b5c9ed422c6180db8c5eefbf5f3860d07166a7441d65d2c1",
+        "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+        "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+        "lib/libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+        "lib/libbirnam_bootstrap.dylib": "dd62e5f867826033f06ea1f869fe06208c9bc39c88370ea0de2a1a2f5b986bb7",
+        "lib/libbirnam_bytes.dylib": "8383ab62ed8b43298e6051520319f3ed77578f86fc221a8e47567e42a2457167",
+        "lib/libbirnam_cell.dylib": "2e290f3a93f87e498424b56ca846d66203d04a81e09873e93194b55bca5414de",
+        "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+        "lib/libbirnam_codegen_runtime.dylib": "ee2b8d03b052c11f26f43500b9ae9ece3d67c1333a5c8c10c4dd156ce4cc5d2e",
+        "lib/libbirnam_collect.dylib": "29e2b19b0af02956c807497d915dc3fd621cf42effd49559475a9a1aec15f083",
+        "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+        "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+        "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+        "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+        "lib/libbirnam_doc.dylib": "16e5d75a0474f6897bad1a64cdfef060b5b55baeebbcbef1474527419ef6f933",
+        "lib/libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+        "lib/libbirnam_execution.dylib": "98aa1ee94c336321c028838c7975173d8d75e7e830d4e4a9b363d167f28bf77a",
+        "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+        "lib/libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "lib/libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "lib/libbirnam_generation.dylib": "1823c9d1f6f31133c5799a2276c95a9158e71147d76920ca15fa248106af3614",
+        "lib/libbirnam_globals.dylib": "899574881ba2063455cf7ce9e4a1e2eb16b36d62b66ca651c663d943ed76fc0f",
+        "lib/libbirnam_host_entry.dylib": "0c725ea9a0a050f4131161cc8544208ab76f7e7814b3dc7e160ba3bd5bfa15e5",
+        "lib/libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "lib/libbirnam_host_project.dylib": "95659f0f34f978a6e209daaa5963d7e7761813b111249985240caba9aaab67ea",
+        "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+        "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+        "lib/libbirnam_id.dylib": "8368f1b5787463f5462a83e18fb5145d8247e692cf0b8217321eb904cba971f6",
+        "lib/libbirnam_image.dylib": "22e10d669077dae0695c3604598a74cda6bedb5939c95caecf9a02b83f12de67",
+        "lib/libbirnam_imageFormat.dylib": "67431af04d3c8c84fb4603ad19ea20a7fed5109e9abe5920cde21b517ca6cbf4",
+        "lib/libbirnam_integer.dylib": "cef4c1470e87071caacfea727ccfa11ed274954d3e0b7289503ea0bf888d79dc",
+        "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+        "lib/libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "lib/libbirnam_json.dylib": "877fc0b03100d9c8315992ac1837157f144186822b62626364e42d6c6ef781a1",
+        "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+        "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+        "lib/libbirnam_lsp.dylib": "a238dbf9998d3341aff5c9d37b559919006d8796bc7d396e5bb15f6211823159",
+        "lib/libbirnam_map.dylib": "e3585179d7c068acdd3912c8bfa8caf65dd533210bbf09e8c4705bf3d7110233",
+        "lib/libbirnam_markdown.dylib": "4ebcf16033f5022d6daa42d2c264a13eda0c20a177822a1ab8ac37b2892e07ec",
+        "lib/libbirnam_modules.dylib": "bce70286d7c3980a59eda0782770ecfd6d467b56bc234764b41165527a472558",
+        "lib/libbirnam_namespace.dylib": "e1609177019694e804b9ac06a5a4cb2bee4fef8812611f0c2315a63b8ec8a869",
+        "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+        "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+        "lib/libbirnam_native_backend.dylib": "bc7172e2b64d05f22b115b176398c172faa88750a1faa911a03b370a37196413",
+        "lib/libbirnam_nativedoc.dylib": "bede7442ee52cf6ee062de072a4d5feafd43a7237a985cd0435ac028e35a2c21",
+        "lib/libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "lib/libbirnam_object_model.dylib": "7a34aa43e086de01bdb919003a293981482617d392477027ccdb670335c9a0a9",
+        "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+        "lib/libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "lib/libbirnam_portable_code.dylib": "02a91468b99275e7a18ceef46c50e0cd4724a478782a627a810e655f97dd9500",
+        "lib/libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+        "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+        "lib/libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+        "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+        "lib/libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "lib/libbirnam_repl.dylib": "2ec9c3bc9e18c58b37ef470ac5c7140c07c6651b67a12b479c493b5daffcee46",
+        "lib/libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+        "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+        "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+        "lib/libbirnam_stacklessControl.dylib": "7ac37eea734cc1354e0b3e29ec966a3cd67a759407ffa0cef95c6f7298c54c7b",
+        "lib/libbirnam_stdlib.dylib": "6cb5ff9bb6cefe9397a36ee70375ba533c9310ec88e82fef6eee40766456d124",
+        "lib/libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "lib/libbirnam_store.dylib": "a0c9e3fdaf714fad0c556eb4178a6cdfd05eed5d1989685e1fc81a5eda8d4272",
+        "lib/libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+        "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+        "lib/libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "lib/libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "lib/libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514",
+        "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+        "lib/libbirnam_toml.dylib": "b3c9f29f8145e438f3791026f99e60c2fd55a54c807123d12021b598a87b2c8f",
+        "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+        "lib/libbirnam_vector.dylib": "2f3b3f8e066a6fc6e3af04ccd908b79f48f88f4139bcb37971e6d22c6383df07",
+        "lib/libbirnam_word.dylib": "2e11a15d43e434c977d95ae3143716ad3073c56e5c8a64d29e54c3f4d1d0d3eb",
+        "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+      },
+      "schema": 1,
+      "source_sha256": {
+        "examples/logue/logue-bench.birnam": "fbd845fa2f66180742509c77255fadcf7691d01bc6c4130fdc279f6a4405dfe3",
+        "examples/logue/logue-core.birnam": "9effd9a222997de6f9065d5f4e0ab9f2242f691b1118ad91cd26edc054cbec11",
+        "examples/logue/logue-test.birnam": "459381490466ac871e500189a2881c6fb20b08ea7fe009596552b9cf3c669525",
+        "scripts/logue-bench-test.py": "08eebeb237061802689b0357dda6a1b2332506a5d61b669efafa3a51b6e20930",
+        "scripts/logue-bench.py": "ac59843ab23b8e8a1b986ceb2b3f4c29302823814769f0bfe86d5a887d27774a",
+        "scripts/logue_oracle.py": "098627b3b156d455309f0ef2888e0827c66c878286ba86488ec6cb39c8f1a24a",
+        "scripts/validation_support.py": "0ddec3dd76aac4e60df0186b954aac9c8573f72f76c3346914b2ee0ef2ef9835"
+      }
+    }
+  },
+  "qualification_notes": [
+    "Exploratory image failure came from pinning an obsolete captured Globals state in CompiledFloor; teardown now reloads compiled resident policy without retaining old worlds.",
+    "Materialization fixture clears bootstrap/error-construction cache before counting its own two entries.",
+    "Store capacity fixture now asserts successful retention from the current basis after seed compaction; quota exhaustion and inverse assertions remain unchanged.",
+    "First lifecycle rerun used system Python 3.9, whose socket.timeout is not caught by TimeoutError; project tool environment Python 3.14 passes unchanged runner.",
+    "First LSP legacy rerun accidentally used already-migrated LSP baseline; corrected baseline is module-registry/final-prefix.",
+    "Qualification used complete-prefix; delivery-prefix rebuild differs in production source only by correcting a state-field-count comment. Tests/docs were finalized separately."
+  ],
+  "runtime_sha256": {
+    "lib/libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+    "lib/libbirnam_alienCompiler.dylib": "0f530fa59a8e6c9185aef4b21b963bacf5e0910441ade09238ae4f6230866535",
+    "lib/libbirnam_artifact.dylib": "1f5fd77bdc66f859b5c9ed422c6180db8c5eefbf5f3860d07166a7441d65d2c1",
+    "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+    "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+    "lib/libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+    "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+    "lib/libbirnam_bootstrap.dylib": "dd62e5f867826033f06ea1f869fe06208c9bc39c88370ea0de2a1a2f5b986bb7",
+    "lib/libbirnam_bytes.dylib": "8383ab62ed8b43298e6051520319f3ed77578f86fc221a8e47567e42a2457167",
+    "lib/libbirnam_cell.dylib": "2e290f3a93f87e498424b56ca846d66203d04a81e09873e93194b55bca5414de",
+    "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+    "lib/libbirnam_codegen_runtime.dylib": "ee2b8d03b052c11f26f43500b9ae9ece3d67c1333a5c8c10c4dd156ce4cc5d2e",
+    "lib/libbirnam_collect.dylib": "29e2b19b0af02956c807497d915dc3fd621cf42effd49559475a9a1aec15f083",
+    "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+    "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+    "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+    "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+    "lib/libbirnam_doc.dylib": "16e5d75a0474f6897bad1a64cdfef060b5b55baeebbcbef1474527419ef6f933",
+    "lib/libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+    "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+    "lib/libbirnam_execution.dylib": "98aa1ee94c336321c028838c7975173d8d75e7e830d4e4a9b363d167f28bf77a",
+    "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+    "lib/libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+    "lib/libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+    "lib/libbirnam_generation.dylib": "1823c9d1f6f31133c5799a2276c95a9158e71147d76920ca15fa248106af3614",
+    "lib/libbirnam_globals.dylib": "899574881ba2063455cf7ce9e4a1e2eb16b36d62b66ca651c663d943ed76fc0f",
+    "lib/libbirnam_host_entry.dylib": "0c725ea9a0a050f4131161cc8544208ab76f7e7814b3dc7e160ba3bd5bfa15e5",
+    "lib/libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+    "lib/libbirnam_host_project.dylib": "95659f0f34f978a6e209daaa5963d7e7761813b111249985240caba9aaab67ea",
+    "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+    "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+    "lib/libbirnam_id.dylib": "8368f1b5787463f5462a83e18fb5145d8247e692cf0b8217321eb904cba971f6",
+    "lib/libbirnam_image.dylib": "22e10d669077dae0695c3604598a74cda6bedb5939c95caecf9a02b83f12de67",
+    "lib/libbirnam_imageFormat.dylib": "67431af04d3c8c84fb4603ad19ea20a7fed5109e9abe5920cde21b517ca6cbf4",
+    "lib/libbirnam_integer.dylib": "cef4c1470e87071caacfea727ccfa11ed274954d3e0b7289503ea0bf888d79dc",
+    "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+    "lib/libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+    "lib/libbirnam_json.dylib": "877fc0b03100d9c8315992ac1837157f144186822b62626364e42d6c6ef781a1",
+    "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+    "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+    "lib/libbirnam_lsp.dylib": "a238dbf9998d3341aff5c9d37b559919006d8796bc7d396e5bb15f6211823159",
+    "lib/libbirnam_map.dylib": "e3585179d7c068acdd3912c8bfa8caf65dd533210bbf09e8c4705bf3d7110233",
+    "lib/libbirnam_markdown.dylib": "4ebcf16033f5022d6daa42d2c264a13eda0c20a177822a1ab8ac37b2892e07ec",
+    "lib/libbirnam_modules.dylib": "bce70286d7c3980a59eda0782770ecfd6d467b56bc234764b41165527a472558",
+    "lib/libbirnam_namespace.dylib": "e1609177019694e804b9ac06a5a4cb2bee4fef8812611f0c2315a63b8ec8a869",
+    "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+    "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+    "lib/libbirnam_native_backend.dylib": "bc7172e2b64d05f22b115b176398c172faa88750a1faa911a03b370a37196413",
+    "lib/libbirnam_nativedoc.dylib": "bede7442ee52cf6ee062de072a4d5feafd43a7237a985cd0435ac028e35a2c21",
+    "lib/libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+    "lib/libbirnam_object_model.dylib": "7a34aa43e086de01bdb919003a293981482617d392477027ccdb670335c9a0a9",
+    "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+    "lib/libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+    "lib/libbirnam_portable_code.dylib": "02a91468b99275e7a18ceef46c50e0cd4724a478782a627a810e655f97dd9500",
+    "lib/libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+    "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+    "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+    "lib/libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+    "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+    "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+    "lib/libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+    "lib/libbirnam_repl.dylib": "2ec9c3bc9e18c58b37ef470ac5c7140c07c6651b67a12b479c493b5daffcee46",
+    "lib/libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+    "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+    "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+    "lib/libbirnam_stacklessControl.dylib": "7ac37eea734cc1354e0b3e29ec966a3cd67a759407ffa0cef95c6f7298c54c7b",
+    "lib/libbirnam_stdlib.dylib": "6cb5ff9bb6cefe9397a36ee70375ba533c9310ec88e82fef6eee40766456d124",
+    "lib/libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+    "lib/libbirnam_store.dylib": "a0c9e3fdaf714fad0c556eb4178a6cdfd05eed5d1989685e1fc81a5eda8d4272",
+    "lib/libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+    "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+    "lib/libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+    "lib/libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+    "lib/libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514",
+    "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+    "lib/libbirnam_toml.dylib": "b3c9f29f8145e438f3791026f99e60c2fd55a54c807123d12021b598a87b2c8f",
+    "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+    "lib/libbirnam_vector.dylib": "2f3b3f8e066a6fc6e3af04ccd908b79f48f88f4139bcb37971e6d22c6383df07",
+    "lib/libbirnam_word.dylib": "2e11a15d43e434c977d95ae3143716ad3073c56e5c8a64d29e54c3f4d1d0d3eb",
+    "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69",
+    "lib/birnam-tools.image": "469bb9bb4bd5fa734b3cd91eae388d182f3534bc7d2e7c9f0a199a5d8a8f4a8d",
+    "lib/birnam-bootstrap.image": "6903e29a433cc72534aad0bac01ab31257b0949e4223548c3043b2d91bbe366a",
+    "bin/birnam": "d14d8424bfa99e0b7dd584838f4b287f2e2dd7a3f2678eb420d13d48135b459c"
+  },
+  "build_receipt": {
+    "path": "/tmp/birnam-owned-globals/delivery-prefix/share/birnam/rust-install.json",
+    "sha256": "89087e7746f9105ce58120c492095b2cf0faa39efa6cb24d2a61b3f53efd9576",
+    "result": {
+      "admission_contract": {
+        "host_commands": [
+          "source",
+          "image",
+          "worker",
+          "compile-module",
+          "artifact",
+          "check",
+          "build",
+          "run",
+          "fetch",
+          "install",
+          "test",
+          "repl",
+          "listen",
+          "lsp",
+          "doc",
+          "docgen",
+          "init",
+          "wrap",
+          "bake",
+          "rebuild",
+          "help",
+          "version"
+        ],
+        "id_protocol_version": 1,
+        "stdlib_loading": "compiled-image",
+        "target": "aarch64-macos"
+      },
+      "authority": "rust",
+      "bootstrap_modules": [
+        "error",
+        "cell",
+        "modules",
+        "lang",
+        "nativeValues",
+        "booleanValues",
+        "integerValues",
+        "blockLoopControl",
+        "blockLoop",
+        "range",
+        "systemGc",
+        "printing",
+        "sourceLoader",
+        "nativeLoader",
+        "alienCompiler",
+        "imageFormat",
+        "trace",
+        "globals"
+      ],
+      "build_mode": "development-cache",
+      "build_seed": {
+        "grammar": "birnam-lang-seed",
+        "published": false
+      },
+      "cargo_invocation": [
+        "cargo",
+        "build",
+        "-p",
+        "birnam-cli",
+        "--locked",
+        "--offline",
+        "--release",
+        "-p",
+        "birnam-id",
+        "-p",
+        "birnam-root-registry",
+        "-p",
+        "birnam-namespace",
+        "-p",
+        "birnam-boolean",
+        "-p",
+        "birnam-nil",
+        "-p",
+        "birnam-bootstrap",
+        "-p",
+        "birnam-host-entry",
+        "-p",
+        "birnam-host-interaction",
+        "-p",
+        "birnam-host-project",
+        "-p",
+        "birnam-project-build",
+        "-p",
+        "birnam-collect",
+        "-p",
+        "birnam-object-model",
+        "-p",
+        "birnam-string",
+        "-p",
+        "birnam-bytes",
+        "-p",
+        "birnam-integer",
+        "-p",
+        "birnam-float",
+        "-p",
+        "birnam-word",
+        "-p",
+        "birnam-vector",
+        "-p",
+        "birnam-map",
+        "-p",
+        "birnam-execution",
+        "-p",
+        "birnam-peg",
+        "-p",
+        "birnam-tcc",
+        "-p",
+        "birnam-codegen-runtime",
+        "-p",
+        "birnam-native-backend",
+        "-p",
+        "birnam-generation",
+        "-p",
+        "birnam-store",
+        "-p",
+        "birnam-relational",
+        "-p",
+        "birnam-prelude",
+        "-p",
+        "birnam-system-output",
+        "-p",
+        "birnam-system-input",
+        "-p",
+        "birnam-environment",
+        "-p",
+        "birnam-file-io",
+        "-p",
+        "birnam-storage",
+        "-p",
+        "birnam-artifact",
+        "-p",
+        "birnam-portable-code",
+        "-p",
+        "birnam-image",
+        "-p",
+        "birnam-alien",
+        "-p",
+        "birnam-isolate",
+        "-p",
+        "birnam-lang-seed",
+        "--features",
+        "birnam-bootstrap/lang-seed"
+      ],
+      "dynamic_libraries": [
+        "libbirnam_id.dylib",
+        "libbirnam_root_registry.dylib",
+        "libbirnam_namespace.dylib",
+        "libbirnam_boolean.dylib",
+        "libbirnam_nil.dylib",
+        "libbirnam_bootstrap.dylib",
+        "libbirnam_host_entry.dylib",
+        "libbirnam_host_interaction.dylib",
+        "libbirnam_host_project.dylib",
+        "libbirnam_project_build.dylib",
+        "libbirnam_collect.dylib",
+        "libbirnam_object_model.dylib",
+        "libbirnam_string.dylib",
+        "libbirnam_bytes.dylib",
+        "libbirnam_integer.dylib",
+        "libbirnam_float.dylib",
+        "libbirnam_word.dylib",
+        "libbirnam_vector.dylib",
+        "libbirnam_map.dylib",
+        "libbirnam_execution.dylib",
+        "libbirnam_peg.dylib",
+        "libbirnam_tcc.dylib",
+        "libbirnam_codegen_runtime.dylib",
+        "libbirnam_native_backend.dylib",
+        "libbirnam_generation.dylib",
+        "libbirnam_store.dylib",
+        "libbirnam_relational.dylib",
+        "libbirnam_prelude.dylib",
+        "libbirnam_system_output.dylib",
+        "libbirnam_system_input.dylib",
+        "libbirnam_environment.dylib",
+        "libbirnam_file_io.dylib",
+        "libbirnam_storage.dylib",
+        "libbirnam_artifact.dylib",
+        "libbirnam_portable_code.dylib",
+        "libbirnam_image.dylib",
+        "libbirnam_alien.dylib",
+        "libbirnam_isolate.dylib"
+      ],
+      "optional_modules": [],
+      "production_bootstrap_invocation": [
+        "cargo",
+        "build",
+        "-p",
+        "birnam-bootstrap",
+        "--locked",
+        "--offline",
+        "--release"
+      ],
+      "profile": "release",
+      "publication": {
+        "durability": "fsync-staged-files-and-directories-before-and-after-rename",
+        "generation": 55437,
+        "method": "atomic-sibling-rename",
+        "receipt_excludes_itself_from_staged_manifest": true,
+        "requested_prefix": "/private/tmp/birnam-owned-globals/delivery-prefix",
+        "state": "published"
+      },
+      "schema": 4,
+      "source_bootstrap_modules": [
+        "stdlib",
+        "stacklessControl",
+        "compiledUnit",
+        "isolate"
+      ],
+      "source_identity": {
+        "git_clean": false,
+        "git_commit": "777df40abd0d5d43aaf90bf5e11789f922c04f11"
+      },
+      "source_manifest_files": 658,
+      "source_manifest_sha256": "446ceb9e2408723c23216e1a04d3bc720dd1eeb4ca6c72d7560b6bb30f514994",
+      "source_root": "/Users/chazu/dev/zig/birnam",
+      "stage1_modules": [
+        "stdlib",
+        "stacklessControl",
+        "compiledUnit",
+        "toml",
+        "config",
+        "doc",
+        "cli",
+        "file",
+        "html",
+        "http",
+        "json",
+        "log",
+        "lsp",
+        "markdown",
+        "os",
+        "process",
+        "random",
+        "repl",
+        "socket",
+        "time",
+        "nativedoc",
+        "compiledUnitDocs",
+        "concurrencyDocs"
+      ],
+      "staged_manifest": {
+        "bin/birnam": "d14d8424bfa99e0b7dd584838f4b287f2e2dd7a3f2678eb420d13d48135b459c",
+        "lib/birnam-bootstrap.image": "6903e29a433cc72534aad0bac01ab31257b0949e4223548c3043b2d91bbe366a",
+        "lib/birnam-tools.image": "469bb9bb4bd5fa734b3cd91eae388d182f3534bc7d2e7c9f0a199a5d8a8f4a8d",
+        "lib/libbirnam_alien.dylib": "bdc469c4760532cb7e2d8a1e2047cbc1e825d6602bc6f6ec36521aa5ad27caf3",
+        "lib/libbirnam_alienCompiler.dylib": "0f530fa59a8e6c9185aef4b21b963bacf5e0910441ade09238ae4f6230866535",
+        "lib/libbirnam_artifact.dylib": "1f5fd77bdc66f859b5c9ed422c6180db8c5eefbf5f3860d07166a7441d65d2c1",
+        "lib/libbirnam_blockLoop.dylib": "5b48c0e7bdc8e1d10630d166590422ae71e86a18d176cb9d5c58ef8cbc2ce041",
+        "lib/libbirnam_blockLoopControl.dylib": "fb6d0b178ca1a8f25df8fb806b360751d6e7bfb56a3e0f788e162933685f146e",
+        "lib/libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+        "lib/libbirnam_booleanValues.dylib": "8a2138de51f98a385eaa439b2c0deff1be4b8204554536e832c5dc4941143bdc",
+        "lib/libbirnam_bootstrap.dylib": "dd62e5f867826033f06ea1f869fe06208c9bc39c88370ea0de2a1a2f5b986bb7",
+        "lib/libbirnam_bytes.dylib": "8383ab62ed8b43298e6051520319f3ed77578f86fc221a8e47567e42a2457167",
+        "lib/libbirnam_cell.dylib": "2e290f3a93f87e498424b56ca846d66203d04a81e09873e93194b55bca5414de",
+        "lib/libbirnam_cli.dylib": "c26e9a591f43938ffdb9334ba4760a380d3ce9f86b8ed2733ff85b06700ac7b4",
+        "lib/libbirnam_codegen_runtime.dylib": "ee2b8d03b052c11f26f43500b9ae9ece3d67c1333a5c8c10c4dd156ce4cc5d2e",
+        "lib/libbirnam_collect.dylib": "29e2b19b0af02956c807497d915dc3fd621cf42effd49559475a9a1aec15f083",
+        "lib/libbirnam_compiledUnit.dylib": "553c7daee6a444d62384c04efda443bd2739c74fe3fb8b7dee68a814157d8973",
+        "lib/libbirnam_compiledUnitDocs.dylib": "27a6159f2a4e4e81d23444a86d8b0d93168d0cade337db5123dc2ccfdfd018e4",
+        "lib/libbirnam_concurrencyDocs.dylib": "7df04b6c1a48fbb498114feeff6770c7f21e6b87c3dcf01bc0aee908be09043b",
+        "lib/libbirnam_config.dylib": "a45217a871fb2f6e135c7fa591e9f352f5260f75a1b2d5c39865c4c62ffec35f",
+        "lib/libbirnam_doc.dylib": "16e5d75a0474f6897bad1a64cdfef060b5b55baeebbcbef1474527419ef6f933",
+        "lib/libbirnam_environment.dylib": "880cf8d274319059131f12b5a4a2a4300ce331816082ba4dae72b94afdb5bf48",
+        "lib/libbirnam_error.dylib": "de057de8f2a774bc778499b19420c46c15efc9151eecdf371d423ce031eb1c4e",
+        "lib/libbirnam_execution.dylib": "98aa1ee94c336321c028838c7975173d8d75e7e830d4e4a9b363d167f28bf77a",
+        "lib/libbirnam_file.dylib": "e7f0455281dd839d29352cf974102d49f565458d02c850d3b92e3480183df51f",
+        "lib/libbirnam_file_io.dylib": "973f54255a0bc702fd7ef6a63d2eb61efb92ad0daa97cf87276530ed5931e2eb",
+        "lib/libbirnam_float.dylib": "94be34d674b5afe07998d630132cbbbf551d2a60731fd21433a93a3d9ea7ee52",
+        "lib/libbirnam_generation.dylib": "1823c9d1f6f31133c5799a2276c95a9158e71147d76920ca15fa248106af3614",
+        "lib/libbirnam_globals.dylib": "899574881ba2063455cf7ce9e4a1e2eb16b36d62b66ca651c663d943ed76fc0f",
+        "lib/libbirnam_host_entry.dylib": "0c725ea9a0a050f4131161cc8544208ab76f7e7814b3dc7e160ba3bd5bfa15e5",
+        "lib/libbirnam_host_interaction.dylib": "f18760c7a823a859547dcbc4973e18f4d91a87f388de97f107935ecb7bd0798f",
+        "lib/libbirnam_host_project.dylib": "95659f0f34f978a6e209daaa5963d7e7761813b111249985240caba9aaab67ea",
+        "lib/libbirnam_html.dylib": "4ec3a294f2272732874e26882cdb1c5db3ca0ddb9ad43d475e64594b0f51ff42",
+        "lib/libbirnam_http.dylib": "256ab04c435d4d0606358016b11e2f2874c4308cab2a4420e875a08b0a294917",
+        "lib/libbirnam_id.dylib": "8368f1b5787463f5462a83e18fb5145d8247e692cf0b8217321eb904cba971f6",
+        "lib/libbirnam_image.dylib": "22e10d669077dae0695c3604598a74cda6bedb5939c95caecf9a02b83f12de67",
+        "lib/libbirnam_imageFormat.dylib": "67431af04d3c8c84fb4603ad19ea20a7fed5109e9abe5920cde21b517ca6cbf4",
+        "lib/libbirnam_integer.dylib": "cef4c1470e87071caacfea727ccfa11ed274954d3e0b7289503ea0bf888d79dc",
+        "lib/libbirnam_integerValues.dylib": "4f14fe22812587aa980c1842ee187660167c59413caaf2daa7c3ccc105e3c5fd",
+        "lib/libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454",
+        "lib/libbirnam_json.dylib": "877fc0b03100d9c8315992ac1837157f144186822b62626364e42d6c6ef781a1",
+        "lib/libbirnam_lang.dylib": "07acf41ea9b9aea16a24e336c8145d7e3c80e19e6d1367e007b8325ba288a1cd",
+        "lib/libbirnam_log.dylib": "a3b3801ef9014dc2f928e2e141ae04437ac46ef4314964eba5965ace615275cf",
+        "lib/libbirnam_lsp.dylib": "a238dbf9998d3341aff5c9d37b559919006d8796bc7d396e5bb15f6211823159",
+        "lib/libbirnam_map.dylib": "e3585179d7c068acdd3912c8bfa8caf65dd533210bbf09e8c4705bf3d7110233",
+        "lib/libbirnam_markdown.dylib": "4ebcf16033f5022d6daa42d2c264a13eda0c20a177822a1ab8ac37b2892e07ec",
+        "lib/libbirnam_modules.dylib": "bce70286d7c3980a59eda0782770ecfd6d467b56bc234764b41165527a472558",
+        "lib/libbirnam_namespace.dylib": "e1609177019694e804b9ac06a5a4cb2bee4fef8812611f0c2315a63b8ec8a869",
+        "lib/libbirnam_nativeLoader.dylib": "c5f50318af1b12c2c33e37635a900d1b1cb3e168d5a08042b97ab5629403f4e4",
+        "lib/libbirnam_nativeValues.dylib": "696e1ddb2710414d58d3c5fff495f5a6383e9aa495c5fef3ef54ec6bdf6d5a86",
+        "lib/libbirnam_native_backend.dylib": "bc7172e2b64d05f22b115b176398c172faa88750a1faa911a03b370a37196413",
+        "lib/libbirnam_nativedoc.dylib": "bede7442ee52cf6ee062de072a4d5feafd43a7237a985cd0435ac028e35a2c21",
+        "lib/libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+        "lib/libbirnam_object_model.dylib": "7a34aa43e086de01bdb919003a293981482617d392477027ccdb670335c9a0a9",
+        "lib/libbirnam_os.dylib": "e774e4b71d82c030020b8da0c4088648e806c58bc886abffa0013dea2e83312f",
+        "lib/libbirnam_peg.dylib": "86dc9ab204b575502b0f9f45f9330d5ff25440b41079aff0eb6ac9718440cb01",
+        "lib/libbirnam_portable_code.dylib": "02a91468b99275e7a18ceef46c50e0cd4724a478782a627a810e655f97dd9500",
+        "lib/libbirnam_prelude.dylib": "02f20e3f1dbd744c09e893d66e0643753816dab8ff223dc55f5e5c58ab76f467",
+        "lib/libbirnam_printing.dylib": "29d0dc1f658efbec5ccf7bb787532496ee4775c32526af81e0ba6facb7ed1a96",
+        "lib/libbirnam_process.dylib": "6f75e9ff543af44ceed97eb5bdb02e2b5bbaa0bff698d2c768d1a96fa9a50fb4",
+        "lib/libbirnam_project_build.dylib": "ba75de8cd140ce7944830e3fe7646b5b879e08f7f9e8441378e970fd40f8447d",
+        "lib/libbirnam_random.dylib": "b67675415881133827c2b659b804eed2a4818b30a1ee87fc06a4fb55ea6cb515",
+        "lib/libbirnam_range.dylib": "d8893aee99429285782aa8cd888dbcfb47a6f9e30fc848629f8cf9198a516e14",
+        "lib/libbirnam_relational.dylib": "45a46c945b3a0ba95b60c777e4b3cab14e20c35bbeab4009502c8c45cca9963f",
+        "lib/libbirnam_repl.dylib": "2ec9c3bc9e18c58b37ef470ac5c7140c07c6651b67a12b479c493b5daffcee46",
+        "lib/libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+        "lib/libbirnam_socket.dylib": "63d8323b9df89f579943e7f79573f8d8815ea03a3a479208c4f4364a7834eda4",
+        "lib/libbirnam_sourceLoader.dylib": "7edee41e636ccea081998b054675f009b0f5206cc40ef304d389b99d13d9c03d",
+        "lib/libbirnam_stacklessControl.dylib": "7ac37eea734cc1354e0b3e29ec966a3cd67a759407ffa0cef95c6f7298c54c7b",
+        "lib/libbirnam_stdlib.dylib": "6cb5ff9bb6cefe9397a36ee70375ba533c9310ec88e82fef6eee40766456d124",
+        "lib/libbirnam_storage.dylib": "04bef85bfa2271d7457ac67a1a8ac1df56a4d1e326f39859870d2b255c00051d",
+        "lib/libbirnam_store.dylib": "a0c9e3fdaf714fad0c556eb4178a6cdfd05eed5d1989685e1fc81a5eda8d4272",
+        "lib/libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+        "lib/libbirnam_systemGc.dylib": "dc8ad1dddb70ab00734f8798c4df6778a2db7025ed5af2c1f5f20472ee0a1690",
+        "lib/libbirnam_system_input.dylib": "62e5f614319a9867b8b8fd3e29aba0245cb7fca5d57394d7f98ad71afec9c020",
+        "lib/libbirnam_system_output.dylib": "c456dd4b540b55317c496e4301259028cf769a48451db0c64242fcd549b89129",
+        "lib/libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514",
+        "lib/libbirnam_time.dylib": "426dcf85a2a2241fe40f6d12221c0d4b595c046dbb8b00d4b722e0ad8131d656",
+        "lib/libbirnam_toml.dylib": "b3c9f29f8145e438f3791026f99e60c2fd55a54c807123d12021b598a87b2c8f",
+        "lib/libbirnam_trace.dylib": "83a77a2c86379d00284f83583d5fd3a87476991c4fa6d1872204569c29e6744f",
+        "lib/libbirnam_vector.dylib": "2f3b3f8e066a6fc6e3af04ccd908b79f48f88f4139bcb37971e6d22c6383df07",
+        "lib/libbirnam_word.dylib": "2e11a15d43e434c977d95ae3143716ad3073c56e5c8a64d29e54c3f4d1d0d3eb",
+        "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+        "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69",
+        "share/birnam/docs/guide/01-language.md": "a768c5b4b5e1391041f41cbdf14828183538e665da8b721464304db749242b04",
+        "share/birnam/docs/guide/02-idioms.md": "c8b5757860b33716a699686266056dae86c003d6000c70439fc34b9b8219dde5",
+        "share/birnam/docs/guide/03-fact-store.md": "111fdb5868eaa5a3cf9b65198bead43377e0834291c8c71482908ac775c345eb",
+        "share/birnam/docs/guide/04-images.md": "38b00c4a4376fe0f00de336509c2fcf5d6bbfd3944e75d3169bfcbae6b79b925",
+        "share/birnam/docs/guide/05-compiled-units.md": "2779e4de2cd505fb6cf6b69584ab0915f53477fc0213e45acd4606626e2883d7",
+        "share/birnam/docs/guide/06-isolates.md": "15d89a9af58b3561e1616e99ceb4b4b0fb906f01032a57f9418c254462e7547c",
+        "share/birnam/docs/guide/07-concurrency.md": "37067a01213b1c64c95eedd04f0c26bf5daa1fa3d6099e6d2503d7b49d305689",
+        "share/birnam/docs/guide/08-exploring-the-image.md": "917308da8d73d8fe92f90f3981a3c183b4400a78b5ff598bf87c655e2ca6e14d",
+        "share/birnam/docs/guide/09-shipping-artifacts.md": "f864450654bd142ca0640f7ed2ef9b50dbc299f736fefcd7833d969fceb5b316",
+        "share/birnam/docs/guide/native-loading.md": "4a71c70240e39b09a35bba1d1afe6634e2fbb2138fd71d24d348aaa83c767e18",
+        "share/birnam/docs/guide/style-guide-DRAFT.md": "9b9f085539432f7f3c081c1c733c0830e20c20995027c0158d72c29f9bb180e9",
+        "share/birnam/docs/guide/trace.md": "ed41beaf59627b594ba2895b79184cbd8f05d0c7a12e652e93fa4548a24221ac",
+        "share/birnam/src/Cargo.lock": "bd7a77cc7f40897f40ecf10c1d3cef33449d90b9bc9dec1cfe5db58f009f113f",
+        "share/birnam/src/Cargo.toml": "156875f735cf826ec770e62720755df18109c97761241a045bfd143f5059bb84",
+        "share/birnam/src/VERSION": "02d38e98e88f4a8dc2ea40dbb769338601066fc94920b52882a14f21ad97f7ee",
+        "share/birnam/src/modules/alien-compiler-assets/initialize.c": "c8b6a6fbdf88afe80d96a1119e2af12a0422729888898b4fb2fcabab7135f15e",
+        "share/birnam/src/modules/alien-compiler-assets/invoke.c": "88aefd2d4a9226c2808f43fafb23be8e93a3bb1e6bd9f8d6ec493d493ce24756",
+        "share/birnam/src/modules/alien-compiler-assets/native-prelude.c": "6f6e92ebafd2b6cf1671d69f951f516affe558db6448dc38eb4849f8b220383f",
+        "share/birnam/src/modules/alien-compiler.birnam": "618a2731b899cebeeb3eae80d636b4b025c1f335231387a3cbf5ac47fc18adf0",
+        "share/birnam/src/modules/app-config-test.birnam": "8e78a5ac54f24b5cbd4ad877f236bb9a1b7361dc3efc6a6d17cf7afb402316ef",
+        "share/birnam/src/modules/app-config.birnam": "916afef2782d59f4accbab0072166f00ea4d8b3c64e081be18ec03d57faa843e",
+        "share/birnam/src/modules/bench.birnam": "e0e882f04249bc7094af197eb0d1765eb3ae6fd21ac3e14b27c1e6fc912c9128",
+        "share/birnam/src/modules/block-loop-control.birnam": "bf59b111424057c004ea590cb7d44fad36ee27d7964373e65c1e9ab808739711",
+        "share/birnam/src/modules/block-loop.birnam": "42fb22306eab968b674caeab2583d2df844d6b389003301b4397cc48690a1079",
+        "share/birnam/src/modules/block-test.birnam": "21230ccd8ab0e1d70d330eac4c46b5a27a4e9c1479b201bc11960bb9a53d3107",
+        "share/birnam/src/modules/boolean.birnam": "1e9aa64a2eacf766802d0881bef89c9412a5743cd9d4497ce371f130afe8b48a",
+        "share/birnam/src/modules/cell.birnam": "e0f32b1ba3d172310500350a61c8b2d483da00cde1dee73655b83bcb5b252e88",
+        "share/birnam/src/modules/cli-test.birnam": "6d57f4b2741fbe2e3d1ee84589f54af8351880903de8ec03e9e0c0e8c84ac058",
+        "share/birnam/src/modules/cli.birnam": "f970a0de2cc5e0fa9c722bd6b5d77875510e7b77bb10869afa9ce75274a42c97",
+        "share/birnam/src/modules/collection-search-test.birnam": "d9a511b620fb5a8c1c82ba39270c64db33d7b872a6f83c3b4f2e31fa2eb15fa6",
+        "share/birnam/src/modules/compiled-unit-docs.birnam": "6d47d265248561857f157a88b6684ced4a3e6b35b26565c9c175615d3a3da36d",
+        "share/birnam/src/modules/compiled-unit.birnam": "67469399aba35d6b1903df24b7f43a7c94b5c5b7be4ca01056f050c70ea02e11",
+        "share/birnam/src/modules/concurrency-docs.birnam": "d1683b42df4b5e07504598dca03aa28e2fbbc1afe51d242bf78a5a33e9ea70a2",
+        "share/birnam/src/modules/config.birnam": "bc8aeae394e6b2036cba4cc716d07c7d1065cbd760df9b9a09f5c073bfa83a59",
+        "share/birnam/src/modules/doc-test.birnam": "a67e1d9c36db54e9dccdd54e44d7c9e6939d898efc20156c53f1756ab98af151",
+        "share/birnam/src/modules/doc.birnam": "070bee988a4ef5cc91c5898dfee46d5ee1df7446660a10d92e373b91af99dcc3",
+        "share/birnam/src/modules/error.birnam": "ef2524c0c474783bb7e21942a61d06873585d132342e3ea6469c651b01d068f4",
+        "share/birnam/src/modules/file.birnam": "557b750ba90000ba705557dd7fc3bd66d8a51ad8363b6e69a7b30b80dbb1d004",
+        "share/birnam/src/modules/globals.birnam": "98cbf951356c6e9882000a6c80dd18f99b351014084ff52aec481679e2854f13",
+        "share/birnam/src/modules/html-test.birnam": "42f2ae3b026123d124c0f7d18fff2d530d4664b7a97ebd1a24b07c324292e3e6",
+        "share/birnam/src/modules/html.birnam": "72c94cfa53ce861378c3cedb4ca6b69efc255daa2d32e88d22b49ec9bf49d60e",
+        "share/birnam/src/modules/http.birnam": "3bcf8809dd2164d28c984915064de7e30f7d24bac378ca269dfa88763fd85dcf",
+        "share/birnam/src/modules/image-format.birnam": "576c04bbe5e3d420ffb3ab653ded479bdab149e5aeb003a9fc77b270ec4499f1",
+        "share/birnam/src/modules/integer.birnam": "37559f8be1c99b4af8dd85e2db1efc71adc6ef81149d117d481fa1434bad6503",
+        "share/birnam/src/modules/isolate.birnam": "616e3f04d29c19af1132a5d6b4409afe69c043617efc9f3a200bea23aee4acb8",
+        "share/birnam/src/modules/json-test.birnam": "2e273f7f922e8046f4ed93b72333621ca7ebf2d87bd7b6ec0ffe2e7b8f03d9f0",
+        "share/birnam/src/modules/json.birnam": "9461985d7c7435843957f569442a5ab9c32ffa6911499ab3aab05a63a89d10d7",
+        "share/birnam/src/modules/lang-test.birnam": "21e76176dce06387b71152e625b61b457ccc314ec5c5e7c93bc3e7f37d762380",
+        "share/birnam/src/modules/lang.birnam": "13c24b4a3e74f97e21ea1fda71126e4a78c4bcccdcbb8018e1eea31053918c71",
+        "share/birnam/src/modules/log.birnam": "85a89ca7d6c5fa2aa7d5b4898aee9c2fb85ccce91ab31e048049ed83f05afb5c",
+        "share/birnam/src/modules/lsp.birnam": "bd02b786572b91aee428e4d9f1219429a1d05ff1883e3953781f1c8b131e9bc3",
+        "share/birnam/src/modules/markdown-test.birnam": "9b9d9e6b4e6740ae0ec4abc34ae2e27f7dbf0ae8c47d5dd397b4835cbfb1e781",
+        "share/birnam/src/modules/markdown.birnam": "1000ffe6810ef22ec5184dadd421d6b07ee8cd6b28c32dc785bad1f4227aae94",
+        "share/birnam/src/modules/modules-test.birnam": "ac31723d32d1ea0c82c9d232acfb1f48de8d5c63f35a02bca5579d4317648be6",
+        "share/birnam/src/modules/modules.birnam": "5b0b822f276779bd25ecd0606806c91f016e6e575ba2553e8dbb6236f8a919fd",
+        "share/birnam/src/modules/native-loader.birnam": "dc48fbbdb717b33a83cb6996903c1b0f2c6f6a26649038acf811c780fc7a8929",
+        "share/birnam/src/modules/native-values.birnam": "5eeab132698a96b4a645ab41fed7c36b5b4846d40917e561d4932a0e4e53ba8a",
+        "share/birnam/src/modules/nativedoc.birnam": "05d3a37ab09d1a8471e396fd50ed9d6933fa34bc8698a66679b07ce858780eb4",
+        "share/birnam/src/modules/os.birnam": "eb584ffbe6f1748a29f76071aafc41f78b1b5382cac4d2f8ef1f65646a2fc8cf",
+        "share/birnam/src/modules/portable-code-test.birnam": "2d1e6340065f60db42c24cd78b3bd0e6b5c5e6b59b639bb78a311d03f5b294fc",
+        "share/birnam/src/modules/printing.birnam": "a3e7b977e2ab300c4d16f472c8a9b60577e3c882b0faabe9546c06c05b59101f",
+        "share/birnam/src/modules/process.birnam": "e619903562dffb8958d38b7d536fc81738d2b0f8fcb4f3700940fb3b7873dbd0",
+        "share/birnam/src/modules/project-policy-test.birnam": "1e0e65686aa74cc477beb6a59deb056b8a4f24f36167cf3ee2e4faf7251fe368",
+        "share/birnam/src/modules/project-policy.birnam": "e30a99eca04d1c9ac64ef738f34f8a994ea110bcc5c9603cc92f9c2aed87552d",
+        "share/birnam/src/modules/random-test.birnam": "487ece198f36609ba769e61d8d454f66cab177c353198eb50f2765ec2598a1f5",
+        "share/birnam/src/modules/random.birnam": "102bd3f512c16a86b160bc963525d41287f06f8c8622e2d8e9df6323b8eae511",
+        "share/birnam/src/modules/range-test.birnam": "32fb75ed8d98c06eeedec8e5ff5fb202ef2a60a75c0a6eb6c4ba896c9ddb95e6",
+        "share/birnam/src/modules/range.birnam": "8e1e88b9a4064fec47c89c97fb07135777023f34dac90d20aefac7906d12bea7",
+        "share/birnam/src/modules/reflect-slots-test.birnam": "374360c99685d4ca0052de8354856d4e7fbff1bb2f8d66b17e622c794c00c17f",
+        "share/birnam/src/modules/relational-query.birnam": "0252613163f7617a6b1f9f433984fae35f68cacd110b9beeed8c7d8fdac247bb",
+        "share/birnam/src/modules/repl.birnam": "5acfa31658303764da8b56e5bbfde129d1a913e19cfbc0864e7ebaf1b62f6e8a",
+        "share/birnam/src/modules/run-tests.birnam": "b35c1741a6af321935c0f5cddd2e65eb19dc062038ee75cb12af598c65df9fb5",
+        "share/birnam/src/modules/socket.birnam": "d871ace0d175ee0ed983547bc014f10a0154b1bd9f590d8de50bc010a1b02ad7",
+        "share/birnam/src/modules/source-loader.birnam": "dea9c82a1590f7d9b40c8e8923d3289f3a83c8c3bce80752118866857c0f355b",
+        "share/birnam/src/modules/stackless-control.birnam": "ffbe431296b585e5c71e3a21ad2537f7efe7997707dcfe680c24259eccfb4501",
+        "share/birnam/src/modules/stdlib-test.birnam": "3f80d54cce23181fd160f6d1ab1eb8b50ab3b97540f3a4ed85485f1818790804",
+        "share/birnam/src/modules/stdlib.birnam": "c6ea0f897aea37b34de1b9f3f4ed12c54ed7721159e04ae881b96d557cf05658",
+        "share/birnam/src/modules/string-order-test.birnam": "8f838abc8e780e3e5f806acd108b084445bc81f74cff4027ff2280b841983890",
+        "share/birnam/src/modules/system-gc.birnam": "d9348a4c6e9c99e9afe0866cf2a6b316e74f4d007c86ad2191ce13b00294eb43",
+        "share/birnam/src/modules/test.birnam": "4f6ba01c9811bf36eb8eb7f8bb2aba7a43e150f3eeebb2e73e100adce82eba4e",
+        "share/birnam/src/modules/time.birnam": "5b014717169048ac0d368845ff14fcf9d4a5e24a676f93e882e4250f9a3bc9e3",
+        "share/birnam/src/modules/toml.birnam": "2af56b9616db014cb632509083f219410c1e7d24fa830b12e558e99a9562a433",
+        "share/birnam/src/modules/trace.birnam": "713631198051acda97f966f50201a97a2d2558a0c99f3ff81c29dfaa4b7dcd38",
+        "share/birnam/src/rust/birnam-abi/Cargo.toml": "7b11d1c250613d3181cc6255bdc9ecdd3231a487864d7a0e5878e8d07e864e3b",
+        "share/birnam/src/rust/birnam-abi/README.md": "8ae67da96fdd3c1b9a7f99a92151abbc8b3edba5d040fcb84f469b38bbfed2bc",
+        "share/birnam/src/rust/birnam-abi/src/binding_guard.rs": "0fa1fb1215b5a4a0aa194ad895733059b9391b7fc259073b450812c8abddc65a",
+        "share/birnam/src/rust/birnam-abi/src/id_protocol.rs": "c363f97602cd23b09e37518359262c2e42c6dbb3700e822463988c6aca03b19f",
+        "share/birnam/src/rust/birnam-abi/src/lib.rs": "d6b9e5ee708c13d975fc2ebba70471a31dfbb5e9bd021eb32b414e95d4b91ca7",
+        "share/birnam/src/rust/birnam-abi/src/native_module.rs": "e2f964d96b2b61b51fe29ac5d5f159e177bf95eb583bc8e90b725d341c7f5b6e",
+        "share/birnam/src/rust/birnam-abi/src/native_signature.rs": "524b436e1414cf7a0f4e6d4d35b20520626ebbc06c44643cb1b8ad4c4f407e59",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/README.md": "9a36fc6094210d752953003f3d31c5003b092e9f0f1eb1784bffcc9e13cd6233",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/alien.c": "c1745103af6326e6c21351f8dbbc7ac180557c64073b8258c4fdae7961ad2015",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/compiled_recovery.c": "5e743015d2d18d0a7db1ea334564225aa356061e4462802258cc2bf8ec70253d",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/entry.c": "11cbad21dab8bb2f57985a681534157ee8f2a7d1578a0d2b4de19e687cc690f9",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_machine.c": "a89ad77c2a6d7d67a3f0bdce8b108890e6b4961f0b4c98a4239548930a4de44c",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_method.c": "59e06f388339c445c2eb4ccf889576a4c53b6c8b0cc2a1bcf012edd45af7c3d7",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h": "4bb91038de17940f4ee452462cb4c88b3bb038e9f7d26ab62746106543a1df86",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/isolate_reply.py": "8e5add2174942957ca6f93dac8e991d5d25c658cba90d233c36390987200d2e0",
+        "share/birnam/src/rust/birnam-abi/tests/fixtures/id-protocol-v1/native_loader.c": "42dbaf8c0c7307cfcb4ab725b63b448815e966822b48bed73c6c66165bd66311",
+        "share/birnam/src/rust/birnam-alien/Cargo.toml": "710d2133a2239cc3e422dd8a50b1a57a9a42f477f2a344564645ff55189d6788",
+        "share/birnam/src/rust/birnam-alien/README.md": "e28cbfa9afe4020e4b29ab31c59f8f0c77231756557e42594a7b453de585c129",
+        "share/birnam/src/rust/birnam-alien/build.rs": "d7b275a80fc77919e53a123e309086f2b428c7a4266ff3503d7b1a63142fb6ec",
+        "share/birnam/src/rust/birnam-alien/exports.json": "9ad4711b4df7b693b61ba7e8a50bc7f295f2ce06a909602e51bc4fb89065c360",
+        "share/birnam/src/rust/birnam-alien/src/lib.rs": "d84c15b483c04a9730bb68f904e16e574a61fd97af06d7db1fcef294862f798d",
+        "share/birnam/src/rust/birnam-alien/src/loader.rs": "9604cad12c42f0d0ee1c19c1953e5a54fe461fbc54aa841cb6397a4c1d0e9590",
+        "share/birnam/src/rust/birnam-alien/src/runtime.rs": "4fab473b61e615f99801b1330c57218659a3d2c96eb47e37fa85671c620a381f",
+        "share/birnam/src/rust/birnam-artifact-codec/Cargo.toml": "99367c017a4efe61a3438c27db313e68e2472892ba2830b677d9949672a09566",
+        "share/birnam/src/rust/birnam-artifact-codec/src/lib.rs": "385ed7709dca773b93e2dcae24505e78840e8973235ec1e2e76ede36a26d666d",
+        "share/birnam/src/rust/birnam-artifact/Cargo.toml": "8371c97b9802d33acbae2d6e7d818777823d1991c42c5fd23a3e5abac68b7b93",
+        "share/birnam/src/rust/birnam-artifact/README.md": "935701c419b92cd86de3924298cd65693897ad54515498e6b23b78215d95f13e",
+        "share/birnam/src/rust/birnam-artifact/exports.json": "b87f0aaf5dac7780d98414e770c3fb64de654eb761342c10099486e743e265bb",
+        "share/birnam/src/rust/birnam-artifact/src/candidate.rs": "8072654bc78f418e5883bfb471a50bf7a32f5174268f123af4540e077fc3332c",
+        "share/birnam/src/rust/birnam-artifact/src/code_binding_inventory.rs": "bc6f6f4db01604ecb3eac3084ecf69964d7ee34cfa5989ca414addf1c5cb057e",
+        "share/birnam/src/rust/birnam-artifact/src/digest.rs": "2635c31eb297bfe1e624d1fb7d2a8bc91e6983f506dd13879ce9ea6d1c685cf9",
+        "share/birnam/src/rust/birnam-artifact/src/frame_descriptor.rs": "88ee3290a7878d50abb8efa7e9e50a54eebdb22618ec499d92bc05613fb7b59a",
+        "share/birnam/src/rust/birnam-artifact/src/lib.rs": "701c3ac0d83e6e86e2415b7a472c54746eed695bd23ed861095d668054b7028e",
+        "share/birnam/src/rust/birnam-artifact/src/materialization_selection.rs": "e1eb289fe76e2f4f25d644d95e1dc3cdc211f7ab4a5f0691ba647712a203f313",
+        "share/birnam/src/rust/birnam-artifact/src/module.rs": "b1d6514d3bec9502fbdfe00cd8b8c43b0275d49806c1c63f3084731850223136",
+        "share/birnam/src/rust/birnam-artifact/src/portable_inventory.rs": "2e44f73e6608cd5f2138cdc720c34deeca505b4d3d9534c8698510e8ddbd02fb",
+        "share/birnam/src/rust/birnam-artifact/src/portable_program.rs": "e9a8b12b238170d3d2166c050e3d55000cb22cc4adaaebe7025903ff61248bfa",
+        "share/birnam/src/rust/birnam-artifact/src/portable_resumable_manifest.rs": "7f25931ecd7d82cdc8ddeea41d129f75f3df40b1638d4c7873882d9422cefce0",
+        "share/birnam/src/rust/birnam-artifact/src/resumable_manifest.rs": "9ab2bfd256e1a406959c8d65f254546cc42a5bd0cc16c5d192e0be2be03a3413",
+        "share/birnam/src/rust/birnam-artifact/src/selector.rs": "d8b67d5e0c2c740f99243985271f1620d7e1a1ec220c3a9d10d2a45d33e3d855",
+        "share/birnam/src/rust/birnam-artifact/src/stackless_selection.rs": "c583cce8edfb8b004587e51b42d4d381fe87b1c2f1ea2606eaff6c783a36a2ea",
+        "share/birnam/src/rust/birnam-artifact/src/wire.rs": "054e10ed96d5e5ced9f9f29043c2053ab2c482cc7c71b801e0fd20ecbbb9963b",
+        "share/birnam/src/rust/birnam-boolean/Cargo.toml": "2af2e317abb6aaca6d91e3f67b64b437965d43c23038e8303f0341011927fb0f",
+        "share/birnam/src/rust/birnam-boolean/build.rs": "799fdd78ab3a229ac0441ff523323c3f639dcaeb551b870610322143cae2bc3c",
+        "share/birnam/src/rust/birnam-boolean/exports.json": "c7fa6b6dd6d8be61bf15f742d6a39f1ed64f171c6b6e6ef355d7e1db2937476a",
+        "share/birnam/src/rust/birnam-boolean/src/base.rs": "8904695453f4874178797cb1649dedcda13ac611b0d90677d78a6ca539ec9375",
+        "share/birnam/src/rust/birnam-boolean/src/lib.rs": "49a253814808a3aa537aa2f147439d87c05bf3c4239d83ca56d803c702850f9b",
+        "share/birnam/src/rust/birnam-bootstrap/Cargo.toml": "fcaf58c87ec903a6f36a9cd048d060473f1cc25264771dea6a4bae1d7fa746ab",
+        "share/birnam/src/rust/birnam-bootstrap/build.rs": "7b68d41ce8a41e73a6bec0058de196cd2d69b7f9c458a252f1ae1eef1313549f",
+        "share/birnam/src/rust/birnam-bootstrap/exports.json": "5e1c2b3ef630cd9f8e651379e6bc0dd63d08ece61e1bd6fe57130aa64fa602ce",
+        "share/birnam/src/rust/birnam-bootstrap/src/lib.rs": "e2cce5df9f6c60f611de811969832f260e5e66fad1b24d5a0cc190b013dcad48",
+        "share/birnam/src/rust/birnam-bootstrap/src/load_result.rs": "f255758bf25951b7a421370adecbc6761d97fa6ab93b99ce36c4eedc87317d27",
+        "share/birnam/src/rust/birnam-build/Cargo.toml": "ab7485555b2d521b7756e961d14d0ed2b2c7294ed508534de3b60c43d352dfad",
+        "share/birnam/src/rust/birnam-build/src/main.rs": "0ced900d96c3289fafea5ad662933248903e2f36c2be001999a8a3573c42393b",
+        "share/birnam/src/rust/birnam-bytes/Cargo.toml": "86a3b92c6e1825a0eadb4b348a5a9f6ebeba7774aa71bcab0b6c61b804c08305",
+        "share/birnam/src/rust/birnam-bytes/build.rs": "ecac245589c2b126a2ecf26eb021b5cbdaf9648ff869cf743e794db573d201c6",
+        "share/birnam/src/rust/birnam-bytes/exports.json": "d747a4636254ccfb41071d085f445baa81b7c5b28e3abcd4ac9d41b9412a427b",
+        "share/birnam/src/rust/birnam-bytes/src/binary_hash.rs": "566fcedfbfef058fcb73fd41051746ea8354d304dc68e2c9fb2e2ab13f1037db",
+        "share/birnam/src/rust/birnam-bytes/src/binary_rows.rs": "9e4c2ce4fbdf62ebadc28417ce96202dd4f656387d3336ba107e44f3ccda428e",
+        "share/birnam/src/rust/birnam-bytes/src/lib.rs": "40546b534a8e27e2a39d902aa2d481f18d7fc35fdc87154346acd965f90014d8",
+        "share/birnam/src/rust/birnam-bytes/src/native.rs": "0d12ad51547b411f95e3bee04954f251c17098f038465d1daaaf9535c6fadba5",
+        "share/birnam/src/rust/birnam-bytes/src/numeric.rs": "f55c85013b13e76f87c2d6d4211d36bc7e898eab364f371cb0fe36f755452cf2",
+        "share/birnam/src/rust/birnam-bytes/src/tagged_rows.rs": "3ef664d1cde188e6e1e7d0d605a7d3b231f99107751ac21bccb984ea732801e7",
+        "share/birnam/src/rust/birnam-bytes/src/tagged_view.rs": "1595e638abb1761fdbe6d4c56bb0ed4f31f4938914561addb9dc452f67ab388e",
+        "share/birnam/src/rust/birnam-cli/Cargo.toml": "9bb1bb216f9878d89a4aa1becbc40bcdff3cce1d031fd0dd2646ce83d8f6c461",
+        "share/birnam/src/rust/birnam-cli/src/bin/birnam.rs": "a7cbe098067c9e557de8b1b6d21ea4d0aca389354527bd8e75bbb2884940c06e",
+        "share/birnam/src/rust/birnam-cli/src/command.rs": "e8f2e450922ac5d2f4ee8d2ea08e6304d94ecb598edc8ff6e14b2b788d128d5e",
+        "share/birnam/src/rust/birnam-codegen-runtime/Cargo.toml": "a321e5267537c37429a3637c8145d56cffe82b1196e3cf085e35c9004075d993",
+        "share/birnam/src/rust/birnam-codegen-runtime/README.md": "62890094f2841276a64a258bd6bf01870ebab8dac0a013e499b2b7a1c6673c1d",
+        "share/birnam/src/rust/birnam-codegen-runtime/build.rs": "4cdd3d71a1601cd091f0a8fb204cabf147af2918805d402424307b33542375ec",
+        "share/birnam/src/rust/birnam-codegen-runtime/exports.json": "aad6f343e6aa63f8e4ded6a9618c99fa9bea715c0854b9b2e0c893e522657508",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/artifact.rs": "8a367d221131684ed1c778443517c84bfd9189a198132c72220941564816fc13",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/backend.rs": "a60f78dcd66b4436ebb72ebc2252f402be618cd1f0acbdbc7ebd9460e0da796b",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/candidate_inventory.rs": "b3e94afb540de0a8d1ae55ecf218d4625531c82807e752da1359523e8ec540d0",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/embedding.rs": "a3de4b266ac1a91a934dfef4580608ec1abaa413ab23752dc04dec93f83f8371",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/image.rs": "55445561bc773f5f9bb1cd6565a9a02a4ce01c214dfec999d42cccb35e6eb5b2",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/lib.rs": "d2f8f2826b6dfc30339afd1f5bcee371c00f5bfb03caf79e8081a9107a6cc2cf",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/materialization.rs": "b40ee15dbb9d2ab1fd624ccfad7fd2d76027a299b60c9e6701804d82ffa944d8",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/publication.rs": "8d5dfbe18e3b2a6f1123f78192fbfc44f8df905370cca3e0938fa4d5c64d63d4",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/reflection.rs": "a7cd73f9983026f0ec644d6bd8a29898ee7c4bcad99242491438a3e738ed965a",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/source.rs": "4845abc3054479f1e582253562a1775c89c565809abeefd4414f5ffa4a44c31a",
+        "share/birnam/src/rust/birnam-codegen-runtime/src/source_metadata.rs": "c72e5c5b220276074a092e66ea7570b2e14a151895cd5cd0fe1cf041e8c99bea",
+        "share/birnam/src/rust/birnam-codegen/Cargo.toml": "5ec18a4ff01bb024ea42a97a280b6db2ebd122b36c21df2fe714ae1c9549151d",
+        "share/birnam/src/rust/birnam-codegen/src/artifact.rs": "02bb546ef0536b209051e4cde1386a37ce2c7cff0f2c9d4d960ae6de19edde76",
+        "share/birnam/src/rust/birnam-codegen/src/backend_request.rs": "c649689f28539ebd1ad28c60a195b1df2facfe9898c4eeea19159dd367627647",
+        "share/birnam/src/rust/birnam-codegen/src/candidate.rs": "af1cf92caadf86d3553651fc41a611e8a97b662e360f0e16ca59111dcedb7162",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision.rs": "5c7f672ea8118f31eebadcf391158ce098db38b15f4b84f201231d4ffbc089d9",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision/numeric_body.rs": "248397318c1551694bce422ea2a598e86de0b74d9aa37f54eb57105475ae09a2",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision/numeric_body/tests.rs": "a7359552b2dbb8599fc910a44e905c851dd5bdee034968b88fa021a3fbff0226",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision/numeric_plan_tests.rs": "09b30104543662d6ec85b8074f2aebfa6deddea1d7f664934e22422f0bb65f88",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision/sequence.rs": "85512ec27ff171162b4606baba28ae02f3f0d6e176f78483de5c81b07163ee35",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision/sequence/tests.rs": "6fcd7984d6ee862aa783adb10578fdb11b1d3f9d6de3470e9bb3d368e728284c",
+        "share/birnam/src/rust/birnam-codegen/src/closure_elision/transition.rs": "09c0a86eb8d26232d0aac56c3214e3792da5334b06ff79c77606f7a04d281788",
+        "share/birnam/src/rust/birnam-codegen/src/discarded_clone.rs": "3e98b33530f2e48476b2e6c285ba1f4abbb3e42c26d5fa744eee74860087e3e0",
+        "share/birnam/src/rust/birnam-codegen/src/frame_region.rs": "357cc2f7ffac8a6e93cb3d6e4d70fde9599c65dc405300cf81aa57cd1560dd48",
+        "share/birnam/src/rust/birnam-codegen/src/generation.rs": "59c9b0776dca295358d11d3bd63342821c4286bc2baac5923ac67dfadfae2995",
+        "share/birnam/src/rust/birnam-codegen/src/image.rs": "de1949f90c8b36668c4c5f8c77544d337edf75821ef4843dbf520ce17576f4a2",
+        "share/birnam/src/rust/birnam-codegen/src/lib.rs": "ac69cba614b111f1767ffd15189823a88fe380ae350b4749aaa167f9d5d0f18b",
+        "share/birnam/src/rust/birnam-codegen/src/literal.rs": "d6cef15986fb24478769b96ad4594864564331672d4a24354e979e662000a6bf",
+        "share/birnam/src/rust/birnam-codegen/src/lowering_tests.rs": "c1694f966bd4301cb3ec44e032f12634eb9cfe70a1871690223cb7a8c77f8637",
+        "share/birnam/src/rust/birnam-codegen/src/numeric_chain.rs": "04470497a61f215bac284d515222e7c6c28c45e0c9ec30c9471b5a138a7b2d30",
+        "share/birnam/src/rust/birnam-codegen/src/numeric_chain/recovery_maps.rs": "f906e9d1fecbf1d9c8ee25d93a67f6e26b353ccf8cf322b384943e94e4046fe4",
+        "share/birnam/src/rust/birnam-codegen/src/numeric_chain/recovery_maps/tests.rs": "741afdb8c1af48b18f490ac897a7e788cd3f78adbcfb3c11672c67529d573243",
+        "share/birnam/src/rust/birnam-codegen/src/numeric_chain/template.rs": "d92cce881a8781a56e7ccb7571c580dd7e986ab23844071bcda946d57373a4ba",
+        "share/birnam/src/rust/birnam-codegen/src/numeric_chain/template/tests.rs": "dcc35094eebdba5c656054ab19b6ec19ab203635f34e5803281911e7dd7aebb1",
+        "share/birnam/src/rust/birnam-codegen/src/portable.rs": "c1ff9ac798ae11a52a7caac31477f4cd4a19c40fa7b3f7d6dcd7c4a16e1e4b57",
+        "share/birnam/src/rust/birnam-codegen/src/portable/source_match.rs": "1163e1fc40c5fda4ec8f2081596c06162563ec7cbf712cb4064d697d2d7c00eb",
+        "share/birnam/src/rust/birnam-codegen/src/recovery_graph.rs": "4a5a00a5e6e305ce330e264356808560ee7dd248214aee4767014e77b31dceda",
+        "share/birnam/src/rust/birnam-codegen/src/resumable.rs": "3f8ef494a3067bed7918e8d286dfd0d387dec79e6955b45f0002c0226045bdb8",
+        "share/birnam/src/rust/birnam-codegen/src/resumable_descriptor.rs": "333969de26f939843b6061e57dc1682776d957fb60ef692da2e86a5cf6ad9f17",
+        "share/birnam/src/rust/birnam-codegen/src/small_callee.rs": "d961fcf7bcb8a76fcdbd6a877588225faf6f89ebb7109614a32f48c3361ec48d",
+        "share/birnam/src/rust/birnam-codegen/src/source_metadata.rs": "16588f24fac523a3d20f0c1864decf9320bb1736f618c8e2781732bec08a1896",
+        "share/birnam/src/rust/birnam-codegen/src/source_revision.rs": "9258951d10ec6d5022a716fb452ce9c998df928ac6a207c9035dfb6fd106a051",
+        "share/birnam/src/rust/birnam-codegen/src/tail_entry.rs": "6ec65297b231ac7a5ef3fdc31e6dd6d7e2a617397f1b4b13042e71e097ec7f99",
+        "share/birnam/src/rust/birnam-codegen/src/virtual_aggregate.rs": "34f1af11e282a0ec2e5a79997b5fb6cc4e716e1dc084ec034bdbc29c4238913e",
+        "share/birnam/src/rust/birnam-collect/Cargo.toml": "a5e3fef2d8d1da14bb7ec3bd8f41f0f950bb515f7d1d803cfb601d00e93d6a33",
+        "share/birnam/src/rust/birnam-collect/README.md": "282915b0899eb3f62d94627f57949ddb891442fbd7efcf5a527debfbaa746653",
+        "share/birnam/src/rust/birnam-collect/build.rs": "a00b49b17920fb50457c5f2264c4ad0255fc8480c5a26519c2e8195cc298e0a5",
+        "share/birnam/src/rust/birnam-collect/exports.json": "edc1eff5daa31a0f5c04254c9baa6c6e63ba86a6083fbeb44beb1127ed57577f",
+        "share/birnam/src/rust/birnam-collect/src/accounting.rs": "8e3253481a1999182d9c0682135ea09fab8db4cd861c17f526421e01927c58d9",
+        "share/birnam/src/rust/birnam-collect/src/collection.rs": "2760777a822bf5020c2ec8bb6f49243c6cb0538bcd415d54213b8c79736d8478",
+        "share/birnam/src/rust/birnam-collect/src/construction.rs": "a344409ef00f365d8a765c8369d9f212ccc88df26b3b1a230ac0bceba1b78f2a",
+        "share/birnam/src/rust/birnam-collect/src/lib.rs": "6b04e147500612f6b3f1807e255858b3bb8337c3001ac62721b73fa5a5cca3ec",
+        "share/birnam/src/rust/birnam-collect/src/native_stack.rs": "fa58ae947f75ef9d785baeccc2085e90c43978d78cde61e878a697f9dcfda866",
+        "share/birnam/src/rust/birnam-environment/Cargo.toml": "b908d4e58ff3ec3eaf9866c6a69d070b65f0a84b31fb7d9da3af772786ed3ccb",
+        "share/birnam/src/rust/birnam-environment/build.rs": "281568af58ec8939b191665dd4b7724c3f4fdc3832a32b23807e522f831d081a",
+        "share/birnam/src/rust/birnam-environment/exports.json": "63eae1a45eebe54683a29267595a48fd81d27aff4a3666397f6a401ba899f284",
+        "share/birnam/src/rust/birnam-environment/src/lib.rs": "39b8e1f6da4e3ee00a38680d418193d28b71a6c2d1490c50a12d5172a14e79d6",
+        "share/birnam/src/rust/birnam-execution/Cargo.toml": "04125ff8ed1064c6842ec9af9a6ddc9076004f06d99693e2567dcfb52a7c8d74",
+        "share/birnam/src/rust/birnam-execution/README.md": "039662f527dd80a13569cba07acb5987a24a3741b0f6da44d0627604b94f417a",
+        "share/birnam/src/rust/birnam-execution/build.rs": "098c840e459d273f55f14d2fa1e82518aca265785b18a8c10be728f08d34b950",
+        "share/birnam/src/rust/birnam-execution/exports.json": "42fe45b191ba5b7bf0a4b6931449ad399082d9775ad8edd3fa3b26be73265d71",
+        "share/birnam/src/rust/birnam-execution/src/binding_proof.rs": "53e1dd740d28804cce4ff6bacacb7c00bc45c2104683bbb1484a18f85697b309",
+        "share/birnam/src/rust/birnam-execution/src/control.rs": "65e34c98474f9ad804620c3ef69cd3f4f1407a263545aa001b10f1e110e9ec14",
+        "share/birnam/src/rust/birnam-execution/src/discarded_clone.rs": "570c9f9bf99e2866ea807df3c9f659ce6524c6cd1527af0a5b86812f2042ce12",
+        "share/birnam/src/rust/birnam-execution/src/entry.rs": "e5a8628bfbc9514a5db619c6fec6c770ab97542e34930211f746bbeb4e56ad10",
+        "share/birnam/src/rust/birnam-execution/src/entry_plan.rs": "8dbc190bc79a398c15cfd8544d5a57e11c89828ed043b8f9e8a7d1631d4c2640",
+        "share/birnam/src/rust/birnam-execution/src/execution.rs": "7efa69dc07e1512918630ca7342bb77b888ea206e301f9f04a9df80c1e276dff",
+        "share/birnam/src/rust/birnam-execution/src/execution/boundary.rs": "b21938a81021dcb22abee97b794e64754d11cfb36de9aa42c308df0258fb181d",
+        "share/birnam/src/rust/birnam-execution/src/execution/inline_recovery_experiment.rs": "941e4189d4ae834da455a73604592c72a31d43cef65e2331ed42e2d49063c799",
+        "share/birnam/src/rust/birnam-execution/src/execution/loop_iteration.rs": "f0db351ab2d5020fe9b2ed7899882ada7a381777cf2918a8208b83dc518dc350",
+        "share/birnam/src/rust/birnam-execution/src/execution/probe_descriptor.rs": "9950445549fe2b6ea7e811a88d85cc9b9dd83b88afb1604f22ad72c32a1e7df2",
+        "share/birnam/src/rust/birnam-execution/src/execution/recovery.rs": "cd4c0544f2de38b3c71e4d3eef298df72fbf3e3dcf012679013d431ecf3e9bd8",
+        "share/birnam/src/rust/birnam-execution/src/execution/scheduling.rs": "a0ad8268b427a5e4b2b06c9afdee214bd657f3f9494b6241edd6c33ab15734f2",
+        "share/birnam/src/rust/birnam-execution/src/execution/tail_entry.rs": "007d6f98e1537e011199d2a8ddb8031915a123514377dc6c1b816a741b3281a0",
+        "share/birnam/src/rust/birnam-execution/src/image.rs": "b73024c40eb5b1895ea4cd26739eb99aa6467ce46fd8c6ea05edc7682ce4be26",
+        "share/birnam/src/rust/birnam-execution/src/lib.rs": "04cfe078969a593f017b0b44141466fcdba6aee8f84e5c72251ee7af572111cc",
+        "share/birnam/src/rust/birnam-execution/src/machine.rs": "1e49ecdfd75c5e2c2405d8e6fc17a37cbd0e6669ad26a49bb758f865a82355d4",
+        "share/birnam/src/rust/birnam-execution/src/machine/frame_call.rs": "f1f5dd84d27d34084bcd6e7eec47ac460bbbe399b123a7220d4854938edf941b",
+        "share/birnam/src/rust/birnam-execution/src/names.rs": "a6ba9ae74d35ce3a8c6829d28642303f09a7996492322bd77ec95902a9e69147",
+        "share/birnam/src/rust/birnam-execution/src/native_abi.rs": "5148301a9c03004b511fcca4592b0360bf2446e3be44f2eff1b448c82ad16d80",
+        "share/birnam/src/rust/birnam-execution/src/native_message.rs": "862a948d4751829a3d2bd4f1200d8ea7a9b47e89e22d3a5e29e204ff668c4473",
+        "share/birnam/src/rust/birnam-execution/src/native_tier.rs": "2a771eebde4548d975ae27623a7d795447535872727a36b6a8b2abcf78364775",
+        "share/birnam/src/rust/birnam-execution/src/numeric.rs": "c5e6ee16a7d93ecb18e4332824c7c8d86cd2962027392ec740203530e0a77b06",
+        "share/birnam/src/rust/birnam-execution/src/numeric_operator.rs": "d5b2e83236b4a770a7e266f4941d5153cb7173af48ed3d2ea9bab685f68d9ba2",
+        "share/birnam/src/rust/birnam-execution/src/numeric_predicate.rs": "d81e6f77327aa25d300e8caa32efa937661bcf6b3b0f2f9c57d5d2b0725ddf79",
+        "share/birnam/src/rust/birnam-execution/src/objects.rs": "26dee1e698ac8dfbb842d4f4c11930cdb2ab923ed814fc113fbc6d89f08a4984",
+        "share/birnam/src/rust/birnam-execution/src/recovery.rs": "75e58cbf274457cb611d8fbf31eac44e1dfb567ddd865bb6962bcae09bb81e54",
+        "share/birnam/src/rust/birnam-execution/src/recovery_graph.rs": "37ba1f4e32b957c14418cbb2e864aeb2678b01160ef17e7c4a3f6a90ee33c5e6",
+        "share/birnam/src/rust/birnam-execution/src/word_helper.rs": "fe61e697d65a7b9a993c9e27a402a3e668e89865afcd7836565d4370de408f5f",
+        "share/birnam/src/rust/birnam-execution/src/word_index.rs": "f3f7f38d77c9dd4b4d254fbb1a3a33d682e5941d1fa9b376094501e9d3013e89",
+        "share/birnam/src/rust/birnam-file-io/Cargo.toml": "627e363c3ad6028497fce0dc7c99978fcdcfc03c5feef2e5dce47ab8a2fc2605",
+        "share/birnam/src/rust/birnam-file-io/README.md": "ee2a3a53d9c3df9dc3d4f1fbe9798d8c2b260b8ac5b53a6506aa55cda4f8c73a",
+        "share/birnam/src/rust/birnam-file-io/build.rs": "890b8dbc31278d965dcbd5b35e4c1ff78c5657c64612f3a067d3b3ed66415900",
+        "share/birnam/src/rust/birnam-file-io/exports.json": "3a4c3c6a72074077a9d519926fae7caf5a3840b96294f7c84195e9fc9c9223a0",
+        "share/birnam/src/rust/birnam-file-io/src/lib.rs": "4902a2e529a54bfda699de6b9c45684394408ac8a78d2c2cb9016d0033e573bb",
+        "share/birnam/src/rust/birnam-float/Cargo.toml": "be638067afa2b1f4f58542a5083ed14b9d91f87e099737db4abb9b93bddfced2",
+        "share/birnam/src/rust/birnam-float/README.md": "4183ae244f2c2ba35c9ac66a9635e5951a39433bde5a8db1f1e4060a511a749f",
+        "share/birnam/src/rust/birnam-float/build.rs": "96b711b67fb601b17daa40b6af215753a0b21036b8d457e353686d3dbd777057",
+        "share/birnam/src/rust/birnam-float/exports.json": "129129d93cfd388a9eeb5719de3d0e9499aaea2acb9ca99d2dfbd3a6c0b0bd90",
+        "share/birnam/src/rust/birnam-float/src/lib.rs": "bceb4325401bdc4875d9ae123a984402725bec0fa8f9f1592f4f4fbaa74f6204",
+        "share/birnam/src/rust/birnam-float/src/native.rs": "a70507bbaaf549fb18f21a272a73e3901828814a530d0ddf93595abf7c156c99",
+        "share/birnam/src/rust/birnam-generation/Cargo.toml": "9b3c332f70945a65dc338b7214abee55bb9c4de8922f931c0aacf61536ed464a",
+        "share/birnam/src/rust/birnam-generation/README.md": "0c911826ef4576bfe34f6c550cabb2ef79b6dfbc45c81a9b3bfb588ebfc47cc9",
+        "share/birnam/src/rust/birnam-generation/build.rs": "d94d117da6ae115669ec77748eba8fcf6d5fa73e60aef5a84f7ed07c75317c7b",
+        "share/birnam/src/rust/birnam-generation/exports.json": "4c3eef9f2f10aaa5e0455ffc7341dfc8fbe6c5d1f3aa537910447df2608e4fcb",
+        "share/birnam/src/rust/birnam-generation/src/backend.rs": "10157d7210b2de54c5363a479462061f271dff7a9a3e5b9de00796350f39cc98",
+        "share/birnam/src/rust/birnam-generation/src/candidate.rs": "35adbbe0ca4308655526921e0b937e7b2ef573f88ab40398d24aece553eb6547",
+        "share/birnam/src/rust/birnam-generation/src/candidate_ledger.rs": "99ab68845cc324ca8b86d290a69f6f7a63c5e6777bca9d07d02248d1e97b5ad7",
+        "share/birnam/src/rust/birnam-generation/src/candidate_phase.rs": "c862a83fa6cc2d547567247a15363947fc374ce479f38aac4c6ffdc864147613",
+        "share/birnam/src/rust/birnam-generation/src/candidate_preparation.rs": "4729d5e65f1b286360495c53ec23e22b8b2d5036b3bd0517e918b00e0fad91f0",
+        "share/birnam/src/rust/birnam-generation/src/candidate_recovery.rs": "b8c99d2f75740728c3d210374d4bd85de71c011425df89026bbf3eae78e8ea4c",
+        "share/birnam/src/rust/birnam-generation/src/candidate_retirement.rs": "d5e759b78e3c76d7b3018a2d9b5f7d8fdb92289e8d92c06f960c60e0c48867d6",
+        "share/birnam/src/rust/birnam-generation/src/candidate_transaction.rs": "8bdbd1303ab370e7193e8829e783107ca5db0be64e0fd8f470af24df058f6c76",
+        "share/birnam/src/rust/birnam-generation/src/compiler.rs": "c6d3f871dcc512ce99289a8ca4d2ac327788e06462a08bef20c58ac63146d617",
+        "share/birnam/src/rust/birnam-generation/src/lib.rs": "db371429b5fbaf4b741cc1a8cf4b674f1c78d683b62165300dea254de0b9b5db",
+        "share/birnam/src/rust/birnam-generation/src/registry.rs": "fcf6a1c8f02dd259a67745eb5db64f1092c09eccd1164cc945237c55c8665c49",
+        "share/birnam/src/rust/birnam-generation/src/values.rs": "4ed56245b8c0adb7beb9028c5e01b0db67520347b8ed1a6059a316212eee204a",
+        "share/birnam/src/rust/birnam-host-entry/Cargo.toml": "655270a940725bad441c83827d72a8300cca01443bc4a08a43bdf46f53349ccf",
+        "share/birnam/src/rust/birnam-host-entry/README.md": "f3109f103535232f4943e0c97975f68198c66abe15a60782d5ab968ceaca62cd",
+        "share/birnam/src/rust/birnam-host-entry/build.rs": "b3e710b413050302bfde286e98cbb18464662808ad6c208aef38136442b7d46f",
+        "share/birnam/src/rust/birnam-host-entry/exports.json": "713d7a3c507f369af3aa453c0dbd0ec150180bb95ba7be6d3ef206fa84312373",
+        "share/birnam/src/rust/birnam-host-entry/src/image.rs": "db23d2f0c7761facfef14ee740f0202187e4f16195fcc36d7eee28edf9ac4f86",
+        "share/birnam/src/rust/birnam-host-entry/src/lib.rs": "27720c862312c21724d687528954f98374759d9f1dc68b4d72992b097b207b99",
+        "share/birnam/src/rust/birnam-host-entry/src/program.rs": "ef36b6601db6cb68461b0b1c4e2d98bd03eb5f48aacdf78ede8de76e88ec3a86",
+        "share/birnam/src/rust/birnam-host-entry/src/startup.rs": "6148739e804d1c009dde56e9a594273c5f4242e09a043a938ca78791bbe671c2",
+        "share/birnam/src/rust/birnam-host-entry/src/worker.rs": "9d51168bdc3caa7e78264fa2585de4889dd7bff913d5168f3a1ddcb08b1af475",
+        "share/birnam/src/rust/birnam-host-interaction/Cargo.toml": "3cbf3af1a6c9bf18ac0ec4a5f8f700fefd7a5741afba81ba6c10fe10350c1929",
+        "share/birnam/src/rust/birnam-host-interaction/README.md": "c09ce2caadd802bded59cbd5bde3ec1080290c58a7d2ea39bc3ca41da800c7fc",
+        "share/birnam/src/rust/birnam-host-interaction/build.rs": "0c8d3ce3e47ec3b794c659030d76e0c73b6a1b75d1428098aa02ad4f3867ee1a",
+        "share/birnam/src/rust/birnam-host-interaction/exports.json": "03fb4cf296c6bbd520f21138e562a4f7852e9e92010ed56dbc06733c06a16637",
+        "share/birnam/src/rust/birnam-host-interaction/src/interaction.rs": "6936ceea7a81288ac29eb8fc15d7ea0325ab6e714b6bb2e0a9ed93147c330ff0",
+        "share/birnam/src/rust/birnam-host-interaction/src/lib.rs": "48ad4cc6ffc2bc40d1c5ab5807dbb391946782770141513c77bb1be1df9e9123",
+        "share/birnam/src/rust/birnam-host-project/Cargo.toml": "cdc01836505b5a1f06e1a913c1e5047a1000911341be74c5e9f7660b4eae890c",
+        "share/birnam/src/rust/birnam-host-project/README.md": "25cfe7305e7d43077b8e54c986638431bfac7e2da73e09b4166d7d4a09e71300",
+        "share/birnam/src/rust/birnam-host-project/build.rs": "49b905416224333ec8ba8e0d47f7bf8abb44a6023b28798e0b405234c2b8c020",
+        "share/birnam/src/rust/birnam-host-project/exports.json": "6c42722e01b7d9e8c6926acc3a470b4868f4102f89221397a66e03299ff668c3",
+        "share/birnam/src/rust/birnam-host-project/src/lib.rs": "9a2593ac4f2cf5b92ee79e5f9993d9ec25695d783c8e8b85c23200291120b6a6",
+        "share/birnam/src/rust/birnam-host-project/src/project/data.rs": "2493971a39ba1ac051bf37307fd715501baef2a19f6722793bc95301a7437ac1",
+        "share/birnam/src/rust/birnam-host-project/src/project/files.rs": "2d025adb7e3328bc069663195e5af439acc862d029800e16fd2838ef2c8c571f",
+        "share/birnam/src/rust/birnam-host-project/src/project/mod.rs": "de22ff6e152ec8c583e683b5c12affd0ea3a944ef11278802abd70f2002fec3a",
+        "share/birnam/src/rust/birnam-host-project/src/project/operations.rs": "484fc9706a25c9542a02fa9815939b17b9cadbb28ef6cc99a2b24a6f0d159628",
+        "share/birnam/src/rust/birnam-host-project/src/project/query.rs": "aaf95c9decbbf0423b828ddb2d28a79883a87f4ba0f2229ed83d109cf375fe12",
+        "share/birnam/src/rust/birnam-host-project/src/project/source.rs": "6278456e4f5efedc4879925aaa2efd2a08eb6de59f373bc152b6586da298dd43",
+        "share/birnam/src/rust/birnam-host-project/src/project_query_contract.rs": "e68e216defe78413949dab1a69157df3ae88a7d0e9c5644172c6f61d11c6ff6c",
+        "share/birnam/src/rust/birnam-host-project/src/test_support.rs": "ffc8f435ee1dcfd3e84cab0da496bd0c3c87f15cb7bb94e71a289d22256ba61d",
+        "share/birnam/src/rust/birnam-host-support/Cargo.toml": "de809b5de4208f2be75583c7b0c2f49b3668877e40a06a9634963ea28198cbab",
+        "share/birnam/src/rust/birnam-host-support/README.md": "77dbd9542ad41f62065e480221cf0c402d59a642d261bcd67b26d33f20849c68",
+        "share/birnam/src/rust/birnam-host-support/src/lib.rs": "72774bdb74e4bd37dd7ad9e113e6e45ecb7b4944fb140237c6f06e4765afc156",
+        "share/birnam/src/rust/birnam-host-support/src/native.rs": "74b580739e946b323332c5ebbb602b3171ce6607227ddd1e94e83947ee1a4436",
+        "share/birnam/src/rust/birnam-host-support/src/policy.rs": "1d660a584a2ad6f24a9224504ad1769177be97b9e9920ea8c27337417f12a87f",
+        "share/birnam/src/rust/birnam-host-support/src/project.rs": "f06c34df59ccc4cabfd52ecf8dc4af88c8652155dcecd6e9c696c63f226bc709",
+        "share/birnam/src/rust/birnam-host-support/src/resources.rs": "4ff010a1a57371e41e289ae774de26ad761e1828f53a51a71b89247e499efd09",
+        "share/birnam/src/rust/birnam-host-support/src/runtime.rs": "8c9aa6bb4b0e24dfbf1af46b930d7bf66462506d31fe7ce3d0355fdbff50e5ce",
+        "share/birnam/src/rust/birnam-host-support/src/source.rs": "ba76fa5b68be8e674717a81c81722bb86316a3f127e5d1d5a474293ea8ce18c1",
+        "share/birnam/src/rust/birnam-host/Cargo.toml": "34b162b1683cb989de8ffab91a9cd60fb4aeef80b29d38c979b83bc4dd4c3ec3",
+        "share/birnam/src/rust/birnam-host/README.md": "a01f89cb285af07a23be2f3dbb2719e9f3bc018c981a3cd36cb2f78d4faeb5d0",
+        "share/birnam/src/rust/birnam-host/src/baked.rs": "50666165aeeb499cd035528adac0ad8993bc83b7f0456c6e55bc698e941cc915",
+        "share/birnam/src/rust/birnam-host/src/bootstrap_receipt.rs": "2537e10c6a5827e16937c4d3fd2658a4dd768f517b836afabea52aaed14dce66",
+        "share/birnam/src/rust/birnam-host/src/image.rs": "94b9ea08972f8a6e57e74ce94306b524dd1c13d673189acded028ce8f9229f17",
+        "share/birnam/src/rust/birnam-host/src/image_loading_test.rs": "7f05ca24ca99b6b377c1509d33cad7619919dc4d76624650a8e56d64542a6917",
+        "share/birnam/src/rust/birnam-host/src/interaction.rs": "eb5c6a7b41a4fd5ef7ff9d047de64c84c9a93053d4640ef7b0980cbb2aa7344f",
+        "share/birnam/src/rust/birnam-host/src/lib.rs": "d007005b67b385467db24a4c109d80d8553a302391eb33d3077357f600e23f68",
+        "share/birnam/src/rust/birnam-host/src/lifecycle_test.rs": "9ea9592547de907ad763eb3a8400e78402c3f08e8ecd5f46fa71a8996b35a2a1",
+        "share/birnam/src/rust/birnam-host/src/program.rs": "5c15ff8db4f628e51f3a2c384f87e17ba4b068a7ea1869658291ed8c3d782724",
+        "share/birnam/src/rust/birnam-host/src/project/mod.rs": "ebab8aa7605254518dbaff53930552ef4d732b55b3e4ecbec33933a4a867eb45",
+        "share/birnam/src/rust/birnam-host/src/publication_receipt.rs": "bfc92506b6be0190464f77105abdc09d63830585727266d573a837da256d52ea",
+        "share/birnam/src/rust/birnam-host/src/receipt_validation.rs": "59f7f6627f968e0fe72d4c0e3dffc228e1b06766dac11bc94c1595a4c7386e98",
+        "share/birnam/src/rust/birnam-host/src/resources.rs": "f5f08959dca7a0964387705c4815194a831d389e69ac22acb3a09e4b0adcdcd5",
+        "share/birnam/src/rust/birnam-host/src/runtime.rs": "cc9027d89dd43b62304b3e20265a1dcc6b1fe2a9f0e0662c7c4acf4e158c680e",
+        "share/birnam/src/rust/birnam-host/src/startup.rs": "bcea1d7df03d7d434c304751e21b7563b3585624e0adce7f904fc6c001e896d8",
+        "share/birnam/src/rust/birnam-host/src/worker.rs": "4a1e4542554c1e67499455b12756d5a71cc603a781495a5b4fef35e0cc888d16",
+        "share/birnam/src/rust/birnam-host/tests/native_backend.rs": "716e119e5be976b0136ee34969b9af1c9c159bacbe37ef7c97d22c2460ae9d48",
+        "share/birnam/src/rust/birnam-host/tests/native_compilers.rs": "4548c70172f43ba7b69342fea92465cfcb59c0db24a9fc27eeac45676d293b24",
+        "share/birnam/src/rust/birnam-host/tests/native_owners.rs": "3ebc8fbb460106c7f24324dabe742c89d77655407fa67c5794361a599ef8f866",
+        "share/birnam/src/rust/birnam-id/Cargo.toml": "181cd59163a0513946c7229489a0198885be66089a5380947c10b0b4c6032b4f",
+        "share/birnam/src/rust/birnam-id/build.rs": "dcf4ab7621a178d5aea01a09e834895f954afdcd43de5aea6074f3f391a235d1",
+        "share/birnam/src/rust/birnam-id/exports.json": "75b3cb3de64eafdba92a664171593d9c4c0524cddbf4bf4f09c98f5aec00ca39",
+        "share/birnam/src/rust/birnam-id/src/boundary.rs": "5f3610e8f5a83cf97852fb26dd6014534f75a70771c9c9368b01bac072d62f69",
+        "share/birnam/src/rust/birnam-id/src/id/id_dispatch.rs": "69f18089fe549204a225b37d5d9110734de11cecce4f6f578f969bdc9f859f35",
+        "share/birnam/src/rust/birnam-id/src/id/initial_objects.rs": "7d7e9123feb2b4e9347541cce78797478c3fe08fb8994b8fde29ce01799f3a31",
+        "share/birnam/src/rust/birnam-id/src/id/mod.rs": "d219e3433c171031dc53bb4e3d10d29e31595233338b43e130a3810d0bb8a87b",
+        "share/birnam/src/rust/birnam-id/src/id/native_id.rs": "e0208e06580e2247b76fe548a8773bfdbbb99e089d4d503996887d95bed55166",
+        "share/birnam/src/rust/birnam-id/src/id/native_id/metrics.rs": "3fb588e3e64fe76fce3d1ccc3dace8088ddff698b509527ef7ca8f4f961ebb88",
+        "share/birnam/src/rust/birnam-id/src/id/native_id/objects.rs": "c12a253c4f037b618e66bf07013ce27d9cada8f1ef3445963a9d093e0c68135c",
+        "share/birnam/src/rust/birnam-id/src/id/native_id/registries.rs": "7f61befd685391033591f01c653acc05d4d7c89e812bd408a4afdf41b482b5c5",
+        "share/birnam/src/rust/birnam-id/src/id/native_id/storage.rs": "0cc132d2702bc4d017fa2a16638ba4f573e52f500079ad2de4b8761aa0d1e18e",
+        "share/birnam/src/rust/birnam-id/src/id/object_memory.rs": "de98dc46205be69c4254a835a67f282b85b28f3a50ed7a6db3748b831011dbb0",
+        "share/birnam/src/rust/birnam-id/src/id/symbol.rs": "b6d1680e0db1d12fade5e88ce7cdcb8bf3004fee90607937f69fc38958835e66",
+        "share/birnam/src/rust/birnam-id/src/id/vtable.rs": "6e06b218709bab5fedd0a64926d0cc7a1dc22d4578372d643f13bf5821164774",
+        "share/birnam/src/rust/birnam-id/src/lib.rs": "29148681a3753e4098ac23524e7ecff0f794d47e3d7ba6bcb4ed7b1a3d91520f",
+        "share/birnam/src/rust/birnam-id/src/owned.rs": "59b51d6e5288faaac16403c178a3f3c160152129cd2f4d5640d9c8341d177b90",
+        "share/birnam/src/rust/birnam-id/src/raw.rs": "b252cd66fe93305769ec0e8ceee5875e8b8f5aa20645c17891b7269335efa019",
+        "share/birnam/src/rust/birnam-image-codec/Cargo.toml": "1450b4be1263cba5ebfa272371f024c48748b95fd77d05ccd100fbc0921a97c0",
+        "share/birnam/src/rust/birnam-image-codec/README.md": "681ccd84248a7a5401cfd975473eaff79ccbdb63b5541947016a757bee514029",
+        "share/birnam/src/rust/birnam-image-codec/src/behavior_links.rs": "b0f79e185552b782b8550055f9437c67fce7820ca41fa366014cee09c3d855cd",
+        "share/birnam/src/rust/birnam-image-codec/src/lib.rs": "6898ec210c256c714aad3bda68026dd0e80d8a03644b739e9e31bb1e5981a0ce",
+        "share/birnam/src/rust/birnam-image-codec/src/native_code.rs": "56d87037a30a92b95d26148852a10435817314ba5c2b3aba3bbdc58a5f55ee8d",
+        "share/birnam/src/rust/birnam-image-codec/src/retained_facts.rs": "7cf9722e20c861d237407d5a1a9d9c83113c8ec396196e23226c210bae676b8b",
+        "share/birnam/src/rust/birnam-image-codec/src/v8.rs": "9eefd4afa29ece55d0b4b778d887e093f3ec9ec8b31f26a61c02f8ff01def012",
+        "share/birnam/src/rust/birnam-image/Cargo.toml": "4b4ff20b84fa6964e9272709bb673be7b44ed65c81784dcd3bd4e8b078307e49",
+        "share/birnam/src/rust/birnam-image/README.md": "30eba8bf8e661bd8c5e98bb69b81de9cbcc54917ee43e43b13cf905b78561999",
+        "share/birnam/src/rust/birnam-image/exports.json": "b8d7a25df94550239a173019b7dbb50872bf205cc164afc539b53e973b354140",
+        "share/birnam/src/rust/birnam-image/src/format.rs": "29a4095c59f57af491f912ae3d6b55521d5771372cf103a1c7b3c3122fad1ce1",
+        "share/birnam/src/rust/birnam-image/src/lib.rs": "4400cc0b051a25d92d4e371010795f9309b48cc94a29761a4b0c77adbf778c57",
+        "share/birnam/src/rust/birnam-image/src/native.rs": "932b085f8273b683db410a9611879ea5b01a14d70fc5603d4e26133357f0386a",
+        "share/birnam/src/rust/birnam-image/src/publication.rs": "f945e13f66465b1cf6fa7aa304d6f86c38579c98d120c0648722891310774b6a",
+        "share/birnam/src/rust/birnam-integer/Cargo.toml": "77e18e0b76d8495fa1efaa115737f14e048d827eba530485a4e266eb030a40fb",
+        "share/birnam/src/rust/birnam-integer/README.md": "96a06921baffa358e32cf7a178efb17c75ecc40f913aa434ce3efd756cc5d40e",
+        "share/birnam/src/rust/birnam-integer/exports.json": "da631e6a4d60b55dd953589741954f062bf206c8db7afd9355e27426aa95f6eb",
+        "share/birnam/src/rust/birnam-integer/src/lib.rs": "a68453773053eefefa0318922f10381b6c726d189b13563752808c50a2b688fc",
+        "share/birnam/src/rust/birnam-integer/src/mixed.rs": "72970c5fc09bf2e49e2802372d3c6d9b34de7703fdc7d05f7add5f5e8b12abeb",
+        "share/birnam/src/rust/birnam-integer/src/native.rs": "6bb26039442c9ed89c2356575ee4df01eb127541e17d60bd1cd9aa0ee622a9e3",
+        "share/birnam/src/rust/birnam-integer/src/predicate.rs": "dd55e7c498bed26ad78300dd0348aab158b89acf6253c384b12bd5c94918b7cb",
+        "share/birnam/src/rust/birnam-isolate/Cargo.toml": "4c7bd05dcea7a8a5dacb0d17c2701aac23f2c20316bbece34284d3d4f65ca3f9",
+        "share/birnam/src/rust/birnam-isolate/README.md": "4b7bd476cd9366d39c39605595722fa2f58b07d6fd4d74cac7bbb0b3b588943e",
+        "share/birnam/src/rust/birnam-isolate/build.rs": "8c2de0c4193d6cf2232f850e62d414af852c2bf10bc6c021e94943b4cbe4317f",
+        "share/birnam/src/rust/birnam-isolate/exports.json": "f0f3008bd24989918b66104289cb154cf555bf4da25afa93f0bb63f489262bab",
+        "share/birnam/src/rust/birnam-isolate/src/asynchronous.rs": "66144a38dc305a4724a09dd9bb71833b282421f2cf17f24c1d9b3f5c62cef8d2",
+        "share/birnam/src/rust/birnam-isolate/src/lib.rs": "3d8a67fc50274dd5e78ad10a70a56518b7abda3c60fbf01433527bf442bed57e",
+        "share/birnam/src/rust/birnam-isolate/src/native.rs": "7b7271b497b7e4bb972305465145adf84b1a6b2708ceb1212ca6e1f0da58bd8b",
+        "share/birnam/src/rust/birnam-isolate/src/native/transfer.rs": "285b9e405599fd553b5de90a6e2d7179bb02dd0e9f846a32b445c871cfe7e4ee",
+        "share/birnam/src/rust/birnam-isolate/src/service.rs": "fb6f881b1f4283bb6683ed85ce83504caac97881d7e08c3d13753318c60bafc1",
+        "share/birnam/src/rust/birnam-lang-seed/Cargo.toml": "3890399f36e127d85f0ff1879b94ce76d348fea3b79a440c97abce9bc9482a35",
+        "share/birnam/src/rust/birnam-lang-seed/README.md": "7f5540303add32167141c4c38271a23f25ce97b1916a9befc1a91172d61cc6c3",
+        "share/birnam/src/rust/birnam-lang-seed/build.rs": "36f1c53836151a8263a3e86a4af9d7e0753d2953981113a736a34a81ffac4367",
+        "share/birnam/src/rust/birnam-lang-seed/exports.json": "5c97aba16f7f9922269fe76e1f58b8002ba445b7d3e451faf7cccd2bedfbb536",
+        "share/birnam/src/rust/birnam-lang-seed/src/grammar.rs": "b305b22750dd6a1b8e0379afb336978c8d8b1afaca68d469ccf6a00020416be8",
+        "share/birnam/src/rust/birnam-lang-seed/src/lib.rs": "ce7066b005f572b1e4b07ed02413f6e0d3b2e7fd1ec98084fb6e3dcdb92db230",
+        "share/birnam/src/rust/birnam-map/Cargo.toml": "e5d1ad51fb0f306b9b9cd3356115692362dc1f865f09e8136d099bbe7b6fb5b4",
+        "share/birnam/src/rust/birnam-map/README.md": "56f54d6c48359db3909deaa69dac62fea438064212111a9b6a701dcfbdc1b421",
+        "share/birnam/src/rust/birnam-map/build.rs": "82a016fab2541d2b8f81404d0779ce0979041c859ba78b522a02efafb601c32e",
+        "share/birnam/src/rust/birnam-map/exports.json": "6062f7a9658c386c8584b2622f3110c8ac1795074f429d8c0997dc620109c06e",
+        "share/birnam/src/rust/birnam-map/src/lib.rs": "d30be22c0ac5584d61b967dc9ec3c81bb18b311b51e30b8980a06cc7e5154a20",
+        "share/birnam/src/rust/birnam-namespace/Cargo.toml": "86d1e9e55d277ceb784e2f24cdc6e78dce3a753f01f30697b6d07887904cd862",
+        "share/birnam/src/rust/birnam-namespace/README.md": "386428cceeb221320cbb88780a56112ad37e45bf558cf5b12b08705e7fe537a1",
+        "share/birnam/src/rust/birnam-namespace/build.rs": "26bbbd6ea474e7f2005755bf393e2a4e41e4794c4f3c839016e81445df0407fd",
+        "share/birnam/src/rust/birnam-namespace/exports.json": "2e828742351163402ee4a84e858fa0d35f156b540b494d2b4c651045744b92ae",
+        "share/birnam/src/rust/birnam-namespace/src/index.rs": "8f95d4fd392c4245f494495b51b884cbf168bab7e9e405f9aa280eda2a6423f8",
+        "share/birnam/src/rust/birnam-namespace/src/lib.rs": "d81003df9c986a9da2b3fc3867b41866c1ee49dc3d35062f60f41790cefc7264",
+        "share/birnam/src/rust/birnam-namespace/src/native.rs": "540eb394f520c42625be787ceaaf90cb3200dfe9e50d953fb9c62e5abf2fc419",
+        "share/birnam/src/rust/birnam-namespace/src/state.rs": "a0d01879e9a6772f62b8ea6b7167af93ae13c6080aa929b8c5ce2c5230f42d8d",
+        "share/birnam/src/rust/birnam-native-backend/Cargo.toml": "769a8cafd3c812544e05b44e9be37d9c9874e145cd0aaa2d4c92efa0552f8e4e",
+        "share/birnam/src/rust/birnam-native-backend/README.md": "2108ba32b0f6f1e54164b048602fefdf3541ea45a6644a93488a5b3cc229bb92",
+        "share/birnam/src/rust/birnam-native-backend/build.rs": "6e3584b665ab4e3216d8f60f90aef38893fe92465e70922b25fb4ab83922c32a",
+        "share/birnam/src/rust/birnam-native-backend/exports.json": "d0b8f00ffdc59052f4f6b48139b7a3f6adb3313b78c18ef4c2dddb4ee154207c",
+        "share/birnam/src/rust/birnam-native-backend/src/c_string.rs": "659b7fb383062d9dec76edbc257bbb44767ab81926d73cd5c111fb6583d81fe6",
+        "share/birnam/src/rust/birnam-native-backend/src/helper_emission.rs": "48cefa6077dd5005756d13529a0a1a5a52ccc88f31d5b535b4eb2ad56e3339e1",
+        "share/birnam/src/rust/birnam-native-backend/src/lib.rs": "15178329ae583c83654b83d1ff89227f0d3764988175793c175012e423c695cc",
+        "share/birnam/src/rust/birnam-native-backend/src/literal.rs": "d6cef15986fb24478769b96ad4594864564331672d4a24354e979e662000a6bf",
+        "share/birnam/src/rust/birnam-native-backend/src/native.rs": "48c59687f4b6d3745eb958d01e66a609ccb073535dcbad4168f32a7d1cbeb25c",
+        "share/birnam/src/rust/birnam-native-backend/src/native_inline_return.c": "af5555f00c5b886e2b658d11bc3bf02ba489aed22dd003605f6fc586da6cf920",
+        "share/birnam/src/rust/birnam-native-backend/src/native_prelude.c": "b25eb245d74f6d3024d2d0a23810d5962436ab2d124b6ca1d1e72e80316e70a5",
+        "share/birnam/src/rust/birnam-native-backend/src/native_sync.rs": "222d8afdee7b704f23f8e83342cf8c458a8693aee48af6d1241d917bc5a27b4a",
+        "share/birnam/src/rust/birnam-native-backend/src/selector_capacity.rs": "2e2b71ab041c99dacf3553bb071f1e3f68af321bccd2fa32797bae51b9fa8d21",
+        "share/birnam/src/rust/birnam-native-backend/src/word_expression.rs": "10ec4b35a63b61a3b92378b1c1d92d20125fabdde53ab0a0179c0bf748fcd481",
+        "share/birnam/src/rust/birnam-native-backend/tests/return_handoff.rs": "af3d60a2b0727aff23bbfe0ef06e4ef1e829d92f9d9cecab7714795de5272af8",
+        "share/birnam/src/rust/birnam-native-backend/tests/root_cleanup.rs": "726528be5d4b7f14b62192b40ea6199671e1deb8402c81b228dcf06575a1693c",
+        "share/birnam/src/rust/birnam-native-backend/tests/selector_cache.rs": "c7c72c6da70bbb2394060dc0a452e1caedeba120205ab6c0d8614b448b4afd17",
+        "share/birnam/src/rust/birnam-native-compiler/Cargo.toml": "cb0ac9393e4712be1266b319a6649ba58a6d12e6026b3cc8f9940cc335a2c12f",
+        "share/birnam/src/rust/birnam-native-compiler/build.rs": "8ddbde4d8bf38a9eed98cd6ee8221bd17660116aaafd3a79738215b400f3015a",
+        "share/birnam/src/rust/birnam-native-compiler/src/allocation_metrics.c": "9ca182156918d95a6cb9d9c1aee67bd4cc58495d0bd0d7d9a2284a8f8c175007",
+        "share/birnam/src/rust/birnam-native-compiler/src/allocation_metrics.rs": "fdf43bf3fc9b780aba428db3d666deef9d891b47ee87c4c401e6bfafdca9f829",
+        "share/birnam/src/rust/birnam-native-compiler/src/lib.rs": "94bf5abaa8b21dfd69fcc4fb92492bfe67d739958d77930c5d3ecefc68e79223",
+        "share/birnam/src/rust/birnam-native-compiler/src/resource_metrics.c": "865b6554f5178e65017380a52e24dca9fbd9aa423b8ca563a017e0fb672ecc9a",
+        "share/birnam/src/rust/birnam-native-compiler/src/unit.rs": "3d991e2e2b81cc143c56d654d18806601d95b139a1eecbeb9b03db1db4fbad67",
+        "share/birnam/src/rust/birnam-nil/Cargo.toml": "0310d9ae5d4e7dff16e516253c08ff64ce0ea436cfad09454f97b2e0abc9888e",
+        "share/birnam/src/rust/birnam-nil/build.rs": "b463e07de7b3f41b1108f19e541d31c146fa5feda579f0c86a9b9d551b2a1a18",
+        "share/birnam/src/rust/birnam-nil/exports.json": "bbe02e905ec1f65ccafcd7b1baf7be7a8ad17f1377315606010cb559e3355f75",
+        "share/birnam/src/rust/birnam-nil/src/base.rs": "2636d9958d76d0c0f29802cf6fc8924213124ede0a070f828c85e443ccca567b",
+        "share/birnam/src/rust/birnam-nil/src/lib.rs": "9456c2c1350f50c6f9b6da0a85b5d44fabfbc1f88d9a1f73aa9856385f285992",
+        "share/birnam/src/rust/birnam-object-model/Cargo.toml": "1a6773ec48c7074ec6392c49582789f1ad82d3613abb47b8e25a4381447fe0a7",
+        "share/birnam/src/rust/birnam-object-model/README.md": "24e4888f4566d534d410287606482c6b2e045f7cad04b9fad14a67f18bece43b",
+        "share/birnam/src/rust/birnam-object-model/exports.json": "9a657c4ad2add1a0300c506b510eb8d9300b48e58fd8c65446f8ff2272632515",
+        "share/birnam/src/rust/birnam-object-model/src/layout.rs": "7b4b54a3446e90613330a3961c00140bb2ca44ce4723fb1d85a7cfe413c79b3e",
+        "share/birnam/src/rust/birnam-object-model/src/lib.rs": "d6b1027193e773034dc4b66afe06c2f88bbcdd93dcf34be929e3bc17ba4d8a51",
+        "share/birnam/src/rust/birnam-object-model/src/native.rs": "76efa03083be4a14f8c505932a4a392aac0846f199e14500bec207a25af92b61",
+        "share/birnam/src/rust/birnam-peg/Cargo.toml": "bde98bd52916d7b0b5edb4372b18f0419227d59a2669ab7b946107073508ae79",
+        "share/birnam/src/rust/birnam-peg/README.md": "4baca8190b6f9525876c43af4fc0ed7aa15198c9b31061d3ed24b8e5944614f5",
+        "share/birnam/src/rust/birnam-peg/build.rs": "8f7edd9fb56a2e2c35c50d82d645961ea841599828c9d0e23ce23db0a79b55c7",
+        "share/birnam/src/rust/birnam-peg/exports.json": "508b6fb70f5077d17ca74cde312a558d19f5c841ae8e5e2ffb6e0524f468adb7",
+        "share/birnam/src/rust/birnam-peg/src/lib.rs": "9dea43e275658bb8087bd6d7b0c98f609f9795bd8fb212a11c9f73ea05e54709",
+        "share/birnam/src/rust/birnam-peg/src/matcher.rs": "bb241d19a829de2a91dfc65ce8d7c099c60c66489485547559d7ce85075c6038",
+        "share/birnam/src/rust/birnam-peg/src/matching_tests.rs": "ecb64bd09fa086c5c88ba556a7aa352c1d6abb0956df2d8fc00c3b353091554b",
+        "share/birnam/src/rust/birnam-portable-code/Cargo.toml": "daa5559f24b965befed1c2e0b58f8bfcf1d5e50179c842ba697f3e9c2c6ff163",
+        "share/birnam/src/rust/birnam-portable-code/README.md": "ac285d6a62d8a84843d777497ed322bcf5ae992962ed3cab14652bfcae903b82",
+        "share/birnam/src/rust/birnam-portable-code/exports.json": "80d784fa72fcbd71d03dda91b7051d5da757f83fd8d32c879c1f08dea6df01b4",
+        "share/birnam/src/rust/birnam-portable-code/src/codec.rs": "84b67dba1a5e36ed4d38560012c25ed7622163ea4e5f5b1ddb51e11888733241",
+        "share/birnam/src/rust/birnam-portable-code/src/inventory.rs": "b454257bb738f7e5a7b844a949bd7a6f7059d498e5198a1172199aa092523e03",
+        "share/birnam/src/rust/birnam-portable-code/src/lib.rs": "a2f05c4a3e5b5deced91cc899dca4f6858af2efabec9ee81b5bd8340572f3da2",
+        "share/birnam/src/rust/birnam-prelude/Cargo.toml": "6ed54adda30d8ccf3488d6782602a87971f4bd6c7057a1458f8c226dd503e4d5",
+        "share/birnam/src/rust/birnam-prelude/build.rs": "4a4b67f86a51747420d7bdc6bc08d149af4ca4571b6317a02a36af9ec680cd1e",
+        "share/birnam/src/rust/birnam-prelude/exports.json": "c29108bd9b90c602de83d44f7e72a3df1f45f2120835e537917e4c74acd64728",
+        "share/birnam/src/rust/birnam-prelude/src/lib.rs": "3e948fcd4555d2f5a0c6f180f85e36dc24c5644ccc27336a2f0644136f5cc025",
+        "share/birnam/src/rust/birnam-project-build/Cargo.toml": "735df4fda91a873274ed49e6d031c59cf2bbd0be0a3c4bd51e303393889cf4c7",
+        "share/birnam/src/rust/birnam-project-build/README.md": "0b26d98aec2b62940f38bb177ff9289581ca3dddf216f3a8f60e0742d5e6f1e6",
+        "share/birnam/src/rust/birnam-project-build/build.rs": "5f10441c67480c9ab8c8a75c3682006f025859fd84cc6f4da6307eed2086d910",
+        "share/birnam/src/rust/birnam-project-build/exports.json": "e43ffb6d91dc5c8cb0ceabd668de74dbd32979a400755c910c500d75990fc40a",
+        "share/birnam/src/rust/birnam-project-build/src/lib.rs": "7f5115575ce0501a2e084b96686969683d8a74ef18afa95d692ea9874309f6fe",
+        "share/birnam/src/rust/birnam-project-build/src/project/data.rs": "8183afed3c69b0d2bbb88c4ee4aa62f2586e6f4469587ea301254177f4e3fe40",
+        "share/birnam/src/rust/birnam-project-build/src/project/files.rs": "997f7f3c74791052e6a3ee12374ea9430939a0aa5618f909a7a23603c8c1f9d8",
+        "share/birnam/src/rust/birnam-project-build/src/project/mod.rs": "f5a6bd69a9d9ee7c7b46b29637b5b804fed4f491a5499b94445681eabcb9d33e",
+        "share/birnam/src/rust/birnam-project-build/src/project/observation.rs": "aae46900a932bb1d9202460002a814218817ac5d23898afec6bb4e849285e46b",
+        "share/birnam/src/rust/birnam-project-build/src/project/operations.rs": "18ec905a2ac2d26407796d38c72b96d69fd963332fea9bbcd3aa80b543aa5003",
+        "share/birnam/src/rust/birnam-project-build/src/test_support.rs": "09dcbb3b4ace41b94d430c49b0225002fb0137f5012a63327a6d9af49635fbe7",
+        "share/birnam/src/rust/birnam-project-support/Cargo.toml": "95a3376e112da5e393aa4bbcdabbab47ef953ec4dd973d193511ffa38d41bf45",
+        "share/birnam/src/rust/birnam-project-support/README.md": "a0783b8a69739fca68e4983841765aa7783e05cce4a779ffa53cf4b3cfa86fbd",
+        "share/birnam/src/rust/birnam-project-support/src/data.rs": "a891c9f327b8fa515d6dfe8af964f241082e8cd766f9f3820e339daa65325c34",
+        "share/birnam/src/rust/birnam-project-support/src/git.rs": "4a2cfb1ba71e11135d60039fb5164a0bc56ceb578b1149710b5140a74aae38a9",
+        "share/birnam/src/rust/birnam-project-support/src/lib.rs": "ad7e50bfc32dd8a703c3f37c658553126c5dd0d3f34784032bd25335d9dfb7d2",
+        "share/birnam/src/rust/birnam-project-support/src/values.rs": "d85331bb80bdf08266e5b3cc47a49e63adb9ef2ef10071fbc5a013ef2d5e93e4",
+        "share/birnam/src/rust/birnam-relational/Cargo.toml": "3193cdc1ae62367aab2ad46e8947be0013edc179e6aafb94bb1926c290e73ade",
+        "share/birnam/src/rust/birnam-relational/README.md": "34a4587f55c765539ac788e8b92214b089c90188e47120adc1f36a5c198a93e1",
+        "share/birnam/src/rust/birnam-relational/build.rs": "3e389968a337adedb7536ec849808f9ddcf09a8400de4c3bc60cdf38cca60e8d",
+        "share/birnam/src/rust/birnam-relational/exports.json": "dfadeb5017eaa76bf5c3a7ae48bf1408ed3b51533401b94bbdbec7fd9f7d187c",
+        "share/birnam/src/rust/birnam-relational/src/evaluator.rs": "356ca045c0d4e541ce2f290e6ff0b9d33e90880b59ec52419dd3093305b9c906",
+        "share/birnam/src/rust/birnam-relational/src/lib.rs": "9f4734b4a194e6206c29ed39fb4fdb831e6a060d52c56e0da24ba68912e3b04c",
+        "share/birnam/src/rust/birnam-relational/src/native.rs": "c3e4e032dd9216a84807d407402cc0e7b79165bd3d52049e2e22cbcab5ca72d3",
+        "share/birnam/src/rust/birnam-relational/src/query_matching_tests.rs": "517071730695a6ef00edc94451407fc839ca96d6d41e4e43c50bafc04a1e4bef",
+        "share/birnam/src/rust/birnam-root-registry/Cargo.toml": "1eb224449b3dc6b7fa04acc9db726e486463e1d30a8b4f22fbc5b0064871d6d2",
+        "share/birnam/src/rust/birnam-root-registry/README.md": "fc156bb6591dd9cbe9be0996d557bf182c5361398f4f0437e5744d670c69c1ce",
+        "share/birnam/src/rust/birnam-root-registry/build.rs": "a2f18161854d9a02f06fb9597ddeb2bf38f1a9bf2195e5bed1357b32bfc9746f",
+        "share/birnam/src/rust/birnam-root-registry/exports.json": "cc450cc00723845102fcd3a55b3195f652242d9f3150dc30e7d36736d52abf1f",
+        "share/birnam/src/rust/birnam-root-registry/src/lib.rs": "35cc344c4de197d3d41a42e43b31cddd1b5089f05da7056699e945ed54d4fe7d",
+        "share/birnam/src/rust/birnam-root-registry/src/word_index.rs": "694f6d66d290a1de13731725d19f5f893bbfbdfd1d9199828d782391f112b0fd",
+        "share/birnam/src/rust/birnam-siphon/Cargo.toml": "0e66bd7f7e52ceca945d4f9f9b53ef73dd73aba4dccf3c7f5d05ac4af287cd82",
+        "share/birnam/src/rust/birnam-siphon/examples/gc_microbench.rs": "44438d4d47c9595beb57fe231b1b5d6c2b1c57886e050cec798db1892d55426e",
+        "share/birnam/src/rust/birnam-siphon/examples/micro_support/clock.rs": "42c852ab6a8951a22efe7d2d944ba241a1d04102ecd8dbc567d3c9588344c8e5",
+        "share/birnam/src/rust/birnam-siphon/examples/micro_support/control.rs": "3dd24b705c86fda86ccb67fdea2327dfd25242384d5a8a091c071211192fee6b",
+        "share/birnam/src/rust/birnam-siphon/examples/microbench.rs": "5defae57e35e091357499e6520cd71c124d1bcd8a6ead9c0cdf64912ce27d0ee",
+        "share/birnam/src/rust/birnam-siphon/examples/slot_cost.rs": "341cef63d89633c53acd40e4d34b74e2de7c2c94307ab4a1c0286358cdaf0bfd",
+        "share/birnam/src/rust/birnam-siphon/src/lib.rs": "d43f091c60a7428ae5cb9cf536f8b31f922ae55d44a95f8fafa31c27f606312e",
+        "share/birnam/src/rust/birnam-siphon/tests/alien.rs": "8c047641a089a718386fba373e1bcbb7d47daa3c69cd41112d7801e50511f995",
+        "share/birnam/src/rust/birnam-siphon/tests/allocation_accounting.rs": "a6ea18508c52e3875726ca64722731ebd2af364da135ebf9aded11d390adb4d0",
+        "share/birnam/src/rust/birnam-siphon/tests/artifact.rs": "5c836410182f725af232c8e65924e66fd39c00d4c09c888ca3038c74b02426a5",
+        "share/birnam/src/rust/birnam-siphon/tests/artifact_activation.rs": "228be08c490f371a692ec14c593310694f69073857b346137343520adf4ffe1f",
+        "share/birnam/src/rust/birnam-siphon/tests/binding_proof.rs": "5d49c9573473ef2c2f747e295b6623eb9da73ceafdac87c33e1c975dd6a27f4d",
+        "share/birnam/src/rust/birnam-siphon/tests/block_loop.rs": "de1b661d15c693e5556a9749a0a9021a3da1719019da3724487a597f67cdcde4",
+        "share/birnam/src/rust/birnam-siphon/tests/boolean_values.rs": "d02d620594248385af6717ee196e1752089e52c8a9ec00de99b5e04d6c46ab47",
+        "share/birnam/src/rust/birnam-siphon/tests/borrowed_read_inputs.rs": "29fb21fb708b8d6ac4ff6cd2b2d4a820a1ca00f6ebe96eb414b26733db64eac8",
+        "share/birnam/src/rust/birnam-siphon/tests/byte_abi.rs": "63dde30fb7e13678f3aedada1a5e94bf6327226dcfc727fc1e74fd5acff35de7",
+        "share/birnam/src/rust/birnam-siphon/tests/candidate.rs": "f5fcec40c395e9320cee4ad119507b9c4dd5a70f83c79aafcfd5ac227006f1f7",
+        "share/birnam/src/rust/birnam-siphon/tests/candidate_retirement.rs": "3444cbddb9c72c3b4112a7b7538a8e75772b6bf76dd37c070653d4c70826aae5",
+        "share/birnam/src/rust/birnam-siphon/tests/capture_access.rs": "d5019e34cdeebb9663c75d06c585e2dc1372dd178521441957ef61db5d69767c",
+        "share/birnam/src/rust/birnam-siphon/tests/capture_dependencies.rs": "5bcc76cc8df3284871fbacd2f11d6dfa337c0d84270c4f41a9b10e347eaca45a",
+        "share/birnam/src/rust/birnam-siphon/tests/cell_without_store.rs": "46efbc2bf47475ee38590ea0a4d0d6c02a76408708e3dee1112ab5c707b9ac8a",
+        "share/birnam/src/rust/birnam-siphon/tests/closure_construction.rs": "f6e4a8fa029205b79ce9b9c44535392f30adbf4254c88b97a0b3790e4548c76e",
+        "share/birnam/src/rust/birnam-siphon/tests/collections.rs": "08a2cb883de84dbfa61d471ce4e78822117532349d46cbe602bc26a3b8d0a2b5",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler.rs": "cf2708d0c5d39fcdcef623cd8715a4490f290a4245b93b3691b175908290535d",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/accounting.rs": "08e43b637ddde643e525a7d1a2fe90aff1df94cbe8514f7d48730074855eb991",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/discarded_clone.rs": "15410b1facf49861441d37d117cf888acae55592932ca965eff956afd961c3c3",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/dispatch.rs": "a3610cfbe0b901263535081f5f4fe5b21bae815184fa4c69ef6dfe5f35ad48a9",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/frame_call.rs": "2912f548ea171a195844991756502257210008ae115f5ca02f59b23461486c6e",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/globals.rs": "20696def1485ac411684d2e92d4270a317df8d190ec780eec29ef1aeb63472e8",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/inline_return.rs": "5d437f1142d6da48426c73dca14c983605734712e9d859379802c4be08c69a2b",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/numeric_predicate.rs": "828884367175b2b6910e6e1e421d2b65e1e5a244dd89c216b86330b2225f0eb0",
+        "share/birnam/src/rust/birnam-siphon/tests/compiler/publication.rs": "add0bdc5fd8f18f85e55b513860884f123efba82f40fa7ab07c78f21d5894877",
+        "share/birnam/src/rust/birnam-siphon/tests/dispatch_metrics.rs": "d6b0a7b9ad0214de592c5cf6e043121bae34ecfba35bc92a3555af1d79906b3a",
+        "share/birnam/src/rust/birnam-siphon/tests/embedding.rs": "e5948dbb231913f46d3a5e0afaee9399176df87855ed11b6502152070d29593c",
+        "share/birnam/src/rust/birnam-siphon/tests/execution_machines.rs": "2899e1c89c10546a9a9244b860f7725b7672bbde2637910194f731afd4b6ab7b",
+        "share/birnam/src/rust/birnam-siphon/tests/execution_machines/native_tier.rs": "ca6744405186e6466ec36829cfea94a4fa2d6a3f168715b2b91e5a3e214cbc18",
+        "share/birnam/src/rust/birnam-siphon/tests/execution_machines/recovery.rs": "c1e3b9313b098eebe62e8920761d485cff018e71ff426dd9c3ec99e51600b9f2",
+        "share/birnam/src/rust/birnam-siphon/tests/execution_methods.rs": "13d38798343760e469a9008c1454c8871fd7c0dbdc6e18894a7f2b639a4f0dac",
+        "share/birnam/src/rust/birnam-siphon/tests/external_allocation.rs": "0fa8340dded9a626c8367fb90b2ba1e6356d5404d7e4037fedde3d63535fdf83",
+        "share/birnam/src/rust/birnam-siphon/tests/fixed_abi.rs": "876cb768aa74b41334f942bc6eefdf43e6865a5c6a92c5f7015d5ef6722bba2b",
+        "share/birnam/src/rust/birnam-siphon/tests/generation.rs": "e9ff8c33e71cadb55ea18f5d8ef2a19a1f1ecd72ea925981a78d45ef6b948893",
+        "share/birnam/src/rust/birnam-siphon/tests/generation_ledger.rs": "19813d53b2b32a3a384cd66185a880d53b1a85347282add39b04730c097e7af4",
+        "share/birnam/src/rust/birnam-siphon/tests/generation_transaction.rs": "8282d88afc9c3a3471c03b3f59055ffd36b5891d5614197595a741775d4f069a",
+        "share/birnam/src/rust/birnam-siphon/tests/global_resolution.rs": "d2c2f1bbcc84190e7f4a90987a8c4125556f5abc6aeefb5651db1a46392f87ef",
+        "share/birnam/src/rust/birnam-siphon/tests/globals_without_store.rs": "c9fee5237c4651b25640910dc301daf6c9ee2dffbd53ed84de7e4a593cf7cf34",
+        "share/birnam/src/rust/birnam-siphon/tests/guard_batch.rs": "38ee407afb31d835cfc03aef7905fbf9952ed5f3fb81fc5dd8293b68196601b8",
+        "share/birnam/src/rust/birnam-siphon/tests/id.rs": "d6e789a61b7f52661233115979f80654c1fe6ffcb1d976308a2242b0c89aa452",
+        "share/birnam/src/rust/birnam-siphon/tests/image.rs": "649131aa3cbde446f972535b14d46aaa9c89caf1e3afeb549e929d1c3a06c229",
+        "share/birnam/src/rust/birnam-siphon/tests/integer_box_observability.rs": "5de56a0dd304cb46a9a202091ed3240cdfccf7eec0ae7fe380e9704ea433ffb9",
+        "share/birnam/src/rust/birnam-siphon/tests/integer_index_guard.rs": "e674446e5656e7491bcdfa2d4e2bc21d7887af7a081b772cee2ec93761e18c49",
+        "share/birnam/src/rust/birnam-siphon/tests/integer_operation_objects.rs": "b0cb8a8c44c33076b680c4e0420d4caa43232765d8b13babb65e031a882029c3",
+        "share/birnam/src/rust/birnam-siphon/tests/integer_performance.rs": "99195a6517e1579d87eddbd43d15c7ecd5dcde47730fe16c46a16a7a7552fa62",
+        "share/birnam/src/rust/birnam-siphon/tests/integer_values.rs": "95af673de90c2e5ee64d8a724b3e1b79d6e2d6db7a94bb12d50178c335117204",
+        "share/birnam/src/rust/birnam-siphon/tests/invocation_inputs.rs": "49f3fd8b71bab953c0a715c289138ed4f0687c782a3f7eff54b5347a5662d066",
+        "share/birnam/src/rust/birnam-siphon/tests/isolate.rs": "eca4c72a34a4cd4fb58c8451b0a4c37a3f35e268172588f4151b04bda8a4d173",
+        "share/birnam/src/rust/birnam-siphon/tests/lang.rs": "f326ef2eab89b5e2f13a52708e7731193b08f51f4793408b43cac26e8ca8195f",
+        "share/birnam/src/rust/birnam-siphon/tests/materialization.rs": "305da14cf8a752d5fdf8e4848660211c9ddf2e7317692e8be494717c0174de51",
+        "share/birnam/src/rust/birnam-siphon/tests/memory.rs": "b5839827047315cef6d0e1213d60807d7db1d8495387c4a327d7dd56c1bba434",
+        "share/birnam/src/rust/birnam-siphon/tests/memory_activation.rs": "5d0146f04a709621fe67de6dda0146bbc56c439088146f4a024a94be9c047af0",
+        "share/birnam/src/rust/birnam-siphon/tests/method_observation.rs": "6d37aa82c10e3bcf36f9b23fce60414e1563591b00e67c045ae443628a45c0f5",
+        "share/birnam/src/rust/birnam-siphon/tests/modules.rs": "0327a7e7dfc41c42d4d06c3f102b3c7406e013901d418553314c9b8ba6b0cb1f",
+        "share/birnam/src/rust/birnam-siphon/tests/native_incoming.rs": "7b8f848abe3ed9580886d8f2478842f150acfedb8666afe7b03e9aa4a99ee9cd",
+        "share/birnam/src/rust/birnam-siphon/tests/native_loader.rs": "4bbbe4ce989d24daed0f6a533f7be643096ce79996c0c4ebf84974a0d034a497",
+        "share/birnam/src/rust/birnam-siphon/tests/native_numeric_inputs.rs": "c05f7a62c09a4bdfadfe0a926a3674845ecf48ef8b5ff8af93b98bf21ff446ef",
+        "share/birnam/src/rust/birnam-siphon/tests/native_values.rs": "a96d1ed8ec5e8edb12b21d0657e4a642870b8bc6bf9896a22dceb37ed5b2e29d",
+        "share/birnam/src/rust/birnam-siphon/tests/numbers.rs": "98dbbf96ebd82df8845ff1e783347c77c876e381386fcab24afe12ac9042f719",
+        "share/birnam/src/rust/birnam-siphon/tests/numbers_loading.rs": "8bc2e693ba6cd944b33a11d4bc8288e546254e05679abb630ace7a2802eabb2d",
+        "share/birnam/src/rust/birnam-siphon/tests/object_model.rs": "b91d1408110b56cc72e6b8881ee385fd5dd053366447f48f207bcb14d7d0ecac",
+        "share/birnam/src/rust/birnam-siphon/tests/object_model_scopes.rs": "1c854073383361670e1e63ddbf8b214f7665d3b5a9801a98cf8e3bd5b403e782",
+        "share/birnam/src/rust/birnam-siphon/tests/object_model_slots.rs": "26ed669b6cbfd1dde398033eb7a1e0edf299e0ad970675b69b71728600133dac",
+        "share/birnam/src/rust/birnam-siphon/tests/owned_globals.rs": "d4e0ee7d28a3d03cfee9abd985623c12c24a011adb1086b33cf89a4a36909b2b",
+        "share/birnam/src/rust/birnam-siphon/tests/portable_code.rs": "831eb13c6ef521345a8092ab08a1f6c76d5cd7376ce35a6b5706ac84724de979",
+        "share/birnam/src/rust/birnam-siphon/tests/relational.rs": "410efd89f70a7e532d382f4acd8ac9a2e89abe00541ea33909b0b31e2cf1b116",
+        "share/birnam/src/rust/birnam-siphon/tests/relational_authored.rs": "247235cdedfe1de5971d053b6cb1f2693af0ce69b99f88ac3b9bad495133cb42",
+        "share/birnam/src/rust/birnam-siphon/tests/representation.rs": "4521b0fc49481bfc0b2b23a2b771e7893d8f16415151174fb699784019e373a3",
+        "share/birnam/src/rust/birnam-siphon/tests/representation_batch.rs": "9b806287ad1d7862609ed7197e0ed6571b0dc0d75df9e21b9ef99ec2f8379417",
+        "share/birnam/src/rust/birnam-siphon/tests/representation_fallback.rs": "6b990643a43f531c8612102c24271f20038d62d10d952899fa78eb75fa6d2a82",
+        "share/birnam/src/rust/birnam-siphon/tests/result_cleanup.rs": "f84c355a89acdfdebee0f2ab9d5c3c4f9df9733ea96746ac63da6e0c50411328",
+        "share/birnam/src/rust/birnam-siphon/tests/root_batches.rs": "3ff86cca69652b087edbd4945872cdb447c0cc9335334300a4a62d48456f88b7",
+        "share/birnam/src/rust/birnam-siphon/tests/root_reuse.rs": "80719c9cdedb61cd785795a8b27146a2f7987ff651b51e37fac333926728ecee",
+        "share/birnam/src/rust/birnam-siphon/tests/roots.rs": "e9e2fe49e6455d2a04017a4e98b52f37187aaf738c1ee07e3afa3e9717c3c77c",
+        "share/birnam/src/rust/birnam-siphon/tests/source_loader.rs": "6f781d71088232b93e719750b9929e15d0e680480c66314b15e6c36ab3ae9234",
+        "share/birnam/src/rust/birnam-siphon/tests/storage_trace.rs": "835fc053dda06479a7a09cacf248365f8547f9bf9e3d8b9ac315842657c82c29",
+        "share/birnam/src/rust/birnam-siphon/tests/store.rs": "c234777fa8b9145995c8464356e86fd43e682fb600b4e328ce637f22b8c4b121",
+        "share/birnam/src/rust/birnam-siphon/tests/store_compensation.rs": "97964cda4c7664527c9b335916e6293d06ac9b3dc7d6699779b7b178453a71e6",
+        "share/birnam/src/rust/birnam-siphon/tests/support/mod.rs": "47cb5339fce88a7588ccfe0d80252fb62ec7f13402af4d47d6b1337c1577ec19",
+        "share/birnam/src/rust/birnam-siphon/tests/system_gc.rs": "d31f6ef5b366d040ae3f5246b778b87910418d44da59a4927d4902b6d4dd010f",
+        "share/birnam/src/rust/birnam-siphon/tests/system_output.rs": "b53158069f50b924af3a8f30ac72ea004498ef78b310994162bd65d9a5128200",
+        "share/birnam/src/rust/birnam-siphon/tests/system_services.rs": "fb503b0d0da06015431a3144f7e648ba5187657973afcaceadb181959c39d7cb",
+        "share/birnam/src/rust/birnam-siphon/tests/system_services/file_io.rs": "0e58c4601418ddf815696f29e15b5750d5be701f20fe44af07a7c9037b494a70",
+        "share/birnam/src/rust/birnam-siphon/tests/tagged_rows.rs": "5a018c8bbb7280bf0da02666607c05e7cb10493a1b8a0f56d8e74e1e21aef579",
+        "share/birnam/src/rust/birnam-siphon/tests/task_control.rs": "d47397381e76cadeaf562049de28375ba0b5a5b50e9ac62590f2a33d544f6938",
+        "share/birnam/src/rust/birnam-siphon/tests/text_error.rs": "21c3561f601baa543751fda1e61a886addda1345e0302b8bd878981ef20d4274",
+        "share/birnam/src/rust/birnam-siphon/tests/trace_graphs.rs": "216f82d13e3c34bff2a241a3f10a2709cd7e12c0b0c183e29e77aa48beac5c87",
+        "share/birnam/src/rust/birnam-siphon/tests/trace_heap.rs": "e511be3f2a149699f0f5f73bd349a7df751cdae8b31dc7cad58faad064c908c7",
+        "share/birnam/src/rust/birnam-siphon/tests/word_expression.rs": "c2710c72eeb9219ae00ec3bec58491e4f2ab97dd6515b19314e2ef3780e616e0",
+        "share/birnam/src/rust/birnam-siphon/tests/word_helper.rs": "4401c8112d649441e18906e1a0e52b1df0aa2e24036f356b03f9846c3e420668",
+        "share/birnam/src/rust/birnam-siphon/tests/word_representation_order.rs": "9c0fdf437e0f7df1e40c670c9d5badb29d693eeb9ddf3fc9b715bb3a07522b59",
+        "share/birnam/src/rust/birnam-storage/Cargo.toml": "54e2a269a771a6232eeb28d58e93964f2128643968cbc9d6373b17439240cacb",
+        "share/birnam/src/rust/birnam-storage/README.md": "fe7a7088688a578e4f091cf016765df4891cb51becdbaea296ffd61d982a5767",
+        "share/birnam/src/rust/birnam-storage/build.rs": "c6510e2720fceee711b73c62214a5e0c3091921a707276d1466dc55307e2db23",
+        "share/birnam/src/rust/birnam-storage/exports.json": "b4cc5a0d18c818b4812856a87d4d38e672cf61913698447e31fd8e09b098ccc4",
+        "share/birnam/src/rust/birnam-storage/src/lib.rs": "476971127e00c47eba136e0154f4f5db0fde233c0353383d105bb8f31d77a17c",
+        "share/birnam/src/rust/birnam-store/Cargo.toml": "e7e9c86d27af3a4d37b9e24b80c11ea3ebe75d6a55226926d379afa9e2506f2e",
+        "share/birnam/src/rust/birnam-store/README.md": "92efbbe966f3f85ea70de70a795f9df4271ddc13b688bf6d4782603995a8f6c7",
+        "share/birnam/src/rust/birnam-store/build.rs": "3bb22f97016d04187f3bd994d21b086ee6e9870a2fcfb98f6be7bc8f0f5e4d14",
+        "share/birnam/src/rust/birnam-store/exports.json": "666ed0307feb527fecc64c1277ab762697a5c956d80b19f8da818c75d99268f4",
+        "share/birnam/src/rust/birnam-store/src/lib.rs": "918b17184546b6fd0ccec044fa36dfdd66875af776499ff5112cf4efbfde864b",
+        "share/birnam/src/rust/birnam-store/src/native.rs": "71c273e8afa54259bbfee7ac064e2c34ea97989cbd8ab66a257afd818bc7e79b",
+        "share/birnam/src/rust/birnam-store/src/snapshot_tests.rs": "4d774acc120fa9aa612adea3488b37431de8b60018066c264a00fe90f3fca80e",
+        "share/birnam/src/rust/birnam-string/Cargo.toml": "cb46c221e52dff3a68bda27329cf1280f9085e820131f32bb117aafe71ac70fd",
+        "share/birnam/src/rust/birnam-string/README.md": "4c296f9f2c0a7a0f85d2beb8603f40600f8951598396463a9fd2f67456c0bf35",
+        "share/birnam/src/rust/birnam-string/build.rs": "6508d70b388680691e7ee294c48d4869d88d53afec0c1a53e8ab936a0e9e01e4",
+        "share/birnam/src/rust/birnam-string/exports.json": "546ed36c95738a81cc29491fa2f4a940a3aa515a6bbe8a5ae80ca6e19a06ef02",
+        "share/birnam/src/rust/birnam-string/src/binary.rs": "176b87781a9540b81740eb10ce5137a4e15ed7e9ad31467475de496afcf6a372",
+        "share/birnam/src/rust/birnam-string/src/lib.rs": "71a95a6e6d8704d3416bc94ec9cc8a2ca7e005a6a646a252a8153c2717791e36",
+        "share/birnam/src/rust/birnam-string/src/native.rs": "536255448c346914e55d1d3613d6420c967612b6b2c6e30cf6eb1d1b0902e685",
+        "share/birnam/src/rust/birnam-string/src/numeric.rs": "c2573d58e2c280b4cb1d1bd4c91c2d9cbfe9e25a388d779dca395f4e2d50ee95",
+        "share/birnam/src/rust/birnam-string/src/split.rs": "203f61ab1c9a8d27d673ac5a97479d1d4dfca408d8aa2c9f9eef21948258d031",
+        "share/birnam/src/rust/birnam-string/src/text.rs": "75f7d535142dca855d162529ad1ddf436bb657c42c7a5c49f63530888e28b17b",
+        "share/birnam/src/rust/birnam-system-input/Cargo.toml": "638fc1b97ebf5fb5959979e0a50c37c78b0a5b389d97ede7d2e52f32525a8643",
+        "share/birnam/src/rust/birnam-system-input/README.md": "5e65e76aac86930a37cf41061effba28e9312e24e7dc64ad6dfc84c4e864d0ea",
+        "share/birnam/src/rust/birnam-system-input/build.rs": "8636275f9fe256d73be9f4c094a06aac770db7250df8429b314bb109d07b6082",
+        "share/birnam/src/rust/birnam-system-input/exports.json": "5bd7566d48b464d0ae142451d3a9be044e7e2a8233c88e0df88bf470afbb0a7e",
+        "share/birnam/src/rust/birnam-system-input/src/lib.rs": "b93813ab628efadad13af7881054495c65206b1df2d2512849d7cd5b56a01752",
+        "share/birnam/src/rust/birnam-system-output/Cargo.toml": "bb6e217bb532041063e592d498a9ae07a83973df504d0361d873090ce50ae2bf",
+        "share/birnam/src/rust/birnam-system-output/README.md": "545cbeef108f38116f5f4a09b63eb77b9f34ed31944cdc5d1120ab791b54bf83",
+        "share/birnam/src/rust/birnam-system-output/build.rs": "a42c8abf63b2a04f02be28e73b56e45fc4464676979bf4ad953d67ad00e6a182",
+        "share/birnam/src/rust/birnam-system-output/exports.json": "d15d7abe57d9e3fbbba548cec5545fd52de6cb5af08e29d83b723b55626b86e5",
+        "share/birnam/src/rust/birnam-system-output/src/lib.rs": "f58da015f04d507ab0de727e6f8a1321ce2933a2c70ce6c0a04bf8efe37227d0",
+        "share/birnam/src/rust/birnam-tcc/Cargo.toml": "4d0864f4a7cefe0aff487e1597d2f8d51acc7eed0c7ce45b7a044157ecd9fad7",
+        "share/birnam/src/rust/birnam-tcc/README.md": "ce98ddc6b8123506e443fe84773a9ea9ea56a0a32b4bf9e991e4a9e822d82a7b",
+        "share/birnam/src/rust/birnam-tcc/build.rs": "954cfd096981602f0b60957a39bf3b87af5915b68cca516db6dbef66ab6d5159",
+        "share/birnam/src/rust/birnam-tcc/exports.json": "10197e39347cc117f9f8b51a247696fbdf87a4736c84b5d322fb3e414bfdad8e",
+        "share/birnam/src/rust/birnam-tcc/src/lib.rs": "d0d98d7e3544e79bd4b2f7618b5d25b20c9c4e65e1079d06bafe9451e6b3356b",
+        "share/birnam/src/rust/birnam-vector/Cargo.toml": "063f4d67f448d9f12b649aa3249b56c73f28dae668605641cd776d9018ebee8c",
+        "share/birnam/src/rust/birnam-vector/README.md": "57292550da01a3d6a2321e6671dd97ac250bed1862d68e16704d3908cc27861b",
+        "share/birnam/src/rust/birnam-vector/build.rs": "333f420db202b9be515295da5969b77e416e538953e44c41320efb1725099644",
+        "share/birnam/src/rust/birnam-vector/exports.json": "691b2d8dc20c25988334a33ffe60f732c67b5cc3863c4bbb0095b08d6946d30b",
+        "share/birnam/src/rust/birnam-vector/src/lib.rs": "4e80243ade3439895a195cdf95115058102a9fd67f38e8021ad6a092e956d5dc",
+        "share/birnam/src/rust/birnam-word/Cargo.toml": "1a5d0932c6046942cfbc960c8b9234ec78dfc7dd139c29b967203cabf37e3c1a",
+        "share/birnam/src/rust/birnam-word/README.md": "d1bd563b7aea9705701b5f696f9a27cb85841d4e8781b81369075197ff036ece",
+        "share/birnam/src/rust/birnam-word/build.rs": "9c5818b82789ef83ced4b0c01a01dbe934e2050b732c7030a5f56b12c4b39785",
+        "share/birnam/src/rust/birnam-word/exports.json": "8055664f2a139b0454cf74579977782fc5f48863ad5896a6c440ff2b50b16457",
+        "share/birnam/src/rust/birnam-word/src/expression.rs": "58ecce13c8aa26df0b8ef5aadcccded6adb42d38183fefa84a98efe2718c11d5",
+        "share/birnam/src/rust/birnam-word/src/lib.rs": "26f52ee2a7689a72bc5e71dccd3d41fc2d6b9764c9f6b6e574a8c41720b93095",
+        "share/birnam/src/rust/birnam-word/src/native.rs": "f7d0b841d0ca77c0e022ea09b2c6c298e7debffbc987d68f25bd4a709d1d14b3",
+        "share/birnam/src/rust/birnam-word/src/operations.rs": "fb26fd37acc83d88e4e184e65e452bd12af7212cd44791ae6850767811657908",
+        "share/birnam/src/vendor/libtcc-src/COPYING": "512d2d21b6b3384ba64781abb0208a1b87740bc31e2df48e2b206ddb7e4d5779",
+        "share/birnam/src/vendor/libtcc-src/arm-tok.h": "16be37f5105143ba087fdda8a14d54b679a9d2c22640a1b2b398b85bf4470d75",
+        "share/birnam/src/vendor/libtcc-src/arm64-asm.c": "010a9aa454f20bb472850155af9a78f2d98d07392cbb35155e91beed7bdc97bd",
+        "share/birnam/src/vendor/libtcc-src/arm64-gen.c": "34954b01c62662a93e04489c4e2813abfdac83a84c5fa8c0e64f2779ddb893a3",
+        "share/birnam/src/vendor/libtcc-src/arm64-link.c": "49915645c41fa9d3a00e0d68658379e0258f8908ea81000600018f6cac207089",
+        "share/birnam/src/vendor/libtcc-src/arm64-tok.h": "3ea88bb14df2feef1e2250353d0c94250193fea9b19782305152c8f4ecd9b94a",
+        "share/birnam/src/vendor/libtcc-src/coff.h": "01c80d8cb6e5290710897f033977c19ba9fff002544cc6f905b91a7adc82f1af",
+        "share/birnam/src/vendor/libtcc-src/config.h": "2cfc68d1539c18396f8a4628f6515ff2594b1e25047737a82e43eaf1e7d3550f",
+        "share/birnam/src/vendor/libtcc-src/dwarf.h": "20edde712b8e4f64072d754fb07089f3f0c2e4f590893cd0466fbfc4258a70d4",
+        "share/birnam/src/vendor/libtcc-src/elf.h": "c15d43c28063ea2689fa077b16ba1668dc6a8b69500232b0dc7065cbec9ae8a7",
+        "share/birnam/src/vendor/libtcc-src/i386-asm.h": "0bc0116a0c4678ce0ec70a76f38e9ba81181131f5de5f2cb89a3bf4ed1218f5e",
+        "share/birnam/src/vendor/libtcc-src/i386-tok.h": "e32f8d93ab90d8aaa45275e458915fa4a5aade4b3300bfd8ef1bc51a1894d648",
+        "share/birnam/src/vendor/libtcc-src/il-opcodes.h": "b170903462c8cd708c6cf460223f47aa614a18a7482d8004a01a92ce81c56177",
+        "share/birnam/src/vendor/libtcc-src/libtcc.c": "a207ccee70a2b9d6c89559ebae6b58d48c3b233a0c5276404e82e163dced66a1",
+        "share/birnam/src/vendor/libtcc-src/libtcc.h": "42e1fb86b44088850e0e17ec0947b483a2edb586b420d18196d7b9b5dce944e4",
+        "share/birnam/src/vendor/libtcc-src/riscv64-tok.h": "4279938616f8187cb47f0ef7973863c4c388084824950120cf36074d15881827",
+        "share/birnam/src/vendor/libtcc-src/stab.def": "a0e4410ceba464b3269949b59a3a137722e6a4769311bb2fa54cb3c51eac4303",
+        "share/birnam/src/vendor/libtcc-src/stab.h": "cfa85006d7ea2ad06b559660534a1a7ff6b4a3536547ceba46cefcb0b54a93a5",
+        "share/birnam/src/vendor/libtcc-src/tcc.h": "beb368a99cb2db714296044f644325cfde92f6616f8d82a69a46a9363b18acaa",
+        "share/birnam/src/vendor/libtcc-src/tccasm.c": "390bd7a7af628e35c892b02e31d142f5f33ed88e393a4f29e03631f3b5e4c1eb",
+        "share/birnam/src/vendor/libtcc-src/tccdbg.c": "69aeb1bb8f846f2cf9e14f207dec9f10ac15099f2bae12e18e124ef74a08da2d",
+        "share/birnam/src/vendor/libtcc-src/tccdefs_.h": "944e5631039a11a4d948274650fdea3b76ec88424b0473d992450eec014509ac",
+        "share/birnam/src/vendor/libtcc-src/tccelf.c": "c9b95c7125037de8ad1a5d1fa72d0f373a19cbdef2ed7eed11b72ec29eeef552",
+        "share/birnam/src/vendor/libtcc-src/tccgen.c": "c00ed1c2651a9ca15a7de59d96e3378feedff3d873b72a39d8e3e150ab257655",
+        "share/birnam/src/vendor/libtcc-src/tcclib.h": "2cfbd6b9c5e039721fbfb8e6f95a0a9fc30597bbcb2aefa3dda572c278009429",
+        "share/birnam/src/vendor/libtcc-src/tccmacho.c": "23e8fe9458444b7a3372a2089d97441d2222d5bb342e0036ef520f35cf5d82c7",
+        "share/birnam/src/vendor/libtcc-src/tccpp.c": "233c83c1087abe2c52eef23e03053bfd09dc6bcf5958aa463548ab455f016993",
+        "share/birnam/src/vendor/libtcc-src/tccrun.c": "9bc657b81b038c320d2519da29b7a172656fcfc4fff9df98f5abc553ac1b5cfd",
+        "share/birnam/src/vendor/libtcc-src/tcctok.h": "4995cfc2bc99d0e4915d9a055964930252f45527a13db3f8cbd425861f32ebc0",
+        "share/birnam/src/vendor/libtcc-src/x86_64-asm.h": "5398ab9aaf3f488c37a43b12ed26689fe7568729245d2e837bdd0af7f248f468"
+      },
+      "staged_manifest_files": 740,
+      "staged_manifest_sha256": "bad146467f8ea41d8669cc16b3ed142d4c9a7e76df675dac95a98ae5ed4746f7",
+      "toolchain": {
+        "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+      }
+    }
+  }
+}

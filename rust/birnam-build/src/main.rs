@@ -29,6 +29,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("alienCompiler", "modules/alien-compiler.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
     ("trace", "modules/trace.birnam"),
+    ("globals", "modules/globals.birnam"),
 ];
 
 // Migration candidates installed for explicit loading, outside startup images.

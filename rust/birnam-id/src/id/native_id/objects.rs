@@ -16,6 +16,8 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             default_allocation as native::Method,
         ),
         (b"delegated".as_slice(), delegated as native::Method),
+        (b"delegatedWith:as:".as_slice(), delegated_with as native::Method),
+        (b"newBehaviorWithParent:method:as:".as_slice(), behavior_with_method as native::Method),
         (
             b"objectPrototype".as_slice(),
             object_prototype as native::Method,
@@ -144,6 +146,28 @@ pub(crate) unsafe extern "C" fn delegated(
         state.protocol.receiver,
     );
     Outcome::loaded(Operand::object(object))
+}
+
+// Construction, not mutation of an already observable behavior. The initial
+// entry is ready before the new identity escapes, and no callback is made while
+// it is being initialized. This is generic Id dictionary policy, not Block policy.
+unsafe extern "C" fn delegated_with(context: *mut c_void, parent: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([entry, selector]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid() };
+    let Some(entry) = entry.as_entry().filter(|e| e.method.is_some()) else { return invalid() };
+    let Some(selector) = selector.as_object().filter(|o| !o.is_null()) else { return invalid() };
+    let state = unsafe { &*context.cast::<State>() };
+    let dictionaries = unsafe { &mut *state.dictionaries };
+    if !dictionaries.is_registered(parent) { return invalid() }
+    let object = dictionaries.create_with_method(unsafe { &mut *state.memory }, parent, state.protocol.receiver, selector, entry);
+    Outcome::loaded(Operand::object(object))
+}
+
+// Raw storage constructor used by GC's ordinary allocation-policy wrapper.
+unsafe extern "C" fn behavior_with_method(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([parent, entry, selector]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid() };
+    let Some(parent) = parent.as_object().filter(|o| !o.is_null()) else { return invalid() };
+    let arguments = [*entry, *selector];
+    unsafe { delegated_with(context, parent, arguments.as_ptr(), arguments.len()) }
 }
 
 unsafe extern "C" fn object_prototype(

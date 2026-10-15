@@ -5551,6 +5551,51 @@ mod tests {
     }
 
     #[test]
+    fn recovery_scope_survives_balanced_reentry_but_not_scope_or_frame_changes() {
+        let owner = 71;
+        let mut engine = ExecutionState::new(owner);
+        let callee = descriptor(vec![SlotKind::Oop], 1);
+        engine.register_resumable(owner, SemanticRegistrationV1::new(INERT_THUNK, callee, 0, 0, 1)).unwrap();
+        let method = MethodAddress::from_method(INERT_THUNK);
+        engine.note_direct_binding_added(method).unwrap();
+        let Some(StacklessTarget::Registered { entry }) = engine.classify_resumable(method).unwrap() else { panic!("registered") };
+        let caller_descriptor = descriptor_v2(4, vec![7, 8], vec![CallSiteDescriptor {
+            kind: CallSiteKind::Call, receiver_slot: 0, selector_slot: 1,
+            argument_start: 2, argument_count: 1, result_slot: Some(3), continuation_pc: Some(1),
+        }], vec![FrameEdgeSpec {
+            kind: EdgeTransitionKind::Call, source_pc: 0, target_pc: 1,
+            call_site_index: Some(0), result_slot: Some(3), copies: vec![], clear_bitmap_words: vec![7],
+        }]);
+        let cap = engine.create_machine(owner).unwrap();
+        let caller = {
+            let m = engine.machine_mut(owner, cap).unwrap(); m.begin_initial_drive(owner).unwrap();
+            let f = m.arena.push(caller_descriptor.clone(), 0, oop(0x1000), &[]).unwrap();
+            m.arena.begin_call_transition(f, 1, 0).unwrap(); f
+        };
+        let authority = engine.recovery_authority(owner, cap, entry, 3).unwrap();
+        let old_epoch = engine.machine(owner, cap).unwrap().drive_epoch();
+        engine.machine_mut(owner, cap).unwrap().begin_nested_drive(owner).unwrap();
+        assert!(engine.validate_recovery_authority(owner, &authority).is_err(), "outer scope is not active inside a nested drive");
+        engine.machine_mut(owner, cap).unwrap().complete_nested_drive(owner).unwrap();
+        assert!(engine.machine(owner, cap).unwrap().drive_epoch() > old_epoch, "old public actions remain stale");
+        engine.validate_recovery_authority(owner, &authority).unwrap();
+        {
+            let m = engine.machine_mut(owner, cap).unwrap();
+            m.arena.pop().unwrap();
+            let replacement = m.arena.push(caller_descriptor, 0, oop(0x1000), &[]).unwrap();
+            assert_ne!(replacement, caller);
+            m.arena.begin_call_transition(replacement, 1, 0).unwrap();
+        }
+        assert!(engine.validate_recovery_authority(owner, &authority).is_err(), "same PC in a replacement frame cannot reuse authority");
+        let authority = engine.recovery_authority(owner, cap, entry, 3).unwrap();
+        { let m = engine.machine_mut(owner, cap).unwrap(); m.pop_delimiter().unwrap(); m.push_delimiter(DelimiterKind::Host).unwrap(); }
+        assert!(engine.validate_recovery_authority(owner, &authority).is_err(), "another enclosing scope cannot reuse authority");
+        let authority = engine.recovery_authority(owner, cap, entry, 3).unwrap();
+        engine.release_acquired_entry(entry).unwrap();
+        assert!(engine.validate_recovery_authority(owner, &authority).is_err(), "acquisition must still be live");
+    }
+
+    #[test]
     fn machine_registry_enforces_owner_lifecycle_and_generational_reuse() {
         let owner = 71;
         let mut execution = ExecutionState::new(owner);

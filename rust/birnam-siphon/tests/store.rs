@@ -1011,7 +1011,13 @@ fn store_history_cells_snapshots_and_source_use_id_messages() {
         image_transfer(&h);
         phase_safety(&h);
         source(&h);
+        // Old images retain this same native fact-backed adapter. Test it
+        // explicitly; default Globals no longer aliases the fact database.
+        let globals = h.named(b"Globals");
+        let owned = h.call(h.id.receiver, b"behaviorOf:", &[globals]);
+        h.call(h.id.receiver, b"reassociateBehaviorOf:with:", &[globals, h.named(b"GlobalsVt")]);
         globals_are_facts(&h);
+        h.call(h.id.receiver, b"reassociateBehaviorOf:with:", &[globals, owned]);
         mop_hooks(&h);
         h.clear();
         collect(h.id, h.gc);

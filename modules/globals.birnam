@@ -1,0 +1,270 @@
+// Source bindings owned by ordinary objects. This bootstrap artifact installs
+// policy above Id; the native Globals prototype remains the legacy-image parent.
+// Captured owners avoid recursive global resolution in the lookup implementation.
+// Sends to those owners remain live; no dependency Method is captured.
+[Module named: #globals requires: #[]];
+[[|
+let bindingModel := ObjectModel;
+let bindingMap := Map;
+let bindingError := Error;
+let bindingNil := nil;
+// Immutable indices are ordinary captured values, as in Trace. Reading a binding
+// does not reconstruct index Integers on every lookup.
+let bindingSlot0 := 0; let bindingSlot1 := 1; let bindingSlot2 := 2; let bindingSlot3 := 3; let bindingSlot4 := 4;
+let bindingReflect := Reflect;
+let bindingKeyPrototype := [bindingModel newSlots: #[nil] parent: ObjectVt];
+let bindingHashZero := [Execution wordResultOf: 0 selector: #word];
+// Identity-preserving keys above ordinary Map. Symbols already have canonical
+// identity; other keys use ordinary wrappers. Constant hashing is intentional:
+// these uncommon keys collide, then compare their original identities. No
+// address-derived index or native identity registry needs image repair.
+[Reflect defineMethod: #bindingIdentity on: Object as: [:self | self]];
+[Reflect defineMethod: #bindingKey on: Object as: [:self |
+  [bindingModel newSlots: #[self] parent: [bindingReflect vtableOf: bindingKeyPrototype]]
+]];
+[Reflect defineMethod: #bindingKey on: SymbolVt as: [:self | self]];
+[Reflect defineMethod: #bindingIdentity on: bindingKeyPrototype as: [:self |
+  [bindingModel slot: bindingSlot0 in: self]
+]];
+[Reflect defineMethod: #slotNames on: bindingKeyPrototype as: [:self | #[#key]]];
+[Reflect defineMethod: #collectionHash on: bindingKeyPrototype as:
+  [Execution block: [:self | bindingHashZero] withNativeSignature: "w"]];
+[Reflect defineMethod: #collectionEquals: on: bindingKeyPrototype as: [:self :other |
+  [[self bindingIdentity] == [other bindingIdentity]]
+]];
+
+let bindingStorage := [bindingModel newSlots: #[#[]] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: bindingStorage as: [:self | #[#state]]];
+// State = #[current binding Map, live insertion order, binding revision,
+//          reservation Map, transient-binding policy Map]. A replacement publishes all five together.
+[bindingModel slot: bindingSlot0 in: bindingStorage put: #[[bindingMap new] #[] 0 [bindingMap new] [bindingMap new]]];
+let bindingImport := [Object clone];
+[Reflect defineMethod: #binding:value: on: bindingImport as: [:self :name :value |
+  let old := [bindingModel slot: bindingSlot0 in: bindingStorage];
+  [bindingModel slot: bindingSlot0 in: bindingStorage put: #[[[old at: bindingSlot0] at: [name bindingKey] put: value] [[old at: bindingSlot1] add: name] 0 [old at: bindingSlot3] [old at: bindingSlot4]]]; self
+]];
+[Globals liveBindingsDo: bindingImport];
+[Reflect removeMethod: #binding:value: on: bindingImport];
+let importedBindings := [bindingModel slot: bindingSlot0 in: bindingStorage];
+let bindingBehavior := [Reflect vtableOf: Globals];
+[[bindingBehavior == GlobalsVt] ifTrue: [|
+  let private := [bindingBehavior delegated];
+  [Vtable ownerOf: private put: Globals];
+  [Vtable reassociateBehaviorOf: Globals with: private]
+]];
+[Reflect defineMethod: #bindingOwner on: Globals as: [:self | bindingStorage]];
+[Reflect defineMethod: #bindingState on: Globals as: [:self |
+  [bindingModel slot: bindingSlot0 in: bindingStorage]
+]];
+[Reflect defineMethod: #publishBindingState:from: on: Globals as: [:self :next :expected |
+  [[[next at: bindingSlot2] isError] ifTrue: [| [next at: bindingSlot2]] ifFalse: [|
+    [[bindingModel replaceSlot: bindingSlot0 in: bindingStorage expected: expected with: next]
+      ifTrue: [| self] ifFalse: [| [bindingError kind: #compensationConflict]]]
+  ]]
+]];
+// Reads need no constructor, fact handle, version check, or mutation guard.
+[Reflect defineMethod: #at: on: Globals as: [:self :name |
+  [[[bindingModel slot: bindingSlot0 in: bindingStorage] at: bindingSlot0] at: [name bindingKey]]
+]];
+[Reflect defineMethod: #includes: on: Globals as: [:self :name |
+  [[[self bindingState] at: bindingSlot0] includesKey: [name bindingKey]]
+]];
+[Reflect defineMethod: #at:ifAbsent: on: Globals as: [:self :name :absent |
+  [[[self bindingState] at: bindingSlot0] at: [name bindingKey] ifAbsent: absent]
+]];
+[Reflect defineMethod: #bindings on: Globals as: [:self | [[self bindingState] at: bindingSlot0]]];
+[Reflect defineMethod: #bindingNames on: Globals as: [:self | [[self bindingState] at: bindingSlot1]]];
+[Reflect defineMethod: #bindingBasis on: Globals as: [:self | [[self bindingState] at: bindingSlot2]]];
+[Reflect defineMethod: #bindingAt: on: Globals as: [:self :name |
+  let bindings := [[self bindingState] at: bindingSlot0];
+  [[bindings includesKey: [name bindingKey]] ifTrue: [| #[[bindings at: [name bindingKey]]]] ifFalse: [| #[]]]
+]];
+[Reflect defineMethod: #bindingMutation: on: Globals as: [:self :body |
+  let executor := [self at: #TaskExecutor];
+  [[executor isNil] ifTrue: [| [body value]] ifFalse: [| [executor transition: body]]]
+]];
+[Reflect defineMethod: #at:put: on: Globals as: [:self :name :value |
+  [self bindingMutation: [|
+    let old := [self bindingState]; let bindings := [old at: bindingSlot0];
+    let exists := [bindings includesKey: [name bindingKey]];
+    [[exists & [[bindings at: [name bindingKey]] == value]] ifTrue: [| value] ifFalse: [|
+      let next := [bindings at: [name bindingKey] put: value];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        let order := [exists ifTrue: [| [old at: bindingSlot1]] ifFalse: [| [[old at: bindingSlot1] add: name]]];
+        let result := [self publishBindingState: #[next order [[old at: bindingSlot2] + 1] [old at: bindingSlot3] [old at: bindingSlot4]] from: old];
+        [[result isError] ifTrue: [| result] ifFalse: [| value]]
+      ]]
+    ]]
+  ]]
+]];
+// Explicit removal rebuilds the persistent Map and releases removed values.
+// There is no permanent tombstone table. Remaining names keep their order.
+[Reflect defineMethod: #map:without: on: Globals as: [:self :map :name |
+  [[map keys] inject: [bindingMap new] into: [:out :key |
+    [[out isError] ifTrue: [| out] ifFalse: [|
+      [[[key bindingIdentity] == name] ifTrue: [| out] ifFalse: [| [out at: key put: [map at: key]]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #order:without: on: Globals as: [:self :order :name |
+  [order inject: #[] into: [:out :key | [[key == name] ifTrue: [| out] ifFalse: [| [out add: key]]]]]
+]];
+[Reflect defineMethod: #remove: on: Globals as: [:self :name |
+  [self bindingMutation: [|
+    let old := [self bindingState];
+    [[[[old at: bindingSlot0] includesKey: [name bindingKey]] not] ifTrue: [| self] ifFalse: [|
+      let next := [self map: [old at: bindingSlot0] without: name];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        [self publishBindingState: #[next [self order: [old at: bindingSlot1] without: name] [[old at: bindingSlot2] + 1] [old at: bindingSlot3] [old at: bindingSlot4]] from: old]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #liveBindingsDo: on: Globals as: [:self :visitor |
+  let snapshot := [self bindingState]; let bindings := [snapshot at: bindingSlot0];
+  [[snapshot at: bindingSlot1] inject: self into: [:result :name |
+    [visitor binding: name value: [bindings at: [name bindingKey]]]; self
+  ]]
+]];
+[Reflect defineMethod: #nameOf: on: Globals as: [:self :value |
+  let snapshot := [self bindingState]; let bindings := [snapshot at: bindingSlot0];
+  [[snapshot at: bindingSlot1] inject: bindingNil into: [:found :name |
+    [[found isNil] ifTrue: [|
+      [[[bindings at: [name bindingKey]] == value] ifTrue: [| name] ifFalse: [| bindingNil]]
+    ] ifFalse: [| found]]
+  ]]
+]];
+// Reservations are owned capabilities, independent of Store's fact budget.
+// Each finite bank retains only its credits and the order at acquisition. General
+// allocator exhaustion has the same fatal policy as other ordinary collections.
+[Reflect defineMethod: #reservedBindingCompensationFor: on: Globals as: [:self :reservation |
+  let bank := [[[self bindingState] at: bindingSlot3] at: [reservation bindingKey]];
+  [[bank isNil] ifTrue: [| 0] ifFalse: [| [bank at: bindingSlot0]]]
+]];
+[Reflect defineMethod: #reserveBindingCompensationFor:count: on: Globals as: [:self :reservation :count |
+  [[count <= 0] ifTrue: [| [bindingError kind: #invalidCompensation]] ifFalse: [|
+    [self bindingMutation: [|
+      let old := [self bindingState]; let banks := [old at: bindingSlot3]; let bank := [banks at: [reservation bindingKey]];
+      let credits := [[bank isNil] ifTrue: [| 0] ifFalse: [| [bank at: bindingSlot0]]];
+      let order := [[bank isNil] ifTrue: [| [old at: bindingSlot1]] ifFalse: [| [bank at: bindingSlot1]]];
+      let nextCredits := [credits + count];
+      let next := [[nextCredits isError] ifTrue: [| nextCredits] ifFalse: [|
+        [banks at: [reservation bindingKey] put: #[nextCredits order]]
+      ]];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        [self publishBindingState: #[[old at: bindingSlot0] [old at: bindingSlot1] [old at: bindingSlot2] next [old at: bindingSlot4]] from: old]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #releaseBindingCompensationFor: on: Globals as: [:self :reservation |
+  [self bindingMutation: [|
+    let old := [self bindingState]; let next := [self map: [old at: bindingSlot3] without: reservation];
+    [[next isError] ifTrue: [| next] ifFalse: [|
+      [self publishBindingState: #[[old at: bindingSlot0] [old at: bindingSlot1] [old at: bindingSlot2] next [old at: bindingSlot4]] from: old]
+    ]]
+  ]]
+]];
+// Restore an absent old name before its first surviving old successor. This
+// preserves old alias order without resetting unrelated names or retaining a
+// permanent removed-name index. New names append in ordinary insertion order.
+[Reflect defineMethod: #restoreName:in:from: on: Globals as: [:self :name :order :saved |
+  let scan := [saved inject: #[false bindingNil] into: [:scan :key |
+    [[key == name] ifTrue: [| #[true [scan at: bindingSlot1]]] ifFalse: [|
+      [[[scan at: bindingSlot0] & [[scan at: bindingSlot1] isNil]] ifTrue: [|
+        let present := [order inject: false into: [:found :entry | [found | [entry == key]]]];
+        [present ifTrue: [| #[true key]] ifFalse: [| scan]]
+      ] ifFalse: [| scan]]
+    ]]
+  ]];
+  let anchor := [scan at: bindingSlot1];
+  [[anchor isNil] ifTrue: [| [order add: name]] ifFalse: [|
+    [order inject: #[] into: [:out :key |
+      [[key == anchor] ifTrue: [| [[out add: name] add: key]] ifFalse: [| [out add: key]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #restoreBinding:expected:previous:reservation: on: Globals as: [:self :name :expected :previous :reservation |
+  [self bindingMutation: [|
+    let old := [self bindingState]; let bindings := [old at: bindingSlot0]; let banks := [old at: bindingSlot3];
+    let bank := [banks at: [reservation bindingKey]];
+    let present := [bindings includesKey: [name bindingKey]];
+    let matches := [[[expected size] = 0]
+      ifTrue: [| [present not]]
+      ifFalse: [| [[[expected size] = 1] & [present & [[bindings at: [name bindingKey]] == [expected at: bindingSlot0]]]]]];
+    let valid := [matches & [[previous size] <= 1]];
+    let available := [[bank isNil] ifTrue: [| false] ifFalse: [| [[bank at: bindingSlot0] > 0]]];
+    [[[valid & available] not] ifTrue: [|
+      [bindingError kind: #compensationConflict]
+    ] ifFalse: [|
+      let absent := [[previous size] = 0];
+      let next := [absent ifTrue: [| [self map: bindings without: name]] ifFalse: [| [bindings at: [name bindingKey] put: [previous at: bindingSlot0]]]];
+      let order := [absent ifTrue: [| [self order: [old at: bindingSlot1] without: name]] ifFalse: [|
+        [present ifTrue: [| [old at: bindingSlot1]] ifFalse: [| [self restoreName: name in: [old at: bindingSlot1] from: [bank at: bindingSlot1]]]]
+      ]];
+      let remaining := [banks at: [reservation bindingKey] put: #[[[bank at: bindingSlot0] - 1] [bank at: bindingSlot1]]];
+      let same := [[expected size] = [previous size]];
+      let unchanged := [same & [absent | [[expected at: bindingSlot0] == [previous at: bindingSlot0]]]];
+      let revision := [unchanged ifTrue: [| [old at: bindingSlot2]] ifFalse: [| [[old at: bindingSlot2] + 1]]];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        [[remaining isError] ifTrue: [| remaining] ifFalse: [|
+          [self publishBindingState: #[next order revision remaining [old at: bindingSlot4]] from: old]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+// Persistence policy belongs to the binding owner, independently of Store schema.
+[Reflect defineMethod: #transientBinding:put: on: Globals as: [:self :name :flag |
+  [self bindingMutation: [|
+    let old := [self bindingState]; let policy := [old at: bindingSlot4];
+    let next := [[flag == true] ifTrue: [| [policy at: [name bindingKey] put: true]] ifFalse: [| [self map: policy without: name]]];
+    [[next isError] ifTrue: [| next] ifFalse: [|
+      [self publishBindingState: #[[old at: bindingSlot0] [old at: bindingSlot1] [[old at: bindingSlot2] + 1] [old at: bindingSlot3] next] from: old]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #bindingIsTransient: on: Globals as: [:self :name |
+  [[[[self bindingState] at: bindingSlot4] at: [name bindingKey]] == true]
+]];
+// Project the owner payload without changing the live world. Aliases of the
+// storage object keep one image identity; only its serialized fields differ.
+[Reflect defineMethod: #imageBindingProjection on: Globals as: [:self |
+  let old := [self bindingState]; let bindings := [old at: bindingSlot0]; let policy := [old at: bindingSlot4];
+  let kept := [[old at: bindingSlot1] inject: #[[bindingMap new] #[]] into: [:out :name |
+    [[[policy at: [name bindingKey]] == true] ifTrue: [| out] ifFalse: [|
+      #[[[out at: bindingSlot0] at: [name bindingKey] put: [bindings at: [name bindingKey]]] [[out at: bindingSlot1] add: name]]
+    ]]
+  ]];
+  [[[kept at: bindingSlot0] isError] ifTrue: [| [kept at: bindingSlot0]] ifFalse: [|
+    let copy := [bindingStorage clone];
+    [[copy isError] ifTrue: [| copy] ifFalse: [|
+      [bindingModel slot: bindingSlot0 in: copy put: #[[kept at: bindingSlot0] [kept at: bindingSlot1] [old at: bindingSlot2] [bindingMap new] policy]];
+      #[bindingStorage copy]
+    ]]
+  ]]
+]];
+// Image failure restores the resident owner root as well as its methods. A
+// callback before the saved methods are installed can otherwise edit the old
+// captured owner and survive a failed load.
+[Reflect defineMethod: #imageBindingCheckpoint on: Globals as: [:self |
+  #[bindingStorage [self bindingState]]
+]];
+[Reflect defineMethod: #restoreImageBindings: on: Globals as: [:self :checkpoint |
+  [bindingModel slot: bindingSlot0 in: [checkpoint at: bindingSlot0] put: [checkpoint at: bindingSlot1]]; self
+]];
+// Image transport retains this owner through bindingState/bindingOwner captures.
+// A new image has no live native activation journal; release its saved banks.
+[Reflect defineMethod: #releaseImageReservations on: Globals as: [:self |
+  let old := [self bindingState];
+  [self publishBindingState: #[[old at: bindingSlot0] [old at: bindingSlot1] [old at: bindingSlot2] [bindingMap new] [old at: bindingSlot4]] from: old]
+]];
+// One-time import of seed bindings. Remove their automatic current facts; later
+// explicit facts under this entity remain ordinary independent Store data.
+[[importedBindings at: bindingSlot1] inject: nil into: [:ignored :name |
+  [db retract: #__globals__ attr: name value: [[importedBindings at: bindingSlot0] at: [name bindingKey]]]; nil
+]];
+[db compact];
+[Module markLoaded: #globals];
+Globals
+] value]

@@ -38,4 +38,10 @@ python3 scripts/reflect-slots-test.py "$prefix" --skip-images
 python3 scripts/module-registry-test.py "$prefix" --skip-images
 "$prefix/bin/birnam" tests/fixtures/cell-owner.birnam </dev/null
 
+python3 scripts/lsp-owner-test.py "$prefix" --skip-images
+
+"$prefix/bin/birnam" tests/fixtures/globals-owner.birnam </dev/null
+
+python3 scripts/owned-globals-test.py "$prefix" --skip-images
+
 echo "birnam-test: module suites passed"

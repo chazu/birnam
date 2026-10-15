@@ -167,13 +167,11 @@ pub(super) unsafe fn try_result(
         roots.keep(word);
         // The Word owner fences this expected epoch again after its own callbacks.
         match s
-            .id
-            .send_named(word, b"tryPrimitiveExpressionAtEpoch:", &operands)
+            .optional_query(word, b"tryPrimitiveExpressionAtEpoch:", &operands)
         {
             Ok(v) if v.kind() == native::UNIT => Ok(None),
             Ok(v) if v.as_object().is_some_and(|o| !o.is_null()) => Ok(Some(v)),
             Ok(_) => Err(invalid()),
-            Err(e) if e.status == native::UNBOUND => Ok(None),
             Err(e) => Err(e),
         }
     }

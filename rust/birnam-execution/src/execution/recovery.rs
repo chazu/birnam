@@ -82,7 +82,9 @@ pub(crate) struct RecoveryAuthority {
     pub(crate) caller: FrameHandle,
     pub(crate) caller_descriptor: Arc<FrameDescriptor>,
     pub(crate) caller_pc: usize,
-    pub(crate) epoch: u64,
+    // The enclosing drive delimiter survives balanced synchronous reentry.
+    // Public Actions still use drive_epoch and cannot be replayed across it.
+    pub(crate) delimiter: DelimiterHandle,
     pub(crate) entry: ResumableEntryCapability,
     pub(crate) descriptor: Arc<FrameDescriptor>,
     pub(crate) result_slot: usize,
@@ -116,7 +118,7 @@ impl ExecutionState {
             caller,
             caller_descriptor: machine.arena.descriptor_arc(caller)?,
             caller_pc: machine.arena.program_counter(caller)?,
-            epoch: machine.drive_epoch,
+            delimiter: machine.current_delimiter()?,
             entry,
             descriptor: registered.descriptor.clone(),
             result_slot,
@@ -136,7 +138,7 @@ impl ExecutionState {
             authority.result_slot,
         )?;
         if current.caller != authority.caller
-            || current.epoch != authority.epoch
+            || current.delimiter != authority.delimiter
             || current.caller_pc != authority.caller_pc
             || !Arc::ptr_eq(&current.caller_descriptor, &authority.caller_descriptor)
             || !Arc::ptr_eq(&current.descriptor, &authority.descriptor)

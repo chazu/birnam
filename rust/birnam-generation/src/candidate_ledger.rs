@@ -112,6 +112,7 @@ pub(super) unsafe fn matches(
         // invalidate a prepared token; here only callbacks during this read are
         // required to leave one coherent observation.
         let basis = preparation::basis(s, q)?;
+        let global_basis = preparation::global_basis(s, q)?;
         let epoch = preparation::epoch(s)?;
         for b in &ledger.bindings {
             let b = &b.binding;
@@ -128,6 +129,7 @@ pub(super) unsafe fn matches(
         }
         let stable = current(s, q)? == ledger.generation
             && preparation::basis(s, q)? == basis
+            && preparation::global_basis(s, q)? == global_basis
             && preparation::epoch(s)? == epoch;
         Ok(stable.then_some(true))
     }
@@ -392,6 +394,7 @@ pub(super) unsafe fn adopt(
             };
         }
         let basis = preparation::basis(s, q)?;
+        let global_basis = preparation::global_basis(s, q)?;
         let source_map = fact(s, q, generation, b"sourceMap")?;
         let modules = modules(s, q, source_map)?;
         let rows = seq(s, q, source_map)?;
@@ -631,6 +634,8 @@ pub(super) unsafe fn adopt(
         }
         let changed = if preparation::basis(s, q)? != basis {
             Some(b"Store basis changed during generation adoption".as_slice())
+        } else if preparation::global_basis(s, q)? != global_basis {
+            Some(b"Globals basis changed during generation adoption".as_slice())
         } else if preparation::epoch(s)? != epoch {
             Some(b"behavior epoch changed during generation adoption".as_slice())
         } else if *s.registry.entries.borrow() != registered {

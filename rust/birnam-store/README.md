@@ -52,6 +52,12 @@ requested fact or advancing the basis. Physical compaction may already have run.
 
 ## Globals and method hooks
 
+The standard bootstrap now installs [authored Globals](../../modules/globals.birnam).
+Its bindings and reservations are ordinary owned state; automatic global facts
+are disabled. The native facade described below remains the seed and legacy-image
+backend. Explicit facts retain their normal independent history/query behavior.
+See [the ownership contract](../../docs/design/owned-globals.md).
+
 Globals now also answers `liveBindingsDo:` and `nameOf:`. `liveBindingsDo:` takes
 a visitor Object receiving `binding:value:` and snapshots the owner's current
 bindings in existing attribute order, retaining names and values across collecting

@@ -2,7 +2,7 @@
 use super::*;
 unsafe fn construct(
     memory: &Memory,
-    root: Oop,
+    roots: &[Oop],
     operation: impl FnOnce() -> Result<Operand, Outcome>,
 ) -> Result<Operand, Outcome> {
     memory.check()?;
@@ -10,7 +10,7 @@ unsafe fn construct(
         return Err(invalid());
     }
     let depth = memory.temporary.borrow().len();
-    memory.temporary.borrow_mut().push(root);
+    memory.temporary.borrow_mut().extend_from_slice(roots);
     let nested = memory.constructing.replace(true);
     let result = (|| unsafe {
         if memory.automatic.get()
@@ -51,7 +51,7 @@ unsafe extern "C" fn allocate(
             return Err(invalid());
         };
         bytes.as_word().ok_or_else(invalid)?;
-        construct(memory, receiver, || {
+        construct(memory, &[receiver], || {
             memory.send(
                 memory.id.receiver,
                 b"allocate:bytes:",
@@ -71,12 +71,26 @@ unsafe extern "C" fn delegated(
             return Err(invalid());
         }
         let memory = memory(context)?;
-        construct(memory, receiver, || {
+        construct(memory, &[receiver], || {
             memory.send(
                 memory.id.receiver,
                 b"newBehaviorWithParent:",
                 &[Operand::word(receiver.addr())],
             )
+        })
+    })())
+}
+unsafe extern "C" fn delegated_with(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
+    done((|| unsafe {
+        let memory = memory(context)?;
+        let Some([entry, selector]) = borrowed_slice(args, count) else { return Err(invalid()) };
+        entry.as_entry().filter(|e| e.method.is_some()).ok_or_else(invalid)?;
+        let selector = object(*selector)?;
+        // The caller retains the entered NativeEntry's owner; the GC owner roots
+        // its opaque object operands and the fresh result across every callback.
+        construct(memory, &[receiver, selector], || {
+            memory.send(memory.id.receiver, b"newBehaviorWithParent:method:as:", &[
+                Operand::object(receiver), *entry, Operand::object(selector)])
         })
     })())
 }
@@ -103,7 +117,7 @@ unsafe extern "C" fn intern(
         if current.kind() == native::OBJECT {
             return Ok(current);
         }
-        construct(memory, memory.id.receiver, || {
+        construct(memory, &[memory.id.receiver], || {
             memory.send(
                 memory.id.receiver,
                 b"internBytes:",
@@ -148,6 +162,7 @@ pub(super) unsafe extern "C" fn activate(
             for (name, method) in [
                 (b"allocate".as_slice(), allocate as Method),
                 (b"delegated", delegated),
+                (b"delegatedWith:as:", delegated_with),
                 (b"intern:", intern),
             ] {
                 memory.send(

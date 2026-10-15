@@ -364,6 +364,7 @@ unsafe fn resident_control() -> bool {
             h.call(h.named(b"System"),b"loadImage:rebuild:",&[filename,h.named(if mode=="rebuild" {b"true"} else {b"false"})]);
             std::fs::remove_file(image).unwrap();
         }
+        clear_source_bindings(h.id, h.ns);
         h.call(h.named(b"Store"),b"imageLoadBegin",&[]);
         h.call(h.named(b"Codegen"),b"evictMaterializations",&[]);
         h.floor.restore_lang();h.clear_from(0);h.collect();
@@ -719,6 +720,7 @@ fn image_owner_roundtrip() {
                 b"removeMethod:",
                 &[Operand::object(h.id.intern_name(b"imageCellMarker").unwrap())],
             );
+            clear_source_bindings(h.id, h.ns);
             h.call(h.named(b"Store"), b"imageLoadBegin", &[]);
             h.floor.restore_lang();
             h.clear_from(0);
@@ -1253,6 +1255,7 @@ fn repeated_image_resaves_keep_a_fixed_live_set() {
             .unwrap();
             // Clearing Store/Globals and the last external root must release
             // fixture mappings after restoring the resident compiled core.
+            clear_source_bindings(h.id, h.ns);
             h.call(store, b"imageLoadBegin", &[]);
             h.call(codegen, b"evictMaterializations", &[]);
             h.floor.restore_lang();

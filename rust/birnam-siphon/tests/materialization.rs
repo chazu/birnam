@@ -360,6 +360,9 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
             h.bytes(h.call(code_factory, b"canonicalBytesOf:", &[code])),
             fixture
         );
+        // Bootstrap and authored error construction can materialize ordinary
+        // programs too. Measure this fixture from an empty cache.
+        h.call(codegen, b"evictMaterializations", &[]);
         for resumable in [false, true] {
             let block = h.materialize(code, &[], resumable);
             assert_eq!(h.number(h.call(block, b"value", &[])), 42);

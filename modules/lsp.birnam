@@ -22,21 +22,15 @@
 // the dispatch here is transport-agnostic (it only calls readMessage/sendMessage).
 
 [Module named: #lsp requires: #[#json]];
-[Globals at: #Lsp put: [Object clone]];
+// Each server owns its state. Immutable Maps are shared by shallow clones;
+// writes replace that clone's own slot. `new` requests fresh empty state.
+let lspInitialState := [:self | #[[Map new] [Map new] [Map new] [Map new] [Map new] [Map new] [Map new] [Map new] nil 0 [Map new] "" ""]];
+[Globals at: #Lsp put: [ObjectModel newSlots: [lspInitialState value: nil] parent: ObjectVt]];
+[Reflect defineMethod: #initialState on: Lsp as: lspInitialState];
+[Reflect defineMethod: #new on: Lsp as: [:self |
+  [ObjectModel newSlots: [self initialState] parent: [Reflect vtableOf: self]]]];
+[Reflect defineMethod: #slotNames on: Lsp as: [:self | #[#docs #versions #projectRoots #projectCache #projectFailures #documentPaths #projectIndexes #runtimeCompletionCache #runtimeGlobalCompletionCache #runtimeGlobalCompletionBuildCount #completionResponseCache #inputBuffer #workspaceUri]]];
 [Reflect docModule: #lsp is: "A stdio language server (LSP: framing, diagnostics, hover, and navigation), over Json."];
-[[db cellFor: Lsp attr: #docs] set: [Map new]];
-[[db cellFor: Lsp attr: #versions] set: [Map new]];
-[[db cellFor: Lsp attr: #projectRoots] set: [Map new]];
-[[db cellFor: Lsp attr: #projectCache] set: [Map new]];
-[[db cellFor: Lsp attr: #projectFailures] set: [Map new]];
-[[db cellFor: Lsp attr: #documentPaths] set: [Map new]];
-[[db cellFor: Lsp attr: #projectIndexes] set: [Map new]];
-[[db cellFor: Lsp attr: #runtimeCompletionCache] set: [Map new]];
-[[db cellFor: Lsp attr: #runtimeGlobalCompletionCache] set: nil];
-[[db cellFor: Lsp attr: #runtimeGlobalCompletionBuildCount] set: 0];
-[[db cellFor: Lsp attr: #completionResponseCache] set: [Map new]];
-[[db cellFor: Lsp attr: #inputBuffer] set: ""];
-[[db cellFor: Lsp attr: #workspaceUri] set: ""];
 
 // These are syntax-sensitive compiler forms, indexed as data so the analysis
 // policy does not grow a receiver/selector conditional ladder.
@@ -86,12 +80,12 @@ let analysisThreadedSpecialSelectors := {
 // -- framed input -------------------------------------------------------------
 
 [Reflect defineMethod: #inputBuffer on: Lsp as: [:self |
-  [[db cellFor: self attr: #inputBuffer] value]
+  [ObjectModel slot: 11 in: self]
   ] doc:
   "Answers bytes already read from stdin but not consumed as a complete JSON-RPC frame." ];
 
 [Reflect defineMethod: #inputBuffer: on: Lsp as: [:self :bytes |
-  [[db cellFor: self attr: #inputBuffer] set: bytes];
+  [ObjectModel slot: 11 in: self put: bytes];
   self
   ] doc:
   "Replaces the retained JSON-RPC input bytes." ];
@@ -963,26 +957,26 @@ let analysisThreadedSpecialSelectors := {
   "Builds one CompletionItem from an exported runtime global name." ];
 
 [Reflect defineMethod: #runtimeGlobalCompletionBuildCount on: Lsp as: [:self |
-  [[db cellFor: self attr: #runtimeGlobalCompletionBuildCount] value]
+  [ObjectModel slot: 9 in: self]
   ] doc:
   "Answers how many times this LSP process built its bounded export snapshot." ];
 
 [Reflect defineMethod: #clearRuntimeGlobalCompletionCache on: Lsp as: [:self |
-  [[db cellFor: self attr: #runtimeGlobalCompletionCache] set: nil];
-  [[db cellFor: self attr: #runtimeGlobalCompletionBuildCount] set: 0];
+  [ObjectModel slot: 8 in: self put: nil];
+  [ObjectModel slot: 9 in: self put: 0];
   self
   ] doc:
   "Drops the process-local exported-global completion snapshot." ];
 
 [Reflect defineMethod: #runtimeGlobalCompletionItems on: Lsp as: [:self |
-  let cached := [[db cellFor: self attr: #runtimeGlobalCompletionCache] value];
+  let cached := [ObjectModel slot: 8 in: self];
   [[cached notNil]
     ifTrue: [| cached]
     ifFalse: [|
       let items := [[Reflect allGlobalNames] inject: #[] into: [:out :name |
         [out add: [self completionItemForRuntimeGlobalName: name]]]];
-      [[db cellFor: self attr: #runtimeGlobalCompletionCache] set: items];
-      [[db cellFor: self attr: #runtimeGlobalCompletionBuildCount] set:
+      [ObjectModel slot: 8 in: self put: items];
+      [ObjectModel slot: 9 in: self put:
         [[self runtimeGlobalCompletionBuildCount] + 1]];
       items]]
   ] doc:
@@ -1010,12 +1004,12 @@ let analysisThreadedSpecialSelectors := {
   "Builds a bounded method CompletionItem without scanning historical source generations." ];
 
 [Reflect defineMethod: #runtimeCompletionCacheMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #runtimeCompletionCache] value]
+  [ObjectModel slot: 7 in: self]
   ] doc:
   "Answers receiver-name-to-bounded-runtime-completion-items retained for this server process." ];
 
 [Reflect defineMethod: #clearRuntimeCompletionCache on: Lsp as: [:self |
-  [[db cellFor: self attr: #runtimeCompletionCache] set: [Map new]];
+  [ObjectModel slot: 7 in: self put: [Map new]];
   self
   ] doc:
   "Drops the process-local runtime completion snapshot cache." ];
@@ -1027,7 +1021,7 @@ let analysisThreadedSpecialSelectors := {
     ifFalse: [|
       let items := [[Reflect allMethodsOf: receiver] inject: #[] into: [:out :entry |
         [out add: [self completionItemForRuntimeMethod: entry receiver: receiverName]]]];
-      [[db cellFor: self attr: #runtimeCompletionCache] set:
+      [ObjectModel slot: 7 in: self put:
         [[self runtimeCompletionCacheMap] at: receiverName put: items]];
       items]]
   ] doc:
@@ -1042,12 +1036,12 @@ let analysisThreadedSpecialSelectors := {
   "Filters one already-cached receiver method snapshot without retaining edited prefixes." ];
 
 [Reflect defineMethod: #completionResponseCacheMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #completionResponseCache] value]
+  [ObjectModel slot: 10 in: self]
   ] doc:
   "Answers the single exact completion response retained per open document URI." ];
 
 [Reflect defineMethod: #clearCompletionResponseCache on: Lsp as: [:self |
-  [[db cellFor: self attr: #completionResponseCache] set: [Map new]];
+  [ObjectModel slot: 10 in: self put: [Map new]];
   self
   ] doc:
   "Drops exact document completion responses." ];
@@ -1074,7 +1068,7 @@ let analysisThreadedSpecialSelectors := {
     => at: "text" put: text
     => at: "position" put: position
     => at: "result" put: result];
-  [[db cellFor: self attr: #completionResponseCache] set:
+  [ObjectModel slot: 10 in: self put:
     [[self completionResponseCacheMap] at: uri put: entry]];
   result
   ] doc:
@@ -1241,17 +1235,17 @@ let analysisThreadedSpecialSelectors := {
   "Asks the host-side shared Project resolver for a native snapshot for `uri`; answers a map or nil when the native owner is unavailable." ];
 
 [Reflect defineMethod: #projectRootsMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #projectRoots] value]
+  [ObjectModel slot: 2 in: self]
   ] doc:
   "Answers the URI-to-canonical-project-root map." ];
 
 [Reflect defineMethod: #projectCacheMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #projectCache] value]
+  [ObjectModel slot: 3 in: self]
   ] doc:
   "Answers the canonical-project-root-to-snapshot cache." ];
 
 [Reflect defineMethod: #projectFailuresMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #projectFailures] value]
+  [ObjectModel slot: 4 in: self]
   ] doc:
   "Answers the URI-to-failed-project-snapshot map." ];
 
@@ -1269,12 +1263,12 @@ let analysisThreadedSpecialSelectors := {
   "Answers the cached project snapshot for a document URI, resolving project identity per document rather than through one global workspace snapshot." ];
 
 [Reflect defineMethod: #documentPathsMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #documentPaths] value]
+  [ObjectModel slot: 5 in: self]
   ] doc:
   "Answers the open-document URI-to-decoded-path map." ];
 
 [Reflect defineMethod: #projectIndexesMap on: Lsp as: [:self |
-  [[db cellFor: self attr: #projectIndexes] value]
+  [ObjectModel slot: 6 in: self]
   ] doc:
   "Answers the read-only authored-source index cache keyed by project root." ];
 
@@ -1298,7 +1292,7 @@ let analysisThreadedSpecialSelectors := {
   "Answers the retained open URI for `path`, or a file URI for an unopened authored source." ];
 
 [Reflect defineMethod: #invalidateProjectIndexes on: Lsp as: [:self |
-  [[db cellFor: self attr: #projectIndexes] set: [Map new]];
+  [ObjectModel slot: 6 in: self put: [Map new]];
   self] doc:
   "Drops derived authored-source indexes after a document or project-topology change." ];
 
@@ -1399,7 +1393,7 @@ let analysisThreadedSpecialSelectors := {
         => at: "root" put: root
         => at: "documents" put: allDocs
         => at: "symbols" put: allSymbols];
-      [[db cellFor: self attr: #projectIndexes] set: [[self projectIndexesMap] at: root put: index]];
+      [ObjectModel slot: 6 in: self put: [[self projectIndexesMap] at: root put: index]];
       index]]
   ] doc:
   "Builds or returns the canonical-root authored-source index, using open buffers only for analysis." ];
@@ -1530,19 +1524,19 @@ let analysisThreadedSpecialSelectors := {
   let valid := [ok & [[root isEmpty] not]];
   [valid
     ifTrue: [|
-      [[db cellFor: self attr: #projectRoots] set: [[self projectRootsMap] at: uri put: root]];
-      [[db cellFor: self attr: #projectCache] set: [[self projectCacheMap] at: root put: snapshot]];
-      [[db cellFor: self attr: #projectFailures] set: [[self projectFailuresMap] at: uri put: nil]];
+      [ObjectModel slot: 2 in: self put: [[self projectRootsMap] at: uri put: root]];
+      [ObjectModel slot: 3 in: self put: [[self projectCacheMap] at: root put: snapshot]];
+      [ObjectModel slot: 4 in: self put: [[self projectFailuresMap] at: uri put: nil]];
       snapshot]
     ifFalse: [|
       [[oldRoot notNil]
         ifTrue: [|
-          [[db cellFor: self attr: #projectRoots] set: [[self projectRootsMap] at: uri put: oldRoot]];
-          [[db cellFor: self attr: #projectCache] set: [[self projectCacheMap] at: oldRoot put: snapshot]];
-          [[db cellFor: self attr: #projectFailures] set: [[self projectFailuresMap] at: uri put: nil]]]
+          [ObjectModel slot: 2 in: self put: [[self projectRootsMap] at: uri put: oldRoot]];
+          [ObjectModel slot: 3 in: self put: [[self projectCacheMap] at: oldRoot put: snapshot]];
+          [ObjectModel slot: 4 in: self put: [[self projectFailuresMap] at: uri put: nil]]]
         ifFalse: [|
-          [[db cellFor: self attr: #projectRoots] set: [[self projectRootsMap] at: uri put: nil]];
-          [[db cellFor: self attr: #projectFailures] set: [[self projectFailuresMap] at: uri put: snapshot]]]];
+          [ObjectModel slot: 2 in: self put: [[self projectRootsMap] at: uri put: nil]];
+          [ObjectModel slot: 4 in: self put: [[self projectFailuresMap] at: uri put: snapshot]]]];
       snapshot]]
   ] doc:
   "Stores a successful snapshot in the canonical-root cache, or retains a failure per URI; a refresh failure for an existing project replaces that project's cached snapshot." ];
@@ -1560,14 +1554,14 @@ let analysisThreadedSpecialSelectors := {
   let ok := [[snapshot notNil] ifTrue: [| [snapshot at: "ok" ifAbsent: [| false]]] ifFalse: [| false]];
   let root := [[snapshot notNil] ifTrue: [| [snapshot at: "projectRoot" ifAbsent: [| ""]]] ifFalse: [| ""]];
   [[ok & [[root isEmpty] not]] ifTrue: [|
-    [[db cellFor: self attr: #projectCache] set: [[self projectCacheMap] at: root put: snapshot]]]];
-  [[db cellFor: self attr: #workspaceUri] set: uri];
+    [ObjectModel slot: 3 in: self put: [[self projectCacheMap] at: root put: snapshot]]]];
+  [ObjectModel slot: 12 in: self put: uri];
   snapshot
   ] doc:
   "Primes the canonical-root cache from an explicit workspace URI without assigning that workspace snapshot to every document." ];
 
 [Reflect defineMethod: #workspaceUri on: Lsp as: [:self |
-  [[db cellFor: self attr: #workspaceUri] value]
+  [ObjectModel slot: 12 in: self]
   ] doc:
   "Answers the URI used for the current project workspace." ];
 
@@ -1653,9 +1647,9 @@ let analysisThreadedSpecialSelectors := {
 [Reflect defineMethod: #onDidClose: on: Lsp as: [:self :p |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
   let uri := [td at: "uri" ifAbsent: [| ""]];
-  [[db cellFor: self attr: #docs] set: [[self docsMap] at: uri put: nil]];
-  [[db cellFor: self attr: #versions] set: [[self versionsMap] at: uri put: nil]];
-  [[db cellFor: self attr: #documentPaths] set: [[self documentPathsMap] at: uri put: nil]];
+  [ObjectModel slot: 0 in: self put: [[self docsMap] at: uri put: nil]];
+  [ObjectModel slot: 1 in: self put: [[self versionsMap] at: uri put: nil]];
+  [ObjectModel slot: 5 in: self put: [[self documentPathsMap] at: uri put: nil]];
   [self invalidateProjectIndexes];
   let params := [Map => new => at: "uri" put: uri => at: "diagnostics" put: #[]];
   [self sendNote: "textDocument/publishDiagnostics" params: params];
@@ -1665,9 +1659,9 @@ let analysisThreadedSpecialSelectors := {
 // -- hover (docs from the Doc system) -----------------------------------------
 
 // Per-uri document text (a Map keyed by uri value), so hover can read the source.
-[Reflect defineMethod: #docsMap on: Lsp as: [:self | [[db cellFor: self attr: #docs] value]] doc:
-  "Answers the per-uri document-text Map (the #docs cell's value)."];
-[Reflect defineMethod: #versionsMap on: Lsp as: [:self | [[db cellFor: self attr: #versions] value]] doc:
+[Reflect defineMethod: #docsMap on: Lsp as: [:self | [ObjectModel slot: 0 in: self]] doc:
+  "Answers the per-uri document-text Map owned by this server."];
+[Reflect defineMethod: #versionsMap on: Lsp as: [:self | [ObjectModel slot: 1 in: self]] doc:
   "Answers the per-uri document-version Map."];
 [Reflect defineMethod: #versionOf: on: Lsp as: [:self :uri |
   let v := [[self versionsMap] at: uri ifAbsent: [| 0]];
@@ -1675,15 +1669,15 @@ let analysisThreadedSpecialSelectors := {
   ] doc:
   "Answers the last accepted version for `uri`, or zero when no version is stored."];
 [Reflect defineMethod: #storeDoc:text:version: on: Lsp as: [:self :uri :text :version |
-  [[db cellFor: self attr: #docs] set: [[self docsMap] at: uri put: text]];
-  [[db cellFor: self attr: #versions] set: [[self versionsMap] at: uri put: version]];
+  [ObjectModel slot: 0 in: self put: [[self docsMap] at: uri put: text]];
+  [ObjectModel slot: 1 in: self put: [[self versionsMap] at: uri put: version]];
   [self invalidateProjectIndexes];
   self] doc:
   "Stores a full-text document and its accepted LSP version for `uri`." ];
 
 [Reflect defineMethod: #rememberDocumentPath: on: Lsp as: [:self :uri |
   let path := [self pathForUri: uri];
-  [[db cellFor: self attr: #documentPaths] set: [[self documentPathsMap] at: uri put: path]];
+  [ObjectModel slot: 5 in: self put: [[self documentPathsMap] at: uri put: path]];
   self] doc:
   "Stores the host-decoded path for one open document so disk modules can be overridden by its buffer." ];
 

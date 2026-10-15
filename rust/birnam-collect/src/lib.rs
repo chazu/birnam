@@ -369,6 +369,8 @@ const NAMES: &[&[u8]] = &[
     b"symbolNamed:",
     b"allocate",
     b"delegated",
+    b"delegatedWith:as:",
+    b"newBehaviorWithParent:method:as:",
     b"intern:",
     b"addMethod",
 ];

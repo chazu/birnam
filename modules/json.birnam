@@ -31,8 +31,7 @@
 
 [Module named: #json requires: #[]];
 // PEG handles are process-local. Persist the factory, rebuild the cache lazily.
-[db assert: #imageTransient attr: #cardinality value: #one];
-[db assert: #jsonGrammar attr: #imageTransient value: true];
+[Globals transientBinding: #jsonGrammar put: true];
 [Globals at: #jsonGrammarFactory put: [|
   let g := [Peg newGrammar];
 

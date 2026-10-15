@@ -363,6 +363,20 @@ impl Execution {
     }
 }
 impl Execution {
+    // Optional admission queries must not enter doesNotUnderstand when absent:
+    // authored error construction can itself need the operation being admitted.
+    // Resolve once through Id and invoke that selected call under Execution's
+    // ordinary code/input roots. No entry is cached for a future query, and an
+    // entered UNBOUND failure is propagated rather than mistaken for absence.
+    unsafe fn optional_query(&self, receiver: Oop, name: &[u8], args: &[Operand]) -> Result<Operand, Outcome> {
+        let roots = self.scope(&[receiver]);
+        for arg in args { if let Some(value) = arg.as_object() { roots.keep(value); } }
+        let Some(entry) = (unsafe { machine::lookup_target(self, receiver, self.names[name]) })? else {
+            return Ok(Operand::unit());
+        };
+        if let Some(method) = self.selected(entry) { roots.keep(method); }
+        unsafe { entry.method.ok_or_else(invalid)?(entry.context, receiver, args.as_ptr(), args.len()) }.into_result()
+    }
     unsafe fn error_factory(&self) -> Result<Oop, Outcome> {
         unsafe { object(self.id.send_named(self.namespace, b"at:", &[Operand::object(self.id.intern_name(b"Error")?)])?) }
     }
@@ -821,6 +835,7 @@ const NAMES: &[&[u8]] = &[
     b"objectResultOf:selector:byteArgument:",
     b"bytesResultOf:selector:resultFactory:",
     b"wordResultOf:selector:",
+    b"tryPrimitiveExpressionAtEpoch:",
     b"block:withNativeSignature:",
     b"failNative:detail:",
     b"bytesResultOf:selector:",

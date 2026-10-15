@@ -722,6 +722,38 @@ unsafe extern "C" fn slot_put(
         })
     })())
 }
+// A generic owner-thread conditional replacement of one reference slot. All
+// collecting/reentrant sends finish before comparing and publishing the edge.
+// No Globals, Store, scheduler, or transaction policy belongs in this primitive.
+unsafe extern "C" fn replace_slot(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([index, value, expected, replacement]) = borrowed_slice(a, n) else { return Err(invalid()) };
+        let [index, value, expected, replacement] = [object(*index)?, object(*value)?, object(*expected)?, object(*replacement)?];
+        m.rooted(&[index, value, expected, replacement], || {
+            let integer = named(m, b"Integer")?;
+            m.rooted(&[integer], || {
+                let index = m.send(integer, b"wordOf:", &[Operand::object(index)])?.as_word().ok_or_else(invalid)?;
+                let yes = named(m, b"true")?;
+                m.rooted(&[yes], || {
+                    let no = named(m, b"false")?;
+                    m.rooted(&[no], || {
+                        m.send(m.gc, b"prepareAllocation", &[])?;
+                        if index >= m.extent(value)?.div_ceil(size_of::<Oop>()) || m.image_layout(value)?.kind(index) != OOP {
+                            return Err(invalid());
+                        }
+                        m.identity(expected)?;
+                        m.identity(replacement)?;
+                        let slot = value.cast::<Oop>().add(index);
+                        let matches = slot.read() == expected;
+                        if matches { slot.write(replacement); }
+                        Ok(Operand::object(if matches { yes } else { no }))
+                    })
+                })
+            })
+        })
+    })())
+}
 // Image transports typed slots; Object Model alone reads its owned storage.
 unsafe extern "C" fn image_size(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
@@ -785,8 +817,9 @@ unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usi
     })())
 }
 const NAMES: &[&[u8]] = &[
-    b"Integer", b"nil", b"Vector", b"at:", b"wordOf:", b"fromWord:", b"add:",
+    b"Integer", b"nil", b"true", b"false", b"Vector", b"at:", b"wordOf:", b"fromWord:", b"add:",
     b"referenceSlotsOf:",
+    b"replaceSlot:in:expected:with:",
     b"newSlots:parent:", b"slot:in:", b"slot:in:put:",
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",
@@ -904,6 +937,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"slot:in:", boxed_slot),
             (behavior, b"referenceSlotsOf:", reference_slots),
             (behavior, b"slot:in:put:", boxed_slot_put),
+            (behavior, b"replaceSlot:in:expected:with:", replace_slot),
             (behavior, b"imageSizeOf:", image_size),
             (behavior, b"imageSlotAt:in:", image_slot),
             (behavior, b"restoreImageSlotAt:in:put:", image_put),

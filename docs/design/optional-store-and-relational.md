@@ -3,14 +3,14 @@
 2026-10-13. **Status: draft decision document.** The direction is agreed:
 retain Store and Relational, including their self-describing bootstrap, and
 remove their mandatory role in core language operations. The migration contracts
-and sequence below are proposed; the current implementation has not made this
-transition.
+and sequence below guide the migration; the current implementation has completed
+several slices, but not the whole transition.
 
-The first delivered slices provide owner-based reflection and local default Cells.
-Ordinary slot reflection and the [owned Module registry](module-owned-registry.md)
-now follow those slices. Globals storage, publication, compiler metadata, task
-state and several bootstrap dependencies still use Store. See also
-[the slot contract](reflect-slots-and-module-state.md).
+The delivered slices provide owner-based reflection, local Cells, ordinary slot
+reflection, and owned Module and LSP state. [Globals now owns its bindings and
+reservation banks](owned-globals.md), with transactional image recovery. Its
+bootstrap seed/legacy adapter remains in Store. Method publication, compiler
+metadata, task state and other bootstrap dependencies still require later slices.
 
 ## Decision
 
