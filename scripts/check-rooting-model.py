@@ -24,6 +24,21 @@ SEMANTICS = ROOT / "formal/semantics"
 CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
+    "MethodBindSafe": None,
+    "MethodBindAlias": "Invariant SurvivorsCallable is violated.",
+    "MethodBindRoot": "Invariant SurvivorsRetainCode is violated.",
+    "MethodBindRetention": "Invariant DroppedBindingsCollect is violated.",
+    "SharedCallSafe": None,
+    "SharedCallCached": "Invariant LookupIsCurrent is violated.",
+    "SharedCallSharedState": "Invariant EnteredBindingRetained is violated.",
+    "SharedCallRoot": "Invariant EnteredOwnerAlive is violated.",
+    "SharedCallReplay": "Invariant NoReplay is violated.",
+    "SharedCallFrame": "Invariant LogicalFrameVisible is violated.",
+    "SharedCallBarrier": "Invariant SuspensionPreserved is violated.",
+
+    "PublicationImageSafe": None,
+    "PublicationImageMapped": "Invariant FailureChannelPreserved is violated.",
+    "PublicationImageRebuilt": "Invariant FailureChannelPreserved is violated.",
     "ReentrySafe": None,
     "ReentryOverwrite": "Invariant ForeignSurvives is violated.",
     "ReentrySwallow": "Invariant ConflictReported is violated.",
@@ -262,8 +277,8 @@ def check_tla(jar, java, out):
         cmd = [java, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC", "-Xmx512m",
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
-               "-config", str((SEMANTICS if name.startswith(("Publication", "Reentry", "Region", "Admission", "Indexed", "Relational", "Slot", "Search", "Registry", "Owned", "Drive")) else FORMAL) / f"tla/{name}.cfg"),
-               str(SEMANTICS / "tla/MethodPublication.tla") if name.startswith("Publication") else str(SEMANTICS / "tla/RegistryReentry.tla") if name.startswith("Reentry") else str(SEMANTICS / "tla/RecoveryDrive.tla") if name.startswith("Drive") else str(SEMANTICS / "tla/GlobalsOwner.tla") if name.startswith("Owned") else str(SEMANTICS / "tla/ModuleRegistry.tla") if name.startswith("Registry") else str(SEMANTICS / "tla/CollectionSearch.tla") if name.startswith("Search") else str(FORMAL / "tla/SelectorTables.tla") if name.startswith("Tables") else str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               "-config", str((SEMANTICS if name.startswith(("MethodBind", "SharedCall", "Publication", "Reentry", "Region", "Admission", "Indexed", "Relational", "Slot", "Search", "Registry", "Owned", "Drive")) else FORMAL) / f"tla/{name}.cfg"),
+               str(SEMANTICS / "tla/MethodBinding.tla") if name.startswith("MethodBind") else str(SEMANTICS / "tla/SharedInvocation.tla") if name.startswith("SharedCall") else str(SEMANTICS / "tla/PublicationImage.tla") if name.startswith("PublicationImage") else str(SEMANTICS / "tla/MethodPublication.tla") if name.startswith("Publication") else str(SEMANTICS / "tla/RegistryReentry.tla") if name.startswith("Reentry") else str(SEMANTICS / "tla/RecoveryDrive.tla") if name.startswith("Drive") else str(SEMANTICS / "tla/GlobalsOwner.tla") if name.startswith("Owned") else str(SEMANTICS / "tla/ModuleRegistry.tla") if name.startswith("Registry") else str(SEMANTICS / "tla/CollectionSearch.tla") if name.startswith("Search") else str(FORMAL / "tla/SelectorTables.tla") if name.startswith("Tables") else str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -285,8 +300,8 @@ def check_tla(jar, java, out):
 
 def lean_theorems():
     names = []
-    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("HelperEmission", "Birnam.HelperEmission"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints"), ("JsonStrings", "Birnam.JsonStrings"), ("JsonDispatch", "Birnam.JsonDispatch"), ("JsonNumbers", "Birnam.JsonNumbers"), ("RangeHandlers", "Birnam.RangeHandlers"), ("LogMessages", "Birnam.LogMessages"), ("CollectionSearch", "Birnam.CollectionSearch"), ("StringOrder", "Birnam.StringOrder"), ("PrivateScratch", "Birnam.PrivateScratch"), ("SlotReflection", "Birnam.SlotReflection"), ("ModuleRegistry", "Birnam.ModuleRegistry"), ("GlobalsBinding", "Birnam.GlobalsBinding"), ("PrivateIndex", "Birnam.PrivateIndex")]:
-        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex"} else FORMAL) / f"lean/{module}.lean").read_text()
+    for module, namespace in [("Rooting", "Birnam.Rooting"), ("Examples", "Birnam.Rooting.Examples"), ("GC", "Birnam.GC"), ("Memo", "Birnam.Memo"), ("Borrow", "Birnam.Borrow"), ("Registration", "Birnam.Registration"), ("Invocation", "Birnam.Invocation"), ("Capture", "Birnam.Capture"), ("Selection", "Birnam.Selection"), ("LocalReuse", "Birnam.LocalReuse"), ("SymbolNames", "Birnam.SymbolNames"), ("Branches", "Birnam.Branches"), ("HelperEmission", "Birnam.HelperEmission"), ("Semantics", "Birnam.Semantics"), ("SemanticsExamples", "Birnam.SemanticsExamples"), ("Admission", "Birnam.Admission"), ("IndexedSnapshot", "Birnam.IndexedSnapshot"), ("Relational", "Birnam.Relational"), ("SlotHints", "Birnam.SlotHints"), ("JsonStrings", "Birnam.JsonStrings"), ("JsonDispatch", "Birnam.JsonDispatch"), ("JsonNumbers", "Birnam.JsonNumbers"), ("RangeHandlers", "Birnam.RangeHandlers"), ("LogMessages", "Birnam.LogMessages"), ("CollectionSearch", "Birnam.CollectionSearch"), ("StringOrder", "Birnam.StringOrder"), ("PrivateScratch", "Birnam.PrivateScratch"), ("SlotReflection", "Birnam.SlotReflection"), ("ModuleRegistry", "Birnam.ModuleRegistry"), ("GlobalsBinding", "Birnam.GlobalsBinding"), ("PrivateIndex", "Birnam.PrivateIndex"), ("PublicationFailure", "Birnam.PublicationFailure"), ("SharedInvocation", "Birnam.SharedInvocation")]:
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex", "PublicationFailure", "SharedInvocation"} else FORMAL) / f"lean/{module}.lean").read_text()
         names.extend(f"{namespace}.{name}" for name in re.findall(r"^theorem (\w+)", text, re.M))
         # The kernel audit below is authoritative; this additionally rejects
         # accidental proof holes or unsafe evaluator shortcuts in source.
@@ -300,8 +315,8 @@ def check_lean(lean, out):
     build = out / "lean"
     build.mkdir()
     env = dict(os.environ, LEAN_PATH=str(build))
-    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "HelperEmission", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex"]:
-        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex"} else FORMAL) / f"lean/{module}.lean"),
+    for module in ["Rooting", "Examples", "GC", "Memo", "Borrow", "Registration", "Invocation", "Capture", "Selection", "LocalReuse", "SymbolNames", "Branches", "HelperEmission", "Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex", "PublicationFailure", "SharedInvocation"]:
+        result, _ = run([str(lean), "-DwarningAsError=true", str((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex", "PublicationFailure", "SharedInvocation"} else FORMAL) / f"lean/{module}.lean"),
                          "-o", str(build / f"{module}.olean")], out / f"lean-{module}.log", env=env)
         if result.returncode:
             raise RuntimeError(f"Lean {module} failed; see {out / f'lean-{module}.log'}")
@@ -334,6 +349,12 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "binding-reuses-old-identity": ("SharedInvocation", "⟨identity, template.code, implementation⟩", "⟨template.binding, template.code, implementation⟩"),
+        "binding-reuses-old-implementation": ("SharedInvocation", "⟨identity, template.code, implementation⟩", "⟨identity, template.code, template.implementation⟩"),
+        "shared-call-uses-common-implementation": ("SharedInvocation", "forwarding w method.implementation receiver args", "forwarding w 0 receiver args"),
+        "shared-call-copies-receiver-wrong": ("SharedInvocation", "⟨w.lookup implementation, receiver :: args, w.captures implementation⟩", "⟨w.lookup implementation, 0 :: args, w.captures implementation⟩"),
+        "publication-confuses-error-with-failure": ("PublicationFailure", "| .success _ => .success .ok", "| .success _ => .failure 881 17"),
+        "publication-assumes-scope-is-local": ("PublicationFailure", "match adapt preserve (.failure 881 17) with", "match adapt false (.failure 881 17) with"),
         "registry-reentry-overwrite": ("ModuleRegistry", "if current = expected then (replacement, true) else (current, false)", "if current = expected then (replacement, true) else (replacement, true)"),
         "owner-cas-overwrites-new-root": ("GlobalsBinding", "if current = expected then replacement else current", "if current = expected then replacement else replacement"),
         "owner-image-keeps-credits": ("GlobalsBinding", "{ owner with credits := fun _ => 0 }", "owner"),
@@ -394,7 +415,7 @@ def check_lean(lean, out):
         "free-owner-batch": ("Semantics", "OwnerSchedule (List.replicate (n+1) owner ++ tail) (cost+1)", "OwnerSchedule (List.replicate (n+1) owner ++ tail) cost"),
     }
     for name, (module, before, after) in extra_mutations.items():
-        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex"} else FORMAL) / f"lean/{module}.lean").read_text()
+        text = ((SEMANTICS if module in {"Semantics", "SemanticsExamples", "Admission", "IndexedSnapshot", "Relational", "SlotHints", "JsonStrings", "JsonDispatch", "JsonNumbers", "RangeHandlers", "LogMessages", "CollectionSearch", "StringOrder", "PrivateScratch", "SlotReflection", "ModuleRegistry", "GlobalsBinding", "PrivateIndex", "PublicationFailure", "SharedInvocation"} else FORMAL) / f"lean/{module}.lean").read_text()
         if text.count(before) != 1: raise RuntimeError(f"mutation {name} is stale")
         changed = build / f"Broken_{name.replace('-', '_')}.lean"
         changed.write_text(text.replace(before, after))

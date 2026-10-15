@@ -1,0 +1,7 @@
+// Minimal imageable native-facing policy. No test-native callbacks are saved.
+let owner := [Object clone];
+[Reflect defineMethod: #publish on: owner as: [Execution block: [:self |
+  [Execution invalidRequest]; #success
+] withNativeSignature: "o"]];
+[Globals at: #PublicationFailureImageOwner put: owner];
+true

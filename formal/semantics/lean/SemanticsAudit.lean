@@ -1,3 +1,5 @@
+import SharedInvocation
+import PublicationFailure
 import GlobalsBinding
 import ModuleRegistry
 import SlotReflection
@@ -197,3 +199,27 @@ import Admission
 #print axioms Birnam.ModuleRegistry.reentrant_write_preserved
 #print axioms Birnam.ModuleRegistry.reentrant_conflict_reported
 #print axioms Birnam.ModuleRegistry.unchanged_root_published
+
+#print axioms Birnam.PublicationFailure.conversion_collapses_channels
+#print axioms Birnam.PublicationFailure.conversion_drops_detail
+#print axioms Birnam.PublicationFailure.no_total_decoder
+#print axioms Birnam.PublicationFailure.plain_notification_swallows_failure
+#print axioms Birnam.PublicationFailure.ordinary_error_is_void
+#print axioms Birnam.PublicationFailure.preservation_changes_callback
+#print axioms Birnam.PublicationFailure.raw_tail_preserves_both_cases
+
+#print axioms Birnam.SharedInvocation.same_current_send
+#print axioms Birnam.SharedInvocation.code_address_irrelevant
+#print axioms Birnam.SharedInvocation.receiver_is_first
+#print axioms Birnam.SharedInvocation.captures_keep_identity
+#print axioms Birnam.SharedInvocation.current_lookup_is_used
+#print axioms Birnam.SharedInvocation.one_mutable_implementation_is_wrong
+#print axioms Birnam.SharedInvocation.freezing_lookup_is_wrong
+
+#print axioms Birnam.SharedInvocation.binding_identity_not_merged
+
+#print axioms Birnam.SharedInvocation.binding_uses_selected_code
+#print axioms Birnam.SharedInvocation.binding_uses_new_implementation
+#print axioms Birnam.SharedInvocation.binding_has_fresh_identity
+#print axioms Birnam.SharedInvocation.binding_roots_code_and_new_body
+#print axioms Birnam.SharedInvocation.rebinding_does_not_chain_old_implementations

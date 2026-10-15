@@ -1,0 +1,67 @@
+// Experimental policies only. FailureProbe is supplied by the native harness.
+let caught := [Object clone];
+[Reflect defineMethod: #value on: caught as: [:self |
+  let result := [FailureProbe fault];
+  [[result isError] ifTrue: [| [FailureProbe caught]; [FailureProbe collect]; true]
+    ifFalse: [| false]]
+]];
+[Reflect defineMethod: #managedMethodChanged:on: on: caught as: [:self :selector :target |
+  let result := [FailureProbe fault];
+  [[result isError] ifTrue: [| [FailureProbe caught]; [FailureProbe collect]]];
+  [FailureProbe errorValue]
+]];
+[Globals at: #BoundaryCaught put: caught];
+let uncaught := [Object clone];
+[Reflect defineMethod: #value on: uncaught as: [:self | [FailureProbe fault]]];
+[Reflect defineMethod: #managedMethodChanged:on: on: uncaught as: [:self :selector :target | [FailureProbe fault]]];
+[Globals at: #BoundaryUncaught put: uncaught];
+[Globals at: #BoundaryPlain put: [|
+  let decision := [FailureProbe authorize];
+  [[decision == true] ifTrue: [|
+    [FailureProbe commit]; [FailureProbe notify]; FailureProbe
+  ] ifFalse: [| decision]]
+]];
+[Globals at: #BoundaryLocal put: [|
+  let decision := [Execution evaluatePreservingFailures: [| [FailureProbe authorize]]];
+  [[decision == true] ifTrue: [|
+    [FailureProbe commit];
+    [Execution evaluatePreservingFailures: [| [FailureProbe notify]]];
+    FailureProbe
+  ] ifFalse: [| decision]]
+]];
+let request := [Object clone];
+[Reflect defineMethod: #value on: request as: [Execution block: [:self | self] withNativeSignature: "m"]];
+[Reflect defineMethod: #nativeReceiver on: request as: [:self | FailureProbe]];
+[Reflect defineMethod: #nativeSelector on: request as: [:self | #notify]];
+[Reflect defineMethod: #nativeArguments on: request as: [:self | #[]]];
+[Reflect defineMethod: #nativeSignature on: request as: [:self | "x"]];
+[Reflect defineMethod: #nativeCleanup on: request as: [:self | [| [FailureProbe cleaned]]]];
+[Globals at: #BoundaryRequestBody put: [|
+  [FailureProbe commit]; [request value]; FailureProbe
+]];
+let tail := [Object clone];
+// This isolates the post-commit notification boundary, not a complete publisher.
+[Reflect defineMethod: #publish on: tail as: [Execution block: [:self |
+  [FailureProbe commit]; request
+] withNativeSignature: "m"]];
+// A useful narrower control: a zero-argument tail send can preserve both outcomes
+// and callback-local handling, but does not supply a sequencing/continuation API.
+[Reflect defineMethod: #authorize on: tail as: [Execution block: [:self |
+  [FailureProbe authorizer]
+] withNativeSignature: "v"]];
+[Globals at: #BoundaryTail put: tail];
+// An explicit native-facing calling convention; no ambient policy override.
+let owner := [Object clone];
+[Reflect defineMethod: #publish on: owner as: [Execution block: [:self |
+  let decision := [[FailureProbe authorizer] value];
+  [[decision == true] ifTrue: [|
+    [[FailureProbe vtable] addMethod: [FailureProbe method] as: [FailureProbe selector]];
+    [[FailureProbe observer] managedMethodChanged: [FailureProbe selector] on: [FailureProbe vtable]]; FailureProbe
+  ] ifFalse: [| decision]]
+] withNativeSignature: "o"]];
+[Globals at: #BoundaryNativeOwner put: owner];
+[Globals at: #BoundarySourceCaller put: [|
+  let answer := [owner publish];
+  [[answer isError] ifTrue: [| [FailureProbe caught]; [answer kind]] ifFalse: [| #success]]
+]];
+true

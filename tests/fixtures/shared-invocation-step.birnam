@@ -1,0 +1,21 @@
+// Unary shared forwarding step. The harness supplies descriptor-derived slot
+// constants before this source. The counter is private test instrumentation;
+// a production entry must omit it and avoid calling itself through helpers.
+let counter := [Cell with: 0];
+let step := [Object clone];
+[Reflect defineMethod: #advance: on: step as:
+  [Execution block: [:machine :pc |
+    [counter inc];
+    // Read all inputs before writing a possibly overlapping outgoing window.
+    let implementation := [machine oopAt: implementationSlot];
+    let receiver := [machine oopAt: receiverSlot];
+    let argument := [machine oopAt: argumentSlot];
+    [machine oopAt: outgoingArgumentStart put: receiver];
+    [machine oopAt: outgoingSecondArgument put: argument];
+    [machine oopAt: outgoingReceiverSlot put: implementation];
+    [machine oopAt: outgoingSelectorSlot put: #value:value:];
+    [machine tailCallSite: callSite]
+  ] withNativeSignature: "oO"]];
+[Globals at: #SharedInvocationStep put: step];
+[Globals at: #SharedInvocationCounter put: counter];
+true

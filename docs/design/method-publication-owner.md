@@ -5,6 +5,17 @@ This is the remaining publication part of step 5 of the
 [optional Store decision](optional-store-and-relational.md). Globals has already
 moved. The accompanying [audit](store-removal-audit.md) checks the completed slices.
 
+The [2026-10-15 failure-boundary experiment](publication-failure-boundary.md)
+finds a fresh-process synchronous-artifact route, but its native failure channel
+is lost after mapped/rebuilt image restoration. Subsequent user direction rejects
+maintaining two language error conventions and removes backwards compatibility as
+a requirement. The [shared-invocation investigation](shared-invocation-investigation.md)
+now takes priority: ordinary message/result semantics must be independent of
+adapter representation, and per-definition generated adapters may be replaced by
+shared forwarding code. The [binding constructor](method-binding-constructor.md)
+is implemented and qualified as the first slice; default construction and the
+publication owner migration remain pending.
+
 ## Authority and boundaries
 
 Id's live vtable dictionaries remain authoritative. Reflect remains the public
@@ -83,12 +94,12 @@ that the compiler, image construction, Generation or full bootstrap is Store-fre
 
 ## Explicit Store participation
 
-Keep explicit Store `addMethod:on:with:` and `removeMethod:on:` as compatibility
+Keep explicit Store `addMethod:on:with:` and `removeMethod:on:` as explicit-description
 entry points. Calling them opts that operation into the existing description
 behavior; Reflect's new default does not. Both must share the same authorization
 and publication contract, rather than maintain two competing method authorities.
 
-The compatibility path needs a per-operation description action between dictionary
+The explicit-description path needs a per-operation description action between dictionary
 success and managed notification. That action must be explicit in the internal
 protocol, with its own failure tests; do not implement it by describing after the
 public operation returns, which reverses notification order. Its exact selector
@@ -123,12 +134,11 @@ retire the seed's default authority and mirror roots. Record the exact installat
 order and demonstrate no hidden Store lookup on the floor. Avoid claiming that a
 seed is temporary while the new owner still delegates every operation to it.
 
-Old images lack the new export. Select legacy Store publication or the new owner
-at image admission as an explicit compatibility decision. Preserve old saved
-methods and state rather than silently converting all worlds. Rebinding Namespace
-must participate in existing transactional recovery and restore the prior owner
-on failed activation. Do not discover compatibility by checking for monkeypatches
-on each publication call.
+Backwards compatibility is not required for this migration. Image save/load and
+rebuild must preserve the chosen ordinary result protocol, identities and active
+owner state. Namespace rebinding still participates in transactional recovery and
+restores the prior resident owner on failed activation. This is a current-world
+correctness requirement, not a requirement to retain legacy publication adapters.
 
 Native Store hook fields are currently process-local, not durable fact data.
 Moving them into ordinary slots must not accidentally serialize a process-local
@@ -146,14 +156,18 @@ observable behavior:
 1. Demonstrate exact native-failure transport through a small authored publication
    body and native caller. Execution converts some native failures to language
    Error values. An Error-valued void notification must still be ignored, while a
-   native failure propagates after commit. `preserveNativeFailures:` exists, but
+   native failure propagates after commit. `Execution evaluatePreservingFailures:` exists, but
    wrapping an entire body can also change failure handling *inside* callbacks.
    Prove the intended boundary with callback-internal catch/return tests before
-   choosing a wrapper or proposing a new primitive.
-2. Specify and test the per-operation compatibility description action, including
+   choosing a wrapper or proposing a new primitive. The experiment above rejects
+   ambient preservation and qualifies only the fresh synchronous-artifact boundary;
+   its reproduced image adapter defect must be corrected before adoption. This
+   does not require preserving two result conventions: subsequent user direction
+   requires one ordinary message/error protocol across representations.
+2. Specify and test the per-operation opt-in description action, including
    reentry, failure and ordering relative to Generation's managed observation.
 3. Write the concrete bootstrap/image admission and hook-lifetime transition,
-   including the exact rollback point and old-image success receiver behavior.
+   including the exact rollback point and the current public success-result behavior.
 4. Inventory every publication consumer and seed mirror root, then establish the
    Store-absent precompiled-Method floor before changing full startup.
 

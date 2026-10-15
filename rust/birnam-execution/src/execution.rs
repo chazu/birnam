@@ -209,6 +209,7 @@ pub(crate) struct FrameDescriptorV2Spec {
     pub(crate) step_method: Method,
 }
 
+#[derive(Clone)]
 struct FrameEdge {
     kind: EdgeTransitionKind,
     source_pc: usize,
@@ -268,6 +269,27 @@ pub(crate) enum DescriptorError {
 }
 
 impl FrameDescriptor {
+    /// A new binding owns its executable anchor and generation. Only immutable
+    /// admitted shape/code are copied; derived entry plans belong to that binding.
+    pub(crate) fn for_binding(&self, generation: u64) -> Arc<Self> {
+        Arc::new(Self {
+            executable_owner: core::cell::Cell::new(core::ptr::null_mut()),
+            identity: DescriptorIdentity { generation, ..self.identity },
+            layout_version: self.layout_version,
+            program_counter_count: self.program_counter_count,
+            driver_argument_count: self.driver_argument_count,
+            slot_kinds: self.slot_kinds.clone(),
+            call_sites: self.call_sites.clone(),
+            root_bitmap_words: self.root_bitmap_words.clone(),
+            root_words_per_pc: self.root_words_per_pc,
+            edges: self.edges.clone(),
+            max_edge_copy_count: self.max_edge_copy_count,
+            v2_entry_binding: self.v2_entry_binding,
+            entry_capture_slots: self.entry_capture_slots.clone(),
+            tail_entry_plan: std::sync::OnceLock::new(),
+            step_method: self.step_method,
+        })
+    }
     #[cfg(test)]
     pub(crate) fn owned_byte_size(&self) -> usize {
         core::mem::size_of::<Self>()

@@ -109,6 +109,21 @@ Use `[method invokeOn: receiver]` for a method with no arguments. An argument
 sequence supplies `size` and zero-based `at:`; a Vector is the usual choice.
 `[method clone]` answers the same Method.
 
+An owned resumable forwarding Method also accepts
+`[template withImplementation: implementation]`. This creates a distinct Method
+using the template's admitted forwarding code and the new implementation. The
+new binding has its own registration and lifetime; it does not inherit the
+previous implementation's optimization. Its forwarding send still uses the
+implementation's current `value:`-family lookup. The selected code owner stays
+alive while any binding uses it; it does not accumulate the new bindings.
+
+This constructor currently requires a registered forwarding template with an
+implementation slot. Native-only Methods and Block-body Methods are not such
+templates and answer a native invalid-request failure. It does not turn a
+synchronous native wrapper into a resumable program. Ordinary `Reflect`
+definitions still construct their own forwarding code; selecting and sharing
+templates across definitions is a separate construction policy.
+
 On a vtable, `methodFor:` searches that vtable's method dictionary and its
 parents. `[vtable addMethod: method as: selector]` installs the retained entry;
 it preserves the implementation and native context. This is a low-level live

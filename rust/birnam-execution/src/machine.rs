@@ -348,46 +348,84 @@ unsafe fn register_descriptor_with_captures(
 ) -> Result<Oop, Outcome> {
     unsafe {
         let roots = s.scope(&[owner]);
+        if let Some(implementation) = implementation { roots.keep(implementation); }
         let signature=if let Some(implementation)=implementation { native_abi::implementation_signature(s,implementation)? } else { None };
         let value = object(s.make(descriptor.step_method(), owner, None)?)?;
         roots.keep(value);
-        s.methods
-            .borrow_mut()
-            .get_mut(&value.addr())
-            .unwrap()
-            .implementation = implementation;
-        s.methods.borrow_mut().get_mut(&value.addr()).unwrap().native_signature=signature;
-        let key = EntryKey::from_method(s.entry(value, false)?);
-        let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
-        descriptor.executable_owner.set(value);
-        let mut carrier = SemanticRegistrationV1::new(
-            key.to_method(),
-            descriptor.clone(),
-            binding.argument_count,
-            binding.receiver_slot,
-            binding.argument_start,
-        );
-        if binding.implementation_slot.is_some() {
-            carrier = carrier.with_implementation_anchor(implementation.unwrap_or(owner));
-        } else if block {
-            carrier.receiver_capture_offset_words = 1;
-        }
-        let mut state = s.machines.borrow_mut();
-        let capability = checked(state.engine.register_resumable(OWNER, carrier))?;
-        let lease = checked(state.engine.publish_owned(capability))?;
-        s.methods
-            .borrow_mut()
-            .get_mut(&value.addr())
-            .unwrap()
-            .resumable = Some(Registered {
-            origin: value,
-            descriptor,
-            key,
-            capability,
-            lease,
-        });
-        Ok(value)
+        register_method_descriptor(s, value, descriptor, owner, block, implementation, signature)
     }
+}
+
+// Object-level construction: the receiver supplies owned executable code, not a
+// foreign entry pointer. Rebinding never copies its registration or optimization.
+unsafe fn with_implementation(s: &Execution, template: Oop, args: &[Operand]) -> Result<Operand, Outcome> {
+    let [implementation] = args else { return Err(invalid()); };
+    let implementation = object(*implementation)?;
+    let roots = s.scope(&[template, implementation]);
+    let (descriptor, owner, image) = {
+        let methods = s.methods.borrow();
+        let method = methods.get(&template.addr()).ok_or_else(invalid)?;
+        let registered = method.resumable.as_ref().ok_or_else(invalid)?;
+        if registered.descriptor.v2_entry_binding().and_then(|b| b.implementation_slot).is_none() {
+            return Err(invalid());
+        }
+        (registered.descriptor.clone(), method.owner, method.image.clone())
+    };
+    let signature = unsafe { native_abi::implementation_signature(s, implementation) }?;
+    let value = object(unsafe { s.make(descriptor.step_method(), owner, image) }?)?;
+    roots.keep(value);
+    let generation = unsafe { s.send(s.id.receiver, b"identityOf:", &[Operand::object(value)]) }?
+        .as_word().filter(|v| *v != 0).ok_or_else(invalid)? as u64;
+    let descriptor = descriptor.for_binding(generation);
+    register_method_descriptor(s, value, descriptor, owner, false, Some(implementation), signature)
+        .map(Operand::object)
+}
+
+fn register_method_descriptor(
+    s: &Execution,
+    value: Oop,
+    descriptor: Arc<FrameDescriptor>,
+    owner: Oop,
+    block: bool,
+    implementation: Option<Oop>,
+    signature: Option<birnam_abi::native_signature::Signature>,
+) -> Result<Oop, Outcome> {
+    {
+        let mut methods = s.methods.borrow_mut();
+        let method = methods.get_mut(&value.addr()).unwrap();
+        method.implementation = implementation;
+        method.native_signature = signature;
+    }
+    let key = EntryKey::from_method(s.entry(value, false)?);
+    let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
+    descriptor.executable_owner.set(value);
+    let mut carrier = SemanticRegistrationV1::new(
+        key.to_method(),
+        descriptor.clone(),
+        binding.argument_count,
+        binding.receiver_slot,
+        binding.argument_start,
+    );
+    if binding.implementation_slot.is_some() {
+        carrier = carrier.with_implementation_anchor(implementation.unwrap_or(owner));
+    } else if block {
+        carrier.receiver_capture_offset_words = 1;
+    }
+    let mut state = s.machines.borrow_mut();
+    let capability = checked(state.engine.register_resumable(OWNER, carrier))?;
+    let lease = checked(state.engine.publish_owned(capability))?;
+    s.methods
+        .borrow_mut()
+        .get_mut(&value.addr())
+        .unwrap()
+        .resumable = Some(Registered {
+        origin: value,
+        descriptor,
+        key,
+        capability,
+        lease,
+    });
+    Ok(value)
 }
 
 // Collection-based construction remains for current language/materialization callers.
@@ -1080,6 +1118,7 @@ enum Op {
     InvalidRequest,
     PreserveFailures,
     FromStep,
+    WithImplementation,
     WithInline,
     WithDiscardedClone,
     WithNumericPredicate,
@@ -1226,6 +1265,7 @@ unsafe extern "C" fn operation(
                 return s.id.send_named(object(*block)?, b"value", &[]);
             }
             Op::FromStep => return from_step(s, args),
+            Op::WithImplementation => return with_implementation(s, receiver, args),
             Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
             Op::WithDiscardedClone => return crate::discarded_clone::attach(s, receiver, args),
             Op::WithNumericPredicate => return crate::numeric_predicate::attach(s, receiver, args),
@@ -1763,6 +1803,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"tryPrepareCall:slots:selector:in:tail:",
     b"tryPrepareCall:slots:copies:selector:in:tail:",
     b"usesDefaultAllocation",
+    b"withImplementation:",
     b"withInline:at:owner:",
     b"optimizeWith:",
     b"evaluate:receiver:argument:with:",
@@ -2163,6 +2204,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             Op::WithNumericPredicate,
         )?;
         install_op(s, s.method_behavior, b"optimizeWith:", Op::Optimize)?;
+        install_op(s, s.method_behavior, b"withImplementation:", Op::WithImplementation)?;
         install_op(
             s,
             s.method_behavior,

@@ -14,6 +14,12 @@ metadata, task state and other bootstrap dependencies still require later slices
 The [pre-publication audit](store-removal-audit.md) records two correctness fixes
 and the [publication contract/design](method-publication-owner.md); it does not
 advance the publication migration or claim that its implementation gates are closed.
+The [failure-boundary experiment](publication-failure-boundary.md) exposes an
+adapter-dependent error mismatch across images. Subsequent direction is to unify
+ordinary message/error semantics and [investigate shared invocation](shared-invocation-investigation.md),
+rather than institutionalize two adapter conventions. Backwards compatibility is
+not a requirement for this follow-up; useful reflection, late binding and owner
+lifetimes remain required.
 
 ## Decision
 
