@@ -94,7 +94,7 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
             (manager,b"field:of:",2),(manager,b"field:of:put:",3),(manager,b"removeRecord:",1),
             (manager,b"named:requires:",2),(manager,b"kernel:",1),(manager,b"requiresOf:",1),
             (manager,b"kindOf:",1),(manager,b"isRegistered:",1),(manager,b"isLoaded:",1),
-            (manager,b"markLoaded:",1),(manager,b"loadOrder:",1),(manager,b"visit:order:path:",3)]);
+            (manager,b"markLoaded:",1),(manager,b"loadOrder:",1),(manager,b"visit:order:path:",3),(manager,b"publishRegistry:from:",2)]);
     }
     for (index,(target,selector,arity)) in requests.into_iter().enumerate() {
         let behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)]));

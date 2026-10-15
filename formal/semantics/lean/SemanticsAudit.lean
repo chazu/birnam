@@ -193,3 +193,7 @@ import Admission
 
 #print axioms Birnam.GlobalsBinding.projection_keeps_persistent
 #print axioms Birnam.GlobalsBinding.projection_omits_transient
+
+#print axioms Birnam.ModuleRegistry.reentrant_write_preserved
+#print axioms Birnam.ModuleRegistry.reentrant_conflict_reported
+#print axioms Birnam.ModuleRegistry.unchanged_root_published

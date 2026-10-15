@@ -36,11 +36,11 @@ let requests := REQUESTS;
        ' #[Module #registryMutation:] #[Module #record:put:] #[Module #field:of:] #[Module #field:of:put:]'
        ' #[Module #removeRecord:] #[Module #named:requires:] #[Module #kernel:] #[Module #requiresOf:]'
        ' #[Module #kindOf:] #[Module #isRegistered:] #[Module #isLoaded:] #[Module #markLoaded:]'
-       ' #[Module #loadOrder:] #[Module #visit:order:path:]' if args.registry else '') + ']'))
+       ' #[Module #loadOrder:] #[Module #visit:order:path:] #[Module #publishRegistry:from:]' if args.registry else '') + ']'))
     env=clean_environment()
     export=command([prefix/'bin/birnam',source],env=env,timeout=120)
     (work/'export.log').write_text(export['output'])
-    assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*(35 if args.registry else 17 if args.slots else 6),(work,export)
+    assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*(36 if args.registry else 17 if args.slots else 6),(work,export)
     for module in MODULES: shutil.copy2(prefix/'lib'/f'libbirnam_{module}.dylib',floor)
     assert not (floor/'libbirnam_store.dylib').exists()
     env.update(BIRNAM_CELL_PROGRAMS=str(programs), BIRNAM_TEST_MODULE_DIRECTORY=str(floor),

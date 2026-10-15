@@ -21,6 +21,8 @@ struct Probe {
     events: RefCell<Vec<(usize, usize, bool)>>,
     fail: Cell<bool>,
     collect: Cell<bool>,
+    clear_self: Cell<bool>,
+    self_survived: Cell<bool>,
 }
 unsafe extern "C" fn answer(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::word(42))
@@ -51,6 +53,11 @@ unsafe extern "C" fn changed(c: *mut c_void, r: Oop, a: *const Operand, n: usize
                 &[Operand::object(next)],
             );
             install(p.id, p.target, b"nestedObserved", answer, ptr::null_mut());
+        }
+        if p.clear_self.replace(false) {
+            send(p.id, p.id.receiver, b"methodChangesTo:", &[Operand::unit()]);
+            collect(p.id, p.gc);
+            p.self_survived.set(support::present(p.id, r));
         }
         if p.collect.get() {
             collect(p.id, p.gc);
@@ -98,6 +105,8 @@ fn observation_uses_live_messages_and_survives_replacement_reentry_and_gc() {
             events: RefCell::new(vec![]),
             fail: Cell::new(false),
             collect: Cell::new(false),
+            clear_self: Cell::new(false),
+            self_survived: Cell::new(false),
         });
         let c = (&*p as *const Probe).cast_mut().cast();
         let observer_behavior = behavior(id);
@@ -162,6 +171,61 @@ fn observation_uses_live_messages_and_survives_replacement_reentry_and_gc() {
         );
         p.fail.set(false);
         install(id, target, b"observed", answer, ptr::null_mut());
+        // The notification slot may be the receiver's last external root.
+        // Clearing it during an entered native callback must not retire that
+        // callback's receiver before it returns.
+        let second_hold = retain(id, roots, second);
+        let entered = allocate(id, observer_behavior, 0);
+        let entered_root = retain(id, roots, entered);
+        send(
+            id,
+            id.receiver,
+            b"methodChangesTo:",
+            &[Operand::object(entered)],
+        );
+        release(id, roots, entered_root);
+        p.collect.set(false);
+        p.clear_self.set(true);
+        install(id, target, b"observed", answer, ptr::null_mut());
+        assert!(
+            p.self_survived.get(),
+            "entered observer was collected before return"
+        );
+        collect(id, gc);
+        assert!(!present(id, entered));
+        let failed_observer = allocate(id, observer_behavior, 0);
+        let failed_root = retain(id, roots, failed_observer);
+        send(
+            id,
+            id.receiver,
+            b"methodChangesTo:",
+            &[Operand::object(failed_observer)],
+        );
+        release(id, roots, failed_root);
+        p.clear_self.set(true);
+        p.self_survived.set(false);
+        p.fail.set(true);
+        let failure = id
+            .send_named(target, b"removeMethod:", &[Operand::object(key)])
+            .unwrap_err();
+        assert_eq!(failure.detail, 992);
+        assert!(
+            p.self_survived.get(),
+            "failing entered observer was collected"
+        );
+        p.fail.set(false);
+        collect(id, gc);
+        assert!(
+            !present(id, failed_observer),
+            "failed notification leaked a temporary root"
+        );
+        send(
+            id,
+            id.receiver,
+            b"methodChangesTo:",
+            &[Operand::object(second)],
+        );
+        release(id, roots, second_hold);
         // Clearing stops notifications; restoring the Store keeps the canonical owner.
         assert_eq!(
             send(id, id.receiver, b"methodChangesTo:", &[Operand::unit()]).as_object(),

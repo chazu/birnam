@@ -11,6 +11,9 @@ reflection, and owned Module and LSP state. [Globals now owns its bindings and
 reservation banks](owned-globals.md), with transactional image recovery. Its
 bootstrap seed/legacy adapter remains in Store. Method publication, compiler
 metadata, task state and other bootstrap dependencies still require later slices.
+The [pre-publication audit](store-removal-audit.md) records two correctness fixes
+and the [publication contract/design](method-publication-owner.md); it does not
+advance the publication migration or claim that its implementation gates are closed.
 
 ## Decision
 

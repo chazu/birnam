@@ -58,4 +58,18 @@ theorem snapshot_is_not_replaced (s : State) (name field value : Nat) :
     let _ := write s name field value
     snapshot = s.records := by rfl
 
+/-- Opaque persistent-root identities; callbacks finish before conditional publish.
+    This does not freeze Map methods or prove arbitrary replacement callbacks. -/
+def publishRoot (current expected replacement : Nat) : Nat × Bool :=
+  if current = expected then (replacement, true) else (current, false)
+
+theorem reentrant_write_preserved (current expected replacement : Nat) (h : current ≠ expected) :
+    (publishRoot current expected replacement).1 = current := by simp [publishRoot, h]
+
+theorem reentrant_conflict_reported (current expected replacement : Nat) (h : current ≠ expected) :
+    (publishRoot current expected replacement).2 = false := by simp [publishRoot, h]
+
+theorem unchanged_root_published (current replacement : Nat) :
+    publishRoot current current replacement = (replacement, true) := by simp [publishRoot]
+
 end Birnam.ModuleRegistry

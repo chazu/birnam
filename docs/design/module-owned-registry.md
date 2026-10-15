@@ -15,10 +15,11 @@ implicit fact mirror, new image family or foreign state service is introduced.
 | `Module registry`, `Module registry: records` | Read or replace the complete persistent registry value. The writer answers Module. |
 | `Module recordNames` | Snapshot of all stored keys in Map order, including partial or nil records; not merely registered modules. |
 | `Module recordOf: name` | Current field Map, or nil for absence/bound nil. |
-| `Module record: name put: record` | Replace one complete record; preserve other records; answer Module. |
+| `Module record: name put: record` | Replace one complete record; preserve other records; answer Module or Error. |
 | `Module field: field of: name` | Read the current field, or nil when no record/field exists. |
-| `Module field: field of: name put: value` | Update one field, creating its record if absent; preserve other fields and answer Module. |
-| `Module removeRecord: name` | Remove bookkeeping only; does not unload code. Answers Module. |
+| `Module field: field of: name put: value` | Update one field, creating its record if absent; preserve other fields and answer Module or Error. |
+| `Module removeRecord: name` | Remove bookkeeping only; does not unload code. Answers Module or Error. |
+| `Module publishRegistry: next from: expected` | Conditionally publish an edited root; answer Module or `#compensationConflict`. Ordinary override point for conditional edits. |
 
 `Reflect slotsOf: Module` discovers the registry, and
 `Reflect slot: #registry in: Module` reads the same value. Maps expose their keys,
@@ -65,8 +66,8 @@ Field updates protect both the record read and publication; whole-record edits
 protect registry read/publication. Nested transitions are supported by the
 existing executor. A declaration's three field writes remain separate operations,
 as before; this is not atomic module activation and does not roll back a failed
-load. The loader's planning, ordering, failure and already-loaded checks are
-unchanged. Reads and traversal remain ordinary resumable sends.
+load. The loader's planning, ordering and already-loaded checks are unchanged; activation
+also propagates bookkeeping failure as described in the correction below. Reads and traversal remain ordinary resumable sends.
 
 The internal transition cannot wait or yield through the supplied executor;
 replacement code must obey that existing bookkeeping contract, or replace the
@@ -78,6 +79,46 @@ stored as a field value is still valid data. Transition depth is restored on an
 ordinary Error return. Explicit record or registry replacement intentionally overwrites the
 selected value; clients needing an edit should use field mutation inside its
 owner rather than publish an old snapshot as if it were a merge.
+
+### Synchronous reentry correction (2026-10-14)
+
+The original task transition did not prevent synchronous reentry through Map
+construction. A forwarding `Map at:put:` callback could change a different field
+and have that successful change overwritten by the outer edit. The audit reproduced
+this on the committed registry implementation; it was a regression, not an
+intentional consequence of making state ordinary.
+
+Edits now capture the persistent registry root before construction and send the
+ordinary `publishRegistry:from:` protocol. Its default uses ObjectModel's existing
+conditional slot replacement: publish only when the current root is the captured
+root. Otherwise answer `#compensationConflict`, preserve the callback's state and
+do not retry. This is a data publication condition, not a method identity guard.
+Replaced Map methods still run normally. The helper is itself replaceable.
+Explicit `registry:` remains unconditional whole-value replacement; it is no
+longer the hook used by conditional record edits. A client customizing conditional
+publication should override `publishRegistry:from:` instead.
+
+`named:requires:` and `kernel:` stop at the first field-edit Error. Earlier successful
+field writes remain committed; the declaration is not an all-or-nothing transaction.
+`markLoaded:` returns its edit result; `activate:` propagates that result and stops
+the remaining plan. Already installed code is not rolled back when bookkeeping
+fails. Error objects stored as values remain data.
+The task transition still prevents time-sliced lost updates. Neither mechanism
+promises correct behavior from arbitrary replacement implementations that discard
+these contracts.
+
+The collecting reentry regression covers field edits, record replacement, removal,
+named/kernel declarations, markLoaded and activation, including no replay and no
+false success.
+`RegistryReentry.tla` separately models synchronous callbacks, with overwrite,
+swallowed-conflict and replay negative controls; the original ModuleRegistry model
+continues to cover task interleaving. Lean additionally checks conditional root
+publication and conflict preservation. The source-free floor now exports 36 bodies,
+including the new authored helper. See the [audit](store-removal-audit.md) for current
+qualification and the subsequent exact native retention gate; the historical
+acceptance below records the original slice. Language-level live-object deltas
+include allocating telemetry and are now diagnostic, while the native post-return
+check requires zero additional objects.
 
 ## Required evidence
 
@@ -149,7 +190,7 @@ Reproduction:
 
 ```sh
 BIRNAM_TEST_PREFIX=PREFIX bash scripts/birnam-test.sh
-python3 scripts/module-registry-test.py PREFIX --legacy-prefix PREVIOUS_PREFIX
+mise exec -- python3 scripts/module-registry-test.py PREFIX --legacy-prefix PREVIOUS_PREFIX
 mise exec -- python3 scripts/cell-without-store-test.py PREFIX --registry
 python3 scripts/artifact-cli-test.py PREFIX
 BIRNAM_PREFIX=PREFIX bash scripts/repl-golden.sh

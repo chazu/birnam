@@ -24,6 +24,17 @@ SEMANTICS = ROOT / "formal/semantics"
 CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
+    "ReentrySafe": None,
+    "ReentryOverwrite": "Invariant ForeignSurvives is violated.",
+    "ReentrySwallow": "Invariant ConflictReported is violated.",
+    "ReentryReplay": "Invariant NoReplay is violated.",
+    "PublicationSafe": None,
+    "PublicationRollback": "Invariant CommitSurvives is violated.",
+    "PublicationEarly": "Invariant MirrorBeforeManaged is violated.",
+    "PublicationError": "Invariant VoidErrorIsNotVeto is violated.",
+    "PublicationRoot": "Invariant EnteredReceiverAlive is violated.",
+    "PublicationLeak": "Invariant TemporaryRootsReleased is violated.",
+
     'DriveSafe': None,
     'DriveEpoch': 'Invariant BalancedReentry is violated.',
     'DriveAction': 'Invariant OldActionsStayStale is violated.',
@@ -251,8 +262,8 @@ def check_tla(jar, java, out):
         cmd = [java, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC", "-Xmx512m",
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
-               "-config", str((SEMANTICS if name.startswith(("Region", "Admission", "Indexed", "Relational", "Slot", "Search", "Registry", "Owned", "Drive")) else FORMAL) / f"tla/{name}.cfg"),
-               str(SEMANTICS / "tla/RecoveryDrive.tla") if name.startswith("Drive") else str(SEMANTICS / "tla/GlobalsOwner.tla") if name.startswith("Owned") else str(SEMANTICS / "tla/ModuleRegistry.tla") if name.startswith("Registry") else str(SEMANTICS / "tla/CollectionSearch.tla") if name.startswith("Search") else str(FORMAL / "tla/SelectorTables.tla") if name.startswith("Tables") else str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               "-config", str((SEMANTICS if name.startswith(("Publication", "Reentry", "Region", "Admission", "Indexed", "Relational", "Slot", "Search", "Registry", "Owned", "Drive")) else FORMAL) / f"tla/{name}.cfg"),
+               str(SEMANTICS / "tla/MethodPublication.tla") if name.startswith("Publication") else str(SEMANTICS / "tla/RegistryReentry.tla") if name.startswith("Reentry") else str(SEMANTICS / "tla/RecoveryDrive.tla") if name.startswith("Drive") else str(SEMANTICS / "tla/GlobalsOwner.tla") if name.startswith("Owned") else str(SEMANTICS / "tla/ModuleRegistry.tla") if name.startswith("Registry") else str(SEMANTICS / "tla/CollectionSearch.tla") if name.startswith("Search") else str(FORMAL / "tla/SelectorTables.tla") if name.startswith("Tables") else str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -323,6 +334,7 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "registry-reentry-overwrite": ("ModuleRegistry", "if current = expected then (replacement, true) else (current, false)", "if current = expected then (replacement, true) else (replacement, true)"),
         "owner-cas-overwrites-new-root": ("GlobalsBinding", "if current = expected then replacement else current", "if current = expected then replacement else replacement"),
         "owner-image-keeps-credits": ("GlobalsBinding", "{ owner with credits := fun _ => 0 }", "owner"),
         "owner-name-uses-value-equality": ("GlobalsBinding", "a.identity == b.identity", "a.spelling == b.spelling"),

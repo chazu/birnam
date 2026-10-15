@@ -1,0 +1,75 @@
+[Module load: #os];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let manager := [Module clone]; [manager registry: [Map new]];
+let original := [Map methodFor: #at:put:];
+let armed := [Cell with: false]; let calls := [Cell with: 0];
+let trigger := [Cell with: nil]; let callback := [Cell with: nil];
+[Reflect defineMethod: #at:put: on: Map as: [:self :key :value |
+  [[[armed value] & [key == [trigger value]]] ifTrue: [|
+    [armed set: false]; [calls inc]; [[callback value] value]; [System gc]
+  ]];
+  [original invokeOn: self arguments: #[key value]]
+]];
+let arm := [:key :body | [trigger set: key]; [callback set: body]; [armed set: true]];
+let conflict := [:result |
+  [check value: [result isError] value: "stale edit reported success"];
+  [check value: [[result kind] == #compensationConflict] value: "wrong conflict kind"]
+];
+// A record edit must not drop a different field written during Map construction.
+[manager field: #left of: #target put: 1];
+[arm value: #left value: [| [manager field: #right of: #target put: 2]]];
+let result := [manager field: #left of: #target put: 3];
+[check value: [[manager field: #right of: #target] = 2] value: "same-record callback write lost"];
+[conflict value: result];
+[check value: [[manager field: #left of: #target] = 1] value: "stale field edit published"];
+// A whole-record edit preserves a different record written during construction.
+[arm value: #target value: [| [manager field: #value of: #foreign put: 4]]];
+let result := [manager record: #target put: {#left -> 9}];
+[conflict value: result];
+[check value: [[manager field: #value of: #foreign] = 4] value: "other-record callback write lost"];
+[check value: [[manager field: #left of: #target] = 1] value: "stale record edit published"];
+// Removing one record must not replace a concurrently changed entire registry.
+[manager registry: [Map new]];
+[manager field: #value of: #target put: 1]; [manager field: #value of: #survivor put: 2];
+[arm value: #survivor value: [| [manager field: #value of: #foreign put: 5]]];
+[conflict value: [manager removeRecord: #target]];
+[check value: [[manager field: #value of: #target] = 1] value: "stale removal published"];
+[check value: [[manager field: #value of: #foreign] = 5] value: "removal lost callback record"];
+// High-level declarations must return the conflict and stop subsequent writes.
+[manager registry: [Map new]];
+[arm value: #registered value: [| [manager field: #side of: #declaration put: 6]]];
+[conflict value: [manager named: #declaration requires: #[#dependency]]];
+[check value: [[manager field: #side of: #declaration] = 6] value: "declaration lost callback"];
+[check value: [[manager field: #kind of: #declaration] isNil] value: "declaration continued after conflict"];
+[manager registry: [Map new]];
+[arm value: #kind value: [| [manager field: #side of: #kernelDeclaration put: 7]]];
+[conflict value: [manager kernel: #kernelDeclaration]];
+[check value: [[manager field: #registered of: #kernelDeclaration] == true] value: "earlier declaration edit rolled back"];
+[check value: [[manager field: #loaded of: #kernelDeclaration] isNil] value: "kernel continued after conflict"];
+[manager registry: [Map new]];
+[arm value: #loaded value: [| [manager field: #side of: #loadedDeclaration put: 8]]];
+[conflict value: [manager markLoaded: #loadedDeclaration]];
+[check value: [[manager field: #side of: #loadedDeclaration] = 8] value: "loaded callback lost"];
+[check value: [[manager field: #loaded of: #loadedDeclaration] isNil] value: "stale loaded flag published"];
+// Activation must report bookkeeping failure and stop the remaining plan.
+// The install seam is simulated; real artifact installation has its own gate.
+[manager registry: [Map new]];
+let descriptor := [Object clone];
+[Reflect defineMethod: #identity on: descriptor as: [:self | #activationDeclaration]];
+[Reflect defineMethod: #path on: descriptor as: [:self | "simulated-module"]];
+let loads := [Cell with: 0]; let loader := [Codegen methodFor: #load:];
+[Reflect defineMethod: #load: on: Codegen as: [:self :path | [loads inc]; true]];
+[arm value: #loaded value: [| [manager field: #side of: #activationDeclaration put: 9]]];
+let activated := [manager activate: #[descriptor descriptor]];
+[[Reflect vtableOf: Codegen] addMethod: loader as: #load:];
+[conflict value: activated];
+[check value: [[loads value] = 1] value: "activation continued after bookkeeping failure"];
+[check value: [[manager field: #side of: #activationDeclaration] = 9] value: "activation lost callback"];
+[check value: [[manager field: #loaded of: #activationDeclaration] isNil] value: "stale activation flag published"];
+[[Reflect vtableOf: Map] addMethod: original as: #at:put:];
+[check value: [[calls value] = 7] value: "callback replay or omission"];
+[System println: "module-registry-reentry: passed"]
+] value]

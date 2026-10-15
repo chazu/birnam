@@ -40,6 +40,7 @@ pub(crate) struct State {
     lookup: Oop,
     does_not_understand: Oop,
     method_change_observer: Cell<Oop>,
+    notification_roots: RefCell<Vec<Oop>>,
     method_changed: Oop,
     detached: RefCell<std::collections::HashMap<usize, super::object_memory::Allocation>>,
     visits: [Oop; 3],
@@ -90,6 +91,7 @@ impl State {
             lookup,
             does_not_understand,
             method_change_observer: Cell::new(core::ptr::null_mut()),
+            notification_roots: RefCell::new(Vec::new()),
             method_changed,
             detached: RefCell::new(std::collections::HashMap::new()),
             visits,
@@ -128,8 +130,8 @@ impl State {
             does_not_understand: self.does_not_understand,
         }
     }
-    pub(crate) fn roots(&self) -> [Oop; 12] {
-        [
+    pub(crate) fn roots(&self) -> Vec<Oop> {
+        let mut roots = vec![
             self.protocol.receiver,
             self.protocol.intern,
             self.protocol.load,
@@ -142,13 +144,27 @@ impl State {
             self.visits[0],
             self.visits[1],
             self.visits[2],
-        ]
+        ];
+        roots.extend(self.notification_roots.borrow().iter().copied());
+        roots
     }
     // Id reports dictionary mutation without knowing Store, execution policy or
     // native callback addresses. Drop dictionary borrows before this live send.
     unsafe fn method_changed(&self, selector: Oop, behavior: Oop) -> Result<(), Outcome> {
         let observer = self.method_change_observer.get();
         if !observer.is_null() {
+            // Id is the caller of this live notification. Its registration slot
+            // can be cleared/replaced during lookup or inside the callback, so
+            // it cannot provide the entered invocation's sole protection.
+            // These are Id-owned temporary roots, with no dependency on GC or
+            // Store and no cached method. Nested calls restore the exact prefix.
+            struct NotificationScope<'a> { roots: &'a RefCell<Vec<Oop>>, start: usize }
+            impl Drop for NotificationScope<'_> {
+                fn drop(&mut self) { self.roots.borrow_mut().truncate(self.start); }
+            }
+            let start = self.notification_roots.borrow().len();
+            self.notification_roots.borrow_mut().extend_from_slice(&[observer, selector, behavior]);
+            let _scope = NotificationScope { roots: &self.notification_roots, start };
             unsafe { self.protocol.send(observer, self.method_changed, &[Operand::object(selector), Operand::object(behavior)]) }?;
         }
         Ok(())

@@ -13,20 +13,22 @@
 // -- declaration + query -------------------------------------------------------
 
 // A self-hosted module declaring its own dependencies. Records the edges +
-// marks it registered. Answers self.
+// marks it registered. Answers self, or stops at the first failed field edit.
 [Reflect defineMethod: #named:requires: on: Module as: [:self :name :reqs |
-  [self field: #registered of: name put: true];
-  [self field: #kind of: name put: #selfHosted];
-  [self field: #requires of: name put: reqs];
-  self]];
+  let registered := [self field: #registered of: name put: true];
+  [[registered isError] ifTrue: [| registered] ifFalse: [|
+    let kind := [self field: #kind of: name put: #selfHosted];
+    [[kind isError] ifTrue: [| kind] ifFalse: [| [self field: #requires of: name put: reqs]]]
+  ]]]];
 
 // Represent a kernel (Rust native) module: registered, kind #kernel, already
 // up (loaded), no dependencies. This completes the graph; nothing is loaded.
 [Reflect defineMethod: #kernel: on: Module as: [:self :name |
-  [self field: #registered of: name put: true];
-  [self field: #kind of: name put: #kernel];
-  [self field: #loaded of: name put: true];
-  self]];
+  let registered := [self field: #registered of: name put: true];
+  [[registered isError] ifTrue: [| registered] ifFalse: [|
+    let kind := [self field: #kind of: name put: #kernel];
+    [[kind isError] ifTrue: [| kind] ifFalse: [| [self field: #loaded of: name put: true]]]
+  ]]]];
 
 // The declared dependency Vector; an unregistered (or kernel) module has no
 // #requires field and is a leaf (empty Vector) — absence rides the nil read.
@@ -50,8 +52,7 @@
 // Record that a module is installed (the driver calls this for the boot-time
 // self-hosted layer; `kernel:` marks the kernel tier; `load:` marks its own).
 [Reflect defineMethod: #markLoaded: on: Module as: [:self :name |
-  [self field: #loaded of: name put: true];
-  self]];
+  [self field: #loaded of: name put: true]]];
 
 // -- owned registry ------------------------------------------------------------
 // These are generic inspection/edit paths, not a second authoritative mirror.
@@ -70,10 +71,18 @@
   let executor := TaskExecutor;
   [[executor isNil] ifTrue: [| [body value]] ifFalse: [| [executor transition: body]]]
 ]];
+// Conditional publication protects synchronous reentry as well as time slicing.
+// No method identity is guarded and no failed callback is replayed. Explicit
+// registry: remains a whole-value replacement; edits use this live protocol.
+[Reflect defineMethod: #publishRegistry:from: on: Module as: [:self :next :expected |
+  [[ObjectModel replaceSlot: 1 in: self expected: expected with: next]
+    ifTrue: [| self] ifFalse: [| [Error kind: #compensationConflict]]]
+]];
 [Reflect defineMethod: #record:put: on: Module as: [:self :name :record |
   [self registryMutation: [|
-    let next := [[self registry] at: name put: record];
-    [[next isError] ifTrue: [| next] ifFalse: [| [self registry: next]]]
+    let records := [self registry];
+    let next := [records at: name put: record];
+    [[next isError] ifTrue: [| next] ifFalse: [| [self publishRegistry: next from: records]]]
   ]]
 ]];
 [Reflect defineMethod: #field:of: on: Module as: [:self :field :name |
@@ -82,12 +91,13 @@
 ]];
 [Reflect defineMethod: #field:of:put: on: Module as: [:self :field :name :value |
   [self registryMutation: [|
+    let records := [self registry];
     let old := [self recordOf: name];
     let record := [[old isNil] ifTrue: [| [Map new]] ifFalse: [| old]];
     let changed := [record at: field put: value];
     [[changed isError] ifTrue: [| changed] ifFalse: [|
-      let next := [[self registry] at: name put: changed];
-      [[next isError] ifTrue: [| next] ifFalse: [| [self registry: next]]]
+      let next := [records at: name put: changed];
+      [[next isError] ifTrue: [| next] ifFalse: [| [self publishRegistry: next from: records]]]
     ]]
   ]]
 ]];
@@ -98,7 +108,7 @@
     let records := [self registry];
     let next := [[records keys] inject: [Map new] into: [:result :key |
       [[key == name] ifTrue: [| result] ifFalse: [| [result at: key put: [records at: key]]]]]];
-    [[next isError] ifTrue: [| next] ifFalse: [| [self registry: next]]]
+    [[next isError] ifTrue: [| next] ifFalse: [| [self publishRegistry: next from: records]]]
   ]]
 ]];
 
@@ -248,7 +258,7 @@
                 [[installed isNil]
                   ifTrue: [| [Error kind: #loadFailed
                                  message: ["could not install module dylib: " , [descriptor path]]]]
-                  ifFalse: [| [me markLoaded: name]; me]]]]]]]]]]]];
+                  ifFalse: [| [me markLoaded: name]]]]]]]]]]]]];
 
 [Reflect defineMethod: #load:path: on: Module as: [:self :name :p |
   let plan := [self planFor: name path: p];
