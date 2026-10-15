@@ -836,6 +836,9 @@ unsafe fn mop_hooks(h: &H) {
             h.number(h.read(target_store, h.symbol(b"__globals__"), global)),
             11
         );
+        // A live mirror is explicit. Bootstrap and managed Store writes do not
+        // subscribe on the user's behalf.
+        assert_eq!(send(h.id, h.id.receiver, b"methodChangesTo:", &[Operand::object(store)]).kind(), native::UNIT);
         // Notification is a fresh send, including for native dictionary writes.
         let store_vt = h.named(b"StoreVt");
         let changed = h.symbol(b"methodChanged:on:");

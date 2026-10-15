@@ -271,7 +271,7 @@ fn remove_mirror_facts(
 ) {
     state
         .facts
-        .retain(|fact| !(same(fact.e, e) && same(fact.a, a) && same(fact.v, v)));
+        .retain(|fact| !(fact.mirror && same(fact.e, e) && same(fact.a, a) && same(fact.v, v)));
 }
 
 fn append_mirror_fact(
@@ -891,6 +891,17 @@ mod tests {
         assert!(super::durable_image_fact(&semantic, &[]));
         assert!(!super::durable_image_fact(&mirror, &[]));
         assert!(!super::durable_image_fact(&semantic, &[oop(21)]));
+    }
+
+    #[test]
+    fn mirror_retirement_preserves_identical_explicit_facts() {
+        let mut state = StoreState::new();
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, false);
+        append_mirror_fact(&mut state, oop(20), oop(21), oop(30));
+        remove_mirror_facts(&mut state, oop(20), oop(21), oop(30));
+        assert_eq!(state.facts.len(), 1);
+        assert!(!state.facts[0].mirror);
+        assert_eq!(current_value_raw(&state, oop(20), oop(21)), oop(30));
     }
 
     #[test]

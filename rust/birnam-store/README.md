@@ -90,15 +90,20 @@ The existing MOP responsibilities are preserved through messages:
 | `methodChanged:on:` | Invalidate the selector/behavior mirror after a direct Id dictionary write. |
 
 Id `methodChangesTo:` registers one rooted notification receiver (or Unit to clear)
-and returns the previous receiver. Store registers itself. Completed Id dictionary
+and returns the previous receiver. Bootstrap leaves this slot empty. A caller that
+explicitly wants Store mirror invalidation registers Store through that Id message;
+`backfillMirror` and managed Store writes alone do not subscribe. Clearing the slot
+ends observation; retained descriptions then describe their capture, not live code.
+Mirror retirement deletes only marked mirror rows, preserving explicit facts.
+Completed Id dictionary
 add/remove/weak-binding operations send `methodChanged:on:` after mutation, with no
 dictionary borrow held. This is fresh lookup, not a saved callback. Notification
 failure propagates after the dictionary change; it does not roll the change back.
 
 The authorizer now accepts an Object instead of a native function address, and
 managed installation accepts an owned Execution Method instead of a raw entry.
-Reflect's `defineMethod:on:as:` now sends this managed installation protocol.
-Remaining deferred compiler callers must adopt those operands. Private compensation
+Reflect's ordinary define/remove operations send directly to the vtable owner and
+create no mirror facts. Store's protocol is an explicit description facility. Private compensation
 algorithms remain tested migration inputs; their retired native table is not
 exported.
 

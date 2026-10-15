@@ -122,7 +122,7 @@ fn observation_uses_live_messages_and_survives_replacement_reentry_and_gc() {
             b"methodChangesTo:",
             &[Operand::object(first)],
         );
-        assert_eq!(prior.as_object(), Some(named(b"Store")));
+        assert_eq!(prior.kind(), native::UNIT, "bootstrap must not install a mirror");
         p.collect.set(true);
         // Notifications see the committed dictionary, including additions.
         install(id, target, b"observed", answer, ptr::null_mut());
@@ -226,7 +226,7 @@ fn observation_uses_live_messages_and_survives_replacement_reentry_and_gc() {
             &[Operand::object(second)],
         );
         release(id, roots, second_hold);
-        // Clearing stops notifications; restoring the Store keeps the canonical owner.
+        // Clearing stops notifications; restore the original empty slot.
         assert_eq!(
             send(id, id.receiver, b"methodChangesTo:", &[Operand::unit()]).as_object(),
             Some(second)

@@ -201,6 +201,7 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
             tokens: RefCell::new(vec![]),
         };
         let store = h.named(b"Store");
+        assert_eq!(send(id, id.receiver, b"methodChangesTo:", &[Operand::object(store)]).kind(), UNIT);
         let target = h.call(h.named(b"Object"), b"clone", &[]);
         let vt = h.call(id.receiver, b"ensurePrivateVtableFor:", &[target]);
         let selector = h.key(b"publicationAudit");

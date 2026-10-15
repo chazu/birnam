@@ -1480,7 +1480,6 @@ const NAMES: &[&[u8]] = &[
     b"managedMethodChanged:on:",
     b"many",
     b"methodChanged:on:",
-    b"methodChangesTo:",
     b"methodMutationAuthorizerAlreadySet",
     b"methodMutationObserverAlreadySet",
     b"missingDirectMethod",
@@ -1681,11 +1680,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                     &[Operand::object(s.names[name]), Operand::object(value)],
                 )?;
             }
-            s.send(
-                id.receiver,
-                b"methodChangesTo:",
-                &[Operand::object(receiver)],
-            )?;
             Ok(Operand::object(receiver))
         })();
         for token in tokens {
