@@ -24,7 +24,7 @@ for name in ['store','relational','generation','bootstrap']:assert not (floor/f'
 env.update(BIRNAM_MUTATION_PROGRAMS=str(programs),BIRNAM_TEST_MODULE_DIRECTORY=str(floor),BIRNAM_GC_PRECISE='1',CARGO_TARGET_DIR=str(ROOT/'.cargo-target/native-message-tests'),CARGO_PROFILE_DEV_PANIC='unwind')
 run=command(['mise','exec','--','cargo','test','--offline','--locked','-p','birnam-siphon','--test','minimal_mutation','--','--include-ignored','--nocapture'],env=env,timeout=180)
 receipt=dict(passed=run['exit_code']==0,prefix=str(prefix),export=export,run=run,
- scope='Existing primitives on a physically Store/Relational/Generation/Bootstrap-free floor. Portable bodies exported beforehand; no parser, source metadata or whole application bootstrap. No production Reflect default changed.',
+ scope='Existing primitives on a physically Store/Relational/Generation/Bootstrap-free floor. Portable bodies exported beforehand; no parser, source metadata or whole application bootstrap. The production Reflect define/remove facade is also exercised on that floor.',
  source_sha256={str(f.relative_to(ROOT)):sha(f) for f in [Path(__file__).resolve(),ROOT/'rust/birnam-siphon/tests/minimal_mutation.rs']},
  floor_sha256={f.name:sha(f) for f in floor.iterdir()},program_sha256={f.name:sha(f) for f in programs.iterdir()})
 save_json(work/'results.json',receipt)

@@ -101,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-interaction-') as directory:
                             result += chunk
                         return result
                     assert b'birnam' in read_prompt()
-                    connection.sendall(b'[[[Reflect defineMethod: #socketGuardProbe on: Integer as: [:self | 99]] kind] = #generationNotQuiescent]\n')
+                    connection.sendall(b'[[Reflect defineMethod: #socketGuardProbe on: Integer as: [:self | 99]] == Integer]\n')
                     assert b'=> true' in read_prompt()
                     connection.sendall(expression)
                     assert expected in read_prompt()

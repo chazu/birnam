@@ -1,4 +1,4 @@
-//! Reflect publication uses Store's current message protocol and existing hooks.
+//! Ordinary Reflect edits bypass Store; explicit Store publication retains its hooks.
 use super::*;
 use birnam_abi::id_protocol as native;
 
@@ -155,9 +155,18 @@ pub(super) unsafe fn check(h: &mut H) {
         );
         install(id, store_vt, b"addMethod:on:with:", publish, context);
         assert_eq!(h.eval(b"[Reflect defineMethod: #publicationAnswer on: PublicationTarget as: [:self | 41]]"), target);
-        assert_eq!(p.publications.get(), 1);
-        assert_eq!(p.authorizations.get(), 1);
-        assert_eq!(p.notifications.get(), 1);
+        assert_eq!(p.publications.get(), 0);
+        assert_eq!(p.authorizations.get(), 0);
+        assert_eq!(p.notifications.get(), 0);
+        p.authorization_failure.set(true);
+        p.decision.set(h.named(b"false"));
+        assert_eq!(h.eval(b"[Reflect defineMethod: #ordinaryOnly on: PublicationTarget as: [:self | 42]]"), target);
+        assert_eq!(h.eval(b"[Reflect removeMethod: #ordinaryOnly on: PublicationTarget]"), target);
+        assert_eq!(p.publications.get(), 0);
+        assert_eq!(p.authorizations.get(), 0);
+        assert_eq!(p.notifications.get(), 0);
+        p.authorization_failure.set(false);
+        p.decision.set(h.named(b"true"));
         let vt = object(send(
             id,
             id.receiver,
@@ -172,6 +181,14 @@ pub(super) unsafe fn check(h: &mut H) {
             &[Operand::object(selector)],
         ));
         h.keep(old);
+        assert_eq!(send(id, store, b"rawCurrentValue:attr:",
+            &[Operand::object(vt), Operand::object(selector)]).kind(), native::UNIT);
+        // Description and policy are explicit Store participation.
+        assert_eq!(object(send(id, store, b"addMethod:on:with:",
+            &[Operand::object(selector), Operand::object(vt), Operand::object(old)])), store);
+        assert_eq!(p.publications.get(), 1);
+        assert_eq!(p.authorizations.get(), 1);
+        assert_eq!(p.notifications.get(), 1);
         let old_mirror = object(send(
             id,
             store,
@@ -188,11 +205,10 @@ pub(super) unsafe fn check(h: &mut H) {
         .as_entry()
         .unwrap();
         let implementation = h.eval(b"[:self | 42]");
-        let args = [
-            Operand::object(selector),
-            Operand::object(target),
-            Operand::object(implementation),
-        ];
+        let arity = object(send(id, h.named(b"Integer"), b"fromWord:", &[Operand::word(0)]));
+        let method = object(send(id, reflect, b"methodForArity:implementation:", &[Operand::object(arity), Operand::object(implementation)]));
+        h.keep(method);
+        let args = [Operand::object(selector), Operand::object(vt), Operand::object(method)];
         h.collect();
         let before = h.units();
         let text = h.string(b"publication refused");
@@ -209,7 +225,7 @@ pub(super) unsafe fn check(h: &mut H) {
         for denied in [h.named(b"false"), h.named(b"nil"), error] {
             p.decision.set(denied);
             assert_eq!(
-                object(send(id, reflect, b"defineMethod:on:as:", &args)),
+                object(send(id, store, b"addMethod:on:with:", &args)),
                 denied
             );
             assert_eq!(
@@ -234,11 +250,11 @@ pub(super) unsafe fn check(h: &mut H) {
             );
             assert_eq!(p.notifications.get(), 1);
             h.collect();
-            assert_eq!(h.units(), before, "refused named adapter is reclaimed");
+            assert_eq!(h.units(), before, "refused explicit publication retains no extra code");
         }
         p.authorization_failure.set(true);
         let failure = id
-            .send_named(reflect, b"defineMethod:on:as:", &args)
+            .send_named(store, b"addMethod:on:with:", &args)
             .unwrap_err();
         assert_eq!(
             (failure.status, failure.detail),
@@ -263,7 +279,7 @@ pub(super) unsafe fn check(h: &mut H) {
         p.expected.set(42);
         p.notification_failure.set(true);
         let failure = id
-            .send_named(reflect, b"defineMethod:on:as:", &args)
+            .send_named(store, b"addMethod:on:with:", &args)
             .unwrap_err();
         assert_eq!(
             (failure.status, failure.detail),
@@ -302,8 +318,8 @@ pub(super) unsafe fn check(h: &mut H) {
             ptr::null_mut(),
         );
         assert_eq!(
-            object(send(id, reflect, b"defineMethod:on:as:", &args)),
-            target
+            object(send(id, store, b"addMethod:on:with:", &args)),
+            store
         );
         assert_eq!(p.publications.get(), 7);
         assert_eq!(p.authorizations.get(), 6);

@@ -291,7 +291,6 @@ unsafe fn put_method(
         if s.candidates.expected_mutation.borrow().is_some() {
             return Err(invalid());
         }
-        s.candidates.mutation_authorized.set(false);
         *s.candidates.expected_mutation.borrow_mut() = Some((b.selector, b.behavior, method));
         struct Expected<'a>(&'a RefCell<Option<(Oop, Oop, Option<Oop>)>>);
         impl Drop for Expected<'_> {

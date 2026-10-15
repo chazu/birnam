@@ -247,3 +247,9 @@ import Admission
 #print axioms Birnam.SharedInvocation.ordinary_edit_changes_future_binding
 #print axioms Birnam.SharedInvocation.stale_preparation_cannot_overwrite
 #print axioms Birnam.SharedInvocation.edit_invalidates_old_preparation
+
+#print axioms Birnam.SharedInvocation.snapshot_uses_live_code
+#print axioms Birnam.SharedInvocation.drifted_image_has_no_managed_authority
+#print axioms Birnam.SharedInvocation.changed_snapshot_keeps_old_file
+
+#print axioms Birnam.SharedInvocation.descriptive_image_cannot_reactivate

@@ -384,12 +384,9 @@ pub(super) unsafe fn operation(
                     b"ensurePrivateVtableFor:",
                     &[args[1]],
                 )?)?)?;
-                let store = q.keep(s.named(b"Store")?)?;
-                return s.send(
-                    store,
-                    b"addMethod:on:with:",
-                    &[args[2], Operand::object(behavior), Operand::object(method)],
-                );
+                let result = s.send(behavior, b"addMethod:as:",
+                    &[Operand::object(method), args[2]])?;
+                return Ok(if result.as_object() == Some(method) { args[1] } else { result });
             }
             Op::Cancel => {
                 publication::send(s, q, b"cancelImageRecovery", &[])?;

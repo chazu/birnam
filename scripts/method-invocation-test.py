@@ -32,13 +32,12 @@ let alternate := [Object clone];
   [System println: [old invokeOn: target arguments: #[41]]];
   [System println: [[MethodInvocation templates] size]];
   [System println: [[Globals bindingBasis] = basis]];
-  // Global main is a running generation: managed dictionary edits remain
-  // forbidden. Pure construction is allowed, and the policy lookup stays live.
+  // Ordinary edits remain available in running main; construction stays live.
   [Globals at: #MethodInvocation put: alternate];
   let result := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
   [System println: [result == error]];
   [Globals remove: #MethodInvocation];
-  [System println: [[[Reflect defineMethod: #rejected on: target as: [:self | nil]] kind] == #generationNotQuiescent]]
+  [System println: [[Reflect defineMethod: #runningEdit on: target as: [:self | nil]] == target]]
 ]];
 let cache := [MethodInvocation templates];
 [System saveImage: IMAGE];

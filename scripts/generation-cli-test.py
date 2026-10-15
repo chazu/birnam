@@ -36,8 +36,8 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
     artifact = json.dumps(str(root / 'candidate.o'))
     forms = [
         '[3 generationCliValue]',
-        '[[[Reflect defineMethod: #generationCliValue on: Integer as: [:self | 99]] kind] = #generationNotQuiescent]',
-        '[[[Reflect removeMethod: #generationCliValue on: Integer] kind] = #generationNotQuiescent]',
+        '[[Reflect defineMethod: #generationOrdinaryProbe on: Integer as: [:self | 99]] == Integer]',
+        '[[Reflect removeMethod: #generationOrdinaryProbe on: Integer] == Integer]',
         # Published applications own their bundled method definitions as one
         # source revision; replace that admitted revision, preserving its effects.
         f'[CompiledUnit compile: [[Codegen moduleSourceFor: #__generation_cliApplication] replace: "| 10" with: "| 20"] named: #__generation_cliApplication output: {artifact}]',
@@ -61,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
         assert transcript.index('birnam> 10\n') < transcript.index('birnam> 20\n') < transcript.rindex('birnam> 10\n'), transcript
         assert transcript.count('birnam> true\n') >= 2, transcript
         assert 'error(' not in transcript.lower(), transcript
-        print('generation: running mutation guard, console intent activation and exact rollback passed')
+        print('generation: ordinary running edits, console intent activation and exact rollback passed')
 
     # Reuse the publication with its source removed, but fresh process state and
     # candidate output. Each reply must be fulfilled before its TCP prompt.
@@ -147,4 +147,4 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
             server.wait(timeout=15)
         error.seek(0)
         assert not error.read(), 'socket wrote diagnostics to stderr'
-    print('generation: TCP activation/rollback, guard, multiline, diagnostics and successive sessions passed')
+    print('generation: TCP activation/rollback, ordinary edits, multiline, diagnostics and successive sessions passed')

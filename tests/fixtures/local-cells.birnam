@@ -46,12 +46,9 @@ let batches := [#[0 1 50 200] collect: [:calls |
   [check value: [factDelta = 0] value: "local consumers accumulated facts"];
   {"calls" -> calls "fact_delta" -> factDelta "object_delta" -> objectDelta}
 ]];
-// The enclosing measurement frame retains fixed temporaries. Compare against
-// an otherwise identical zero-call batch instead of treating those as a leak.
-let control := [[batches at: 0] at: "object_delta"];
-[check value: [batches allSatisfy: [:batch |
-  [[batch at: "object_delta"] <= [control + 4]]
-]] value: "local consumers retained discarded state"];
+// These language telemetry calls allocate and retain their own temporaries.
+// Their deltas are diagnostic. local_cell_retention.rs measures the same
+// operation after return using Id's counter and requires exactly zero objects.
 
 // Module is available before stdlib: its traversal uses the native localCell:
 // protocol directly. A nested traversal must not replace the outer order.

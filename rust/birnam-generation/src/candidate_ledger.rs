@@ -244,6 +244,14 @@ pub(crate) unsafe fn method_changed(
 /// A saved managed source map must still describe the dispatch it authorizes.
 /// Drift never becomes a second authority merely because its code is portable.
 pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+    unsafe { image_admission(s, q, false) }
+}
+/// Reconcile opted-in revision metadata, but do not require a live world to
+/// equal that revision. Explicit managed validation remains strict.
+pub(crate) unsafe fn prepare_image_snapshot(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+    unsafe { image_admission(s, q, true) }
+}
+unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.busy.get()
             || s.candidates.observing.get()
@@ -265,7 +273,9 @@ pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand,
         }
         let _busy = Busy(&s.candidates.busy);
         if s.candidates.ledger.borrow().is_none() {
-            if current(s, q)? == s.named(b"nil")? {
+            let current = current(s, q)?;
+            if current == s.named(b"nil")?
+                || (snapshot && fact(s, q, current, b"state")? == symbol(s, q, b"drifted")?) {
                 return Ok(Operand::object(s.named(b"true")?));
             }
             return fail(
@@ -275,7 +285,37 @@ pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand,
                 b"managed image has no binding ledger",
             );
         }
-        if reconcile(s, q)?.0 {
+        // General snapshots may depart from an opted-in revision, but must
+        // not silently omit a managed binding replaced by an opaque native
+        // entry. Such an entry has no implementation in the image inventory.
+        if snapshot {
+            let ledger = s.candidates.ledger.borrow().clone();
+            if let Some(ledger) = ledger {
+                let epoch = preparation::epoch(s)?;
+                let nil = s.named(b"nil")?;
+                for binding in &ledger.bindings {
+                    if let Some((_, behavior)) = preparation::target(s, q, binding.binding.name)? {
+                        if let Some(entry) = preparation::direct(s, behavior, binding.binding.selector)? {
+                            let implementation = s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[Operand::entry(entry)])?;
+                            if implementation.as_object().is_none_or(|v| v == nil) {
+                                return fail(s, q, b"nonPortableGeneration", b"edited managed binding has no imageable implementation");
+                            }
+                        }
+                    }
+                }
+                if preparation::epoch(s)? != epoch {
+                    return fail(s, q, b"staleGeneration", b"bindings changed during snapshot admission");
+                }
+            }
+        }
+        let (matches, generation) = reconcile(s, q)?;
+        let descriptive = if snapshot {
+            if let Some(generation) = generation {
+                current(s, q)? == generation
+                    && fact(s, q, generation, b"state")? == symbol(s, q, b"drifted")?
+            } else { false }
+        } else { false };
+        if matches || descriptive {
             Ok(Operand::object(s.named(b"true")?))
         } else {
             fail(

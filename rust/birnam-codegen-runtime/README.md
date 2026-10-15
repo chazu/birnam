@@ -23,11 +23,17 @@ Method keeps both the code Unit and the implementation object. Calls perform fre
 `value:` lookup on that implementation; replacement does not rewrite a captured
 Method or a suspended frame. No generated Runtime service catalog is imported.
 
-Installation sends `Store addMethod:on:with:` with the selector, target behavior
-and owned Method. Store runs its existing authorization, mirror and notification
-protocol. Reflect still returns the target on success; refusals and native failures
-propagate unchanged. An observer failure occurs after installation and does not
-undo it. Temporary compilation roots survive collecting hooks.
+Ordinary Reflect installation sends the current vtable `addMethod:as:` with the
+owned Method and selector. Removal checks direct presence and uses that vtable's
+`removeMethod:`. Both retain the target-returning facade contract and no longer
+resolve Store or Generation. They create no method description facts and are usable
+while a program is running. Explicit Store publication keeps its selected policy
+and description behavior. Temporary roots survive collecting owner calls.
+
+Image binding installation uses the same direct owner path. General snapshots
+preserve actual live Methods even if an opted-in managed revision has drifted;
+that metadata reloads as descriptive state, not a recovered activation capability.
+See [ordinary editing and snapshots](../../docs/design/ordinary-edit-and-snapshot.md).
 
 The uncompiled legacy compiler orchestration and its orphaned helpers/tests have
 been deleted. Git retains the historical implementation; it is not current
@@ -51,7 +57,7 @@ using canonical descriptor and selection Bytes. Blocks copy captures through
 `Block fromMethod:captures:` and Vector messages. Named adapters additionally use
 `Method fromStep:descriptor:selection:owner:implementation:` so their implementation
 Block and code Unit have distinct, explicit ownership. Top-level bindings publish
-through Store-backed `Globals at:put:`; nested bindings remain lexical. Generated
+through `Globals at:put:`; nested bindings remain lexical. Generated
 source reads send `Globals at:` first, then use Namespace only when the answer is
 nil, preserving the prior source lookup rule (including a bound nil). Missing
 names answer nil. Compiler machinery still resolves its dependency objects through
@@ -101,7 +107,7 @@ exchange; candidate source-generation replacement uses the lifecycle below.
 
 Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
 Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated
-entry address. Top-level Globals writes and Store MOP publication retain their
+entry address. Top-level Globals writes and ordinary dictionary edits retain their
 existing behavior. The supplied filename reaches generated descriptors, including
 nested Blocks. No GC policy is changed; temporary values remain explicitly rooted.
 
@@ -143,9 +149,9 @@ Current commands and limits are in [validation](../../docs/validation.md).
 
 Store/db and Cells now load through Bootstrap before the compiler. Their separate
 [production suite](../birnam-store/README.md#validation) also exercises compiled
-source consumers and Store-backed Globals. Generated source reads and writes now
-use that same Globals protocol, including Store history and query visibility.
-Reflect now publishes through Store's receiver-based MOP hooks and owned Execution Methods. Staged
+source consumers and explicit fact-backed handles. Source Globals now owns its
+bindings independently, including exact presence and identity-based keys.
+Reflect installs owned Execution Methods directly through dictionary messages. Staged
 compiler publication and compensation use the candidate/ledger messages described
 in [Generation](../birnam-generation/README.md); the old Store native tables are gone.
 
@@ -211,7 +217,7 @@ requirement to restore the old architecture:
 
 Do not restore direct generated-entry calls, service tables, native mark callbacks
 or GC suppression as substitutes for roots. No lock or borrowed foreign bytes may
-span an outgoing send. Publication preserves Store's MOP; executable references
+span an outgoing send. Explicit Store publication preserves its MOP; executable references
 retain their Method/Unit owners. The deleted synchronous-evaluator and compiler
 state runners were not executing these tests in the current build. Production
 compiler/lifetime coverage remains in `birnam-siphon/tests/compiler.rs`; Image
@@ -274,7 +280,7 @@ activation. Ordinary user initialization is not a rollback transaction.
 
 Activation decodes the compiler-produced metadata, checks its source digest,
 identity and requirements against the descriptor, and persists ordinary metadata
-facts through Store. It neither parses source nor compiles adapters.
+bindings through their dictionary owners. It neither parses source nor compiles adapters.
 Methods installed during activation use the compiler's bundled adapter objects;
 explicit source compilation retains the source adapter path. Blocks and
 Methods retain the TCC Unit across collection; the mapping
@@ -289,7 +295,7 @@ generation replacement and its independent tests are described below.
 Module filename construction uses restored `Reflect nameOf:`: Symbols return
 their Id-owned name bytes as a String; non-Symbols answer `notASymbol`.
 `allMethodsOf:` resolves descriptor targets through native Namespace exports,
-then Store-backed source Globals, using live owner messages. Stdlib composes
+then source-owned Globals, using live owner messages. Stdlib composes
 `factsOf:` from Store's rooted `liveTriplesDo:` snapshot and ordinary Blocks;
 rows retain entity, attribute and value without changing collection settings.
 

@@ -1,7 +1,8 @@
 # Ordinary mutation and explicit coordination
 
-2026-10-15. **Agreed direction; existing-primitives feasibility tested, production
-cutover not implemented.** This supersedes the proposal to move Store's complete
+2026-10-15. **Agreed direction and initial feasibility investigation.**
+The subsequent [ordinary editing/snapshot slice](ordinary-edit-and-snapshot.md)
+implements the first runtime cutover; the remaining steps below are still work. This supersedes the proposal to move Store's complete
 publication machinery into a universal `MethodPublication` owner. The user also
 selected retaining live in-place image loading as an explicit advanced feature.
 
@@ -227,5 +228,6 @@ Negative variants add a running veto, mandatory mirror, active-call rewriting or
 stale-plan overwrite. The model assumes owner-level mutation semantics; it is not
 a proof of the compiler, whole runtime or future image architecture.
 
-Only tests, models and design documents changed. No production default, image API,
-Store hook, Generation admission rule or installed runtime has changed yet.
+This initial investigation changed only tests, models and design documents. Its
+later [runtime follow-up](ordinary-edit-and-snapshot.md) changes ordinary editing
+and snapshot admission; it does not complete all ownership and image work above.

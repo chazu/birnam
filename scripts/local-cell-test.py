@@ -30,9 +30,15 @@ def main():
     result = run('local-cells', [prefix/'bin/birnam',fixture])
     rows = json.loads(result['stdout'])
     assert rows['passed'] and [b['calls'] for b in rows['batches']]==[0,1,50,200]
-    control=rows['batches'][0]['object_delta']
-    assert all(b['fact_delta']==0 and b['object_delta']<=control+4 for b in rows['batches'])
+    assert all(b['fact_delta']==0 for b in rows['batches'])
     receipt['retention'] = rows
+    native_env=dict(env, BIRNAM_TEST_MODULE_DIRECTORY=str(prefix/'lib'), CARGO_TARGET_DIR=str(ROOT/'.cargo-target/native-message-tests'), CARGO_PROFILE_DEV_PANIC='unwind')
+    native=command(['mise','exec','--','cargo','test','--offline','--locked','-p','birnam-siphon','--test','local_cell_retention','--','--include-ignored','--nocapture'],env=native_env,timeout=180)
+    (work/'native-retention.log').write_text(native['output'])
+    receipt['native_retention']=native
+    receipt['retention_scope']='Language object deltas are diagnostic; exact native counter after return requires zero added objects and facts.'
+    save_json(work/'results.json',receipt)
+    assert native['exit_code']==0,(work,native)
     if not args.skip_images:
         image = work/'cells.image'; source = work/'save.birnam'
         # Save both modes and shared aliases. main creates another default Cell

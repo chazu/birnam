@@ -280,48 +280,21 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 v.call(v.named(b"Generation"), b"enterRunning", &[]),
                 v.named(b"true")
             );
-            let rejected = v.call(
-                v.named(b"Reflect"),
-                b"defineMethod:on:as:",
-                &[v.sym(b"newMethod"), fresh, block],
-            );
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"generationNotQuiescent")
-            );
-            assert_eq!(
-                send(id, id.receiver, b"behaviorOf:", &[Operand::object(fresh)]).as_object(),
-                Some(before)
-            );
+            let changed = v.call(v.named(b"Reflect"), b"defineMethod:on:as:",
+                &[v.sym(b"newMethod"), fresh, block]);
+            assert_eq!(changed, fresh);
+            assert_ne!(send(id, id.receiver, b"behaviorOf:", &[Operand::object(fresh)]).as_object(), Some(before));
+            assert_eq!(v.number(v.call(fresh, b"newMethod", &[])), 99);
             for source in [
-                b"[Reflect defineMethod: #retireValue on: Integer as: [:self | 99]]".as_slice(),
-                b"[Reflect removeMethod: #retireValue on: Integer]",
+                b"[Reflect defineMethod: #ordinaryRetire on: Integer as: [:self | 99]]".as_slice(),
+                b"[Reflect removeMethod: #ordinaryRetire on: Integer]",
             ] {
-                let rejected = v.call(cg, b"evalPersisting:", &[v.text(source)]);
-                assert_eq!(
-                    v.call(rejected, b"kind", &[]),
-                    v.sym(b"generationNotQuiescent")
-                );
+                assert_eq!(v.call(cg, b"evalPersisting:", &[v.text(source)]), v.named(b"Integer"));
             }
             assert_eq!(v.call(cg, b"lastError", &[]), nil);
-            let rejected = v.call(
-                v.named(b"Store"),
-                b"addMethod:on:with:",
-                &[v.sym(b"retireValue"), v.named(b"IntegerVt"), method],
-            );
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"generationNotQuiescent")
-            );
-            let rejected = v.call(
-                v.named(b"Store"),
-                b"removeMethod:on:",
-                &[v.sym(b"retireValue"), v.named(b"IntegerVt")],
-            );
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"generationNotQuiescent")
-            );
+            let store = v.named(b"Store");
+            assert_eq!(v.call(store, b"addMethod:on:with:", &[v.sym(b"ordinaryRetire"), v.named(b"IntegerVt"), method]), store);
+            assert_eq!(v.call(store, b"removeMethod:on:", &[v.sym(b"ordinaryRetire"), v.named(b"IntegerVt")]), store);
             assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
             assert_eq!(
                 v.call(
@@ -445,29 +418,8 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                         &[Operand::object(key), Operand::entry(original)],
                     );
                     assert!(!probe.armed.get());
-                    if running {
-                        assert_eq!(probe.denied.get(), 2);
-                        assert_eq!(rejected, unit);
-                        assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 20);
-                        let rollback = v.call(
-                            v.named(b"Generation"),
-                            b"prepareRollback:plan:",
-                            &[unit, v.plan(b"rollback", unit, next, generation)],
-                        );
-                        assert_eq!(
-                            v.call(
-                                v.named(b"Generation"),
-                                b"commitPreparedRollback:",
-                                &[rollback]
-                            ),
-                            unit
-                        );
-                        assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
-                        v.clear();
-                        let receipt = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
-                        assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
-                        continue;
-                    }
+                    // Foreign callback edits are allowed in either phase.
+                    // Their drift still invalidates the explicit transaction.
                     assert_eq!(probe.denied.get(), 0);
                     assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"staleGeneration"));
                     assert_eq!(v.fact(generation, b"state"), v.sym(b"drifted"));

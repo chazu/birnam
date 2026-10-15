@@ -293,6 +293,17 @@ The user selected retaining in-place image loading as an explicit advanced featu
 fresh-process startup and live recovery should have distinct failure contracts.
 Production cutover is not implemented by these probes.
 
+### Ordinary editing and snapshot implementation
+
+The [first runtime cutover](ordinary-edit-and-snapshot.md) now routes ordinary
+Reflect definition/removal and image binding installation through dictionary owners,
+without a mandatory publisher or running-generation veto. Edited worlds can be saved
+and restored; drifted managed metadata stays descriptive and cannot reactivate old
+capabilities. Explicit Generation transactions retain their current checks/journals.
+Store's raw mirror observer, compiler metadata, lifecycle/recipe storage and advanced
+live-load compensation remain dependencies/work items. This is not full Store-free
+bootstrap or the complete publication refactor.
+
 ## Acceptance and remaining decisions
 
 For each migration, check output and errors, live replacement, aliasing,

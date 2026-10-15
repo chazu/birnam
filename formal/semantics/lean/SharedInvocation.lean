@@ -157,4 +157,34 @@ theorem edit_invalidates_old_preparation (s : EditState) (edit planned : Nat) :
     applyPrepared s.epoch (directEdit s edit) planned = directEdit s edit := by
   simp [applyPrepared, directEdit]
 
+-- An image records current executable state. Revision metadata is descriptive
+-- after drift and must not reactivate old transaction authority on restoration.
+structure WorldSnapshot where
+  code : Nat
+  recordedRevision : Nat
+  managedCurrent : Bool
+  deriving DecidableEq
+
+def snapshotLive (eligible : Bool) (code revision : Nat) : WorldSnapshot :=
+  ⟨code, revision, eligible && code == revision⟩
+
+def restoreLive (image : WorldSnapshot) : Nat × Bool :=
+  (image.code, image.managedCurrent)
+
+theorem snapshot_uses_live_code (eligible : Bool) (code revision : Nat) :
+    (restoreLive (snapshotLive eligible code revision)).1 = code := by rfl
+
+theorem drifted_image_has_no_managed_authority (eligible : Bool) (code revision : Nat) (h : code ≠ revision) :
+    (restoreLive (snapshotLive eligible code revision)).2 = false := by simp [restoreLive, snapshotLive, h]
+
+theorem descriptive_image_cannot_reactivate (code revision : Nat) :
+    (restoreLive (snapshotLive false code revision)).2 = false := by simp [restoreLive, snapshotLive]
+
+def finishSnapshot (before after oldFile proposedFile : Nat) : Nat :=
+  if before = after then proposedFile else oldFile
+
+theorem changed_snapshot_keeps_old_file (before after oldFile proposedFile : Nat)
+    (changed : before ≠ after) :
+    finishSnapshot before after oldFile proposedFile = oldFile := by simp [finishSnapshot, changed]
+
 end Birnam.SharedInvocation

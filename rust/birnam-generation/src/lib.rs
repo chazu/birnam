@@ -26,7 +26,6 @@ struct State {
     id: Protocol,
     ns: Oop,
     roots: Oop,
-    mutation_guard: Oop,
     running: Cell<bool>,
     permanent: Vec<Oop>,
     candidates: candidate::Candidates,
@@ -98,15 +97,14 @@ enum Op {
     Candidate(candidate::Op),
     Registry(registry::Op),
     EnterRunning,
-    AuthorizeMutation,
     ManagedChanged,
     ValidateImage,
+    PrepareImageSnapshot,
     FulfillIntent,
     Receipt(usize),
     BeginRecovery,
     Recover,
     CancelRecovery,
-    MutationAllowed,
 }
 struct Entry {
     state: *const State,
@@ -147,9 +145,9 @@ unsafe extern "C" fn operation(
             Op::Candidate(op) => candidate::operation(s, &q, op, a),
             Op::Registry(op) => registry::operation(s, &q, op, a),
             Op::EnterRunning => candidate::enter_running(s, &q),
-            Op::AuthorizeMutation => candidate::authorize(s, &q),
             Op::ManagedChanged => candidate::method_changed(s, &q, object(a[0])?, object(a[1])?),
             Op::ValidateImage => candidate::validate_image(s, &q),
+            Op::PrepareImageSnapshot => candidate::prepare_image_snapshot(s, &q),
             Op::FulfillIntent => candidate::fulfill_intent(s, &q, object(a[0])?),
             Op::BeginRecovery => candidate::begin_recovery(s, &q, object(a[0])?),
             Op::Recover => candidate::recover_image(s, &q, object(a[0])?),
@@ -159,13 +157,6 @@ unsafe extern "C" fn operation(
                 s.registry.stage.take();
                 Ok(Operand::object(yes))
             }
-            Op::MutationAllowed => Ok(Operand::object(s.named(
-                if candidate::ordinary_mutation_allowed(s) {
-                    b"true"
-                } else {
-                    b"false"
-                },
-            )?)),
             Op::Receipt(index) => {
                 if !s.exact(&q, receiver, b"DiscardReceiptVt")? {
                     return Err(invalid());
@@ -264,32 +255,12 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 ],
             )?;
         }
-        let guard_vt = pin(object(id.send_named(
-            named(b"ObjectVt")?,
-            b"delegated",
-            &[],
-        )?)?)?;
-        let mutation_guard = pin(object(id.send_named(
-            model,
-            b"allocate:bytes:",
-            &[Operand::object(guard_vt), Operand::word(0)],
-        )?)?)?;
         let s = Box::into_raw(Box::new(State {
             id,
             ns,
             roots: root,
-            mutation_guard,
             running: core::cell::Cell::new(false),
-            permanent: vec![
-                ns,
-                root,
-                vt,
-                receiver,
-                receipt_vt,
-                receipt,
-                guard_vt,
-                mutation_guard,
-            ],
+            permanent: vec![ns, root, vt, receiver, receipt_vt, receipt],
             candidates: Default::default(),
             registry: Default::default(),
             thread: std::thread::current().id(),
@@ -299,19 +270,14 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (receipt_vt, b"logical".as_slice(), Op::Receipt(1)),
             (receipt_vt, b"physical".as_slice(), Op::Receipt(2)),
             (receipt_vt, b"reason".as_slice(), Op::Receipt(3)),
-            (guard_vt, b"value".as_slice(), Op::AuthorizeMutation),
             (vt, b"enterRunning".as_slice(), Op::EnterRunning),
-            (
-                vt,
-                b"authorizeManagedMethodMutation".as_slice(),
-                Op::AuthorizeMutation,
-            ),
             (
                 vt,
                 b"managedMethodChanged:on:".as_slice(),
                 Op::ManagedChanged,
             ),
             (vt, b"validateImageGeneration".as_slice(), Op::ValidateImage),
+            (vt, b"prepareImageSnapshot".as_slice(), Op::PrepareImageSnapshot),
             (
                 vt,
                 b"discardCandidate:".as_slice(),
@@ -411,11 +377,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"beginImageRecovery:".as_slice(), Op::BeginRecovery),
             (vt, b"recoverImageGeneration:".as_slice(), Op::Recover),
             (vt, b"cancelImageRecovery".as_slice(), Op::CancelRecovery),
-            (
-                vt,
-                b"ordinaryMutationAllowed".as_slice(),
-                Op::MutationAllowed,
-            ),
             (
                 vt,
                 b"successorGenerationProjection:replacing:with:unit:".as_slice(),

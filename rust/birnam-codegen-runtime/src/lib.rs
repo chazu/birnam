@@ -367,17 +367,6 @@ unsafe extern "C" fn operation(
             }).map_err(backend::Failure::outcome)?;
             return s.native_method(&scope, &c, Some(object(a[1])?));
         }
-        if matches!(e.op, Op::Define | Op::Remove)
-            && publication::send(s, &scope, b"ordinaryMutationAllowed", &[])?.as_object()
-                != Some(s.named(b"true")?)
-        {
-            return publication::error(
-                s,
-                &scope,
-                b"generationNotQuiescent",
-                b"ordinary method mutation is unavailable while running",
-            );
-        }
         if matches!(e.op, Op::Remove) {
             let target = object(a[1])?;
             let behavior = if s.send(s.id.receiver, b"isBehavior:", &[a[1]])?.as_word() == Some(1) {
@@ -385,17 +374,20 @@ unsafe extern "C" fn operation(
             } else {
                 scope.keep(object(s.send(s.id.receiver, b"behaviorOf:", &[a[1]])?)?)?
             };
-            let store = scope.keep(s.named(b"Store")?)?;
-            let result = s.send(
-                store,
-                b"removeMethod:on:",
-                &[a[0], Operand::object(behavior)],
-            )?;
-            return Ok(if result.as_object() == Some(store) {
-                a[1]
-            } else {
-                result
-            });
+            let old = s.send(s.id.receiver, b"bindingOf:in:",
+                &[a[0], Operand::object(behavior)])?;
+            if old.kind() == native::UNIT {
+                return publication::error(s, &scope, b"missingDirectMethod", b"target has no direct method");
+            }
+            // Keep the selected entry owned across a collecting raw observer.
+            if let Some(method) = s.send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?.as_object() {
+                scope.keep(method)?;
+            }
+            let result = s.send(behavior, b"removeMethod:", &[a[0]])?;
+            if let Some(value) = result.as_object() {
+                if s.is_error(value)? { return Ok(result); }
+            }
+            return Ok(a[1]);
         }
         if matches!(e.op, Op::Define) {
             let selector = object(a[0])?;
@@ -467,21 +459,9 @@ unsafe extern "C" fn operation(
                 b"ensurePrivateVtableFor:",
                 &[a[1]],
             )?)?)?;
-            let store = scope.keep(s.named(b"Store")?)?;
-            let result = s.send(
-                store,
-                b"addMethod:on:with:",
-                &[
-                    Operand::object(selector),
-                    Operand::object(behavior),
-                    Operand::object(method),
-                ],
-            )?;
-            return Ok(if result.as_object() == Some(store) {
-                a[1]
-            } else {
-                result
-            });
+            let result = s.send(behavior, b"addMethod:as:",
+                &[Operand::object(method), Operand::object(selector)])?;
+            return Ok(if result.as_object() == Some(method) { a[1] } else { result });
         }
         let source = object(a[0])?;
         let bytes = s.bytes(source)?;

@@ -76,7 +76,7 @@ unsafe extern "C" fn reject_first_drift(
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
 fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
     if std::env::var_os("BIRNAM_LEDGER_DRIFT_CASE").is_none() {
-        for case in ["raw", "store", "source", "save", "retry"] {
+        for case in ["raw", "store", "source", "save", "retry", "opaque"] {
             let status = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--ignored",
@@ -487,6 +487,9 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                     )],
                 );
             }
+            "opaque" => {
+                install(id, vt, b"ledgerAnswer", raw, core::ptr::null_mut());
+            }
             "save" => {
                 during_save.original = send(
                     id,
@@ -508,7 +511,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 send(id, vt, b"removeMethod:", &[Operand::object(selector)]);
             }
         }
-        if case == "store" || case == "source" {
+        if case == "store" {
             // No lifecycle message occurred between the edit and this fact read.
             assert_eq!(
                 call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
@@ -528,8 +531,16 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             );
             assert!(during_save.fired.get());
         }
-        assert_eq!(call(saved, b"kind", &[]), sym(b"staleGeneration"));
-        assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
+        if case == "opaque" {
+            assert_eq!(call(saved, b"kind", &[]), sym(b"nonPortableGeneration"));
+            assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
+        } else if case == "save" {
+            assert_eq!(saved, named(b"nil"));
+            assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
+        } else {
+            assert_eq!(saved, yes, "an edited live world can be snapshotted as drifted data");
+            assert_ne!(std::fs::read(&path).unwrap(), b"previous image");
+        }
         std::fs::remove_file(path).unwrap();
         // The inverse Method remains alive after every form of divergence.
         collect(id, named(b"GC"));

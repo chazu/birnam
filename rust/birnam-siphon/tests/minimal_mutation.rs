@@ -390,6 +390,35 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
         let unary_selector = h.keep(id.intern_name(b"echo:").unwrap());
         h.call(child_vt, b"addMethod:as:", &[method, unary_selector]);
         assert_eq!(h.call(child, b"echo:", &[argument]), argument);
+        // The production Reflect facade now uses these same owners. It must
+        // neither resolve Generation nor require a Store for a prepared body.
+        let reflect = h.named(b"Reflect");
+        let ordinary = h.keep(id.intern_name(b"ordinaryFacade").unwrap());
+        assert_eq!(
+            h.call(reflect, b"defineMethod:on:as:", &[ordinary, child, one]),
+            child
+        );
+        assert_eq!(h.number(h.call(child, b"ordinaryFacade", &[])), 11);
+        assert_eq!(
+            h.call(reflect, b"removeMethod:on:", &[ordinary, child]),
+            child
+        );
+        assert_eq!(
+            send(
+                id,
+                id.receiver,
+                b"bindingOf:in:",
+                &[Operand::object(ordinary), Operand::object(child_vt)]
+            )
+            .kind(),
+            birnam_abi::id_protocol::UNIT
+        );
+        // A raw native binding has no Execution-owned Method. Removal must
+        // still work; the optional lifetime query legitimately returns Unit.
+        install(id, child_vt, b"rawOrdinary", constant, value.cast());
+        let raw = h.keep(id.intern_name(b"rawOrdinary").unwrap());
+        assert_eq!(h.call(reflect, b"removeMethod:on:", &[raw, child]), child);
+        assert_eq!(send(id, id.receiver, b"bindingOf:in:", &[Operand::object(raw), Operand::object(child_vt)]).kind(), birnam_abi::id_protocol::UNIT);
         // No managed notification registration or hidden namespace owner appeared.
         for name in [
             b"Store".as_slice(),

@@ -630,9 +630,21 @@ impl Graph<'_, '_> {
         b
     }
 }
+// Snapshot consistency is about owner data, not managed source revision or
+// method identities. Monotonic epochs may conservatively reject a no-op edit.
+unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>) -> Result<(Oop, Oop, usize, usize, usize), Outcome> {
+    unsafe {
+        let store = q.keep(s.named(b"Store")?)?;
+        let globals = q.keep(s.named(b"Globals")?)?;
+        let facts = s.number(s.call(q, store, b"basis", &[])?)?;
+        let bindings = s.number(s.call(q, globals, b"bindingBasis", &[])?)?;
+        let methods = s.send(s.id.receiver, b"bindingEpoch", &[])?.as_word().ok_or_else(bad)?;
+        Ok((store, globals, facts, bindings, methods))
+    }
+}
 unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome> {
     unsafe {
-        let admitted = s.call(q, s.named(b"Generation")?, b"validateImageGeneration", &[])?;
+        let admitted = s.call(q, s.named(b"Generation")?, b"prepareImageSnapshot", &[])?;
         if admitted != s.named(b"true")? {
             s.reject(b"Managed generation is not current");
             return if s.is_error(admitted)? {
@@ -641,6 +653,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
                 Err(bad())
             };
         }
+        let stamp = snapshot_stamp(s, q)?;
         s.facts.borrow_mut().clear();
         let store = q.keep(s.named(b"Store")?)?;
         let metadata = [
@@ -789,7 +802,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
                 code: Some(&code),
             },
         )?;
-        let admitted = s.call(q, s.named(b"Generation")?, b"validateImageGeneration", &[])?;
+        let admitted = s.call(q, s.named(b"Generation")?, b"prepareImageSnapshot", &[])?;
         if admitted != s.named(b"true")? {
             s.reject(b"Managed generation changed during image save");
             return if s.is_error(admitted)? {
@@ -797,6 +810,10 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
             } else {
                 Err(bad())
             };
+        }
+        if snapshot_stamp(s, q)? != stamp {
+            s.reject(b"World changed during image snapshot");
+            return Ok(Operand::object(s.named(b"nil")?));
         }
         support::publish_atomic(path, &bytes).map_err(|_| bad())?;
         *s.report.borrow_mut() = Report {
@@ -1479,7 +1496,11 @@ unsafe fn load(
             for &(index, target, selector, provenance, behavior, _) in &publication {
                 attempted += 1;
                 let published = if index.is_null() {
-                    s.call(q, store, b"removeMethod:on:", &[selector, behavior])?
+                    let removed = s.send(behavior, b"removeMethod:", &[Operand::object(selector)])?;
+                    if let Some(value) = removed.as_object() {
+                        if s.is_error(value)? { return Err(Outcome::loaded(removed)); }
+                    }
+                    target
                 } else {
                     s.call(
                         q,
@@ -1488,7 +1509,7 @@ unsafe fn load(
                         &[index, target, selector, provenance],
                     )?
                 };
-                if published != store {
+                if published != target {
                     return Err(bad());
                 }
             }

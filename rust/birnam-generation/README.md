@@ -20,8 +20,9 @@ analyze source.
 The publication messages retain their existing selectors: candidate compilation,
 inspection/mapping, successor projection, prepare/commit, rollback, adoption,
 reconciliation, retirement and telemetry. Production callers now send these
-messages to Generation; Codegen has no publication aliases. `enterRunning` installs
-Generation's observer and mutation authorizer in Store. CompiledUnit,
+messages to Generation; Codegen has no publication aliases. `enterRunning` marks
+an explicit-operation phase without installing a global mutation authorizer or
+Store observer. CompiledUnit,
 DispatchGeneration and EvolutionIntent continue to own authored policy.
 
 `sourceRegistry` returns `[sealed, [name, source], ...]`; `sourceRegistrySealed`
@@ -101,18 +102,25 @@ mapping identities drive `retainedGenerationCount` and `retainedGenerationBytes`
 without themselves keeping code alive. File removal is retryable but is outside
 Store compensation: a failed discard can leave one or both author files removed.
 
-Generation adoption registers Generation with Store's completed method-mutation hook.
-Ordinary tracked edits of managed bindings publish drift immediately; raw Id edits
-remain detectable by explicit reconciliation. Candidate transactions acknowledge
-only their exact expected method mutation, so callback edits cannot hide inside a
-publication scope. A compensated transaction preserves any observed foreign drift.
-Image save validates the managed ledger before taking its snapshot and before
-publishing the file. Drift cannot be saved under an unchanged managed source identity. Host calls `enterRunning` at an idle boundary before console, socket, image-main
-and worker entry. Store's existing authorization callback then rejects ordinary
-method installation/removal. Reflect rejects before compiling an adapter or
-specializing a target. A candidate's exact publication admits one Store mutation;
-a nested callback cannot reuse that permission. Image publication has its own
-recovery extent, and neither extent leaves an ambient permission behind.
+Generation adoption still registers its observer for explicit Store-coordinated
+operations. Those operations acknowledge their exact expected mutation; ordinary
+Reflect/Id edits are instead detected by explicit reconciliation. Foreign callback
+edits are allowed while running and can invalidate a prepared transaction. The
+existing selective compensation and quiescent explicit-commit checks remain.
+
+`validateImageGeneration` stays strict for callers asking whether the managed
+revision is current. Image uses `prepareImageSnapshot`: it performs the existing
+lazy drift reconciliation, but permits a snapshot of changed live code. This can
+mark opted-in revision records drifted and disable rollback; it does not replace
+program bindings. Unimageable opaque native replacements of tracked bindings are
+still rejected. A snapshot consistency stamp rejects detected dictionary, Globals
+or fact-state changes during serialization without replacing the destination.
+
+Matching managed images still use composition/adoption. Drifted revision records
+reload as descriptive data with no transient ledger or activation capabilities;
+actual saved Methods remain callable and editable. Explicit managed validation and
+activation still reject stale/unadopted state. This does not make Store or Generation
+optional in full image/bootstrap paths yet, or fix advanced live-load compensation.
 
 The native `materialization` test also retains a reflected Method after its source
 Block is released, transfers ownership to an alias binding on another Block,

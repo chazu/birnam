@@ -98,7 +98,13 @@ pub(crate) unsafe fn recover_image(
         s.candidates.recovering_policy.set(true);
         let _guard = Guard(&s.candidates.recovering_policy);
         let nil = s.named(b"nil")?;
-        if current(s, q)? != nil {
+        let generation = current(s, q)?;
+        // Drifted revision data is retained as history, never adopted as
+        // authority for the actual restored Methods. Its old capabilities were
+        // removed at begin_recovery and are retired on successful completion.
+        let descriptive = generation != nil
+            && fact(s, q, generation, b"state")? == symbol(s, q, b"drifted")?;
+        if generation != nil && !descriptive {
             let policy = call(
                 s,
                 q,
