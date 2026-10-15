@@ -226,7 +226,10 @@ macro_rules! entry {
                 for arg in args {
                     values.push(object(*arg)?);
                 }
-                Scope::run(s, &values, |scope| execute(s, scope, r, &values[1..], $op))
+                // Native ABI callers cover the receiver and Object arguments
+                // for this invocation. Only detached snapshots and fresh results
+                // need this owner's additional scope (see execute/push/build).
+                Scope::run(s, &[], |scope| execute(s, scope, r, &values[1..], $op))
             })())
         }
     };

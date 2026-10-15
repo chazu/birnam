@@ -16,6 +16,17 @@ use super::{
 use core::{cell::{Cell, RefCell}, ffi::c_void};
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 
+// Rust's ThreadId is immutable for a thread's lifetime. Keep that value in
+// thread-local storage instead of cloning/dropping the Thread handle for every
+// Id message. Ownership is still checked at message entry and Id initialization.
+std::thread_local! {
+    static CURRENT_THREAD_ID: std::thread::ThreadId = std::thread::current().id();
+}
+#[inline]
+fn current_thread_id() -> std::thread::ThreadId {
+    CURRENT_THREAD_ID.with(|id| *id)
+}
+
 pub(crate) struct State {
     pub(crate) protocol: Protocol,
     memory: *mut ObjectMemory,
@@ -82,7 +93,7 @@ impl State {
             method_changed,
             detached: RefCell::new(std::collections::HashMap::new()),
             visits,
-            owner: std::thread::current().id(),
+            owner: current_thread_id(),
             #[cfg(feature="dispatch-metrics")]
             metrics: RefCell::new(metrics::Metrics::default()),
         });
@@ -154,7 +165,7 @@ unsafe extern "C" fn message(
     count: usize,
 ) -> Outcome {
     let state = unsafe { &*context.cast::<State>() };
-    if state.owner != std::thread::current().id() {
+    if state.owner != current_thread_id() {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     }
     let Some(args) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
@@ -233,7 +244,7 @@ unsafe extern "C" fn initialize(_: *const Protocol, _: *const Operand, count: us
     }
     let protocol = PROTOCOL.load(Ordering::Acquire);
     let state = unsafe { &*(*protocol).context.cast::<State>() };
-    if state.owner != std::thread::current().id() {
+    if state.owner != current_thread_id() {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     }
     Outcome::loaded(Operand::protocol(protocol))
@@ -243,3 +254,26 @@ pub(crate) const DESCRIPTOR: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
+
+#[cfg(test)]
+mod thread_identity_tests {
+    use super::current_thread_id;
+    #[test]
+    fn cached_thread_identity_agrees_and_never_crosses_thread_lifetimes() {
+        let parent=current_thread_id();
+        assert_eq!(parent,std::thread::current().id());
+        let mut seen=std::collections::HashSet::new();
+        seen.insert(parent);
+        for _ in 0..32 {
+            let child=std::thread::spawn(|| {
+                let id=current_thread_id();
+                for _ in 0..100 {
+                    assert_eq!(current_thread_id(),std::thread::current().id());
+                }
+                id
+            }).join().unwrap();
+            assert!(seen.insert(child),"a new thread must not inherit an old thread identity");
+            assert_eq!(current_thread_id(),parent);
+        }
+    }
+}

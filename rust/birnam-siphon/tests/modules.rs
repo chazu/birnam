@@ -26,6 +26,16 @@ unsafe fn load(
     request.extend_from_slice(args);
     unsafe { id.send(id.receiver, id.load, &request) }.expect("load production module")
 }
+// Only exercises the rejection boundary; the parent keeps the Id carrier live
+// and makes no concurrent owner-thread calls while the foreign thread runs.
+struct ForeignThreadProbe { id: Protocol, selector: Oop }
+unsafe impl Send for ForeignThreadProbe {}
+impl ForeignThreadProbe {
+    fn invoke(self) -> (u32, usize) {
+        let failure=unsafe {self.id.send(self.id.receiver,self.selector,&[])}.err().expect("foreign-thread Id message must decline");
+        (failure.status,failure.detail)
+    }
+}
 struct Counter {
     id: Protocol,
     alias: Oop,
@@ -108,6 +118,10 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
         );
         let id = birnam_siphon::load(directory.join("libbirnam_id.dylib").as_os_str().as_bytes())
             .expect("Siphon loads Id");
+        let selector=id.intern_name(b"allocationCount").unwrap();
+        let probe=ForeignThreadProbe {id,selector};
+        assert_eq!(std::thread::spawn(move || probe.invoke()).join().unwrap(),(native::INVALID_REQUEST,0));
+        assert!(id.send(id.receiver,selector,&[]).unwrap().as_word().is_some());
         let namespace = object(load(
             &id,
             &directory,

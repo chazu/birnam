@@ -1,6 +1,7 @@
 //! Weakly canonicalized Symbol objects and byte-oriented interning.
 #![allow(dead_code)] // R2.3 precedes bootstrap/export wiring.
 
+use core::cell::Cell;
 use core::ffi::c_char;
 use core::mem::offset_of;
 use core::ptr::NonNull;
@@ -82,6 +83,9 @@ pub(crate) struct Symbols {
     by_name_hash: NameDigestIndex,
     name_hasher: RandomState,
     query_digests: [u64; QUERY_NAMES.len()],
+    // Positions only: no Symbol is retained and no absence is memoized. A hit
+    // must match the current ordered record's digest and complete name bytes.
+    query_positions: [Cell<usize>; QUERY_NAMES.len()],
     owned_name_bytes: usize,
 }
 
@@ -95,6 +99,7 @@ impl Symbols {
             by_name_hash: NameDigestIndex::default(),
             name_hasher,
             query_digests,
+            query_positions: std::array::from_fn(|_| Cell::new(usize::MAX)),
             owned_name_bytes: 0,
         }
     }
@@ -115,22 +120,29 @@ impl Symbols {
     /// Non-allocating identity query for a guarded native region. A missing
     /// symbol requires ordinary interning at its baseline observation boundary.
     pub(crate) fn existing(&self, bytes: &[u8]) -> Option<Oop> {
-        let hash = match bytes {
-            b"tryRepresentationIdentityOf:behavior:bytes:" => self.query_digests[0],
-            b"behaviorOf:" => self.query_digests[1],
-            b"allocationSizeOf:" => self.query_digests[2],
-            b"identityOf:" => self.query_digests[3],
-            b"tryRepresentationsOf:behavior:bytes:" => self.query_digests[4],
-            b"allocate:bytes:" => self.query_digests[5],
-            b"allocationChargeFor:" => self.query_digests[6],
-            b"isBehavior:" => self.query_digests[7],
-            b"behaviorEpoch" => self.query_digests[8],
-            b"bind:to:" => self.query_digests[9],
-            b"usesDefaultLookup:" => self.query_digests[10],
-            _ => self.name_hasher.hash_one(bytes),
+        let query = match bytes {
+            b"tryRepresentationIdentityOf:behavior:bytes:" => 0,
+            b"behaviorOf:" => 1,
+            b"allocationSizeOf:" => 2,
+            b"identityOf:" => 3,
+            b"tryRepresentationsOf:behavior:bytes:" => 4,
+            b"allocate:bytes:" => 5,
+            b"allocationChargeFor:" => 6,
+            b"isBehavior:" => 7,
+            b"behaviorEpoch" => 8,
+            b"bind:to:" => 9,
+            b"usesDefaultLookup:" => 10,
+            _ => return self.find_hashed(bytes, self.name_hasher.hash_one(bytes)),
         };
-        // Always search the current weak inventory and compare full names.
-        self.find_hashed(bytes, hash)
+        let hash = self.query_digests[query];
+        if let Some(record) = self.ordered.get(self.query_positions[query].get()) {
+            if record.name_hash == hash && record.bytes() == bytes {
+                return Some(record.object);
+            }
+        }
+        let index = self.find_hashed_index(bytes, hash);
+        self.query_positions[query].set(index.unwrap_or(usize::MAX));
+        index.map(|index| self.ordered[index].object)
     }
 
     #[cfg(test)]
@@ -144,11 +156,15 @@ impl Symbols {
     }
 
     fn find_hashed(&self, bytes: &[u8], hash: u64) -> Option<Oop> {
+        self.find_hashed_index(bytes, hash).map(|index| self.ordered[index].object)
+    }
+
+    fn find_hashed_index(&self, bytes: &[u8], hash: u64) -> Option<usize> {
         let mut index = self.by_name_hash.get(&hash).copied();
         while let Some(current) = index {
             let record = &self.ordered[current];
             if record.bytes() == bytes {
-                return Some(record.object);
+                return Some(current);
             }
             index = record.next_same_hash;
         }
@@ -322,6 +338,13 @@ mod tests {
                 let mut neighbor = name.clone(); neighbor[0] = b'!';
                 let other = symbols.intern(&mut heap, behavior, &neighbor).unwrap();
                 assert_eq!(symbols.existing(&neighbor), Some(other));
+                // Arbitrary stale hints, including a live wrong name and an
+                // out-of-range slot, cannot substitute for current membership.
+                let query = QUERY_NAMES.iter().position(|q| *q == name.as_slice()).unwrap();
+                for hint in [symbols.ordered.len()-1, usize::MAX, 0] {
+                    symbols.query_positions[query].set(hint);
+                    assert_eq!(symbols.existing(&name), Some(first));
+                }
                 assert_eq!(symbols.remove_objects(&[(first.addr(), ())].into_iter().collect()), 1);
                 assert_eq!(symbols.existing(&name), None);
                 assert_eq!(symbols.existing(&neighbor), Some(other));
@@ -330,6 +353,26 @@ mod tests {
                 assert_eq!(symbols.existing(&name), Some(second));
             }
         }
+    }
+
+    #[test]
+    fn query_position_hint_rejects_a_same_digest_wrong_name() {
+        let mut heap = ObjectMemory::new();
+        let behavior = heap.allocate(0);
+        let mut symbols = Symbols::new();
+        let query = 1;
+        let name = QUERY_NAMES[query];
+        let target = symbols.intern(&mut heap, behavior, name).unwrap();
+        let digest = symbols.query_digests[query];
+        symbols.intern_hashed(&mut heap, behavior, b"different-query", digest);
+        symbols.query_positions[query].set(1);
+        assert_eq!(symbols.existing(name), Some(target));
+        symbols.remove_objects(&[(target.addr(), ())].into_iter().collect());
+        symbols.query_positions[query].set(0);
+        assert_eq!(symbols.existing(name), None);
+        let replacement = symbols.intern(&mut heap, behavior, name).unwrap();
+        assert_ne!(replacement, target);
+        assert_eq!(symbols.existing(name), Some(replacement));
     }
 
     #[test]

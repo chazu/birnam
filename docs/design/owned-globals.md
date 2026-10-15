@@ -244,3 +244,7 @@ The [qualification receipt](../measurements/owned-globals-20261014.json) records
 source/runtime hashes, native-test coverage, formal counts, logs and benchmark
 observations. Qualification ran against the working tree before commit; the
 installed release was not replaced.
+
+Follow-up: [authored-access runtime costs](authored-access-costs.md) profiles this
+owned-Globals baseline and measures general runtime improvements without changing
+its binding authority or late-bound semantics.
