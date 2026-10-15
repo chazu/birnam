@@ -1,6 +1,12 @@
 # Method publication ownership
 
-2026-10-14. **Design and executable characterization; migration not implemented.**
+2026-10-14. **Historical coordinator proposal and executable characterization.**
+The [minimal-mutation decision](minimal-mutation-and-coordination.md) supersedes
+moving this entire pipeline into a mandatory `MethodPublication` owner. Ordinary
+Reflect edits should compose the existing dictionary/Method owners; Generation,
+descriptions and advanced live restoration supply their guarantees explicitly.
+The contracts below remain evidence about the existing implementation and the
+previous proposal, not instructions to reproduce every layer in the default path.
 This is the remaining publication part of step 5 of the
 [optional Store decision](optional-store-and-relational.md). Globals has already
 moved. The accompanying [audit](store-removal-audit.md) checks the completed slices.
@@ -18,6 +24,20 @@ now handles ordinary source definitions. [Supplied templates](supplied-method-te
 cover resumable artifacts and image reconstruction as well. Explicit synchronous
 construction, uniform error semantics and the publication owner migration remain
 pending. Sharing construction code does not remove Store publication or its mirror.
+
+## Follow-up investigation
+
+The [concerns report](store-refactor-concerns.md) tests a proposed ordinary-result
+publisher across fresh/mapped/rebuilt policy. Required observer Errors are failures
+under that proposed contract, deliberately replacing the historical void-Error
+rule in the characterization below. Normal resumable construction can support this
+owner without preserving synchronous adapter error behavior. The prototype is not
+a production cutover or a proof of all native boundaries.
+
+The same investigation reproduces Image compensation overwriting intervening
+method/Global/fact writes, including on installed 0.17.0. Correct that recovery
+boundary before migrating publication. The native-failure gate below is historical
+characterization, not a requirement to preserve the rejected dual convention.
 
 ## Authority and boundaries
 

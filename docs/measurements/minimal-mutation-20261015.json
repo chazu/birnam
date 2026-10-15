@@ -1,0 +1,172 @@
+{
+  "date": "2026-10-15",
+  "head": "70d9cf1442e15349e57e9079f934ef3981163358",
+  "investigation_complete": true,
+  "production_cutover": false,
+  "scope": "Existing-primitives feasibility, current-policy characterization and proposed separation. Live image restoration retained as an explicit advanced feature at user direction. No runtime, bootstrap, installed version or production admission behavior changed.",
+  "source_sha256": {
+    "docs/design/minimal-mutation-and-coordination.md": "c5a4189a902116f54380ebd6a1567a5eb74fab9309c29aec9d472f826e05f929",
+    "docs/design/method-publication-owner.md": "e8065643383ba5e031703b212b5cc243a04a23611759724cf8edb5b9dc630776",
+    "docs/design/optional-store-and-relational.md": "93ebcdeae5158fe1390383f2d69d2951e8f4a449a0629a1ad182a8df4cd19a6b",
+    "scripts/minimal-mutation-test.py": "9e7eeaf701ee786319119721efa78aaf90625a851dc0de4e99d96721104dd5db",
+    "scripts/mutation-policy-boundary-test.py": "e498e287e1dc554d1733f31defed42da4f67f749912cbac41353c1a7894bb0ea",
+    "rust/birnam-siphon/tests/minimal_mutation.rs": "a1cc55657b86c3e7c372a60e153e328c0cd3576e68cd45e6c3a8aa0f8d2dcd1a",
+    "formal/semantics/lean/SharedInvocation.lean": "e53273962d2a6ca43295aacb974bcbfcd611482839ce06f23f04459e8d921746",
+    "formal/semantics/lean/SemanticsAudit.lean": "60d6bd2092779967a721b2f1bef882f3e1c21869718e7e68b8243cf7a745bb4a",
+    "scripts/check-rooting-model.py": "f43e5cdfb3809cc21b909a78fd3a9d957951bafa072b4195ae7cdfe4abca9cb8",
+    "formal/semantics/tla/MutationLayerSafe.cfg": "c8d2148a8d8409ff7204a86623b6a4cd50b9a7cade313c0270f8a1b8511aedf8",
+    "formal/semantics/tla/MutationLayerStale.cfg": "c4587a0636922eaab3e6767eaafd60351a7170a88b298e62aafbcb1785baa0d8",
+    "formal/semantics/tla/MutationLayers.tla": "5168789d0e830d2b92a2aadc764b5ec2a74454c0c35fd40f8ac34198eceb70a2",
+    "formal/semantics/tla/MutationLayerGuard.cfg": "628e144d94f8761652666652ab209b6a9b5cd543d0fa4f263deef65a41547239",
+    "formal/semantics/tla/MutationLayerMirror.cfg": "b3a8d4efb785b354a99cadafbfb1ef3224592dd36ba19c3d4f28f7170e2c4954",
+    "formal/semantics/tla/MutationLayerEntered.cfg": "d898d6430e656478d8293a83035b3f49a519c62096fe596149c781da4e4f7532",
+    "rust/birnam-id/src/id/native_id/registries.rs": "7f61befd685391033591f01c653acc05d4d7c89e812bd408a4afdf41b482b5c5",
+    "rust/birnam-id/src/id/vtable.rs": "6e06b218709bab5fedd0a64926d0cc7a1dc22d4578372d643f13bf5821164774",
+    "rust/birnam-execution/src/lib.rs": "04cfe078969a593f017b0b44141466fcdba6aee8f84e5c72251ee7af572111cc",
+    "rust/birnam-generation/src/candidate_phase.rs": "c862a83fa6cc2d547567247a15363947fc374ce479f38aac4c6ffdc864147613",
+    "rust/birnam-generation/src/candidate_ledger.rs": "99ab68845cc324ca8b86d290a69f6f7a63c5e6777bca9d07d02248d1e97b5ad7",
+    "rust/birnam-host-entry/src/startup.rs": "77999104b39e7ee33e7d81533ebeb871e2e6b47d1032aa7315b1c563af4171f0",
+    "rust/birnam-host-entry/src/image.rs": "db23d2f0c7761facfef14ee740f0202187e4f16195fcc36d7eee28edf9ac4f86",
+    "rust/birnam-codegen-runtime/src/lib.rs": "024d7027ce74c641a3a3c5d2c1a188ba3eee03d015bdb7f887d987e891c5b889"
+  },
+  "floor": {
+    "export": {
+      "argv": [
+        "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-minimal-mutation-xn52uvmt/export.birnam"
+      ],
+      "exit_code": 0,
+      "output": "0\n0\n0\n0\n",
+      "stderr": "",
+      "stdout": "0\n0\n0\n0\n",
+      "wall_ns": 4097853750
+    },
+    "floor_sha256": {
+      "libbirnam_boolean.dylib": "39a910c3c1ca8f97155db40e558aacae9433d7aa005a56e622691dbac9711ef5",
+      "libbirnam_bytes.dylib": "8383ab62ed8b43298e6051520319f3ed77578f86fc221a8e47567e42a2457167",
+      "libbirnam_codegen_runtime.dylib": "cd8fa4cfc87a6770272a5a7e1d8b27e7682015fd24bd2b3122dc94edcdd01d7e",
+      "libbirnam_collect.dylib": "29e2b19b0af02956c807497d915dc3fd621cf42effd49559475a9a1aec15f083",
+      "libbirnam_execution.dylib": "3761d93a96df18c881dbb12d39bae59caa6a5cdc9f81b0f4aadde3dbdba81f7f",
+      "libbirnam_id.dylib": "5bdaaa7517efa6be4c7db7038117777759d58e8dd762bbf1c310eae0eb7ed711",
+      "libbirnam_integer.dylib": "cef4c1470e87071caacfea727ccfa11ed274954d3e0b7289503ea0bf888d79dc",
+      "libbirnam_map.dylib": "e3585179d7c068acdd3912c8bfa8caf65dd533210bbf09e8c4705bf3d7110233",
+      "libbirnam_namespace.dylib": "e1609177019694e804b9ac06a5a4cb2bee4fef8812611f0c2315a63b8ec8a869",
+      "libbirnam_native_backend.dylib": "bc7172e2b64d05f22b115b176398c172faa88750a1faa911a03b370a37196413",
+      "libbirnam_nil.dylib": "b2e8b3b3ae571ee26a4b275d19de31de1bc43c465433f0228416d4bb4147f4da",
+      "libbirnam_object_model.dylib": "7a34aa43e086de01bdb919003a293981482617d392477027ccdb670335c9a0a9",
+      "libbirnam_portable_code.dylib": "02a91468b99275e7a18ceef46c50e0cd4724a478782a627a810e655f97dd9500",
+      "libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+      "libbirnam_string.dylib": "0790146904c9b6fea2a0e50a1583879196d2679cf927b466fc46dd0c3fecf827",
+      "libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514",
+      "libbirnam_vector.dylib": "6db1ff5150e822db04a57dcd5e833abfcae742283fd1c2cb53a4df6e666fe1dc",
+      "libbirnam_word.dylib": "2e11a15d43e434c977d95ae3143716ad3073c56e5c8a64d29e54c3f4d1d0d3eb"
+    },
+    "passed": true,
+    "prefix": "/private/tmp/birnam-supplied-templates/prefix",
+    "program_sha256": {
+      "0.bin": "815858a32736d3c8fd5963678ce9981a27ca13ee4b61b15bd9e424566dc2a66e",
+      "1.bin": "2c91241ffe308d2d1ffed34c3b0e4bf7c9a8caf8a043f03301a84743c268ab18",
+      "2.bin": "967c92521441fd2e678f42cf8acad89add6330a2f7153abb314849ed71eadff2",
+      "3.bin": "4e0fc7fabe49b47be81e545cb469fe9d404fe859d41305dc3f4f397f4542b5f3"
+    },
+    "run": {
+      "argv": [
+        "mise",
+        "exec",
+        "--",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "birnam-siphon",
+        "--test",
+        "minimal_mutation",
+        "--",
+        "--include-ignored",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s\n     Running tests/minimal_mutation.rs (.cargo-target/native-message-tests/debug/deps/minimal_mutation-b5a925d8fec823b2)\nminimal-mutation: direct install/remove, inheritance, warmed lookup, captured/entered Methods, live implementation sends, ABA and GC passed without Store/Relational/Generation\n",
+      "stderr": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s\n     Running tests/minimal_mutation.rs (.cargo-target/native-message-tests/debug/deps/minimal_mutation-b5a925d8fec823b2)\nminimal-mutation: direct install/remove, inheritance, warmed lookup, captured/entered Methods, live implementation sends, ABA and GC passed without Store/Relational/Generation\n",
+      "stdout": "\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n",
+      "wall_ns": 239397416
+    },
+    "scope": "Existing primitives on a physically Store/Relational/Generation/Bootstrap-free floor. Portable bodies exported beforehand; no parser, source metadata or whole application bootstrap. No production Reflect default changed.",
+    "source_sha256": {
+      "rust/birnam-siphon/tests/minimal_mutation.rs": "a1cc55657b86c3e7c372a60e153e328c0cd3576e68cd45e6c3a8aa0f8d2dcd1a",
+      "scripts/minimal-mutation-test.py": "9e7eeaf701ee786319119721efa78aaf90625a851dc0de4e99d96721104dd5db"
+    }
+  },
+  "running_policy": {
+    "expected": "true\ntrue\n9\n777\n9\ntrue\n",
+    "image_sha256": "b57ea42cb06175fe56a625a8ff5bf368b1ac1dd3c6ddde7093a044cf04848408",
+    "passed": true,
+    "prefix": "/private/tmp/birnam-supplied-templates/prefix",
+    "run": {
+      "argv": [
+        "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-mutation-policy-o1qpjfax/policy.image"
+      ],
+      "exit_code": 0,
+      "output": "true\ntrue\n9\n777\n9\ntrue\n",
+      "stderr": "",
+      "stdout": "true\ntrue\n9\n777\n9\ntrue\n",
+      "wall_ns": 4799401125
+    },
+    "saved": {
+      "argv": [
+        "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-mutation-policy-o1qpjfax/writer.birnam"
+      ],
+      "exit_code": 0,
+      "output": "#saved\n",
+      "stderr": "",
+      "stdout": "#saved\n",
+      "wall_ns": 34531748292
+    },
+    "scope": "Current behavior characterization: running Reflect guard rejects; existing vtable mutation succeeds; captured Method survives; no managed generation was adopted, so its explicit validator still succeeds. Not a production policy change.",
+    "script_sha256": "e498e287e1dc554d1733f31defed42da4f67f749912cbac41353c1a7894bb0ea"
+  },
+  "formal": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-pz4bwk0m/summary.json",
+    "sha256": "cd14dde992d136c0954fe06bac0e0d78fea6e6f6d0d986b2e6b77966f0f0bb61",
+    "theorems": 305,
+    "rejected_mutations": 80,
+    "tlc_outcomes": 187
+  },
+  "logs": {
+    "floor.log": {
+      "output": "\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s\n     Running tests/minimal_mutation.rs (.cargo-target/native-message-tests/debug/deps/minimal_mutation-b5a925d8fec823b2)\nminimal-mutation: direct install/remove, inheritance, warmed lookup, captured/entered Methods, live implementation sends, ABA and GC passed without Store/Relational/Generation\n\n/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-minimal-mutation-xn52uvmt/results.json\n",
+      "sha256": "acb9c8a0d1fdc944d2b47dd6b955e23bb3f3d3f463af65a2a387af603ebcbc3c",
+      "exit_code": 0
+    },
+    "policy.log": {
+      "output": "true\ntrue\n9\n777\n9\ntrue\n\n/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-mutation-policy-o1qpjfax/results.json\n",
+      "sha256": "3c98e85deb2ba0330f523ac98ba55a96168a800f74729d7dd9617300628116ac",
+      "exit_code": 0
+    },
+    "managed-control.log": {
+      "output": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s\n     Running tests/generation_ledger.rs (.cargo-target/native-message-tests/debug/deps/generation_ledger-cee5352ccd0acd77)\n\nrunning 1 test\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\n",
+      "sha256": "b1c3777561f0a67ae46f13894d47bec3deb017e952550a091d645ac1ecdb01c2",
+      "exit_code": 0
+    },
+    "formal.log": {
+      "output": "TLC MutationLayerSafe: pass (0.635s)\nTLC MutationLayerGuard: expected counterexample (0.549s)\nTLC MutationLayerMirror: expected counterexample (0.551s)\nTLC MutationLayerEntered: expected counterexample (0.558s)\nTLC MutationLayerStale: expected counterexample (0.563s)\nTLC ResultPublicationSafe: pass (0.562s)\nTLC ResultPublicationOverwrite: expected counterexample (0.558s)\nTLC ResultPublicationLateExpected: expected counterexample (0.56s)\nTLC ResultPublicationImplicit: expected counterexample (0.547s)\nTLC ResultPublicationIgnored: expected counterexample (0.55s)\nTLC ResultPublicationReplay: expected counterexample (0.551s)\nTLC SuppliedSafe: pass (0.545s)\nTLC SuppliedArity: expected counterexample (0.558s)\nTLC SuppliedSync: expected counterexample (0.549s)\nTLC SuppliedReplay: expected counterexample (0.553s)\nTLC SuppliedNested: expected counterexample (0.555s)\nTLC TemplateSafe: pass (0.56s)\nTLC TemplateOverwrite: expected counterexample (0.562s)\nTLC TemplateRevision: expected counterexample (0.555s)\nTLC TemplateStale: expected counterexample (0.567s)\nTLC TemplateReplay: expected counterexample (0.559s)\nTLC TemplateLive: expected counterexample (0.572s)\nTLC TemplatePersist: expected counterexample (0.564s)\nTLC MethodBindSafe: pass (0.566s)\nTLC MethodBindAlias: expected counterexample (0.559s)\nTLC MethodBindRoot: expected counterexample (0.558s)\nTLC MethodBindRetention: expected counterexample (0.554s)\nTLC SharedCallSafe: pass (0.556s)\nTLC SharedCallCached: expected counterexample (0.553s)\nTLC SharedCallSharedState: expected counterexample (0.555s)\nTLC SharedCallRoot: expected counterexample (0.559s)\nTLC SharedCallReplay: expected counterexample (0.551s)\nTLC SharedCallFrame: expected counterexample (0.549s)\nTLC SharedCallBarrier: expected counterexample (0.563s)\nTLC PublicationImageSafe: pass (0.544s)\nTLC PublicationImageMapped: expected counterexample (0.55s)\nTLC PublicationImageRebuilt: expected counterexample (0.554s)\nTLC ReentrySafe: pass (0.549s)\nTLC ReentryOverwrite: expected counterexample (0.55s)\nTLC ReentrySwallow: expected counterexample (0.546s)\nTLC ReentryReplay: expected counterexample (0.55s)\nTLC PublicationSafe: pass (0.556s)\nTLC PublicationRollback: expected counterexample (0.555s)\nTLC PublicationEarly: expected counterexample (0.557s)\nTLC PublicationError: expected counterexample (0.562s)\nTLC PublicationRoot: expected counterexample (0.556s)\nTLC PublicationLeak: expected counterexample (0.556s)\nTLC DriveSafe: pass (0.553s)\nTLC DriveEpoch: expected counterexample (0.559s)\nTLC DriveAction: expected counterexample (0.554s)\nTLC DriveScope: expected counterexample (0.554s)\nTLC DriveFrame: expected counterexample (0.558s)\nTLC DriveLease: expected counterexample (0.554s)\nTLC OwnedSafe: pass (0.558s)\nTLC OwnedLost: expected counterexample (0.562s)\nTLC OwnedForeign: expected counterexample (0.555s)\nTLC OwnedCredits: expected counterexample (0.555s)\nTLC OwnedImage: expected counterexample (0.553s)\nTLC OwnedConstruction: expected counterexample (0.561s)\nTLC OwnedABA: expected counterexample (0.559s)\nTLC RegistrySafe: pass (0.573s)\nTLC RegistryAbort: expected counterexample (0.566s)\nTLC RegistryLost: expected counterexample (0.564s)\nTLC RegistryField: expected counterexample (0.559s)\nTLC SearchSafe: pass (0.559s)\nTLC SearchReplay: expected counterexample (0.563s)\nTLC SearchStale: expected counterexample (0.578s)\nTLC SearchRoot: expected counterexample (0.567s)\nTLC SearchNil: expected counterexample (0.566s)\nTLC TablesSmall: pass (0.602s)\nTLC TablesLarge: pass (0.752s)\nTLC TablesKey: expected counterexample (0.564s)\nTLC TablesFull: expected counterexample (0.569s)\nTLC TablesWorld: expected counterexample (0.593s)\nTLC HelperSafe: pass (0.555s)\nTLC HelperTransitive: expected counterexample (0.557s)\nTLC HelperAddress: expected counterexample (0.554s)\nTLC HelperDispatch: expected counterexample (0.558s)\nTLC SlotSafe: pass (0.56s)\nTLC SlotKey: expected counterexample (0.564s)\nTLC SlotValue: expected counterexample (0.565s)\nTLC SlotParent: expected counterexample (0.55s)\nTLC RelationalSafe: pass (0.69s)\nTLC RelationalCached: expected counterexample (0.578s)\nTLC RelationalShared: expected counterexample (0.577s)\nTLC RelationalExpired: expected counterexample (0.561s)\nTLC RelationalFailure: expected counterexample (0.575s)\nTLC RelationalReplay: expected counterexample (0.58s)\nTLC IndexedSafe: pass (0.588s)\nTLC IndexedBounds: expected counterexample (0.588s)\nTLC IndexedReplay: expected counterexample (0.564s)\nTLC IndexedStale: expected counterexample (0.563s)\nTLC IndexedEarly: expected counterexample (0.573s)\nTLC ShapesSafe: pass (0.558s)\nTLC ShapesSecond: expected counterexample (0.566s)\nTLC ShapesServices: expected counterexample (0.568s)\nTLC ShapesOwn: expected counterexample (0.558s)\nTLC ShapesDelay: expected counterexample (0.572s)\nTLC ShapesOrder: expected counterexample (0.571s)\nTLC FinishSafe: pass (0.558s)\nTLC FinishMissing: expected counterexample (0.565s)\nTLC FinishEarly: expected counterexample (0.554s)\nTLC FinishOrder: expected counterexample (0.559s)\nTLC Safe: pass (0.707s)\nTLC BranchSafe: pass (0.57s)\nTLC BranchBoth: expected counterexample (0.564s)\nTLC BranchStale: expected counterexample (0.563s)\nTLC BranchArguments: expected counterexample (0.566s)\nTLC BranchReplay: expected counterexample (0.568s)\nTLC LocalSafe: pass (0.573s)\nTLC LocalUnrooted: expected counterexample (0.574s)\nTLC LocalEviction: expected counterexample (0.556s)\nTLC LocalStale: expected counterexample (0.572s)\nTLC LocalEdge: expected counterexample (0.562s)\nTLC LocalEarly: expected counterexample (0.562s)\nTLC LocalLeak: expected counterexample (0.564s)\nTLC ResolveSafe: pass (0.587s)\nTLC ResolveNil: expected counterexample (0.567s)\nTLC ResolveGlobals: expected counterexample (0.556s)\nTLC ResolveReboundNil: expected counterexample (0.567s)\nTLC ResolveEarly: expected counterexample (0.569s)\nTLC ResolveOrder: expected counterexample (0.564s)\nTLC ShapeSafe: pass (0.559s)\nTLC ShapeGetter: expected counterexample (0.552s)\nTLC ShapeOwn: expected counterexample (0.577s)\nTLC ShapeCached: expected counterexample (0.565s)\nTLC ShapeDelay: expected counterexample (0.562s)\nTLC ShapeOrder: expected counterexample (0.553s)\nTLC SnapshotSafe: pass (0.558s)\nTLC SnapshotNode: expected counterexample (0.557s)\nTLC SnapshotInputs: expected counterexample (0.551s)\nTLC SnapshotEarly: expected counterexample (0.563s)\nTLC OwnerSafe: pass (0.557s)\nTLC OwnerReport: expected counterexample (0.578s)\nTLC OwnerEarly: expected counterexample (0.569s)\nTLC OwnerNested: expected counterexample (0.551s)\nTLC OwnerLeak: expected counterexample (0.557s)\nTLC OwnerGap: expected counterexample (0.565s)\nTLC BulkSafe: pass (0.552s)\nTLC BulkAdmission: expected counterexample (0.563s)\nTLC BulkCopy: expected counterexample (0.558s)\nTLC BulkOrder: expected counterexample (0.557s)\nTLC BulkScope: expected counterexample (0.564s)\nTLC CaptureSafe: pass (0.576s)\nTLC CaptureFresh: expected counterexample (0.56s)\nTLC CaptureGrant: expected counterexample (0.569s)\nTLC CaptureScope: expected counterexample (0.57s)\nTLC CaptureEdge: expected counterexample (0.556s)\nTLC CaptureCached: expected counterexample (0.565s)\nTLC InvocationSafe: pass (0.565s)\nTLC InvocationUncovered: expected counterexample (0.561s)\nTLC InvocationEarlyExit: expected counterexample (0.563s)\nTLC InvocationMissingResult: expected counterexample (0.556s)\nTLC InvocationReturnGap: expected counterexample (0.566s)\nTLC InvocationLostCode: expected counterexample (0.556s)\nTLC AdmissionSafe: pass (0.65s)\nTLC AdmissionContext: expected counterexample (0.571s)\nTLC AdmissionServices: expected counterexample (0.571s)\nTLC AdmissionPermission: expected counterexample (0.609s)\nTLC AdmissionEpoch: expected counterexample (0.619s)\nTLC RegionAddition: pass (0.756s)\nTLC RegionString: pass (0.622s)\nTLC RegionCollection: pass (0.619s)\nTLC RegionStale: expected counterexample (0.604s)\nTLC RegionPermission: expected counterexample (0.609s)\nTLC RegionExposure: expected counterexample (0.583s)\nTLC RegionReplay: expected counterexample (0.583s)\nTLC RegionCodeLease: expected counterexample (0.613s)\nTLC RegionOwner: expected counterexample (0.58s)\nTLC RegistrationSafe: pass (0.643s)\nTLC RegistrationUnrooted: expected counterexample (0.59s)\nTLC RegistrationPartial: expected counterexample (0.6s)\nTLC BatchSafe: pass (0.687s)\nTLC BorrowSafe: pass (0.546s)\nTLC BorrowCallback: expected counterexample (0.546s)\nTLC BatchStale: expected counterexample (0.587s)\nTLC BatchOrder: expected counterexample (0.595s)\nTLC Canonical: pass (0.626s)\nTLC Graph: pass (0.742s)\nTLC Nested: pass (1.492s)\nTLC Recovery: pass (0.827s)\nTLC OmitFirst: expected counterexample (0.585s)\nTLC EarlyRelease: expected counterexample (0.584s)\nTLC IgnorePermission: expected counterexample (0.592s)\nTLC BadRevoke: expected counterexample (0.614s)\nTLC LeakExit: expected counterexample (0.591s)\nTLC UnfairRecovery: expected counterexample (0.742s)\nLean ordinary-edit-creates-facts: rejected\nLean prepared-edit-ignores-revision: rejected\nLean ordinary-edit-keeps-old-revision: rejected\nLean rollback-overwrites-intervening-write: rejected\nLean ordinary-ack-discards-error: rejected\nLean ordinary-native-drops-detail: rejected\nLean supplied-code-key-omits-payload: rejected\nLean supplied-sync-shares-unit: rejected\nLean supplied-overwrites-nested-winner: rejected\nLean cache-conflict-overwrites-current: rejected\nLean cache-mutates-global-basis: rejected\nLean template-publish-erases-other-arity: rejected\nLean template-error-loses-identity: rejected\nLean binding-reuses-old-identity: rejected\nLean binding-reuses-old-implementation: rejected\nLean shared-call-uses-common-implementation: rejected\nLean shared-call-copies-receiver-wrong: rejected\nLean publication-confuses-error-with-failure: rejected\nLean publication-assumes-scope-is-local: rejected\nLean registry-reentry-overwrite: rejected\nLean owner-cas-overwrites-new-root: rejected\nLean owner-image-keeps-credits: rejected\nLean owner-name-uses-value-equality: rejected\nLean binding-nil-is-absent: rejected\nLean binding-inverse-overwrites-conflict: rejected\nLean private-index-confuses-collisions: rejected\nLean private-index-reorders-roots: rejected\nLean scratch-overwrites-public-world: rejected\nLean scratch-drops-catalog-publication: rejected\nLean default-cell-publishes-facts: rejected\nLean cell-reads-wrong-slot: rejected\nLean registry-declaration-clears-loaded: rejected\nLean registry-write-publishes-facts: rejected\nLean mirror-writes-wrong-slot: rejected\nLean mirror-rename-moves-values: rejected\nLean ordering-replays-byte: rejected\nLean ordering-drops-effects: rejected\nLean search-replays-hit: rejected\nLean search-drops-effects: rejected\nLean cached-digest-wrong-name: rejected\nLean digest-collision-aliases-name: rejected\nLean log-keeps-seven: rejected\nLean range-wrong-end-comparison: rejected\nLean json-unsafe-short-bound: rejected\nLean json-ignore-uppercase-exponent: rejected\nLean json-wrong-kind-handler: rejected\nLean json-skip-backslash-scan: rejected\nLean json-reuse-nonempty-identity: rejected\nLean lose-full-cache-fallback: rejected\nLean skip-retained-helper-body: rejected\nLean charge-whole-capacity-again: rejected\nLean unchecked-slot-hint: rejected\nLean freeze-relational-comparison: rejected\nLean reverse-indexed-edge: rejected\nLean ignore-second-batched-entry: rejected\nLean wrong-direct-integer-operation: rejected\nLean float-remainder-handler: rejected\nLean ignore-metadata-current: rejected\nLean accept-unknown-metadata-identity: rejected\nLean omit-owner-local-report: rejected\nLean admit-nonempty-return: rejected\nLean reverse-identity-selection: rejected\nLean drop-capture-reachability: rejected\nLean ignore-bulk-own-binding: rejected\nLean ignore-capture-query-binding: rejected\nLean reverse-branch-choice: rejected\nLean unrooted-local-hint: rejected\nLean cache-false-selector: rejected\nLean drop-uncovered-locals: rejected\nLean ignore-entry-context: rejected\nLean wrong-release-order: rejected\nLean lost-index-mark: rejected\nLean wrong-memo-key: rejected\nLean truncated-borrow: rejected\nLean ignore-observation: rejected\nLean ignore-permission: rejected\nLean free-owner-batch: rejected\nLean omit-first: rejected\nLean leak-on-exit: rejected\nLean skip-materialization: rejected\nLean: 305 theorems checked; only standard kernel axioms\nRooting verification passed: /Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-pz4bwk0m/summary.json\n",
+      "sha256": "5052b9f166c7715adc0af61f01bf8e570f6f9e31e46fed9f6a13db29ffd02721",
+      "exit_code": 0
+    }
+  },
+  "runtime": {
+    "prefix": "/tmp/birnam-supplied-templates/prefix",
+    "receipt_sha256": "cd7cf7334d93881810c86ec996996a7cfcac92bb4b52ff5cec3432e12f613a30",
+    "native_control_modules": "/tmp/birnam-supplied-templates/native/lib"
+  },
+  "limits": [
+    "Floor has no parser/source metadata or complete application bootstrap; it uses exported portable bodies and existing native compiler seed.",
+    "Floor does not qualify every optimization/deoptimization path; no such production path was changed.",
+    "Current policy characterization asserts the existing blanket restriction, not the desired future behavior.",
+    "No mandatory publication owner or generic cross-owner transaction service was introduced.",
+    "Advanced live image compensation defect remains unfixed."
+  ]
+}

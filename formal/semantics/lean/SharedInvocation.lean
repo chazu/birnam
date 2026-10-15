@@ -130,4 +130,31 @@ def publishActivation (current : Option Nat) (created : Nat) : Option Nat :=
 theorem nested_activation_winner_survives (winner created : Nat) :
     publishActivation (some winner) created = some winner := by rfl
 
+-- Ordinary mutation is separate from an explicitly prepared transaction.
+structure EditState where
+  binding : Nat
+  epoch : Nat
+  facts : Nat
+  deriving DecidableEq
+
+def directEdit (s : EditState) (method : Nat) : EditState :=
+  { s with binding := method, epoch := s.epoch + 1 }
+
+def applyPrepared (observed : Nat) (s : EditState) (method : Nat) : EditState :=
+  if s.epoch = observed then directEdit s method else s
+
+theorem ordinary_edit_does_not_assert_facts (s : EditState) (m : Nat) :
+    (directEdit s m).facts = s.facts := by rfl
+
+theorem ordinary_edit_changes_future_binding (s : EditState) (m : Nat) :
+    (directEdit s m).binding = m := by rfl
+
+theorem stale_preparation_cannot_overwrite (observed : Nat) (s : EditState) (m : Nat)
+    (stale : s.epoch ≠ observed) :
+    applyPrepared observed s m = s := by simp [applyPrepared, stale]
+
+theorem edit_invalidates_old_preparation (s : EditState) (edit planned : Nat) :
+    applyPrepared s.epoch (directEdit s edit) planned = directEdit s edit := by
+  simp [applyPrepared, directEdit]
+
 end Birnam.SharedInvocation

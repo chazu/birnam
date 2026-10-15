@@ -1,0 +1,824 @@
+{
+  "date": "2026-10-15",
+  "head": "70d9cf1442e15349e57e9079f934ef3981163358",
+  "investigation_complete": true,
+  "production_runtime_changed": false,
+  "scope": "Characterization, prototype and abstract-model evidence. Known Image compensation defect remains unfixed; the desired preservation assertion fails as expected. No full language/release gate rerun for these test/document-only changes.",
+  "source_sha256": {
+    "docs/design/store-refactor-concerns.md": "37df3c7da373027d8e5d5c2ce01d25777a65fa3a5ab8369534d0737bcf7e3a33",
+    "docs/design/method-publication-owner.md": "79ea56ab4f9a2d65d24fae6adbbc3f68796497b59b753ff3df68fe98bd7c0376",
+    "docs/design/optional-store-and-relational.md": "1cbf350c8512b46fb09c88070d827213e2a42eff15da88bf7950cda4a9f37374",
+    "rust/birnam-siphon/tests/image_recovery_conflict.rs": "f93a1468db4ebb1979d7e59d6816e7b4e41bfb833e78c5f13c8a2ec1c6064150",
+    "rust/birnam-siphon/tests/publication_result_proposal.rs": "829e4bf019408ecfdc06ca13c27c8d38c68e737baf3f92572daf050066b2a530",
+    "tests/fixtures/publication-result-proposal.birnam": "3114556b0abcb9e5ab6471081485a8b6de098ba5fa9f85d4bbe53859f7503026",
+    "scripts/image-code-inventory.py": "e31166dc03e367e9ecaa4e531cabb03219eba255b19002ebda8554acf86d3bd7",
+    "scripts/image-startup-memory-probe.py": "9c73115a8eeaa366ebd020246c2161af13947b2c0f794ce6bb6f3f995e80a6da",
+    "scripts/check-rooting-model.py": "25a641117a4bccda88c011ae53e7a9315b7fab194c262ef7d10ce7191a53f85c",
+    "formal/semantics/lean/PublicationFailure.lean": "bbb13a71a691cbed55b5ee58c7ef46edc52095c81cb20510515003d71c033b92",
+    "formal/semantics/lean/SemanticsAudit.lean": "160a2dc41cd771fcd5a340d05f0d370ff6f9040516104b3d1d5c3dee29ab0f7c",
+    "formal/semantics/tla/ResultPublicationIgnored.cfg": "cc463cbab84f4f64b3a9b4c4e989e27c32bd876693c77b41f415088abf996bb4",
+    "formal/semantics/tla/ResultPublicationSafe.cfg": "674e8169a5d9557caa74d9a823e1bfc974fc922fef34353b1424d28d7225c5b6",
+    "formal/semantics/tla/ResultPublicationImplicit.cfg": "5cda66a31228bee0c1e2998368de9207841aa3a4065a668d5b940121397a559a",
+    "formal/semantics/tla/ResultPublicationReplay.cfg": "a8766542472ab1831f684fc64d8b838e97e35c420bc48bc61f8181794263f823",
+    "formal/semantics/tla/ResultPublication.tla": "30d15d64c50107d22fa3425c0f7b86144547f982d73674074752610eb2aaf24f",
+    "formal/semantics/tla/ResultPublicationLateExpected.cfg": "f413b76ad888554be47dd7297a015cb0ae5a5f959260417b730c7b1e8eb1ad5e",
+    "formal/semantics/tla/ResultPublicationOverwrite.cfg": "beb2e33a50f2938391fa0e47a9a53d0672c962fe1218dd620de39deff822b5c6",
+    "rust/birnam-image/src/native.rs": "932b085f8273b683db410a9611879ea5b01a14d70fc5603d4e26133357f0386a",
+    "rust/birnam-image/src/format.rs": "29a4095c59f57af491f912ae3d6b55521d5771372cf103a1c7b3c3122fad1ce1",
+    "rust/birnam-codegen/src/image.rs": "de1949f90c8b36668c4c5f8c77544d337edf75821ef4843dbf520ce17576f4a2",
+    "rust/birnam-execution/src/lib.rs": "04cfe078969a593f017b0b44141466fcdba6aee8f84e5c72251ee7af572111cc",
+    "modules/image-format.birnam": "576c04bbe5e3d420ffb3ab653ded479bdab149e5aeb003a9fc77b270ec4499f1",
+    "modules/globals.birnam": "98cbf951356c6e9882000a6c80dd18f99b351014084ff52aec481679e2854f13"
+  },
+  "logs": {
+    "existing-boundaries.log": {
+      "expected_exit_code": 0,
+      "output": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.73s\n     Running tests/generation_ledger.rs (.cargo-target/native-message-tests/debug/deps/generation_ledger-cee5352ccd0acd77)\n\nrunning 1 test\n\nrunning 1 test\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s\n\n\nrunning 1 test\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s\n\n\nrunning 1 test\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s\n\n\nrunning 1 test\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.36s\n\n\nrunning 1 test\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.95s\n\ntest ledger_adoption_roots_portable_methods_and_never_readopts_drift ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.15s\n\n     Running tests/generation_transaction.rs (.cargo-target/native-message-tests/debug/deps/generation_transaction-079c2f6e0ae5deb3)\n\nrunning 1 test\ntest candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_facts ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.75s\n\n     Running tests/publication_failure_image.rs (.cargo-target/native-message-tests/debug/deps/publication_failure_image-49030ab56155ff1e)\n\nrunning 1 test\nimage failure boundary fresh: native 1 0\nimage failure boundary mapped: Error(nativeInvalidRequest), native channel lost\nimage failure boundary rebuilt: Error(nativeInvalidRequest), native channel lost\ntest characterizes_adapter_failure_channel_change_across_images ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.56s\n\n",
+      "sha256": "db58af2b8813a873d255b9a7905e6980cf8cc622c26648dab7bd8e1b481a9f6d"
+    },
+    "proposals-final.log": {
+      "expected_exit_code": 0,
+      "output": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.57s\n     Running tests/image_recovery_conflict.rs (.cargo-target/native-message-tests/debug/deps/image_recovery_conflict-6c7d20f521e2f7b1)\n\nrunning 1 test\nimage-conflict rebuilt=false callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\nimage-conflict rebuilt=true callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\ntest image_compensation_characterizes_intervening_dictionary_write ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.54s\n\n     Running tests/publication_result_proposal.rs (.cargo-target/native-message-tests/debug/deps/publication_result_proposal-908df434e34b352b)\n\nrunning 1 test\nresult-proposal fresh plain: committed=true events=[\"authorize\", \"notify\"]\nresult-proposal fresh described: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal fresh denied: committed=false events=[\"authorize\"]\nresult-proposal fresh auth-error: committed=false events=[\"authorize\"]\nresult-proposal fresh auth-native: committed=false events=[\"authorize\"]\nresult-proposal fresh describe-error: committed=true events=[\"authorize\", \"describe\"]\nresult-proposal fresh notify-error: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal fresh notify-native: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal fresh notify-caught: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal mapped plain: committed=true events=[\"authorize\", \"notify\"]\nresult-proposal mapped described: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal mapped denied: committed=false events=[\"authorize\"]\nresult-proposal mapped auth-error: committed=false events=[\"authorize\"]\nresult-proposal mapped auth-native: committed=false events=[\"authorize\"]\nresult-proposal mapped describe-error: committed=true events=[\"authorize\", \"describe\"]\nresult-proposal mapped notify-error: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal mapped notify-native: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal mapped notify-caught: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal rebuilt plain: committed=true events=[\"authorize\", \"notify\"]\nresult-proposal rebuilt described: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal rebuilt denied: committed=false events=[\"authorize\"]\nresult-proposal rebuilt auth-error: committed=false events=[\"authorize\"]\nresult-proposal rebuilt auth-native: committed=false events=[\"authorize\"]\nresult-proposal rebuilt describe-error: committed=true events=[\"authorize\", \"describe\"]\nresult-proposal rebuilt notify-error: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal rebuilt notify-native: committed=true events=[\"authorize\", \"describe\", \"notify\"]\nresult-proposal rebuilt notify-caught: committed=true events=[\"authorize\", \"describe\", \"notify\"]\ntest ordinary_results_keep_failure_visible_and_description_optional ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.01s\n\n",
+      "sha256": "95a6aa64d2d7bafefe57a03253487ad560d9119f2826b936c77ac3ad246a90f5"
+    },
+    "image-conflict-final.log": {
+      "expected_exit_code": 0,
+      "output": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.40s\n     Running tests/image_recovery_conflict.rs (.cargo-target/native-message-tests/debug/deps/image_recovery_conflict-6c7d20f521e2f7b1)\n\nrunning 1 test\nimage-conflict rebuilt=false callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\nimage-conflict rebuilt=true callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\ntest image_compensation_characterizes_intervening_dictionary_write ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.77s\n\n",
+      "sha256": "b06a8d80266cef3c9f8ebe4631e6c86a9432f53e8afadfb366402ef917916ec8"
+    },
+    "image-conflict-installed-final.log": {
+      "expected_exit_code": 0,
+      "output": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s\n     Running tests/image_recovery_conflict.rs (.cargo-target/native-message-tests/debug/deps/image_recovery_conflict-6c7d20f521e2f7b1)\n\nrunning 1 test\nimage-conflict rebuilt=false callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\nimage-conflict rebuilt=true callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\ntest image_compensation_characterizes_intervening_dictionary_write ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.52s\n\n",
+      "sha256": "d448fd9bc252863913352b5c50ee2e6d7c29391917cb9c65d898845d329dfb1a"
+    },
+    "image-conflict-required-final.log": {
+      "expected_exit_code": 101,
+      "output": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on artifact directory\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s\n     Running tests/image_recovery_conflict.rs (.cargo-target/native-message-tests/debug/deps/image_recovery_conflict-6c7d20f521e2f7b1)\n\nrunning 1 test\nimage-conflict rebuilt=false callbacks=1 nested_survives=false old_restored=true\nimage-conflict unrelated_global_survives=false explicit_fact_survives=false\n\nthread 'image_compensation_characterizes_intervening_dictionary_write' (2935708614) panicked at rust/birnam-siphon/tests/image_recovery_conflict.rs:263:13:\nassertion `left == right` failed: unrelated Global write must survive\n  left: 0x600000eb4a08\n right: 0x600000fd8d18\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest image_compensation_characterizes_intervening_dictionary_write ... FAILED\n\nfailures:\n\nfailures:\n    image_compensation_characterizes_intervening_dictionary_write\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.08s\n\nerror: test failed, to rerun pass `-p birnam-siphon --test image_recovery_conflict`\n",
+      "sha256": "6cd569e5f485530953cd64a269665d147cedc1da3f560c4688c81deb0b9a042b"
+    },
+    "formal.log": {
+      "expected_exit_code": 0,
+      "output": "TLC ResultPublicationSafe: pass (0.637s)\nTLC ResultPublicationOverwrite: expected counterexample (0.552s)\nTLC ResultPublicationLateExpected: expected counterexample (0.553s)\nTLC ResultPublicationImplicit: expected counterexample (0.564s)\nTLC ResultPublicationIgnored: expected counterexample (0.557s)\nTLC ResultPublicationReplay: expected counterexample (0.548s)\nTLC SuppliedSafe: pass (0.547s)\nTLC SuppliedArity: expected counterexample (0.559s)\nTLC SuppliedSync: expected counterexample (0.551s)\nTLC SuppliedReplay: expected counterexample (0.543s)\nTLC SuppliedNested: expected counterexample (0.547s)\nTLC TemplateSafe: pass (0.556s)\nTLC TemplateOverwrite: expected counterexample (0.564s)\nTLC TemplateRevision: expected counterexample (0.559s)\nTLC TemplateStale: expected counterexample (0.565s)\nTLC TemplateReplay: expected counterexample (0.563s)\nTLC TemplateLive: expected counterexample (0.563s)\nTLC TemplatePersist: expected counterexample (0.555s)\nTLC MethodBindSafe: pass (0.557s)\nTLC MethodBindAlias: expected counterexample (0.557s)\nTLC MethodBindRoot: expected counterexample (0.568s)\nTLC MethodBindRetention: expected counterexample (0.563s)\nTLC SharedCallSafe: pass (0.552s)\nTLC SharedCallCached: expected counterexample (0.561s)\nTLC SharedCallSharedState: expected counterexample (0.552s)\nTLC SharedCallRoot: expected counterexample (0.562s)\nTLC SharedCallReplay: expected counterexample (0.553s)\nTLC SharedCallFrame: expected counterexample (0.553s)\nTLC SharedCallBarrier: expected counterexample (0.549s)\nTLC PublicationImageSafe: pass (0.546s)\nTLC PublicationImageMapped: expected counterexample (0.543s)\nTLC PublicationImageRebuilt: expected counterexample (0.555s)\nTLC ReentrySafe: pass (0.546s)\nTLC ReentryOverwrite: expected counterexample (0.541s)\nTLC ReentrySwallow: expected counterexample (0.555s)\nTLC ReentryReplay: expected counterexample (0.55s)\nTLC PublicationSafe: pass (0.566s)\nTLC PublicationRollback: expected counterexample (0.558s)\nTLC PublicationEarly: expected counterexample (0.558s)\nTLC PublicationError: expected counterexample (0.574s)\nTLC PublicationRoot: expected counterexample (0.55s)\nTLC PublicationLeak: expected counterexample (0.56s)\nTLC DriveSafe: pass (0.553s)\nTLC DriveEpoch: expected counterexample (0.546s)\nTLC DriveAction: expected counterexample (0.549s)\nTLC DriveScope: expected counterexample (0.559s)\nTLC DriveFrame: expected counterexample (0.558s)\nTLC DriveLease: expected counterexample (0.556s)\nTLC OwnedSafe: pass (0.56s)\nTLC OwnedLost: expected counterexample (0.544s)\nTLC OwnedForeign: expected counterexample (0.552s)\nTLC OwnedCredits: expected counterexample (0.549s)\nTLC OwnedImage: expected counterexample (0.567s)\nTLC OwnedConstruction: expected counterexample (0.562s)\nTLC OwnedABA: expected counterexample (0.562s)\nTLC RegistrySafe: pass (0.556s)\nTLC RegistryAbort: expected counterexample (0.565s)\nTLC RegistryLost: expected counterexample (0.563s)\nTLC RegistryField: expected counterexample (0.567s)\nTLC SearchSafe: pass (0.568s)\nTLC SearchReplay: expected counterexample (0.558s)\nTLC SearchStale: expected counterexample (0.583s)\nTLC SearchRoot: expected counterexample (0.56s)\nTLC SearchNil: expected counterexample (0.557s)\nTLC TablesSmall: pass (0.582s)\nTLC TablesLarge: pass (0.777s)\nTLC TablesKey: expected counterexample (0.564s)\nTLC TablesFull: expected counterexample (0.584s)\nTLC TablesWorld: expected counterexample (0.596s)\nTLC HelperSafe: pass (0.553s)\nTLC HelperTransitive: expected counterexample (0.562s)\nTLC HelperAddress: expected counterexample (0.56s)\nTLC HelperDispatch: expected counterexample (0.556s)\nTLC SlotSafe: pass (0.565s)\nTLC SlotKey: expected counterexample (0.561s)\nTLC SlotValue: expected counterexample (0.558s)\nTLC SlotParent: expected counterexample (0.559s)\nTLC RelationalSafe: pass (0.687s)\nTLC RelationalCached: expected counterexample (0.566s)\nTLC RelationalShared: expected counterexample (0.56s)\nTLC RelationalExpired: expected counterexample (0.571s)\nTLC RelationalFailure: expected counterexample (0.572s)\nTLC RelationalReplay: expected counterexample (0.574s)\nTLC IndexedSafe: pass (0.573s)\nTLC IndexedBounds: expected counterexample (0.575s)\nTLC IndexedReplay: expected counterexample (0.559s)\nTLC IndexedStale: expected counterexample (0.555s)\nTLC IndexedEarly: expected counterexample (0.561s)\nTLC ShapesSafe: pass (0.565s)\nTLC ShapesSecond: expected counterexample (0.565s)\nTLC ShapesServices: expected counterexample (0.564s)\nTLC ShapesOwn: expected counterexample (0.568s)\nTLC ShapesDelay: expected counterexample (0.559s)\nTLC ShapesOrder: expected counterexample (0.564s)\nTLC FinishSafe: pass (0.558s)\nTLC FinishMissing: expected counterexample (0.544s)\nTLC FinishEarly: expected counterexample (0.564s)\nTLC FinishOrder: expected counterexample (0.563s)\nTLC Safe: pass (0.734s)\nTLC BranchSafe: pass (0.56s)\nTLC BranchBoth: expected counterexample (0.563s)\nTLC BranchStale: expected counterexample (0.561s)\nTLC BranchArguments: expected counterexample (0.563s)\nTLC BranchReplay: expected counterexample (0.571s)\nTLC LocalSafe: pass (0.574s)\nTLC LocalUnrooted: expected counterexample (0.571s)\nTLC LocalEviction: expected counterexample (0.566s)\nTLC LocalStale: expected counterexample (0.559s)\nTLC LocalEdge: expected counterexample (0.57s)\nTLC LocalEarly: expected counterexample (0.577s)\nTLC LocalLeak: expected counterexample (0.555s)\nTLC ResolveSafe: pass (0.562s)\nTLC ResolveNil: expected counterexample (0.559s)\nTLC ResolveGlobals: expected counterexample (0.563s)\nTLC ResolveReboundNil: expected counterexample (0.559s)\nTLC ResolveEarly: expected counterexample (0.561s)\nTLC ResolveOrder: expected counterexample (0.559s)\nTLC ShapeSafe: pass (0.556s)\nTLC ShapeGetter: expected counterexample (0.554s)\nTLC ShapeOwn: expected counterexample (0.561s)\nTLC ShapeCached: expected counterexample (0.561s)\nTLC ShapeDelay: expected counterexample (0.559s)\nTLC ShapeOrder: expected counterexample (0.554s)\nTLC SnapshotSafe: pass (0.555s)\nTLC SnapshotNode: expected counterexample (0.557s)\nTLC SnapshotInputs: expected counterexample (0.572s)\nTLC SnapshotEarly: expected counterexample (0.544s)\nTLC OwnerSafe: pass (0.563s)\nTLC OwnerReport: expected counterexample (0.567s)\nTLC OwnerEarly: expected counterexample (0.564s)\nTLC OwnerNested: expected counterexample (0.568s)\nTLC OwnerLeak: expected counterexample (0.571s)\nTLC OwnerGap: expected counterexample (0.56s)\nTLC BulkSafe: pass (0.557s)\nTLC BulkAdmission: expected counterexample (0.555s)\nTLC BulkCopy: expected counterexample (0.56s)\nTLC BulkOrder: expected counterexample (0.557s)\nTLC BulkScope: expected counterexample (0.565s)\nTLC CaptureSafe: pass (0.574s)\nTLC CaptureFresh: expected counterexample (0.566s)\nTLC CaptureGrant: expected counterexample (0.564s)\nTLC CaptureScope: expected counterexample (0.557s)\nTLC CaptureEdge: expected counterexample (0.569s)\nTLC CaptureCached: expected counterexample (0.575s)\nTLC InvocationSafe: pass (0.577s)\nTLC InvocationUncovered: expected counterexample (0.567s)\nTLC InvocationEarlyExit: expected counterexample (0.565s)\nTLC InvocationMissingResult: expected counterexample (0.566s)\nTLC InvocationReturnGap: expected counterexample (0.563s)\nTLC InvocationLostCode: expected counterexample (0.564s)\nTLC AdmissionSafe: pass (0.682s)\nTLC AdmissionContext: expected counterexample (0.563s)\nTLC AdmissionServices: expected counterexample (0.569s)\nTLC AdmissionPermission: expected counterexample (0.628s)\nTLC AdmissionEpoch: expected counterexample (0.637s)\nTLC RegionAddition: pass (0.758s)\nTLC RegionString: pass (0.601s)\nTLC RegionCollection: pass (0.613s)\nTLC RegionStale: expected counterexample (0.591s)\nTLC RegionPermission: expected counterexample (0.597s)\nTLC RegionExposure: expected counterexample (0.575s)\nTLC RegionReplay: expected counterexample (0.573s)\nTLC RegionCodeLease: expected counterexample (0.592s)\nTLC RegionOwner: expected counterexample (0.571s)\nTLC RegistrationSafe: pass (0.638s)\nTLC RegistrationUnrooted: expected counterexample (0.582s)\nTLC RegistrationPartial: expected counterexample (0.599s)\nTLC BatchSafe: pass (0.695s)\nTLC BorrowSafe: pass (0.547s)\nTLC BorrowCallback: expected counterexample (0.55s)\nTLC BatchStale: expected counterexample (0.591s)\nTLC BatchOrder: expected counterexample (0.585s)\nTLC Canonical: pass (0.633s)\nTLC Graph: pass (0.754s)\nTLC Nested: pass (1.535s)\nTLC Recovery: pass (0.837s)\nTLC OmitFirst: expected counterexample (0.59s)\nTLC EarlyRelease: expected counterexample (0.597s)\nTLC IgnorePermission: expected counterexample (0.587s)\nTLC BadRevoke: expected counterexample (0.599s)\nTLC LeakExit: expected counterexample (0.61s)\nTLC UnfairRecovery: expected counterexample (0.691s)\nLean rollback-overwrites-intervening-write: rejected\nLean ordinary-ack-discards-error: rejected\nLean ordinary-native-drops-detail: rejected\nLean supplied-code-key-omits-payload: rejected\nLean supplied-sync-shares-unit: rejected\nLean supplied-overwrites-nested-winner: rejected\nLean cache-conflict-overwrites-current: rejected\nLean cache-mutates-global-basis: rejected\nLean template-publish-erases-other-arity: rejected\nLean template-error-loses-identity: rejected\nLean binding-reuses-old-identity: rejected\nLean binding-reuses-old-implementation: rejected\nLean shared-call-uses-common-implementation: rejected\nLean shared-call-copies-receiver-wrong: rejected\nLean publication-confuses-error-with-failure: rejected\nLean publication-assumes-scope-is-local: rejected\nLean registry-reentry-overwrite: rejected\nLean owner-cas-overwrites-new-root: rejected\nLean owner-image-keeps-credits: rejected\nLean owner-name-uses-value-equality: rejected\nLean binding-nil-is-absent: rejected\nLean binding-inverse-overwrites-conflict: rejected\nLean private-index-confuses-collisions: rejected\nLean private-index-reorders-roots: rejected\nLean scratch-overwrites-public-world: rejected\nLean scratch-drops-catalog-publication: rejected\nLean default-cell-publishes-facts: rejected\nLean cell-reads-wrong-slot: rejected\nLean registry-declaration-clears-loaded: rejected\nLean registry-write-publishes-facts: rejected\nLean mirror-writes-wrong-slot: rejected\nLean mirror-rename-moves-values: rejected\nLean ordering-replays-byte: rejected\nLean ordering-drops-effects: rejected\nLean search-replays-hit: rejected\nLean search-drops-effects: rejected\nLean cached-digest-wrong-name: rejected\nLean digest-collision-aliases-name: rejected\nLean log-keeps-seven: rejected\nLean range-wrong-end-comparison: rejected\nLean json-unsafe-short-bound: rejected\nLean json-ignore-uppercase-exponent: rejected\nLean json-wrong-kind-handler: rejected\nLean json-skip-backslash-scan: rejected\nLean json-reuse-nonempty-identity: rejected\nLean lose-full-cache-fallback: rejected\nLean skip-retained-helper-body: rejected\nLean charge-whole-capacity-again: rejected\nLean unchecked-slot-hint: rejected\nLean freeze-relational-comparison: rejected\nLean reverse-indexed-edge: rejected\nLean ignore-second-batched-entry: rejected\nLean wrong-direct-integer-operation: rejected\nLean float-remainder-handler: rejected\nLean ignore-metadata-current: rejected\nLean accept-unknown-metadata-identity: rejected\nLean omit-owner-local-report: rejected\nLean admit-nonempty-return: rejected\nLean reverse-identity-selection: rejected\nLean drop-capture-reachability: rejected\nLean ignore-bulk-own-binding: rejected\nLean ignore-capture-query-binding: rejected\nLean reverse-branch-choice: rejected\nLean unrooted-local-hint: rejected\nLean cache-false-selector: rejected\nLean drop-uncovered-locals: rejected\nLean ignore-entry-context: rejected\nLean wrong-release-order: rejected\nLean lost-index-mark: rejected\nLean wrong-memo-key: rejected\nLean truncated-borrow: rejected\nLean ignore-observation: rejected\nLean ignore-permission: rejected\nLean free-owner-batch: rejected\nLean omit-first: rejected\nLean leak-on-exit: rejected\nLean skip-materialization: rejected\nLean: 301 theorems checked; only standard kernel axioms\nRooting verification passed: /Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-imu2lwbz/summary.json\n",
+      "sha256": "e90d317fec9f8e16a131a06f56b28fe6056a1c29609aa4077ea12b95a16c1e07"
+    },
+    "memory.log": {
+      "expected_exit_code": 0,
+      "output": "[\n  {\n    \"gc\": false,\n    \"sampled_peak_rss\": 1376747520,\n    \"ready_rss\": 779993088,\n    \"vmmap_exit\": 0\n  },\n  {\n    \"gc\": true,\n    \"sampled_peak_rss\": 1392689152,\n    \"ready_rss\": 590200832,\n    \"vmmap_exit\": 0\n  }\n]\n/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-startup-memory-xj8mi5ej/results.json\n",
+      "sha256": "56e2c83b452e0783bcac1bda216647274eb65eca00458da146bcd082390a3a62"
+    }
+  },
+  "memory_sampling": {
+    "runs": [
+      {
+        "gc": false,
+        "prefix": "/private/tmp/birnam-supplied-templates/prefix",
+        "ready_rss": 779993088,
+        "sampled_peak_rss": 1376747520,
+        "samples": [
+          [
+            0.002743249759078026,
+            1572864
+          ],
+          [
+            0.060047249775379896,
+            20971520
+          ],
+          [
+            0.11737741669639945,
+            45105152
+          ],
+          [
+            0.1746532078832388,
+            78987264
+          ],
+          [
+            0.23151587508618832,
+            107233280
+          ],
+          [
+            0.2866408326663077,
+            118161408
+          ],
+          [
+            0.34099299972876906,
+            121864192
+          ],
+          [
+            0.39720674976706505,
+            560840704
+          ],
+          [
+            0.4508555419743061,
+            561184768
+          ],
+          [
+            0.5060923327691853,
+            566296576
+          ],
+          [
+            0.5594273330643773,
+            566870016
+          ],
+          [
+            0.6164022916927934,
+            780107776
+          ],
+          [
+            0.6732814167626202,
+            798965760
+          ],
+          [
+            0.7302014580927789,
+            804962304
+          ],
+          [
+            0.7870574998669326,
+            816054272
+          ],
+          [
+            0.8438607077114284,
+            818544640
+          ],
+          [
+            0.9002068750560284,
+            820772864
+          ],
+          [
+            0.957133624702692,
+            829587456
+          ],
+          [
+            1.0140116247348487,
+            850640896
+          ],
+          [
+            1.0673858327791095,
+            852164608
+          ],
+          [
+            1.1243682918138802,
+            855097344
+          ],
+          [
+            1.1787844579666853,
+            856899584
+          ],
+          [
+            1.2333820420317352,
+            858603520
+          ],
+          [
+            1.2902897498570383,
+            860372992
+          ],
+          [
+            1.3472483749501407,
+            862289920
+          ],
+          [
+            1.4043227499350905,
+            877527040
+          ],
+          [
+            1.4591721249744296,
+            879706112
+          ],
+          [
+            1.5153467496857047,
+            1112784896
+          ],
+          [
+            1.5724867079406977,
+            1160593408
+          ],
+          [
+            1.62974474998191,
+            1183711232
+          ],
+          [
+            1.6869000419974327,
+            1183711232
+          ],
+          [
+            1.743971707765013,
+            1179533312
+          ],
+          [
+            1.8013229998759925,
+            1162838016
+          ],
+          [
+            1.8581456248648465,
+            1166852096
+          ],
+          [
+            1.910279749892652,
+            1376747520
+          ],
+          [
+            1.9670725418254733,
+            743636992
+          ],
+          [
+            2.024013207759708,
+            757628928
+          ],
+          [
+            2.0780012076720595,
+            762970112
+          ],
+          [
+            2.133432332891971,
+            773029888
+          ],
+          [
+            2.18645341694355,
+            777764864
+          ],
+          [
+            2.2387420828454196,
+            785432576
+          ],
+          [
+            2.2961108330637217,
+            791101440
+          ],
+          [
+            2.350379124749452,
+            799277056
+          ],
+          [
+            2.4075602078810334,
+            812597248
+          ],
+          [
+            2.464776874985546,
+            818429952
+          ],
+          [
+            2.5201399996876717,
+            828637184
+          ],
+          [
+            2.577435541898012,
+            832733184
+          ],
+          [
+            2.6337688746862113,
+            844136448
+          ],
+          [
+            2.6906553748995066,
+            846610432
+          ],
+          [
+            2.746723833028227,
+            855375872
+          ],
+          [
+            2.8005374167114496,
+            863125504
+          ],
+          [
+            2.854515708051622,
+            867500032
+          ],
+          [
+            2.9117749999277294,
+            877903872
+          ],
+          [
+            2.9686686666682363,
+            882573312
+          ],
+          [
+            3.0235904580913484,
+            890683392
+          ],
+          [
+            3.08076912490651,
+            904445952
+          ],
+          [
+            3.133688250090927,
+            906985472
+          ],
+          [
+            3.1877384576946497,
+            914407424
+          ],
+          [
+            3.2448806250467896,
+            924450816
+          ],
+          [
+            3.3006663750857115,
+            926367744
+          ],
+          [
+            3.3576480001211166,
+            935018496
+          ],
+          [
+            3.4137666667811573,
+            941342720
+          ],
+          [
+            3.467417041771114,
+            946814976
+          ],
+          [
+            3.52204258274287,
+            954875904
+          ],
+          [
+            3.5780039997771382,
+            958824448
+          ],
+          [
+            3.6348210419528186,
+            964689920
+          ],
+          [
+            3.691757082939148,
+            769916928
+          ],
+          [
+            3.7486249171197414,
+            774078464
+          ],
+          [
+            3.80110583268106,
+            775045120
+          ],
+          [
+            3.856189833022654,
+            777043968
+          ],
+          [
+            3.911091167014092,
+            777043968
+          ],
+          [
+            3.966825291980058,
+            778764288
+          ]
+        ],
+        "stdout": "MEMORY_READY\n",
+        "vmmap_exit": 0
+      },
+      {
+        "gc": true,
+        "prefix": "/private/tmp/birnam-supplied-templates/prefix",
+        "ready_rss": 590200832,
+        "sampled_peak_rss": 1392689152,
+        "samples": [
+          [
+            0.0019816667772829533,
+            2424832
+          ],
+          [
+            0.05849199974909425,
+            45957120
+          ],
+          [
+            0.1117892088368535,
+            55721984
+          ],
+          [
+            0.16807929193601012,
+            107757568
+          ],
+          [
+            0.2225287496112287,
+            118456320
+          ],
+          [
+            0.27980833360925317,
+            121421824
+          ],
+          [
+            0.33537112455815077,
+            560513024
+          ],
+          [
+            0.39219087501987815,
+            561299456
+          ],
+          [
+            0.44918049965053797,
+            567115776
+          ],
+          [
+            0.5035894587635994,
+            590675968
+          ],
+          [
+            0.5606548748910427,
+            801275904
+          ],
+          [
+            0.6176189589314163,
+            802684928
+          ],
+          [
+            0.6706205420196056,
+            807256064
+          ],
+          [
+            0.727553749922663,
+            818364416
+          ],
+          [
+            0.7845551669597626,
+            820903936
+          ],
+          [
+            0.8375749588012695,
+            828817408
+          ],
+          [
+            0.8929240419529378,
+            837828608
+          ],
+          [
+            0.9485238748602569,
+            863485952
+          ],
+          [
+            1.0049804169684649,
+            866549760
+          ],
+          [
+            1.0620857919566333,
+            877330432
+          ],
+          [
+            1.1176941669546068,
+            878968832
+          ],
+          [
+            1.1710184998810291,
+            880689152
+          ],
+          [
+            1.2270857919938862,
+            882343936
+          ],
+          [
+            1.2831211248412728,
+            884031488
+          ],
+          [
+            1.3400670839473605,
+            885800960
+          ],
+          [
+            1.3969456246122718,
+            900939776
+          ],
+          [
+            1.4525881665758789,
+            903036928
+          ],
+          [
+            1.509865999687463,
+            1067581440
+          ],
+          [
+            1.5670100417919457,
+            1183105024
+          ],
+          [
+            1.624175749719143,
+            1201995776
+          ],
+          [
+            1.6812632498331368,
+            1199816704
+          ],
+          [
+            1.7372056245803833,
+            1196670976
+          ],
+          [
+            1.794446624815464,
+            1232945152
+          ],
+          [
+            1.8512466247193515,
+            1180024832
+          ],
+          [
+            1.9077357086353004,
+            1392689152
+          ],
+          [
+            1.9602371249347925,
+            756105216
+          ],
+          [
+            2.0153556247241795,
+            765689856
+          ],
+          [
+            2.072322249878198,
+            770179072
+          ],
+          [
+            2.1286007086746395,
+            779501568
+          ],
+          [
+            2.183600916992873,
+            784662528
+          ],
+          [
+            2.2408107919618487,
+            792428544
+          ],
+          [
+            2.2934330417774618,
+            799522816
+          ],
+          [
+            2.34713524999097,
+            803487744
+          ],
+          [
+            2.403894458897412,
+            812580864
+          ],
+          [
+            2.4587281667627394,
+            817233920
+          ],
+          [
+            2.5158818336203694,
+            825163776
+          ],
+          [
+            2.572948833927512,
+            832077824
+          ],
+          [
+            2.62996245874092,
+            835600384
+          ],
+          [
+            2.6868789587169886,
+            849952768
+          ],
+          [
+            2.7440353338606656,
+            858324992
+          ],
+          [
+            2.7989069996401668,
+            865681408
+          ],
+          [
+            2.853944666683674,
+            875675648
+          ],
+          [
+            2.910975624807179,
+            878985216
+          ],
+          [
+            2.9659879999235272,
+            888946688
+          ],
+          [
+            3.0205211248248816,
+            894107648
+          ],
+          [
+            3.077587333973497,
+            898564096
+          ],
+          [
+            3.129939458798617,
+            906018816
+          ],
+          [
+            3.1847530836239457,
+            911933440
+          ],
+          [
+            3.239818124566227,
+            916586496
+          ],
+          [
+            3.2933108336292207,
+            925597696
+          ],
+          [
+            3.3501798338256776,
+            928792576
+          ],
+          [
+            3.4039089996367693,
+            935641088
+          ],
+          [
+            3.460884291678667,
+            946077696
+          ],
+          [
+            3.5180130838416517,
+            948469760
+          ],
+          [
+            3.575179624836892,
+            959070208
+          ],
+          [
+            3.6322392500005662,
+            968605696
+          ],
+          [
+            3.6891735838726163,
+            970063872
+          ],
+          [
+            3.742813791614026,
+            973144064
+          ],
+          [
+            3.799166416749358,
+            786546688
+          ],
+          [
+            3.8562081665731966,
+            792756224
+          ],
+          [
+            3.913216458633542,
+            792772608
+          ],
+          [
+            3.968511374667287,
+            796065792
+          ],
+          [
+            4.025334708858281,
+            796065792
+          ],
+          [
+            4.0824527917429805,
+            798867456
+          ],
+          [
+            4.137379541993141,
+            799899648
+          ],
+          [
+            4.194235916715115,
+            590069760
+          ]
+        ],
+        "stdout": "MEMORY_READY\n",
+        "vmmap_exit": 0
+      }
+    ],
+    "scope": "Sampled RSS in bytes; ps observer overhead; explicit GC runs after startup."
+  },
+  "image_inventory": [
+    {
+      "path": "/private/tmp/birnam-supplied-templates/prefix/lib/birnam-bootstrap.image",
+      "image_bytes": 218181253,
+      "bundle_offset": 8302352,
+      "bundle_bytes": 209878901,
+      "objects": 4243,
+      "unique_objects": 3594,
+      "object_bytes": 209844913,
+      "duplicate_object_bytes": 15344691,
+      "programs": 1794,
+      "resumable_body_bytes": 109538838,
+      "synchronous_body_bytes": 84817750,
+      "named_adapter_objects": 655,
+      "named_adapter_bytes": 15488325,
+      "largest_duplicate_groups": [
+        {
+          "offset": 202687696,
+          "bytes": 23643,
+          "count": 260
+        },
+        {
+          "offset": 202806143,
+          "bytes": 23435,
+          "count": 213
+        },
+        {
+          "offset": 202782300,
+          "bytes": 23835,
+          "count": 136
+        },
+        {
+          "offset": 202876680,
+          "bytes": 24043,
+          "count": 38
+        },
+        {
+          "offset": 203657659,
+          "bytes": 24235,
+          "count": 6
+        },
+        {
+          "offset": 206398983,
+          "bytes": 24443,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "path": "/private/tmp/birnam-supplied-templates/prefix/lib/birnam-tools.image",
+      "image_bytes": 318328105,
+      "bundle_offset": 11721810,
+      "bundle_bytes": 306606295,
+      "objects": 6281,
+      "unique_objects": 5316,
+      "object_bytes": 306556003,
+      "duplicate_object_bytes": 22839223,
+      "programs": 2654,
+      "resumable_body_bytes": 159269738,
+      "synchronous_body_bytes": 124253914,
+      "named_adapter_objects": 973,
+      "named_adapter_bytes": 23032351,
+      "largest_duplicate_groups": [
+        {
+          "offset": 295311421,
+          "bytes": 23643,
+          "count": 377
+        },
+        {
+          "offset": 295287978,
+          "bytes": 23435,
+          "count": 287
+        },
+        {
+          "offset": 295429468,
+          "bytes": 23835,
+          "count": 211
+        },
+        {
+          "offset": 295523848,
+          "bytes": 24043,
+          "count": 73
+        },
+        {
+          "offset": 297227024,
+          "bytes": 24235,
+          "count": 16
+        },
+        {
+          "offset": 301223547,
+          "bytes": 24443,
+          "count": 5
+        },
+        {
+          "offset": 301102076,
+          "bytes": 24651,
+          "count": 3
+        }
+      ]
+    }
+  ],
+  "formal": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-imu2lwbz/summary.json",
+    "sha256": "6faaf30429b38106c2d16fff1d95e6dcb4dcf57ef7630d1f2a7064a418aed758",
+    "theorems": 301,
+    "rejected_mutations": 77,
+    "tlc_outcomes": 182
+  },
+  "runtimes": {
+    "current": {
+      "prefix": "/tmp/birnam-supplied-templates/prefix",
+      "receipt_sha256": "cd7cf7334d93881810c86ec996996a7cfcac92bb4b52ff5cec3432e12f613a30",
+      "libraries": {
+        "libbirnam_image.dylib": "22e10d669077dae0695c3604598a74cda6bedb5939c95caecf9a02b83f12de67",
+        "libbirnam_codegen_runtime.dylib": "cd8fa4cfc87a6770272a5a7e1d8b27e7682015fd24bd2b3122dc94edcdd01d7e",
+        "libbirnam_execution.dylib": "3761d93a96df18c881dbb12d39bae59caa6a5cdc9f81b0f4aadde3dbdba81f7f"
+      },
+      "native_probe_modules": "/tmp/birnam-supplied-templates/native/lib",
+      "metrics_tcc_sha256": "81bdb2b7c41fabd2bce143662ca32615c404a15c69834fbc63dcefcd7b0d9758"
+    },
+    "installed_0_17_0": {
+      "prefix": "/Users/chazu/.local/opt/birnam",
+      "receipt_sha256": "3871dfbac78436af711550288e0841fe2ad907984080d81bfb84583f521eb803",
+      "libraries": {
+        "libbirnam_image.dylib": "d9c5a2c9f5720b657395c71695dcd358430e287ec3fd7a9f0924428a425a90ee",
+        "libbirnam_codegen_runtime.dylib": "b1ebcc5787963a4be2c168a1da0af17aa3f4b05ae79c22e6cd9d556107863d5c",
+        "libbirnam_execution.dylib": "4015aa95ef0e2cf4a01f6a9317c39c03569974bcaff76093a3b824fdca725c60"
+      }
+    }
+  },
+  "limits": [
+    "Prototype does not install MethodPublication or qualify raw/synchronous native boundaries.",
+    "The current ordinary native failure conversion still drops status/detail; the formal diagnostic-preserving normalization is proposed.",
+    "Default prototype does not write facts but existing Store bootstrap/raw observer remains.",
+    "Memory sampling is not precise peak allocation attribution or a before-after optimization result.",
+    "Models assume atomic owner compare/restore; current Image does not implement that protocol."
+  ]
+}

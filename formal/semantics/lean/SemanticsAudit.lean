@@ -236,3 +236,14 @@ import Admission
 #print axioms Birnam.SharedInvocation.equal_arity_does_not_authorize_other_code
 #print axioms Birnam.SharedInvocation.synchronous_unit_is_not_shared
 #print axioms Birnam.SharedInvocation.nested_activation_winner_survives
+
+#print axioms Birnam.PublicationFailure.ordinary_error_identity_preserved
+#print axioms Birnam.PublicationFailure.native_diagnostics_are_data
+#print axioms Birnam.PublicationFailure.rollback_preserves_intervening_write
+#print axioms Birnam.PublicationFailure.rollback_restores_own_write
+#print axioms Birnam.PublicationFailure.learning_expected_after_callback_is_wrong
+
+#print axioms Birnam.SharedInvocation.ordinary_edit_does_not_assert_facts
+#print axioms Birnam.SharedInvocation.ordinary_edit_changes_future_binding
+#print axioms Birnam.SharedInvocation.stale_preparation_cannot_overwrite
+#print axioms Birnam.SharedInvocation.edit_invalidates_old_preparation

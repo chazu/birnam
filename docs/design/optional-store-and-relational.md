@@ -207,7 +207,7 @@ source reparsing or recompilation at image/artifact startup. Preserve source
 identity, shared Cells, aliases and code lifetimes. Moving facts into a Map keyed
 by value-equal Strings is not automatically identity-preserving.
 
-Publication failure must still compensate only the operation's own changes and
+Operations that explicitly promise compensation must undo only their own changes and
 retain unrelated callback writes. Generation's preparation observations,
 authorization, notifications and recovery behavior must move with the protocol.
 Replacing them with a whole-world snapshot restore is not equivalent.
@@ -234,10 +234,10 @@ unbounded compatibility mirror in the normal execution path.
 4. **Migrate ordinary records and registries.** Move fields, LSP state and Module
    bookkeeping in bounded slices. Replace intentional public inspection paths
    before removing their facts; verify bootstrap after each affected slice.
-5. **Move binding and publication responsibilities.** Transition Globals and
-   method publication to their owners, including notifications and exact
-   presence/value behavior. Provide only the explicitly selected compatibility
-   and optional description paths.
+5. **Separate ordinary mutation from explicit coordination.** Globals owns its
+   bindings. Reflect composes Method construction and actual dictionary owners;
+   ordinary edits need no mandatory publisher, Generation authorizer or fact mirror.
+   Keep explicit change-set and optional description contracts separate.
 6. **Move durable and coordinated state.** Migrate metadata, recipes, Generation,
    Image and process-local state with their full lifetime and recovery contracts.
    Then remove mandatory bootstrap edges and demonstrate core operation with
@@ -253,7 +253,7 @@ different answers about authority, history or inspection in each module.
 | Contracts, private scratch and reflection | Ownership decision, scanner scratch cleanup, local Cells, binding/dictionary/slot inventories | Apply the same discoverable-owner contract to remaining public state. |
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
 | Ordinary records and registries | Module registry, LSP state and Globals bindings | Log, Config, HTTP request and process-result fields still use `db cellFor:`. These are not completed by the registry migrations. |
-| Step 5: construction and publication | Independent Method binding constructor, authored source policy, shared resumable artifact/image templates | Uniform ordinary error results; authored publication owner; default mirror removal; explicit description ordering; Generation hooks and bootstrap/image cutover. |
+| Step 5: construction and publication | Independent Method binding constructor, authored source policy, shared resumable artifact/image templates | Direct Reflect mutation, removal of default authorizer/mirror dependencies, descriptive revision metadata and explicit Generation/image contracts. |
 | Step 6: durable/coordinated and process-local state | Globals already participates in owner-based recovery | Compiler metadata, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
@@ -268,6 +268,30 @@ Backwards compatibility is not required for the remaining migration. A deliberat
 artifact/image format transition may require rebuilding instead of retaining old
 adapters. This does not authorize silently discarding explicit user facts, weakening
 current-world recovery, or preserving a permanent native service under a new name.
+
+### Follow-up investigation
+
+The [concerns investigation](store-refactor-concerns.md) reproduces a pre-existing
+Image rollback defect on both current code and installed 0.17.0: later dictionary
+edits, unrelated Globals and explicit facts from a failing callback can be lost.
+Correct conditional cross-owner compensation before further coordinated migration.
+An ordinary publication prototype now establishes result-aware sequencing across
+fresh/mapped/rebuilt policy. Publication can use that contract and the normal
+resumable path without waiting for language-wide synchronous cleanup; its full
+consumer/Generation cutover remains unimplemented. Startup-memory proposals are
+separate, measured work and do not change the agreed GC threshold/scaling policy.
+
+### Minimal mutation decision
+
+The [minimal-mutation investigation](minimal-mutation-and-coordination.md) now
+supersedes mechanically transferring Store's publication pipeline to a new owner.
+Existing Method/vtable APIs pass on a floor with Store, Relational and Generation
+absent. A running-image control shows the Reflect veto even without an adopted
+generation. Explicit Generation reconciliation can still detect relevant raw edits.
+Ordinary mutation and saving actual live code should be independent of that policy.
+The user selected retaining in-place image loading as an explicit advanced feature;
+fresh-process startup and live recovery should have distinct failure contracts.
+Production cutover is not implemented by these probes.
 
 ## Acceptance and remaining decisions
 

@@ -60,4 +60,49 @@ def rawTail (result : Outcome) := result
 theorem raw_tail_preserves_both_cases :
     rawTail (.failure 881 17) = .failure 881 17 ∧
     rawTail (callback false) = .success .ok := by constructor <;> rfl
+-- Proposed ordinary-result contract. Native diagnostics are data at the
+-- ordinary-send boundary; a returned Error is not a separate hidden failure bit.
+inductive ErrorValue where
+  | application (identity : Nat)
+  | native (status detail : Nat)
+  deriving DecidableEq
+inductive MessageResult where
+  | value (identity : Nat)
+  | error (error : ErrorValue)
+  deriving DecidableEq
+inductive TransportResult where
+  | loaded (result : MessageResult)
+  | failed (status detail : Nat)
+  deriving DecidableEq
+
+def normalize : TransportResult → MessageResult
+  | .loaded result => result
+  | .failed status detail => .error (.native status detail)
+
+def acknowledge (result : MessageResult) : MessageResult :=
+  match result with
+  | .error error => .error error
+  | .value _ => .value 0
+
+theorem ordinary_error_identity_preserved (e : ErrorValue) :
+    acknowledge (normalize (.loaded (.error e))) = .error e := by rfl
+
+theorem native_diagnostics_are_data (status detail : Nat) :
+    acknowledge (normalize (.failed status detail)) = .error (.native status detail) := by rfl
+
+-- The rollback token must contain the planned installed value, captured before
+-- callbacks. A fresh read after callbacks is not authority to undo that value.
+def undoIfOwned (before expected current : Nat) : Nat :=
+  if current = expected then before else current
+
+theorem rollback_preserves_intervening_write (before expected current : Nat)
+    (changed : current ≠ expected) :
+    undoIfOwned before expected current = current := by simp [undoIfOwned, changed]
+
+theorem rollback_restores_own_write (before expected : Nat) :
+    undoIfOwned before expected expected = before := by simp [undoIfOwned]
+
+theorem learning_expected_after_callback_is_wrong :
+    undoIfOwned 1 3 3 ≠ undoIfOwned 1 2 3 := by decide
+
 end Birnam.PublicationFailure
