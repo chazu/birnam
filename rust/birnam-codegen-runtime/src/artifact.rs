@@ -134,7 +134,7 @@ pub(super) unsafe fn operation(
         }){Ok(c)=>c,Err(backend::Failure::Native(e))=>return Err(e),Err(backend::Failure::Rejected(_))=>return fail(s,b"RustCodegen could not emit the source")};
         let metadata = birnam_codegen::source_metadata::Metadata::inspect(&tree, &bytes);
         let Some(generated) =
-            emission_artifact::emit(&tree, &bytes, &generated, &path, &metadata, &adapters)
+            emission_artifact::emit(&tree, &bytes, &generated, &path, &metadata, &adapters, synchronous_bodies)
         else {
             return fail(s, b"RustCodegen artifact identity is invalid");
         };
@@ -344,7 +344,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
         let mut previous = None;
         for i in 0..s.index(q, adapter_rows, b"size")? {
             let row = at(s, q, adapter_rows, i)?;
-            if s.index(q, row, b"size")? != 2 {
+            if s.index(q, row, b"size")? != 3 {
                 return Err(invalid());
             }
             let arity = s
@@ -368,7 +368,12 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 b"fromBytes:",
                 &[Operand::bytes(&bytes)],
             )?;
-            adapters.push((arity, bytes));
+            let mode = at(s, q, row, 2)?;
+            let synchronous = mode == s.named(b"true")?;
+            if !synchronous && mode != s.named(b"false")? { return Err(invalid()); }
+            adapters.push(std::rc::Rc::new(CompiledAdapter {
+                arity, bytes, synchronous, template: core::cell::Cell::new(None),
+            }));
         }
         let _activation = s.adapter_scope(Some(adapters));
         let result = q.keep(object(s.run_method(q, method)?)?)?;

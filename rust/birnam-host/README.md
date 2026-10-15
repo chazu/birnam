@@ -132,7 +132,7 @@ identity mismatches and legacy capabilities fail before any planned initializer.
 Activation failures retain ordinary already-published effects.
 
 These generated `.dylib` files contain relocatable TCC objects with the
-`id-object-v2` contract, not OS shared libraries. Original source and embedded
+`id-object-v3` contract, not OS shared libraries. Original source and embedded
 files are unnecessary at activation. Initial-generation selection remains an
 explicitly deferred option; generation replacement remains outside this slice. `scripts/artifact-cli-test.py` verifies fresh-process artifact
 execution as part of the installed, relocated Host suite.

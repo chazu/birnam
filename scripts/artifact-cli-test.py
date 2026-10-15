@@ -118,7 +118,7 @@ assert not marker.exists()
 wrong.unlink()
 # Legacy descriptors cannot enter the plan, even when their ABI/target match.
 wrong = compile('absentDependency', '[Module named: #absentDependency requires: #[]]; true')
-data = wrong.read_bytes().replace(b'id-object-v2', b'old-object-x')
+data = wrong.read_bytes().replace(b'id-object-v3', b'old-object-x')
 wrong.write_bytes(data)
 fails(root, b'no Id native-object contract')
 assert not marker.exists()

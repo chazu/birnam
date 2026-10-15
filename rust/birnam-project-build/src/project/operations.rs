@@ -129,7 +129,7 @@ impl Project<'_> {
             };
             if d.kind != b"module"
                 || d.identity != m.name.as_bytes()
-                || !d.capabilities.iter().any(|c| c == b"id-object-v2")
+                || !d.capabilities.iter().any(|c| c == b"id-object-v3")
             {
                 continue;
             }

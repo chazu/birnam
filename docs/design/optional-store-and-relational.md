@@ -191,7 +191,8 @@ descriptions. Keep whatever bounded initialization is needed to establish the
 modules' own descriptive data; it must not make unrelated core facilities depend
 on a global fact world.
 
-The present bootstrap loads Store and Relational before Execution/compiler.
+The present bootstrap loads Execution before Store, but still loads Store and
+Relational unconditionally before the compiler and Generation.
 Removing isolated callers is insufficient to change that order. Inventory and
 remove the actual dependencies before claiming either module is optional.
 
@@ -245,6 +246,29 @@ unbounded compatibility mirror in the normal execution path.
 Small migrations should implement this common design. They should not invent
 different answers about authority, history or inspection in each module.
 
+## Progress as of 2026-10-15
+
+| Plan area | Delivered | Remaining |
+| --- | --- | --- |
+| Contracts, private scratch and reflection | Ownership decision, scanner scratch cleanup, local Cells, binding/dictionary/slot inventories | Apply the same discoverable-owner contract to remaining public state. |
+| Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
+| Ordinary records and registries | Module registry, LSP state and Globals bindings | Log, Config, HTTP request and process-result fields still use `db cellFor:`. These are not completed by the registry migrations. |
+| Step 5: construction and publication | Independent Method binding constructor, authored source policy, shared resumable artifact/image templates | Uniform ordinary error results; authored publication owner; default mirror removal; explicit description ordering; Generation hooks and bootstrap/image cutover. |
+| Step 6: durable/coordinated and process-local state | Globals already participates in owner-based recovery | Compiler metadata, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
+| Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
+
+The [supplied-template report](supplied-method-templates.md) records the latest
+construction qualification. It does not close publication or full bootstrap gates.
+The [publication design](method-publication-owner.md) remains the next coordinated
+migration. Its existing native-failure characterization describes the old behavior;
+the agreed destination is one ordinary message/error protocol, not preservation of
+two language conventions. Specify that result contract before translating callbacks.
+
+Backwards compatibility is not required for the remaining migration. A deliberate
+artifact/image format transition may require rebuilding instead of retaining old
+adapters. This does not authorize silently discarding explicit user facts, weakening
+current-world recovery, or preserving a permanent native service under a new name.
+
 ## Acceptance and remaining decisions
 
 For each migration, check output and errors, live replacement, aliasing,
@@ -267,9 +291,9 @@ mutation/history/lifetime behavior. Exact prefix composition and test commands
 will follow the dependency migration.
 
 The local Cell default is implemented and the first code-description experiment
-uses explicit snapshots. Remaining decisions include live code-description
-mechanisms, compatibility for existing writable fact interfaces,
-image/version policy, and default module-loading policy. These are bounded API
+uses explicit snapshots. Remaining decisions include whether to add live code-description
+mechanisms, explicit opt-in description/write contracts, image/version transitions,
+and default module-loading policy. Legacy writable fact aliases need not be preserved. These are bounded API
 and delivery decisions; the destination is fixed: **relational facilities remain
 available and self-describing, while ordinary language operation is independent
 of them.**

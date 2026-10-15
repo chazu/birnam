@@ -297,7 +297,7 @@ birnam /path/to/libbirnam_app.dylib
 Before activation, the artifact inspector validates its identity, ABI, target,
 native requirements, and complete sibling dependency closure. Generated module
 and application artifacts retain the `.dylib` suffix for resolution, but contain
-relocatable TCC objects with the `id-object-v2` contract. The runtime loads these
+relocatable TCC objects with the `id-object-v3` contract. The runtime loads these
 through TCC; native runtime and Alien libraries are ordinary OS dynamic libraries.
 See [Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md) and the
 [current artifact contract](rust/birnam-codegen-runtime/README.md#durable-module-artifacts).

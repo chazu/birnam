@@ -223,3 +223,16 @@ import Admission
 #print axioms Birnam.SharedInvocation.binding_has_fresh_identity
 #print axioms Birnam.SharedInvocation.binding_roots_code_and_new_body
 #print axioms Birnam.SharedInvocation.rebinding_does_not_chain_old_implementations
+
+#print axioms Birnam.SharedInvocation.template_publication_keeps_reentrant_other_arity
+#print axioms Birnam.SharedInvocation.template_error_keeps_cache
+#print axioms Birnam.SharedInvocation.template_error_keeps_identity
+#print axioms Birnam.SharedInvocation.image_omits_process_local_templates
+
+#print axioms Birnam.SharedInvocation.cache_conflict_keeps_current
+#print axioms Birnam.SharedInvocation.private_cache_keeps_global_binding_basis
+
+#print axioms Birnam.SharedInvocation.shared_payload_preserves_selection
+#print axioms Birnam.SharedInvocation.equal_arity_does_not_authorize_other_code
+#print axioms Birnam.SharedInvocation.synchronous_unit_is_not_shared
+#print axioms Birnam.SharedInvocation.nested_activation_winner_survives

@@ -1,0 +1,756 @@
+{
+  "passed": true,
+  "date": "2026-10-15",
+  "head": "c4f1ea91438c4a8f8600d22d6123842f57183d61",
+  "scope": "Uncommitted supplied-template integration over the preceding uncommitted source-owner slice. Production sources match the tested prefix byte for byte. Test fixtures and docs were refined after building; their final hashes are separate. This is not a release qualification or user installation.",
+  "source_sha256": {
+    "rust/birnam-codegen-runtime/src/lib.rs": "024d7027ce74c641a3a3c5d2c1a188ba3eee03d015bdb7f887d987e891c5b889",
+    "rust/birnam-codegen-runtime/src/artifact.rs": "9262cdb26f8d77060f7c11edd96bb7c87fae9181ec096cf7210e69f4bcaa794d",
+    "rust/birnam-codegen-runtime/src/image.rs": "9a7bb85ae519b69baa7fb6bf826e8aadf0f330c185f4ea59ee27109ba49c6b77",
+    "rust/birnam-codegen/src/artifact.rs": "082b72b73757fd03e40d6c2469ca0be5720d3e103b40bea1d5f3c2081c914f6b",
+    "rust/birnam-codegen/src/image.rs": "de1949f90c8b36668c4c5f8c77544d337edf75821ef4843dbf520ce17576f4a2",
+    "rust/birnam-project-build/src/project/operations.rs": "c990d2a673fa1286bda8a8367b18f7c1a40782adf2c9cf975002a18e56d7a01e",
+    "rust/birnam-bootstrap/src/lib.rs": "bbdd6c50e040bee15458a2b7d2bab3f7e3dff838f731efdb027d57721ac10061",
+    "rust/birnam-build/src/main.rs": "cea69ac672610b6bae85e7fcc165623dfea6af537d2af7dc0505068bb1da2d7f",
+    "rust/birnam-host-entry/src/startup.rs": "77999104b39e7ee33e7d81533ebeb871e2e6b47d1032aa7315b1c563af4171f0",
+    "modules/method-invocation.birnam": "9f5244f8d8506dcaaa75bc89f0ba9c8cb3ffc1c929c4eabdf2a1fa0f1872cf0a",
+    "modules/modules.birnam": "115cb874892bcd69dcf76daf5fb4eb019faa70fc7be8e235354db673a524c792",
+    "rust/birnam-siphon/tests/artifact_templates.rs": "c9338fd5bc1c368a1d1c58aa4cbfe30c1f88c3caee1d421b6a6d5930df818e54",
+    "scripts/supplied-template-bench.py": "6810a42556c685d9f7966ffaba970b90ed12e39f602c6141c6c8c6eb1b78f9fc",
+    "scripts/artifact-cli-test.py": "f22ddacf4d75660bd6a89a1fba65c9c65164bc46e88123c96f1ab427a4540724",
+    "scripts/check-rooting-model.py": "6c12b4945a67717cef26d45a6250e2cd485cb08e043e5f41d75328c796a88602",
+    "scripts/native-message-test.sh": "97ca20ab63665cf35b106a7274f6c059537bbea6ecf40d6ab9ae35a3b7a83930",
+    "docs/design/supplied-method-templates.md": "20d40499235c37ab8fea7463e5aab76242936b1887ae8a40b1581867906b1189",
+    "formal/semantics/lean/SharedInvocation.lean": "97c68d00f14f4f92b794b3781480e3ee57c1fde64837d39718c2fcf2fb294018",
+    "formal/semantics/lean/SemanticsAudit.lean": "d3b83c83a1164c500cdef65b9439a3ba3a278c38f59d291cfdc13c2bc1320ca3",
+    "formal/semantics/tla/SuppliedTemplates.tla": "076bd67e700b7e16d87c14886748ab3e643d4d7b26af1c80e4575c154007fed3",
+    "formal/semantics/tla/SuppliedArity.cfg": "58569806f5edc1d9b9b6c2aeb14391015d1cf094af825febf9f57e9cfc88f949",
+    "formal/semantics/tla/SuppliedNested.cfg": "6e21eed4b24d2b0337d9847386d77ff6e15bb001cf2c6fd1463b4fb8c399d6a3",
+    "formal/semantics/tla/SuppliedSync.cfg": "a6fdd4d735b1dbae49a7f716614c816b5757665a4aee450355ed54c7db4d6318",
+    "formal/semantics/tla/SuppliedReplay.cfg": "9ac6713494f988775e9125ddde25745103db90af1fe6710e88bf64bdd8e3bd3e",
+    "formal/semantics/tla/SuppliedSafe.cfg": "820c7c1d67491bba60b55133d5e3da888cfd9737dcde0ee126c8f329af412953"
+  },
+  "production_sources_match_prefix": true,
+  "benchmark": {
+    "medians": {
+      "baseline": {
+        "host_peak_rss": 1404207104,
+        "host_wall_ns": 4464848792,
+        "resumable_activation_ns": 7118333,
+        "resumable_native_bytes": 786432,
+        "resumable_units": 17,
+        "synchronous_activation_ns": 7090125
+      },
+      "candidate": {
+        "host_peak_rss": 1400864768,
+        "host_wall_ns": 4129844917,
+        "resumable_activation_ns": 3369500,
+        "resumable_native_bytes": 294912,
+        "resumable_units": 2,
+        "synchronous_activation_ns": 6493875
+      }
+    },
+    "passed": true,
+    "probe_sha256": "4cd0c607c162b76ff32225d9550554f54f5cab1923ab22349c525f518bc85248",
+    "runs": [
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 6658666,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 7110584,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.85 real         3.16 user         1.29 sys\n          1399128064  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              141669  page reclaims\n                 656  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 260  voluntary context switches\n                3593  involuntary context switches\n         59877372427  instructions retired\n         16530782489  cycles elapsed\n          1203883968  peak memory footprint\n",
+          "stderr": "        4.85 real         3.16 user         1.29 sys\n          1399128064  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              141669  page reclaims\n                 656  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 260  voluntary context switches\n                3593  involuntary context switches\n         59877372427  instructions retired\n         16530782489  cycles elapsed\n          1203883968  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4855621583
+        },
+        "host_peak_rss": 1399128064,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=6658666\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7110584\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=6658666\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7110584\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s\n\n",
+          "wall_ns": 1185689959
+        },
+        "sample": 0
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3522375,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 6637250,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.32 real         3.04 user         1.11 sys\n          1394327552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              137617  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 395  voluntary context switches\n                 766  involuntary context switches\n         55943928203  instructions retired\n         15413069048  cycles elapsed\n          1198084352  peak memory footprint\n",
+          "stderr": "        4.32 real         3.04 user         1.11 sys\n          1394327552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              137617  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 395  voluntary context switches\n                 766  involuntary context switches\n         55943928203  instructions retired\n         15413069048  cycles elapsed\n          1198084352  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4324139625
+        },
+        "host_peak_rss": 1394327552,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.09s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3522375\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6637250\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3522375\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6637250\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.09s\n\n",
+          "wall_ns": 1097457292
+        },
+        "sample": 0
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3580042,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 7234167,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.21 real         3.05 user         1.10 sys\n          1389871104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              137426  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  45  voluntary context switches\n                1363  involuntary context switches\n         55656320946  instructions retired\n         15357093782  cycles elapsed\n          1208717312  peak memory footprint\n",
+          "stderr": "        4.21 real         3.05 user         1.10 sys\n          1389871104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              137426  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  45  voluntary context switches\n                1363  involuntary context switches\n         55656320946  instructions retired\n         15357093782  cycles elapsed\n          1208717312  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4219107250
+        },
+        "host_peak_rss": 1389871104,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.13s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3580042\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7234167\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3580042\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7234167\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.13s\n\n",
+          "wall_ns": 1132864417
+        },
+        "sample": 1
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 7371375,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 7090125,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.59 real         3.18 user         1.31 sys\n          1387675648  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142129  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  14  voluntary context switches\n                 999  involuntary context switches\n         59515432535  instructions retired\n         16613970534  cycles elapsed\n          1199165120  peak memory footprint\n",
+          "stderr": "        4.59 real         3.18 user         1.31 sys\n          1387675648  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142129  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  14  voluntary context switches\n                 999  involuntary context switches\n         59515432535  instructions retired\n         16613970534  cycles elapsed\n          1199165120  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4597825667
+        },
+        "host_peak_rss": 1387675648,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7371375\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7090125\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7371375\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7090125\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s\n\n",
+          "wall_ns": 798101042
+        },
+        "sample": 1
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 7170458,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 7545167,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.38 real         3.09 user         1.26 sys\n          1426374656  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              143101  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  10  voluntary context switches\n                 265  involuntary context switches\n         59652397565  instructions retired\n         16160086046  cycles elapsed\n          1221021632  peak memory footprint\n",
+          "stderr": "        4.38 real         3.09 user         1.26 sys\n          1426374656  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              143101  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  10  voluntary context switches\n                 265  involuntary context switches\n         59652397565  instructions retired\n         16160086046  cycles elapsed\n          1221021632  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4384901459
+        },
+        "host_peak_rss": 1426374656,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7170458\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7545167\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7170458\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7545167\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s\n\n",
+          "wall_ns": 778074292
+        },
+        "sample": 2
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3369500,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 7188416,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.12 real         2.99 user         1.10 sys\n          1406582784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              141437  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 250  involuntary context switches\n         56044720680  instructions retired\n         15211587991  cycles elapsed\n          1199247360  peak memory footprint\n",
+          "stderr": "        4.12 real         2.99 user         1.10 sys\n          1406582784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              141437  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 250  involuntary context switches\n         56044720680  instructions retired\n         15211587991  cycles elapsed\n          1199247360  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4129844917
+        },
+        "host_peak_rss": 1406582784,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3369500\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7188416\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3369500\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7188416\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s\n\n",
+          "wall_ns": 1058107875
+        },
+        "sample": 2
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3293334,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 6330375,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.13 real         3.03 user         1.07 sys\n          1408090112  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              139442  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  18  voluntary context switches\n                 221  involuntary context switches\n         55895878223  instructions retired\n         15253965894  cycles elapsed\n          1198001984  peak memory footprint\n",
+          "stderr": "        4.13 real         3.03 user         1.07 sys\n          1408090112  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              139442  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  18  voluntary context switches\n                 221  involuntary context switches\n         55895878223  instructions retired\n         15253965894  cycles elapsed\n          1198001984  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4139481792
+        },
+        "host_peak_rss": 1408090112,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3293334\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6330375\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3293334\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6330375\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s\n\n",
+          "wall_ns": 1055490750
+        },
+        "sample": 3
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 7118333,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 6836833,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.49 real         3.09 user         1.28 sys\n          1407221760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142826  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   4  voluntary context switches\n                 287  involuntary context switches\n         59774583128  instructions retired\n         16208990753  cycles elapsed\n          1211076480  peak memory footprint\n",
+          "stderr": "        4.49 real         3.09 user         1.28 sys\n          1407221760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142826  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   4  voluntary context switches\n                 287  involuntary context switches\n         59774583128  instructions retired\n         16208990753  cycles elapsed\n          1211076480  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4498014833
+        },
+        "host_peak_rss": 1407221760,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7118333\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6836833\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7118333\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6836833\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s\n\n",
+          "wall_ns": 782690875
+        },
+        "sample": 3
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 6891375,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 7038041,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.46 real         3.11 user         1.30 sys\n          1418690560  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142431  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   4  voluntary context switches\n                 343  involuntary context switches\n         59547195118  instructions retired\n         16372516503  cycles elapsed\n          1205194688  peak memory footprint\n",
+          "stderr": "        4.46 real         3.11 user         1.30 sys\n          1418690560  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142431  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   4  voluntary context switches\n                 343  involuntary context switches\n         59547195118  instructions retired\n         16372516503  cycles elapsed\n          1205194688  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4464848792
+        },
+        "host_peak_rss": 1418690560,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=6891375\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7038041\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=6891375\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7038041\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s\n\n",
+          "wall_ns": 769997917
+        },
+        "sample": 4
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3439708,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 6493875,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.06 real         2.96 user         1.07 sys\n          1400864768  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              140247  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  19  voluntary context switches\n                 219  involuntary context switches\n         55899379632  instructions retired\n         15022013913  cycles elapsed\n          1205964736  peak memory footprint\n",
+          "stderr": "        4.06 real         2.96 user         1.07 sys\n          1400864768  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              140247  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  19  voluntary context switches\n                 219  involuntary context switches\n         55899379632  instructions retired\n         15022013913  cycles elapsed\n          1205964736  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4068865542
+        },
+        "host_peak_rss": 1400864768,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3439708\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6493875\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3439708\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6493875\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\n",
+          "wall_ns": 1063013709
+        },
+        "sample": 4
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3293542,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 6265083,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.11 real         2.98 user         1.08 sys\n          1395294208  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              140798  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  25  voluntary context switches\n                 354  involuntary context switches\n         55754023309  instructions retired\n         15104486759  cycles elapsed\n          1206783872  peak memory footprint\n",
+          "stderr": "        4.11 real         2.98 user         1.08 sys\n          1395294208  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              140798  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  25  voluntary context switches\n                 354  involuntary context switches\n         55754023309  instructions retired\n         15104486759  cycles elapsed\n          1206783872  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4117065750
+        },
+        "host_peak_rss": 1395294208,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3293542\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6265083\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3293542\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6265083\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\n",
+          "wall_ns": 1059706042
+        },
+        "sample": 5
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 6870500,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 6383417,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.41 real         3.10 user         1.26 sys\n          1404207104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142192  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  16  voluntary context switches\n                 266  involuntary context switches\n         59612394631  instructions retired\n         16222952351  cycles elapsed\n          1218219840  peak memory footprint\n",
+          "stderr": "        4.41 real         3.10 user         1.26 sys\n          1404207104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142192  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  16  voluntary context switches\n                 266  involuntary context switches\n         59612394631  instructions retired\n         16222952351  cycles elapsed\n          1218219840  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4411847000
+        },
+        "host_peak_rss": 1404207104,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=6870500\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6383417\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=6870500\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6383417\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s\n\n",
+          "wall_ns": 782219292
+        },
+        "sample": 5
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 7287792,
+            "native_bytes": 786432,
+            "units": 17
+          },
+          "true": {
+            "elapsed_ns": 7122250,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-method-invocation/delivery-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.41 real         3.08 user         1.29 sys\n          1397194752  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142254  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  23  voluntary context switches\n                 211  involuntary context switches\n         59578605110  instructions retired\n         16239106785  cycles elapsed\n          1202622400  peak memory footprint\n",
+          "stderr": "        4.41 real         3.08 user         1.29 sys\n          1397194752  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              142254  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  23  voluntary context switches\n                 211  involuntary context switches\n         59578605110  instructions retired\n         16239106785  cycles elapsed\n          1202622400  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4420168000
+        },
+        "host_peak_rss": 1397194752,
+        "name": "baseline",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s\n\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7287792\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7122250\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=7287792\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=7122250\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s\n\n",
+          "wall_ns": 798746250
+        },
+        "sample": 6
+      },
+      {
+        "activation": {
+          "false": {
+            "elapsed_ns": 3296958,
+            "native_bytes": 294912,
+            "units": 2
+          },
+          "true": {
+            "elapsed_ns": 6288792,
+            "native_bytes": 688128,
+            "units": 17
+          }
+        },
+        "host": {
+          "argv": [
+            "/usr/bin/time",
+            "-l",
+            "/private/tmp/birnam-supplied-templates/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/startup.birnam"
+          ],
+          "exit_code": 0,
+          "output": "42\n        4.08 real         2.97 user         1.07 sys\n          1404764160  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              140315  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  21  voluntary context switches\n                 225  involuntary context switches\n         55832849848  instructions retired\n         15052367104  cycles elapsed\n          1203851072  peak memory footprint\n",
+          "stderr": "        4.08 real         2.97 user         1.07 sys\n          1404764160  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n              140315  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  21  voluntary context switches\n                 225  involuntary context switches\n         55832849848  instructions retired\n         15052367104  cycles elapsed\n          1203851072  peak memory footprint\n",
+          "stdout": "42\n",
+          "wall_ns": 4084839208
+        },
+        "host_peak_rss": 1404764160,
+        "name": "candidate",
+        "native": {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c",
+            "--include-ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "output": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3296958\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6288792\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stderr": "artifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=3296958\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=6288792\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\n",
+          "stdout": "\nrunning 1 test\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s\n\n",
+          "wall_ns": 1060701792
+        },
+        "sample": 6
+      }
+    ],
+    "samples": 7,
+    "scope": "Alternating fresh processes; no timing threshold. Native activation timers exclude bootstrap, artifact compilation and verification. Host wall time and peak RSS include startup-image loading, source compilation, printing 42 and process exit. Warm filesystem caches. Peak RSS is distinct from TCC owned allocation counters.",
+    "script_sha256": "6810a42556c685d9f7966ffaba970b90ed12e39f602c6141c6c8c6eb1b78f9fc"
+  },
+  "formal": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-mb3bmtr7/summary.json",
+    "sha256": "2cbc3fb578f68bb10609bc7c058a9c8da1c40745974889922da48495bef39ac1",
+    "theorems": 296,
+    "rejected_mutations": 74,
+    "tlc_outcomes": 176
+  },
+  "logs": {
+    "build.log": {
+      "path": "/tmp/birnam-supplied-templates/build.log",
+      "sha256": "6d92c94d2d0ac30c6015178eb2b0721e616c78b3ea8c1a1458557ed6dbd7163f",
+      "exit_code": 0,
+      "output": "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running `.cargo-target/install/driver/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /tmp/birnam-supplied-templates/prefix --profile release --build-cache /Users/chazu/dev/zig/birnam/.cargo-target/install`\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n   Compiling birnam-host-entry v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host-entry)\n    Finished `release` profile [optimized] target(s) in 0.35s\n   Compiling birnam-bootstrap v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-bootstrap)\n    Finished `release` profile [optimized] target(s) in 0.28s\nrust-install: published /private/tmp/birnam-supplied-templates/prefix (38 native libraries, 4 source bootstrap modules, 23 authored tools)\n"
+    },
+    "rust.log": {
+      "path": "/tmp/birnam-supplied-templates/rust.log",
+      "sha256": "ff92f8e88251a4307f6800831b111641274665795742d9ed10b146252e2c000e",
+      "exit_code": 0,
+      "output": "   Compiling birnam-codegen v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-codegen)\n   Compiling birnam-project-support v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-project-support)\n   Compiling birnam-project-build v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-project-build)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.18s\n     Running unittests src/lib.rs (target/debug/deps/birnam_codegen-9b175e195ff9d356)\n\nrunning 71 tests\ntest closure_elision::numeric_body::tests::returned_literal_names_its_own_allocation_occurrence ... ok\ntest closure_elision::numeric_body::tests::numeric_body_preserves_allocation_order_and_return_identity ... ok\ntest closure_elision::sequence::tests::repeated_closure_extension_stops_before_observation_and_changed_call_shapes ... ok\ntest closure_elision::numeric_body::tests::numeric_body_refuses_private_receiver_exposure_and_noncanonical_inputs ... ok\ntest closure_elision::sequence::tests::closure_transition_domains_reject_noncanonical_edges_before_derivation ... ok\ntest closure_elision::sequence::tests::literal_closure_results_retain_distinct_origins_and_stop_before_dependent_arguments ... ok\ntest closure_elision::numeric_plan_tests::numeric_closure_sequence_stops_before_a_result_dependent_invocation ... ok\ntest closure_elision::tests::captured_aliases_retain_shared_input_and_distinct_literal_occurrences ... ok\ntest closure_elision::tests::invocation_spelling_has_no_authority_and_wrong_arity_declines ... ok\ntest closure_elision::tests::source_closure_analysis_refuses_observation_and_identity_arguments ... ok\ntest closure_elision::tests::source_closure_substitution_and_recovery_match_canonical_frame_execution ... ok\ntest closure_elision::transition::tests::bitmap_word_boundary_and_result_refusal_are_explicit ... ok\ntest closure_elision::transition::tests::copies_read_the_old_state_before_result_and_clear_stores ... ok\ntest discarded_clone::tests::discarded_clone_proof_rejects_escaping_and_observing_uses ... ok\ntest generation::tests::canonical_order_dependencies_and_overrides_fail_closed ... ok\ntest generation::tests::dispatch_base_v2_reproduces_the_frozen_non_circular_trace ... ok\ntest generation::tests::replacement_preserves_other_modules_selection_and_rejects_incomplete_inventory ... ok\ntest generation::tests::authority_uses_selected_descriptors_and_residual_effects_cannot_change ... ok\ntest image::tests::mapped_plan_checks_inventory_authority_without_emitting_source ... ok\ntest lowering_tests::folds_threaded_dispatches_left_to_right_without_a_new_expr_shape ... ok\ntest lowering_tests::folds_same_category_cst_message_chains_left_to_right ... ok\ntest lowering_tests::lowers_block_parameters_and_statement_bindings ... ok\ntest lowering_tests::lowers_collections_and_logic_variables_to_the_reference_send_shapes ... ok\ntest lowering_tests::lowers_cst_literals_without_runtime_or_allocator_access ... ok\ntest lowering_tests::lowers_program_bodies_with_local_scope ... ok\ntest lowering_tests::lowers_cst_sends_and_keyword_selector_parts_deterministically ... ok\ntest numeric_chain::recovery_maps::tests::equal_computations_remain_distinct_virtual_identities ... ok\ntest frame_region::tests::native_region_read_availability_and_refusal_are_physical ... ok\ntest numeric_chain::recovery_maps::tests::long_chains_clear_dead_results_and_preserve_the_final_alias ... ok\ntest numeric_chain::recovery_maps::tests::refuses_noncanonical_layouts_and_observing_code ... ok\ntest numeric_chain::recovery_maps::tests::repeated_aliases_recover_the_same_result_in_locals_and_pending_operands ... ok\ntest numeric_chain::template::tests::canonical_lowering_retains_raw_dependencies_and_distinct_literal_occurrences ... ok\ntest numeric_chain::template::tests::refuses_observing_bodies_backedges_invalid_sources_and_oversized_metadata ... ok\ntest numeric_chain::tests::preserves_prelude_extrema_and_refuses_errors ... ok\ntest numeric_chain::tests::refuses_invalid_dataflow_and_resource_limits ... ok\ntest portable::source_match::tests::compares_bodies_and_capture_identity ... ok\ntest portable::literal_body_contract_tests::literal_envelopes_and_escape_bytes_remain_distinct ... ok\ntest portable::source_match::tests::accepts_only_the_literal_embedding_rewrite_including_nested_blocks ... ok\ntest portable::tests::lowers_lexical_scope_nested_blocks_and_postorder_sends ... ok\ntest portable::tests::preserves_literal_meaning ... ok\ntest recovery_graph::implementation::tests::bounds_total_fields_as_well_as_nodes_inputs_and_slots ... ok\ntest recovery_graph::implementation::tests::rejects_cycles_missing_inputs_and_missing_outputs ... ok\ntest recovery_graph::implementation::tests::shared_references_do_not_coalesce_equal_fresh_identities ... ok\ntest resumable::tests::colored_execution_matches_the_uncolored_oracle ... ok\ntest resumable::tests::coloring_is_deterministic_and_reserves_one_call_window ... ok\ntest resumable::tests::final_binding_keeps_the_send_non_tail_and_has_a_distinct_value ... ok\ntest resumable::tests::coloring_reuses_dead_entry_slots_and_roots_call_results_on_resume ... ok\ntest resumable::tests::implementation_inventory_uses_operation_positions_and_lexical_block_paths ... ok\ntest resumable::tests::liveness_keeps_a_pre_call_value_used_after_resume ... ok\ntest resumable::tests::long_non_send_regions_split_with_continue ... ok\ntest resumable::tests::non_tail_send_resumes_and_final_send_tail_calls ... ok\ntest resumable::tests::portable_lowering_preserves_float_bits ... ok\ntest resumable::tests::portable_lowering_uses_binding_identity_instead_of_repeated_names ... ok\ntest resumable::tests::projected_bindings_are_top_level_blocks_with_canonical_keys_and_captures ... ok\ntest numeric_chain::recovery_maps::tests::continue_boundaries_preserve_aliases_without_inventing_a_numeric_result ... ok\ntest resumable::tests::receiver_and_arguments_are_lowered_once_in_source_order ... ok\ntest resumable::tests::shadowed_bindings_and_repeated_lowering_are_deterministic ... ok\ntest resumable::tests::stable_block_resolution_propagates_enclosing_captures_in_binding_order ... ok\ntest resumable::tests::uncolored_oracle_observes_the_same_recursive_send_order ... ok\ntest resumable_descriptor::tests::call_descriptor_agrees_with_coloring_edges_and_staging ... ok\ntest resumable_descriptor::tests::capture_free_block_descriptor_is_deterministic_and_admitted ... ok\ntest closure_elision::sequence::tests::repeated_closure_plans_match_physical_execution ... ok\ntest small_callee::tests::small_callee_plans_preserve_entry_provenance_and_refuse_observers ... ok\ntest small_callee::tests::small_callee_limits_and_call_boundaries_decline ... ok\ntest source_metadata::tests::non_module_programs_keep_documentation_and_asset_inventory ... ok\ntest source_metadata::tests::metadata_preserves_inventory_programs_and_source_identity ... ok\ntest tail_entry::implementation::tests::entry_transfer_preserves_sparse_bindings_missing_arguments_and_captures ... ok\ntest source_revision::tests::residual_digest_excludes_only_capture_free_projected_blocks ... ok\ntest source_metadata::tests::rejects_truncation_trailing_data_and_noncanonical_inventory ... ok\ntest virtual_aggregate::tests::virtual_aliases_follow_actual_v2_copies_and_clears_before_observation ... ok\ntest closure_elision::numeric_plan_tests::numeric_closure_regions_preserve_captures_returns_aliases_and_call_limits ... ok\n\ntest result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s\n\n     Running unittests src/lib.rs (target/debug/deps/birnam_project_build-087ce0efd0fbf378)\n\nrunning 12 tests\ntest project::operations::tests::project_policy_values_survive_collecting_messages ... ignored, requires installed production modules\ntest project::data::tests::bundled_source_removes_only_the_module_declaration ... ok\ntest project::data::tests::wrapped_argument_expansion_replaces_all_frozen_placeholders ... ok\ntest project::data::tests::artifact_plan_validation_preserves_policy_identity_and_action_pairing ... ok\ntest test_resources::tests::a_lib_override_supplies_the_default_id_dylib ... ok\ntest project::data::tests::application_publication_bundles_modules_dependency_first_and_marks_them_loaded ... ok\ntest project::data::tests::project_build_resolution_digest_tracks_transitive_wrapped_provenance ... ok\ntest test_resources::tests::lexical_normalization_does_not_require_files_to_exist ... ok\ntest test_resources::tests::overrides_remain_narrow_and_exact ... ok\ntest test_resources::tests::uses_one_normalized_executable_relative_layout ... ok\ntest test_resources::tests::executable_launcher_symlink_uses_the_target_prefix ... ok\ntest project::files::tests::build_publication_rotates_a_complete_stage_and_removes_backup ... ok\n\ntest result: ok. 11 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s\n\n   Doc-tests birnam_codegen\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests birnam_project_build\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n"
+    },
+    "native.log": {
+      "path": "/tmp/birnam-supplied-templates/native.log",
+      "sha256": "d9ae3d57d64d09d8a59574071eb49684c301a93d5d7a0e3d8849da0780670d43",
+      "exit_code": 0,
+      "output": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.78s\n     Running tests/artifact.rs (.cargo-target/native-message-tests/debug/deps/artifact-e9fb831f0a2d87c7)\n\nrunning 1 test\ntest artifact_inspection_uses_messages_and_traced_descriptors ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.98s\n\n     Running tests/artifact_activation.rs (.cargo-target/native-message-tests/debug/deps/artifact_activation-db9efa62f63722e1)\n\nrunning 1 test\ntest durable_artifacts_use_owned_code_and_current_messages ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s\n\n     Running tests/artifact_templates.rs (.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c)\n\nrunning 1 test\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=4418625\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=11257292\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s\n\n     Running tests/candidate.rs (.cargo-target/native-message-tests/debug/deps/candidate-c159c21c69e3141f)\n\nrunning 1 test\ntest candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_selection ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.56s\n\n     Running tests/compiler.rs (.cargo-target/native-message-tests/debug/deps/compiler-8ad857b17cc35d2b)\n\nrunning 1 test\nframe-call 61: baseline 95114500ns/48800 allocations; optimized 39620208ns/13600 allocations\nframe-call 125: baseline 16350792ns/4900 allocations; optimized 14429624ns/3700 allocations\ndiscarded-clone: 180 runs baseline=65376750ns/21910 allocations optimized=61809208ns/21060 allocations\nnumeric-predicate: 180 runs baseline=85590834ns/25920 allocations optimized=84382250ns/25920 allocations; Integer boxes/run 120->212\ninline-return: baseline 52771417ns/20520 allocations; optimized 52607916ns/19440 allocations\ntest source_compiles_and_runs_on_production_execution ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 59.35s\n\n     Running tests/execution_methods.rs (.cargo-target/native-message-tests/debug/deps/execution_methods-664fd64922d231b3)\n\nrunning 1 test\ntest methods_retain_bindings_active_calls_arguments_and_exact_lookup_contexts ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.98s\n\n     Running tests/generation.rs (.cargo-target/native-message-tests/debug/deps/generation-f68eda3dd8ec811b)\n\nrunning 1 test\ntest initial_projection_is_canonical_inert_rooted_and_rejects_mixed_sources ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.57s\n\n     Running tests/image.rs (.cargo-target/native-message-tests/debug/deps/image-0b8e9ae2809216fd)\n\nrunning 2 tests\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.65s\n\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.95s\n\n\nrunning 1 test\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.46s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.42s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 25.59s\n\n\nrunning 1 test\ntest image_owner_roundtrip has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.57s\n\n\nrunning 1 test\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 19.70s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.70s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.67s\n\n\nrunning 1 test\ntest image_owner_roundtrip has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.43s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.08s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 81.73s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 19.48s\n\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.48s\n\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 20.09s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 19.08s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 27.05s\n\n\nrunning 1 test\ntest image_owner_roundtrip has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 27.26s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.42s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 82.88s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 19.80s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 24.92s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.49s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 23.30s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.18s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 22.70s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.83s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 22.56s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.08s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 22.63s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.08s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 22.55s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.77s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 22.67s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 486.31s\n\n     Running tests/materialization.rs (.cargo-target/native-message-tests/debug/deps/materialization-86ae31c4b5005fdd)\n\nrunning 1 test\ntest portable_materialization_preserves_identity_control_and_lifetime ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.72s\n\n     Running tests/method_binding.rs (.cargo-target/native-message-tests/debug/deps/method_binding-4358625c67668097)\n\nrunning 1 test\nMethod withImplementation: generated template from source: passed\nMethod withImplementation: generated template from artifact: passed\nMethod withImplementation: source-free image rebuild=false: passed\nMethod withImplementation: source-free image rebuild=true: passed\ntest generated_templates_bind_through_source_and_artifact_messages ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.48s\n\n     Running tests/method_invocation.rs (.cargo-target/native-message-tests/debug/deps/method_invocation-6d694b4296dbe06b)\n\nrunning 1 test\ndefault code footprint: baseline=false, resident_units=208, resident_bytes=19906560, added_bytes=32768\ndefault construction: baseline=false, definitions=16, added_tcc_units=1, elapsed_ns=5622791\ndefault invocation: baseline=false, calls=10000, elapsed_ns=103419958\nfactory policy: Error identity, native failure conversion, no publication/replay, live owner and template overrides passed\nfactory reentry: distinct arities survive, no replay; clearing cache preserves installed bindings\nowned cache: late update preserved without retry; construction/clear leave Globals, Store and Id binding revisions unchanged\nReflect facade: delegated constructor override is live and isolated from the canonical facade\ntest default_construction_shares_templates_and_observes_current_policy ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s\n\n     Running tests/portable_code.rs (.cargo-target/native-message-tests/debug/deps/portable_code-ca5622a62db5430a)\n\nrunning 1 test\ntest portable_code_ordinary_objects_use_id_sends ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.43s\n\n     Running tests/publication_contract.rs (.cargo-target/native-message-tests/debug/deps/publication_contract-28c0bb1964b4f43a)\n\nrunning 1 test\ntest authorization_commit_notifications_and_failure_are_distinct ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s\n\n     Running tests/publication_failure_boundary.rs (.cargo-target/native-message-tests/debug/deps/publication_failure_boundary-134ed631e5db1b0d)\n\nrunning 1 test\nboundary ok store: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok plain: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok whole-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok local-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok sync-plain: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok sync-whole-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok sync-local-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok native-owner: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary ok artifact-owner: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary denied store: False; committed=false; events=[\"authorize\"]\nboundary denied plain: False; committed=false; events=[\"authorize\"]\nboundary denied whole-preserve: False; committed=false; events=[\"authorize\"]\nboundary denied local-preserve: False; committed=false; events=[\"authorize\"]\nboundary denied sync-plain: False; committed=false; events=[\"authorize\"]\nboundary denied sync-whole-preserve: False; committed=false; events=[\"authorize\"]\nboundary denied sync-local-preserve: False; committed=false; events=[\"authorize\"]\nboundary denied native-owner: False; committed=false; events=[\"authorize\"]\nboundary denied artifact-owner: False; committed=false; events=[\"authorize\"]\nboundary native-observer-failure store: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure plain: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure whole-preserve: Native(1, 101); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure local-preserve: Native(1, 101); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure sync-plain: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure sync-whole-preserve: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure sync-local-preserve: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure native-owner: Error(\"nativeFailure\"); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-observer-failure artifact-owner: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-error-value store: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value plain: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value whole-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value local-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value sync-plain: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value sync-whole-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value sync-local-preserve: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value native-owner: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-error-value artifact-owner: Success; committed=true; events=[\"authorize\", \"notify\"]\nboundary observer-catches store: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\", \"caught\"]\nboundary observer-catches plain: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\", \"caught\"]\nboundary observer-catches whole-preserve: Native(1, 101); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-catches local-preserve: Native(1, 101); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-catches sync-plain: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\", \"caught\"]\nboundary observer-catches sync-whole-preserve: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-catches sync-local-preserve: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-catches native-owner: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\", \"caught\"]\nboundary observer-catches artifact-owner: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\", \"caught\"]\nboundary observer-returns-converted-error store: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error plain: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error whole-preserve: Native(1, 101); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error local-preserve: Native(1, 101); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error sync-plain: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error sync-whole-preserve: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error sync-local-preserve: Native(881, 17); committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error native-owner: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary observer-returns-converted-error artifact-owner: Success; committed=true; events=[\"authorize\", \"notify\", \"fault\"]\nboundary native-authorizer-failure store: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure plain: Error(\"nativeFailure\"); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure whole-preserve: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure local-preserve: Native(1, 101); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure sync-plain: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure sync-whole-preserve: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure sync-local-preserve: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure native-owner: Error(\"nativeFailure\"); committed=false; events=[\"authorize\", \"fault\"]\nboundary native-authorizer-failure artifact-owner: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary authorizer-error-value store: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value plain: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value whole-preserve: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value local-preserve: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value sync-plain: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value sync-whole-preserve: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value sync-local-preserve: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value native-owner: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-error-value artifact-owner: Error(\"nativeFailure\"); committed=false; events=[\"authorize\"]\nboundary authorizer-catches store: Success; committed=true; events=[\"authorize\", \"fault\", \"caught\", \"notify\"]\nboundary authorizer-catches plain: Success; committed=true; events=[\"authorize\", \"fault\", \"caught\", \"notify\"]\nboundary authorizer-catches whole-preserve: Native(1, 101); committed=false; events=[\"authorize\", \"fault\"]\nboundary authorizer-catches local-preserve: Native(1, 101); committed=false; events=[\"authorize\", \"fault\"]\nboundary authorizer-catches sync-plain: Success; committed=true; events=[\"authorize\", \"fault\", \"caught\", \"notify\"]\nboundary authorizer-catches sync-whole-preserve: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary authorizer-catches sync-local-preserve: Native(881, 17); committed=false; events=[\"authorize\", \"fault\"]\nboundary authorizer-catches native-owner: Success; committed=true; events=[\"authorize\", \"fault\", \"caught\", \"notify\"]\nboundary authorizer-catches artifact-owner: Success; committed=true; events=[\"authorize\", \"fault\", \"caught\", \"notify\"]\nboundary native-failure request-in-body: Success; events=[\"notify\", \"fault\", \"cleanup\"]\nboundary native-failure tail-request: Native(881, 17); events=[\"notify\", \"fault\", \"cleanup\"]\nboundary error-value request-in-body: Success; events=[\"notify\", \"cleanup\"]\nboundary error-value tail-request: Success; events=[\"notify\", \"cleanup\"]\nboundary catches request-in-body: Native(1, 101); events=[\"notify\", \"fault\"]\nboundary catches tail-request: Native(881, 17); events=[\"notify\", \"fault\", \"cleanup\"]\nboundary converted-error request-in-body: Native(1, 101); events=[\"notify\", \"fault\"]\nboundary converted-error tail-request: Native(881, 17); events=[\"notify\", \"fault\", \"cleanup\"]\nboundary native-failure tail-value: Native(881, 17); events=[\"authorize\", \"fault\"]\nboundary error-value tail-value: Error(\"nativeFailure\"); events=[\"authorize\"]\nboundary catches tail-value: True; events=[\"authorize\", \"fault\", \"caught\"]\ntest authored_boundaries_do_not_silently_change_native_failure_or_callback_handling ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.94s\n\n     Running tests/publication_failure_image.rs (.cargo-target/native-message-tests/debug/deps/publication_failure_image-49030ab56155ff1e)\n\nrunning 1 test\nimage failure boundary fresh: native 1 0\nimage failure boundary mapped: Error(nativeInvalidRequest), native channel lost\nimage failure boundary rebuilt: Error(nativeInvalidRequest), native channel lost\ntest characterizes_adapter_failure_channel_change_across_images ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.21s\n\n     Running tests/shared_invocation_probe.rs (.cargo-target/native-message-tests/debug/deps/shared_invocation_probe-31ade2f445881104)\n\nrunning 1 test\nplain native trampoline: did not preserve suspension (expected negative control)\nshared adapter: optimized entry recovered once to ordinary forwarding\nauthored shared step: one compiled Birnam step serves distinct retained implementations\nregistration code units: 16 ordinary definitions +16; 16 shared-step bindings +0 (one existing shared step)\nshared adapter: distinct Methods and binding owners, one shared step entry; calls=21\ntest shared_forwarding_preserves_live_invocation_and_method_ownership ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.42s\n\n"
+    },
+    "selection.log": {
+      "path": "/tmp/birnam-supplied-templates/selection.log",
+      "sha256": "ce8288d3afbed6ebd28ec6d124ab25b92d09107a7ddffc0a91af7957e49618f2",
+      "exit_code": 0,
+      "output": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.88s\n     Running tests/artifact_templates.rs (.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c)\n\nrunning 1 test\nartifact-template synchronous=false units=2 native_bytes=Some(294912) elapsed_ns=4179833\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=8244333\nimage-template mapped=false distinct_payload=false units=1\nimage-template mapped=true distinct_payload=false units=1\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.41s\n\n"
+    },
+    "baseline-final.log": {
+      "path": "/tmp/birnam-supplied-templates/baseline-final.log",
+      "sha256": "ea1405d3614775ae992e78438e79b1d8eeb52062e66890a97e472b09e61c665a",
+      "exit_code": 0,
+      "output": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.95s\n     Running tests/artifact_templates.rs (.cargo-target/native-message-tests/debug/deps/artifact_templates-afb4f9deeeffad3c)\n\nrunning 1 test\nartifact-template synchronous=false units=17 native_bytes=Some(786432) elapsed_ns=9100042\nartifact-template synchronous=true units=17 native_bytes=Some(688128) elapsed_ns=10285833\nimage-template mapped=false distinct_payload=false units=2\nimage-template mapped=true distinct_payload=false units=2\nimage-template mapped=false distinct_payload=true units=2\nimage-template mapped=true distinct_payload=true units=2\ntest supplied_artifact_templates_share_code_without_sharing_binding_state ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.42s\n\n"
+    },
+    "language.log": {
+      "path": "/tmp/birnam-supplied-templates/language.log",
+      "sha256": "782cd08579641f49da2fbf941d5a09485a411bfb5d2438903b44fef8b8ad0eb9",
+      "exit_code": 0,
+      "output": "== Html ==\n  ok   escape\n  ok   tag:text:\n  ok   tag:body:\n  ok   attr:value:\n  ok   tag:attrs:body:\n  ok   void:\n  ok   multi-attr\n  ok   join:\n  ok   page:\n  ok   page:style:body:\n== JSON ==\n  ok   empty input returns itself\n  ok   plain bytes unchanged\n  ok   nonempty result is a copy\n  ok   each call makes a fresh result\n  ok   plain bytes unchanged\n  ok   nonempty result is a copy\n  ok   each call makes a fresh result\n  ok   plain bytes unchanged\n  ok   nonempty result is a copy\n  ok   each call makes a fresh result\n  ok   plain bytes unchanged\n  ok   nonempty result is a copy\n  ok   each call makes a fresh result\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escape case\n  ok   escaped result is fresh\n  ok   quoted token\n  ok   copy starts at zero\n  ok   copy uses current size\n  ok   scanner runs on every call\n  ok   slicer runs on every call\n  ok   replacement is immediately visible\n  ok   current escape decoder is called\n  ok   plain key and value\n  ok   escaped key and value\n  ok   empty value\n  ok   integer root\n  ok   float root\n  ok   true root\n  ok   false root\n  ok   null root\n  ok   empty array\n  ok   empty object\n  ok   nested string\n  ok   nested object and array\n  ok   current numeric handler\n  ok   only string and number tested\n  ok   replacement takes effect\n  ok   dispatch remains late-bound\n  ok   unknown kind still returns nil\n  ok   quoted contents\n  ok   result differs from quoted token\n  ok   successive decoded results are fresh\n  ok   quoted contents\n  ok   result differs from quoted token\n  ok   successive decoded results are fresh\n  ok   quoted contents\n  ok   result differs from quoted token\n  ok   successive decoded results are fresh\n  ok   quoted contents\n  ok   result differs from quoted token\n  ok   successive decoded results are fresh\n  ok   plain slice is not copied again\n  ok   token slicing remains a live send\n  ok   scan remains a live send\n  ok   current unescape handler\n  ok   changed unescape handler\n  ok   integer kind\n  ok   exact integer value\n  ok   integer kind\n  ok   exact integer value\n  ok   integer kind\n  ok   exact integer value\n  ok   integer kind\n  ok   exact integer value\n  ok   integer kind\n  ok   exact integer value\n  ok   integer kind\n  ok   exact integer value\n  ok   integer kind\n  ok   exact integer value\n  ok   overflow does not become Float\n  ok   overflow does not become Float\n  ok   overflow does not become Float\n  ok   overflow does not become Float\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   floating syntax keeps Float kind\n  ok   decimal value\n  ok   exponent value\n  ok   negative zero\n  ok   malformed input rejected by grammar\n  ok   malformed input rejected by grammar\n  ok   malformed input rejected by grammar\n  ok   malformed input rejected by grammar\n  ok   malformed input rejected by grammar\n  ok   malformed input rejected by grammar\n  ok   malformed input rejected by grammar\n  ok   current short conversion\n  ok   changed short conversion\n  ok   current long integer conversion\n  ok   current classifier and float conversion\n== Markdown ==\n  ok   # -> h1 + slug\n  ok   inline code in a heading; markup dropped from the slug\n  ok   shiftHeadings: demotes\n  ok   soft wrap joins with a space\n  ok   blank line separates paragraphs\n  ok   prose is escaped\n  ok   no bold inside a code span\n  ok   **bold**\n  ok   newlines and blank lines kept; no inline processing\n  ok   code is escaped\n  ok   an unclosed fence still emits\n  ok   adjacent items\n  ok   a list closes the open paragraph; a blank closes the list\n== Random ==\n  ok   reproducible\n  ok   in [10,20]\n  ok   true/false\n== Doc ==\n  ok   Rust scan records the distinct doc kind\n  ok   //! supplies the module summary\n  ok   an attribute does not detach /// docs from the Rust declaration\n  ok   markdownForModule:\n  ok   h2 heading self-links the module anchor\n  ok   summary text escaped\n  ok   entry is a <dt> with a per-selector anchor\n  ok   docstring escaped in the <dd>\n  ok   no native-floor badge on a birnam module\n  ok   receiver prototype badged from Globals\n  ok   recorded source folded into <details>\n  ok   the source shown is this definition's own span\n  ok   docKind fact makes native Rust true\n  ok   unmarked module is not native Rust\n  ok   docKind fact makes isRustFloor: true\n  ok   unmarked module is not Rust floor\n  ok   docKind fact makes isNativeRust: true\n  ok   Rust floor is not a higher native crate\n  ok   sortedModules orders by display name\n  ok   page carries the inline stylesheet\n  ok   nav has the Rust-floor group\n  ok   nav has the native-Rust group\n  ok   a section per module\n  ok   charset meta present\n  ok   #demoReg present in [Doc modules]\n  ok   methodsOf: empty when none registered\n  ok   selectorInSource: keeps a keyword selector's colons\n  ok   a symbol in the BODY is not the selector (first-# parse)\n  ok   not a definition -> empty\n  ok   sourcesForSelector: finds the recorded source\n  ok   hoverBodyFor: includes the source\n  ok   hoverBodyFor: fences source as birnam\n  ok   docstring beats source\n  ok   moduleSource: #doc is recorded\n  ok   it is the actual doc.birnam source\n  ok   marker and one space eaten\n  ok   deeper indentation kept\n  ok   bare marker is empty\n  ok   header opens with the file's own first line\n  ok   the block stops at the first non-comment line\n  ok   no recorded source -> empty\n  ok   the generation method is a gap\n  ok   a documented selector is not\n  ok   only source-only keys counted\n  ok   an empty provided index stays empty\n  ok   both pages loaded\n  ok   filename order, title from the # heading\n  ok   a guide section with the slug anchor\n  ok   the page # heading renders shifted to h2\n  ok   nav has the guide group\n  ok   a missing dir is an empty guide set\n  ok   filter input in the nav\n  ok   filter script inlined\n  ok   coverage footer closes the main column\n  ok   a header-prose details rendered (doc module has one)\n  ok   all public lifecycle selectors registered\n  ok   authored activation reference is rendered\n  ok   guarded rollback reference is rendered\n  ok   birnam-id lib.rs keeps the Rust-floor identity\n  ok   birnam-abi lib.rs gets its crate identity\n  ok   birnam-id source is #rustFloor\n  ok   birnam-abi source is #nativeRust\n  ok   floor source is not conflated with higher native Rust\n  ok   shared native crate is not conflated with the floor\n== Cli ==\n  ok   8080 valid\n  ok   0 valid\n  ok   65535 valid\n  ok   65536 out of range\n  ok   a non-number (asInteger \u2192 nil) invalid\nbirnam: unknown subcommand: frobnicate\n  ok   unknown subcommand fails\nusage: birnam doc <module> [selector]\n  ok   usage display is help, not failure\nbirnam: could not read /nonexistent/nope.birnam\n  ok   missing file is a failure\nwrote /tmp/birnam-cli-init-test.toml\n  ok   fresh init succeeds\n  ok   template shows the main key\n  ok   template shows the module load key\n  ok   template shows project test discovery\n  ok   template documents the Config read surface\nbirnam init: /tmp/birnam-cli-init-test.toml already exists \u2014 not overwriting\n  ok   an existing file is refused\n  ok   scratch file cleanup\nbirnam init: birnam.toml already exists \u2014 not overwriting\n  ok   repo root already has birnam.toml\n[wrap] scaffolded /tmp/birnam-wrap-test/foo/foo.birnam\n        edit the wraps, build libfoo.dylib, then: birnam /tmp/birnam-wrap-test/foo/foo.birnam\n  ok   fresh scaffold succeeds\n  ok   capitalized singleton bound\n  ok   dlopen line names the lib\n  ok   no unsubstituted placeholders\nbirnam wrap: /tmp/birnam-wrap-test/foo/foo.birnam already exists \u2014 leaving it untouched\n  ok   existing wrapper is a no-op, not a failure\n  ok   the author's edits win\nusage: birnam wrap <name>   scaffold wrapped/<name>/<name>.birnam\n  ok   no operand shows usage\n  ok   balanced form complete\n  ok   open form incomplete\n  ok   braces balance\n  ok   open brace + bracket\n  ok   bracket inside a string ignored\n  ok   unterminated string holds the form open\n  ok   brackets inside a // comment ignored\n  ok   a // comment ends at its newline\n  ok   over-closed evaluates (parser reports it)\n  ok   contentLengthOf:\n  ok   clean source, no diagnostics\n  ok   a syntax error yields a diagnostic\n  ok   a provable selector arity mismatch yields one diagnostic\n  ok   selector arity diagnostics preserve their code\n  ok   late-bound names do not produce false positives\n  ok   source symbols include top-level lets and methods\n  ok   let symbol keeps its name\n  ok   method symbol keeps its selector\n  ok   source occurrences include the declaration and use\n  ok   occurrence keeps the declaration spelling\n  ok   source bindings include locals and parameters\n  ok   binding marks top-level locals\n  ok   binding marks block parameters\n  ok   occurrences reach a unary threaded leg\n  ok   occurrences reach keyword selector parts\n  ok   occurrences reach nested threaded arguments\n  ok   static diagnostics traverse a threaded keyword argument\n  ok   the editor reports the source-sensitive head restriction\n  ok   a two-byte code point is one UTF-16 unit\n  ok   a UTF-16 cursor advances over the full UTF-8 code point\n  ok   System exposes runtime completion items\n  ok   a repeated lookup reuses the cached item vector\n  ok   a repeated prefix lookup filters the same bounded receiver snapshot\n  ok   the prefix index retains matching runtime selectors\n  ok   the cache is bounded by receiver name\n  ok   an exact runtime receiver completes without a project document\n  ok   reflection exposes the actual System export\n  ok   receiver-position parsing keeps the partial global\n  ok   prefetch at the token start requests the complete global snapshot\n  ok   a partial receiver is not mistaken for a method receiver\n  ok   the cached runtime export snapshot filters System\n  ok   a partial receiver completes an exported runtime global\n  ok   token-start prefetch includes System in the complete snapshot\n  ok   the first global lookup builds one bounded snapshot\n  ok   later prefixes reuse the runtime global snapshot\n  ok   unchanged text and position reuse the bounded result\n  ok   changed text cannot reuse a completion result\n  ok   the first complete body is consumed\n  ok   overread bytes retain the following frame\n  ok   an incomplete body waits for another chunk\n  ok   an incomplete frame remains byte-identical\n== Stdlib ==\n  ok   empty isEmpty\n  ok   non-empty isEmpty\n  ok   empty notEmpty\n  ok   non-empty notEmpty\n  ok   vector first\n  ok   vector last\n  ok   empty vector first is nil\n  ok   in-range index answers the element\n  ok   past-end runs the block\n  ok   negative runs the block\n  ok   range first\n  ok   range last\n  ok   string first (new, via Collection)\n  ok   map keeps its key-based native at:ifAbsent:\n  ok   add coerces via printString; addByte appends raw\n  ok   size counts bytes\n  ok   empty builder is the empty string\n  ok   isEmpty rides size\n  ok   Collection joined is the O(n) fold\n  ok   addLine: appends the newline\n  ok   addAll: appends each element in order\n  ok   asLowercase folds A-Z\n  ok   asUppercase folds a-z\n  ok   empty stays empty\n  ok   non-letters pass through\n  ok   non-letters pass through (lower)\n  ok   plain prefix\n  ok   whole string\n  ok   longer than receiver\n  ok   empty prefix always true\n  ok   non-String answers false\n  ok   empty on empty\n  ok   plain suffix\n  ok   empty suffix always true\n  ok   longer than receiver\n  ok   non-String answers false\n  ok   inner hit\n  ok   miss\n  ok   empty needle is everywhere\n  ok   non-String answers false\n  ok   runs split, empties dropped\n  ok   all-whitespace has no words\n  ok   empty has no words\n  ok   single unpadded word\n  ok   inject rejoins in order\n  ok   inject counts\n  ok   empty string answers the seed\n  ok   do: answers self\n  ok   asVector\n  ok   collect:\n  ok   count:\n  ok   detect:\n  ok   reversed\n  ok   empty reversed\n  ok   copyFrom:to: is half-open\n  ok   empty slice\n  ok   to < from answers nil\n  ok   past-end answers nil\n  ok   includes: hit\n  ok   includes: miss\n  ok   includes: rides indexOf:'s keyEq \u2014 Floats by VALUE (the keyEq wart is fixed)\n  ok   indexOf: finds an equal-valued Float\n  ok   unequal Floats still miss\n  ok   per-type: an Integer never equals a Float key\n  ok   Range asVector (Collection derived)\n  ok   empty Range asVector\n  ok   Vector asVector is the identity\n  ok   split keeps empty parts\n  ok   split of empty is #[\"\"]\n  ok   non-String separator answers #[self]\n  ok   trimmed\n  ok   all-whitespace trims to empty\n  ok   indexOf: substring\n  ok   indexOf: miss is nil\n  ok   empty needle answers 0\n  ok   balanced form\n  ok   empty is balanced\n  ok   two open\n  ok   brace + bracket open\n  ok   bracket inside a string ignored\n  ok   unterminated string holds it open\n  ok   escaped quote stays in-string\n  ok   brackets in a // comment ignored\n  ok   a // comment ends at its newline\n  ok   over-closed goes negative\n  ok   bare name, no sigil\n  ok   keyword selector keeps its colons\n  ok   a non-symbol answers the kinded error\n  ok   the canonical export wins over a persisted namesake\n  ok   native System protocol remains visible\n  ok   fresh builder + empty add\n  ok   empty add after content\n  ok   first unequal byte decides\n  ok   and in the other direction\n  ok   equal strings are not <\n  ok   shared prefix: shorter first\n  ok   shared prefix: longer is not <\n  ok   empty sorts before everything\n  ok   empty is not < empty\n  ok   byte order, not case-folded (B=66 < a=97)\n  ok   String keys drive sortBy:\n  ok   one key call per element\n  ok   stable ties with collection during key evaluation\n  ok   method enumeration is non-empty\n  ok   method names its source target\n  ok   method source is available\n  ok   factsOf: returns current live facts\n  ok   fact map exposes its value\n  ok   fact map retains entity identity\n  ok   fact map names its attribute\n  ok   live facts exclude retractions and retain bound nil\n  ok   many-valued facts remain separate rows\n  ok   a nil fact still has a value key\n  ok   collecting Store replacement is observed\n  ok   fact snapshot survives collection\n  ok   Store snapshot failure propagates\n  ok   unary send errors\n  ok   kinded #doesNotUnderstand\n  ok   one-keyword send errors\n  ok   same kind\n  ok   the message names the selector, colon and all\n  ok   four-keyword send errors\n  ok   the whole keyword selector is named\n  ok   binary send errors\n  ok   binary is the same kind\n  ok   a fresh binary selector dispatches with its argument\n  ok   a prototype can override Object's |>\n  ok   Object's |> is untouched by the override\n  ok   tap: answers its receiver\n  ok   tap: evaluates its block with the receiver\n  ok   when:apply: transforms when true\n  ok   when:apply: otherwise preserves self\n  ok   unless:apply: transforms when false\n  ok   unless:apply: otherwise preserves self\n  ok   tap: preserves error identity\n  ok   when:apply: preserves error identity\n  ok   unless:apply: preserves error identity\n  ok   juxt: preserves error identity\n  ok   no control-combinator user block runs on an error\n  ok   update:with: transforms a bound value\n  ok   update:with: reports a missing key\n  ok   the explicit absence block supplies the operation result\n  ok   removeKey: drops one binding\n  ok   merge: is right-biased\n  ok   pick: keeps requested bound keys\n  ok   omit: drops requested keys\n  ok   atPath:put: and atPath:ifAbsent: agree\n  ok   a missing path runs one fallback\n  ok   atAny:ifAbsent: chooses the first bound key\n  ok   atAny:ifAbsent: falls back once\n  ok   juxt: applies every block to one receiver\n  ok   groupBy: retains input order within buckets\n  ok   general sortBy: returns a Vector\n  ok   uniqueBy: retains the first value per derived key\n  ok   zip:with: stops at the shorter collection\n== Reflect slots ==\n  ok   both reference slots are enumerated\n  ok   first stable index\n  ok   index order\n  ok   unnamed is explicit\n  ok   storage owner is exposed\n  ok   reference capabilities\n  ok   present nil is readable\n  ok   reference identity preserved\n  ok   write returns receiver\n  ok   written edge survives collection\n  ok   empty ordinary storage\n  ok   foreign payload is not decoded\n  ok   unsupported access is explicit\n  ok   bad reference key rejected\n  ok   bad reference key rejected\n  ok   bad reference key rejected\n  ok   bad reference key rejected\n  ok   Cell has a meaningful name\n  ok   generic writes reach the actual Cell\n  ok   clone has independent storage\n  ok   name replacement is live\n  ok   old name is no longer authoritative\n  ok   renaming preserves index and value\n  ok   prior row remains a snapshot\n  ok   new inventory sees current names\n  ok   naming is an ordinary resumable send\n  ok   read observes the value after resume\n  ok   naming callback not replayed\n  ok   current resolver selects the actual slot\n  ok   write also follows current resolver\n  ok   other slot preserved\n  ok   inventory propagates name failure\n  ok   named read propagates name failure\n  ok   indexed access does not consult names\n== String ordering ==\n  ok   first differing byte decides\n  ok   ordered reads without suffix\n  ok   unsigned UTF-8 bytes\n  ok   unsigned UTF-8 reverse\n  ok   comparison installed by equality takes effect\n  ok   byte callbacks run once\n  ok   public ordering uses current helper\n  ok   byte reader may suspend\n  ok   next byte uses replacement after resume\n  ok   no replay or suffix\n  ok   cancelled ordering settles\n  ok   cancelled reader is not replayed\n  ok   cleanup once\n  ok   stale resume rejected\n  ok   one-step budgets preserve ordering\n  ok   long equal strings\n  ok   long shared prefix\n== Collection search ==\n  ok   returns the original non-nil match\n  ok   nil match continues, later predicates stop\n  ok   all nil matches remain absent\n  ok   empty search invokes no predicate\n  ok   last match\n  ok   no match\n  ok   ifNone preserves result identity\n  ok   ifNone is lazy\n  ok   absent block runs once\n  ok   first hit\n  ok   suffix elements are never read\n  ok   exhausted search\n  ok   miss reads every element in order\n  ok   range first hit\n  ok   empty range\n  ok   string byte search\n  ok   empty string\n  ok   map follows its values order\n  ok   empty map\n  ok   custom collection needs no indexed access\n  ok   Error element retains identity\n  ok   Error predicate follows ordinary conditional sends\n  ok   non-nil conditional error ends predicate calls\n  ok   nonboolean predicate keeps ordinary error kind\n  ok   next bound is live\n  ok   shortened bound stops next callback\n  ok   next element lookup sees replacement\n  ok   String accessor reads current contents\n  ok   predicate replacement applies on the next invocation\n  ok   recursive helper is replaceable\n  ok   public search is replaceable\n  ok   search parks in its first predicate\n  ok   suspension is not an absent result\n  ok   first predicate resumes\n  ok   no replay and next read sees edit\n  ok   second predicate resumes\n  ok   current element survives suspension and GC\n  ok   success never visits suffix\n  ok   search cancellation settles\n  ok   cancelled predicate is not replayed\n  ok   cleanup runs once\n  ok   stale resume cannot restart search\n  ok   zero budget runs no predicate\n  ok   one-step resumes preserve answer\n  ok   budget stops never replay predicates\n  ok   bounded search completes\n== Block ==\n  ok   Boolean remains the canonical true prototype\n  ok   False names the canonical false singleton\n  ok   true uses Boolean behavior\n  ok   false overrides on its private vtable\n  ok   counted to 10000\n  ok   a completed loop answers nil\n  ok   false on arrival leaves the body unrun\n  ok   whileFalse: loops until the condition turns true\n  ok   asCell/inc count to 1000\n  ok   dec answers the new value\n  ok   fresh Cells are independent\n  ok   aliases share local state, including nil\n  ok   local mutation has no implicit history\n  ok   seven repeats\n  ok   answers the receiver\n  ok   zero and negative counts are no-ops\n  ok   a body error stops the repeat and propagates\n  ok   propagates the body error\n  ok   stopped at the erroring iteration\n  ok   a non-boolean condition is an error, not a silent exit\n  ok   kinded #mustBeBoolean\n  ok   a body error stops the loop and propagates\n== Range ==\n  ok   inclusive size\n  ok   inclusive size\n  ok   inclusive size\n  ok   inclusive size\n  ok   inclusive size\n  ok   inclusive size\n  ok   subtraction overflow\n  ok   count overflow\n  ok   unrepresentable count\n  ok   first element\n  ok   last element\n  ok   invalid index\n  ok   invalid index\n  ok   invalid index\n  ok   invalid index\n  ok   invalid index\n  ok   element does not alias bound\n  ok   fresh result on repeated indexing\n  ok   max endpoint\n  ok   index addition overflow\n  ok   do answers receiver\n  ok   changed end is read\n  ok   changed start and end are read\n  ok   Error is an accumulator value\n  ok   fold continues after Error value\n  ok   empty seed identity\n  ok   current bound getters\n  ok   changed bound getters\n  ok   index uses changed bounds\n  ok   replacement is visible\n== Portable Code ==\n  ok   program format is canonical v1\n  ok   arity derives from parameter bindings\n  ok   parameter binding remains inspectable\n  ok   statement node remains inspectable\n  ok   CodeObject exposes the admitted format\n  ok   CodeObject retains the admitted program\n  ok   CodeObject arity is derived\n  ok   digest is exact SHA-256 bytes\n  ok   capture schema is a Vector\n  ok   capture schema preserves order\n  ok   provenance can be stripped\n  ok   provenance is nonsemantic\n  ok   withProgram: replaces portable meaning\n  ok   withProgram: retains provenance\n  ok   fromProgram: creates an explicitly source-less object\n  ok   wrong family answers Error\n  ok   wrong family is #typeMismatch\n  ok   bad scope answers Error\n  ok   bad scope has the portable-program kind\n  ok   Integer node\n  ok   Float node preserves eight bytes\n  ok   String node\n  ok   Symbol node\n  ok   nil node\n  ok   true node\n  ok   false node\n  ok   lexical read node\n  ok   global read node\n  ok   send node\n  ok   Block node retains its nested program\n  ok   Block node retains its capture edge\n  ok   depth 4096 is admitted\n  ok   depth 4097 is rejected\n  ok   depth failure has the resource kind\n  ok   CodeObject traces its program\n  ok   program remains decodable after GC\n  ok   decoded views and derived values do not become hidden roots\n  ok   a capture-free Block has no captures\n  ok   a compiler Block exposes its CodeObject\n  ok   a capture-free portable Block remains callable\n  ok   instances of one body share immutable CodeObject meaning\n  ok   capture count excludes the CodeObject word\n  ok   the first capture follows the CodeObject\n  ok   instances retain distinct captures\n  ok   the first captured Block remains callable\n  ok   the second captured Block remains callable\n  ok   shared CodeObject ownership survives GC\n  ok   captured invocation survives GC\n  ok   materialization needs no source provenance\n  ok   sourced and source-less compilation share exact portable meaning\n  ok   the materialized Block exposes the supplied CodeObject\n  ok   a source-less parameter binding executes\n  ok   sourced and source-less synchronous Blocks execute identically\n  ok   the supplied capture is visible through Block protocol\n  ok   a source-less capture binding executes\n  ok   the resumable Block retains the supplied CodeObject\n  ok   source-less resumable parameter binding executes\n  ok   synchronous and resumable meaning agrees\n  ok   the resumable carrier exposes its capture\n  ok   a source-less resumable capture executes\n  ok   one semantic program has one cache row per disposition\n  ok   the synchronous row remains callable\n  ok   the first resumable row remains callable\n  ok   equal resumable bytes reuse native identity\n  ok   cache reuse preserves the first CodeObject identity\n  ok   cache reuse preserves the second CodeObject identity\n  ok   the new resumable Block executes\n  ok   the repository drops its resumable root\n  ok   the live carrier keeps resumable code mapped\n  ok   an evicted live outer carrier can realize its nested resumable row\n  ok   the nested Block executes after its outer scope and repository roots disappear\n  ok   the NamedAdapter late-sends to a non-Block callable implementation\n  ok   reflection exposes the semantic implementation object rather than a raw Method\n  ok   later sends observe method removal\n  ok   reflection contains no removed binding\n  ok   the old invocation completes after replacing its own binding\n  ok   later sends observe the successor binding\n  ok   the old invocation completes after removing its own binding\n  ok   later sends observe method removal\n  ok   self-mutated bindings are absent from reflection\n  ok   equal portable bytes compile once\n  ok   the first Block retains its requested CodeObject\n  ok   the shared vtable does not replace CodeObject identity\n  ok   the first cache client executes\n  ok   the second cache client executes\n  ok   ordinary sends never trigger compilation\n  ok   the newly materialized Block executes\n  ok   the repository releases its materialization root\n  ok   a live Block keeps its evicted unit callable\n  ok   nested capture edges use canonical binding indices\n  ok   the nested Block keeps the shared native unit after eviction\n  ok   original admitted arity stays live\n  ok   replacement owns separate metadata\n  ok   binding name survives collection\n  ok   first block remains executable\n  ok   second block remains executable\n  ok   original admitted arity stays live\n  ok   replacement owns separate metadata\n  ok   binding name survives collection\n  ok   first block remains executable\n  ok   second block remains executable\n  ok   original admitted arity stays live\n  ok   replacement owns separate metadata\n  ok   binding name survives collection\n  ok   first block remains executable\n  ok   second block remains executable\n  ok   metadata sharing does not share Block identity\n== Lang ==\n  ok   answers the last statement's value\n  ok   and it parses\n  ok   separator form\n  ok   trailing terminator form\n  ok   same program shape\n  ok   and the same value\n  ok   `;` and newline in the same unit\n  ok   two statements, no separator, last one wins\n  ok   and the `;` spelling still works\n  ok   an unclosed bracket is still a syntax failure\n  ok   a malformed binding is still a syntax failure\n  ok   unary, binary, and whole keyword legs may follow each other\n  ok   marker whitespace/comments work while #=> and =>+ remain data/messages\n  ok   malformed and mixed threaded forms do not fall back to ordinary sends\n  ok   each result is the next receiver\n  ok   the original receiver expression runs once\n  ok   a threaded argument remains bracketed\n  ok   threading adds no error behavior of its own\n  ok   threading produces Portable Code\n  ok   nested sends produce Portable Code\n  ok   portable operations are identical to nested sends\n  ok   the threaded special form does not compile\n  ok   the diagnostic names the source-form restriction\n  ok   the threaded special form does not compile\n  ok   the diagnostic names the source-form restriction\n  ok   the threaded special form does not compile\n  ok   the diagnostic names the source-form restriction\n  ok   the threaded special form does not compile\n  ok   the diagnostic names the source-form restriction\n  ok   the threaded special form does not compile\n  ok   the diagnostic names the source-form restriction\n  ok   the threaded special form does not compile\n  ok   the diagnostic names the source-form restriction\n  ok   clones share the parser grammar\n  ok   a clone still parses after collection\n== Modules ==\n  ok   the root plus its transitive deps\n  ok   no deps \u2192 first\n  ok   needs c\n  ok   needs b, c \u2192 last\n  ok   shared dep emitted once\n  ok   an error value, no loop\n  ok   the kinded cycle error\n  ok   boot registered the kernel set\n  ok   kind #kernel\n  ok   kernel modules are already up\n  ok   an unregistered name\n  ok   unregistered = a leaf (empty requires)\n  ok   app + its kernel dep\n  ok   the kernel dep is a satisfied leaf\n  ok   the app after it\n  ok   self-registered at its own end\n  ok   no longer a kernel dylib\n  ok   self-marked loaded\n  ok   stdlib registered by its own opening statement\n  ok   composition returns source text\n  ok   entry source is present\n  ok   part source is present\n  ok   ordinary clone copies the current directory value\n  ok   nil retains the default directory\n  ok   reflection exposes stored nil\n  ok   directory is named\n  ok   setter answers manager\n  ok   setter and mirror share storage\n  ok   mirror edit changes real module lookup\n  ok   clone does not mutate the host manager\n  ok   dependency registry remains available\n  ok   empty registry is enumerable\n  ok   absent record\n  ok   loaded-only record\n  ok   loaded does not imply registered\n  ok   declaration preserves loaded\n  ok   declaration preserves custom fields\n  ok   kernel conversion preserves existing dependencies\n  ok   kernel kind\n  ok   false flag is preserved\n  ok   nil flag defaults false\n  ok   nil requirements default empty\n  ok   raw Map distinguishes a bound nil field\n  ok   bound nil record remains discoverable\n  ok   nil record getter\n  ok   removal returns manager\n  ok   removal deletes record\n  ok   removal preserves unrelated record\n  ok   record snapshot stays unchanged\n  ok   registry snapshot stays unchanged\n  ok   clone has an independent registry root\n  ok   generic replacement is authoritative\n  ok   traversal uses edited records\n  ok   generic replacement leaves clone alone\n  ok   edited record can be installed\n  ok   later dependency reads see current records\n  ok   reentry leaves outer traversal independent\n  ok   read replacement may suspend\n  ok   resumed read sees current owned state\n  ok   both tasks complete\n  ok   left field survives interleaving\n  ok   right field survives interleaving\n  ok   different records survive interleaving\n  ok   both tasks complete\n  ok   left field survives interleaving\n  ok   right field survives interleaving\n  ok   different records survive interleaving\n  ok   record edit returns Map failure\n  ok   failed record edit preserves storage\n  ok   field edit returns outer Map failure\n  ok   failed field edit preserves storage\n  ok   inner record failure propagates\n  ok   inner failure preserves whole registry\n  ok   ordinary Error return is not a task failure\n  ok   task receives original error\n  ok   failure releases transition depth\n  ok   Error remains valid field data\n== ProjectPolicy ==\n  ok   policy edit names its source target\n  ok   policy edit is not a native primitive\n  ok   policy edit dispatches\n  ok   dependency-first module order\n  ok   diamond dependency resolves each module once\n  ok   wrapped artifacts are dependency-first and shared projects appear once\n  ok   wrapped artifacts retain declaring roots\n  ok   duplicate wrapped name kind\n  ok   duplicate names report first project\n  ok   duplicate names report second project\n  ok   missing provider kind\n  ok   missing provider path\n  ok   cycle kind\n  ok   complete cycle path\n  ok   duplicate provider kind\n  ok   missing prior artifact compiles\n  ok   unchanged prior artifact reuses\n  ok   changed dependency compiles\n  ok   dependent recompiles\n  ok   incomplete staging is rejected\n  ok   complete staging is publishable\n== AppConfig ==\n  ok   environment name\n  ok   default path is HOME-relative\n  ok   CLI config path\n  ok   CLI beats environment and file\n  ok   environment beats file\n  ok   boolean CLI flag\n  ok   CLI origin\n  ok   environment origin\n  ok   selected path is retained\n  ok   TOML value\n  ok   TOML origin\nTOTAL: 826 passed, 0 failed\nscratch-state: six operations x 60 calls; catalog, external facts, asCell, reentry and GC passed\n/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-scratch-state-test-rg8164s4/results.json\nreflect-owner: passed\ncode-inspector: 1 processes passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-code-inspector-av26_454/results.json\nlocal-cells: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-yy5nmxkk/results.json\nreflect-slots: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-reflect-slots-o5ru0_mz/results.json\nmodule-registry: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-module-registry-gmx6j376/results.json\ncell-owner: passed\nlsp-owner: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-lsp-owner-bnhl2k3j/results.json\nglobals-owner: passed\nowned-globals: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-owned-globals-4c3lc2mg/results.json\nbirnam-test: module suites passed\n"
+    },
+    "images.log": {
+      "path": "/tmp/birnam-supplied-templates/images.log",
+      "sha256": "e477caadd8b1ee41336697461a214e43a73c1db3ecc4839cf1c4968bde7592bd",
+      "exit_code": 0,
+      "output": "method-invocation: source-free images and live factory policy passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-method-invocation-zmam3jq6/results.json\n"
+    },
+    "host.log": {
+      "path": "/tmp/birnam-supplied-templates/host.log",
+      "sha256": "0b90f67b6a18f161a156ffac52449ca7998f9f639c3cbafa729d68aa6282f5ae",
+      "exit_code": 0,
+      "output": "installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and early mode validation passed\n"
+    },
+    "artifact-cli.log": {
+      "path": "/tmp/birnam-supplied-templates/artifact-cli.log",
+      "sha256": "8a0884f3183642dfa608adf99a4641fe8f7ccda9a40d2b02e0775771e96f3f21",
+      "exit_code": 0,
+      "output": "installed artifacts: inert compile, removed source/assets, nested globals, dependency order, preflight and failures passed\n"
+    },
+    "formal.log": {
+      "path": "/tmp/birnam-supplied-templates/formal.log",
+      "sha256": "be8703410f48b42cca69cf2cc5c9e80eb0b65bd7a53a06e3c4e2eecbba6cec8c",
+      "exit_code": 0,
+      "output": "TLC SuppliedSafe: pass (0.547s)\nTLC SuppliedArity: expected counterexample (0.549s)\nTLC SuppliedSync: expected counterexample (0.544s)\nTLC SuppliedReplay: expected counterexample (0.539s)\nTLC SuppliedNested: expected counterexample (0.546s)\nTLC TemplateSafe: pass (0.546s)\nTLC TemplateOverwrite: expected counterexample (0.557s)\nTLC TemplateRevision: expected counterexample (0.549s)\nTLC TemplateStale: expected counterexample (0.555s)\nTLC TemplateReplay: expected counterexample (0.57s)\nTLC TemplateLive: expected counterexample (0.555s)\nTLC TemplatePersist: expected counterexample (0.583s)\nTLC MethodBindSafe: pass (0.578s)\nTLC MethodBindAlias: expected counterexample (0.564s)\nTLC MethodBindRoot: expected counterexample (0.55s)\nTLC MethodBindRetention: expected counterexample (0.558s)\nTLC SharedCallSafe: pass (0.546s)\nTLC SharedCallCached: expected counterexample (0.544s)\nTLC SharedCallSharedState: expected counterexample (0.545s)\nTLC SharedCallRoot: expected counterexample (0.674s)\nTLC SharedCallReplay: expected counterexample (0.591s)\nTLC SharedCallFrame: expected counterexample (0.549s)\nTLC SharedCallBarrier: expected counterexample (0.543s)\nTLC PublicationImageSafe: pass (0.543s)\nTLC PublicationImageMapped: expected counterexample (0.543s)\nTLC PublicationImageRebuilt: expected counterexample (0.548s)\nTLC ReentrySafe: pass (0.539s)\nTLC ReentryOverwrite: expected counterexample (0.545s)\nTLC ReentrySwallow: expected counterexample (0.543s)\nTLC ReentryReplay: expected counterexample (0.55s)\nTLC PublicationSafe: pass (0.556s)\nTLC PublicationRollback: expected counterexample (0.559s)\nTLC PublicationEarly: expected counterexample (0.544s)\nTLC PublicationError: expected counterexample (0.551s)\nTLC PublicationRoot: expected counterexample (0.547s)\nTLC PublicationLeak: expected counterexample (0.548s)\nTLC DriveSafe: pass (0.54s)\nTLC DriveEpoch: expected counterexample (0.539s)\nTLC DriveAction: expected counterexample (0.542s)\nTLC DriveScope: expected counterexample (0.549s)\nTLC DriveFrame: expected counterexample (0.541s)\nTLC DriveLease: expected counterexample (0.536s)\nTLC OwnedSafe: pass (0.545s)\nTLC OwnedLost: expected counterexample (0.539s)\nTLC OwnedForeign: expected counterexample (0.539s)\nTLC OwnedCredits: expected counterexample (0.542s)\nTLC OwnedImage: expected counterexample (0.542s)\nTLC OwnedConstruction: expected counterexample (0.55s)\nTLC OwnedABA: expected counterexample (0.539s)\nTLC RegistrySafe: pass (0.549s)\nTLC RegistryAbort: expected counterexample (0.546s)\nTLC RegistryLost: expected counterexample (0.549s)\nTLC RegistryField: expected counterexample (0.55s)\nTLC SearchSafe: pass (0.546s)\nTLC SearchReplay: expected counterexample (0.545s)\nTLC SearchStale: expected counterexample (0.553s)\nTLC SearchRoot: expected counterexample (0.555s)\nTLC SearchNil: expected counterexample (0.55s)\nTLC TablesSmall: pass (0.584s)\nTLC TablesLarge: pass (0.75s)\nTLC TablesKey: expected counterexample (0.586s)\nTLC TablesFull: expected counterexample (0.592s)\nTLC TablesWorld: expected counterexample (0.615s)\nTLC HelperSafe: pass (0.617s)\nTLC HelperTransitive: expected counterexample (0.599s)\nTLC HelperAddress: expected counterexample (0.581s)\nTLC HelperDispatch: expected counterexample (0.58s)\nTLC SlotSafe: pass (0.57s)\nTLC SlotKey: expected counterexample (0.583s)\nTLC SlotValue: expected counterexample (0.629s)\nTLC SlotParent: expected counterexample (0.617s)\nTLC RelationalSafe: pass (0.869s)\nTLC RelationalCached: expected counterexample (0.588s)\nTLC RelationalShared: expected counterexample (0.588s)\nTLC RelationalExpired: expected counterexample (0.591s)\nTLC RelationalFailure: expected counterexample (0.584s)\nTLC RelationalReplay: expected counterexample (0.595s)\nTLC IndexedSafe: pass (0.587s)\nTLC IndexedBounds: expected counterexample (0.616s)\nTLC IndexedReplay: expected counterexample (0.632s)\nTLC IndexedStale: expected counterexample (0.709s)\nTLC IndexedEarly: expected counterexample (0.785s)\nTLC ShapesSafe: pass (0.64s)\nTLC ShapesSecond: expected counterexample (0.606s)\nTLC ShapesServices: expected counterexample (0.618s)\nTLC ShapesOwn: expected counterexample (0.581s)\nTLC ShapesDelay: expected counterexample (0.576s)\nTLC ShapesOrder: expected counterexample (0.574s)\nTLC FinishSafe: pass (0.587s)\nTLC FinishMissing: expected counterexample (0.553s)\nTLC FinishEarly: expected counterexample (0.551s)\nTLC FinishOrder: expected counterexample (0.557s)\nTLC Safe: pass (0.734s)\nTLC BranchSafe: pass (0.565s)\nTLC BranchBoth: expected counterexample (0.556s)\nTLC BranchStale: expected counterexample (0.551s)\nTLC BranchArguments: expected counterexample (0.596s)\nTLC BranchReplay: expected counterexample (0.554s)\nTLC LocalSafe: pass (0.558s)\nTLC LocalUnrooted: expected counterexample (0.55s)\nTLC LocalEviction: expected counterexample (0.553s)\nTLC LocalStale: expected counterexample (0.56s)\nTLC LocalEdge: expected counterexample (0.557s)\nTLC LocalEarly: expected counterexample (0.556s)\nTLC LocalLeak: expected counterexample (0.573s)\nTLC ResolveSafe: pass (0.561s)\nTLC ResolveNil: expected counterexample (0.565s)\nTLC ResolveGlobals: expected counterexample (0.573s)\nTLC ResolveReboundNil: expected counterexample (0.565s)\nTLC ResolveEarly: expected counterexample (0.568s)\nTLC ResolveOrder: expected counterexample (0.552s)\nTLC ShapeSafe: pass (0.556s)\nTLC ShapeGetter: expected counterexample (0.545s)\nTLC ShapeOwn: expected counterexample (0.548s)\nTLC ShapeCached: expected counterexample (0.565s)\nTLC ShapeDelay: expected counterexample (0.568s)\nTLC ShapeOrder: expected counterexample (0.56s)\nTLC SnapshotSafe: pass (0.561s)\nTLC SnapshotNode: expected counterexample (0.567s)\nTLC SnapshotInputs: expected counterexample (0.565s)\nTLC SnapshotEarly: expected counterexample (0.56s)\nTLC OwnerSafe: pass (0.593s)\nTLC OwnerReport: expected counterexample (0.579s)\nTLC OwnerEarly: expected counterexample (0.584s)\nTLC OwnerNested: expected counterexample (0.592s)\nTLC OwnerLeak: expected counterexample (0.591s)\nTLC OwnerGap: expected counterexample (0.58s)\nTLC BulkSafe: pass (0.587s)\nTLC BulkAdmission: expected counterexample (0.583s)\nTLC BulkCopy: expected counterexample (0.565s)\nTLC BulkOrder: expected counterexample (0.575s)\nTLC BulkScope: expected counterexample (0.579s)\nTLC CaptureSafe: pass (0.594s)\nTLC CaptureFresh: expected counterexample (0.591s)\nTLC CaptureGrant: expected counterexample (0.6s)\nTLC CaptureScope: expected counterexample (0.592s)\nTLC CaptureEdge: expected counterexample (0.587s)\nTLC CaptureCached: expected counterexample (0.593s)\nTLC InvocationSafe: pass (0.589s)\nTLC InvocationUncovered: expected counterexample (0.585s)\nTLC InvocationEarlyExit: expected counterexample (0.574s)\nTLC InvocationMissingResult: expected counterexample (0.584s)\nTLC InvocationReturnGap: expected counterexample (0.619s)\nTLC InvocationLostCode: expected counterexample (0.589s)\nTLC AdmissionSafe: pass (0.673s)\nTLC AdmissionContext: expected counterexample (0.577s)\nTLC AdmissionServices: expected counterexample (0.587s)\nTLC AdmissionPermission: expected counterexample (0.65s)\nTLC AdmissionEpoch: expected counterexample (0.676s)\nTLC RegionAddition: pass (0.817s)\nTLC RegionString: pass (0.652s)\nTLC RegionCollection: pass (0.631s)\nTLC RegionStale: expected counterexample (0.627s)\nTLC RegionPermission: expected counterexample (0.617s)\nTLC RegionExposure: expected counterexample (0.604s)\nTLC RegionReplay: expected counterexample (0.604s)\nTLC RegionCodeLease: expected counterexample (0.613s)\nTLC RegionOwner: expected counterexample (0.588s)\nTLC RegistrationSafe: pass (0.661s)\nTLC RegistrationUnrooted: expected counterexample (0.608s)\nTLC RegistrationPartial: expected counterexample (0.613s)\nTLC BatchSafe: pass (0.738s)\nTLC BorrowSafe: pass (0.562s)\nTLC BorrowCallback: expected counterexample (0.595s)\nTLC BatchStale: expected counterexample (0.618s)\nTLC BatchOrder: expected counterexample (0.606s)\nTLC Canonical: pass (0.716s)\nTLC Graph: pass (1.014s)\nTLC Nested: pass (1.816s)\nTLC Recovery: pass (0.971s)\nTLC OmitFirst: expected counterexample (0.694s)\nTLC EarlyRelease: expected counterexample (0.672s)\nTLC IgnorePermission: expected counterexample (0.742s)\nTLC BadRevoke: expected counterexample (0.728s)\nTLC LeakExit: expected counterexample (0.766s)\nTLC UnfairRecovery: expected counterexample (0.84s)\nLean supplied-code-key-omits-payload: rejected\nLean supplied-sync-shares-unit: rejected\nLean supplied-overwrites-nested-winner: rejected\nLean cache-conflict-overwrites-current: rejected\nLean cache-mutates-global-basis: rejected\nLean template-publish-erases-other-arity: rejected\nLean template-error-loses-identity: rejected\nLean binding-reuses-old-identity: rejected\nLean binding-reuses-old-implementation: rejected\nLean shared-call-uses-common-implementation: rejected\nLean shared-call-copies-receiver-wrong: rejected\nLean publication-confuses-error-with-failure: rejected\nLean publication-assumes-scope-is-local: rejected\nLean registry-reentry-overwrite: rejected\nLean owner-cas-overwrites-new-root: rejected\nLean owner-image-keeps-credits: rejected\nLean owner-name-uses-value-equality: rejected\nLean binding-nil-is-absent: rejected\nLean binding-inverse-overwrites-conflict: rejected\nLean private-index-confuses-collisions: rejected\nLean private-index-reorders-roots: rejected\nLean scratch-overwrites-public-world: rejected\nLean scratch-drops-catalog-publication: rejected\nLean default-cell-publishes-facts: rejected\nLean cell-reads-wrong-slot: rejected\nLean registry-declaration-clears-loaded: rejected\nLean registry-write-publishes-facts: rejected\nLean mirror-writes-wrong-slot: rejected\nLean mirror-rename-moves-values: rejected\nLean ordering-replays-byte: rejected\nLean ordering-drops-effects: rejected\nLean search-replays-hit: rejected\nLean search-drops-effects: rejected\nLean cached-digest-wrong-name: rejected\nLean digest-collision-aliases-name: rejected\nLean log-keeps-seven: rejected\nLean range-wrong-end-comparison: rejected\nLean json-unsafe-short-bound: rejected\nLean json-ignore-uppercase-exponent: rejected\nLean json-wrong-kind-handler: rejected\nLean json-skip-backslash-scan: rejected\nLean json-reuse-nonempty-identity: rejected\nLean lose-full-cache-fallback: rejected\nLean skip-retained-helper-body: rejected\nLean charge-whole-capacity-again: rejected\nLean unchecked-slot-hint: rejected\nLean freeze-relational-comparison: rejected\nLean reverse-indexed-edge: rejected\nLean ignore-second-batched-entry: rejected\nLean wrong-direct-integer-operation: rejected\nLean float-remainder-handler: rejected\nLean ignore-metadata-current: rejected\nLean accept-unknown-metadata-identity: rejected\nLean omit-owner-local-report: rejected\nLean admit-nonempty-return: rejected\nLean reverse-identity-selection: rejected\nLean drop-capture-reachability: rejected\nLean ignore-bulk-own-binding: rejected\nLean ignore-capture-query-binding: rejected\nLean reverse-branch-choice: rejected\nLean unrooted-local-hint: rejected\nLean cache-false-selector: rejected\nLean drop-uncovered-locals: rejected\nLean ignore-entry-context: rejected\nLean wrong-release-order: rejected\nLean lost-index-mark: rejected\nLean wrong-memo-key: rejected\nLean truncated-borrow: rejected\nLean ignore-observation: rejected\nLean ignore-permission: rejected\nLean free-owner-batch: rejected\nLean omit-first: rejected\nLean leak-on-exit: rejected\nLean skip-materialization: rejected\nLean: 296 theorems checked; only standard kernel axioms\nRooting verification passed: /Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-mb3bmtr7/summary.json\n"
+    },
+    "benchmark.log": {
+      "path": "/tmp/birnam-supplied-templates/benchmark.log",
+      "sha256": "d71e688e491976980018d8004b1f49714ffc64992a9ad424c507205ba8149c8f",
+      "exit_code": 0,
+      "output": "{\n  \"baseline\": {\n    \"resumable_activation_ns\": 7118333,\n    \"synchronous_activation_ns\": 7090125,\n    \"resumable_units\": 17,\n    \"resumable_native_bytes\": 786432,\n    \"host_wall_ns\": 4464848792,\n    \"host_peak_rss\": 1404207104\n  },\n  \"candidate\": {\n    \"resumable_activation_ns\": 3369500,\n    \"synchronous_activation_ns\": 6493875,\n    \"resumable_units\": 2,\n    \"resumable_native_bytes\": 294912,\n    \"host_wall_ns\": 4129844917,\n    \"host_peak_rss\": 1400864768\n  }\n}\n/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-supplied-template-bench-92greqtq/results.json\n"
+    }
+  },
+  "provenance": {
+    "baseline": {
+      "prefix": "/tmp/birnam-method-invocation/delivery-prefix",
+      "receipt_sha256": "50d51cc65ac3caad8f3726ec712dcef7abd192504eb6adcdca6ab36df8cf8ccb",
+      "source_manifest_sha256": "f1bd7663b93bbd755c4c229a0960b0b9feab3d289cd426378aee0a19ef30542d",
+      "staged_manifest_sha256": "9c866a832c59b2010af179956d7a51e78938068ffda5517d5acf72622be747e3",
+      "runtime_sha256": {
+        "bin/birnam": "d14d8424bfa99e0b7dd584838f4b287f2e2dd7a3f2678eb420d13d48135b459c",
+        "lib/libbirnam_codegen_runtime.dylib": "75033160613622f5992560dbafce48347ac3e5c645e049f1c37512d86b7e7bb3",
+        "lib/libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514"
+      },
+      "metrics_tcc_sha256": "81bdb2b7c41fabd2bce143662ca32615c404a15c69834fbc63dcefcd7b0d9758"
+    },
+    "candidate": {
+      "prefix": "/tmp/birnam-supplied-templates/prefix",
+      "receipt_sha256": "cd7cf7334d93881810c86ec996996a7cfcac92bb4b52ff5cec3432e12f613a30",
+      "source_manifest_sha256": "eb33a7c953a72e8dd353ae73f1af48fd23335806b8100197989d4605bee1603e",
+      "staged_manifest_sha256": "f0485281061033b3b6840f7b336ab0ed6139e57ada8c250bcd41023f54636651",
+      "runtime_sha256": {
+        "bin/birnam": "d14d8424bfa99e0b7dd584838f4b287f2e2dd7a3f2678eb420d13d48135b459c",
+        "lib/libbirnam_codegen_runtime.dylib": "cd8fa4cfc87a6770272a5a7e1d8b27e7682015fd24bd2b3122dc94edcdd01d7e",
+        "lib/libbirnam_tcc.dylib": "48c4d06fa63bc773492a799247e1ac2506305cb873ec6e007d041d91170cd514"
+      },
+      "metrics_tcc_sha256": "81bdb2b7c41fabd2bce143662ca32615c404a15c69834fbc63dcefcd7b0d9758"
+    }
+  },
+  "limits": [
+    "Explicit synchronous artifacts remain separate; the previously characterized native-failure/image mismatch is not fixed.",
+    "Image bundle records and per-binding backend requests are not deduplicated.",
+    "Peak RSS and TCC owned allocations measure different things. No invocation speedup is claimed.",
+    "Formal checks prove abstract contracts, not the complete runtime or generated C."
+  ]
+}

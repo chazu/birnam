@@ -31,7 +31,7 @@ impl Op {
 }
 pub(super) struct Stage {
     methods: Vec<Oop>,
-    units: Vec<Oop>,
+    templates: Vec<Oop>,
     prepared: Vec<Option<Oop>>,
     finished: bool,
 }
@@ -39,7 +39,7 @@ impl Stage {
     pub fn roots(&self) -> Vec<Oop> {
         self.methods
             .iter()
-            .chain(&self.units)
+            .chain(&self.templates)
             .copied()
             .chain(self.prepared.iter().flatten().copied())
             .collect()
@@ -252,11 +252,26 @@ pub(super) unsafe fn operation(
                     .transpose()?;
                 let mut stage = Stage {
                     methods: Vec::new(),
-                    units: Vec::new(),
+                    templates: Vec::new(),
                     prepared: vec![None; plan.bindings],
                     finished: false,
                 };
+                // Only identical selected payloads at the same arity share a
+                // mapping. Backend requests remain live and run in their original
+                // order; arity alone never substitutes a different program.
+                let mut templates = std::collections::HashMap::new();
                 for i in 0..plan.requests.len() {
+                    let selected = if let Some(ref objects) = objects {
+                        objects[i]
+                    } else { generated[i].as_slice() };
+                    let key = match plan.requests[i] {
+                        Request::Named { arity, synchronous: false } => Some((arity, selected)),
+                        _ => None,
+                    };
+                    if let Some(template) = key.and_then(|key| templates.get(&key)).copied() {
+                        stage.templates.push(template);
+                        continue;
+                    }
                     let unit = if let Some(ref objects) = objects {
                         // The loader may retain the input itself. Our temporary
                         // carrier only needs protection through this request;
@@ -284,7 +299,13 @@ pub(super) unsafe fn operation(
                         }
                         stage.methods.push(method);
                     } else {
-                        stage.units.push(unit);
+                        let template = q.keep(object(s.send(unit, b"initializeWith:",
+                            &[Operand::object(nil)])?)?)?;
+                        if template == nil || s.is_error(template)? {
+                            return Ok(Operand::object(template));
+                        }
+                        templates.insert(key.ok_or_else(invalid)?, template);
+                        stage.templates.push(template);
                     }
                 }
                 *s.image_stage.borrow_mut() = Some(stage);
@@ -313,16 +334,18 @@ pub(super) unsafe fn operation(
                     .send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?
                     .as_word()
                     .ok_or_else(invalid)?;
-                let unit = {
+                let template = {
                     let stage = s.image_stage.borrow();
                     let stage = stage.as_ref().ok_or_else(invalid)?;
                     if stage.finished {
                         return Err(invalid());
                     }
-                    *stage.units.get(i).ok_or_else(invalid)?
+                    *stage.templates.get(i).ok_or_else(invalid)?
                 };
-                q.keep(unit)?;
-                let method = q.keep(object(s.send(unit, b"initializeWith:", &[args[1]])?)?)?;
+                q.keep(template)?;
+                let method = q.keep(object(s.send(s.named(b"Reflect")?,
+                    b"methodForTemplate:implementation:",
+                    &[Operand::object(template), args[1]])?)?)?;
                 if method == nil || s.is_error(method)? {
                     return Ok(Operand::object(method));
                 }

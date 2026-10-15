@@ -24,6 +24,18 @@ SEMANTICS = ROOT / "formal/semantics"
 CACHE = ROOT / ".cargo-target/formal"
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 CASES = {
+    "SuppliedSafe": None,
+    "SuppliedArity": "Invariant SelectedCodePreserved is violated.",
+    "SuppliedSync": "Invariant SynchronousStateIndependent is violated.",
+    "SuppliedReplay": "Invariant NoInitializerReplay is violated.",
+    "SuppliedNested": "Invariant NestedContextPreserved is violated.",
+    "TemplateSafe": None,
+    "TemplateOverwrite": "Invariant KeepReenteredTemplate is violated.",
+    "TemplateRevision": "Invariant PrivateCacheDoesNotPublishGlobals is violated.",
+    "TemplateStale": "Invariant KeepReenteredTemplate is violated.",
+    "TemplateReplay": "Invariant DoNotReplayCompiler is violated.",
+    "TemplateLive": "Invariant SaveDoesNotClearLiveCache is violated.",
+    "TemplatePersist": "Invariant ImageExcludesMethods is violated.",
     "MethodBindSafe": None,
     "MethodBindAlias": "Invariant SurvivorsCallable is violated.",
     "MethodBindRoot": "Invariant SurvivorsRetainCode is violated.",
@@ -277,8 +289,8 @@ def check_tla(jar, java, out):
         cmd = [java, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC", "-Xmx512m",
                "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                "-metadir", str(out / f"states-{name}"),
-               "-config", str((SEMANTICS if name.startswith(("MethodBind", "SharedCall", "Publication", "Reentry", "Region", "Admission", "Indexed", "Relational", "Slot", "Search", "Registry", "Owned", "Drive")) else FORMAL) / f"tla/{name}.cfg"),
-               str(SEMANTICS / "tla/MethodBinding.tla") if name.startswith("MethodBind") else str(SEMANTICS / "tla/SharedInvocation.tla") if name.startswith("SharedCall") else str(SEMANTICS / "tla/PublicationImage.tla") if name.startswith("PublicationImage") else str(SEMANTICS / "tla/MethodPublication.tla") if name.startswith("Publication") else str(SEMANTICS / "tla/RegistryReentry.tla") if name.startswith("Reentry") else str(SEMANTICS / "tla/RecoveryDrive.tla") if name.startswith("Drive") else str(SEMANTICS / "tla/GlobalsOwner.tla") if name.startswith("Owned") else str(SEMANTICS / "tla/ModuleRegistry.tla") if name.startswith("Registry") else str(SEMANTICS / "tla/CollectionSearch.tla") if name.startswith("Search") else str(FORMAL / "tla/SelectorTables.tla") if name.startswith("Tables") else str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
+               "-config", str((SEMANTICS if name.startswith(("Supplied", "Template", "MethodBind", "SharedCall", "Publication", "Reentry", "Region", "Admission", "Indexed", "Relational", "Slot", "Search", "Registry", "Owned", "Drive")) else FORMAL) / f"tla/{name}.cfg"),
+               str(SEMANTICS / "tla/SuppliedTemplates.tla") if name.startswith("Supplied") else str(SEMANTICS / "tla/MethodTemplates.tla") if name.startswith("Template") else str(SEMANTICS / "tla/MethodBinding.tla") if name.startswith("MethodBind") else str(SEMANTICS / "tla/SharedInvocation.tla") if name.startswith("SharedCall") else str(SEMANTICS / "tla/PublicationImage.tla") if name.startswith("PublicationImage") else str(SEMANTICS / "tla/MethodPublication.tla") if name.startswith("Publication") else str(SEMANTICS / "tla/RegistryReentry.tla") if name.startswith("Reentry") else str(SEMANTICS / "tla/RecoveryDrive.tla") if name.startswith("Drive") else str(SEMANTICS / "tla/GlobalsOwner.tla") if name.startswith("Owned") else str(SEMANTICS / "tla/ModuleRegistry.tla") if name.startswith("Registry") else str(SEMANTICS / "tla/CollectionSearch.tla") if name.startswith("Search") else str(FORMAL / "tla/SelectorTables.tla") if name.startswith("Tables") else str(FORMAL / "tla/HelperEmission.tla") if name.startswith("Helper") else str(SEMANTICS / "tla/SlotHints.tla") if name.startswith("Slot") else str(SEMANTICS / "tla/RelationalQuery.tla") if name.startswith("Relational") else str(SEMANTICS / "tla/IndexedSnapshot.tla") if name.startswith("Indexed") else str(SEMANTICS / "tla/BindingAdmission.tla") if name.startswith("Admission") else str(SEMANTICS / "tla/ExecutionRegion.tla") if name.startswith("Region") else str(FORMAL / ("tla/ResultHandoff.tla" if name.startswith("Finish") else "tla/GlobalResolution.tla" if name.startswith("Resolve") else "tla/RepresentationBatch.tla" if name.startswith("Shapes") else "tla/RepresentationChecks.tla" if name.startswith("Shape") else "tla/BorrowedSnapshots.tla" if name.startswith("Snapshot") else "tla/NativeOwnerScopes.tla" if name.startswith("Owner") else "tla/BulkCaptures.tla" if name.startswith("Bulk") else "tla/ReusableBranches.tla" if name.startswith("Branch") else "tla/LocalReuse.tla" if name.startswith("Local") else "tla/CaptureReads.tla" if name.startswith("Capture") else "tla/InvocationInputs.tla" if name.startswith("Invocation") else "tla/RegistrationBatch.tla" if name.startswith("Registration") else "tla/BatchCleanup.tla" if name.startswith("Batch") else "tla/BorrowInspection.tla" if name.startswith("Borrow") else "tla/DuplicateRoots.tla"))]
         result, seconds = run(cmd, log)
         text = result.stdout
         if expected_failure:
@@ -349,6 +361,13 @@ def check_lean(lean, out):
                                  "{st with physical := st.physical, optimized := fun _ => false}"),
     }
     extra_mutations = {
+        "supplied-code-key-omits-payload": ("SharedInvocation", "arity = otherArity ∧ payload = otherPayload", "arity = otherArity"),
+        "supplied-sync-shares-unit": ("SharedInvocation", "Bool := !synchronous", "Bool := synchronous"),
+        "supplied-overwrites-nested-winner": ("SharedInvocation", "| some winner => some winner", "| some winner => some created"),
+        "cache-conflict-overwrites-current": ("SharedInvocation", "if current = expected then next else current", "if current = expected then next else next"),
+        "cache-mutates-global-basis": ("SharedInvocation", "(state.1, next)", "(state.1 + 1, next)"),
+        "template-publish-erases-other-arity": ("SharedInvocation", "if key = arity then some code else latest key", "if key = arity then some code else none"),
+        "template-error-loses-identity": ("SharedInvocation", "(latest, Except.error error)", "(latest, Except.error (error + 1))"),
         "binding-reuses-old-identity": ("SharedInvocation", "⟨identity, template.code, implementation⟩", "⟨template.binding, template.code, implementation⟩"),
         "binding-reuses-old-implementation": ("SharedInvocation", "⟨identity, template.code, implementation⟩", "⟨identity, template.code, template.implementation⟩"),
         "shared-call-uses-common-implementation": ("SharedInvocation", "forwarding w method.implementation receiver args", "forwarding w 0 receiver args"),

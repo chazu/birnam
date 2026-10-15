@@ -120,9 +120,22 @@ alive while any binding uses it; it does not accumulate the new bindings.
 This constructor currently requires a registered forwarding template with an
 implementation slot. Native-only Methods and Block-body Methods are not such
 templates and answer a native invalid-request failure. It does not turn a
-synchronous native wrapper into a resumable program. Ordinary `Reflect`
-definitions still construct their own forwarding code; selecting and sharing
-templates across definitions is a separate construction policy.
+synchronous native wrapper into a resumable program.
+
+After normal host bootstrap, ordinary source `Reflect` definitions share a neutral
+template per arity through the Birnam `MethodInvocation` owner. Each binding remains
+a distinct Method. `[Reflect methodForArity: 1 implementation: block]` constructs
+without publishing a dictionary entry; the receiving Reflect facade's constructor
+is replaceable, including on a delegated facade.
+
+`[MethodInvocation templates]` exposes the owner's selected-code Map, and
+`[MethodInvocation clearTemplates]` releases those cached choices without changing
+existing bindings. The cache is an ordinary private slot on a process-local named
+owner; it creates no Globals binding or Store fact. Fresh processes start with an
+empty cache. Existing selected code stays owned until cleared, while implementation
+sends remain live. Precompiled artifact activation and image code reconstruction
+still use their supplied adapters. See the
+[construction report](../design/method-invocation-owner.md) for scope and costs.
 
 On a vtable, `methodFor:` searches that vtable's method dictionary and its
 parents. `[vtable addMethod: method as: selector]` installs the retained entry;

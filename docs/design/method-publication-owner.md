@@ -13,8 +13,11 @@ a requirement. The [shared-invocation investigation](shared-invocation-investiga
 now takes priority: ordinary message/result semantics must be independent of
 adapter representation, and per-definition generated adapters may be replaced by
 shared forwarding code. The [binding constructor](method-binding-constructor.md)
-is implemented and qualified as the first slice; default construction and the
-publication owner migration remain pending.
+is implemented and qualified as the first slice. The [authored construction owner](method-invocation-owner.md)
+now handles ordinary source definitions. [Supplied templates](supplied-method-templates.md)
+cover resumable artifacts and image reconstruction as well. Explicit synchronous
+construction, uniform error semantics and the publication owner migration remain
+pending. Sharing construction code does not remove Store publication or its mirror.
 
 ## Authority and boundaries
 

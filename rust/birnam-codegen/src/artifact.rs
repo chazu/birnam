@@ -4,7 +4,7 @@ use crate::{OwnedCst, source_revision};
 use birnam_artifact::{ABI, DESCRIPTOR_MAGIC, TARGET};
 use std::fmt::Write;
 
-pub const CAPABILITY: &[u8] = b"id-object-v2";
+pub const CAPABILITY: &[u8] = b"id-object-v3";
 fn field(out: &mut Vec<u8>, bytes: &[u8]) {
     out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
     out.extend_from_slice(bytes);
@@ -29,6 +29,7 @@ pub fn emit(
     path: &[u8],
     metadata: &crate::source_metadata::Metadata,
     adapters: &[(u32, Vec<u8>)],
+    synchronous_adapters: bool,
 ) -> Option<Vec<u8>> {
     let encoded_metadata = metadata.encode()?;
     let revision = &metadata.revision;
@@ -102,7 +103,7 @@ pub fn emit(
     out.push_str("if(method==named(&c,\"nil\")||is_error(&c,method))return finish(&c,obj(method));\n");
     writeln!(out, "O source=string(&c,__birnam_artifact_source,{});O metadata=string(&c,__birnam_artifact_metadata,{});O adapters=call(&c,named(&c,\"Vector\"),\"new\",0,0);A v;", source.len(), encoded_metadata.len()).unwrap();
     for (arity, bytes) in adapters {
-        writeln!(out, "O row_{arity}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(integer(&c,{arity}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(string(&c,__birnam_artifact_adapter_{arity},{}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(row_{arity});adapters=call(&c,adapters,\"add:\",&v,1);", bytes.len()).unwrap();
+        writeln!(out, "O row_{arity}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(integer(&c,{arity}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(string(&c,__birnam_artifact_adapter_{arity},{}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(named(&c,\"{}\"));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(row_{arity});adapters=call(&c,adapters,\"add:\",&v,1);", bytes.len(), if synchronous_adapters { "true" } else { "false" }).unwrap();
     }
     out.push_str("O result=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(method);result=call(&c,result,\"add:\",&v,1);v=obj(source);result=call(&c,result,\"add:\",&v,1);v=obj(metadata);result=call(&c,result,\"add:\",&v,1);v=obj(adapters);result=call(&c,result,\"add:\",&v,1);return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),artifact_initialize};");
     Some(out.into_bytes())

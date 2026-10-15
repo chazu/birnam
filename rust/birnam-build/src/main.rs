@@ -30,6 +30,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("imageFormat", "modules/image-format.birnam"),
     ("trace", "modules/trace.birnam"),
     ("globals", "modules/globals.birnam"),
+    ("methodInvocation", "modules/method-invocation.birnam"),
 ];
 
 // Migration candidates installed for explicit loading, outside startup images.

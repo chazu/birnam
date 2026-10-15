@@ -25,6 +25,14 @@ fn object(v: Operand) -> Result<Oop, Outcome> {
 fn done(v: Result<Operand, Outcome>) -> Outcome {
     v.map_or_else(|e| e, Outcome::loaded)
 }
+// Activation-owned code, not a global service cache. Rc keeps the selected
+// context stable across nested source evaluation and artifact activation.
+struct CompiledAdapter {
+    arity: u32,
+    bytes: Oop,
+    synchronous: bool,
+    template: core::cell::Cell<Option<Oop>>,
+}
 struct State {
     id: Protocol,
     ns: Oop,
@@ -32,7 +40,7 @@ struct State {
     permanent: Vec<Oop>,
     names: std::collections::HashMap<&'static [u8], Oop>,
     sources: source::Sources,
-    compiled_adapters: RefCell<Vec<Option<Vec<(u32, Oop)>>>>,
+    compiled_adapters: RefCell<Vec<Option<Vec<std::rc::Rc<CompiledAdapter>>>>>,
     materializations: RefCell<Vec<materialization::Cached>>,
     image_stage: RefCell<Option<image::Stage>>,
     image_busy: core::cell::Cell<bool>,
@@ -70,7 +78,7 @@ impl Drop for Scope<'_> {
     }
 }
 impl State {
-    fn adapter_scope(&self, adapters: Option<Vec<(u32, Oop)>>) -> AdapterScope<'_> {
+    fn adapter_scope(&self, adapters: Option<Vec<std::rc::Rc<CompiledAdapter>>>) -> AdapterScope<'_> {
         self.compiled_adapters.borrow_mut().push(adapters);
         AdapterScope(self)
     }
@@ -239,6 +247,8 @@ enum Op {
     Compile,
     Eval,
     Define,
+    ConstructMethod,
+    BindTemplate,
     Remove,
     NameOf,
     Reflection(reflection::Op),
@@ -267,7 +277,7 @@ unsafe extern "C" fn operation(
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let count = match e.op {
             Op::Compiler(op) => op.count(),
-            Op::Remove => 2,
+            Op::Remove | Op::ConstructMethod | Op::BindTemplate => 2,
             Op::Define => 3,
             Op::Reflection(op) => op.count(),
             Op::Source(op) => op.count(),
@@ -344,6 +354,19 @@ unsafe extern "C" fn operation(
                 .to_vec();
             return Ok(Operand::object(s.text(&scope, &bytes)?));
         }
+        // Build seed for the replaceable construction protocol. The authored
+        // MethodInvocation owner replaces this after its dependencies load.
+        if matches!(e.op, Op::BindTemplate) {
+            return s.send(object(a[0])?, b"withImplementation:", &[a[1]]);
+        }
+        if matches!(e.op, Op::ConstructMethod) {
+            let arity = s.send(s.named(b"Integer")?, b"wordOf:", &[a[0]])?
+                .as_word().filter(|n| *n <= 16).ok_or_else(invalid)?;
+            let c = backend::emit(s, &scope, &Request::Named {
+                arity: arity as u32, synchronous: false,
+            }).map_err(backend::Failure::outcome)?;
+            return s.native_method(&scope, &c, Some(object(a[1])?));
+        }
         if matches!(e.op, Op::Define | Op::Remove)
             && publication::send(s, &scope, b"ordinaryMutationAllowed", &[])?.as_object()
                 != Some(s.named(b"true")?)
@@ -399,32 +422,42 @@ unsafe extern "C" fn operation(
             }
             let compiled = s.compiled_adapters.borrow().last().cloned().flatten();
             let method = if let Some(adapters) = compiled {
-                let Some((_, bytes)) = adapters.iter().find(|(a, _)| *a == arity as u32) else {
+                let Some(adapter) = adapters.iter().find(|a| a.arity == arity as u32) else {
                     return s.error(
                         &scope,
                         b"compiled artifact lacks a required method adapter; rebuild it",
                     );
                 };
-                let unit = scope.keep(object(s.send(
-                    s.named(b"TCC")?,
-                    b"loadObject:",
-                    &[Operand::object(*bytes)],
-                )?)?)?;
-                if s.is_error(unit)? {
-                    return Ok(Operand::object(unit));
+                if adapter.synchronous {
+                    // Synchronous code has Unit-local implementation state and
+                    // distinct native failure behavior. Do not share that state.
+                    let unit = scope.keep(object(s.send(s.named(b"TCC")?,
+                        b"loadObject:", &[Operand::object(adapter.bytes)])?)?)?;
+                    if s.is_error(unit)? { return Ok(Operand::object(unit)); }
+                    scope.keep(object(s.send(unit, b"initializeWith:", &[a[2]])?)?)?
+                } else {
+                    let template = if let Some(template) = adapter.template.get() {
+                        scope.keep(template)?
+                    } else {
+                        let unit = scope.keep(object(s.send(s.named(b"TCC")?,
+                            b"loadObject:", &[Operand::object(adapter.bytes)])?)?)?;
+                        if s.is_error(unit)? { return Ok(Operand::object(unit)); }
+                        let template = scope.keep(object(s.send(unit, b"initializeWith:",
+                            &[Operand::object(s.named(b"nil")?)])?)?)?;
+                        if s.is_error(template)? { return Ok(Operand::object(template)); }
+                        // Loader/initializer callbacks may have filled this
+                        // activation's entry. Keep that winner; never replay.
+                        if adapter.template.get().is_none() { adapter.template.set(Some(template)); }
+                        template
+                    };
+                    scope.keep(object(s.send(receiver, b"methodForTemplate:implementation:",
+                        &[Operand::object(template), a[2]])?)?)?
                 }
-                scope.keep(object(s.send(unit, b"initializeWith:", &[a[2]])?)?)?
             } else {
-                let c = backend::emit(
-                    s,
-                    &scope,
-                    &Request::Named {
-                        arity: arity as u32,
-                        synchronous: false,
-                    },
-                )
-                .map_err(backend::Failure::outcome)?;
-                scope.keep(object(s.native_method(&scope, &c, Some(object(a[2])?))?)?)?
+                let arity = scope.keep(object(s.send(s.named(b"Integer")?,
+                    b"fromWord:", &[Operand::word(arity)])?)?)?;
+                scope.keep(object(s.send(receiver,
+                    b"methodForArity:implementation:", &[Operand::object(arity), a[2]])?)?)?
             };
             if s.is_error(method)? {
                 return Ok(Operand::object(method));
@@ -518,8 +551,11 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.id.send_named(v, b"visit:", &[Operand::object(method)])?;
         }
         let adapters = s.compiled_adapters.borrow().clone();
-        for unit in adapters.iter().flatten().flatten().map(|(_, unit)| unit) {
-            s.id.send_named(v, b"visit:", &[Operand::object(*unit)])?;
+        for adapter in adapters.iter().flatten().flatten() {
+            s.id.send_named(v, b"visit:", &[Operand::object(adapter.bytes)])?;
+            if let Some(template) = adapter.template.get() {
+                s.id.send_named(v, b"visit:", &[Operand::object(template)])?;
+            }
         }
         for &o in &s.permanent {
             s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
@@ -733,6 +769,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 Op::Image(image::Op::BeginRecovery),
             ),
             (reflect_vt, b"defineMethod:on:as:", Op::Define),
+            (reflect_vt, b"methodForArity:implementation:", Op::ConstructMethod),
+            (reflect_vt, b"methodForTemplate:implementation:", Op::BindTemplate),
             (
                 vt,
                 b"compiledSourceMetadataFor:".as_slice(),

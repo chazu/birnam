@@ -8,8 +8,18 @@ an owned resumable Method, `eval:` runs it on a real Machine, and `emit:` return
 the generated C String. TCC compiles and owns each Unit; its initializer consumes
 Namespace and the Unit owner through the existing native module ABI.
 
-Reflect `defineMethod:on:as:` compiles the retained named-adapter algorithm. Its
-Method keeps both the code Unit and the implementation Block. Calls perform fresh
+Ordinary source Reflect construction now sends the receiving facade
+`methodForArity:implementation:`. The native implementation is a cold construction
+seed; host bootstrap replaces it with the authored MethodInvocation policy after
+control installation. That owner shares neutral forwarding templates and creates
+fresh bindings through `withImplementation:`. Supplied resumable artifact templates
+and identical image adapter payloads now bind through the current
+`methodForTemplate:implementation:` hook. Synchronous artifacts retain their
+separate Unit initialization. See [the source owner report](../../docs/design/method-invocation-owner.md)
+and [supplied template integration](../../docs/design/supplied-method-templates.md).
+
+The construction seed compiles the retained named-adapter algorithm. Its
+Method keeps both the code Unit and the implementation object. Calls perform fresh
 `value:` lookup on that implementation; replacement does not rewrite a captured
 Method or a suspended frame. No generated Runtime service catalog is imported.
 
@@ -249,7 +259,7 @@ TCC relocatable native object through System File IO without evaluating source.
 The filename/root variants preserve source-relative embedding. The object stores
 the existing inert Artifact descriptor, original source, embedded payloads and
 current generated Methods, plus compiler-produced source metadata. It advertises
-`id-object-v2`. The historical `.dylib`
+`id-object-v3`. The historical `.dylib`
 suffix remains for Module resolution; this payload is an ELF object for TCC,
 not an OS-loadable Mach-O library. Native kernel dylibs keep their separate ABI.
 

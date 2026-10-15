@@ -68,4 +68,66 @@ theorem binding_roots_code_and_new_body (t : Method) (identity implementation : 
 theorem rebinding_does_not_chain_old_implementations (t : Method) (a b x y : Nat) :
     directRoots (bind (bind t a x) b y) = directRoots (bind t b y) := by rfl
 
+-- Factory cache contains selected code, never a user's implementation. A miss
+-- compiles once; publication merges into the post-callback cache snapshot.
+def publishTemplate (latest : Nat → Option Nat) (arity code : Nat) : Nat → Option Nat :=
+  fun key => if key = arity then some code else latest key
+
+theorem template_publication_keeps_reentrant_other_arity
+    (latest : Nat → Option Nat) (arity code other : Nat) (distinct : other ≠ arity) :
+    publishTemplate latest arity code other = latest other := by simp [publishTemplate, distinct]
+
+def templateResult (latest : Nat → Option Nat) (arity : Nat) (result : Except Nat Nat) :=
+  match result with
+  | .error error => (latest, Except.error error)
+  | .ok code => (publishTemplate latest arity code, Except.ok code)
+
+theorem template_error_keeps_cache (latest : Nat → Option Nat) (arity error : Nat) :
+    (templateResult latest arity (.error error)).1 = latest := by rfl
+
+theorem template_error_keeps_identity (latest : Nat → Option Nat) (arity error : Nat) :
+    (templateResult latest arity (.error error)).2 = Except.error error := by rfl
+
+def imageTemplates (_live : Nat → Option Nat) : Nat → Option Nat := fun _ => none
+
+theorem image_omits_process_local_templates (live : Nat → Option Nat) (arity : Nat) :
+    imageTemplates live arity = none := by rfl
+
+-- Cache publication compares owned snapshot identities, not service methods.
+-- A conflict only declines caching; the already selected code is still usable.
+def publishOwnedCache (expected current next : Nat) :=
+  if current = expected then next else current
+
+theorem cache_conflict_keeps_current (expected current next : Nat) (h : current ≠ expected) :
+    publishOwnedCache expected current next = current := by simp [publishOwnedCache, h]
+
+def updatePrivateCache (state : Nat × Nat) (next : Nat) : Nat × Nat := (state.1, next)
+
+theorem private_cache_keeps_global_binding_basis (state : Nat × Nat) (next : Nat) :
+    (updatePrivateCache state next).1 = state.1 := by rfl
+
+-- A selected payload is authority; equal arity alone cannot replace it.
+def reusablePayload (arity payload otherArity otherPayload : Nat) : Prop :=
+  arity = otherArity ∧ payload = otherPayload
+
+theorem shared_payload_preserves_selection (a p b q : Nat)
+    (h : reusablePayload a p b q) : p = q := h.2
+
+theorem equal_arity_does_not_authorize_other_code :
+    ¬ reusablePayload 1 10 1 20 := by simp [reusablePayload]
+
+-- Each synchronous Unit owns mutable implementation state. Only resumable
+-- templates can use immutable shared code plus per-binding implementations.
+def sharesSuppliedTemplate (synchronous : Bool) : Bool := !synchronous
+
+theorem synchronous_unit_is_not_shared : sharesSuppliedTemplate true = false := by rfl
+
+def publishActivation (current : Option Nat) (created : Nat) : Option Nat :=
+  match current with
+  | some winner => some winner
+  | none => some created
+
+theorem nested_activation_winner_survives (winner created : Nat) :
+    publishActivation (some winner) created = some winner := by rfl
+
 end Birnam.SharedInvocation
