@@ -86,4 +86,25 @@ theorem reentrant_other_field_survives (s : Records) (record field other value n
     (writeRecord (writeRecord s record other nested) record field value).fields record other = nested := by
   simp [writeRecord, put, distinct]
 
+-- Test discovery owns an ordered identity registry. These laws assume the
+-- ordinary identity predicate; replacing sends remains observable at runtime.
+def registerSuite (identity : Nat) (suites : List Nat) : List Nat :=
+  if identity ∈ suites then suites else suites ++ [identity]
+
+def unregisterSuite (identity : Nat) (suites : List Nat) : List Nat :=
+  suites.filter (fun entry => entry != identity)
+
+theorem suite_registration_idempotent (identity : Nat) (suites : List Nat) :
+    registerSuite identity (registerSuite identity suites) = registerSuite identity suites := by
+  by_cases h : identity ∈ suites <;> simp [registerSuite, h]
+
+theorem unregistered_suite_absent (identity : Nat) (suites : List Nat) :
+    identity ∉ unregisterSuite identity suites := by
+  simp [unregisterSuite]
+
+theorem registration_preserves_order (identity : Nat) (suites : List Nat)
+    (fresh : identity ∉ suites) :
+    registerSuite identity suites = suites ++ [identity] := by
+  simp [registerSuite, fresh]
+
 end Birnam.SlotReflection

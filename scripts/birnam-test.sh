@@ -47,3 +47,5 @@ python3 scripts/owned-globals-test.py "$prefix" --skip-images
 python3 scripts/ordinary-records-test.py "$prefix" --skip-images
 
 echo "birnam-test: module suites passed"
+
+python3 scripts/harness-owners-test.py "$prefix" --skip-images

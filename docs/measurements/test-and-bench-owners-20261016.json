@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "3869bd65",
+  "preceding_commits": [
+    "e41c4f35",
+    "3869bd65"
+  ],
+  "status": "Bench/Test implemented and qualified; committed with this change; no push or user installation",
+  "scope": "28 named slots, two local scratch Cells, owned Test registry and explicit descriptions; receiver-owned Bench state; timing windows/arithmetic preserved",
+  "prefix": "/tmp/birnam-harness/prefix",
+  "build": {
+    "result": "pass",
+    "log": "/tmp/birnam-harness/build.log",
+    "command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-harness/prefix --profile release --build-cache \"$PWD/.cargo-target/install\""
+  },
+  "checks": {
+    "full_language": {
+      "result": "pass",
+      "assertions": 826,
+      "postchecks": "all passed including harness-owners",
+      "log": "/tmp/birnam-harness/language.log",
+      "command": "mise exec -- env BIRNAM_TEST_PREFIX=/tmp/birnam-harness/prefix bash scripts/birnam-test.sh"
+    },
+    "focused": {
+      "result": "pass",
+      "log": "/tmp/birnam-harness/qualification-final.log",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-harness-owners-3wuvenr0/results.json",
+      "command": "mise exec -- python3 scripts/harness-owners-test.py /tmp/birnam-harness/prefix"
+    },
+    "store_absent": {
+      "result": "pass",
+      "programs": 70,
+      "log": "/tmp/birnam-harness/floor-final.log",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-cell-without-store-tne3y0c9/results.json",
+      "command": "mise exec -- python3 scripts/cell-without-store-test.py /tmp/birnam-harness/prefix --harness"
+    },
+    "negative_retention": {
+      "result": "expected failure",
+      "exit_code": 101,
+      "log": "/tmp/birnam-harness/negative.log",
+      "objects_before": 62873,
+      "objects_after": 62882,
+      "flag": "BIRNAM_HARNESS_RETAIN_NEGATIVE=1",
+      "reason": "Omitting unregistration leaves the registry owning the temporary suite and case"
+    },
+    "source_bootstrap": {
+      "result": "pass",
+      "log": "/tmp/birnam-harness/source-bootstrap.log",
+      "command": "BIRNAM_FORCE_SOURCE=1 BIRNAM_GC_PRECISE=1 /tmp/birnam-harness/prefix/bin/birnam tests/fixtures/harness-owners.birnam"
+    },
+    "formal": {
+      "result": "pass",
+      "lean_theorems": 324,
+      "rejected_mutations": 87,
+      "tlc_outcomes": 203,
+      "log": "/tmp/birnam-harness/formal.log",
+      "receipt": ".cargo-target/formal/results/rooting-og1unaan/summary.json",
+      "command": "mise exec -- python3 scripts/check-rooting-model.py"
+    },
+    "test_compile": {
+      "result": "pass",
+      "log": "/tmp/birnam-harness/compile-check.log"
+    }
+  },
+  "existing_boundary": {
+    "description": "Image saving rejects a captured independent Store new on the pre-migration prefix. Canonical db descriptions save and restore. This slice does not extend Store value serialization.",
+    "baseline_prefix": "/tmp/birnam-partial/prefix",
+    "baseline_log": "/tmp/birnam-harness/private-store-baseline.log",
+    "differential_log": "/tmp/birnam-harness/save-canonical.log"
+  },
+  "corrected_test_setup": {
+    "floor": "The shared floor initially invoked Logger-only checks for harness-only records; now gated by the actual option.",
+    "image": "Initial fixture captured an independent Store; final image check uses canonical db. Separate runtime Store snapshots remain tested."
+  },
+  "limitations": [
+    "Core source/FFI bootstrap still depends on Store; isolated exported-program tests are not full Store-free bootstrap.",
+    "No atomic whole-world description or callback transaction is promised.",
+    "Explicit facts/snapshots and registered suites intentionally retain references.",
+    "Formal models assume ordinary identity and are not proofs of arbitrary replaced methods or native compiler execution.",
+    "No CPU improvement is claimed."
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "bf612f326c6c0379b5700621dd8835e3701a986a693600987e8605dc458d02af",
+    "docs/design/optional-store-and-relational.md": "4cb9eee6f01a895f8c503f75dc29b318dbecb204a893e8582625552ec24b20b4",
+    "docs/design/test-and-bench-owners.md": "896bc86f31d8a1deec23dd6081be2c56c2d2189a7171d5ae0f2267b325c5ef5f",
+    "modules/bench.birnam": "6619f4dc6d7d1decc58ef213c4e74029e18c8a1d9d70e8b23dfa0d10aaa6b552",
+    "modules/test.birnam": "2483b8c5e9aae26de2b394b3639d6afd39e5cb36157aca8e54deb71f41f3bc02",
+    "tests/fixtures/harness-owners.birnam": "c51a9f2f3725dd128520bdfb40f5c0ba00f781500b15a3b707ed82f6eff33565",
+    "rust/birnam-siphon/tests/harness_retention.rs": "2c65c52032b2997183f04817d0c27242dbc106b70a093d91cb9cdbab1e921f6b",
+    "rust/birnam-siphon/tests/cell_without_store.rs": "967759703b764ff3d97681819a6757a2a82900f643381dff45b7c70efc6b1427",
+    "scripts/harness-owners-test.py": "afa75d4ac6e9fd7dee8fafb219513f31ab0c1b3843d3d62b5071435ce2eeaae1",
+    "scripts/cell-without-store-test.py": "7d2e09ad1f89695db1f8caf75149363665ce8402686b2933203dfe0abdd27ce4",
+    "scripts/check-rooting-model.py": "911fc8e52741139cf964698b4ec97efa7fc6c207969bd23d1472fa2b2b902906",
+    "scripts/birnam-test.sh": "1fca973a51476486c9c8368adb185e4a6aab904b679b53c27fac00fd18d08f6f",
+    "scripts/native-message-test.sh": "99eb438decc3db8cc5e94f82f2fdd4819664d082efb51f8b5ff73d86444732ca",
+    "formal/semantics/lean/SemanticsAudit.lean": "8025003bea154dde5a030d821ac8306728d3d6541e85f26b9b5b88432f586207",
+    "formal/semantics/lean/SlotReflection.lean": "36adbdd16631f8b3bc3968449e15abe1a4ddf6683cabf0949b3ffc9ed67edadd"
+  },
+  "installed_module_sha256": {
+    "test": "2483b8c5e9aae26de2b394b3639d6afd39e5cb36157aca8e54deb71f41f3bc02",
+    "bench": "6619f4dc6d7d1decc58ef213c4e74029e18c8a1d9d70e8b23dfa0d10aaa6b552"
+  },
+  "commit_note": "Documentation commit status updated after qualification; implementation and results unchanged."
+}

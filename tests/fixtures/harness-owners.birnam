@@ -1,0 +1,119 @@
+[Module load: #os];
+[System load: "modules/test.birnam"]; [System load: "modules/bench.birnam"];
+[[|
+let check := [:ok :label | [ok ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]];
+let registryBefore := [Test suites];
+let before := [db retainedFactCount];
+let a := [TestSuite named: "a" module: #one];
+let b := [TestSuite named: "b" module: #two];
+[check value: [[[Test suites] size] = [[registryBefore size] + 2]] value: "registration"];
+[Test register: a];
+[check value: [[[Test suites] size] = [[registryBefore size] + 2]] value: "duplicate identity"];
+[check value: [[[Test suitesForModule: #one] at: 0] == a] value: "module discovery"];
+[Reflect slot: #testsModule in: b put: #one];
+[check value: [[[Test suitesForModule: #one] at: 1] == b] value: "live tag and order"];
+let snapshot := [Test suites]; [Test unregister: a]; [Test unregister: a];
+[check value: [[snapshot size] = [[Test suites] size] + 1] value: "persistent snapshot"];
+[Test register: a];
+let runner := [ConsoleRunner clone]; [runner reset];
+[Reflect defineMethod: #suiteStarted: on: runner as: [:self :name | self]];
+[Reflect defineMethod: #suiteFinished: on: runner as: [:self :name | self]];
+[Reflect defineMethod: #passed: on: runner as: [:self :label |
+  [ObjectModel slot: 0 in: self put: [[self passedCount] + 1]]; self]];
+[Reflect defineMethod: #failed:detail: on: runner as: [:self :label :detail |
+  [ObjectModel slot: 1 in: self put: [[self failedCount] + 1]]; self]];
+let body := [:t | [t assert: true describes: "body"]];
+[a test: "one" do: body];
+[Test runSuite: a withRunner: runner];
+[check value: [[runner passedCount] = 1] value: "actual TestContext report"];
+let cse := [[a cases] at: 0];
+[check value: [[cse body] == body] value: "case body identity"];
+[Reflect slot: #cblock in: cse put: [:t | [System gc]; [Error kind: #caseError]]];
+[Test runSuite: a withRunner: runner];
+[check value: [[runner failedCount] = 1] value: "replaced erroring body"];
+[Reflect slot: #cblock in: cse put: body];
+let clone := [a clone];
+[check value: [[clone cases] == [a cases]] value: "shallow cases clone"];
+[clone test: "clone" do: body];
+[check value: [[[a cases] size] = 1] value: "clone replaced original cases"];
+[check value: [[runner allPassed] = false] value: "runner failure count"];
+[check value: [[ConsoleRunner passedCount] = 0] value: "runner clone mutated prototype"];
+[Test runTestsForModule: #one withRunner: runner];
+[check value: [[runner passedCount] = 1] value: "module execution and reset"];
+[Test runAllSuitesWithRunner: runner];
+[check value: [[runner passedCount] = 1] value: "all-suite execution and reset"];
+// A suite can register another suite while running; discovery snapshots stay fixed.
+[b test: "register" do: [:t | [TestSuite named: "nested" module: #nested]; [System gc]; t]];
+[Test runSuite: b withRunner: runner];
+let nested := [[Test suitesForModule: #nested] at: 0];
+[check value: [[nested name] = "nested"] value: "reentrant registry"];
+[Test unregister: nested];
+let suite := [BenchSuite named: "owned-bench"];
+[suite case: "subtract" opsPerIter: 2 do: [:n | n]];
+[suite rawCase: "raw" opsPerIter: 1 do: [:n | n]];
+[suite fixedCase: "fixed" iters: 3 do: [:n | n]];
+let benchmark := [Bench clone];
+[Reflect defineMethod: #benchReps on: benchmark as: [:self | 3]];
+[Reflect defineMethod: #floorUs on: benchmark as: [:self | 25]];
+[Reflect defineMethod: #quick on: benchmark as: [:self | false]];
+let timingCalls := [#[] asCell];
+[Reflect defineMethod: #timeOnce:iters: on: benchmark as: [:self :blk :n |
+  [timingCalls set: [[timingCalls value] add: n]]; [System gc]; [n * 10]]];
+[benchmark runSuite: suite];
+[check value: [[[benchmark results] size] = 3] value: "bench results"];
+[check value: [[Bench results] isNil] value: "bench clone mutated singleton"];
+[check value: [[[timingCalls value] printString] = [#[1 2 4 4 4 4 4 4 4 1 2 4 4 4 4 3 3 3 3 3 3] printString]] value: "calibration sample boundaries"];
+let results := [benchmark results];
+let sub := [results at: 0]; let raw := [results at: 1]; let fixed := [results at: 2];
+[check value: [[sub nsOp] = 0] value: "baseline subtraction"];
+[check value: [[sub nsOpRaw] = 5000] value: "ops per iteration"];
+[check value: [[raw nsOp] = 10000] value: "raw no baseline"];
+[check value: [[fixed iters] = 3] value: "fixed iteration"];
+[check value: [[fixed nreps] = 3] value: "sample repetitions"];
+[benchmark record: "external" us: 7 ops: 2];
+[check value: [[[[benchmark results] at: 3] nsOp] = 3500] value: "one-shot arithmetic"];
+let failedSuite := [BenchSuite named: "failures"];
+[failedSuite fixedCase: "error" iters: 1 do: [:n | [Error kind: #benchmarkFailure]]];
+let callsBeforeFailure := [[timingCalls value] size];
+[benchmark runCase: [[failedSuite cases] at: 0]];
+[check value: [[benchmark failures] = 1] value: "benchmark error gate"];
+[check value: [[[timingCalls value] size] = callsBeforeFailure] value: "erroring warmup was timed"];
+[check value: [[[benchmark results] size] = 4] value: "failed case recorded timing"];
+[System println: [benchmark jsonString]];
+[check value: [[db retainedFactCount] = before] value: "ordinary harness facts"];
+// Explicit snapshots retain their own references and do not drive discovery.
+let descriptions := [Store new]; [Test describeSuitesIn: descriptions];
+[check value: [[descriptions currentValue: a attr: #testsModule] == #one] value: "explicit description"];
+[Test unregister: a]; [Test unregister: b];
+[check value: [[descriptions currentValue: a attr: #isTestSuite] == #true] value: "unregister erased description"];
+[check value: [[[Test suites] size] = [registryBefore size]] value: "registry cleanup"];
+[db assert: a attr: #name value: #explicit];
+[Reflect slot: #name in: a put: nil];
+[check value: [[descriptions currentValue: a attr: #isTestSuite] == #true] value: "slot edit erased description"];
+[check value: [[db currentValue: a attr: #name] == #explicit] value: "same-name explicit fact"];
+[db retract: a attr: #name value: #explicit];
+// RETENTION_BATCH: native caller measures after the language frame returns.
+let sampleBench := [Bench clone];
+[Reflect defineMethod: #timeOnce:iters: on: sampleBench as: [:self :blk :n | n]];
+[Reflect defineMethod: #benchReps on: sampleBench as: [:self | 2]];
+let resultTemplate := [results at: 0];
+let operation := [|
+  let temporarySuite := [TestSuite named: "temporary" module: #temporary];
+  [temporarySuite test: "case" do: body];
+  [Test runSuite: temporarySuite withRunner: runner]; [Test unregister: temporarySuite];
+  let temporaryBenchSuite := [BenchSuite named: "temporary"];
+  [temporaryBenchSuite fixedCase: "case" iters: 2 do: [:n | n]];
+  let temporaryResult := [resultTemplate clone];
+  let temporaryBench := [sampleBench clone];
+  [Reflect slot: #results in: temporaryBench put: #[temporaryResult]];
+  [Reflect slot: #suiteName in: temporaryBench put: "temporary"];
+  [temporaryBench sample: [:n | n] iters: 2]; [temporaryBench jsonString];
+  nil
+];
+// RETURN_BATCH
+let factCount := [db retainedFactCount];
+[1 to: 10 do: [:i | [operation value]]];
+[check value: [[db retainedFactCount] = factCount] value: "temporary harness facts"];
+[System println: "harness-owners: passed"];
+nil
+] value]

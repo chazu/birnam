@@ -3,14 +3,15 @@
 // Tests are OBJECTS THAT LIVE IN THE IMAGE, not scripts you run and throw away.
 // A `TestSuite` holds its cases as DEFERRED blocks, so a suite can be run any
 // number of times — edit a method, re-run its suite, repeat, all in one image.
-// `Test` is the registry: every suite registers itself as facts in the store
-// (`suite isTestSuite true` / `suite testsModule <mod>`), so the set of tests is
-// queryable — by module, or in full — the same way any other data is. A `Runner`
+// `Test` owns an ordered registry: suites are discoverable by module or in full.
+// `describeSuitesIn:` explicitly adds a snapshot to a caller-selected Store;
+// ordinary registration/running creates no facts. A `Runner`
 // is a separate, pluggable collaborator that decides how results are reported;
 // swap it without touching a single suite.
 //
-// Four objects:
+// Five objects:
 //   TestSuite     a named, module-tagged collection of deferred (name, block) cases
+//   TestCase      a named deferred body with discoverable, mutable fields
 //   Test          the registry + the run protocol (runSuite:/runTestsForModule:/…)
 //   TestContext   the `t` handed to each case block: assert:/deny:/expect:, which
 //                 forward the outcome to the runner (comparison lives here, once)
@@ -40,17 +41,18 @@
 // TestContext — the `t` passed to each case block. Owns the comparison logic
 // (once), forwards each outcome to the current runner via passed:/failed:detail:.
 // ===========================================================================
-[Globals at: #TestContext put: [Object clone]];
-[Reflect docModule: #test is: "A live, Smalltalk-style test system — suites as store facts, pluggable runner."];
+[Globals at: #TestContext put: [ObjectModel newSlots: #[nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: TestContext as: [:self | #[#runner]]];
+[Reflect docModule: #test is: "A live, Smalltalk-style test system — owned suites and registry, explicit fact snapshots, pluggable runner."];
 
 [Reflect defineMethod: #runner on: TestContext as: [:self |
-  [[db cellFor: self attr: #runner] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "Answers the runner this context reports outcomes to."];
 
 // A fresh context bound to a runner.
 [Reflect defineMethod: #for: on: TestContext as: [:self :r |
   let t := [TestContext clone];
-  [[db cellFor: t attr: #runner] set: r];
+  [ObjectModel slot: 0 in: t put: r];
   t] doc:
   "A fresh TestContext bound to runner `r`."];
 
@@ -81,20 +83,21 @@
 // Any object answering reset / suiteStarted: / passed: / failed:detail: /
 // suiteFinished: / summary / allPassed can stand in its place.
 // ===========================================================================
-[Globals at: #ConsoleRunner put: [Object clone]];
+[Globals at: #ConsoleRunner put: [ObjectModel newSlots: #[0 0] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: ConsoleRunner as: [:self | #[#pass #fail]]];
 
 [Reflect defineMethod: #passedCount on: ConsoleRunner as: [:self |
-  [[db cellFor: self attr: #pass] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "The cumulative count of passed checks."];
 [Reflect defineMethod: #failedCount on: ConsoleRunner as: [:self |
-  [[db cellFor: self attr: #fail] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "The cumulative count of failed checks."];
 
 // Zero the cumulative totals. The run-all/run-module entry points call this;
 // runSuite:withRunner: does NOT, so several suites can accumulate into one runner.
 [Reflect defineMethod: #reset on: ConsoleRunner as: [:self |
-  [[db cellFor: self attr: #pass] set: 0];
-  [[db cellFor: self attr: #fail] set: 0];
+  [ObjectModel slot: 0 in: self put: 0];
+  [ObjectModel slot: 1 in: self put: 0];
   self] doc:
   "Zero the cumulative totals; runSuite:withRunner: does NOT call this, so several suites can accumulate into one runner."];
 
@@ -104,13 +107,13 @@
   "Print the `== nm ==` header announcing a suite."];
 
 [Reflect defineMethod: #passed: on: ConsoleRunner as: [:self :label |
-  [[db cellFor: self attr: #pass] set: [[self passedCount] + 1]];
+  [ObjectModel slot: 0 in: self put: [[self passedCount] + 1]];
   [System println: ["  ok   " , label]];
   self] doc:
   "Count a pass and print its ok line for `label`."];
 
 [Reflect defineMethod: #failed:detail: on: ConsoleRunner as: [:self :label :detail |
-  [[db cellFor: self attr: #fail] set: [[self failedCount] + 1]];
+  [ObjectModel slot: 1 in: self put: [[self failedCount] + 1]];
   [System println: ["  FAIL " , label , " (" , detail , ")"]];
   self] doc:
   "Count a failure and print its FAIL line for `label` with `detail`."];
@@ -129,54 +132,81 @@
   [[self failedCount] = 0]] doc:
   "True iff no test has failed (the exit-code gate)."];
 
-// Initialise the default runner's totals so a bare runSuite:withRunner: (no
-// preceding reset) never reads a nil count.
-[[db cellFor: ConsoleRunner attr: #pass] set: 0];
-[[db cellFor: ConsoleRunner attr: #fail] set: 0];
+// The default runner owns zeroed totals even before the first reset.
 
 // ===========================================================================
 // TestSuite — a named, module-tagged bag of deferred cases. Registers itself
-// with Test (as store facts) the moment it is created.
+// with Test the moment it is created; unregister it when no longer needed.
 // ===========================================================================
-[Globals at: #TestSuite put: [Object clone]];
+[Globals at: #TestSuite put: [ObjectModel newSlots: #[nil nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: TestSuite as: [:self | #[#name #cases #testsModule]]];
 
 [Reflect defineMethod: #name on: TestSuite as: [:self |
-  [[db cellFor: self attr: #name] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "Answers the suite's name."];
 [Reflect defineMethod: #cases on: TestSuite as: [:self |
-  [[db cellFor: self attr: #cases] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "Answers the suite's deferred (name, block) cases."];
+
+[Reflect defineMethod: #module on: TestSuite as: [:self |
+  [ObjectModel slot: 2 in: self]] doc:
+  "The suite's current module tag. Reflective edits affect subsequent discovery."];
+
+[Globals at: #TestCase put: [ObjectModel newSlots: #[nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: TestCase as: [:self | #[#cname #cblock]]];
+[Reflect defineMethod: #name on: TestCase as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #body on: TestCase as: [:self | [ObjectModel slot: 1 in: self]]];
 
 [Reflect defineMethod: #named:module: on: TestSuite as: [:self :nm :mod |
   let s := [TestSuite clone];
-  [[db cellFor: s attr: #name]  set: nm];
-  [[db cellFor: s attr: #cases] set: #[]];
-  [db assert: s attr: #isTestSuite value: #true];
-  [db assert: s attr: #testsModule value: mod];
+  [ObjectModel slot: 0 in: s put: nm];
+  [ObjectModel slot: 1 in: s put: #[]];
+  [ObjectModel slot: 2 in: s put: mod];
+  [Test register: s];
   s] doc:
-  "A fresh suite named `nm`, tagged with module symbol `mod`; registers itself as store facts so Test can find it."];
+  "A fresh suite named `nm`, tagged with module symbol `mod`; registers with Test; no facts are created."];
 
 [Reflect defineMethod: #test:do: on: TestSuite as: [:self :nm :blk |
-  let cse := [Object clone];
-  [[db cellFor: cse attr: #cname]  set: nm];
-  [[db cellFor: cse attr: #cblock] set: blk];
-  [[db cellFor: self attr: #cases] set: [[self cases] add: cse]];
+  let cse := [TestCase clone];
+  [ObjectModel slot: 0 in: cse put: nm];
+  [ObjectModel slot: 1 in: cse put: blk];
+  [ObjectModel slot: 1 in: self put: [[self cases] add: cse]];
   self] doc:
   "Add a deferred case: `nm` names it, `blk` is a 1-arg block [:t | …] run later against a fresh TestContext. Chainable."];
 
 // ===========================================================================
 // Test — the registry and the run protocol.
 // ===========================================================================
-[Globals at: #Test put: [Object clone]];
+[Globals at: #Test put: [ObjectModel newSlots: #[#[]] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: Test as: [:self | #[#suites]]];
 
-// Every registered suite.
+// Registry snapshots are persistent Vectors. Registration owns each suite until
+// unregister: or an explicit reflected registry replacement releases it.
 [Reflect defineMethod: #suites on: Test as: [:self |
-  [db findAll: ?s where: #[ #[?s #isTestSuite #true] ]]] doc:
-  "Every registered suite (queried from the store)."];
+  [ObjectModel slot: 0 in: self]] doc:
+  "Registered suites in registration order; a persistent snapshot, not a live view."];
+
+[Reflect defineMethod: #register: on: Test as: [:self :suite |
+  [[[self suites] anySatisfy: [:s | [s == suite]]] ifFalse: [|
+    [ObjectModel slot: 0 in: self put: [[self suites] add: suite]]]];
+  self] doc:
+  "Register a suite by identity once. Retains it until unregistered; answers the registry."];
+
+[Reflect defineMethod: #unregister: on: Test as: [:self :suite |
+  [ObjectModel slot: 0 in: self put: [[self suites] reject: [:s | [s == suite]]]];
+  self] doc:
+  "Remove a suite by identity. Existing snapshots and explicit facts remain independent."];
 
 [Reflect defineMethod: #suitesForModule: on: Test as: [:self :mod |
-  [db findAll: ?s where: #[ #[?s #testsModule mod] ]]] doc:
-  "The registered suites tagged with module symbol `mod`."];
+  [[self suites] select: [:s | [[s module] == mod]]]] doc:
+  "Registered suites with current module-symbol identity `mod`, in registration order."];
+
+[Reflect defineMethod: #describeSuitesIn: on: Test as: [:self :store |
+  [[self suites] do: [:s |
+    [store assert: s attr: #isTestSuite value: #true];
+    [store assert: s attr: #testsModule value: [s module]]]];
+  store] doc:
+  "Explicitly add observed suite/module facts to `store`. Use a fresh Store for a new snapshot; no subscription or automatic retraction. Facts retain suites and may be historical."];
 
 // Run one suite against a runner: announce it, hand each case block a fresh
 // TestContext, then close it. Does not reset the runner (see reset).
@@ -184,9 +214,9 @@
   [r suiteStarted: [s name]];
   let t := [TestContext for: r];
   [[s cases] do: [:cse |
-    let answer := [[[db cellFor: cse attr: #cblock] value] value: t];
+    let answer := [[cse body] value: t];
     [[answer isError] ifTrue: [|
-      [r failed: [[db cellFor: cse attr: #cname] value] detail: [answer printString]]]]]];
+      [r failed: [cse name] detail: [answer printString]]]]]];
   [r suiteFinished: [s name]];
   s] doc:
   "Run suite `s` against runner `r`, handing each case block a fresh TestContext; does NOT reset `r` (see reset)."];

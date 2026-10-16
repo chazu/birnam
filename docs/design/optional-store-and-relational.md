@@ -250,14 +250,14 @@ different answers about authority, history or inspection in each module.
 ## Progress as of 2026-10-16
 
 The five ordinary-object field migrations are committed as `e41c4f35`. The basic
-live-loading simplification is implemented and qualified with this follow-up. Coordination cleanup is committed through
+live-loading simplification is committed as `3869bd65`. Coordination cleanup is committed through
 `bd8a532e`. Implementation status does not imply release or local installation.
 
 | Plan area | Delivered | Remaining |
 | --- | --- | --- |
 | Contracts, private scratch and reflection | Ownership decision, scanner scratch cleanup, local Cells, binding/dictionary/slot inventories | Apply the same discoverable-owner contract to remaining public state. |
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
-| Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields | Bench/Test fields and scratch need owner/consumer audits; REPL handles/buffers belong with socket/task resource-lifecycle work. |
+| Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields; Bench/Test fields, local scratch and owned suite discovery implemented and qualified | REPL handles/buffers belong with socket/task resource-lifecycle work. |
 | Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Basic live loading now reports partial application without compensation; stronger recovery is an optional future feature, not a migration prerequisite. |
 | Step 6: durable/coordinated and process-local state | Globals already participates in owner-based recovery | Compiler metadata, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
@@ -352,9 +352,10 @@ unobservable representation optimization, and does not copy or delete user facts
   readers/writers and query consumers, inspection/mutation API, retention, image
   policy, and bootstrap edge. Track native seeds, generated artifacts and implicit
   module initialization as well as direct `db` calls. Close an entry with evidence.
-- [ ] Finish Bench/Test ordinary fields and scratch. Audit suite-discovery facts
-  separately: provide owner discovery or make the relational feature explicitly
-  optional before removing its facts. Do not turn every Store use into a slot.
+- [x] Qualify Bench/Test ordinary fields, scratch and discovery. Test now owns its
+  suite registry and explicitly describes suites into a caller-selected Store;
+  intentional discovery remains available without facts. See
+  [the implementation report](test-and-bench-owners.md).
 - [ ] For each field migration, document and test clone/reference sharing,
   identity versus value equality, aliases, absent versus nil, reflective edits,
   reentry/collection and explicit same-name facts. Preserve explicit facts and
@@ -375,6 +376,10 @@ unobservable representation optimization, and does not copy or delete user facts
 - [ ] Specify Alien recipe durability separately from process-local addresses and
   resources. Preserve reconstruction, reflection and code ownership without a
   permanent opaque native registry or a replacement global fact service.
+- [ ] Audit persistence of independent Store instances as an optional-facility
+  follow-up. The Bench/Test qualification reproduced rejection of an image capturing
+  `Store new` on the pre-migration runtime; canonical `db` descriptions persist.
+  Document that boundary rather than implying every runtime snapshot is imageable.
 - [ ] Define any artifact/image version or rebuild transition before changing its
   representation. Keep explicit facts and retained history independent; reject an
   unsupported format rather than silently dropping data. Compatibility adapters
@@ -387,8 +392,8 @@ unobservable representation optimization, and does not copy or delete user facts
   and installed state. Review owner boundaries before accepting a new registry,
   mirror, transaction framework or native service as a dependency replacement.
 
-These tasks refine the existing sequence: finish the bounded Bench/Test state,
-then compiler metadata/source integration; keep resource-bearing REPL state with
+The bounded Bench/Test slice is qualified. The next structural work is compiler
+metadata/source integration; keep resource-bearing REPL state with
 lifecycle work. The selected live-load change is stated above; these tasks do not authorize changing
 GC policy or resuming the paused Relational rewrite.
 

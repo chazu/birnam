@@ -55,22 +55,43 @@
 // ===========================================================================
 // BenchSuite — a named bag of deferred cases.
 // ===========================================================================
-[Globals at: #BenchSuite put: [Object clone]];
+[Globals at: #BenchSuite put: [ObjectModel newSlots: #[nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: BenchSuite as: [:self | #[#name #cases]]];
 [Reflect docModule: #bench is: "The benchmark harness — calibrated, GC-disciplined timing over a native to:do: loop (docs/design/46)."];
 
 [Reflect defineMethod: #name on: BenchSuite as: [:self |
-  [[db cellFor: self attr: #name] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "The suite's name."];
 [Reflect defineMethod: #cases on: BenchSuite as: [:self |
-  [[db cellFor: self attr: #cases] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "The suite's registered cases (a Vector of case objects)."];
 
 [Reflect defineMethod: #named: on: BenchSuite as: [:self :nm |
   let s := [BenchSuite clone];
-  [[db cellFor: s attr: #name]  set: nm];
-  [[db cellFor: s attr: #cases] set: #[]];
+  [ObjectModel slot: 0 in: s put: nm];
+  [ObjectModel slot: 1 in: s put: #[]];
   s] doc:
   "A fresh suite named `nm`."];
+
+[Globals at: #BenchCase put: [ObjectModel newSlots: #[nil nil nil nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: BenchCase as: [:self | #[#cname #k #raw #fixedN #cblock]]];
+[Reflect defineMethod: #cname on: BenchCase as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #k on: BenchCase as: [:self | [ObjectModel slot: 1 in: self]]];
+[Reflect defineMethod: #raw on: BenchCase as: [:self | [ObjectModel slot: 2 in: self]]];
+[Reflect defineMethod: #fixedN on: BenchCase as: [:self | [ObjectModel slot: 3 in: self]]];
+[Reflect defineMethod: #cblock on: BenchCase as: [:self | [ObjectModel slot: 4 in: self]]];
+
+[Globals at: #BenchResult put: [ObjectModel newSlots: #[nil nil nil nil nil nil nil nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: BenchResult as: [:self | #[#rname #nsOp #nsOpRaw #netUs #ops #iters #nreps #medianUs #minUs]]];
+[Reflect defineMethod: #rname on: BenchResult as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #nsOp on: BenchResult as: [:self | [ObjectModel slot: 1 in: self]]];
+[Reflect defineMethod: #nsOpRaw on: BenchResult as: [:self | [ObjectModel slot: 2 in: self]]];
+[Reflect defineMethod: #netUs on: BenchResult as: [:self | [ObjectModel slot: 3 in: self]]];
+[Reflect defineMethod: #ops on: BenchResult as: [:self | [ObjectModel slot: 4 in: self]]];
+[Reflect defineMethod: #iters on: BenchResult as: [:self | [ObjectModel slot: 5 in: self]]];
+[Reflect defineMethod: #nreps on: BenchResult as: [:self | [ObjectModel slot: 6 in: self]]];
+[Reflect defineMethod: #medianUs on: BenchResult as: [:self | [ObjectModel slot: 7 in: self]]];
+[Reflect defineMethod: #minUs on: BenchResult as: [:self | [ObjectModel slot: 8 in: self]]];
 
 // The shared case constructor. rawFlag 1 = report raw only (no subtraction);
 // fixedN 0 = calibrate, else run exactly fixedN iterations (for cases whose
@@ -78,13 +99,13 @@
 // — where a calibrated, machine-dependent n would make runs incomparable).
 // Kept ≤4 block params (self + 3) by splitting the public surface below.
 [Reflect defineMethod: #addCase:k:blk: on: BenchSuite as: [:self :nm :k :blk |
-  let cse := [Object clone];
-  [[db cellFor: cse attr: #cname]  set: nm];
-  [[db cellFor: cse attr: #k]      set: k];
-  [[db cellFor: cse attr: #raw]    set: 0];
-  [[db cellFor: cse attr: #fixedN] set: 0];
-  [[db cellFor: cse attr: #cblock] set: blk];
-  [[db cellFor: self attr: #cases] set: [[self cases] add: cse]];
+  let cse := [BenchCase clone];
+  [ObjectModel slot: 0 in: cse put: nm];
+  [ObjectModel slot: 1 in: cse put: k];
+  [ObjectModel slot: 2 in: cse put: 0];
+  [ObjectModel slot: 3 in: cse put: 0];
+  [ObjectModel slot: 4 in: cse put: blk];
+  [ObjectModel slot: 1 in: self put: [[self cases] add: cse]];
   cse] doc:
   "The shared case constructor: registers case `nm` with `k` ops per iteration and body `blk`; answers the case object."];
 
@@ -95,29 +116,32 @@
 
 [Reflect defineMethod: #rawCase:opsPerIter:do: on: BenchSuite as: [:self :nm :k :blk |
   let cse := [self addCase: nm k: k blk: blk];
-  [[db cellFor: cse attr: #raw] set: 1];
+  [ObjectModel slot: 2 in: cse put: 1];
   self] doc:
   "Add a raw-only case (no baseline subtraction) — for cases whose subject IS the loop. Chainable."];
 
 [Reflect defineMethod: #fixedCase:iters:do: on: BenchSuite as: [:self :nm :n0 :blk |
   let cse := [self addCase: nm k: 1 blk: blk];
-  [[db cellFor: cse attr: #fixedN] set: n0];
+  [ObjectModel slot: 3 in: cse put: n0];
   self] doc:
   "Add a fixed-iteration case (no calibration; k=1): exactly n0 iterations per rep. For ops whose cost grows with accumulated process state — a calibrated n would make runs incomparable. Chainable."];
 
 // ===========================================================================
 // Bench — the runner. Results accumulate on #results (reset per runSuite:).
 // ===========================================================================
-[Globals at: #Bench put: [Object clone]];
+[Globals at: #Bench put: [ObjectModel newSlots: #[nil 0 nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: Bench as: [:self | #[#results #failures #suiteName]]];
 
 [Reflect defineMethod: #results on: Bench as: [:self |
-  [[db cellFor: self attr: #results] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "The result records of the last runSuite: (a Vector of record objects)."];
 
 [Reflect defineMethod: #failures on: Bench as: [:self |
-  [[db cellFor: self attr: #failures] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "How many cases FAILed (erroring bodies) in the last runSuite: — the exit-code gate."];
-[[db cellFor: Bench attr: #failures] set: 0];
+[Reflect defineMethod: #suiteName on: Bench as: [:self |
+  [ObjectModel slot: 2 in: self]] doc:
+  "The name of this runner's last suite."];
 
 // Quick mode: BENCH_QUICK set (to anything) — the dev loop.
 [Reflect defineMethod: #quick on: Bench as: [:self |
@@ -132,16 +156,11 @@
   [[self quick] ifTrue: [| 2] ifFalse: [| 5]]] doc:
   "How many timed reps per case (2 quick, 5 full)."];
 
-// The empty loop — the baseline every subtracted case measures against. Same
-// shape as every case body: one native to:do:, nothing in it. A METHOD
-// answering a fresh block, deliberately NOT a block in a cell: a block-valued
-// durable store fact has no image restoration recipe and would reject every
-// [System saveImage:] in a bench-loaded process (bench/image.birnam saves).
-// NOTE the same applies to registered SUITES (case blocks live in cells) —
-// define suites only in processes that don't save images.
+// A fresh empty-loop Block is the baseline. Registered cases own their Blocks
+// through ordinary slots; imageability follows the normal Block/capture contract.
 [Reflect defineMethod: #emptyLoop on: Bench as: [:self |
   [:m | [1 to: m do: [:i | nil]]]] doc:
-  "A fresh empty-loop block — the baseline every subtracted case measures against (a method, not a cell, so images stay saveable)."];
+  "A fresh empty-loop block — the baseline every subtracted case measures against (a fresh Block on each send)."];
 
 // -- the ONLY timed window in the module ----------------------------------------
 // GC immediately before, then start..run..stop. Nothing else may read the clock.
@@ -168,9 +187,7 @@
 // R timed runs at m iterations; answers the Vector of elapsed µs. The cell
 // writes land BETWEEN timed windows (timeOnce: brackets only the block).
 [Reflect defineMethod: #sample:iters: on: Bench as: [:self :blk :m |
-  let run := [Object clone];
-  let acc := [db cellFor: run attr: #acc];
-  [acc set: #[]];
+  let acc := [#[] asCell];
   [1 to: [self benchReps] do: [:r |
     let e := [self timeOnce: blk iters: m];
     [acc set: [[acc value] add: e]]]];
@@ -196,23 +213,23 @@
 // runs warm further), and a heavier warmup would cost seconds on expensive
 // k=1 cases and pre-append state before fixed-n cases measure.
 [Reflect defineMethod: #runCase: on: Bench as: [:self :cse |
-  let blk := [[db cellFor: cse attr: #cblock] value];
-  let nm  := [[db cellFor: cse attr: #cname] value];
+  let blk := [cse cblock];
+  let nm  := [cse cname];
   let w := [blk value: 1];
   [[w isError]
     ifTrue:  [|
-      [[db cellFor: Bench attr: #failures] set: [[self failures] + 1]];
+      [ObjectModel slot: 1 in: self put: [[self failures] + 1]];
       [System println: ["  FAIL " , nm , ": " , [w printString]]]]
     ifFalse: [| [self measureCase: cse]]];
   self] doc:
   "Run one case: a one-iteration warmup doubles as the error gate — an erroring body FAILs (counts on #failures), else measure."];
 
 [Reflect defineMethod: #measureCase: on: Bench as: [:self :cse |
-  let blk := [[db cellFor: cse attr: #cblock] value];
-  let k   := [[db cellFor: cse attr: #k] value];
-  let nm  := [[db cellFor: cse attr: #cname] value];
-  let raw := [[db cellFor: cse attr: #raw] value];
-  let fixedN := [[db cellFor: cse attr: #fixedN] value];
+  let blk := [cse cblock];
+  let k   := [cse k];
+  let nm  := [cse cname];
+  let raw := [cse raw];
+  let fixedN := [cse fixedN];
   let n := [[fixedN = 0]
     ifTrue:  [| [self calibrate: blk from: 1]]
     ifFalse: [| fixedN]];
@@ -228,19 +245,19 @@
     ifFalse: [| nil]];
   let netClamped := [[netUs < 0] ifTrue: [| 0] ifFalse: [| netUs]];
   let ops := [n * k];
-  let rec := [Object clone];
-  [[db cellFor: rec attr: #rname]    set: nm];
-  [[db cellFor: rec attr: #nsOp]     set: [[netClamped * 1000] / ops]];
-  [[db cellFor: rec attr: #nsOpRaw]  set: [[rawMed * 1000] / ops]];
-  [[db cellFor: rec attr: #netUs]    set: netUs];
-  [[db cellFor: rec attr: #ops]      set: ops];
-  [[db cellFor: rec attr: #iters]    set: n];
-  [[db cellFor: rec attr: #nreps]    set: [self benchReps]];
-  [[db cellFor: rec attr: #medianUs] set: rawMed];
-  [[db cellFor: rec attr: #minUs]    set: rawMin];
-  [[db cellFor: Bench attr: #results] set: [[self results] add: rec]];
-  [System println: ["  " , nm , ": " , [[[db cellFor: rec attr: #nsOp] value] printString]
-                   , " ns/op (raw " , [[[db cellFor: rec attr: #nsOpRaw] value] printString]
+  let rec := [BenchResult clone];
+  [ObjectModel slot: 0 in: rec put: nm];
+  [ObjectModel slot: 1 in: rec put: [[netClamped * 1000] / ops]];
+  [ObjectModel slot: 2 in: rec put: [[rawMed * 1000] / ops]];
+  [ObjectModel slot: 3 in: rec put: netUs];
+  [ObjectModel slot: 4 in: rec put: ops];
+  [ObjectModel slot: 5 in: rec put: n];
+  [ObjectModel slot: 6 in: rec put: [self benchReps]];
+  [ObjectModel slot: 7 in: rec put: rawMed];
+  [ObjectModel slot: 8 in: rec put: rawMin];
+  [ObjectModel slot: 0 in: self put: [[self results] add: rec]];
+  [System println: ["  " , nm , ": " , [[rec nsOp] printString]
+                   , " ns/op (raw " , [[rec nsOpRaw] printString]
                    , ", n=" , [n printString] , ", k=" , [k printString] , ")"]];
   self] doc:
   "Measure one case: calibrate (or use fixedN), sample, subtract the empty-loop baseline (unless raw); record and print."];
@@ -250,18 +267,18 @@
 // re-running it would hit the idempotent-assert no-op path, not the write
 // path). The caller times it and records the result; reps=1, median=min=us.
 [Reflect defineMethod: #record:us:ops: on: Bench as: [:self :nm :us :ops |
-  let rec := [Object clone];
-  [[db cellFor: rec attr: #rname]    set: nm];
-  [[db cellFor: rec attr: #nsOp]     set: [[us * 1000] / ops]];
-  [[db cellFor: rec attr: #nsOpRaw]  set: [[us * 1000] / ops]];
-  [[db cellFor: rec attr: #netUs]    set: us];
-  [[db cellFor: rec attr: #ops]      set: ops];
-  [[db cellFor: rec attr: #iters]    set: 1];
-  [[db cellFor: rec attr: #nreps]    set: 1];
-  [[db cellFor: rec attr: #medianUs] set: us];
-  [[db cellFor: rec attr: #minUs]    set: us];
-  [[db cellFor: Bench attr: #results] set: [[self results] add: rec]];
-  [System println: ["  " , nm , ": " , [[[db cellFor: rec attr: #nsOp] value] printString]
+  let rec := [BenchResult clone];
+  [ObjectModel slot: 0 in: rec put: nm];
+  [ObjectModel slot: 1 in: rec put: [[us * 1000] / ops]];
+  [ObjectModel slot: 2 in: rec put: [[us * 1000] / ops]];
+  [ObjectModel slot: 3 in: rec put: us];
+  [ObjectModel slot: 4 in: rec put: ops];
+  [ObjectModel slot: 5 in: rec put: 1];
+  [ObjectModel slot: 6 in: rec put: 1];
+  [ObjectModel slot: 7 in: rec put: us];
+  [ObjectModel slot: 8 in: rec put: us];
+  [ObjectModel slot: 0 in: self put: [[self results] add: rec]];
+  [System println: ["  " , nm , ": " , [[rec nsOp] printString]
                    , " ns/op (one-shot, ops=" , [ops printString] , ")"]];
   self] doc:
   "Record an externally timed one-shot measurement: `us` elapsed microseconds over `ops` operations."];
@@ -269,14 +286,14 @@
 // -- run a suite --------------------------------------------------------------------
 [Reflect defineMethod: #runSuite: on: Bench as: [:self :s |
   [System autoGc: false];
-  [[db cellFor: Bench attr: #results]   set: #[]];
-  [[db cellFor: Bench attr: #failures]  set: 0];
-  [[db cellFor: Bench attr: #suiteName] set: [s name]];
+  [ObjectModel slot: 0 in: self put: #[]];
+  [ObjectModel slot: 1 in: self put: 0];
+  [ObjectModel slot: 2 in: self put: [s name]];
   [System println: ["== bench: " , [s name] , [[self quick] ifTrue: [| " (quick) =="] ifFalse: [| " =="]]]];
   [[s cases] do: [:cse | [self runCase: cse]]];
   [System autoGc: true];
   s] doc:
-  "Run every case of suite `s` under the GC discipline (autoGc off for the run, restored after — safe to run from a live REPL). Results land on [Bench results]; erroring cases FAIL and count on [Bench failures]."];
+  "Run every case of suite `s` under the GC discipline (autoGc off for the run, re-enabled after — safe to run from a live REPL). Results land on [Bench results]; erroring cases FAIL and count on [Bench failures]."];
 
 // -- JSON emit ----------------------------------------------------------------------
 // Assembled by hand with StringBuilder for a STABLE field/case order (Json
@@ -284,34 +301,32 @@
 [Reflect defineMethod: #jsonFor: on: Bench as: [:self :rec |
   let sb := [StringBuilder new];
   [sb add: "{\"name\":\""];
-  [sb add: [[db cellFor: rec attr: #rname] value]];
+  [sb add: [rec rname]];
   [sb add: "\",\"ns_per_op\":"];
-  [sb add: [[[db cellFor: rec attr: #nsOp] value] printString]];
+  [sb add: [[rec nsOp] printString]];
   [sb add: ",\"ns_per_op_raw\":"];
-  [sb add: [[[db cellFor: rec attr: #nsOpRaw] value] printString]];
+  [sb add: [[rec nsOpRaw] printString]];
   [sb add: ",\"net_us\":"];
-  [sb add: [[[db cellFor: rec attr: #netUs] value] printString]];
+  [sb add: [[rec netUs] printString]];
   [sb add: ",\"ops\":"];
-  [sb add: [[[db cellFor: rec attr: #ops] value] printString]];
+  [sb add: [[rec ops] printString]];
   [sb add: ",\"iters\":"];
-  [sb add: [[[db cellFor: rec attr: #iters] value] printString]];
+  [sb add: [[rec iters] printString]];
   [sb add: ",\"reps\":"];
-  [sb add: [[[db cellFor: rec attr: #nreps] value] printString]];
+  [sb add: [[rec nreps] printString]];
   [sb add: ",\"median_us\":"];
-  [sb add: [[[db cellFor: rec attr: #medianUs] value] printString]];
+  [sb add: [[rec medianUs] printString]];
   [sb add: ",\"min_us\":"];
-  [sb add: [[[db cellFor: rec attr: #minUs] value] printString]];
+  [sb add: [[rec minUs] printString]];
   [sb add: "}"];
   [sb asString]] doc:
   "One result record `rec` as a JSON object string, hand-assembled for a stable field order."];
 
 [Reflect defineMethod: #jsonString on: Bench as: [:self |
   let sb := [StringBuilder new];
-  let run := [Object clone];
-  let first := [db cellFor: run attr: #first];
-  [first set: 1];
+  let first := [1 asCell];
   [sb add: "{\"suite\":\""];
-  [sb add: [[db cellFor: Bench attr: #suiteName] value]];
+  [sb add: [ObjectModel slot: 2 in: self]];
   [sb add: "\",\"cases\":["];
   [[self results] do: [:rec |
     [[[first value] = 1] ifTrue: [| [first set: 0]] ifFalse: [| [sb add: ","]]];

@@ -268,3 +268,7 @@ import Admission
 #print axioms Birnam.PublicationFailure.failed_load_keeps_values
 #print axioms Birnam.PublicationFailure.failed_load_drops_authority
 #print axioms Birnam.PublicationFailure.failed_load_preserves_error
+
+#print axioms Birnam.SlotReflection.suite_registration_idempotent
+#print axioms Birnam.SlotReflection.unregistered_suite_absent
+#print axioms Birnam.SlotReflection.registration_preserves_order

@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move Test/Bench fields and scratch out of Store. Test owns ordered suite
+  registration/removal and offers explicit description snapshots; cloned Bench
+  runners now update their own results. Timing windows and result JSON are unchanged.
+
 - Move Logger, Config, HttpRequest, ProcResult and AppConfig fields into ordinary
   owned slots with live reflection, shallow cloning and independent explicit facts.
 

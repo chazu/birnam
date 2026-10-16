@@ -113,8 +113,29 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
             records.push((record,fields,getters));
         }
     }
+    // The manifest names actual exported programs; no method body is rewritten.
+    let harness_manifest=if std::env::var_os("BIRNAM_HARNESS_OWNERS").is_some() {
+        Some(serde_json::from_slice::<Vec<(String,Vec<String>,Vec<String>)>>(
+            &std::fs::read(programs.join("harness.json")).unwrap()).unwrap())
+    } else { None };
+    if let Some(manifest)=&harness_manifest {
+        for (name,fields,methods) in manifest {
+            let mut initial=h.call(h.named(b"Vector"),b"new",&[]);
+            for field in fields {
+                let value=if name=="Test" { h.call(h.named(b"Vector"),b"new",&[]) }
+                    else if name=="ConsoleRunner" || (name=="Bench" && field=="failures") {h.integer(0)}
+                    else {nil};
+                initial=h.call(initial,b"add:",&[value]);
+            }
+            let owner=h.call(model,b"newSlots:parent:",&[initial,vt]);h.publish(name.as_bytes(),owner);
+            requests.extend(methods.iter().map(|method|(owner,method.as_bytes(),method.matches(':').count())));
+            records.push((owner,fields.iter().map(|f|f.as_bytes()).collect(),
+                methods.iter().skip(1).take(fields.len()).map(|m|m.as_bytes()).collect()));
+        }
+        requests.extend([b"anySatisfy:".as_slice(),b"count:",b"select:",b"reject:"].into_iter().map(|method|(collection,method,1)));
+    }
     for (index,(target,selector,arity)) in requests.into_iter().enumerate() {
-        let behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)]));
+        let behavior=if target==collection { collection } else { object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)])) };
         let bytes=std::fs::read(programs.join(format!("{index}.bin"))).unwrap();
         let bytes=h.keep(object(send(id,h.named(b"Bytes"),b"fromBytes:",&[Operand::bytes(&bytes)])));
         let code=h.call(h.named(b"CodeObject"),b"fromCanonicalBytes:",&[bytes]);
@@ -151,7 +172,7 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
         h.clear_from(mark);collect(id,gc);
         assert!(!present(id,instance));assert!(!present(id,clone));assert!(!present(id,value));
     }
-    if !records.is_empty() {
+    if std::env::var_os("BIRNAM_ORDINARY_RECORDS").is_some() {
         let logger=h.call(h.named(b"Logger"),b"named:",&[h.integer(42)]);
         assert_eq!(h.number(h.call(logger,b"name",&[])),42);
         assert_eq!(h.number(h.call(logger,b"thresholdRank",&[])),1);
@@ -164,6 +185,31 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
         assert_eq!(h.call(app,b"at:",&[key]),logger);
         h.call(h.named(b"Reflect"),b"slot:in:put:",&[id.intern_name(b"origins").unwrap(),app,map]);
         assert_eq!(h.call(app,b"originAt:",&[key]),logger);
+    }
+    if harness_manifest.is_some() {
+        let start=h.tokens.borrow().len();let registry=h.named(b"Test");let suite_proto=h.named(b"TestSuite");
+        let module=h.keep(id.intern_name(b"harnessModule").unwrap());let other=h.keep(id.intern_name(b"otherModule").unwrap());
+        let a=h.call(suite_proto,b"named:module:",&[module,module]);
+        let b=h.call(suite_proto,b"named:module:",&[other,module]);
+        h.call(registry,b"register:",&[a]);
+        let snapshot=h.call(registry,b"suites",&[]);assert_eq!(h.number(h.call(snapshot,b"size",&[])),2);
+        let selected=h.call(registry,b"suitesForModule:",&[module]);
+        assert_eq!(h.call(selected,b"at:",&[h.integer(0)]),a);assert_eq!(h.call(selected,b"at:",&[h.integer(1)]),b);
+        h.call(a,b"test:do:",&[module,nil]);let cases=h.call(a,b"cases",&[]);
+        let case=h.call(cases,b"at:",&[h.integer(0)]);assert_eq!(h.call(case,b"name",&[]),module);assert_eq!(h.call(case,b"body",&[]),nil);
+        h.call(registry,b"unregister:",&[a]);h.call(registry,b"unregister:",&[a]);
+        assert_eq!(h.number(h.call(snapshot,b"size",&[])),2);
+        let remaining=h.call(registry,b"suites",&[]);assert_eq!(h.call(remaining,b"at:",&[h.integer(0)]),b);
+        h.call(h.named(b"Reflect"),b"slot:in:put:",&[id.intern_name(b"testsModule").unwrap(),b,other]);
+        assert_eq!(h.number(h.call(h.call(registry,b"suitesForModule:",&[module]),b"size",&[])),0);
+        h.call(registry,b"unregister:",&[b]);
+        let suite=h.call(h.named(b"BenchSuite"),b"named:",&[module]);
+        h.call(suite,b"fixedCase:iters:do:",&[module,h.integer(7),nil]);
+        let bc=h.call(h.call(suite,b"cases",&[]),b"at:",&[h.integer(0)]);
+        assert_eq!(h.number(h.call(bc,b"fixedN",&[])),7);assert_eq!(h.number(h.call(bc,b"k",&[])),1);
+        let context=h.call(h.named(b"TestContext"),b"for:",&[suite]);assert_eq!(h.call(context,b"runner",&[]),suite);
+        h.clear_from(start);collect(id,gc);
+        for value in [a,b,case,suite,bc,context] {assert!(!present(id,value),"unregistered harness objects must collect");}
     }
     if with_slots {
         let reflect=h.named(b"Reflect");
