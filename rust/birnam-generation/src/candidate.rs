@@ -18,14 +18,13 @@ mod recovery;
 mod retirement;
 #[path = "candidate_transaction.rs"]
 mod transaction;
-pub(super) use ledger::{method_changed, validate_image, prepare_image_snapshot};
+pub(super) use ledger::{validate_image, prepare_image_snapshot};
 pub(super) use phase::enter_running;
 pub(super) use recovery::{begin_recovery, cancel_recovery, recover_image};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
     observing: Cell<bool>,
-    expected_mutation: RefCell<Option<(Oop, Oop, Option<Oop>)>>,
     quiescent: Cell<bool>,
     recovering_policy: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,

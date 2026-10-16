@@ -459,6 +459,8 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                     core::ptr::from_mut(&mut reject).cast(),
                 );
                 call(db, b"removeMethod:on:", &[selector, vt]);
+                let failed = call(named(b"Generation"), b"reconcileCandidate:", &[generation]);
+                assert_eq!(call(failed, b"kind", &[]), sym(b"injectedDriftFailure"));
                 send(
                     id,
                     store_vt,
@@ -512,8 +514,8 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             }
         }
         if case == "store" {
-            // No lifecycle message occurred between the edit and this fact read.
-            assert_eq!(
+            // No implicit observer updates descriptions. Reconciliation is explicit.
+            assert_ne!(
                 call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
                 sym(b"drifted")
             );

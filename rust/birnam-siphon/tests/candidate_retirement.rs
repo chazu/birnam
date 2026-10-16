@@ -178,13 +178,9 @@ unsafe extern "C" fn edit_after_publication(
         let answer = p.original.method.unwrap()(p.original.context, r, a, n);
         if p.armed.replace(false) {
             let a = borrowed_slice(a, n).unwrap();
-            for (name, args) in [
-                (b"removeMethod:on:".as_slice(), &a[..2]),
-                (b"addMethod:on:with:", a),
-            ] {
-                if send(p.id, r, name, args).as_object() != Some(r) {
-                    p.denied.set(p.denied.get() + 1);
-                }
+            send(p.id, r, b"removeMethod:", &[a[1]]);
+            if send(p.id, r, b"addMethod:as:", a).as_object() != a[0].as_object() {
+                p.denied.set(p.denied.get() + 1);
             }
         }
         answer
@@ -376,8 +372,8 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 assert!(path.exists() && sidecar.exists());
                 if *mode == "callback" {
-                    let store_vt = v.named(b"StoreVt");
-                    let key = v.sym(b"addMethod:on:with:");
+                    let store_vt = id.receiver;
+                    let key = v.sym(b"addMethod:as:");
                     let original = send(
                         id,
                         id.receiver,
@@ -395,7 +391,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     install(
                         id,
                         store_vt,
-                        b"addMethod:on:with:",
+                        b"addMethod:as:",
                         edit_after_publication,
                         core::ptr::from_mut(&mut probe).cast(),
                     );

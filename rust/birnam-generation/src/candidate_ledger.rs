@@ -193,54 +193,6 @@ pub(super) fn has_drifted(s: &State) -> bool {
         .as_ref()
         .is_some_and(|l| l.drifted)
 }
-/// Store notifies after the dictionary and Method mirror have committed. A
-/// transaction may acknowledge exactly one matching publication, never a whole
-/// dynamic scope: nested foreign mutations still invalidate the generation.
-pub(crate) unsafe fn method_changed(
-    s: &State,
-    q: &Scope<'_>,
-    selector: Oop,
-    behavior: Oop,
-) -> Result<Operand, Outcome> {
-    unsafe {
-        let expected = *s.candidates.expected_mutation.borrow();
-        if let Some((key, target, method)) = expected {
-            if key == selector
-                && target == behavior
-                && transaction::is_method(s, preparation::direct(s, behavior, selector)?, method)?
-            {
-                s.candidates.expected_mutation.borrow_mut().take();
-                return Ok(Operand::unit());
-            }
-        }
-        let ledger = s.candidates.ledger.borrow().clone();
-        if let Some(ledger) = ledger {
-            let managed = ledger
-                .bindings
-                .iter()
-                .any(|b| b.binding.selector == selector && b.binding.behavior == behavior);
-            if managed {
-                let entry = preparation::direct(s, behavior, selector)?;
-                if ledger.drifted
-                    || ledger.bindings.iter().any(|b| {
-                        b.binding.selector == selector
-                            && b.binding.behavior == behavior
-                            && b.binding.entry != entry
-                    })
-                {
-                    s.candidates
-                        .ledger
-                        .borrow_mut()
-                        .as_mut()
-                        .ok_or_else(invalid)?
-                        .drifted = true;
-                    publish_drift(s, q, &ledger)?;
-                }
-            }
-        }
-        Ok(Operand::unit())
-    }
-}
 /// A saved managed source map must still describe the dispatch it authorizes.
 /// Drift never becomes a second authority merely because its code is portable.
 pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
@@ -412,26 +364,6 @@ pub(super) unsafe fn adopt(
                 b"invalidLifecycleTransition",
                 b"adoption requires the durable predecessor-free generation",
             );
-        }
-        let store = s.named(b"Store")?;
-        let registered = call(
-            s,
-            q,
-            store,
-            b"setMethodMutationObserver:",
-            &[Operand::object(s.named(b"Generation")?)],
-        )?;
-        if registered != store {
-            return if s.is_error(registered)? {
-                Ok(Operand::object(registered))
-            } else {
-                fail(
-                    s,
-                    q,
-                    b"generationObservationUnavailable",
-                    b"Store did not register generation observation",
-                )
-            };
         }
         let basis = preparation::basis(s, q)?;
         let global_basis = preparation::global_basis(s, q)?;

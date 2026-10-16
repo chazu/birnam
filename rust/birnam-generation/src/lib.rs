@@ -97,7 +97,6 @@ enum Op {
     Candidate(candidate::Op),
     Registry(registry::Op),
     EnterRunning,
-    ManagedChanged,
     ValidateImage,
     PrepareImageSnapshot,
     FulfillIntent,
@@ -126,7 +125,6 @@ unsafe extern "C" fn operation(
         let count = match e.op {
             Op::Candidate(op) => op.count(),
             Op::Registry(op) => op.count(),
-            Op::ManagedChanged => 2,
             Op::FulfillIntent | Op::BeginRecovery | Op::Recover => 1,
             _ => 0,
         };
@@ -145,7 +143,6 @@ unsafe extern "C" fn operation(
             Op::Candidate(op) => candidate::operation(s, &q, op, a),
             Op::Registry(op) => registry::operation(s, &q, op, a),
             Op::EnterRunning => candidate::enter_running(s, &q),
-            Op::ManagedChanged => candidate::method_changed(s, &q, object(a[0])?, object(a[1])?),
             Op::ValidateImage => candidate::validate_image(s, &q),
             Op::PrepareImageSnapshot => candidate::prepare_image_snapshot(s, &q),
             Op::FulfillIntent => candidate::fulfill_intent(s, &q, object(a[0])?),
@@ -271,11 +268,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (receipt_vt, b"physical".as_slice(), Op::Receipt(2)),
             (receipt_vt, b"reason".as_slice(), Op::Receipt(3)),
             (vt, b"enterRunning".as_slice(), Op::EnterRunning),
-            (
-                vt,
-                b"managedMethodChanged:on:".as_slice(),
-                Op::ManagedChanged,
-            ),
             (vt, b"validateImageGeneration".as_slice(), Op::ValidateImage),
             (vt, b"prepareImageSnapshot".as_slice(), Op::PrepareImageSnapshot),
             (

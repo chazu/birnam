@@ -102,11 +102,13 @@ mapping identities drive `retainedGenerationCount` and `retainedGenerationBytes`
 without themselves keeping code alive. File removal is retryable but is outside
 Store compensation: a failed discard can leave one or both author files removed.
 
-Generation adoption still registers its observer for explicit Store-coordinated
-operations. Those operations acknowledge their exact expected mutation; ordinary
-Reflect/Id edits are instead detected by explicit reconciliation. Foreign callback
-edits are allowed while running and can invalidate a prepared transaction. The
-existing selective compensation and quiescent explicit-commit checks remain.
+Generation adoption installs no Store observer. Explicit transactions send their
+Method writes directly to the vtable owner and check the result and Id binding
+epoch. Exactly one dictionary change is expected per write; extra callback writes,
+including ABA, invalidate the transaction. This is a conservative data condition
+on requested coordinated work, not a method-identity guard on ordinary sends.
+Final ledger checks, selective compensation and quiescent commit checks remain.
+Ordinary edits are detected when a consumer explicitly reconciles its revision.
 
 `validateImageGeneration` stays strict for callers asking whether the managed
 revision is current. Image uses `prepareImageSnapshot`: it performs the existing

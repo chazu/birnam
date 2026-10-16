@@ -148,6 +148,7 @@ impl Vm {
 struct Failure {
     vm: Vm,
     original: NativeEntry,
+    before: Cell<bool>,
     armed: Cell<bool>,
     helper: Cell<Oop>,
 }
@@ -159,6 +160,10 @@ unsafe extern "C" fn fail_after_removal(
 ) -> Outcome {
     unsafe {
         let c = &*c.cast::<Failure>();
+        if c.before.replace(false) {
+            return Outcome::loaded(Operand::object(c.vm.call(
+                c.vm.named(b"Error"), b"kind:", &[c.vm.sym(b"injectedBeforeWriteFailure")])));
+        }
         let result = c.original.method.unwrap()(c.original.context, r, a, n);
         let args = birnam_abi::borrowed_slice(a, n).unwrap();
         if args[0].as_object() == Some(c.vm.sym(b"txRemove")) && c.armed.replace(false) {
@@ -494,25 +499,26 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 b"behaviorOf:",
                 &[Operand::object(db)],
             ));
-            let remove_key = v.sym(b"removeMethod:on:");
+            let remove_key = v.sym(b"removeMethod:");
             let original = send(
                 id,
                 id.receiver,
                 b"bindingOf:in:",
-                &[Operand::object(remove_key), Operand::object(db_vt)],
+                &[Operand::object(remove_key), Operand::object(id.receiver)],
             )
             .as_entry()
             .unwrap();
             let mut failure = Failure {
                 vm: Vm { id, ns },
                 original,
+                before: Cell::new(true),
                 armed: Cell::new(true),
                 helper: Cell::new(core::ptr::null_mut()),
             };
             install(
                 id,
-                db_vt,
-                b"removeMethod:on:",
+                id.receiver,
+                b"removeMethod:",
                 fail_after_removal,
                 core::ptr::from_mut(&mut failure).cast(),
             );
@@ -521,6 +527,12 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 b"prepareActivation:plan:",
                 &[unit, v.plan(b"activate", unit, generation, next)],
             );
+            let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
+            assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"injectedBeforeWriteFailure"));
+            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
+            assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
+            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
+                &[unit, v.plan(b"activate", unit, generation, next)]);
             let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             let reason = v.call(cg, b"lastError", &[]);
             let description = if reason == nil {
@@ -710,7 +722,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             );
             send(
                 id,
-                db_vt,
+                id.receiver,
                 b"addMethod",
                 &[Operand::object(remove_key), Operand::entry(original)],
             );

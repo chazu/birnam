@@ -281,25 +281,39 @@ unsafe fn put_method(
     method: Option<Oop>,
 ) -> Result<(), Outcome> {
     unsafe {
-        let mut args = vec![Operand::object(b.selector), Operand::object(b.behavior)];
-        let selector = if let Some(method) = method {
-            args.push(Operand::object(method));
-            b"addMethod:on:with:".as_slice()
+        // Conditional work explicitly observes data changes; ordinary sends
+        // stay late-bound. Exactly one owner edit is expected. Extra dictionary
+        // writes (including ABA from a callback) invalidate this transaction.
+        let epoch = preparation::epoch(s)?;
+        let result = if let Some(method) = method {
+            s.send(b.behavior, b"addMethod:as:",
+                &[Operand::object(method), Operand::object(b.selector)])
         } else {
-            b"removeMethod:on:"
+            s.send(b.behavior, b"removeMethod:", &[Operand::object(b.selector)])
         };
-        if s.candidates.expected_mutation.borrow().is_some() {
-            return Err(invalid());
-        }
-        *s.candidates.expected_mutation.borrow_mut() = Some((b.selector, b.behavior, method));
-        struct Expected<'a>(&'a RefCell<Option<(Oop, Oop, Option<Oop>)>>);
-        impl Drop for Expected<'_> {
-            fn drop(&mut self) {
-                self.0.borrow_mut().take();
+        let after = preparation::epoch(s)?;
+        let expected = epoch.checked_add(1).ok_or_else(invalid)?;
+        if after > expected {
+            if let Some(ledger) = s.candidates.ledger.borrow_mut().as_mut() {
+                ledger.drifted = true;
             }
+            return Err(failure(s, q, b"staleGeneration",
+                b"dictionary changed during explicit transaction write"));
         }
-        let _expected = Expected(&s.candidates.expected_mutation);
-        checked_store(s, q, selector, &args)
+        let result = result?;
+        if let Some(value) = result.as_object() {
+            q.keep(value)?;
+            if s.is_error(value)? { return Err(Outcome::loaded(result)); }
+        }
+        if after != expected {
+            return Err(failure(s, q, b"candidateCommitFailed",
+                b"dictionary owner did not perform the requested edit"));
+        }
+        if method.is_some() && result.as_object() != method {
+            return Err(failure(s, q, b"candidateCommitFailed",
+                b"dictionary owner did not accept the selected Method"));
+        }
+        Ok(())
     }
 }
 unsafe fn restore_global(
@@ -802,7 +816,7 @@ pub(super) unsafe fn commit(
                         s,
                         q,
                         b"candidateCommitFailed",
-                        b"Store did not publish the selected Method",
+                        b"dictionary owner did not publish the selected Method",
                     ));
                 }
                 post[i].entry = entry;
