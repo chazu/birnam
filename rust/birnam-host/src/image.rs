@@ -4,7 +4,7 @@ use std::{os::unix::ffi::OsStrExt, path::Path};
 impl HostRuntime {
     pub fn start_image(r: &Resources, p: StartupPolicy, path: &Path) -> Result<Self, HostError> {
         let h = Self::start_native(r, p.precise_gc)?;
-        h.load_image(path)?;
+        h.start_image_mode(path, false, false)?;
         Ok(h)
     }
     pub fn start_image_rebuilding(
@@ -13,7 +13,7 @@ impl HostRuntime {
         path: &Path,
     ) -> Result<Self, HostError> {
         let h = Self::start_native(r, p.precise_gc)?;
-        h.load_image_mode(path, true, false)?;
+        h.start_image_mode(path, true, false)?;
         Ok(h)
     }
     pub fn start_image_bytes(
@@ -24,19 +24,25 @@ impl HostRuntime {
         let h = Self::start_native(r, p.precise_gc)?;
         let q = h.scope();
         let bytes = q.string(bytes)?;
-        h.call(b"HostEntry", b"loadImageBytes:", &[Operand::object(bytes)])?;
+        h.call(b"HostEntry", b"startImageBytes:", &[Operand::object(bytes)])?;
         drop(q);
         Ok(h)
     }
-    pub(crate) fn load_image(&self, path: &Path) -> Result<(), HostError> {
+    pub fn load_image(&self, path: &Path) -> Result<(), HostError> {
         self.load_image_mode(path, false, false)
     }
-    pub(crate) fn load_image_mode(&self, path: &Path, rebuild: bool, compiled: bool) -> Result<(), HostError> {
+    fn start_image_mode(&self, path: &Path, rebuild: bool, compiled: bool) -> Result<(), HostError> {
+        self.image_mode(path, rebuild, compiled, true)
+    }
+    pub fn load_image_mode(&self, path: &Path, rebuild: bool, compiled: bool) -> Result<(), HostError> {
+        self.image_mode(path, rebuild, compiled, false)
+    }
+    fn image_mode(&self, path: &Path, rebuild: bool, compiled: bool, startup: bool) -> Result<(), HostError> {
         let q = self.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
         self.call(
             b"HostEntry",
-            b"loadImage:rebuild:compiled:",
+            if startup { b"startImage:rebuild:compiled:" } else { b"loadImage:rebuild:compiled:" },
             &[
                 Operand::object(path),
                 Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),

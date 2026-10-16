@@ -59,7 +59,7 @@ and prepares Methods before publication. The relevant operations are:
 | `preparePortableImageBinding:implementation:` | Initialize an owned adapter for the restored implementation Block. |
 | `preparePortableImageSources:` / `swapPortableImageSources` | Prepare and exchange the source registry, retaining its predecessor. |
 | `finishPortableImageUnit` | Admit complete binding preparation. |
-| `installPortableImageBinding:on:as:source:` | Publish through Store's ordinary method protocol. |
+| `installPortableImageBinding:on:as:source:` | Publish through the current vtable owner. |
 | `cancelPortableImageUnit` | Release staging roots. Published Blocks/Methods retain their Units. |
 
 Every generated object is owned by the existing TCC Unit. The private bundle
@@ -145,3 +145,15 @@ identity and Error kind/message after mapped, rebuilt and resaved loading.
 The Image group also chains twenty fresh-process mapped/rebuilt resaves. It
 checks stable retained facts, native Unit counts and image sizes for each load
 mode, then releases every native Unit after the last roots disappear.
+
+## Startup admission
+
+`System startImage:rebuild:`, `startImageMapped:` and
+`startImageBytes:rebuild:` require their caller to discard the startup world on
+failure. They validate/stage normally but do not checkpoint Globals or run live
+publication compensation. CLI bootstrap, standalone/baked image entry and workers
+use this path and do not enter application code after failed admission.
+
+`System loadImage:` and its existing variants remain explicit live restoration.
+A caller that may continue in the current world must use that contract instead.
+See [coordination cleanup](../../docs/design/coordination-cleanup.md).

@@ -216,7 +216,9 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             );
             let result = id.send_named(
                 system,
-                b"loadImage:rebuild:",
+                if std::env::var_os("BIRNAM_IMAGE_STARTUP").is_some() {
+                    b"startImage:rebuild:"
+                } else { b"loadImage:rebuild:" },
                 &[
                     Operand::object(path),
                     Operand::object(h.named(if rebuilt { b"true" } else { b"false" })),

@@ -18,7 +18,7 @@ impl HostRuntime<'_> {
         let scope = host.scope();
         let isolate = host.named(b"Isolate")?;
         let admission = (|| {
-            host.load_image(path)?;
+            host.start_image(path)?;
             host.rebase_module(&scope, &host.resources)?;
             let mut target = host.global(&scope, receiver.as_bytes())?;
             if target == host.named(b"nil")? {

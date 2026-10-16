@@ -25,8 +25,10 @@ operations return nil unless a result is specified. Wrong arity is an Error.
 | `evalScript:` | Evaluate one bounded source path. |
 | `compile:output:` | Compile one source path to an artifact. |
 | `loadArtifact:` | Activate through Module. |
-| `loadImage:rebuild:compiled:` | Restore an image and rebase Module's library directory. |
-| `loadImageBytes:` | Restore a baked image's String bytes. |
+| `loadImage:rebuild:compiled:` | Live restoration; rebase Module's library directory after success. |
+| `startImage:rebuild:compiled:` | Startup admission; caller must discard the world on failure. |
+| `loadImageBytes:` | Live restoration from String bytes. |
+| `startImageBytes:` | Startup admission of baked image bytes. |
 | `imageHasMain` | Boolean presence of global main. |
 | `imageMain` | Enter saved main; fulfill its returned intent after evaluation returns, then checkpoint Isolate. |
 | `worker:receiver:selector:fd:` | Restore and enter a worker without main. Path and names are Strings; fd is Integer. |

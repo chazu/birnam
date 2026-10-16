@@ -32,15 +32,16 @@ fn dispatch(context: &Context, operation: &str, args: &[Operand]) -> Result<Oper
             host.bootstrap(native::boolean(&q, args, 0)?, native::boolean(&q, args, 1)?)?
         }
         "bootstrapSource" => host.bootstrap_source()?,
-        "loadImage:rebuild:compiled:" => {
+        "loadImage:rebuild:compiled:" | "startImage:rebuild:compiled:" => {
             host.load_image_mode(
                 &native::path(&q, args, 0)?,
                 native::boolean(&q, args, 1)?,
                 native::boolean(&q, args, 2)?,
+                operation.starts_with("start"),
             )?;
             host.rebase_module(&q, &host.resources)?;
         }
-        "loadImageBytes:" => host.load_image_bytes(&native::bytes(&q, args, 0)?)?,
+        "loadImageBytes:" | "startImageBytes:" => host.load_image_bytes(&native::bytes(&q, args, 0)?, operation.starts_with("start"))?,
         "evalScript:" => host.eval_script(&native::path(&q, args, 0)?)?,
         "compile:output:" => {
             host.compile_module(&native::path(&q, args, 0)?, &native::path(&q, args, 1)?)?
@@ -84,6 +85,8 @@ unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize
             &[
                 "bootstrap:tools:",
                 "bootstrapSource",
+                "startImage:rebuild:compiled:",
+                "startImageBytes:",
                 "loadImage:rebuild:compiled:",
                 "loadImageBytes:",
                 "evalScript:",

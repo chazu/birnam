@@ -1253,6 +1253,7 @@ unsafe fn foreign_publication(
     s: &State,
     q: &Scope<'_>,
     staged: Oop,
+    startup: bool,
 ) -> Result<Vec<(Oop, Oop, Oop, Oop, Operand)>, Outcome> {
     unsafe {
         let entity = q.keep(s.id.intern_name(b"__aliens__")?)?;
@@ -1271,11 +1272,11 @@ unsafe fn foreign_publication(
                 return Err(bad());
             };
             let behavior = q.keep(s.method_behavior(*target)?)?;
-            let old = s.send(
+            let old = if startup { Operand::unit() } else { s.send(
                 s.id.receiver,
                 b"bindingOf:in:",
                 &[Operand::object(*selector), Operand::object(behavior)],
-            )?;
+            )? };
             if old.as_entry().is_some() {
                 if let Some(method) = s
                     .send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?
@@ -1296,6 +1297,7 @@ unsafe fn load(
     bytes: Vec<u8>,
     rebuild: bool,
     mapped_only: bool,
+    startup: bool,
 ) -> Result<Operand, Outcome> {
     unsafe {
         let mut owned = format::inspect(s, &bytes)?;
@@ -1373,7 +1375,7 @@ unsafe fn load(
             }
         }
         let staged = restore_facts(s, q, &decoded, &objects)?;
-        let foreign = foreign_publication(s, q, staged)?;
+        let foreign = foreign_publication(s, q, staged, startup)?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1396,11 +1398,11 @@ unsafe fn load(
             let behavior = s.method_behavior(target)?;
             q.keep(behavior)?;
             // Pin the old callable before any dictionary mutation can retire it.
-            let old = s.send(
+            let old = if startup { Operand::unit() } else { s.send(
                 s.id.receiver,
                 b"bindingOf:in:",
                 &[Operand::object(selector), Operand::object(behavior)],
-            )?;
+            )? };
             if old.as_entry().is_some() {
                 if let Some(method) = s
                     .send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?
@@ -1430,13 +1432,15 @@ unsafe fn load(
                 continue;
             }
             let behavior = q.keep(s.method_behavior(*target)?)?;
-            let old = s.send(
+            let old = if startup { Operand::unit() } else { s.send(
                 s.id.receiver,
                 b"bindingOf:in:",
                 &[Operand::object(*selector), Operand::object(behavior)],
-            )?;
-            let method = object(s.send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?)?;
-            q.keep(method)?;
+            )? };
+            if !startup {
+                let method = object(s.send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?)?;
+                q.keep(method)?;
+            }
             removals.push((
                 ptr::null_mut(),
                 *target,
@@ -1475,7 +1479,9 @@ unsafe fn load(
             });
         }
         let globals = q.keep(s.named(b"Globals")?)?;
-        let binding_checkpoint = s.call(q, globals, b"imageBindingCheckpoint", &[])?;
+        let binding_checkpoint = if startup { s.named(b"nil")? } else {
+            s.call(q, globals, b"imageBindingCheckpoint", &[])?
+        };
         if s.is_error(binding_checkpoint)? {
             return Err(Outcome::loaded(Operand::object(binding_checkpoint)));
         }
@@ -1547,6 +1553,9 @@ unsafe fn load(
             Ok(())
         })();
         if let Err(error) = result {
+            // The caller promised to discard this startup world on failure.
+            // Never invoke live-world inverse callbacks in that contract.
+            if startup { return Err(error); }
             if let Some(value) = error.value.as_object() {
                 q.keep(value)?;
             }
@@ -1598,6 +1607,9 @@ unsafe fn load(
 }
 #[derive(Clone, Copy)]
 enum Op {
+    StartMapped,
+    Start,
+    StartBytes,
     LoadMapped,
     Save,
     Load,
@@ -1632,8 +1644,8 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
             q.keep(object(a)?)?;
         }
         let expected = match e.op {
-            Op::Save | Op::Load | Op::LoadMapped => 1,
-            Op::Rebuild | Op::LoadBytes => 2,
+            Op::Save | Op::Load | Op::LoadMapped | Op::StartMapped => 1,
+            Op::Rebuild | Op::LoadBytes | Op::Start | Op::StartBytes => 2,
             _ => 0,
         };
         if n != expected {
@@ -1692,7 +1704,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 }
                 return save(s, &q, Path::new(std::ffi::OsStr::from_bytes(&bytes)));
             }
-            let bytes = if matches!(e.op, Op::LoadBytes) {
+            let bytes = if matches!(e.op, Op::LoadBytes | Op::StartBytes) {
                 bytes
             } else {
                 if s.behavior(object(args[0])?)? != s.named(b"StringVt")? {
@@ -1706,7 +1718,8 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 std::fs::read(path).map_err(|_| bad())?
             };
             let rebuild = n == 2 && object(args[1])? == s.named(b"true")?;
-            load(s, &q, bytes, rebuild, matches!(e.op, Op::LoadMapped))
+            load(s, &q, bytes, rebuild, matches!(e.op, Op::LoadMapped | Op::StartMapped),
+                matches!(e.op, Op::Start | Op::StartMapped | Op::StartBytes))
         })();
         if result.is_err() {
             s.reject(b"Image admission, owner operation or publication failed");
@@ -1821,6 +1834,9 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         }));
         for (target, name, op) in [
             (system_vt, b"saveImage:".as_slice(), Op::Save),
+            (system_vt, b"startImage:rebuild:", Op::Start),
+            (system_vt, b"startImageMapped:", Op::StartMapped),
+            (system_vt, b"startImageBytes:rebuild:", Op::StartBytes),
             (system_vt, b"loadImage:", Op::Load),
             (system_vt, b"loadImage:rebuild:", Op::Rebuild),
             (system_vt, b"loadImageMapped:", Op::LoadMapped),

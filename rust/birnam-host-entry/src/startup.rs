@@ -12,7 +12,7 @@ impl HostRuntime<'_> {
         } else {
             "birnam-bootstrap.image"
         });
-        self.load_image_mode(&path, false, true).map_err(|error| HostError(format!(
+        self.load_image_mode(&path, false, true, true).map_err(|error| HostError(format!(
             "{error}; reinstall Birnam to prepare its bootstrap image (BIRNAM_FORCE_SOURCE=1 explicitly requests source bootstrap)"
         )))?;
         self.rebase_module(&self.scope(), &self.resources)

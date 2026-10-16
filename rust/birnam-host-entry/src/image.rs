@@ -19,14 +19,15 @@ impl HostRuntime<'_> {
         }
         Ok(())
     }
-    pub(crate) fn load_image(&self, path: &Path) -> Result<(), HostError> {
-        self.load_image_mode(path, false, false)
+    pub(crate) fn start_image(&self, path: &Path) -> Result<(), HostError> {
+        self.load_image_mode(path, false, false, true)
     }
     pub(crate) fn load_image_mode(
         &self,
         path: &Path,
         rebuild: bool,
         mapped_only: bool,
+        startup: bool,
     ) -> Result<(), HostError> {
         let load = || -> Result<(), HostError> {
             let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
@@ -38,10 +39,11 @@ impl HostRuntime<'_> {
             let system = self.named(b"System")?;
             let result = scope.call(
                 system,
-                if mapped_only {
-                    b"loadImageMapped:"
-                } else {
-                    b"loadImage:rebuild:"
+                match (startup, mapped_only) {
+                    (true, true) => b"startImageMapped:".as_slice(),
+                    (true, false) => b"startImage:rebuild:",
+                    (false, true) => b"loadImageMapped:",
+                    (false, false) => b"loadImage:rebuild:",
                 },
                 &[
                     Operand::object(filename),
@@ -87,12 +89,12 @@ impl HostRuntime<'_> {
     }
 }
 impl HostRuntime<'_> {
-    pub fn load_image_bytes(&self, bytes: &[u8]) -> Result<(), HostError> {
+    pub fn load_image_bytes(&self, bytes: &[u8], startup: bool) -> Result<(), HostError> {
         let q = self.scope();
         let bytes = q.string(bytes)?;
         let result = q.call(
             self.named(b"System")?,
-            b"loadImageBytes:rebuild:",
+            if startup { b"startImageBytes:rebuild:" } else { b"loadImageBytes:rebuild:" },
             &[
                 Operand::object(bytes),
                 Operand::object(self.named(b"false")?),
