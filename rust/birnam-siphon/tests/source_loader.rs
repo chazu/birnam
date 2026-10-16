@@ -168,7 +168,7 @@ fn source_loading_uses_live_owners() {
             h.call(codegen, b"moduleMetadataOf:", &[h.string(b"42")]),
             nil
         );
-        assert_eq!(h.number(h.call(revision, b"size", &[])), 7);
+        assert_eq!(h.number(h.call(revision, b"size", &[])), 8);
         assert_eq!(
             h.at(revision, 0),
             id.intern_name(b"sourceRevision").unwrap()

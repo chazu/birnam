@@ -139,4 +139,59 @@ theorem ordinary_slot_write_matches_local (s : State) (key value : Nat) :
 theorem clone_container_preserves_value (s : State) (source target : Nat) :
     (put s.cells target (s.cells source)) target = s.cells source := by simp [put]
 
+/-- Static inspection may use a published inventory or a newly parsed value.
+    Only the result escapes; parsing does not authorize compiled admission.
+    Parser callbacks and metadata validation are premises, not modeled effects. -/
+def inspectSource (published : Option Nat) (parsed : Nat) : Nat × Option Nat :=
+  match published with
+  | some value => (value, published)
+  | none => (parsed, none)
+
+theorem source_inspection_preserves_publication (published : Option Nat) (parsed : Nat) :
+    (inspectSource published parsed).2 = published := by
+  cases published <;> rfl
+
+theorem source_inspection_does_not_enable_admission (parsed : Nat) :
+    (inspectSource none parsed).2 = none := by rfl
+
+theorem source_inspection_reuses_published (value parsed : Nat) :
+    (inspectSource (some value) parsed).1 = value := by rfl
+
+-- A retained compilation is an immutable value with the original source ID.
+structure Compilation where
+  sourceIdentity : Nat
+  metadataIdentity : Nat
+  deriving DecidableEq
+
+def compilation (source metadata : Nat) : Compilation := ⟨source, metadata⟩
+theorem compilation_keeps_source_identity (source metadata : Nat) :
+    (compilation source metadata).sourceIdentity = source := by rfl
+
+structure CompilationOwner where
+  selected : Nat
+  revision : Nat
+
+def replaceCompilation (s : CompilationOwner) (record : Nat) : CompilationOwner :=
+  if record = s.selected then s else ⟨record, s.revision + 1⟩
+
+theorem compilation_noop_keeps_stamp (s : CompilationOwner) :
+    replaceCompilation s s.selected = s := by simp [replaceCompilation]
+
+theorem compilation_replacement_stales_plan (s : CompilationOwner) (record : Nat)
+    (changed : record ≠ s.selected) :
+    (replaceCompilation s record).revision ≠ s.revision := by
+  simp [replaceCompilation, changed]
+
+theorem compilation_aba_changes_stamp (s : CompilationOwner) (record : Nat)
+    (changed : record ≠ s.selected) :
+    (replaceCompilation (replaceCompilation s record) s.selected).revision = s.revision + 2 := by
+  have reverse : s.selected ≠ record := Ne.symm changed
+  simp [replaceCompilation, changed, reverse, Nat.add_assoc]
+
+theorem retained_compilation_is_snapshot (records : Nat → Compilation)
+    (s : CompilationOwner) (replacement : Nat) :
+    let captured := records s.selected
+    let _ := replaceCompilation s replacement
+    captured = records s.selected := by rfl
+
 end Birnam.PrivateScratch

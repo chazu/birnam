@@ -39,8 +39,7 @@ pub(super) unsafe fn operation(
             return Ok(Operand::object(s.named(b"true")?));
         }
         if matches!(op, Op::Analyze) {
-            source_metadata::analyze(s, q, source)?;
-            return Ok(Operand::object(s.named(b"true")?));
+            return Ok(Operand::object(source_metadata::prepare(s,q,source)?.unwrap_or(s.named(b"nil")?)));
         }
         if matches!(op, Op::Metadata) {
             return Ok(Operand::object(
@@ -51,17 +50,17 @@ pub(super) unsafe fn operation(
                 },
             ));
         }
-        let bytes = s.bytes(source)?;
+        let bytes = s.source_bytes(q,source)?.ok_or_else(invalid)?;
         let selected = s.bytes(object(a[1])?)?;
         let Some(tree) = s.source_tree(q, source, bytes.len())? else {
             return Ok(Operand::object(s.named(b"nil")?));
         };
-        source_metadata::persist(
-            s,
-            q,
-            source,
-            &birnam_codegen::source_metadata::Metadata::inspect(&tree, &bytes),
-        )?;
+        let observed=birnam_codegen::source_metadata::Metadata::inspect(&tree,&bytes);
+        let compilation=if let Some(record)=compiled_source::find(s,q,source)? {
+            let retained=source_metadata::read(s,q,record)?.ok_or_else(invalid)?;
+            if retained.encode()!=observed.encode(){return Err(invalid())}
+            record
+        } else {source_metadata::retain_metadata(s,q,source,&observed)?};
         let Some(plan) = Plan::new(&tree, &bytes, &selected, false) else {
             return Ok(Operand::object(s.named(b"nil")?));
         };
@@ -111,7 +110,7 @@ pub(super) unsafe fn operation(
         }
         let adapters = s.vector(q, &adapters)?;
         Ok(Operand::object(
-            s.vector(q, &[program, styles, outputs, adapters])?,
+            s.vector(q, &[program, styles, outputs, adapters, compilation])?,
         ))
     }
 }

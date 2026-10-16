@@ -55,7 +55,7 @@ mod tests {
             assert_eq!(result, fixture_path);
             let key = unsafe { host.context.id.intern_name(b"compiledSourceMetadata") }.unwrap();
             let metadata = q.call(host.named(b"Store").unwrap(), b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
-            assert_ne!(metadata, host.named(b"nil").unwrap(), "compilation did not persist metadata");
+            assert_eq!(metadata, host.named(b"nil").unwrap(), "artifact compilation created a metadata fact");
         }
         let calls = Box::new(Cell::new(0usize));
         let mut original_method_tokens = Vec::new();
@@ -128,20 +128,39 @@ mod tests {
         std::fs::remove_file(&fixture).unwrap();
         let name = unsafe { host.context.id.intern_name(b"stdlib") }.unwrap();
         let source = q.call(cg, b"moduleSourceFor:", &[Operand::object(name)]).unwrap();
-        let store = host.named(b"Store").unwrap();
-        let key = unsafe { host.context.id.intern_name(b"compiledSourceMetadata") }.unwrap();
-        let metadata = q.call(store, b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
-        assert_ne!(metadata, host.named(b"nil").unwrap());
-        q.call(store, b"retract:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(metadata)]).unwrap();
-        let result = q.call(cg, b"initialGenerationProjection", &[]).unwrap();
-        assert!(q.check_result(result).is_err(), "missing metadata was silently accepted");
-        assert_eq!(calls.get(), 0, "missing metadata invoked a parser fallback");
-        let malformed = q.call(host.named(b"Vector").unwrap(), b"new", &[]).unwrap();
-        q.call(store, b"assert:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(malformed)]).unwrap();
-        assert!(q.call(cg, b"initialGenerationProjection", &[]).is_err(), "malformed metadata was silently accepted");
-        assert_eq!(calls.get(), 0, "malformed metadata invoked a parser fallback");
-        q.call(store, b"retract:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(malformed)]).unwrap();
-        q.call(store, b"assert:attr:value:", &[Operand::object(source), Operand::object(key), Operand::object(metadata)]).unwrap();
+        let generation=host.named(b"Generation").unwrap();
+        let _record=q.call(cg,b"compiledSourceFor:",&[Operand::object(source)]).unwrap();
+        let snapshot=q.call(generation,b"sourceRegistry",&[]).unwrap();
+        let mut row_index=0;
+        for i in 1..q.vector_size(snapshot).unwrap(){
+            if q.vector_at(q.vector_at(snapshot,i).unwrap(),0).unwrap()==name {row_index=i;break}
+        }
+        assert_ne!(row_index,0);
+        let owner_vt=host.named(b"GenerationVt").unwrap();
+        let selector=unsafe{host.context.id.intern_name(b"sourceRegistry")}.unwrap();
+        let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(owner_vt)]).unwrap().as_entry().unwrap();
+        unsafe extern "C" fn snapshot_value(c:*mut c_void,_:Oop,_:*const Operand,_:usize)->Outcome {Outcome::loaded(Operand::object(c.cast()))}
+        let malformed=q.call(host.named(b"Vector").unwrap(),b"new",&[]).unwrap();
+        let replacing=|vector,index,value| {
+            let mut out=q.call(host.named(b"Vector").unwrap(),b"new",&[]).unwrap();
+            for i in 0..q.vector_size(vector).unwrap() {
+                let item=if i==index {value}else{q.vector_at(vector,i).unwrap()};
+                out=q.call(out,b"add:",&[Operand::object(item)]).unwrap();
+            }
+            out
+        };
+        for (bad,is_missing) in [(host.named(b"nil").unwrap(),true),(malformed,false)] {
+            let bad_record=q.call(cg,b"compiledSource:metadata:",&[Operand::object(source),Operand::object(bad)]).unwrap();
+            let row=q.vector_at(snapshot,row_index).unwrap();
+            let bad_row=replacing(row,1,bad_record);
+            let bad_snapshot=replacing(snapshot,row_index,bad_row);
+            host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(NativeEntry::new(snapshot_value,bad_snapshot.cast()))]).unwrap();
+            let rejected=q.call(cg,b"initialGenerationProjection",&[]);
+            if is_missing {assert!(q.check_result(rejected.unwrap()).is_err(),"missing metadata accepted")}
+            else {assert!(rejected.is_err(),"malformed metadata accepted")}
+            assert_eq!(calls.get(),0,"metadata rejection invoked a parser fallback");
+        }
+        host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
         let docs = q.call(cg, b"recordedMethodSources", &[]).unwrap();
         assert!(q.vector_size(docs).unwrap() > 0);
         let repl = host.global(&q, b"Repl").unwrap();

@@ -76,7 +76,7 @@ unsafe extern "C" fn reject_first_drift(
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
 fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
     if std::env::var_os("BIRNAM_LEDGER_DRIFT_CASE").is_none() {
-        for case in ["raw", "store", "source", "save", "retry", "opaque"] {
+        for case in ["raw", "store", "source", "metadata", "save", "retry", "opaque"] {
             let status = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--ignored",
@@ -477,6 +477,16 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 );
             }
 
+            "metadata" => {
+                let registry=call(named(b"Generation"),b"sourceRegistry",&[]);
+                let row=at(registry,1);let name=at(row,0);let record=at(row,1);
+                let mut replacement=call(named(b"Vector"),b"new",&[]);
+                for i in 0..3 {replacement=call(replacement,b"add:",&[at(record,i)]);}
+                let source=call(cg,b"sourceTextOf:",&[record]);
+                assert_eq!(call(cg,b"replaceCompiledSource:named:",&[replacement,name]),source);
+                assert_eq!(call(cg,b"replaceCompiledSource:named:",&[record,name]),source);
+                // Even A -> B -> A changes the owner revision observed by the ledger.
+            }
             "store" => {
                 call(db, b"removeMethod:on:", &[selector, vt]);
             }

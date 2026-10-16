@@ -1,9 +1,9 @@
-//! Compiler metadata is ordinary relational data, owned and persisted by Store.
-//! No AST, native cache, or parse fallback participates in compiled admission.
+//! Retained metadata belongs to ordinary compilation records. Source registries
+//! and revision snapshots retain those records; no Store or global metadata cache
+//! participates. Compiled admission never falls back to parsing.
 use super::*;
 use birnam_codegen::{resumable::*, source_metadata::Metadata, source_revision::*};
 
-const ATTRIBUTE: &[u8] = b"compiledSourceMetadata";
 unsafe fn symbol(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
     unsafe { q.keep(s.id.intern_name(bytes)?) }
 }
@@ -342,75 +342,64 @@ pub(super) unsafe fn read(
     source: Oop,
 ) -> Result<Option<Metadata>, Outcome> {
     unsafe {
-        let key = symbol(s, q, ATTRIBUTE)?;
-        let value = q.keep(object(s.send(
-            s.named(b"Store")?,
-            b"currentValue:attr:",
-            &[Operand::object(source), Operand::object(key)],
-        )?)?)?;
+        let owner=q.keep(s.named(b"Codegen")?)?;
+        let record=q.keep(object(s.send(owner,b"compiledSourceFor:",&[Operand::object(source)])?)?)?;
+        if record==s.named(b"nil")? {return Ok(None)}
+        let value=q.keep(object(s.send(owner,b"retainedSourceMetadataOf:",&[Operand::object(record)])?)?)?;
         if value == s.named(b"nil")? {
             return Ok(None);
         }
         let metadata = decode(s, q, value)?;
-        if !metadata.matches_source(&read_text(s, q, source)?) {
+        if !metadata.matches_source(&s.source_bytes(q, source)?.ok_or_else(invalid)?) {
             return Err(invalid());
         }
         Ok(Some(metadata))
     }
 }
-pub(super) unsafe fn persist(
-    s: &State,
-    q: &Scope<'_>,
-    source: Oop,
-    metadata: &Metadata,
-) -> Result<(), Outcome> {
-    unsafe {
-        if !metadata.matches_source(&read_text(s, q, source)?) {
-            return Err(invalid());
-        }
-        if let Some(old) = read(s, q, source)? {
-            return if old.encode() == metadata.encode() {
-                Ok(())
-            } else {
-                Err(invalid())
-            };
-        }
-        let value = reflect(s, q, metadata)?;
-        let key = symbol(s, q, ATTRIBUTE)?;
-        let store = s.named(b"Store")?;
-        let result = object(s.send(
-            store,
-            b"assert:attr:value:",
-            &[
-                Operand::object(source),
-                Operand::object(key),
-                Operand::object(value),
-            ],
-        )?)?;
-        if result != store {
-            return Err(Outcome::loaded(Operand::object(result)));
-        }
-        Ok(())
+/// Construct an imageable owner without changing a database or global registry.
+pub(super) unsafe fn retain_metadata(s:&State,q:&Scope<'_>,source:Oop,metadata:&Metadata)->Result<Oop,Outcome>{unsafe{
+    let text=q.keep(object(s.send(s.named(b"Codegen")?,b"sourceTextOf:",&[Operand::object(source)])?)?)?;
+    if !metadata.matches_source(&s.bytes(text)?) {return Err(invalid())}
+    let value=reflect(s,q,metadata)?;
+    q.keep(object(s.send(s.named(b"Codegen")?,b"compiledSource:metadata:",&[Operand::object(text),Operand::object(value)])?)?)
+}}
+
+/// Prepare once and hand the owning record to the caller; no implicit retention.
+pub(super) unsafe fn prepare(s:&State,q:&Scope<'_>,source:Oop)->Result<Option<Oop>,Outcome>{unsafe{
+    if compiled_source::is_record(s,q,source)? {
+        return Ok(read(s,q,source)?.map(|_|source));
     }
-}
-/// Explicit source compilation/inspection may parse; compiled admission calls read.
-pub(super) unsafe fn analyze(
+    let Some(metadata)=inspect_fresh(s,q,source)? else{return Ok(None)};
+    retain_metadata(s,q,source,&metadata).map(Some)
+}}
+
+/// Parse an explicit source request into operation-local compiler data.
+/// The CST and metadata contain copied bytes, not retained language objects.
+unsafe fn inspect_fresh(
     s: &State,
     q: &Scope<'_>,
     source: Oop,
 ) -> Result<Option<Metadata>, Outcome> {
     unsafe {
-        if let Some(metadata) = read(s, q, source)? {
-            return Ok(Some(metadata));
-        }
         let Some(bytes) = s.source_bytes(q, source)? else {
             return Ok(None);
         };
         let Some(tree) = s.source_tree(q, source, bytes.len())? else {
             return Ok(None);
         };
-        let metadata = Metadata::inspect(&tree, &bytes);
-        persist(s, q, source, &metadata)?;
-        Ok(Some(metadata))
+        Ok(Some(Metadata::inspect(&tree, &bytes)))
+    }
+}
+
+/// Inspect text locally, or read a caller-supplied compilation record. Raw text
+/// has no attached metadata; inspection never registers or repairs a compilation.
+pub(super) unsafe fn inspect(
+    s: &State,
+    q: &Scope<'_>,
+    source: Oop,
+) -> Result<Option<Metadata>, Outcome> {
+    unsafe {
+        if compiled_source::is_record(s,q,source)? {return read(s,q,source)}
+        inspect_fresh(s, q, source)
     }
 }

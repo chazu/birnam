@@ -24,6 +24,7 @@ pub(super) struct Prepared {
     pub basis: usize,
     pub global_basis: usize,
     pub epoch: usize,
+    pub source_revision: usize,
     pub bindings: Vec<Binding>,
     pub globals: Vec<Global>,
 }
@@ -141,7 +142,8 @@ pub(super) unsafe fn current_snapshot(
     p: &Prepared,
 ) -> Result<bool, Outcome> {
     unsafe {
-        if current(s, q)? != p.plan[6]
+        if s.registry.revision()!=p.source_revision
+            || current(s, q)? != p.plan[6]
             || basis(s, q)? != p.basis
             || global_basis(s, q)? != p.global_basis
             || epoch(s)? != p.epoch
@@ -160,7 +162,8 @@ pub(super) unsafe fn current_snapshot(
                 return Ok(false);
             }
         }
-        Ok(current(s, q)? == p.plan[6]
+        Ok(s.registry.revision()==p.source_revision
+            && current(s, q)? == p.plan[6]
             && basis(s, q)? == p.basis
             && global_basis(s, q)? == p.global_basis
             && epoch(s)? == p.epoch)
@@ -200,7 +203,7 @@ unsafe fn generation_plan(
         )?;
         let Some(projection) = generation::project_candidate_generation(
             prior,
-            generation::Module::new(s.bytes(source)?, metadata.clone()).ok_or_else(invalid)?,
+            generation::Module::new(s.source_data(q,source)?, metadata.clone()).ok_or_else(invalid)?,
             &selection,
             selected,
             |m, i, _| {
@@ -241,7 +244,7 @@ unsafe fn generation_plan(
                 let Some(module) = next.iter().find(|m| m.name == metadata.name) else {
                     return Ok(false);
                 };
-                if module.source != s.bytes(source)? {
+                if module.source != s.source_data(q,source)? {
                     return Ok(false);
                 }
                 replacement = true;
@@ -340,6 +343,7 @@ pub(super) unsafe fn prepare(
             basis: number(s, plan[5])?,
             global_basis: global_basis(s, q)?,
             epoch: epoch(s)?,
+            source_revision:s.registry.revision(),
             bindings: vec![],
             globals: vec![],
         };

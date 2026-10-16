@@ -164,7 +164,6 @@ pub(super) unsafe fn operation(
         if result == s.named(b"nil")? {
             return fail(s, b"RustCodegen could not write the artifact");
         }
-        source_metadata::persist(s, q, source, &metadata)?;
         Ok(Operand::object(output))
     }
 }
@@ -338,7 +337,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 )],
             );
         }
-        source_metadata::persist(s, q, source, &metadata)?;
+        let compilation=source_metadata::retain_metadata(s,q,source,&metadata)?;
         let adapter_rows = at(s, q, result, 3)?;
         let mut adapters = Vec::new();
         let mut previous = None;
@@ -385,7 +384,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 s,
                 q,
                 source::Op::RecordCompiled,
-                &[Operand::object(source), Operand::object(name)],
+                &[Operand::object(compilation), Operand::object(name)],
             )?)?)?;
             if recorded == nil || s.is_error(recorded)? {
                 return Ok(Operand::object(recorded));

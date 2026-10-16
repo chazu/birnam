@@ -1,7 +1,7 @@
 //! Source compilation and loader-facing evaluation. Registration belongs to Generation;
 //! parsing, values, roots and execution remain current receiver sends.
 use super::*;
-use birnam_codegen::source_revision::{self, RevisionMetadata};
+use birnam_codegen::source_revision::RevisionMetadata;
 
 #[derive(Default)]
 pub(super) struct Sources {
@@ -15,6 +15,11 @@ pub(super) enum Op {
     Record,
     RecordCompiled,
     Find,
+    Text,
+    Compilation,
+    RetainedMetadata,
+    ReplaceCompiled,
+    CompilationValue,
     Seal,
     LastError,
     MethodSources,
@@ -26,7 +31,7 @@ impl Op {
     pub fn count(self) -> usize {
         match self {
             Self::Seal | Self::LastError | Self::MethodSources | Self::InitialProjection => 0,
-            Self::Record | Self::RecordCompiled | Self::EvalFrom => 2,
+            Self::Record | Self::RecordCompiled | Self::ReplaceCompiled | Self::CompilationValue | Self::EvalFrom => 2,
             _ => 1,
         }
     }
@@ -63,10 +68,9 @@ impl State {
         value: Oop,
     ) -> Result<Option<Vec<u8>>, Outcome> {
         unsafe {
-            if !self.exact(scope, value, b"StringVt")? {
-                return Ok(None);
-            }
-            Ok(Some(self.bytes(value)?))
+            let text=scope.keep(object(self.send(self.named(b"Codegen")?,b"sourceTextOf:",&[Operand::object(value)])?)?)?;
+            if text==self.named(b"nil")? {return Ok(None)}
+            Ok(Some(self.bytes(text)?))
         }
     }
     pub(super) unsafe fn symbol_bytes(
@@ -103,12 +107,12 @@ impl State {
                 tokens: RefCell::new(Vec::new()),
             };
             let scope = &local;
-            scope.keep(source)?;
+            let text=scope.keep(object(self.send(self.named(b"Codegen")?,b"sourceTextOf:",&[Operand::object(source)])?)?)?;
             let lang = scope.keep(self.named(b"Lang")?)?;
             let cst = scope.keep(object(self.send(
                 lang,
                 b"parse:",
-                &[Operand::object(source)],
+                &[Operand::object(text)],
             )?)?)?;
             if !self.exact(scope, cst, b"PegCstVt")? {
                 return Ok(None);
@@ -237,7 +241,7 @@ pub(super) unsafe fn operation(
             Op::EmbeddedFiles => {
                 let source = object(a[0])?;
                 let mut paths = Vec::new();
-                if let Some(metadata) = source_metadata::analyze(s, scope, source)? {
+                if let Some(metadata) = source_metadata::inspect(s, scope, source)? {
                     for path in metadata.embedded_files {
                         paths.push(s.text(scope, &path)?);
                     }
@@ -246,18 +250,39 @@ pub(super) unsafe fn operation(
                 }
                 Ok(Operand::object(s.vector(scope, &paths)?))
             }
-            Op::Revision | Op::Metadata => {
+            Op::Text => Ok(Operand::object(compiled_source::text(s,scope,object(a[0])?)?.unwrap_or(nil))),
+            Op::Compilation => Ok(Operand::object(compiled_source::find(s,scope,object(a[0])?)?.unwrap_or(nil))),
+            Op::RetainedMetadata => {
+                let value=if let Some(record)=compiled_source::find(s,scope,object(a[0])?)? {
+                    compiled_source::field(s,scope,record,2)?
+                } else {nil};
+                Ok(Operand::object(value))
+            }
+            Op::ReplaceCompiled => publication::send(s,scope,b"replaceCompiledSource:named:",a),
+            Op::CompilationValue => {
+                let Some(text)=compiled_source::text(s,scope,object(a[0])?)? else{return Ok(nil_value)};
+                compiled_source::make(s,scope,text,object(a[1])?).map(Operand::object)
+            }
+            Op::Revision => {
+                let Some(record)=source_metadata::prepare(s,scope,object(a[0])?)? else {return Ok(nil_value)};
+                let Some((_,revision))=s.revision(scope,record)? else {
+                    s.sources.note(b"RustCodegen source was not a String");return Ok(nil_value)
+                };
+                reflect_revision(s,scope,record,&revision).map(Operand::object)
+            }
+            Op::Metadata => {
                 let source = object(a[0])?;
-                source_metadata::analyze(s, scope, source)?;
-                let Some((bytes, revision)) = s.revision(scope, source)? else {
-                    if matches!(op, Op::Revision) {
-                        s.sources.note(b"RustCodegen source was not a String");
+                let Some(metadata) = source_metadata::inspect(s, scope, source)? else {
+                    // Preserve the existing explicit-inspection diagnostic for
+                    // a String whose parse failed; non-Strings simply yield nil.
+                    if s.source_bytes(scope, source)?.is_some() {
+                        s.sources.note(b"compiled source metadata is missing; rebuild the artifact or image");
                     }
                     return Ok(nil_value);
                 };
-                if matches!(op, Op::Revision) {
-                    return reflect_revision(s, scope, source, &revision).map(Operand::object);
-                }
+                let Some(revision) = metadata.revision else {
+                    return Ok(nil_value);
+                };
                 let tag = scope.keep(s.id.intern_name(b"moduleMetadata")?)?;
                 let name = scope.keep(s.id.intern_name(&revision.name)?)?;
                 let mut requires = Vec::new();
@@ -265,7 +290,7 @@ pub(super) unsafe fn operation(
                     requires.push(scope.keep(s.id.intern_name(&name)?)?);
                 }
                 let requires = s.vector(scope, &requires)?;
-                let source_digest = s.text(scope, &source_revision::source_digest(&bytes))?;
+                let source_digest = s.text(scope, &metadata.source_digest)?;
                 let revision_digest = s.text(scope, &revision.revision_digest)?;
                 Ok(Operand::object(s.vector(
                     scope,
@@ -273,9 +298,11 @@ pub(super) unsafe fn operation(
                 )?))
             }
             Op::Record | Op::RecordCompiled | Op::Find => {
-                if matches!(op, Op::Record) {
-                    source_metadata::analyze(s, scope, object(a[0])?)?;
-                }
+                let record=if matches!(op,Op::Record) {
+                    let Some(record)=source_metadata::prepare(s,scope,object(a[0])?)? else {return Ok(nil_value)};
+                    Some(record)
+                } else {None};
+                let prepared=record.map(|record|[Operand::object(record),a[1]]);
                 publication::send(
                     s,
                     scope,
@@ -284,7 +311,7 @@ pub(super) unsafe fn operation(
                     } else {
                         b"recordCompiledSource:named:"
                     },
-                    a,
+                    prepared.as_ref().map_or(a,|v|v.as_slice()),
                 )
             }
             Op::Eval | Op::EvalFrom => {
@@ -368,10 +395,9 @@ unsafe fn reflect_revision(
         let non_method = s.text(q, &revision.non_method_digest)?;
         let method = s.text(q, &revision.method_digest)?;
         let digest = s.text(q, &revision.revision_digest)?;
-        s.vector(
-            q,
-            &[tag, name, requires, source, non_method, method, digest],
-        )
+        let text=compiled_source::text(s,q,source)?.ok_or_else(invalid)?;
+        let record=compiled_source::find(s,q,source)?.ok_or_else(invalid)?;
+        s.vector(q,&[tag,name,requires,text,non_method,method,digest,record])
     }
 }
 

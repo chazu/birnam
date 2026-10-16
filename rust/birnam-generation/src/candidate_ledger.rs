@@ -72,6 +72,7 @@ pub(super) struct Ledger {
     pub globals: Vec<ManagedGlobal>,
     pub units: Vec<Oop>,
     pub drifted: bool,
+    pub source_revision: usize,
 }
 impl Ledger {
     pub(super) fn roots(&self) -> Vec<Oop> {
@@ -101,6 +102,7 @@ pub(super) unsafe fn matches(
 ) -> Result<Option<bool>, Outcome> {
     unsafe {
         if ledger.drifted
+            || s.registry.revision()!=ledger.source_revision
             || current(s, q)? != ledger.generation
             || fact(s, q, ledger.generation, b"sourceMap")? != ledger.source_map
             || s.bytes(fact(s, q, ledger.generation, b"baseDigest")?)? != ledger.digest
@@ -127,7 +129,8 @@ pub(super) unsafe fn matches(
                 return Ok(Some(false));
             }
         }
-        let stable = current(s, q)? == ledger.generation
+        let stable = s.registry.revision()==ledger.source_revision
+            && current(s, q)? == ledger.generation
             && preparation::basis(s, q)? == basis
             && preparation::global_basis(s, q)? == global_basis
             && preparation::epoch(s)? == epoch;
@@ -395,7 +398,9 @@ pub(super) unsafe fn adopt(
             }
             components.insert(s.symbol_bytes(q, *name)?.ok_or_else(invalid)?, *unit);
         }
+        let source_revision=s.registry.revision();
         let registered = s.registry.entries.borrow().clone();
+        for &(name,record) in &registered {q.keep(name)?;q.keep(record)?;}
         if registered.len() != modules.len() {
             return fail(
                 s,
@@ -408,7 +413,7 @@ pub(super) unsafe fn adopt(
             let mut found = false;
             for &(name, source) in &registered {
                 if s.symbol_bytes(q, name)?.as_deref() == Some(module.name.as_slice())
-                    && s.bytes(source)? == module.source
+                    && s.source_data(q,source)? == module.source
                 {
                     found = true;
                     break;
@@ -459,6 +464,7 @@ pub(super) unsafe fn adopt(
             globals: vec![],
             units: components.values().copied().collect(),
             drifted: false,
+            source_revision,
         };
         // Authority parsing may collect unrelated private Block behaviors.
         // Observe dictionary stability around the live binding snapshot, after
@@ -610,7 +616,7 @@ pub(super) unsafe fn adopt(
             Some(b"Globals basis changed during generation adoption".as_slice())
         } else if preparation::epoch(s)? != epoch {
             Some(b"behavior epoch changed during generation adoption".as_slice())
-        } else if *s.registry.entries.borrow() != registered {
+        } else if s.registry.revision()!=source_revision || *s.registry.entries.borrow() != registered {
             Some(b"source registry changed during generation adoption".as_slice())
         } else if matches(s, q, &ledger)? != Some(true) {
             Some(b"live bindings changed during generation adoption".as_slice())

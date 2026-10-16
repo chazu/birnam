@@ -574,10 +574,10 @@ unsafe fn sources(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<(Oop, Oop)>,
                 return Err(invalid());
             }
             let revision = seq(s, q, row[1])?;
-            if revision.len() != 7 {
+            if revision.len() != 8 {
                 return Err(invalid());
             }
-            out.push((row[0], revision[3]));
+            out.push((row[0], revision[7]));
         }
         Ok(out)
     }
@@ -665,6 +665,7 @@ pub(super) unsafe fn commit(
         }
         let before = s.candidates.ledger.borrow().clone().ok_or_else(invalid)?;
         let old_sources = s.registry.entries.borrow().clone();
+        for &(name,record) in &old_sources {q.keep(name)?;q.keep(record)?;}
         let saved = s
             .candidates
             .entries
@@ -737,6 +738,9 @@ pub(super) unsafe fn commit(
             let next_sources = sources(s, q, next.source_map)?;
             (c.methods, globals, next, next_sources)
         };
+        // Source ownership changes only at the final native commit below. During
+        // activation/rollback, validate against the still-current registry stamp.
+        after.source_revision=s.registry.revision();
         if methods.len() != p.bindings.len() {
             return Err(invalid());
         }
@@ -915,6 +919,7 @@ pub(super) unsafe fn commit(
         // Everything that can call out has completed. Install native ownership
         // together; no borrowed registry crosses an outgoing message.
         s.registry.replace_entries(new_sources);
+        after.source_revision=s.registry.revision();
         if !rollback {
             s.candidates
                 .entries
@@ -1022,6 +1027,7 @@ pub(super) unsafe fn prepare_rollback(
             basis: preparation::number(s, plan[5])?,
             global_basis: preparation::global_basis(s, q)?,
             epoch: preparation::epoch(s)?,
+            source_revision:s.registry.revision(),
             bindings: saved.bindings_after.clone(),
             globals: saved
                 .globals

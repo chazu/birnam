@@ -272,3 +272,13 @@ import Admission
 #print axioms Birnam.SlotReflection.suite_registration_idempotent
 #print axioms Birnam.SlotReflection.unregistered_suite_absent
 #print axioms Birnam.SlotReflection.registration_preserves_order
+
+#print axioms Birnam.PrivateScratch.source_inspection_preserves_publication
+#print axioms Birnam.PrivateScratch.source_inspection_does_not_enable_admission
+#print axioms Birnam.PrivateScratch.source_inspection_reuses_published
+
+#print axioms Birnam.PrivateScratch.compilation_keeps_source_identity
+#print axioms Birnam.PrivateScratch.compilation_noop_keeps_stamp
+#print axioms Birnam.PrivateScratch.compilation_replacement_stales_plan
+#print axioms Birnam.PrivateScratch.compilation_aba_changes_stamp
+#print axioms Birnam.PrivateScratch.retained_compilation_is_snapshot

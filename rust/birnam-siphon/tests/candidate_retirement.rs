@@ -190,7 +190,7 @@ unsafe extern "C" fn edit_after_publication(
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
 fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
     if std::env::var_os("BIRNAM_RETIREMENT_PHASE").is_none() {
-        for phase in ["bootstrap", "running"] {
+        for phase in ["bootstrap", "running", "metadata"] {
             assert!(
                 std::process::Command::new(std::env::current_exe().unwrap())
                     .args([
@@ -368,6 +368,26 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     b"prepareActivation:plan:",
                     &[unit, v.plan(b"activate", unit, generation, next)],
                 );
+                if v.call(token,b"isError",&[])==v.named(b"true") {
+                    let msg=v.call(token,b"message",&[]);let bytes=send(id,msg,b"bytes",&[]).as_bytes().unwrap();
+                    panic!("prepare failed: {}",String::from_utf8_lossy(birnam_abi::borrowed_bytes(bytes.pointer,bytes.length).unwrap()));
+                }
+                if std::env::var("BIRNAM_RETIREMENT_PHASE").unwrap()=="metadata" {
+                    let name=v.sym(b"txFixture");
+                    let text=v.call(cg,b"moduleSourceFor:",&[name]);
+                    let old=v.call(cg,b"compiledSourceFor:",&[text]);
+                    let metadata=v.call(cg,b"retainedSourceMetadataOf:",&[old]);
+                    let changed=v.call(cg,b"compiledSource:metadata:",&[text,metadata]);
+                    assert_ne!(old,changed);
+                    v.call(cg,b"replaceCompiledSource:named:",&[changed,name]);
+                    v.call(cg,b"replaceCompiledSource:named:",&[old,name]);
+                    let rejected=v.call(v.named(b"Generation"),b"commitPrepared:",&[token]);
+                    assert_eq!(v.call(rejected,b"kind",&[]),v.sym(b"staleGeneration"));
+                    assert_eq!(v.number(v.call(v.integer(2),b"retireValue",&[])),10);
+                    assert!(path.exists());
+                    std::fs::remove_dir_all(&dir).unwrap();
+                    return;
+                }
                 let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 assert!(path.exists() && sidecar.exists());
@@ -431,6 +451,26 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
                     unit
                 );
+                if v.call(token,b"isError",&[])==v.named(b"true") {
+                    let msg=v.call(token,b"message",&[]);let bytes=send(id,msg,b"bytes",&[]).as_bytes().unwrap();
+                    panic!("prepare failed: {}",String::from_utf8_lossy(birnam_abi::borrowed_bytes(bytes.pointer,bytes.length).unwrap()));
+                }
+                if std::env::var("BIRNAM_RETIREMENT_PHASE").unwrap()=="metadata" {
+                    let name=v.sym(b"txFixture");
+                    let text=v.call(cg,b"moduleSourceFor:",&[name]);
+                    let old=v.call(cg,b"compiledSourceFor:",&[text]);
+                    let metadata=v.call(cg,b"retainedSourceMetadataOf:",&[old]);
+                    let changed=v.call(cg,b"compiledSource:metadata:",&[text,metadata]);
+                    assert_ne!(old,changed);
+                    v.call(cg,b"replaceCompiledSource:named:",&[changed,name]);
+                    v.call(cg,b"replaceCompiledSource:named:",&[old,name]);
+                    let rejected=v.call(v.named(b"Generation"),b"commitPrepared:",&[token]);
+                    assert_eq!(v.call(rejected,b"kind",&[]),v.sym(b"staleGeneration"));
+                    assert_eq!(v.number(v.call(v.integer(2),b"retireValue",&[])),10);
+                    assert!(path.exists());
+                    std::fs::remove_dir_all(&dir).unwrap();
+                    return;
+                }
                 let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
                 assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 let method = v.keep(object(send(

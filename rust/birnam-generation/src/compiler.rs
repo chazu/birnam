@@ -27,10 +27,9 @@ impl State {
             Ok(())
         }
     }
-    pub(super) unsafe fn analyze(&self, q: &Scope<'_>, source: Oop) -> Result<(), Outcome> {
+    pub(super) unsafe fn analyze(&self, q: &Scope<'_>, source: Oop) -> Result<Oop, Outcome> {
         unsafe {
-            self.compiler(q, b"analyzeSourceMetadata:", &[Operand::object(source)])?;
-            Ok(())
+            self.compiler(q, b"analyzeSourceMetadata:", &[Operand::object(source)])
         }
     }
     pub(super) unsafe fn revision(
@@ -62,7 +61,7 @@ impl State {
         q: &Scope<'_>,
         source: Oop,
         selection: &[u8],
-    ) -> Result<Option<Plan>, Outcome> {
+    ) -> Result<Option<(Plan,Oop)>, Outcome> {
         unsafe {
             let selected = self.text(q, selection)?;
             let value = self.compiler(
@@ -77,7 +76,7 @@ impl State {
                 return Err(Outcome::loaded(Operand::object(value)));
             }
             let parts = candidate::seq(self, q, value)?;
-            let [program, styles, outputs, adapters] = parts.as_slice() else {
+            let [program, styles, outputs, adapters, compilation] = parts.as_slice() else {
                 return Err(invalid());
             };
             let boolean = |o| -> Result<bool, Outcome> {
@@ -93,7 +92,7 @@ impl State {
                 .into_iter()
                 .map(boolean)
                 .collect::<Result<Vec<_>, _>>()?;
-            let bytes = self.bytes(source)?;
+            let bytes = self.source_data(q,source)?;
             let mut requests = vec![Request::Factory {
                 program: self.bytes(*program)?,
                 source: bytes.clone(),
@@ -138,10 +137,10 @@ impl State {
                     synchronous: boolean(*style)?,
                 });
             }
-            let (_, metadata) = self.revision(q, source)?.ok_or_else(invalid)?;
+            let (_, metadata) = self.revision(q, *compilation)?.ok_or_else(invalid)?;
             Ok(Plan::from_inventory(
                 metadata, projected, requests, &bytes, selection,
-            ))
+            ).map(|plan|(plan,*compilation)))
         }
     }
 }

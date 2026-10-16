@@ -141,3 +141,18 @@ current publication. A later record/seal or transaction replacement is preserved
 `abandonImageRecovery` discards suspended/current preparation and adoption authority
 after failed image application; it does not undo the live world's changes. Entered
 Methods retain their code independently through Execution.
+
+## Retained compilation metadata
+
+Registry entries now retain ordinary compilation record values instead of relying
+on Store metadata facts attached to source Strings. A source-map revision carries
+its own record at index 7, while index 3 retains the original String identity.
+`compilationForSource:` is an identity lookup; `replaceCompiledSource:named:` changes
+an existing registration explicitly. Replacement creates no method edits or facts.
+
+Content revisions cover record changes and invalidate stale ledgers/prepared tokens,
+including A-to-B-to-A changes. Registration-policy sealing uses the existing control
+revision and does not spuriously invalidate unchanged metadata. Successful activation
+and rollback install the source records and the ledger's matching content revision
+together, after all callback-capable validation. Explicit rollback still retains the
+exact prior record references. See [the owner contract](../../docs/design/retained-compilation-records.md).

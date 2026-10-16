@@ -19,7 +19,7 @@ let sourceStringVt := StringVt;
   let revision := [compiler sourceRevisionOf: source];
   [[[revision isNil] | [self exactError: revision]] ifTrue: [| #[nil nil]] ifFalse: [|
     let name := [revision at: 1];
-    let recorded := [compiler recordModuleSource: source named: name];
+    let recorded := [compiler recordModuleSource: [revision at: 7] named: name];
     #[name recorded]
   ]]
 ]];

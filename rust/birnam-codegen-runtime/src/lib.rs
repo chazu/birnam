@@ -16,6 +16,7 @@ mod publication;
 mod reflection;
 mod source;
 mod source_metadata;
+mod compiled_source;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
@@ -676,6 +677,11 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 Op::Source(source::Op::Record),
             ),
             (vt, b"moduleSourceFor:", Op::Source(source::Op::Find)),
+            (vt, b"sourceTextOf:", Op::Source(source::Op::Text)),
+            (vt, b"compiledSourceFor:", Op::Source(source::Op::Compilation)),
+            (vt, b"compiledSource:metadata:", Op::Source(source::Op::CompilationValue)),
+            (vt, b"retainedSourceMetadataOf:", Op::Source(source::Op::RetainedMetadata)),
+            (vt, b"replaceCompiledSource:named:", Op::Source(source::Op::ReplaceCompiled)),
             (
                 vt,
                 b"recordedMethodSources",

@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "5c70fe4c",
+  "status": "implemented and qualified; receipt accompanies implementation commit; no user installation or push",
+  "scope": "Retained compiler metadata moves from Store facts into ordinary immutable compilation values; registries/revisions/candidates retain those values. Existing source text identities and compiled admission are preserved.",
+  "final_prefix": "/tmp/birnam-durable/final-prefix",
+  "preceding_representation_prefix": "/tmp/birnam-durable/prefix",
+  "build": {
+    "result": "pass",
+    "log": "/tmp/birnam-durable/build-final-owner.log",
+    "command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-durable/final-prefix --profile release --build-cache \"$PWD/.cargo-target/install\""
+  },
+  "checks": {
+    "owned_metadata": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/owners-qualified.log",
+      "prefix": "final-prefix",
+      "scope": "Store/db names removed; no facts; original identity; unregistered-record reclamation; current accessor/GC; missing/malformed metadata; explicit text analysis; retained snapshots and legacy-key fact independence",
+      "command": "cargo test --offline --locked -p birnam-siphon --test source_inspection -- --include-ignored --nocapture"
+    },
+    "startup": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/startup-qualified.log",
+      "prefix": "final-prefix",
+      "command": "cargo test --offline --locked -p birnam-host --lib startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse -- --ignored --exact --nocapture",
+      "note": "Run exclusively against its prefix; the gate temporarily renames the bootstrap image."
+    },
+    "generation": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/generation-final.log",
+      "prefix": "final-prefix",
+      "command": "cargo test --offline --locked -p birnam-siphon --test candidate_retirement --test source_loader --test generation --test generation_transaction --test generation_ledger -- --include-ignored --nocapture",
+      "scope": "Sealing after adoption; retirement; prepared metadata ABA; seven ledger modes; projection; exact activation/rollback; source goldens"
+    },
+    "record_images": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/record-image-final.log",
+      "prefix": "final-prefix",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-compiled-source-cpxui8bk/results.json",
+      "command": "mise exec -- python3 scripts/compiled-source-image-test.py /tmp/birnam-durable/final-prefix"
+    },
+    "language": {
+      "result": "pass",
+      "assertions": 826,
+      "postchecks": "all passed",
+      "log": "/tmp/birnam-durable/language.log",
+      "prefix": "preceding representation prefix",
+      "command": "mise exec -- env BIRNAM_TEST_PREFIX=/tmp/birnam-durable/prefix bash scripts/birnam-test.sh"
+    },
+    "full_images": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/images.log",
+      "prefix": "preceding representation prefix",
+      "command": "cargo test --offline --locked -p birnam-siphon --test image --test image_recovery_conflict --test image_snapshot_stamp -- --include-ignored --nocapture",
+      "scope": "mapped/rebuilt/stripped/resaved images, twenty resaves and reclamation, snapshot stability, callback writes on failed live load"
+    },
+    "artifact_cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/artifact-cli.log",
+      "prefix": "final-prefix",
+      "command": "mise exec -- python3 scripts/artifact-cli-test.py /tmp/birnam-durable/final-prefix"
+    },
+    "project_cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-durable/project-cli.log",
+      "prefix": "final-prefix",
+      "command": "mise exec -- env BIRNAM_BIN=/tmp/birnam-durable/final-prefix/bin/birnam bash scripts/rust-project-check-smoke.sh"
+    },
+    "old_image": {
+      "result": "expected rejection",
+      "exit_code": 1,
+      "log": "/tmp/birnam-durable/old-image-rejection.log",
+      "image": "/tmp/birnam-inspection/prefix/lib/birnam-bootstrap.image"
+    },
+    "formal": {
+      "result": "pass",
+      "lean_theorems": 332,
+      "rejected_mutations": 89,
+      "tlc_outcomes": 209,
+      "log": "/tmp/birnam-durable/formal-final.log",
+      "receipt": ".cargo-target/formal/results/rooting-8h35zrjd/summary.json",
+      "command": "mise exec -- python3 scripts/check-rooting-model.py"
+    }
+  },
+  "native_environment": {
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-durable/final-prefix/lib",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "BIRNAM_GC_PRECISE": "1"
+  },
+  "corrections": [
+    "Initial build retained a String-only reader; record unwrapping fixed.",
+    "Initial startup corruption fixture assumed Vector indexed replacement; now creates new values explicitly.",
+    "Candidate retirement/activation exposed spurious invalidation on sealing; registry content/control stamps separated and modeled.",
+    "Explicit text analysis always uses current parser; a record is the explicit reuse path."
+  ],
+  "limitations": [
+    "Old bare-String source-registry images require rebuilding; no compatibility mirror.",
+    "Store remains for other lifecycle/recipe/process/seed dependencies; this is not full Store-free bootstrap.",
+    "Generation source registry implementation remains native, with ordinary public record values.",
+    "Formal laws are abstract ownership/coordination contracts, not a proof of arbitrary callbacks or compiler execution.",
+    "No CPU improvement claimed."
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "32cf927ede8d3b6a5af139a8c24351dfb6dbc501754be73042178c927a484626",
+    "docs/design/compiler-metadata-ownership.md": "2b33a11c35a66631cfd37769d5b465b4d4f21cc74969255f07fa84b9a54062a1",
+    "docs/design/optional-store-and-relational.md": "41a4809f53c388d7a4ceb4ebf5e4ac64ec1d37c077db47d346b710fe3ac81ede",
+    "docs/design/retained-compilation-records.md": "4460f4c0dbbf435dbdd10e0e8d88334e93bb888a5d558074663d7f5374e49205",
+    "formal/semantics/lean/PrivateScratch.lean": "936c3828fb5013d26a6e4bfa5556d8fb0e80b92fcc1a27ae5cb2bda1a9389ebd",
+    "formal/semantics/lean/SemanticsAudit.lean": "11cc766ea585ecfb0bfebd9898af88a4bed9e33a63ac5f92fa7fefcd0009aa7a",
+    "formal/semantics/tla/CompilationOwner.tla": "5a733b47fbd85383bb63bdd88ec9b2e84a8ddc3e57f1763b7c01941d32c998d2",
+    "formal/semantics/tla/CompilationOwnerAlias.cfg": "83cee84dd9d10604dc822b6569e5b38702f7aa11c404d4b4b634d8e35a66487a",
+    "formal/semantics/tla/CompilationOwnerFacts.cfg": "47a62d1a18b292d45d68cce058d7eeb1ddda07a25930fad94291b39ea276f163",
+    "formal/semantics/tla/CompilationOwnerSafe.cfg": "96859fdb73d3ffb1b4d69b2e99f4f3b8d954d06f061dae3c4c0a32a17e3f45e5",
+    "formal/semantics/tla/CompilationOwnerSeal.cfg": "bcb49d4d69ea17f0b949dc2c2ae9339230d2c9016b8a08e79078cf05f6cacc54",
+    "formal/semantics/tla/CompilationOwnerStamp.cfg": "841e703c36e5e8d62e3969cfd1e07aefcdf98e2aa3aab58b6f40bd9e89aca251",
+    "formal/semantics/tla/CompilationOwnerValue.cfg": "4afad41c2951599312ba32363239dffc1926353b89ce65676b896dfcf83f6866",
+    "modules/source-loader.birnam": "1b0ee59163cba94f8bb6bb75aa9abba199fa98fd024a59dcc0fbfee732fe5268",
+    "rust/birnam-codegen-runtime/README.md": "ebaeaad99abb7cdba955e55e1e2c7421d00f01e7c9fc15727036bb717b002d88",
+    "rust/birnam-codegen-runtime/src/artifact.rs": "cb5e03eaaf7b7ee6f7f05ddbcdce2a9b710c6ccb77d86a50b3813cd43e4a4cfc",
+    "rust/birnam-codegen-runtime/src/candidate_inventory.rs": "a1e53ee2449b3f2b9bb3dca75ac6cac0115df07553bfc43e60ce55055f8de990",
+    "rust/birnam-codegen-runtime/src/compiled_source.rs": "4027736cceca16856a9c87c9670506c1dc953e01c064742664d905824e6ebade",
+    "rust/birnam-codegen-runtime/src/lib.rs": "a89f368819c03b93872a94644d25852f0224fa18dc644bcbf857bf5ea13491f1",
+    "rust/birnam-codegen-runtime/src/source.rs": "a0a9273f7452d792259c58276c9abf85786ee009d110e685de5d46f04ccccf54",
+    "rust/birnam-codegen-runtime/src/source_metadata.rs": "d9da8faca66e7242038a5983c1a84ab362a5b8e94394e94a5695b0fe7023d1e8",
+    "rust/birnam-generation/README.md": "16201c78ebdb9dded45e1e46dad9f9c041e5752468259e213c6efbb7a37e37da",
+    "rust/birnam-generation/src/candidate.rs": "7f248fa71c1cb26ae49d048cb5d893c2459edc6a5fb9ce014cd99ef2b974533a",
+    "rust/birnam-generation/src/candidate_ledger.rs": "d2b5fdd2fb82e436dbaa88e4fb83b1e58a4df2cad422e2b23b9ec7eaa6317328",
+    "rust/birnam-generation/src/candidate_preparation.rs": "40ab6eb5bdf0f73beceef95fea437a50ac263aea86c51ae28df79686ea02d7bb",
+    "rust/birnam-generation/src/candidate_transaction.rs": "7af619e3e19b12f9dd6d62e1613b5d8c7b4d9fdb8aff643e8accb965a729e533",
+    "rust/birnam-generation/src/compiler.rs": "98e01948d593e9d79d577672eeaac92581fc91be885d61b543be86f1154735c6",
+    "rust/birnam-generation/src/lib.rs": "cbc5c68c578e5d7e07c555f8a089412dd9c88d023fbf909cbd23cfa02d3c8d21",
+    "rust/birnam-generation/src/registry.rs": "b48749a817cd7becbfddfd4ab66e75eb152f41c4c207c4d26775aa2544d1a816",
+    "rust/birnam-generation/src/values.rs": "1100c6a0c697f00c4a548bfd59b02eda7d13181bb78292ca4321b12fbad860e3",
+    "rust/birnam-host/src/startup.rs": "8ef55671c458af65c1b0804bb5d2775ef48643a18a54dc0bf9db6d7100005081",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "12a866712d02375d0abb56fa3a1c1e449d5f6ba7d2ea8f464cdbdf5b1f1d2b82",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "ddf6a50a180442fe79d886ddebd4b2f0c57535f04b4a453ff77aa11fa292f179",
+    "rust/birnam-siphon/tests/source_inspection.rs": "09fb723201a68e2df0b4d34da420f7b1238fe2ecbbea639600a2087b51c248aa",
+    "rust/birnam-siphon/tests/source_loader.rs": "f18621d7961f463e2df98f1e5655b65499852aea0d9957e43dee81bad30295b9",
+    "scripts/check-rooting-model.py": "f93d7b9c5034692361c3632aa20d54f2750fb35b0523193f61adf04e50378f11",
+    "scripts/compiled-source-image-test.py": "19b056020f8f3e03281c019366687cdac35954578314e8ef05891e1ef5059e10",
+    "scripts/native-message-test.sh": "fdada59b5af1caf99b1ec66d6246451230624bb01bd209b68500f00618dec220",
+    "tests/fixtures/compiled-source-image.birnam": "5c6b9ee99e33896e3d83a8b14246d7bf32a9f6aaccb542acae90a8d85a1a0df8"
+  },
+  "runtime_libraries": {
+    "codegen_runtime": "02b3a7a94295b955ec5bdc2483a37fc5f2124d8c61a2ec5d9929c9b650e31cbc",
+    "generation": "5317869eda6f4af134a693a34ffab8517f2822f74b1e8e3dc65031865b945aac"
+  }
+}

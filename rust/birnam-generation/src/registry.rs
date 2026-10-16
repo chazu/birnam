@@ -1,9 +1,11 @@
 use super::*;
+use crate::candidate::call;
 #[derive(Default)]
 pub(super) struct Registry {
     pub entries: RefCell<Vec<(Oop, Oop)>>,
     sealed: Cell<bool>,
     revision: Cell<usize>,
+    contents_revision: Cell<usize>,
     pub stage: RefCell<Option<Stage>>,
 }
 pub(super) struct Stage {
@@ -13,8 +15,12 @@ pub(super) struct Stage {
     published: bool,
 }
 impl Registry {
+    pub(super) fn revision(&self)->usize {self.contents_revision.get()}
     pub(super) fn replace_entries(&self, entries: Vec<(Oop,Oop)>) {
         self.revision.set(self.revision.get().checked_add(1).expect("source revision exhausted"));
+        if *self.entries.borrow()!=entries {
+            self.contents_revision.set(self.contents_revision.get().checked_add(1).expect("source content revision exhausted"));
+        }
         *self.entries.borrow_mut() = entries;
     }
     pub fn roots(&self) -> Vec<Oop> {
@@ -37,6 +43,8 @@ pub(super) enum Op {
     Sealed,
     Record,
     Find,
+    FindCompilation,
+    Replace,
     Seal,
     Prepare,
     Swap,
@@ -45,8 +53,8 @@ pub(super) enum Op {
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Record => 2,
-            Self::Find | Self::Prepare => 1,
+            Self::Record | Self::Replace => 2,
+            Self::Find | Self::FindCompilation | Self::Prepare => 1,
             _ => 0,
         }
     }
@@ -101,12 +109,11 @@ pub(super) unsafe fn operation(
                     let [name, source] = values.as_slice() else {
                         return Err(invalid());
                     };
-                    if !s.exact(q, *name, b"SymbolVt")?
-                        || !s.exact(q, *source, b"StringVt")?
-                        || !names.insert(*name)
-                    {
-                        return Err(invalid());
-                    }
+                    if !s.exact(q,*name,b"SymbolVt")? || !names.insert(*name) {return Err(invalid())}
+                    let record=call(s,q,s.named(b"Codegen")?,b"compiledSourceFor:",&[Operand::object(*source)])?;
+                    if record!=*source {return Err(invalid())}
+                    let Some((_,metadata))=s.revision(q,record)? else{return Err(invalid())};
+                    if s.symbol_bytes(q,*name)?.as_deref()!=Some(metadata.name.as_slice()){return Err(invalid())}
                     entries.push((*name, *source));
                 }
                 *s.registry.stage.borrow_mut() = Some(Stage { sealed: sealed == yes, entries, basis: s.registry.revision.get(), published: false });
@@ -121,6 +128,9 @@ pub(super) unsafe fn operation(
                     return Ok(Operand::object(no));
                 }
                 let next = stage.basis.checked_add(1).ok_or_else(invalid)?;
+                if *s.registry.entries.borrow()!=stage.entries {
+                    s.registry.contents_revision.set(s.registry.contents_revision.get().checked_add(1).ok_or_else(invalid)?);
+                }
                 std::mem::swap(&mut *s.registry.entries.borrow_mut(), &mut stage.entries);
                 stage.sealed = s.registry.sealed.replace(stage.sealed);
                 s.registry.revision.set(next);
@@ -128,72 +138,64 @@ pub(super) unsafe fn operation(
                 stage.published = !rollback;
                 Ok(Operand::object(yes))
             }
-            Op::Record | Op::Find => {
-                let is_record = matches!(op, Op::Record);
-                let name_object = object(a[if is_record { 1 } else { 0 }])?;
-                let Some(name) = s.symbol_bytes(q, name_object)? else {
-                    if is_record {
-                        s.note(q, b"RustCodegen module name was not a Symbol")?;
-                    }
-                    return Ok(nil_value);
+            Op::FindCompilation => {
+                let source=object(a[0])?;
+                let entries=s.registry.entries.borrow().clone();
+                for &(name,record) in &entries {q.keep(name)?;q.keep(record)?;}
+                for (_,record) in entries {
+                    if s.source_text(q,record)?==source {return Ok(Operand::object(record))}
+                }
+                Ok(nil_value)
+            }
+            Op::Record | Op::Replace | Op::Find => {
+                let is_record=!matches!(op,Op::Find);
+                let replacing=matches!(op,Op::Replace);
+                let name_object=object(a[if is_record {1}else{0}])?;
+                let Some(name)=s.symbol_bytes(q,name_object)? else {
+                    if is_record {s.note(q,b"RustCodegen module name was not a Symbol")?;}
+                    return Ok(nil_value)
                 };
-                let recording = if is_record {
-                    let source = object(a[0])?;
-                    let Some((bytes, revision)) = s.revision(q, source)? else {
-                        s.note(q, b"RustCodegen module source is not indexable")?;
-                        return Ok(nil_value);
+                let recording=if is_record {
+                    let record=object(a[0])?;
+                    let owner=call(s,q,s.named(b"Codegen")?,b"compiledSourceFor:",&[Operand::object(record)])?;
+                    if owner!=record {return Err(invalid())}
+                    let Some((bytes,revision))=s.revision(q,record)? else {
+                        s.note(q,b"RustCodegen module source is not indexable")?;return Ok(nil_value)
                     };
-                    if revision.name != name {
-                        s.note(
-                            q,
-                            b"RustCodegen module source identity does not match its name",
-                        )?;
-                        return Ok(nil_value);
-                    }
-                    Some((source, bytes))
-                } else {
-                    None
-                };
-                // The registry is append-only. Inspect snapshots without a borrow
-                // across sends; retry if a dependency registered a new entry.
+                    if revision.name!=name {s.note(q,b"RustCodegen module source identity does not match its name")?;return Ok(nil_value)}
+                    Some((record,s.source_text(q,record)?,bytes))
+                } else {None};
                 loop {
-                    if recording.is_some() && s.registry.sealed.get() {
-                        s.note(q, b"RustCodegen module introduction is not available")?;
-                        return Ok(nil_value);
+                    if is_record && !replacing && s.registry.sealed.get() {
+                        s.note(q,b"RustCodegen module introduction is not available")?;return Ok(nil_value)
                     }
-                    let entries = s.registry.entries.borrow().clone();
-                    let mut found = None;
-                    for &(old_name, old_source) in &entries {
-                        if s.symbol_bytes(q, old_name)?.as_deref() == Some(name.as_slice()) {
-                            found = Some(old_source);
-                            break;
-                        }
+                    let revision=s.registry.revision.get();
+                    let entries=s.registry.entries.borrow().clone();
+                    for &(key,record) in &entries {q.keep(key)?;q.keep(record)?;}
+                    let mut found=None;
+                    for (index,&(old_name,record)) in entries.iter().enumerate() {
+                        if s.symbol_bytes(q,old_name)?.as_deref()==Some(name.as_slice()) {found=Some((index,record));break}
                     }
-                    let same = if let (Some(old), Some((_, bytes))) = (found, &recording) {
-                        s.source_bytes(q, old)?.as_deref() == Some(bytes.as_slice())
-                    } else {
-                        false
-                    };
-                    if s.registry.entries.borrow().len() != entries.len() {
-                        continue;
+                    let old_text=if let Some((_,record))=found {Some(s.source_text(q,record)?)}else{None};
+                    let same=if let (Some(old),Some((_,_,bytes)))=(old_text,&recording) {s.bytes(old)?==*bytes}else{false};
+                    if s.registry.revision.get()!=revision {continue}
+                    let Some((record,text,_))=&recording else {return Ok(Operand::object(old_text.unwrap_or(nil)))};
+                    if replacing {
+                        let Some((index,prior))=found else {s.note(q,b"RustCodegen module is not registered")?;return Ok(nil_value)};
+                        if prior==*record {return Ok(Operand::object(*text))}
+                        s.registry.revision.set(revision.checked_add(1).ok_or_else(invalid)?);
+                        s.registry.contents_revision.set(s.registry.contents_revision.get().checked_add(1).ok_or_else(invalid)?);
+                        s.registry.entries.borrow_mut()[index]=(name_object,*record);
+                        return Ok(Operand::object(*text))
                     }
-                    if recording.is_some() && s.registry.sealed.get() {
-                        s.note(q, b"RustCodegen module introduction is not available")?;
-                        return Ok(nil_value);
-                    }
-                    let Some((source, _)) = recording else {
-                        return Ok(Operand::object(found.unwrap_or(nil)));
-                    };
                     if found.is_some() {
-                        if same {
-                            return Ok(Operand::object(source));
-                        }
-                        s.note(q, b"RustCodegen duplicate module source")?;
-                        return Ok(nil_value);
+                        if same{return Ok(Operand::object(*text))}
+                        s.note(q,b"RustCodegen duplicate module source")?;return Ok(nil_value)
                     }
-                    s.registry.revision.set(s.registry.revision.get().checked_add(1).ok_or_else(invalid)?);
-                    s.registry.entries.borrow_mut().push((name_object, source));
-                    return Ok(Operand::object(source));
+                    s.registry.revision.set(revision.checked_add(1).ok_or_else(invalid)?);
+                    s.registry.contents_revision.set(s.registry.contents_revision.get().checked_add(1).ok_or_else(invalid)?);
+                    s.registry.entries.borrow_mut().push((name_object,*record));
+                    return Ok(Operand::object(*text))
                 }
             }
         }

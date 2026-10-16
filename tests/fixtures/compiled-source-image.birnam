@@ -1,0 +1,27 @@
+// Caller-held compilation values survive independently of the source registry.
+[Module load: #os];
+[[|
+let source := "[Module named: #detachedCompilation requires: #[]]; [Reflect defineMethod: #detached on: Integer as: [:self | 17]]";
+let compilation := [Codegen analyzeSourceMetadata: source];
+let revision := [Codegen sourceRevisionOf: compilation];
+let check := [:ok | [ok ifFalse: [| [System printErrorText: "compilation image check failed\n"]; [OS exit: 1]]]];
+[check value: [[revision at: 3] == source]];
+[check value: [[revision at: 7] == compilation]];
+[db assert: source attr: #compiledSourceMetadata value: #explicitUserFact];
+[Globals at: #main put: [|
+  [System gc];
+  [check value: [[Codegen sourceTextOf: compilation] == source]];
+  [check value: [[revision at: 7] == compilation]];
+  [check value: [[revision at: 3] == source]];
+  [check value: [[Codegen compiledSourceFor: source] isNil]];
+  [check value: [[Codegen compiledSourceMetadataFor: compilation] notNil]];
+  [check value: [[[Codegen sourceRevisionOf: compilation] at: 3] == source]];
+  [check value: [[db currentValue: source attr: #compiledSourceMetadata] == #explicitUserFact]];
+  let before := [db retainedFactCount];
+  let fresh := [Codegen analyzeSourceMetadata: "[Module named: #laterCompilation requires: #[]]"];
+  [check value: [[Codegen compiledSourceMetadataFor: fresh] notNil]];
+  [check value: [[db retainedFactCount] = before]];
+  [System println: "compiled-source-image: passed"]
+]];
+[System saveImage: IMAGE_PATH]; [System println: [[System imageSaveReport] status]]
+] value]

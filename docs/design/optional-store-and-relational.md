@@ -12,8 +12,8 @@ LSP and Globals state, and [ordinary record fields](ordinary-record-owners.md).
 [Ordinary mutation and explicit coordination](coordination-cleanup.md) now have
 separate contracts: ordinary edits need no Store observer or Generation handshake;
 fresh startup and advanced live loading are distinct. Live loading now leaves
-applied changes in place on failure; the user owns the recovery snapshot. Compiler metadata,
-recipes, lifecycle/task state, tool state and remaining bootstrap dependencies
+applied changes in place on failure; the user owns the recovery snapshot. Retained compiler metadata now uses compilation records;
+recipes, lifecycle/task state, remaining tool state and bootstrap dependencies
 still require owner migrations. Backwards compatibility is not a requirement;
 useful reflection, late binding, owner lifetimes and explicit user facts remain
 required.
@@ -249,7 +249,8 @@ different answers about authority, history or inspection in each module.
 
 ## Progress as of 2026-10-16
 
-The five ordinary-object field migrations are committed as `e41c4f35`. The basic
+The five ordinary-object field migrations are committed as `e41c4f35`; Bench/Test
+ownership is committed as `5c70fe4c`. The basic
 live-loading simplification is committed as `3869bd65`. Coordination cleanup is committed through
 `bd8a532e`. Implementation status does not imply release or local installation.
 
@@ -259,16 +260,16 @@ live-loading simplification is committed as `3869bd65`. Coordination cleanup is 
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
 | Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields; Bench/Test fields, local scratch and owned suite discovery implemented and qualified | REPL handles/buffers belong with socket/task resource-lifecycle work. |
 | Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Basic live loading now reports partial application without compensation; stronger recovery is an optional future feature, not a migration prerequisite. |
-| Step 6: durable/coordinated and process-local state | Globals already participates in owner-based recovery | Compiler metadata, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
+| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records implemented and qualified | Source-registry implementation, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
 The [supplied-template report](supplied-method-templates.md) records constructor
 qualification. The earlier universal publication-owner proposal was superseded by
 the [minimal-mutation decision](minimal-mutation-and-coordination.md); the
 [coordination cleanup](coordination-cleanup.md) implements that boundary. Broader
-representation-independent error normalization remains separate work. The next
-large dependency migration is compiler metadata/source integration with its
-existing compiled-startup, lifetime and image contracts.
+representation-independent error normalization remains separate work. The [retained compilation record cutover](retained-compilation-records.md) implements
+compiler metadata ownership with its compiled-startup, lifetime and image contracts.
+The remaining source-registry implementation and lifecycle owners still need migration.
 
 Backwards compatibility is not required for the remaining migration. A deliberate
 artifact/image format transition may require rebuilding instead of retaining old
@@ -364,8 +365,12 @@ unobservable representation optimization, and does not copy or delete user facts
   Replace the current `imageTransient` fact policy explicitly; specify cleanup,
   ownership and recreation/rejection on load before moving resources into slots.
   Test failed construction, shutdown, image restoration and retention.
-- [ ] Migrate compiler metadata/source integration with discoverable, imageable
-  owners. Preserve source identities and entered/captured code lifetimes; exercise
+- [x] Qualify non-publishing `moduleMetadataOf:` / `embeddedFilesOf:` queries.
+  Leave revision preparation and compiled admission separate; do not replace Store
+  with a permanent source-keyed cache. Record the durable dependency ledger in
+  [compiler metadata ownership](compiler-metadata-ownership.md).
+- [x] Qualify retained compilation records and their registry/image integration.
+  Metadata is now ordinary data with explicit inspection/replacement APIs. Preserve source identities and entered/captured code lifetimes; exercise
   source-free mapped startup with parsing/compilation unavailable and the explicit
   rebuild path separately. Reject missing metadata rather than falling back to ASTs.
 - [ ] Before migrating each coordinated owner, record which operations actually
@@ -392,8 +397,9 @@ unobservable representation optimization, and does not copy or delete user facts
   and installed state. Review owner boundaries before accepting a new registry,
   mirror, transaction framework or native service as a dependency replacement.
 
-The bounded Bench/Test slice is qualified. The next structural work is compiler
-metadata/source integration; keep resource-bearing REPL state with
+Bench/Test is committed and non-publishing project inspection is qualified. The
+retained compiler metadata ownership is now qualified; the remaining structural
+work includes source-registry/lifecycle ownership and Alien recipes; keep resource-bearing REPL state with
 lifecycle work. The selected live-load change is stated above; these tasks do not authorize changing
 GC policy or resuming the paused Relational rewrite.
 

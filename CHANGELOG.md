@@ -8,6 +8,16 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Retain compiler metadata in ordinary compilation records instead of Store facts.
+  Preserve original source identities and parser-free admission; expose record
+  inspection/replacement, retain snapshots across registry changes, and invalidate
+  stale generation plans on metadata changes. Older source-registry images require
+  rebuilding; explicit user facts remain independent.
+
+- Stop static module/asset inspection from retaining temporary source and compiler
+  metadata as Store facts. Reuse published inventories when present; source
+  preparation and parser-free compiled admission keep their existing contracts.
+
 - Move Test/Bench fields and scratch out of Store. Test owns ordered suite
   registration/removal and offers explicit description snapshots; cloned Bench
   runners now update their own results. Timing windows and result JSON are unchanged.

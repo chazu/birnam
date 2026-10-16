@@ -220,14 +220,15 @@ unsafe fn modules(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<generation::
                 return Err(invalid());
             };
             let fields = seq(s, q, *revision)?;
-            let [tag, rname, requires, source, nonmethod, methods, digest] = fields.as_slice()
+            let [tag, rname, requires, source, nonmethod, methods, digest, compilation] = fields.as_slice()
             else {
                 return Err(invalid());
             };
             if *tag != symbol(s, q, b"sourceRevision")? || name != rname {
                 return Err(invalid());
             }
-            let (bytes, metadata) = s.revision(q, *source)?.ok_or_else(invalid)?;
+            if s.source_text(q,*compilation)? != *source {return Err(invalid())}
+            let (bytes, metadata) = s.revision(q, *compilation)?.ok_or_else(invalid)?;
             if s.symbol_bytes(q, *name)?.as_deref() != Some(metadata.name.as_slice())
                 || s.bytes(*nonmethod)? != metadata.non_method_digest
                 || s.bytes(*methods)? != metadata.method_digest
@@ -453,8 +454,7 @@ pub(super) unsafe fn operation(
             Op::Prepare => preparation::prepare(s, q, object(args[0])?, object(args[1])?),
             Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),
             Op::Compile | Op::CompileSelected => {
-                let source = object(args[0])?;
-                s.analyze(q, source)?;
+                let source = s.analyze(q,object(args[0])?)?;
                 let name = object(args[1])?;
                 let path = object(args[2])?;
                 let Some((bytes, metadata)) = s.revision(q, source)? else {
@@ -521,7 +521,7 @@ pub(super) unsafe fn operation(
                         b"candidate changes unsupported initializers or generation selection",
                     );
                 }
-                let Some(plan) = s.candidate_plan(q, source, &selected)? else {
+                let Some((plan,_)) = s.candidate_plan(q, source, &selected)? else {
                     return fail(s, q, b"invalidCandidate", b"candidate cannot be lowered");
                 };
                 let generated = match backend::all(s, q, &plan.requests) {
@@ -597,10 +597,10 @@ pub(super) unsafe fn operation(
                     );
                 }
                 let fields = seq(s, q, revision)?;
-                if fields.len() != 7
+                if fields.len() != 8
                     || fields[0] != symbol(s, q, b"sourceRevision")?
                     || fields[1] != name
-                    || s.bytes(fields[3])? != s.bytes(source)?
+                    || s.bytes(fields[3])? != s.source_data(q,source)?
                     || s.bytes(fields[6])? != metadata.revision_digest
                 {
                     return fail(s, q, b"invalidCandidate", b"candidate revision mismatches");
@@ -617,7 +617,7 @@ pub(super) unsafe fn operation(
                 )?;
                 let Some(projected) = generation::project_candidate_generation(
                     prior,
-                    generation::Module::new(s.bytes(source)?, metadata).ok_or_else(invalid)?,
+                    generation::Module::new(s.source_data(q,source)?, metadata).ok_or_else(invalid)?,
                     &selection,
                     &selected,
                     |m, i, _| {
@@ -688,8 +688,8 @@ pub(super) unsafe fn operation(
                         b"candidate artifact checksum mismatches",
                     );
                 }
-                let source = s.text(q, env.source)?;
-                let Some(plan) = s.candidate_plan(q, source, env.artifact_selection)? else {
+                let text = s.text(q, env.source)?;
+                let Some((plan,source)) = s.candidate_plan(q, text, env.artifact_selection)? else {
                     return fail(s, q, b"invalidCandidate", b"candidate inventory is invalid");
                 };
                 if code::manifest(
@@ -747,7 +747,7 @@ pub(super) unsafe fn operation(
                 let operations = s.vector(q, &operations)?;
                 for (key, value) in [
                     (b"unitName".as_slice(), name),
-                    (b"authoredSource", source),
+                    (b"authoredSource", s.source_text(q,source)?),
                     (b"sourceRevision", revision),
                     (b"requires", requires),
                     (b"provides", operations),

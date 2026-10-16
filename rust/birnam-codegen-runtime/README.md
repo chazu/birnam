@@ -82,28 +82,45 @@ checks cover resolution and the check/build/run commands.
 The existing `sourceRevisionOf:`, `recordModuleSource:named:`, `moduleSourceFor:`,
 `sealInitialGeneration`, `lastError`, `evalPersisting:` and `evalPersisting:from:`
 selectors now use the same current owners. Revision analysis remains private pure
-compiler code; its seven-element Vector retains the tag, name, requirements,
-original source and three historical digests and admission rules.
+compiler code; its revision Vector retains the tag, name, requirements, original source and
+three historical digests, followed by the retained compilation record.
 
-Codegen owns an append-only source/name registry and the existing closed-registration
-flag. Sources remain original Objects and are visited through `rootsDo:` / `visit:`.
-Compilation attaches a `#compiledSourceMetadata` fact to each source Object in
-Store. Its ordinary Vector contains the version tag, source digest, module name,
-requirements, revision inventory, documentation source and embedded-file paths.
-The revision inventory contains method operations and their canonical programs,
-projected Globals, implementation keys and the existing revision digests.
-These are imageable relational values; there is no separate native metadata cache.
-Generation projection/adoption and documentation inventory read these facts and
-check source digests and live bindings without parsing. Missing or malformed
-metadata fails admission; rebuild the compiled artifact or image. Explicit source
-compilation and source-inspection operations may analyze new source.
-Registry comparisons use current Symbol/String messages, without a state borrow
-across sends; reentrant additions are observed before publication. Identical source
-bytes return the incoming source while retaining the first registered Object.
-Different bytes, mismatched names, malformed revisions and closed registration
-answer nil with the existing diagnostic. `moduleSourceFor:` asks Generation for this registry.
-Image now restores it and its closed-registration flag through a staged owner
-exchange; candidate source-generation replacement uses the lifecycle below.
+Generation owns the source registry and its registration policy. Entries retain
+ordinary compilation records: `#[#compiledSourceV1 originalSource metadata]`.
+Source Strings keep their identity; no String-keyed cache or native metadata table
+is added. Metadata retains the existing `compiledSourceMetadataV1` schema and
+canonical artifact codec. Core code no longer reads or writes a
+`#compiledSourceMetadata` Store fact; explicit facts under that name are independent.
+
+`analyzeSourceMetadata:` returns a compilation record instead of true. Text is
+analyzed through current parser sends; a supplied valid compilation record is reused
+without parsing. `compiledSource:metadata:` constructs a value, `sourceTextOf:`
+reads its text, and `retainedSourceMetadataOf:` exposes its structured metadata.
+`compiledSourceFor:` accepts a record or finds a registered record by source
+identity. `compiledSourceMetadataFor:` validates/encodes retained metadata and never
+parses to repair missing or malformed data. Static module/asset queries analyze
+Strings locally or read supplied records; neither creates facts.
+
+`sourceRevisionOf:` retains the original seven fields and appends the owning
+compilation at index 7. Index 3 is still the original source String. SourceLoader
+passes the record into registration, avoiding a repeated parse. Candidate inventory
+returns a fifth field containing its compilation record, so candidate artifact
+inspection also retains its previous parse count. Revision snapshots keep their
+own metadata when the current registry changes.
+
+`recordModuleSource:named:` accepts text or a prepared record and answers its text.
+`moduleSourceFor:` continues returning the original registered String. An identical
+source declaration retains the first registration. `replaceCompiledSource:named:`
+explicitly selects a new validated record for an existing name without installing
+methods or activating code. The registry's content revision invalidates stale
+Generation observations, including ABA; sealing alone does not change that content
+revision. Ordinary sends acquire no observers or method-identity guards.
+
+Image transports the ordinary record graph through the existing value codec.
+Source-registry/revision values have changed shape; older images with bare-String
+registry entries require rebuilding and are rejected rather than recovered through
+Store facts or source parsing. The bootstrap module set and artifact metadata codec
+are unchanged. See [retained compilation records](../../docs/design/retained-compilation-records.md).
 
 Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
 Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated

@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "5c70fe4c",
+  "status": "implemented and qualified; uncommitted; no user installation or push",
+  "scope": "moduleMetadataOf: and embeddedFilesOf: reuse validated published metadata or inspect locally without publishing facts. Source revision preparation, registration, artifact metadata and parser-free compiled admission remain unchanged.",
+  "prefix": "/tmp/birnam-inspection/prefix",
+  "build": {
+    "result": "pass",
+    "log": "/tmp/birnam-inspection/build.log",
+    "command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-inspection/prefix --profile release --build-cache \"$PWD/.cargo-target/install\""
+  },
+  "baseline": {
+    "prefix": "/tmp/birnam-harness/prefix",
+    "log": "/tmp/birnam-inspection/baseline.log",
+    "exit_code": 101,
+    "result": "expected regression failure",
+    "observations": 6,
+    "objects_before": 19492,
+    "objects_after": 19690,
+    "facts_before": 22,
+    "facts_after": 28,
+    "writes": 6
+  },
+  "checks": {
+    "native": {
+      "result": "pass",
+      "log": "/tmp/birnam-inspection/native.log",
+      "tests": [
+        "source_inspection",
+        "source_loader",
+        "artifact_activation",
+        "candidate"
+      ],
+      "batch_sizes": [
+        2,
+        0,
+        1,
+        10,
+        30,
+        30
+      ],
+      "objects_before_and_after": 19492,
+      "facts_before_and_after": 22,
+      "inspection_writes": 0,
+      "command": "mise exec -- cargo test --offline --locked -p birnam-siphon --test source_inspection --test source_loader --test artifact_activation --test candidate -- --include-ignored --nocapture"
+    },
+    "parser_free_startup": {
+      "result": "pass",
+      "log": "/tmp/birnam-inspection/startup.log",
+      "command": "mise exec -- cargo test --offline --locked -p birnam-host --lib startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse -- --ignored --exact --nocapture",
+      "note": "Run exclusively against the prefix because the test temporarily renames its Lang library."
+    },
+    "host_project": {
+      "result": "pass",
+      "log": "/tmp/birnam-inspection/host-project.log",
+      "command": "mise exec -- cargo test --offline --locked -p birnam-host-project --lib project_source_observation_uses_live_messages -- --ignored --nocapture"
+    },
+    "project_cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-inspection/project-cli.log",
+      "command": "mise exec -- env BIRNAM_BIN=/tmp/birnam-inspection/prefix/bin/birnam bash scripts/rust-project-check-smoke.sh"
+    },
+    "artifact_cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-inspection/artifact-cli.log",
+      "command": "mise exec -- python3 scripts/artifact-cli-test.py /tmp/birnam-inspection/prefix"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-inspection/formal.log",
+      "receipt": ".cargo-target/formal/results/rooting-_rh98ccr/summary.json",
+      "lean_theorems": 327,
+      "rejected_mutations": 88,
+      "tlc_outcomes": 203,
+      "command": "mise exec -- python3 scripts/check-rooting-model.py"
+    }
+  },
+  "native_environment": {
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-inspection/prefix/lib",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "BIRNAM_GC_PRECISE": "1"
+  },
+  "limitations": [
+    "Published metadata still lives in Store and inspection still reads that owner.",
+    "sourceRevisionOf: is retained as preparation for SourceLoader/candidate consumers; this is not the full durable metadata migration.",
+    "Repeated unprepared inspection may parse again; callers can retain returned projections.",
+    "No permanent cache, source wrapper, image-format change or CPU speedup is introduced/claimed.",
+    "Formal laws model the ownership/admission boundary, not compiler correctness or arbitrary callback effects."
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "4ba2f5288a1904c9825db4a7cfed8b08a054cf71883437b979c4b49ff3eed310",
+    "docs/design/optional-store-and-relational.md": "0cf1f00a3e6393a5ade7d76fe0aa96e9c0c76a3bd39413179d6da05840768b5b",
+    "docs/design/compiler-metadata-ownership.md": "3f3db920f957947b04818ff3741cd6dcadeeba939ffa3752974471b7181cffcc",
+    "formal/semantics/lean/PrivateScratch.lean": "ae34dc4609c4a8f2b03b8708259e7d3a16b040c2c1e1a96836f6b297b14fd0bc",
+    "formal/semantics/lean/SemanticsAudit.lean": "1d49d9db99e133ada9bad91a77334f5462832dea02a08e2e841c0ca2f6f01b0b",
+    "rust/birnam-codegen-runtime/README.md": "9c7c4297568008fcf45d52863b894d2229c25ad2fb45a26ce37f1a1ef1c2ad45",
+    "rust/birnam-codegen-runtime/src/source.rs": "d58ba3f9583e83f056519314a8bf766927a865397a9d19fc2372cd29c8369c8f",
+    "rust/birnam-codegen-runtime/src/source_metadata.rs": "0da858524f6dde012453ceec2b5692f09629f75965a66ca176f53f2a1555fd36",
+    "rust/birnam-siphon/tests/source_inspection.rs": "15fd85a95ecf85a26349bfb62f1c69011e013e9f9051d757387f9cc74e9d5fb6",
+    "scripts/check-rooting-model.py": "4554dec04d9f4203e2e80d7746e0397ff0e8287ed8146ce2bfc92dd218706ac0",
+    "scripts/native-message-test.sh": "625c7fc4b81956befd49d3d5dffde53b3530cb429181f472fa37f31b34ee9205"
+  },
+  "codegen_runtime_library_sha256": "40ce14237eaf778fa25406398111c9e7d35866671453bed21b4019dda38af0b9"
+}

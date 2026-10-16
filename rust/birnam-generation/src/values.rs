@@ -14,16 +14,21 @@ impl State {
                 == Some(vt))
         }
     }
+    pub(super) unsafe fn source_text(&self,q:&Scope<'_>,value:Oop)->Result<Oop,Outcome>{unsafe{
+        q.keep(object(self.send(self.named(b"Codegen")?,b"sourceTextOf:",&[Operand::object(value)])?)?)
+    }}
+    pub(super) unsafe fn source_data(&self,q:&Scope<'_>,value:Oop)->Result<Vec<u8>,Outcome>{unsafe{
+        self.source_bytes(q,value)?.ok_or_else(invalid)
+    }}
     pub(super) unsafe fn source_bytes(
         &self,
         scope: &Scope<'_>,
         value: Oop,
     ) -> Result<Option<Vec<u8>>, Outcome> {
         unsafe {
-            if !self.exact(scope, value, b"StringVt")? {
-                return Ok(None);
-            }
-            Ok(Some(self.bytes(value)?))
+            let text=self.source_text(scope,value)?;
+            if text==self.named(b"nil")? {return Ok(None)}
+            Ok(Some(self.bytes(text)?))
         }
     }
     pub(super) unsafe fn symbol_bytes(

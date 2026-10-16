@@ -375,6 +375,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"recoverImageGeneration:".as_slice(), Op::Recover),
             (vt, b"cancelImageRecovery".as_slice(), Op::CancelRecovery),
             (vt, b"abandonImageRecovery".as_slice(), Op::AbandonRecovery),
+            (vt, b"compilationForSource:", Op::Registry(registry::Op::FindCompilation)),
+            (vt, b"replaceCompiledSource:named:", Op::Registry(registry::Op::Replace)),
             (vt, b"rollbackSourceRegistry".as_slice(), Op::Registry(registry::Op::Rollback)),
             (
                 vt,
