@@ -169,3 +169,14 @@ consumers.
 `mise exec -- cargo test --offline --locked -p birnam-store --lib` preserves ten
 algorithm tests, including the independent scan oracle across 64 histories and
 before/after compaction. Two manual timing investigations remain ignored.
+
+## Conditional image exchange
+
+Native `imageStateRevision` returns the process-local owner revision as a Word.
+`swapImageStateWith:atRevision:stagedRevision:` takes the staging Store and both
+observed Word revisions. After the allocation boundary it compares and exchanges
+both states without a callback window, returning Word 1 on success or 0 on conflict.
+Each identity's revision advances; revision values are not swapped or persisted.
+Policy/reservation changes also invalidate the observation even without fact-basis
+changes. The inverse needs no fact allocation or callback replay. The unconditional
+exchange remains available explicitly; live Image uses the conditional form.

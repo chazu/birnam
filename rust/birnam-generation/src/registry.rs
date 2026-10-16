@@ -3,9 +3,20 @@ use super::*;
 pub(super) struct Registry {
     pub entries: RefCell<Vec<(Oop, Oop)>>,
     sealed: Cell<bool>,
-    pub stage: RefCell<Option<(bool, Vec<(Oop, Oop)>)>>,
+    revision: Cell<usize>,
+    pub stage: RefCell<Option<Stage>>,
+}
+pub(super) struct Stage {
+    sealed: bool,
+    entries: Vec<(Oop, Oop)>,
+    basis: usize,
+    published: bool,
 }
 impl Registry {
+    pub(super) fn replace_entries(&self, entries: Vec<(Oop,Oop)>) {
+        self.revision.set(self.revision.get().checked_add(1).expect("source revision exhausted"));
+        *self.entries.borrow_mut() = entries;
+    }
     pub fn roots(&self) -> Vec<Oop> {
         self.entries
             .borrow()
@@ -15,7 +26,7 @@ impl Registry {
                 self.stage
                     .borrow()
                     .iter()
-                    .flat_map(|(_, v)| v.iter().flat_map(|&(n, s)| [n, s])),
+                    .flat_map(|stage| stage.entries.iter().flat_map(|&(n, s)| [n, s])),
             )
             .collect()
     }
@@ -29,6 +40,7 @@ pub(super) enum Op {
     Seal,
     Prepare,
     Swap,
+    Rollback,
 }
 impl Op {
     pub fn count(self) -> usize {
@@ -72,6 +84,7 @@ pub(super) unsafe fn operation(
                 b"false"
             })?)),
             Op::Seal => {
+                s.registry.revision.set(s.registry.revision.get().checked_add(1).ok_or_else(invalid)?);
                 s.registry.sealed.set(true);
                 Ok(Operand::object(yes))
             }
@@ -96,14 +109,23 @@ pub(super) unsafe fn operation(
                     }
                     entries.push((*name, *source));
                 }
-                *s.registry.stage.borrow_mut() = Some((sealed == yes, entries));
+                *s.registry.stage.borrow_mut() = Some(Stage { sealed: sealed == yes, entries, basis: s.registry.revision.get(), published: false });
                 Ok(Operand::object(yes))
             }
-            Op::Swap => {
+            Op::Swap | Op::Rollback => {
+                let no = s.named(b"false")?;
                 let mut stage = s.registry.stage.borrow_mut();
-                let (sealed, entries) = stage.as_mut().ok_or_else(invalid)?;
-                std::mem::swap(&mut *s.registry.entries.borrow_mut(), entries);
-                *sealed = s.registry.sealed.replace(*sealed);
+                let stage = stage.as_mut().ok_or_else(invalid)?;
+                let rollback = matches!(op, Op::Rollback);
+                if rollback != stage.published || s.registry.revision.get() != stage.basis {
+                    return Ok(Operand::object(no));
+                }
+                let next = stage.basis.checked_add(1).ok_or_else(invalid)?;
+                std::mem::swap(&mut *s.registry.entries.borrow_mut(), &mut stage.entries);
+                stage.sealed = s.registry.sealed.replace(stage.sealed);
+                s.registry.revision.set(next);
+                stage.basis = next;
+                stage.published = !rollback;
                 Ok(Operand::object(yes))
             }
             Op::Record | Op::Find => {
@@ -169,6 +191,7 @@ pub(super) unsafe fn operation(
                         s.note(q, b"RustCodegen duplicate module source")?;
                         return Ok(nil_value);
                     }
+                    s.registry.revision.set(s.registry.revision.get().checked_add(1).ok_or_else(invalid)?);
                     s.registry.entries.borrow_mut().push((name_object, source));
                     return Ok(Operand::object(source));
                 }

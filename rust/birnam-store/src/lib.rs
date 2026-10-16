@@ -31,6 +31,8 @@ enum RetentionPolicy {
 
 #[repr(C)]
 struct StoreState {
+    // Process-local owner revision; never exchanged/reset with image contents.
+    revision: usize,
     facts: Vec<Fact>,
     compensation_reservations: Vec<CompensationReservation>,
     raw: bool,
@@ -49,6 +51,7 @@ struct CompensationReservation {
 impl StoreState {
     fn new() -> Self {
         Self {
+            revision: 0,
             facts: Vec::new(),
             compensation_reservations: Vec::new(),
             raw: true,

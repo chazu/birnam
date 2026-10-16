@@ -392,6 +392,9 @@ fn image_recovers_composed_generation_before_entry() {
     assert!(path.is_file(), "managed Image save failed");
     eprintln!("generation Image: returned Error and native failure compensation");
     let before = eval(b"[DispatchGeneration current]");
+    let captured = q.call(host.named(b"Integer").unwrap(), b"methodFor:",
+        &[Operand::object(unsafe { host.context.id.intern_name(b"imageGenerationValue") }.unwrap())]).unwrap();
+    let receiver = eval(b"2");
     let vt = q
         .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(host.named(b"Generation").unwrap())])
         .unwrap();
@@ -441,14 +444,21 @@ fn image_recovers_composed_generation_before_entry() {
         )
         .unwrap();
         assert_eq!(fault.calls, 1, "{failure}");
-        assert_eq!(eval(b"[DispatchGeneration current]"), before);
+        expect(b"[[[System imageSaveReport] status] = #compensationConflict]");
+        expect(b"[[Generation validateImageGeneration] isError]");
+        let stale = q.call(host.named(b"Generation").unwrap(), b"reconcileCandidate:", &[Operand::object(before)]).unwrap();
+        assert!(q.check_result(stale).is_err(), "old adoption must not regain authority");
+        let held = q.call(captured, b"invokeOn:", &[Operand::object(receiver)]).unwrap();
+        assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(held)]).unwrap().as_word(), Some(20));
+        // Explicitly reload a known image after a partial/conflicted live load.
+        host.load_image(&path).unwrap();
         expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
-        expect(b"[[imageCandidate state] = #active]");
     }
-    // A source-policy retirement failure after adoption must compensate the
-    // entire Image exchange, including the previous native generation ledger.
+    // Post-adoption failure has already changed multiple owners. Preserve those
+    // states and report incomplete recovery; never revive the previous ledger
+    // as authority over the partially loaded world.
     let store = host.named(b"Store").unwrap();
     let retract_vt = q
         .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(store)])
@@ -513,18 +523,14 @@ fn image_recovers_composed_generation_before_entry() {
         "retirement failure must reject Image recovery"
     );
     assert_eq!(fault.calls, 1, "retirement must stop at its first failure");
-    assert_eq!(eval(b"[DispatchGeneration current]"), before);
+    expect(b"[[[System imageSaveReport] status] = #compensationConflict]");
+    expect(b"[[Generation validateImageGeneration] isError]");
+    let held = q.call(captured, b"invokeOn:", &[Operand::object(receiver)]).unwrap();
+    assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(held)]).unwrap().as_word(), Some(20));
+    host.load_image(&path).unwrap();
     expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
     expect(b"[[2 imageGenerationValue] = 20]");
     expect(b"[[imageGenerationClosure value] = 21]");
-    expect(b"[[imageCandidate state] = #active]");
-    q.evaluate(
-        b"[imageCandidate rollback]",
-        Path::new("<after-failed-image>"),
-        None,
-    )
-    .unwrap();
-    expect(b"[[2 imageGenerationValue] = 10]");
     child(&path, "mapped");
     child(&path, "rebuild");
     fs::remove_dir_all(dir).unwrap();

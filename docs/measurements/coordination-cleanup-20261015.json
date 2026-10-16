@@ -1,0 +1,254 @@
+{
+  "date": "2026-10-15",
+  "baseline_commit": "1781d8e6",
+  "completed_slice_commits": [
+    "b1a6f64f",
+    "891f7c0a",
+    "14bd6d95"
+  ],
+  "fourth_slice": "qualified working changes before commit",
+  "production_sources_match_prefix": [
+    "rust/birnam-host-entry/src/worker.rs",
+    "rust/birnam-codegen-runtime/src/lib.rs",
+    "rust/birnam-generation/src/candidate_ledger.rs",
+    "rust/birnam-image/src/native.rs",
+    "rust/birnam-generation/src/candidate_recovery.rs",
+    "rust/birnam-host-entry/src/image.rs",
+    "rust/birnam-host-entry/src/lib.rs",
+    "rust/birnam-generation/src/candidate.rs",
+    "rust/birnam-generation/src/registry.rs",
+    "rust/birnam-store/src/native.rs",
+    "rust/birnam-store/src/lib.rs",
+    "rust/birnam-generation/src/lib.rs",
+    "rust/birnam-id/src/id/native_id/registries.rs",
+    "rust/birnam-generation/src/candidate_transaction.rs",
+    "rust/birnam-host/src/image.rs",
+    "rust/birnam-host-entry/src/startup.rs",
+    "rust/birnam-codegen-runtime/src/image.rs"
+  ],
+  "source_sha256": {
+    "docs/design/coordination-cleanup.md": "936b085ec0c08e4d6b2be9f175df33188564f664461d65555f36b2b74fbb0c35",
+    "docs/design/minimal-mutation-and-coordination.md": "f2f29087ca8a97b8e25bd9b1279d381bc3718a19613c65445baf4bef86c26835",
+    "docs/design/optional-store-and-relational.md": "61ecccd07a55a028b321acec0e158d4a1048647804fd9220753133dc2e94f858",
+    "docs/design/store-refactor-concerns.md": "da138c2319ba2f093b5863b374d575ffb567cf0ee7e1ac348d06e27c7c2e1726",
+    "formal/semantics/lean/SemanticsAudit.lean": "6ee32229aeb0ae767d37ef46868f9aad072235a88198931f1eaf682b6169113a",
+    "formal/semantics/lean/SharedInvocation.lean": "7dd243c2870f18c6b21e61e62af3fb02a67dda7e4eff728a34bbe0b66fdbea5c",
+    "formal/semantics/tla/ImageInverse.tla": "7ae9d343132b71b4de896adc293eea112e31b4893635c969a5a9392c6f55f34b",
+    "formal/semantics/tla/ImageInverseDictionary.cfg": "ab02c1d92c9f83928e8e3c52a8ead95c8c00e7ead0ce5aaa0d4c1684dae687c0",
+    "formal/semantics/tla/ImageInverseGlobals.cfg": "fd4836e666ba62b90d3b0ab4f8793a260e76826ce6ff89216e10aecc471d95fb",
+    "formal/semantics/tla/ImageInverseReplay.cfg": "96d7a2f01ee904aeaa7ec739aeec89800489dd28b63d62ba11c26a86277a7409",
+    "formal/semantics/tla/ImageInverseSafe.cfg": "72e6f825b38e5fa835f73d48a9aa9fe44fcb7d5991ec2242b531c05a96728b66",
+    "formal/semantics/tla/ImageInverseSources.cfg": "130231e632fd81af6901d8237ba1bd3c91d27e474c64addad765a3a5e80683f1",
+    "formal/semantics/tla/ImageInverseStore.cfg": "dacbca6e570e636bea01fc6ab239afbb3a6d9cda0bffe31cc4878efadadf7fc7",
+    "rust/birnam-codegen-runtime/src/image.rs": "2bb4e085e4f57eb3bcb3a51b04d4b6e4d540d38e71cae28368b0f63896ccc5be",
+    "rust/birnam-codegen-runtime/src/lib.rs": "006ff03891b7072378d94d9f0144be2372f34e81f94b8cb6db7f2c99911da625",
+    "rust/birnam-generation/README.md": "73f780f971a1d68db424bf59fcf4bd05de0820583b49dc35432082e32841d773",
+    "rust/birnam-generation/src/candidate.rs": "1d0f95afb8bf96eebdc37015f930c4f219e3513bf18bbdde9f1a6f0298aae82f",
+    "rust/birnam-generation/src/candidate_ledger.rs": "4c6373465aae98f5c504dfdd94df9e8221cae7dd3c35dc02d5095e2c81f8ae1f",
+    "rust/birnam-generation/src/candidate_recovery.rs": "c5223cb86b2af80800de09a9d696e94759eefd8b4fb5197d245bddbc8d215641",
+    "rust/birnam-generation/src/candidate_transaction.rs": "6b65a02843e68c0d42b0e8f420d0de2fe0c6357be602642202b57167b0425ec7",
+    "rust/birnam-generation/src/lib.rs": "d7802e0b188b73cfdfcb6940e7a774ce4a2e56365f7b81f2e575c078d167505e",
+    "rust/birnam-generation/src/registry.rs": "23e1738069d46d3921e93181ee5f29e52150052e6e78182ef2136547e3934934",
+    "rust/birnam-host-entry/README.md": "6a71fbe2d6f00b03e84435822452c3ab365b64101b1a8ace1072fe44c83d4e47",
+    "rust/birnam-host-entry/src/image.rs": "d2f116c24c3a0209e4ab3125f6252d3ae40727dcc2cc6dce5a62e292c700eb2b",
+    "rust/birnam-host-entry/src/lib.rs": "ab2f3b327c4c4e9516020f74b79c26e5a8b2895dadee8c49da858bfdf66ed26e",
+    "rust/birnam-host-entry/src/startup.rs": "61c1609ff30ad80435d7bb355e66b7bb8da254006500c7be0d16c37d7f9b495a",
+    "rust/birnam-host-entry/src/worker.rs": "663bebebabe8ddfc93c2a68b81363c16347cb2c5993f656f1678a18cb243333a",
+    "rust/birnam-host/src/image.rs": "c888d14f8b3f4891b4045c49e201f667d544b5c0bd5300d30372f0a505d0676d",
+    "rust/birnam-host/src/lifecycle_test.rs": "1bd32376d60b71b8bcb5a2df0677dc901db166bdbd50133bef0b2ef6cf7df940",
+    "rust/birnam-id/src/id/native_id/registries.rs": "47db4a96134d49c22587b46843df534628f8dabc11c82940976cbea16a7ae158",
+    "rust/birnam-image/README.md": "5b754ca503b2532e2759317ebd8ff12996a150b335affb37a69f25193b30d82f",
+    "rust/birnam-image/src/native.rs": "6292be07e2a637f6d1a4de693d812ff0727d399f1285825a9f1241e58f7f70d7",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "51ec0c6036ee0956646e96c5c7001a22fc7107d891cff8c0cbda0ed47547bcb6",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "e81c34159c013863b37710fb94a73d9403c227362eaed885f027df09fcf5a024",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "1e710da464c2f069ecc5ea2799b646bf8f70b0188767dabf14dbec58b091b7e6",
+    "rust/birnam-siphon/tests/image_recovery_conflict.rs": "5648d06700b877420a210fa97233c8b4a2920258e078626f0f181a71237c8a14",
+    "rust/birnam-siphon/tests/image_recovery_owners.rs": "00163526e8bed722c2e5450b92de11d0904dc96fb3732da1aed6d349b973df03",
+    "rust/birnam-siphon/tests/method_observation.rs": "4082d05a9ec61d866e960daf7ca86982fd3f7d3908dea94e17671ea56dd55218",
+    "rust/birnam-siphon/tests/publication_contract.rs": "1ad7b8dbbd6cb0daaf3e28ce22d2f560ff365659603cb40a3b18ee0b78990420",
+    "rust/birnam-siphon/tests/store.rs": "90fc59a6a4158995184fcf42842e8ed69a6736b4c15d0e0525502d1b87958b33",
+    "rust/birnam-store/README.md": "d973c939b23cd016d690756c6d6e14034d1ac933f13fed5e9ac388ac0944b720",
+    "rust/birnam-store/src/lib.rs": "332d9c0e5278a05bdfe8cd22a234d04d36c021cff8c7bd6ceb1ce6cf02b7d7b0",
+    "rust/birnam-store/src/native.rs": "75f9dbe6babf88336a9ec99120b7c737ee98ab70cee3ea15785b50ca4ae00f94",
+    "scripts/check-rooting-model.py": "feee2865b6dbe05efb2d4bd879eedbf56404465711b48ada583391219f86b3ee",
+    "scripts/native-message-test.sh": "e5e3c96570087de8bb42fd08f35aee63e703bc6cb62942f3f4d94d57a81665a2"
+  },
+  "formal": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/formal/results/rooting-ysyinj31/summary.json",
+    "sha256": "ceed2dfe01343640af8d623fa2f9a34bfe2c2cd993e6eaf2efb96e7ed23c5678",
+    "theorems": 313,
+    "rejected_mutations": 84,
+    "tlc_outcomes": 199
+  },
+  "logs": {
+    "store-unit.log": {
+      "path": "/tmp/birnam-cleanups/store-unit.log",
+      "exit_code": 0,
+      "sha256": "2b3490e420db2ce0f4c55b1c51857ebf35053d0d6da10fd9a195b33f9b068da7"
+    },
+    "mirror-native.log": {
+      "path": "/tmp/birnam-cleanups/mirror-native.log",
+      "exit_code": 0,
+      "sha256": "29520e4e6542ae99d2001c5fa38aeb6515c56039cb32ea60c1bc9997185ad865"
+    },
+    "build-mirror.log": {
+      "path": "/tmp/birnam-cleanups/build-mirror.log",
+      "exit_code": 0,
+      "sha256": "1a9796ee4c0c08fbedf0c1063788915eea4c3b0474eaac2bd0ebf108df57ac5b"
+    },
+    "generation-native.log": {
+      "path": "/tmp/birnam-cleanups/generation-native.log",
+      "exit_code": 101,
+      "sha256": "c3f433b1ff209b4a1b288f763c4e062b5966b9be83cc82f948fbab2249d89db5"
+    },
+    "generation-final-native.log": {
+      "path": "/tmp/birnam-cleanups/generation-final-native.log",
+      "exit_code": 0,
+      "sha256": "865fae11cc5fab9cf2ce89cd8ae1cdc43373308bdc69191eefe5260555a62dd9"
+    },
+    "transaction-final.log": {
+      "path": "/tmp/birnam-cleanups/transaction-final.log",
+      "exit_code": 0,
+      "sha256": "4d82c4aeffb911bdc480b3ebe7c54738bf6f0086ac3517e016d5d096d7b1afbf"
+    },
+    "generation-cli.log": {
+      "path": "/tmp/birnam-cleanups/generation-cli.log",
+      "exit_code": 0,
+      "sha256": "639d92a5b8e8ba0337a16660d00a9cc8590a91c91b6496013a54c1c4c797ab30"
+    },
+    "build-startup.log": {
+      "path": "/tmp/birnam-cleanups/build-startup.log",
+      "exit_code": 0,
+      "sha256": "0c3d459493ba9218403905c76171b5014847a63c9059203fa8decc7ea4c830e6"
+    },
+    "startup-no-undo.log": {
+      "path": "/tmp/birnam-cleanups/startup-no-undo.log",
+      "exit_code": 0,
+      "sha256": "62041258742a8005612002baeae6fe3a5a6bc2842a25bb06b3e06303cb091816"
+    },
+    "host-image.log": {
+      "path": "/tmp/birnam-cleanups/host-image.log",
+      "exit_code": 0,
+      "sha256": "7893a0627bb4f5c37d67eb44cd0e1316bc6557a30b79dc85e9ad4342e77028b5"
+    },
+    "worker.log": {
+      "path": "/tmp/birnam-cleanups/worker.log",
+      "exit_code": 0,
+      "sha256": "99aa0423849d5f655c81b374db24fa6cb7ff22ab09a51adecda872dc40e40289"
+    },
+    "host-image-isolated.log": {
+      "path": "/tmp/birnam-cleanups/host-image-isolated.log",
+      "exit_code": 0,
+      "sha256": "99e70d1ee0a34af6cceeada8cb4dd3bd7ea44bf60500eb16ebdd5db7495407fc"
+    },
+    "live-negative.log": {
+      "path": "/tmp/birnam-cleanups/live-negative.log",
+      "exit_code": 101,
+      "sha256": "6b10c0966512e9ba68726c5166144bcc375254669b1c24aa4332f4839311367a"
+    },
+    "recovery-native.log": {
+      "path": "/tmp/birnam-cleanups/recovery-native.log",
+      "exit_code": 0,
+      "sha256": "9c9d0f5b93b9f0d625ad094edf8a6e3fc4305d81505a7572fc58371a5d36f36f"
+    },
+    "recovery-owners.log": {
+      "path": "/tmp/birnam-cleanups/recovery-owners.log",
+      "exit_code": 0,
+      "sha256": "866e428db6ca48a8139f2fc72541bf00784fa0bcd115e0eea732ade3388ef07a"
+    },
+    "recovery-source-nil.log": {
+      "path": "/tmp/birnam-cleanups/recovery-source-nil.log",
+      "exit_code": 0,
+      "sha256": "878c610d2d8a72c17954a9e5eaee0b36dc74a4a7e71458c1554759eeea092fa3"
+    },
+    "recovery-authored.log": {
+      "path": "/tmp/birnam-cleanups/recovery-authored.log",
+      "exit_code": 101,
+      "sha256": "d10ea153a43048d52f3c71cc14acbc3b3d13f132674386cd88366dcda1218b5c"
+    },
+    "recovery-authored-target.log": {
+      "path": "/tmp/birnam-cleanups/recovery-authored-target.log",
+      "exit_code": 0,
+      "sha256": "3560ebdbdd8efbf53e192ba1577bccf6fc4db9985f4d6e9f5d0311378f239990"
+    },
+    "image-native.log": {
+      "path": "/tmp/birnam-cleanups/image-native.log",
+      "exit_code": 0,
+      "sha256": "4153337e38d9e4a03de3f6d2b4caa8ed7afdc7771fc7d3723c79a7bca1fe8d4d"
+    },
+    "formal-recovery.log": {
+      "path": "/tmp/birnam-cleanups/formal-recovery.log",
+      "exit_code": 0,
+      "sha256": "f8546fe607c1a0714a0c32da4db3992925920a756d8395f2bc4b7102b2768f32"
+    },
+    "language-final.log": {
+      "path": "/tmp/birnam-cleanups/language-final.log",
+      "exit_code": 1,
+      "sha256": "98e621bb591cbc1c373840fe7c3f3e202c9542184cbd2bc8267a05941e84dfd3"
+    },
+    "units-final.log": {
+      "path": "/tmp/birnam-cleanups/units-final.log",
+      "exit_code": 0,
+      "sha256": "1558f9abc01cf03b7f91d1ce8cfd36be230818aa970de9b814ba9e8372b7b182"
+    },
+    "private-target-diagnostic.log": {
+      "path": "/tmp/birnam-cleanups/private-target-diagnostic.log",
+      "exit_code": 0,
+      "sha256": "6fe10f2ec62ec0fef068b9e2106da2203eda08ff7c797535a562ca09441ef808"
+    },
+    "build-delivery.log": {
+      "path": "/tmp/birnam-cleanups/build-delivery.log",
+      "exit_code": 0,
+      "sha256": "e65c4f6d9626cd7c1b523927bd09e90175dcf638fcfc621de46733471d60adcf"
+    },
+    "host-delivery.log": {
+      "path": "/tmp/birnam-cleanups/host-delivery.log",
+      "exit_code": 0,
+      "sha256": "311b1775790ad329edaf1f6c8a2dd2f9b442f16d4c68872af6fc70c6fef34131"
+    },
+    "postchecks-delivery.log": {
+      "path": "/tmp/birnam-cleanups/postchecks-delivery.log",
+      "exit_code": 0,
+      "sha256": "96593a23f5ecc9c4e3ba53511b1014dc86cf5e2131408c25bd0839611b63b8f2"
+    },
+    "error-delivery.log": {
+      "path": "/tmp/birnam-cleanups/error-delivery.log",
+      "exit_code": 0,
+      "sha256": "3f26c6a31a14d41351d242c34d078e4b2421e7ad7ad51b6d4d78d6fd71d55ab4"
+    },
+    "floor-delivery.log": {
+      "path": "/tmp/birnam-cleanups/floor-delivery.log",
+      "exit_code": 0,
+      "sha256": "b78a9e8baab8f8cb64316143211a55e9c7a970addad4b3534d6da5baf17bac3a"
+    }
+  },
+  "validation_sequence": "826 assertions passed on the preceding full build; its local-Cell postcheck exposed the live alias admission defect. Final build passed remaining postchecks, managed image/lifecycle modes, ordinary Error/bound-nil/owner tests and Store-absent floor. Broad native roundtrip/resave and authored-target tests preceded the alias correction.",
+  "corrections": [
+    "Explicit observation fixtures now register their observer.",
+    "Generation drift is reconciled explicitly; failure injection moved from Store to dictionary owner.",
+    "Host tests run in separate processes with required image fixture environment.",
+    "Authored heap-target regression retains the actual restored callback target instead of assuming its old Global alias already switched.",
+    "Live recovery tracks its own prior writes across exported aliases; private-vtable creation is allowed but conservatively non-invertible."
+  ],
+  "limits": [
+    "Live conflicts preserve current owner state and report compensationConflict; the world may be partially loaded.",
+    "Imported Globals-owner replacement, foreign-wrapper attempts and unclassified lifecycle writes can prevent complete recovery; stronger selective recovery requires owner receipts.",
+    "This does not complete remaining Store owner migrations or full optional bootstrap.",
+    "No performance improvement, release, user install or push is claimed."
+  ],
+  "build": {
+    "prefix": "/tmp/birnam-cleanups/prefix",
+    "receipt_sha256": "cfafb62a831cbe4f25e48b360c28dd1e87fbf3cac1aab3a5953b360b8b26977a",
+    "source_manifest_sha256": "d40c36dc844b1827024347ca98b73c4ae9c60570ffc9d66307c3b23f6390da60",
+    "staged_manifest_sha256": "ef9ca7a85599358b192d4489d6752c07fdfe5c781e9da02229b8c59658d1fcde",
+    "libraries": {
+      "libbirnam_id.dylib": "25341833593538dc480b9829d38d527c3eb62ea09a8900b7b42e0fb4a443f051",
+      "libbirnam_store.dylib": "bcd9117c3ac1579a76d38740aeda1bad6b87d434f255898d523c1d7e988212ef",
+      "libbirnam_generation.dylib": "1a85493955d0b26260074b3a9c9994463a5c5aa745fdbf919f3d94644a61fbc5",
+      "libbirnam_codegen_runtime.dylib": "984efa3fd97c8f4f4542a4796d51784662a12dfa77114c95c5c35e96b64c7500",
+      "libbirnam_image.dylib": "3e521e25abad19c45651d4d69b66f05a0ef5fbe27dc8bcb95d5a963d1254c4fa",
+      "libbirnam_host_entry.dylib": "d099dcad19f6eb8efaddaa0235c49acd8bb079a4ace8d4bb12c807751abdf96c"
+    },
+    "metrics_tcc_sha256": "81bdb2b7c41fabd2bce143662ca32615c404a15c69834fbc63dcefcd7b0d9758"
+  }
+}

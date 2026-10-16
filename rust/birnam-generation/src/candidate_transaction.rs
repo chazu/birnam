@@ -914,7 +914,7 @@ pub(super) unsafe fn commit(
         }
         // Everything that can call out has completed. Install native ownership
         // together; no borrowed registry crosses an outgoing message.
-        *s.registry.entries.borrow_mut() = new_sources;
+        s.registry.replace_entries(new_sources);
         if !rollback {
             s.candidates
                 .entries

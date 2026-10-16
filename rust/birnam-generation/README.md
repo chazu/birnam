@@ -131,3 +131,10 @@ three cycles; both live TCC Unit counts and relocated native bytes return to the
 receiver baseline, then to zero after releasing the receiver. This replaces
 `scripts/method-unit-lifetime-smoke.sh` and requires TCC resource metrics, enabled
 by `scripts/native-message-test.sh`.
+
+Image source staging now retains an owner revision. `swapSourceRegistry` publishes
+only at its captured revision; `rollbackSourceRegistry` restores only its own still
+current publication. A later record/seal or transaction replacement is preserved.
+`abandonImageRecovery` discards suspended/current preparation and adoption authority
+after incomplete compensation; it does not undo the live world's changes. Entered
+Methods retain their code independently through Execution.

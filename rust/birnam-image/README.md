@@ -69,37 +69,41 @@ image-v8 additionally checksums the bundle. Compatible loading uses TCC
 These are trusted native artifacts, with the same ABI and code-ownership contract
 as generated in-memory code.
 
-Image builds facts in an independent Store, roots old callable Methods, then
-exchanges Store state using `swapImageStateWith:`. Method publication retains
-Store's authorization and observation hooks, including removal of later source
-bindings on resident exports that are absent from the snapshot. Failure restores attempted bindings,
-the prior source registry and the complete previous Store state. This compensation
-does not consume additional fact capacity or reevaluate source. Ordinary external
-effects performed by observer callbacks are outside that state compensation.
+Image builds facts in an independent Store. Fresh startup publishes it under the
+explicit discard-on-failure contract below. Advanced live restoration retains old
+Methods and uses conditional owner inverses. Id checks target, entry and epoch in
+one operation; Store checks both process-local revisions before exchanging state;
+the source registry checks its staged revision. Ordinary dictionary publication
+has no Store authorization/observation dependency.
 
-Alien wrapper recipes retain relocatable objects and target/selector identities.
-Image maps and publishes those wrappers inside the same recovery extent, binding
-current foreign addresses without compilation. Failed recovery restores their
-previous dictionary bindings with the rest of the snapshot transaction.
+A failing callback's later dictionary, Global, explicit fact or source-registry
+edit must survive. Image never resets resident Globals storage. It preserves the
+original native failure or ordinary Error and reports `#compensationConflict` in
+`imageSaveReport` if complete recovery cannot be established. Such a world can be
+partially loaded. Entered/captured code remains retained, while stale preparation
+and adoption capabilities are abandoned and composition identity is cleared.
 
-Map identity keys are rehashed for the admitted Map representation family,
-including shared and inherited private behaviors. ObjectModel resolves their
-image layouts through registered behavior ancestry.
+Recovery is conservative when Globals has changed owner, foreign wrappers have
+been attempted, or lifecycle writes cannot be identified as the operation's own.
+These cases retain current state and report conflict instead of pretending that a
+whole-world snapshot can safely be restored. Complete selective recovery there
+requires owner-provided operation receipts. No arbitrary callback is replayed.
 
-Managed Image saves validate the generation ledger before snapshotting and again
-before file publication. Drift rejects the save and preserves the existing file.
+Alien wrapper recipes retain relocatable objects and target/selector identities;
+Image maps them using current foreign addresses without compilation. Map identity
+keys are rehashed for the admitted representation family, including private
+behaviors. ObjectModel resolves image layouts through registered ancestry.
 
-Retirement of saved generation ancestry preserves the first Store error; a
-retirement failure rejects and compensates recovery rather than publishing a
-partly retired graph.
+Snapshots record current executable code. `prepareImageSnapshot` reconciles
+managed metadata and marks drift descriptively; strict `validateImageGeneration`
+remains available for an explicit managed-revision check. Snapshot observation
+stamps reject changes during saving and preserve the existing destination.
 
-Generation recovery participates in the same publication transaction. Codegen
-suspends old transient candidate capabilities before dispatch changes; the authored
-CompiledUnit policy creates composed components and retires saved rollback ancestry
-after restoration. Only successful adoption releases the old capability roots.
-Returned Errors and native failures compensate facts, sources, bindings and the old
-ledger together. Native-free rebuilds derive composition identity from the validated
-program, binding and selection inventories.
+Codegen suspends old transient candidate capabilities during live publication.
+Authored CompiledUnit policy creates composed components and retires saved ancestry.
+Successful recovery releases old capability roots; conflict does not restore those
+capabilities as authority over a partially loaded world. Native-free rebuilds derive
+composition identity from validated program, binding and selection inventories.
 
 No service table, foreign payload access, global GC suppression or candidate
 framework is introduced. Roots survive collecting owner calls; entered, suspended

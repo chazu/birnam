@@ -74,3 +74,95 @@ errors, asynchronous results, timeout/crash, orphan reaping and authored service
 cancellation. Isolated Host tests passed for bootstrap without compilation, saved
 code/rooting and mapped generation resave/rollback. Broader rebuilt-generation
 qualification continues alongside the following recovery slice.
+
+## 4. Conflict-safe live recovery
+
+The original dictionary/Global/fact erasure regression now passes in both image
+modes. The following owner conditions replace unconditional checkpoint restoration:
+
+- Id `restoreBinding:of:in:expected:previous:atEpoch:` takes native entry/Unit
+  operands and an observed native epoch. Target association, epoch and entry are
+  checked together with the inverse inside Id, with no intervening send. It returns
+  the committed epoch or Unit for conflict. Optional notification runs after commit;
+  a subsequent inverse cannot overwrite a notification's later dictionary write.
+- Store `imageStateRevision` observes process-local mutation, including policy and
+  reservation changes that need not advance the durable fact basis. The conditional
+  `swapImageStateWith:atRevision:stagedRevision:` checks both owners and exchanges
+  state atomically. Revisions remain attached to their Store identities. A callback
+  edit makes a later exchange fail instead of overwriting explicit facts.
+- Generation's existing source stage records its owner revision. Publication and
+  `rollbackSourceRegistry` compare it inside the registry; a later source registration
+  survives recovery. Staging roots retain both sides until completion.
+- Image obtains the planned Method before installation. It records only verified
+  owner edits, detects extra dictionary changes including ABA, and never infers its
+  expected write solely from the post-callback dictionary.
+- Image does not reset resident Globals storage: it did not write that storage.
+  Callback edits to it must survive. If the captured Globals owner changed during
+  restoration, dictionary compensation is conservatively declined to preserve the
+  current owner's access paths.
+
+Independent source/Store inverses are attempted even when dictionary recovery
+conflicts. Failure of an inverse also counts as conflict. The original native
+failure or ordinary Error is preserved; `System imageSaveReport` answers status
+`#compensationConflict` when complete recovery cannot be established. The composition
+identity is cleared and old prepared/adoption capabilities are abandoned. No user
+callback is replayed. This is scoped explicit-operation recovery, not a universal
+transaction service or a guard around ordinary language sends.
+
+The guarantee is preservation, not arbitrary-callback atomicity. A conflicted live
+load can leave a partially loaded world. Foreign-wrapper publication still lacks
+an exact inverse capability, so a failure after attempting it conservatively retains
+the current dictionary set and reports conflict. Similarly, imported Globals-owner
+replacement and unclassified lifecycle fact edits can prevent complete recovery.
+This deliberately replaces the old unconditional promise with an honest result;
+maximal selective recovery for those domains requires their own operation receipts.
+Store/Relational remain optional facilities in the design; remaining compiler,
+recipe, lifecycle and process owner migrations and full Store-absent bootstrap are
+separate work.
+
+### Qualification and limits
+
+The three preceding commits are `b1a6f64f` (opt-in observation), `891f7c0a`
+(direct Generation writes), and `14bd6d95` (startup/live separation).
+The recovery implementation and its evidence are committed as the fourth slice.
+
+Qualification passed:
+
+- 826 language assertions, scratch/Reflect/code-inspector checks, then the remaining
+  Cell/slot/registry/LSP/Globals postchecks on the final rebuilt runtime.
+- Native conditional-owner tests: exact inverse, already-restored entry, absence,
+  ABA, target reassociation, collecting reentry from inverse notification, and
+  Store policy changes that leave the durable basis unchanged.
+- Mapped/rebuilt callback preservation for dictionary edits, explicit facts,
+  Globals (including bound nil), and introduced source registrations. Ordinary
+  Error identity and native failure status/detail both survive recovery.
+- Authored Globals with a late restored heap target in both image modes. The test
+  retains the actual target passed to the callback; a partial load need not yet
+  have switched the Global that previously named the resident object.
+- Native image roundtrip and twenty repeated resaves with a fixed live code set.
+  Final Host qualification additionally covers mapped/rebuilt/resaved managed
+  images, successor activation/rollback, adoption/retirement failures, rejection
+  of old authority after conflict, captured Method lifetime, and explicit recovery
+  by reloading a known image.
+- Ordinary mutation on a floor physically lacking Store, Relational and Generation:
+  inheritance, warmed lookup, live implementation sends, captured/entered Methods,
+  native removal, ABA and precise GC.
+- 25 relevant Rust unit tests; 313 Lean theorems, 84 rejected mutations and 199
+  expected TLC outcomes. Models prove their abstract owner conditions, not the
+  whole compiler or runtime.
+
+The original preservation regression failed before the fix. Qualification also
+caught valid exported aliases denoting the same dictionary entry: the live loader
+now compares subsequent writes against its own earlier publication. Legitimate
+private-vtable installation remains accepted, with the actual table rooted; its
+association is conservatively non-invertible if later recovery fails. These are
+explicit-operation data checks, not method-identity guards on ordinary sends.
+
+Broad native roundtrip/resave and authored-target tests preceded the final alias
+correction. The final build reran the affected Host image/lifecycle paths, Error/
+bound-nil/owner regressions, all remaining language postchecks and the absent-owner
+floor. The receipt records this sequence rather than claiming every gate reran
+against the final binary. No user installation, release or push was performed.
+
+See the [qualification receipt](../measurements/coordination-cleanup-20261015.json)
+for source hashes, log hashes and build provenance.

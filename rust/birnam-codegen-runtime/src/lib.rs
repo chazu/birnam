@@ -701,6 +701,9 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"preparePortableImageSources:",
                 Op::Image(image::Op::PrepareSources),
             ),
+            (vt, b"rollbackPortableImageSources".as_slice(), Op::Image(image::Op::RollbackSources)),
+            (vt, b"preparedPortableImageBinding:".as_slice(), Op::Image(image::Op::Prepared)),
+            (vt, b"abandonPortableImageRecovery".as_slice(), Op::Image(image::Op::AbandonRecovery)),
             (
                 vt,
                 b"swapPortableImageSources",

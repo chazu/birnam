@@ -23,6 +23,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         (b"behaviorView".as_slice(), behaviors as native::Method),
         (b"selectorsIn:".as_slice(), selectors as native::Method),
         (b"bindingOf:in:".as_slice(), binding as native::Method),
+        (b"restoreBinding:of:in:expected:previous:atEpoch:".as_slice(), restore_binding as native::Method),
         (b"methodChangesTo:".as_slice(), method_changes_to as native::Method),
         (b"addMethod".as_slice(), dictionary_add as native::Method),
         (b"removeMethod:".as_slice(), dictionary_remove as native::Method),
@@ -225,6 +226,40 @@ unsafe extern "C" fn binding(
             .map(|index| record.values[index])
             .unwrap_or_else(Operand::unit),
     )
+}
+// A conditional inverse is one Id operation. No outgoing send occurs between
+// checking the target/epoch/entry and changing the dictionary. Native callers
+// retain any owned Methods represented by these entries across this operation.
+unsafe extern "C" fn restore_binding(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    arguments!(args, count, [key, target, behavior, expected, previous, epoch]);
+    objects!(key, target, behavior);
+    let Some(epoch) = epoch.as_word() else { return invalid(); };
+    let decode = |v: Operand| if v.kind() == native::UNIT { Some(None) }
+        else { v.as_entry().filter(|e| e.method.is_some()).map(Some) };
+    let Some(expected) = decode(*expected) else { return invalid(); };
+    let Some(previous) = decode(*previous) else { return invalid(); };
+    let state = unsafe { &*context.cast::<State>() };
+    let tables = unsafe { &mut *state.dictionaries };
+    if !tables.is_registered(behavior) { return invalid(); }
+    let actual = if tables.is_registered(target) { Some(target) }
+        else { unsafe { (&*state.memory).vtable_of(target) } };
+    if actual != Some(behavior) || tables.binding_epoch() as usize != epoch || epoch == usize::MAX {
+        return done(Operand::unit());
+    }
+    let record = tables.record(behavior);
+    let current = record.key_index(key).map(|i| record.values[i]);
+    let current = match current { None => None, Some(v) => match decode(v) {
+        Some(entry) => entry, None => return done(Operand::unit()),
+    }};
+    if current == previous { return done(Operand::word(epoch)); }
+    if current != expected { return done(Operand::unit()); }
+    if let Some(entry) = previous { tables.add_method(behavior, key, entry); }
+    else { tables.remove_method(behavior, key); }
+    let committed = tables.binding_epoch() as usize;
+    // Notification is after commit. Its reentrant writes survive; a subsequent
+    // conditional inverse sees an epoch different from this returned value.
+    if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
+    done(Operand::word(committed))
 }
 unsafe extern "C" fn lookup(
     context: *mut c_void,

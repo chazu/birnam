@@ -253,7 +253,7 @@ different answers about authority, history or inspection in each module.
 | Contracts, private scratch and reflection | Ownership decision, scanner scratch cleanup, local Cells, binding/dictionary/slot inventories | Apply the same discoverable-owner contract to remaining public state. |
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
 | Ordinary records and registries | Module registry, LSP state and Globals bindings | Log, Config, HTTP request and process-result fields still use `db cellFor:`. These are not completed by the registry migrations. |
-| Step 5: construction and publication | Independent Method binding constructor, authored source policy, shared resumable artifact/image templates | Direct Reflect mutation, removal of default authorizer/mirror dependencies, descriptive revision metadata and explicit Generation/image contracts. |
+| Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Stronger selective live recovery for imported Globals/foreign/lifecycle domains requires explicit owner receipts. |
 | Step 6: durable/coordinated and process-local state | Globals already participates in owner-based recovery | Compiler metadata, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
@@ -300,9 +300,12 @@ Reflect definition/removal and image binding installation through dictionary own
 without a mandatory publisher or running-generation veto. Edited worlds can be saved
 and restored; drifted managed metadata stays descriptive and cannot reactivate old
 capabilities. Explicit Generation transactions retain their current checks/journals.
-Store's raw mirror observer, compiler metadata, lifecycle/recipe storage and advanced
-live-load compensation remain dependencies/work items. This is not full Store-free
-bootstrap or the complete publication refactor.
+The [coordination cleanup](coordination-cleanup.md) removes default mirror registration
+and Generation's observer handshake, separates startup from live loading, and fixes
+live recovery's erasure of callback writes using conditional owner operations.
+Conflicted live loads report partial state instead of claiming complete rollback.
+Compiler metadata, lifecycle/recipe storage and full Store-free bootstrap remain.
+The cleanup report describes the conservative live-recovery limits explicitly.
 
 ## Acceptance and remaining decisions
 

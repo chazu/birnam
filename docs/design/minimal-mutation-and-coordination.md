@@ -2,7 +2,9 @@
 
 2026-10-15. **Agreed direction and initial feasibility investigation.**
 The subsequent [ordinary editing/snapshot slice](ordinary-edit-and-snapshot.md)
-implements the first runtime cutover; the remaining steps below are still work. This supersedes the proposal to move Store's complete
+implements the first runtime cutover. The [coordination cleanup](coordination-cleanup.md)
+now implements default-mirror removal, direct Generation writes and the fresh/live
+loader split with conflict-safe recovery. Remaining owner migrations are still work. This supersedes the proposal to move Store's complete
 publication machinery into a universal `MethodPublication` owner. The user also
 selected retaining live in-place image loading as an explicit advanced feature.
 

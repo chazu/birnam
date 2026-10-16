@@ -187,4 +187,26 @@ theorem changed_snapshot_keeps_old_file (before after oldFile proposedFile : Nat
     (changed : before ≠ after) :
     finishSnapshot before after oldFile proposedFile = oldFile := by simp [finishSnapshot, changed]
 
+-- Explicit inverse admission observes owner data, never dependency Method identity.
+def imageInverse (current revision observed before expected : Nat) : Nat :=
+  if revision = observed ∧ current = expected then before else current
+
+theorem image_inverse_keeps_later_revision (current revision observed before expected : Nat)
+    (changed : revision ≠ observed) :
+    imageInverse current revision observed before expected = current := by
+  simp [imageInverse, changed]
+
+theorem image_inverse_keeps_foreign_value (current revision observed before expected : Nat)
+    (changed : current ≠ expected) :
+    imageInverse current revision observed before expected = current := by
+  simp [imageInverse, changed]
+
+theorem image_inverse_restores_owned_write (current revision before : Nat) :
+    imageInverse current revision revision before current = before := by
+  simp [imageInverse]
+
+theorem image_inverse_rejects_aba (value revision before : Nat) :
+    imageInverse value (revision + 2) revision before value = value := by
+  simp [imageInverse]
+
 end Birnam.SharedInvocation

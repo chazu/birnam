@@ -1,4 +1,4 @@
-//! Investigation: image compensation after an intervening live dictionary write.
+//! Live image failure must preserve intervening writes; startup runs no inverse.
 mod support;
 use birnam_abi::{
     Oop,
@@ -44,16 +44,6 @@ impl H {
                     .copied()
                     .map(Operand::object)
                     .collect::<Vec<_>>(),
-            )))
-        }
-    }
-    unsafe fn integer(&self, n: usize) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                self.named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(n)],
             )))
         }
     }
@@ -120,6 +110,13 @@ struct Conflict {
     side_key: Oop,
     gc: Oop,
     calls: Cell<usize>,
+    source: Option<Oop>,
+    source_name: Oop,
+    codegen: Oop,
+    roots: Oop,
+    published: Cell<Oop>,
+    held: RefCell<Vec<usize>>,
+    error: Option<Oop>,
 }
 unsafe extern "C" fn marker(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::object(c.cast()))
@@ -133,6 +130,9 @@ unsafe extern "C" fn conflict(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
             return result;
         }
         p.calls.set(p.calls.get() + 1);
+        let target = object(args[1]);
+        p.published.set(target);
+        p.held.borrow_mut().push(retain(p.id, p.roots, target));
         let vt = object(send(p.id, p.id.receiver, b"behaviorOf:", &[args[1]]));
         send(
             p.id,
@@ -159,12 +159,16 @@ unsafe extern "C" fn conflict(c: *mut c_void, r: Oop, a: *const Operand, n: usiz
                 Operand::object(p.marker),
             ],
         );
+        if let Some(source) = p.source {
+            assert_eq!(send(p.id, p.codegen, b"recordModuleSource:named:",
+                &[Operand::object(source), Operand::object(p.source_name)]).as_object(), Some(source));
+        }
         collect(p.id, p.gc);
-        Outcome::failed(881, 73)
+        p.error.map_or_else(|| Outcome::failed(881, 73), |error| Outcome::loaded(Operand::object(error)))
     }
 }
 #[test]
-#[ignore = "production modules; characterizes known image rollback conflict"]
+#[ignore = "production native modules"]
 fn image_compensation_characterizes_intervening_dictionary_write() {
     unsafe {
         let id = id();
@@ -185,17 +189,32 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             roots,
             tokens: RefCell::new(vec![]),
         };
-        h.eval(b"[Reflect defineMethod: #imageConflictProbe on: Integer as: [:self | #saved]]");
+        let authored = std::env::var_os("BIRNAM_IMAGE_AUTHORED").is_some();
+        let late = std::env::var_os("BIRNAM_IMAGE_LATE_GLOBALS").is_some();
+        if authored {
+            let image = h.text(directory().join("birnam-tools.image").as_os_str().as_bytes());
+            assert_eq!(h.call(h.named(b"System"), b"startImageMapped:", &[image]), h.named(b"true"));
+        }
+        if late {
+            h.eval(b"let ImageConflictLate := [Object clone]; [Reflect defineMethod: #imageConflictProbe on: ImageConflictLate as: [:self | #saved]]");
+        } else {
+            h.eval(b"[Reflect defineMethod: #imageConflictProbe on: Integer as: [:self | #saved]]");
+        }
         let dir =
             std::env::temp_dir().join(format!("birnam-image-conflict-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = h.text(dir.join("probe.image").as_os_str().as_bytes());
         let system = h.named(b"System");
         assert_eq!(h.call(system, b"saveImage:", &[path]), h.named(b"true"));
-        h.eval(b"[Reflect defineMethod: #imageConflictProbe on: Integer as: [:self | #before]]");
+        if late {
+            h.eval(b"[Reflect defineMethod: #imageConflictProbe on: ImageConflictLate as: [:self | #before]]");
+        } else {
+            h.eval(b"[Reflect defineMethod: #imageConflictProbe on: Integer as: [:self | #before]]");
+        }
         let codegen = h.named(b"Codegen");
         let original = lookup(&h, codegen, b"installPortableImageBinding:on:as:source:");
-        let nested = h.keep(id.intern_name(b"nested").unwrap());
+        let nested = if std::env::var_os("BIRNAM_IMAGE_BOUND_NIL").is_some() { h.named(b"nil") }
+            else { h.keep(id.intern_name(b"nested").unwrap()) };
         let mut probe = Box::new(Conflict {
             id,
             original,
@@ -206,6 +225,15 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             side_key: h.keep(id.intern_name(b"ImageConflictIndependentWrite").unwrap()),
             gc: h.named(b"GC"),
             calls: Cell::new(0),
+            source: if authored { None } else { Some(h.text(b"[Module named: #imageConflictSource requires: #[]]; true")) },
+            source_name: h.keep(id.intern_name(b"imageConflictSource").unwrap()),
+            codegen,
+            roots,
+            published: Cell::new(std::ptr::null_mut()),
+            held: RefCell::new(vec![]),
+            error: if std::env::var_os("BIRNAM_IMAGE_RETURN_ERROR").is_some() {
+                Some(h.call(h.named(b"Error"),b"kind:",&[h.keep(id.intern_name(b"originalImageFailure").unwrap())]))
+            } else { None },
         });
         for rebuilt in [false, true] {
             replace(
@@ -230,9 +258,15 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
                 b"installPortableImageBinding:on:as:source:",
                 original,
             );
-            let failure = result.unwrap_err();
-            assert_eq!((failure.status, failure.detail), (881, 73));
-            let got = h.call(h.integer(1), b"imageConflictProbe", &[]);
+            if let Some(error) = probe.error {
+                assert_eq!(result.unwrap().as_object(),Some(error),"ordinary Error identity must survive compensation");
+            } else {
+                let failure = result.unwrap_err();
+                assert_eq!((failure.status, failure.detail), (881, 73));
+            }
+            // The callback edits the restored heap target. A partial load need
+            // not have switched the Global that previously named the old object.
+            let got = h.call(probe.published.get(), b"imageConflictProbe", &[]);
             eprintln!(
                 "image-conflict rebuilt={rebuilt} callbacks={} nested_survives={} old_restored={}",
                 probe.calls.get(),
@@ -251,18 +285,18 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
                 fact == nested
             );
             assert_eq!(probe.calls.get(), 1);
-            let expected = if std::env::var_os("BIRNAM_EXPECT_IMAGE_CONFLICT_PRESERVED").is_some() {
-                nested
-            } else {
-                id.intern_name(b"before").unwrap()
-            };
-            let expected_side =
-                if std::env::var_os("BIRNAM_EXPECT_IMAGE_CONFLICT_PRESERVED").is_some() {
-                    nested
-                } else {
-                    h.named(b"nil")
-                };
+            if std::env::var_os("BIRNAM_IMAGE_STARTUP").is_none() {
+                let report = h.call(system, b"imageSaveReport", &[]);
+                assert_eq!(h.call(report, b"status", &[]), id.intern_name(b"compensationConflict").unwrap());
+            }
+            let expected = nested;
+            let expected_side = nested;
             assert_eq!(global, expected_side, "unrelated Global write must survive");
+            assert_eq!(h.call(probe.globals, b"includes:", &[probe.side_key]), h.named(b"true"), "bound nil must remain present");
+            assert_eq!(h.call(probe.db, b"hasValue:attr:", &[probe.side_key,probe.side_key]), h.named(b"true"));
+            if let Some(source) = probe.source {
+                assert_eq!(h.call(codegen,b"moduleSourceFor:",&[probe.source_name]), source, "source introduced by callback must survive");
+            }
             assert_eq!(fact, expected_side, "explicit user fact must survive");
             assert_eq!(
                 got, expected,
@@ -270,6 +304,7 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             );
             probe.calls.set(0);
         }
+        for token in probe.held.borrow_mut().drain(..) { release(id, roots, token); }
         std::fs::remove_dir_all(dir).unwrap();
         h.clear(0);
     }

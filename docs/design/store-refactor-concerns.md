@@ -5,6 +5,11 @@ prefix. **No production runtime or language semantics changed.** The accompanyin
 fixtures are experiments, not an installed publication owner. This report updates
 the sequencing in [the Store decision](optional-store-and-relational.md).
 
+The later [coordination cleanup](coordination-cleanup.md) fixes the reproduced
+callback-write loss. Its conditional recovery reports conflicts and can leave a
+partial live world; the conservative owner boundaries are documented there.
+This document retains the original investigation and proposed alternatives.
+
 ## Findings and priority
 
 | Concern | Evidence | Recommended solution |

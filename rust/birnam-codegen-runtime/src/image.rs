@@ -15,14 +15,17 @@ pub(super) enum Op {
     Sources,
     PrepareSources,
     SwapSources,
+    RollbackSources,
+    Prepared,
+    AbandonRecovery,
     Recover,
     BeginRecovery,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::SwapSources => 0,
-            Self::PrepareSources | Self::Recover | Self::BeginRecovery => 1,
+            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::SwapSources | Self::RollbackSources | Self::AbandonRecovery => 0,
+            Self::PrepareSources | Self::Recover | Self::BeginRecovery | Self::Prepared => 1,
             Self::Compile | Self::Rebuild => 3,
             Self::Mapped | Self::Install => 4,
             Self::Method | Self::Prepare => 2,
@@ -113,6 +116,15 @@ pub(super) unsafe fn operation(
                     }
                 }
                 return publication::send(s, q, b"prepareSourceRegistry:", args);
+            }
+            Op::AbandonRecovery => return publication::send(s, q, b"abandonImageRecovery", &[]),
+            Op::RollbackSources => return publication::send(s, q, b"rollbackSourceRegistry", &[]),
+            Op::Prepared => {
+                let i = s.send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?.as_word().ok_or_else(invalid)?;
+                let method = s.image_stage.borrow().as_ref().ok_or_else(invalid)?
+                    .prepared.get(i).copied().flatten().ok_or_else(invalid)?;
+                q.keep(method)?;
+                return Ok(Operand::object(method));
             }
             Op::SwapSources => {
                 {

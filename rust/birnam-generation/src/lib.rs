@@ -104,6 +104,7 @@ enum Op {
     BeginRecovery,
     Recover,
     CancelRecovery,
+    AbandonRecovery,
 }
 struct Entry {
     state: *const State,
@@ -148,6 +149,10 @@ unsafe extern "C" fn operation(
             Op::FulfillIntent => candidate::fulfill_intent(s, &q, object(a[0])?),
             Op::BeginRecovery => candidate::begin_recovery(s, &q, object(a[0])?),
             Op::Recover => candidate::recover_image(s, &q, object(a[0])?),
+            Op::AbandonRecovery => {
+                candidate::abandon_recovery(s);
+                Ok(Operand::object(s.named(b"true")?))
+            }
             Op::CancelRecovery => {
                 let yes = s.named(b"true")?;
                 candidate::cancel_recovery(s);
@@ -369,6 +374,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"beginImageRecovery:".as_slice(), Op::BeginRecovery),
             (vt, b"recoverImageGeneration:".as_slice(), Op::Recover),
             (vt, b"cancelImageRecovery".as_slice(), Op::CancelRecovery),
+            (vt, b"abandonImageRecovery".as_slice(), Op::AbandonRecovery),
+            (vt, b"rollbackSourceRegistry".as_slice(), Op::Registry(registry::Op::Rollback)),
             (
                 vt,
                 b"successorGenerationProjection:replacing:with:unit:".as_slice(),

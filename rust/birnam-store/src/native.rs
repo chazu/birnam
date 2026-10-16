@@ -180,9 +180,46 @@ impl State {
         self.stores
             .borrow_mut()
             .get_mut(&r)
-            .map(f)
+            .map(|state| {
+                state.revision = state.revision.checked_add(1).expect("Store revision exhausted");
+                f(state)
+            })
             .ok_or_else(invalid)
     }
+}
+
+// Raw native revisions belong to this owner, independently of durable fact basis.
+unsafe extern "C" fn image_revision(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        if n != 0 { return Err(invalid()); }
+        Ok(Operand::word(state(c)?.read(r, |st| st.revision)?))
+    })())
+}
+unsafe extern "C" fn conditional_image_swap(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([other, left, right]) = borrowed_slice(a,n) else { return Err(invalid()); };
+        let other = object(*other)?;
+        let left = left.as_word().ok_or_else(invalid)?;
+        let right = right.as_word().ok_or_else(invalid)?;
+        if r == other { return Err(invalid()); }
+        let _scope = Scope::new(s, vec![r,other]);
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let mut stores = s.stores.borrow_mut();
+        if stores.get(&r).ok_or_else(invalid)?.revision != left
+            || stores.get(&other).ok_or_else(invalid)?.revision != right {
+            return Ok(Operand::word(0));
+        }
+        let next_left = left.checked_add(1).ok_or_else(invalid)?;
+        let next_right = right.checked_add(1).ok_or_else(invalid)?;
+        let mut staged = stores.remove(&other).ok_or_else(invalid)?;
+        let current = stores.get_mut(&r).ok_or_else(invalid)?;
+        std::mem::swap(current, &mut staged);
+        current.revision = next_left;
+        staged.revision = next_right;
+        stores.insert(other, staged);
+        Ok(Operand::word(1))
+    })())
 }
 
 unsafe fn visit(s: &State, visitor: Oop, o: Oop) -> Result<(), Outcome> {
@@ -762,6 +799,7 @@ unsafe fn execute(
                 // This is Id's live notification, including direct native writes.
                 // No sends or Store borrows escape this invalidation operation.
                 for st in s.stores.borrow_mut().values_mut() {
+                    st.revision = st.revision.checked_add(1).expect("Store revision exhausted");
                     let old = current_value_raw(st, a[1], a[0]);
                     if !old.is_null() {
                         remove_mirror_facts(st, a[1], a[0], old);
@@ -1182,7 +1220,12 @@ unsafe fn execute(
                     return Err(invalid());
                 }
                 let mut staged = stores.remove(&a[0]).ok_or_else(invalid)?;
-                std::mem::swap(stores.get_mut(&r).ok_or_else(invalid)?, &mut staged);
+                let current = stores.get_mut(&r).ok_or_else(invalid)?;
+                let left = current.revision.checked_add(1).ok_or_else(invalid)?;
+                let right = staged.revision.checked_add(1).ok_or_else(invalid)?;
+                std::mem::swap(current, &mut staged);
+                current.revision = left;
+                staged.revision = right;
                 stores.insert(a[0], staged);
             }
             ImageBegin => s.edit(r, |st| {
@@ -1363,6 +1406,8 @@ const STORE_METHODS: &[(&[u8], Method)] = &[
     (b"imageFactsInto:", image_facts),
     (b"imageLoadBegin", image_begin),
     (b"swapImageStateWith:", image_swap),
+    (b"imageStateRevision", image_revision),
+    (b"swapImageStateWith:atRevision:stagedRevision:", conditional_image_swap),
     (b"imageAddFact:attr:value:tx:op:historied:", image_add),
     (b"imageLoadEnd:raw:oldest:policy:argument:", image_end),
     (b"new", new_store),
@@ -1469,6 +1514,8 @@ const NAMES: &[&[u8]] = &[
     b"imageFactsInto:",
     b"imageLoadBegin",
     b"swapImageStateWith:",
+    b"imageStateRevision",
+    b"swapImageStateWith:atRevision:stagedRevision:",
     b"imageLoadEnd:raw:oldest:policy:argument:",
     b"imageTransient",
     b"includes:",

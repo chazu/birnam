@@ -69,6 +69,13 @@ pub(crate) fn cancel_recovery(s: &State) {
     }
 }
 
+pub(crate) fn abandon_recovery(s: &State) {
+    s.candidates.recovery.take();
+    s.candidates.prepared.borrow_mut().clear();
+    s.candidates.ledger.take();
+    s.candidates.entries.borrow_mut().clear();
+}
+
 pub(crate) unsafe fn recover_image(
     s: &State,
     q: &Scope<'_>,

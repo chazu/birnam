@@ -20,7 +20,7 @@ mod retirement;
 mod transaction;
 pub(super) use ledger::{validate_image, prepare_image_snapshot};
 pub(super) use phase::enter_running;
-pub(super) use recovery::{begin_recovery, cancel_recovery, recover_image};
+pub(super) use recovery::{begin_recovery, cancel_recovery, abandon_recovery, recover_image};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,

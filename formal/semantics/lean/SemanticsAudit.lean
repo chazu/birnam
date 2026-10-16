@@ -253,3 +253,8 @@ import Admission
 #print axioms Birnam.SharedInvocation.changed_snapshot_keeps_old_file
 
 #print axioms Birnam.SharedInvocation.descriptive_image_cannot_reactivate
+
+#print axioms Birnam.SharedInvocation.image_inverse_keeps_later_revision
+#print axioms Birnam.SharedInvocation.image_inverse_keeps_foreign_value
+#print axioms Birnam.SharedInvocation.image_inverse_restores_owned_write
+#print axioms Birnam.SharedInvocation.image_inverse_rejects_aba
