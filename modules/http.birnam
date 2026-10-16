@@ -31,12 +31,13 @@
 
 // -- the request --------------------------------------------------------------
 
-[Globals at: #HttpRequest put: [Object clone]];
-[Reflect defineMethod: #method on: HttpRequest as: [:self | [[db cellFor: self attr: #method] value]] doc:
+[Globals at: #HttpRequest put: [ObjectModel newSlots: #[nil nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: HttpRequest as: [:self | #[#method #path #raw]]];
+[Reflect defineMethod: #method on: HttpRequest as: [:self | [ObjectModel slot: 0 in: self]] doc:
   "The request method (a String), e.g. \"GET\"."];
-[Reflect defineMethod: #path   on: HttpRequest as: [:self | [[db cellFor: self attr: #path]   value]] doc:
+[Reflect defineMethod: #path   on: HttpRequest as: [:self | [ObjectModel slot: 1 in: self]] doc:
   "The request path (a String), query string stripped."];
-[Reflect defineMethod: #raw    on: HttpRequest as: [:self | [[db cellFor: self attr: #raw]    value]] doc:
+[Reflect defineMethod: #raw    on: HttpRequest as: [:self | [ObjectModel slot: 2 in: self]] doc:
   "The raw request bytes as received (a String)."];
 
 // Parse the request line ("GET /a/b?q=1 HTTP/1.1") into an HttpRequest. The query
@@ -49,9 +50,9 @@
   let m     := [ok ifTrue: [| [parts at: 0]] ifFalse: [| "GET"]];
   let p     := [ok ifTrue: [| [parts at: 1]] ifFalse: [| "/"]];
   let clean := [[p split: "?"] first];
-  [[db cellFor: req attr: #method] set: m];
-  [[db cellFor: req attr: #path]   set: clean];
-  [[db cellFor: req attr: #raw]    set: raw];
+  [ObjectModel slot: 0 in: req put: m];
+  [ObjectModel slot: 1 in: req put: clean];
+  [ObjectModel slot: 2 in: req put: raw];
   req] doc:
   "Parse `raw` request bytes into an HttpRequest; query string stripped from the path, malformed/empty defaults to GET /."];
 

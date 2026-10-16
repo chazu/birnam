@@ -2,8 +2,8 @@
 //
 // A birnam-native module built entirely on the other two OS modules — no FFI of
 // its own. A logger carries mutable state (its level threshold and sink), held in
-// store cells keyed on the logger itself ([db cellFor: self attr: …]), so many
-// independent named loggers coexist while sharing one Logger vtable.
+// ordinary named slots on the logger. Independent named loggers share methods
+// while owning their fields; explicit Store facts remain separate data.
 //
 // Load it (from the repo root) with:
 //   [Module load: #log]    (loads Time + File first)
@@ -22,8 +22,9 @@
 [[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [Module load: #time]]];
 [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [Module load: #file]]];
 
-// The Logger prototype: methods defined once, per-instance state in cells.
-[Globals at: #Logger put: [Object clone]];
+// The Logger prototype: methods defined once, per-instance state in ordinary slots.
+[Globals at: #Logger put: [ObjectModel newSlots: #[nil nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: Logger as: [:self | #[#name #level #sink]]];
 [Reflect docModule: #log is: "Leveled logging (debug<info<warn<error) over Time + File."];
 
 // Level rank. `=` doesn't work on symbols, so compare by printString ("#warn").
@@ -35,34 +36,34 @@
   [[s = "#error"] ifTrue: [| 3] ifFalse: [| 1]]]]]]] doc:
   "Numeric rank of level `lvl` (#debug=0, #info=1, #warn=2, #error=3); unknown names rank as info."];
 
-// -- per-instance state (cells keyed on self) ---------------------------------
+// -- per-instance state (named reference slots) ---------------------------------
 [Reflect defineMethod: #name on: Logger as: [:self |
-  [[db cellFor: self attr: #name] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "This logger's tag (a String), e.g. \"log\" or \"net\"."];
 [Reflect defineMethod: #thresholdRank on: Logger as: [:self |
-  [[db cellFor: self attr: #level] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "This logger's minimum emitted rank (0-3; default 1 = info)."];
 [Reflect defineMethod: #sinkPath on: Logger as: [:self |
-  [[db cellFor: self attr: #sink] value]] doc:
+  [ObjectModel slot: 2 in: self]] doc:
   "The file path this logger appends to, or nil when writing to stdout."];
 
 // -- configuration (chainable — each answers self) ----------------------------
 
 [Reflect defineMethod: #level: on: Logger as: [:self :lvl |
-  [[db cellFor: self attr: #level] set: [self rankOf: lvl]]; self] doc:
+  [ObjectModel slot: 1 in: self put: [self rankOf: lvl]]; self] doc:
   "Set the minimum level emitted (#debug/#info/#warn/#error). Chainable."];
 [Reflect defineMethod: #toFile: on: Logger as: [:self :path |
-  [[db cellFor: self attr: #sink] set: path]; self] doc:
+  [ObjectModel slot: 2 in: self put: path]; self] doc:
   "Route this logger's output to `path` (appended, one line per message). Chainable."];
 [Reflect defineMethod: #toStdout on: Logger as: [:self |
-  [[db cellFor: self attr: #sink] set: nil]; self] doc:
+  [ObjectModel slot: 2 in: self put: nil]; self] doc:
   "Route this logger's output back to stdout (the default). Chainable."];
 
 [Reflect defineMethod: #named: on: Logger as: [:self :nm |
   let lg := [Logger clone];
-  [[db cellFor: lg attr: #name]  set: nm];
-  [[db cellFor: lg attr: #level] set: 1];
-  [[db cellFor: lg attr: #sink]  set: nil];
+  [ObjectModel slot: 0 in: lg put: nm];
+  [ObjectModel slot: 1 in: lg put: 1];
+  [ObjectModel slot: 2 in: lg put: nil];
   lg] doc:
   "A fresh logger tagged `nm`, defaulting to level info and the stdout sink."];
 
@@ -96,6 +97,6 @@
 // by hand rather than via `named:` so the module never calls its own methods at
 // load time. `[Log named: …]` makes more.
 [Globals at: #Log put: [Logger clone]];
-[[db cellFor: Log attr: #name]  set: "log"];
-[[db cellFor: Log attr: #level] set: 1];
-[[db cellFor: Log attr: #sink]  set: nil]
+[ObjectModel slot: 0 in: Log put: "log"];
+[ObjectModel slot: 1 in: Log put: 1];
+[ObjectModel slot: 2 in: Log put: nil]

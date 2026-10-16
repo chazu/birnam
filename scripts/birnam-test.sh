@@ -44,4 +44,6 @@ python3 scripts/lsp-owner-test.py "$prefix" --skip-images
 
 python3 scripts/owned-globals-test.py "$prefix" --skip-images
 
+python3 scripts/ordinary-records-test.py "$prefix" --skip-images
+
 echo "birnam-test: module suites passed"

@@ -157,6 +157,13 @@ and `--port VALUE` (or `--port=VALUE`). `String`, `Integer`, and `Boolean`
 defaults establish the scalar conversion contract. `path`, `values`, and
 `origins` expose the selected file and resolved snapshot for diagnostics.
 
+The snapshot owns named `values`, `origins`, and `configPath` slots. Use
+`Reflect slotsOf:` to inspect them or `Reflect slot:in:put:` for an explicit edit.
+Cloning copies those references; later field replacement affects only that clone.
+Config paths, logger settings, HTTP request fields, and process result fields use
+the same ordinary ownership contract. They do not automatically create Store facts.
+Explicit facts about these objects remain separate data.
+
 Keep history and other durable application data in a separate module; an
 `AppConfig` snapshot should not own those writes.
 

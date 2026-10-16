@@ -96,6 +96,23 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
             (manager,b"kindOf:",1),(manager,b"isRegistered:",1),(manager,b"isLoaded:",1),
             (manager,b"markLoaded:",1),(manager,b"loadOrder:",1),(manager,b"visit:order:path:",3),(manager,b"publishRegistry:from:",2)]);
     }
+    let mut records = Vec::new();
+    if std::env::var_os("BIRNAM_ORDINARY_RECORDS").is_some() {
+        for (name, fields, methods) in [
+            (b"Logger".as_slice(), vec![b"name".as_slice(),b"level",b"sink"], vec![(b"slotNames".as_slice(),0),(b"name",0),(b"thresholdRank",0),(b"sinkPath",0),(b"named:",1),(b"toFile:",1),(b"toStdout",0)]),
+            (b"Config", vec![b"configPath".as_slice()], vec![(b"slotNames".as_slice(),0),(b"path",0)]),
+            (b"HttpRequest", vec![b"method".as_slice(),b"path",b"raw"], vec![(b"slotNames".as_slice(),0),(b"method",0),(b"path",0),(b"raw",0)]),
+            (b"ProcResult", vec![b"stdout".as_slice(),b"exit"], vec![(b"slotNames".as_slice(),0),(b"stdout",0),(b"exitCode",0)]),
+            (b"AppConfig", vec![b"values".as_slice(),b"origins",b"configPath"], vec![(b"slotNames".as_slice(),0),(b"values",0),(b"origins",0),(b"path",0),(b"at:",1),(b"originAt:",1)]),
+        ] {
+            let mut initial=h.call(h.named(b"Vector"),b"new",&[]);
+            for _ in &fields { initial=h.call(initial,b"add:",&[nil]); }
+            let record=h.call(model,b"newSlots:parent:",&[initial,vt]);h.publish(name,record);
+            let getters = methods.iter().skip(1).take(fields.len()).map(|(selector,_)| *selector).collect::<Vec<_>>();
+            requests.extend(methods.into_iter().map(|(selector,arity)|(record,selector,arity)));
+            records.push((record,fields,getters));
+        }
+    }
     for (index,(target,selector,arity)) in requests.into_iter().enumerate() {
         let behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)]));
         let bytes=std::fs::read(programs.join(format!("{index}.bin"))).unwrap();
@@ -112,6 +129,41 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     }
     for name in [b"Store".as_slice(),b"db",b"Relational",b"Lang",b"Generation"] {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
+    }
+    for (record,fields,getters) in &records {
+        let mark=h.tokens.borrow().len();
+        let reflect=h.named(b"Reflect");let value=h.call(prototype,b"clone",&[]);
+        let instance=h.call(*record,b"clone",&[]);
+        let rows=h.call(reflect,b"slotsOf:",&[instance]);
+        assert_eq!(h.number(h.call(rows,b"size",&[])),fields.len());
+        for (index,(&field,&getter)) in fields.iter().zip(getters).enumerate() {
+            let field=h.keep(id.intern_name(field).unwrap());
+            let field_value=if index==0 { value } else { h.call(prototype,b"clone",&[]) };
+            h.call(reflect,b"slot:in:put:",&[field,instance,field_value]);
+            assert_eq!(h.call(reflect,b"slot:in:",&[field,instance]),field_value);
+            assert_eq!(h.call(instance,getter,&[]),field_value);
+        }
+        let clone=h.call(instance,b"clone",&[]);
+        let field=h.keep(id.intern_name(fields[0]).unwrap());
+        h.call(reflect,b"slot:in:put:",&[field,clone,nil]);collect(id,gc);
+        assert_eq!(h.call(reflect,b"slot:in:",&[field,instance]),value);
+        assert_eq!(h.call(reflect,b"slot:in:",&[field,clone]),nil);
+        h.clear_from(mark);collect(id,gc);
+        assert!(!present(id,instance));assert!(!present(id,clone));assert!(!present(id,value));
+    }
+    if !records.is_empty() {
+        let logger=h.call(h.named(b"Logger"),b"named:",&[h.integer(42)]);
+        assert_eq!(h.number(h.call(logger,b"name",&[])),42);
+        assert_eq!(h.number(h.call(logger,b"thresholdRank",&[])),1);
+        h.call(logger,b"toFile:",&[logger]);collect(id,gc);
+        assert_eq!(h.call(logger,b"sinkPath",&[]),logger);
+        h.call(logger,b"toStdout",&[]);assert_eq!(h.call(logger,b"sinkPath",&[]),nil);
+        let app=h.named(b"AppConfig");let key=h.keep(id.intern_name(b"setting").unwrap());
+        let map=h.call(h.named(b"Map"),b"new",&[]);let map=h.call(map,b"at:put:",&[key,logger]);
+        h.call(h.named(b"Reflect"),b"slot:in:put:",&[id.intern_name(b"values").unwrap(),app,map]);
+        assert_eq!(h.call(app,b"at:",&[key]),logger);
+        h.call(h.named(b"Reflect"),b"slot:in:put:",&[id.intern_name(b"origins").unwrap(),app,map]);
+        assert_eq!(h.call(app,b"originAt:",&[key]),logger);
     }
     if with_slots {
         let reflect=h.named(b"Reflect");

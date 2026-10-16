@@ -1,0 +1,84 @@
+[Module load: #os]; [Module load: #log]; [Module load: #config];
+[Module load: #http]; [Module load: #process]; [System load: "modules/app-config.birnam"];
+[[|
+let check := [:condition :label |
+  [condition ifFalse: [| [System printErrorText: [label , "\n"]]; [OS exit: 1]]]
+];
+let logger := [Log named: "record"];
+[check value: [[logger name] = "record"] value: "logger name"];
+[check value: [[logger thresholdRank] = 1] value: "logger default"];
+[check value: [[logger sinkPath] isNil] value: "stdout default"];
+[check value: [[logger level: #warn] == logger] value: "chainable level"];
+[Reflect slot: #sink in: logger put: "owned.log"];
+[check value: [[logger sinkPath] = "owned.log"] value: "reflected sink"];
+let alias := logger; let clone := [logger clone];
+[clone level: #debug]; [clone toStdout];
+[check value: [[alias thresholdRank] = 2] value: "clone changed original"];
+[check value: [[clone name] == [logger name]] value: "clone lost value identity"];
+[check value: [[clone sinkPath] isNil] value: "clone nil"];
+// An ordinary replaced helper may edit a different field and collect.
+[Reflect defineMethod: #rankOf: on: logger as: [:self :level |
+  [self toFile: "reentrant.log"]; [System gc]; 3
+]];
+[logger level: #info];
+[check value: [[logger thresholdRank] = 3] value: "rank send froze"];
+[check value: [[logger sinkPath] = "reentrant.log"] value: "lost reentrant field"];
+let config := [Config clone];
+[Reflect slot: #configPath in: config put: "../birnam.toml"];
+[check value: [[config resolve: "entry.birnam"] = "../entry.birnam"] value: "config resolution"];
+[Reflect defineMethod: #discoverPath on: config as: [:self | [System gc]; nil]];
+[check value: [[config refresh] == config] value: "refresh result"];
+[check value: [[config path] isNil] value: "refresh must use current discovery"];
+let requestText := "POST /route?a=1 HTTP/1.1\r\nHost: local\r\n\r\n";
+let req := [Http requestFrom: requestText];
+[check value: [[req raw] == requestText] value: "raw request identity"];
+[check value: [[req method] = "POST"] value: "request method"];
+[check value: [[req path] = "/route"] value: "request query"];
+[Reflect slot: #path in: req put: "/changed"];
+[check value: [[req path] = "/changed"] value: "request mirror edit"];
+[check value: [[[Http requestFrom: ""] path] = "/"] value: "empty request"];
+// Null and command behavior are ordinary messages; no foreign handles are needed.
+let nullPipe := [Object clone];
+[Reflect defineMethod: #isNull on: nullPipe as: [:self | true]];
+let failedCommand := [Object clone];
+[Reflect defineMethod: #popenType: on: failedCommand as: [:self :mode | nullPipe]];
+let failed := [Process run: failedCommand];
+[check value: [[failed stdout] = ""] value: "failed process stdout"];
+[check value: [[failed exitCode] = -1] value: "failed process exit"];
+[Reflect slot: #exit in: failed put: 0];
+[check value: [failed ok] value: "process result mirror edit"];
+let app := [AppConfig resolve: "record" defaults: {"port" -> 1} configPath: "/absent/birnam-records.toml" environment: [Map new] args: #["--port=9"]];
+[check value: [[app at: "port"] = 9] value: "app precedence"];
+[check value: [[app originAt: "port"] = "cli"] value: "app origin"];
+[Reflect slot: #values in: app put: {"port" -> 12}];
+[check value: [[app at: "port"] = 12] value: "app mirror edit"];
+// Explicit relational data remains independent and visible, even with the same keys.
+[#[#[logger #name] #[config #configPath] #[req #path] #[failed #exit] #[app #values]] do: [:row |
+  let record := [row at: 0]; let field := [row at: 1];
+  [check value: [[[Reflect factsOf: record] size] = 0] value: "implicit record fact"];
+  [db assert: record attr: field value: #explicitFact];
+  let before := [Reflect slot: field in: record];
+  [Reflect slot: field in: record put: nil];
+  [check value: [[db currentValue: record attr: field] == #explicitFact] value: "owner edit overwrote fact"];
+  [check value: [[Reflect slot: field in: record] isNil] value: "nil slot"];
+  [Reflect slot: field in: record put: before];
+  [db retract: record attr: field value: #explicitFact]
+]];
+// RETENTION_BATCH: this body is also run by a native caller after frame return.
+let operation := [|
+  let temporaryLogger := [Log named: "batch"]; [temporaryLogger level: #warn];
+  let temporaryConfig := [Config clone]; [Reflect slot: #configPath in: temporaryConfig put: "../birnam.toml"];
+  let request := [Http requestFrom: "GET /batch?q=1 HTTP/1.1\r\n\r\n"];
+  let result := [Process run: failedCommand];
+  let resolved := [AppConfig resolve: "batch" defaults: {"port" -> 1} configPath: "/absent/birnam-records.toml" environment: [Map new] args: #[]];
+  [#[temporaryLogger temporaryConfig request result resolved] do: [:record | [Reflect slotsOf: record]]];
+  nil
+];
+// RETURN_BATCH
+[operation value];
+let before := [db retainedFactCount];
+[1 to: 30 do: [:i | [operation value]]];
+[check value: [[db retainedFactCount] = before] value: "record operations created facts"];
+[System println: "ordinary-records: passed"];
+nil
+] value]

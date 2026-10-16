@@ -258,3 +258,9 @@ import Admission
 #print axioms Birnam.SharedInvocation.image_inverse_keeps_foreign_value
 #print axioms Birnam.SharedInvocation.image_inverse_restores_owned_write
 #print axioms Birnam.SharedInvocation.image_inverse_rejects_aba
+
+#print axioms Birnam.SlotReflection.record_field_roundtrip
+#print axioms Birnam.SlotReflection.clone_retains_field_identity
+#print axioms Birnam.SlotReflection.clone_edit_keeps_original
+#print axioms Birnam.SlotReflection.record_edit_keeps_facts
+#print axioms Birnam.SlotReflection.reentrant_other_field_survives

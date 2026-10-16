@@ -17,9 +17,9 @@
 // This module parses birnam.toml with Toml, so it requires the toml module.
 [Module named: #config requires: #[#toml]];
 
-[Globals at: #Config put: [Object clone]];
+[Globals at: #Config put: [ObjectModel newSlots: #[nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: Config as: [:self | #[#configPath]]];
 [Reflect docModule: #config is: "Nearest-ancestor birnam.toml project configuration — parsed via Toml, with root-relative main and module loading."];
-[[db cellFor: Config attr: #configPath] set: nil];
 
 // The nearest readable config path. Walking with relative `../` probes avoids a
 // host cwd/chdir primitive and, importantly, does not change the program's cwd.
@@ -37,12 +37,12 @@
   "Discover the nearest birnam.toml path from cwd upward, or nil."];
 
 [Reflect defineMethod: #refresh on: Config as: [:self |
-  [[db cellFor: self attr: #configPath] set: [self discoverPath]];
+  [ObjectModel slot: 0 in: self put: [self discoverPath]];
   self] doc:
   "Refresh the cached project config path from the process cwd; called at module load and console-session start."];
 
 [Reflect defineMethod: #path on: Config as: [:self |
-  [[db cellFor: self attr: #configPath] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "The nearest birnam.toml path discovered for this session, or nil."];
 
 // Resolve a config-relative value without changing cwd. `configPath` always ends

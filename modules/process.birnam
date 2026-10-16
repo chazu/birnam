@@ -29,17 +29,18 @@
 // int pclose(FILE *stream)  — receiver = the FILE* capability; answers the wait status.
 [Alien wrap: "pclose" signature: "i p"    as: #pclose         on: ForeignAddress];
 
-// The module + a result prototype (its fields live in cells keyed on self).
+// The module + a result prototype (its fields are ordinary named slots).
 [Module named: #process requires: #[]];
 [Globals at: #Process put: [Object clone]];
-[Globals at: #ProcResult put: [Object clone]];
+[Globals at: #ProcResult put: [ObjectModel newSlots: #[nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: ProcResult as: [:self | #[#stdout #exit]]];
 [Reflect docModule: #process is: "Run shell commands, capture stdout + exit code, over libc popen."];
 
 [Reflect defineMethod: #stdout on: ProcResult as: [:self |
-  [[db cellFor: self attr: #stdout] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "The captured stdout of the command (a String)."];
 [Reflect defineMethod: #exitCode on: ProcResult as: [:self |
-  [[db cellFor: self attr: #exit] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "The command's exit code (Integer; -1 if it could not be started)."];
 [Reflect defineMethod: #ok on: ProcResult as: [:self |
   [[self exitCode] = 0]] doc:
@@ -65,8 +66,8 @@
   let fp := [cmd popenType: "r"];
   [[fp isNull]
     ifTrue: [|
-      [[db cellFor: r attr: #stdout] set: ""];
-      [[db cellFor: r attr: #exit]   set: -1];
+      [ObjectModel slot: 0 in: r put: ""];
+      [ObjectModel slot: 1 in: r put: -1];
       r]
     ifFalse: [|
       let buf    := [Alien alloc: 4096];
@@ -75,8 +76,8 @@
       // pclose answers the raw wait status; the exit code is bits 8..15.
       let status := [fp pclose];
       let code   := [[status / 256] mod: 256];
-      [[db cellFor: r attr: #stdout] set: out];
-      [[db cellFor: r attr: #exit]   set: code];
+      [ObjectModel slot: 0 in: r put: out];
+      [ObjectModel slot: 1 in: r put: code];
       r]]] doc:
   "Run `cmd` via the shell, capturing stdout. Answers a ProcResult (stdout/exitCode/ok); a command that could not start comes back with stdout \"\" and exitCode -1."];
 

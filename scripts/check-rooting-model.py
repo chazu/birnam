@@ -411,6 +411,7 @@ def check_lean(lean, out):
         "owner-image-keeps-credits": ("GlobalsBinding", "{ owner with credits := fun _ => 0 }", "owner"),
         "owner-name-uses-value-equality": ("GlobalsBinding", "a.identity == b.identity", "a.spelling == b.spelling"),
         "binding-nil-is-absent": ("GlobalsBinding", "| some value => [value]", "| some value => if value = 0 then [] else [value]"),
+        "record-clone-loses-fields": ("SlotReflection", "{ s with fields := put s.fields fresh (s.fields original) }", "{ s with fields := put s.fields fresh (fun _ => 0) }"),
         "image-inverse-ignores-revision": ("SharedInvocation", "if revision = observed ∧ current = expected then before else current", "if current = expected then before else current"),
         "binding-inverse-overwrites-conflict": ("GlobalsBinding", "if bindings name = expected then put bindings name previous else bindings", "if bindings name = expected then put bindings name previous else put bindings name previous"),
         "private-index-confuses-collisions": ("PrivateIndex", "if name = key then some value else lookup key rest", "if True then some value else lookup key rest"),

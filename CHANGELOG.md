@@ -8,6 +8,9 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move Logger, Config, HttpRequest, ProcResult and AppConfig fields into ordinary
+  owned slots with live reflection, shallow cloning and independent explicit facts.
+
 - Move Module registration, kind, dependencies and loaded flags into its owned
   registry. Expose persistent records through Module and Reflect, preserve live
   loading protocols, and protect field updates with existing task transitions.

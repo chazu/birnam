@@ -2,7 +2,8 @@
 // command-line arguments.
 //
 // AppConfig is deliberately a resolver, not a global settings registry. It
-// produces an immutable startup snapshot for one application instance. The
+// produces a resolved startup snapshot for one application instance, with ordinary
+// named slots available through Reflect. The
 // precedence is:
 //
 //   defaults < TOML file < environment < command line
@@ -18,7 +19,8 @@
 // vectors remain available to callers through a future typed extension.
 
 [Module named: #appConfig requires: #[#toml]];
-[Globals at: #AppConfig put: [Object clone]];
+[Globals at: #AppConfig put: [ObjectModel newSlots: #[nil nil nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: AppConfig as: [:self | #[#values #origins #configPath]]];
 [Reflect docModule: #appConfig is: "Application configuration snapshots with defaults, TOML, environment, and CLI precedence."];
 
 // -- naming and paths --------------------------------------------------------
@@ -152,25 +154,25 @@
 // -- resolved snapshot -------------------------------------------------------
 
 [Reflect defineMethod: #at: on: AppConfig as: [:self :key |
-  let values := [[db cellFor: self attr: #values] value];
+  let values := [ObjectModel slot: 0 in: self];
   [values at: key ifAbsent: [| nil]]] doc:
   "Return a resolved setting, or nil when the key was not declared in defaults."];
 
 [Reflect defineMethod: #originAt: on: AppConfig as: [:self :key |
-  let origins := [[db cellFor: self attr: #origins] value];
+  let origins := [ObjectModel slot: 1 in: self];
   [origins at: key ifAbsent: [| nil]]] doc:
   "Return `default`, `file`, `environment`, or `cli` for a resolved setting."];
 
 [Reflect defineMethod: #path on: AppConfig as: [:self |
-  [[db cellFor: self attr: #configPath] value]] doc:
+  [ObjectModel slot: 2 in: self]] doc:
   "The config path selected for this snapshot, whether or not the file existed."];
 
 [Reflect defineMethod: #values on: AppConfig as: [:self |
-  [[db cellFor: self attr: #values] value]] doc:
+  [ObjectModel slot: 0 in: self]] doc:
   "The complete resolved settings Map."];
 
 [Reflect defineMethod: #origins on: AppConfig as: [:self |
-  [[db cellFor: self attr: #origins] value]] doc:
+  [ObjectModel slot: 1 in: self]] doc:
   "The setting-to-source Map for this snapshot."];
 
 [Reflect defineMethod: #resolve:defaults:configPath:environment:args: on: AppConfig as: [:self :name :defaults :path :environment :args |
@@ -230,9 +232,9 @@
         ifTrue: [| failure]
         ifFalse: [|
           let config := [self clone];
-          [[db cellFor: config attr: #values] set: [state at: 0]];
-          [[db cellFor: config attr: #origins] set: [state at: 1]];
-          [[db cellFor: config attr: #configPath] set: path];
+          [ObjectModel slot: 0 in: config put: [state at: 0]];
+          [ObjectModel slot: 1 in: config put: [state at: 1]];
+          [ObjectModel slot: 2 in: config put: path];
           config]]]]] doc:
   "Resolve one application snapshot from an explicit TOML path, environment map, and argument vector."];
 
