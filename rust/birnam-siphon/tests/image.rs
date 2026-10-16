@@ -920,8 +920,8 @@ fn image_owner_roundtrip() {
             assert!(status.success(), "{mode} image child failed");
         }
         std::fs::remove_file(stripped).unwrap();
-        // A failure after a real dictionary write and precise collection restores
-        // both the old prototype binding and the original Store state.
+        // A failure after a real dictionary write and precise collection leaves the
+        // applied image state in place. No automatic inverse is attempted.
         let later = h.string(b"[Module named: #later requires: #[]]");
         assert_eq!(
             h.call(
@@ -967,19 +967,20 @@ fn image_owner_roundtrip() {
         assert_eq!((result.status, result.detail), (881, 73));
         assert_eq!(failure.calls.get(), 1);
         set(&h, codegen_vt, selector, original);
-        assert_eq!(global(&h, b"ImageShared"), shared);
-        assert_eq!(
-            h.call(h.int(1), b"imageTransient", &[]),
-            h.id.intern_name(b"transient").unwrap()
-        );
-        assert_eq!(
-            h.call(
-                h.call(h.named(b"Vector"), b"new", &[]),
-                b"imageInherited",
-                &[]
-            ),
-            h.id.intern_name(b"beforeInherited").unwrap()
-        );
+        let report = h.call(system, b"imageSaveReport", &[]);
+        assert_eq!(h.call(report, b"status", &[]), h.id.intern_name(b"partialLoad").unwrap());
+        assert_eq!(h.call(system, b"imageCompositionIdentity", &[]), nil);
+        // The image removes this later binding before installing its methods.
+        // An inverse would wrongly restore it under the selected contract.
+        assert_eq!(send(h.id, h.id.receiver, b"bindingOf:in:", &[
+            Operand::object(h.id.intern_name(b"imageTransient").unwrap()),
+            Operand::object(behavior_of(&h, h.named(b"Integer"))),
+        ]).kind(), birnam_abi::id_protocol::UNIT);
+        assert_eq!(h.call(codegen, b"moduleSourceFor:", &[h.id.intern_name(b"later").unwrap()]), nil,
+            "source registry exchange is not undone");
+        // Continue independent save-admission checks from an explicitly restored
+        // snapshot, rather than assuming a failed load restored the session.
+        assert_eq!(h.call(system, b"loadImage:", &[filename]), h.named(b"true"));
         let original_bytes = std::fs::read(&path).unwrap();
         // An ordinary source capability must not silently lose its transient
         // state. Admission follows the Store declaration, not a prototype name.
@@ -1028,8 +1029,12 @@ fn image_owner_roundtrip() {
                 b"moduleSourceFor:",
                 &[h.id.intern_name(b"later").unwrap()]
             ),
-            later
+            nil
         );
+        // The saved registry was unsealed; the explicit reload restores that
+        // state too. Re-establish the sealed-registry precondition for this check.
+        assert_eq!(h.call(h.named(b"Generation"), b"sourceRegistrySealed", &[]), h.named(b"false"));
+        h.call(codegen, b"sealInitialGeneration", &[]);
         assert_eq!(
             h.call(
                 codegen,
@@ -1040,9 +1045,10 @@ fn image_owner_roundtrip() {
         );
         assert_eq!(
             h.call(h.int(1), b"imageFixture", &[]),
-            h.id.intern_name(b"before").unwrap()
+            h.id.intern_name(b"saved").unwrap()
         );
         // Structural corruption must be rejected before touching current Globals.
+        let current_shared = global(&h, b"ImageShared");
         let mut damaged = std::fs::read(&path).unwrap();
         damaged[28] ^= 1;
         let encoded = h.encoded(&damaged);
@@ -1050,7 +1056,7 @@ fn image_owner_roundtrip() {
             h.call(system, b"loadImageBytes:rebuild:", &[encoded, nil]),
             nil
         );
-        assert_eq!(global(&h, b"ImageShared"), shared);
+        assert_eq!(global(&h, b"ImageShared"), current_shared);
         std::fs::remove_file(path).unwrap();
     }
 }

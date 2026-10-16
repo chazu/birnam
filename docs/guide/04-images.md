@@ -1,14 +1,8 @@
 # Images: save, boot, bake
 
-During Design 90, full image save/restore remains unavailable. Store's
-[row-transfer protocol](../../rust/birnam-store/README.md#image-transfer-and-remaining-integration)
-is reconnected, including Store-backed globals, but Image still needs migration.
-The workflows below describe the behavior to restore, not current end-to-end
-acceptance.
-
-A Birnam image is the durable Store plus one authoritative dispatch generation.
-The generation contains the exact complete source map and canonical digest; its
-compiled code is an optimization bound to that same digest.
+Images preserve imageable live objects, method code/captures, source metadata and
+explicit Store state. Ordinary edits can be saved without an adopted Generation;
+managed revision metadata that has drifted remains descriptive.
 
 ## Saving
 
@@ -20,13 +14,11 @@ Full temporary-file replacement is the only supported write mode. `appendImage:`
 is not part of the generation format: source, facts, and executable code cannot be
 advanced as independent journals without recreating split authority.
 
-`saveImage:` answers self on success and nil on failure. Inspect
-`[[System imageSaveReport] detail]` when it refuses. Save rehashes the current
-generation, compiles every complete module document once in dependency order,
-then includes ordered source-backed method operations recorded by direct scripts
-and REPL forms. It binds the resulting code record to the generation digest and
-publishes only after all durable values have an encoding or recovery recipe. A
-rejected save preserves the prior image.
+`saveImage:` answers true on success and nil on rejection; owner errors can also
+be returned. Inspect `[[System imageSaveReport] detail]` when it refuses. Saving
+captures actual live code and imageable state, including source-backed methods
+introduced by scripts and the REPL. It publishes only after validation and complete
+encoding. A rejected save preserves the prior image file.
 
 Live `StringBuilder` buffers are not portable image values. Materialize them
 with `[builder asString]` before saving, and construct fresh builders inside
@@ -58,27 +50,32 @@ birnam /tmp/app.image
 birnam --rebuild /tmp/app.image
 ```
 
-Normal boot validates the image format, source-map authority, generation digest,
-code checksum, and code-to-generation binding, then maps the saved compiled code.
-Images save both the portable Block/binding unit and the compiled source-generation
-unit. Source-defined methods are compiled when saving, not on every startup.
-An earlier v8 image missing the source-generation unit uses embedded-source
-recovery and reports that outcome; there is no old-format migration path.
+Normal boot validates the image and native code before mapping the saved code.
+`--rebuild` compiles the saved portable programs instead. Mapped startup does not
+reparse source; both paths restore captured objects, aliases, methods and explicit
+facts. Foreign wrappers use their restoration recipes for current process addresses.
+Startup failure discards the world before application execution.
 
-`--rebuild` skips the captured native unit, recompiles the same accepted
-GenerationProjection from durable source and selection, and maps that fresh
-unit before replaying external capabilities. This includes methods defined by
-a standalone script or REPL session. Both paths restore the same generation
-digest and selected carriers.
+## Loading into a running world
 
-What comes back:
+```text
+[System saveImage: "/tmp/before-load.image"]
+// Check that saving succeeded before continuing.
+[System loadImage: "/tmp/other.image"]
+```
 
-- globals, entities, facts, and cells from the durable Store;
-- the single current `DispatchGeneration` and its sealed source map;
-- methods from the mapped unit or freshly compiled projection, including
-  source-backed methods defined directly by a script or REPL;
-- module singletons and Alien FFI wrappers, with external capabilities replayed;
-- projected block globals, rederived by the mapped or freshly rebuilt unit.
+Live loading is an advanced operation with **no automatic rollback**. Save first
+if you want a recovery snapshot. If applying the image fails, already-applied
+changes remain. Inspect `[[System imageSaveReport] status]` and `detail`:
+`#partialLoad` means the world may contain a mixture of prior and imported state.
+The original error is retained; stale prepared/adoption capabilities are abandoned.
+
+No automatic checkpoint, retry, restart or invocation of main occurs in the loader.
+To recover, you can discard the failed world and start a fresh runtime from your
+saved image. Work since that snapshot is lost; external effects, connections and
+active execution are not rewound. A subsequent live load is another explicit
+attempt, not a guaranteed recovery procedure. Validation and code lifetime safety
+remain required even though application is not transactional.
 
 ## Main convention
 
@@ -92,7 +89,8 @@ let main := [| [System println: banner]];
 
 `CompiledUnit` remains the lower-level candidate mechanism; selection-bearing
 candidate AOT produces the same candidate envelope and activation path. Ordinary
-direct method edits are rejected while the runtime is running.
+direct method edits remain available while the runtime is running; explicit
+Generation operations retain their own admission rules.
 
 ## Baking
 

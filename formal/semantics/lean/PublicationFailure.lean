@@ -105,4 +105,26 @@ theorem rollback_restores_own_write (before expected : Nat) :
 theorem learning_expected_after_callback_is_wrong :
     undoIfOwned 1 3 3 ≠ undoIfOwned 1 2 3 := by decide
 
+-- Basic live loading reports failure without undoing applied values. This models
+-- the failure boundary, not staging, native resource safety or arbitrary callbacks.
+structure PartialLoad where
+  values : Nat → Nat
+  prepared : Bool
+  composition : Option Nat
+  failure : Nat
+  deriving Inhabited
+
+def failLiveLoad (world : PartialLoad) (error : Nat) : PartialLoad :=
+  { world with prepared := false, composition := none, failure := error }
+
+theorem failed_load_keeps_values (world : PartialLoad) (error key : Nat) :
+    (failLiveLoad world error).values key = world.values key := by rfl
+
+theorem failed_load_drops_authority (world : PartialLoad) (error : Nat) :
+    (failLiveLoad world error).prepared = false ∧
+    (failLiveLoad world error).composition = none := by constructor <;> rfl
+
+theorem failed_load_preserves_error (world : PartialLoad) (error : Nat) :
+    (failLiveLoad world error).failure = error := by rfl
+
 end Birnam.PublicationFailure

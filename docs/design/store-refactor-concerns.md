@@ -10,7 +10,21 @@ callback-write loss. Its conditional recovery reports conflicts and can leave a
 partial live world; the conservative owner boundaries are documented there.
 This document retains the original investigation and proposed alternatives.
 
-## Findings and priority
+## Current disposition (2026-10-16)
+
+This is a historical investigation of `70d9cf14`, not the active implementation
+plan. The callback-write loss is fixed by `bd8a532e`; the original negative probe
+now has preservation regressions. The universal publication/result pipeline and
+per-edit description hook proposed here were superseded by
+[minimal mutation](minimal-mutation-and-coordination.md). Ordinary edits now use
+actual dictionary owners; Generation explicitly coordinates its own operations.
+Do not implement the old publisher or repeat the old defect expectation from this
+report. Memory measurements below describe the recorded baseline, not today's RSS.
+Use the [current plan and TODOs](optional-store-and-relational.md#actionable-migration-safeguards)
+for remaining work. The later [basic live-loading decision](basic-live-image-loading.md)
+selects no automatic compensation; stronger recovery is an optional future feature.
+
+## Historical findings and proposed priorities
 
 | Concern | Evidence | Recommended solution |
 | --- | --- | --- |
@@ -254,7 +268,7 @@ Recommended memory sequence:
 No memory optimization, threshold adjustment or image-format change is implemented
 by this investigation. RSS savings for those proposals remain to be measured.
 
-## Evidence and next work
+## Historical evidence and proposed next work
 
 The [receipt](../measurements/store-refactor-concerns-20261015.json) records source
 hashes, runtime provenance, observations and formal results. The existing Generation
@@ -265,11 +279,12 @@ conditional inverse ownership, opt-in description and no callback replay. Atomic
 owner compare/restore is a model assumption; these are not proofs of the current
 Image implementation or its future replacement.
 
-Recommended next implementation is **Image compensation that preserves intervening
-work**, followed by the authored publication/result-contract cutover. Keep memory
-work separate and measurable. The current dictionary/Global/fact counterexample
-must become a passing preservation test before claiming recovery equivalence or
-removing more coordinated Store state.
+At the time, the recommended next implementation was **Image compensation that
+preserves intervening work**, followed by an authored publication/result-contract
+cutover. Compensation has since been implemented; the universal publisher was
+subsequently rejected. The dictionary/Global/fact counterexample is now a passing
+preservation regression. Keep memory work separate and measurable; preserve these
+regressions while migrating coordinated state.
 
 
 Reproduce the focused investigation against a production prefix:

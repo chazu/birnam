@@ -4,7 +4,9 @@
 The subsequent [ordinary editing/snapshot slice](ordinary-edit-and-snapshot.md)
 implements the first runtime cutover. The [coordination cleanup](coordination-cleanup.md)
 now implements default-mirror removal, direct Generation writes and the fresh/live
-loader split with conflict-safe recovery. Remaining owner migrations are still work. This supersedes the proposal to move Store's complete
+loader split with conflict-safe recovery. The later [basic live-loading decision](basic-live-image-loading.md) removes
+automatic live-load compensation; users own their recovery snapshots. Remaining
+owner migrations are still work. This supersedes the proposal to move Store's complete
 publication machinery into a universal `MethodPublication` owner. The user also
 selected retaining live in-place image loading as an explicit advanced feature.
 
@@ -93,10 +95,10 @@ recovery obligations remain unchanged. Missing removal currently advances the
 coarse epoch even without an entry; consumers must treat it conservatively, not as
 an exact count of semantic changes.
 
-### Current running policy is broader than managed-generation needs
+### Historical running-policy probe (before the runtime cutover)
 
 `scripts/mutation-policy-boundary-test.py` saves a main Block and runs it in a fresh
-image process after deleting its writer source. It establishes that:
+image process after deleting its writer source. On that baseline it established that:
 
 1. `DispatchGeneration current` is nil: no managed generation was adopted.
 2. Ordinary Reflect definition still returns `#generationNotQuiescent`.
@@ -166,25 +168,33 @@ already lacks validation or that a fresh process has no bootstrap state:
 | Mode | Required contract |
 | --- | --- |
 | Fresh startup | Validate and stage executable/image data; expose no application entry before success. On failure, discard the isolated startup runtime/process. No promise to restore a usable previous application world. |
-| Explicit live restoration | Preserve entered code/identities and account for existing owners, callbacks, concurrent/reentrant edits and failed compensation. Report conflicts honestly. |
+| Explicit live loading | Preserve entered-code lifetime and report failed application as partial state, without automatic compensation. Users own their recovery snapshot. |
 
 The user explicitly chose to **keep live restoration as an advanced feature**.
-Its existing API is not removed by this investigation. The [reproduced rollback
-bug](store-refactor-concerns.md) remains a correctness issue for that path.
+Its API is retained. The [reproduced rollback bug](store-refactor-concerns.md)
+was subsequently fixed by the [coordination cleanup](coordination-cleanup.md).
+Conservative conflict reports can still leave a partially loaded world. Retaining
+live loading does not imply arbitrary-callback atomicity or require maximal rollback;
+the subsequent basic-live-loading decision selects partial application without
+automatic compensation.
 
-A fresh-start loader mode must be an explicit host/image contract. Do not merely
-skip rollback inside `System loadImage:`: existing callers can continue in that
-same process after failure. Do not infer permission to discard a world solely
+The fresh-start loader mode is an explicit host/image contract. Basic live
+`System loadImage:` now deliberately skips rollback under its newly selected
+partial-application contract; that is distinct from startup's mandatory discard. Do not infer permission to discard a world solely
 from a Generation flag. The fresh caller must guarantee discard on failure and
 must not resume source fallback in the half-restored world. Resource validation,
 source-free loading, native signature handling and ordinary code ownership remain.
 
-The live path needs scoped, owner-specific conflict handling. This does not justify
+Any future stronger live recovery would need scoped, owner-specific conflict handling. This does not justify
 making a general cross-owner transaction framework part of every method edit.
 Strong restoration promises should stay within that explicit capability, and
 arbitrary external side effects cannot be promised reversible.
 
-## Concrete implementation sequence
+## Implementation sequence and disposition
+
+Steps 1–4 below are delivered by the ordinary-edit/snapshot and coordination
+cleanup slices. Step 5 remains. The descriptions preserve the implementation
+intent; they are not instructions to repeat the completed cutovers.
 
 1. **Separate core mutation and managed observation.** Retain Reflect's public
    define/remove interface and current source/artifact constructors, but route
@@ -207,18 +217,13 @@ arbitrary external side effects cannot be promised reversible.
    recipes, lifecycle records and process state retain their own inspection and
    persistence obligations. Complete cold bootstrap with optional facilities absent.
 
-Steps 1–3 need a coherent integration qualification. A direct edit can invalidate
-an adopted generation today, and current image saving rejects drift. Therefore
-simply bypassing the guard would leave an incomplete user experience. The next
-runtime change should cover ordinary editing **and subsequent saving/restoring of
-that edited world**, plus explicit stale-generation rejection. It must also preserve
-artifact-selected code, direct/inherited removal and deoptimization.
-
-Tests that currently assert rejection of ordinary edits in running main, console,
-TCP REPL and workers need intentional replacement. Retain tests rejecting stale or
-reentrant **explicit transactions**. Do not erase those distinctions by loosening
-all admission checks. No permanent Rust publication registry or new hidden fact
-store is part of this design.
+The delivered qualification covers ordinary editing and subsequent saving/restoring
+of edited worlds, explicit stale-generation rejection, artifact-selected code,
+direct/inherited removal and execution ownership. Tests for blanket rejection in
+running main, console, TCP REPL and workers were intentionally replaced; rejection
+of stale/reentrant explicit transactions remains meaningful. Remaining migrations
+must retain these distinctions. No permanent Rust publication registry or hidden
+fact store is part of this design.
 
 ## Validation and limits
 

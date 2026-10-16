@@ -86,12 +86,14 @@ branch Blocks between token creation and validation.
 
 Installed Host and published-project console tests exercise authored activation
 and exact rollback. Image stages suspend all old candidate capabilities before
-publication and retain their roots for compensation. After restoring dispatch,
+publication and retain their roots until the application outcome is known. After restoring dispatch,
 `recoverImageGeneration:` enters the authored composition policy;
 `adoptComposedGeneration:` is available only in that dynamic recovery scope and
 validates the composition identity, source/selection authority and rollback-free
-components before rebuilding the live ledger. Failure restores the prior caches;
-success releases their roots.
+components before rebuilding the live ledger. Basic live Image application failure
+abandons the old capabilities instead of restoring caches over a partial world;
+success releases their roots. Cancellation before application can still release
+staging without changing the prior world.
 
 `discardCandidate:` rejects active, prepared and rollback-reachable candidates,
 removes only the admitted author-file contents, and publishes the discarded state
@@ -122,7 +124,8 @@ Matching managed images still use composition/adoption. Drifted revision records
 reload as descriptive data with no transient ledger or activation capabilities;
 actual saved Methods remain callable and editable. Explicit managed validation and
 activation still reject stale/unadopted state. This does not make Store or Generation
-optional in full image/bootstrap paths yet, or fix advanced live-load compensation.
+optional in full image/bootstrap paths yet. Basic live loading now reports partial
+application without automatic compensation.
 
 The native `materialization` test also retains a reflected Method after its source
 Block is released, transfers ownership to an alias binding on another Block,
@@ -136,5 +139,5 @@ Image source staging now retains an owner revision. `swapSourceRegistry` publish
 only at its captured revision; `rollbackSourceRegistry` restores only its own still
 current publication. A later record/seal or transaction replacement is preserved.
 `abandonImageRecovery` discards suspended/current preparation and adoption authority
-after incomplete compensation; it does not undo the live world's changes. Entered
+after failed image application; it does not undo the live world's changes. Entered
 Methods retain their code independently through Execution.

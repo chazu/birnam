@@ -1,7 +1,9 @@
 # Reflect without mandatory Store
 
-2026-10-13. **Status: design with first inspection slice implemented.** The
-implementation record below distinguishes delivered APIs from remaining proposals.
+2026-10-13; current API summary reviewed 2026-10-16. **Status: owner inspection,
+ordinary slots, owned Globals and direct method edits implemented; source metadata
+and full Store-independent bootstrap remain.** The implementation records below
+are dated slices, not a cumulative list of remaining work.
 This elaborates the reflection guarantee in
 [Store and Relational as optional language facilities](optional-store-and-relational.md).
 Existing selectors below were checked against current source; additional selector
@@ -45,11 +47,11 @@ Primary source: [reflection operations](../../rust/birnam-codegen-runtime/src/re
 | --- | --- | --- |
 | `[Reflect vtableOf: object]` | Sends Id `behaviorOf:` | Already a direct owner query; retain |
 | `[Reflect nameOf: symbol]` | Converts a Symbol to a String; rejects other kinds | No fact access; retain. This is not reverse naming of arbitrary objects |
-| `[Reflect globalNamed: name]` | Tries Namespace, then Globals when Namespace is absent | Globals is fact-backed; move its storage and preserve lookup precedence |
+| `[Reflect globalNamed: name]` | Tries Namespace, then Globals when Namespace is absent | Globals now owns its bindings; lookup precedence is retained |
 | `[Reflect allGlobalNames]` | Enumerates Namespace exports only | No fact access, but does not enumerate source-owned Globals; address the coverage gap explicitly |
-| `[Reflect allMethodsOf: object]` | Walks actual vtable dictionaries from child to parent, deduplicating selectors | Now names through Globals after Namespace reverse lookup fails; Globals remains fact-backed |
-| `[Reflect defineMethod: selector on: target as: block]` | Checks Generation policy, constructs a Method, obtains a private vtable when needed, then publishes through Store | Move publication responsibilities intact; keep the public operation |
-| `[Reflect removeMethod: selector on: target]` | Checks Generation policy and requests direct-entry removal through Store | Move publication responsibilities intact; preserve exact removal and inheritance behavior |
+| `[Reflect allMethodsOf: object]` | Walks actual vtable dictionaries from child to parent, deduplicating selectors | Names through owned Globals after Namespace reverse lookup fails; no fact lookup required |
+| `[Reflect defineMethod: selector on: target as: block]` | Constructs a Method, obtains a private vtable when needed, then sends the dictionary owner `addMethod:as:` | No mandatory Store publisher or Generation veto; retain execution ownership/invalidation |
+| `[Reflect removeMethod: selector on: target]` | Checks direct presence, then sends the dictionary owner `removeMethod:` | No mandatory Store publisher or Generation veto; preserve removal and inheritance behavior |
 | `[Reflect factsOf: entity]` | Enumerates actual global `db` triples into Maps | Explicit Store extension; keep its fact meaning |
 | `[Reflect isSymbol: object]`, `[Reflect isString: object]` | Authored vtable comparisons | No inherent fact requirement; retain |
 | `[Reflect defineMethod: selector on: target as: block doc: text]`, `[Reflect docModule: name is: text]` | Install methods and conditionally publish documentation when Doc is present | Retain useful convenience; put catalog policy/access behind an optional Doc protocol |
@@ -139,28 +141,27 @@ The current compiler metadata protocol is on Codegen, not Reflect. Reuse or
 compose that interface rather than adding redundant source ownership to Reflect.
 Metadata must survive image startup without reparsing or recompilation.
 
-### Method publication without Store
+### Ordinary method edits without Store
 
-The target path is:
+The implemented path is:
 
 ```text
 Reflect definition/removal
-  -> compiler and object-owner preparation as required
-  -> supported publication protocol
-  -> authoritative dictionary change and execution recovery/lifetime handling
+  -> Method construction and target/private-vtable resolution as required
+  -> actual dictionary-owner addMethod:as: / removeMethod:
+  -> existing dictionary invalidation and execution lifetime handling
 ```
 
-The publication protocol must retain authorization, phase checks, notification
-ordering, failure behavior and Generation's selective compensation. It is a
-responsibility to place with the existing mutation/generation owners, not a new
-service name chosen here. Reflect should not simply replace a Store send with a
-raw Id mutation.
+Ordinary edits have no mandatory authorization, Generation phase check, observer
+acknowledgement, fact mirror or rollback journal. Explicit Generation transactions
+retain their own preparation, validation and selective compensation. This supersedes
+this document's original proposal to transfer all publication machinery out of Store.
+See [ordinary editing](ordinary-edit-and-snapshot.md) and
+[coordination cleanup](coordination-cleanup.md).
 
-Optional code descriptions consume explicit observations or an explicitly enabled
-publication observer. Core execution must work with no such consumer. A future
-observer contract must specify callback failures, reentry and ordering; it must
-not displace Generation's required notifications or silently change when a method
-change is considered committed.
+Optional descriptions consume explicit snapshots or an explicitly enabled observer.
+Core execution requires neither. A future observer must specify callback failure,
+reentry, ordering and retention; it must not become an authority for ordinary edits.
 
 Reflect itself remains inspectable and changeable through ordinary language
 mechanisms. Reflection introduces no frozen dispatch or per-send defensive
@@ -188,7 +189,11 @@ independently asserted facts, so the two inventories must remain distinguishable
 Explicitly enabling documentation can similarly install/use catalog extensions
 without making every method definition depend on a database.
 
-## First implementation boundary and acceptance
+## Original first-slice boundary and continuing acceptance
+
+The binding/dictionary inspection slice below is delivered, followed by ordinary
+slots, owned Globals, and direct edits. Its original sequencing is retained as
+context; use the current Store decision for the outstanding migration tasks.
 
 Begin with owner-level binding enumeration/reverse naming and a precise direct
 method inventory. Route Reflect, REPL global listing and Doc naming through those
@@ -197,7 +202,8 @@ replacement for direct fact inspection before storage is removed; it is not yet
 a Store-independent core.
 
 Define the ordinary-slot discovery contract before migrating named public fields.
-Move publication only with its Generation consumers and recovery tests. Split
+Keep direct ordinary edits separate from explicit Generation coordination, and
+retain the latter's recovery tests during owner migration. Split
 inspection from compiler-dependent definition construction so basic reflection
 does not require loading a compiler merely because they share a source file today.
 
@@ -215,7 +221,10 @@ publication/recovery state transitions with Lean/TLA+ as appropriate, alongside
 real active/suspended-code, callback and image acceptance. No speedup or complete
 semantic equivalence is established by this design investigation alone.
 
-## First inspection slice implemented
+## Historical first inspection slice implemented
+
+The remaining-dependency statements in this subsection describe that initial slice.
+Globals storage, local Cells and ordinary editing were migrated afterward.
 
 The first slice adds these public messages:
 
@@ -318,6 +327,10 @@ and this workload as acceptance; slot discovery, publication ownership and a
 Store-independent bootstrap remain unfinished.
 
 ## Ordinary reference slots and Module directory
+
+This is the slot slice's historical implementation record. Module registry and
+Globals ownership, direct ordinary edits, and the five ordinary-object field
+migrations followed; their status is tracked in the Store decision.
 
 The [next slice](reflect-slots-and-module-state.md) adds `slotsOf:`, `slot:in:`
 and `slot:in:put:` in Birnam over ObjectModel's owned reference inventory. Optional

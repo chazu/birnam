@@ -1247,14 +1247,13 @@ unsafe fn restore_facts(
     }
 }
 // Alien wrappers are ordinary method publications in the Image transaction.
-// Capture their old bindings before swapping facts, so failed recovery can
-// compensate them alongside portable methods without compiling source recipes.
+// Validate recipe shape before applying the image. No prior bindings are retained:
+// live loading leaves applied changes in place on failure, just like other sends.
 unsafe fn foreign_publication(
     s: &State,
     q: &Scope<'_>,
     staged: Oop,
-    startup: bool,
-) -> Result<Vec<(Oop, Oop, Oop, Oop, Operand)>, Outcome> {
+) -> Result<Vec<(Oop, Oop)>, Outcome> {
     unsafe {
         let entity = q.keep(s.id.intern_name(b"__aliens__")?)?;
         let count = s.call(q, staged, b"attrCount:", &[entity])?;
@@ -1268,24 +1267,10 @@ unsafe fn foreign_publication(
             let key = s.call(q, staged, b"attrAt:index:", &[entity, index])?;
             let recipe = s.call(q, staged, b"currentValue:attr:", &[entity, key])?;
             let fields = s.sequence(q, recipe)?;
-            let [_, _, selector, target, _] = fields.as_slice() else {
+            let [_, _, _, target, _] = fields.as_slice() else {
                 return Err(bad());
             };
-            let behavior = q.keep(s.method_behavior(*target)?)?;
-            let old = if startup { Operand::unit() } else { s.send(
-                s.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(*selector), Operand::object(behavior)],
-            )? };
-            if old.as_entry().is_some() {
-                if let Some(method) = s
-                    .send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?
-                    .as_object()
-                {
-                    q.keep(method)?;
-                }
-            }
-            publication.push((recipe, *target, *selector, behavior, old));
+            publication.push((recipe, *target));
         }
         Ok(publication)
     }
@@ -1375,7 +1360,7 @@ unsafe fn load(
             }
         }
         let staged = restore_facts(s, q, &decoded, &objects)?;
-        let foreign = foreign_publication(s, q, staged, startup)?;
+        let foreign = foreign_publication(s, q, staged)?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1397,23 +1382,7 @@ unsafe fn load(
             }
             let behavior = s.method_behavior(target)?;
             q.keep(behavior)?;
-            // Pin the old callable before any dictionary mutation can retire it.
-            let old = if startup { Operand::unit() } else { s.send(
-                s.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(selector), Operand::object(behavior)],
-            )? };
-            if old.as_entry().is_some() {
-                if let Some(method) = s
-                    .send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?
-                    .as_object()
-                {
-                    q.keep(method)?;
-                } else {
-                    s.call(q, behavior, b"methodFor:", &[selector])?;
-                }
-            }
-            publication.push((index, target, selector, provenance, behavior, old));
+            publication.push((index, target, selector, provenance, behavior));
         }
         // A restored snapshot must also remove later source-defined bindings on
         // resident exports. Old heap objects held by callers keep their methods.
@@ -1427,27 +1396,17 @@ unsafe fn load(
             if s.export(*target)?.is_none()
                 || publication
                     .iter()
-                    .any(|&(_, t, n, _, _, _)| t == *target && n == *selector)
+                    .any(|&(_, t, n, _, _)| t == *target && n == *selector)
             {
                 continue;
             }
             let behavior = q.keep(s.method_behavior(*target)?)?;
-            let old = if startup { Operand::unit() } else { s.send(
-                s.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(*selector), Operand::object(behavior)],
-            )? };
-            if !startup {
-                let method = object(s.send(s.named(b"Execution")?, b"methodOfEntry:", &[old])?)?;
-                q.keep(method)?;
-            }
             removals.push((
                 ptr::null_mut(),
                 *target,
                 *selector,
                 s.named(b"nil")?,
                 behavior,
-                old,
             ));
         }
         removals.extend(publication);
@@ -1478,67 +1437,18 @@ unsafe fn load(
                 bad()
             });
         }
-        let globals = q.keep(s.named(b"Globals")?)?;
-        let binding_checkpoint = if startup { s.named(b"nil")? } else {
-            s.call(q, globals, b"imageBindingCheckpoint", &[])?
-        };
-        if s.is_error(binding_checkpoint)? {
-            return Err(Outcome::loaded(Operand::object(binding_checkpoint)));
-        }
-        let revisions = if startup { None } else {
-            Some((s.send(store, b"imageStateRevision", &[])?.as_word().ok_or_else(bad)?,
-                s.send(staged, b"imageStateRevision", &[])?.as_word().ok_or_else(bad)?))
-        };
-        let epoch = || -> Result<usize, Outcome> {
-            s.send(s.id.receiver, b"bindingEpoch", &[])?.as_word().ok_or_else(bad)
-        };
-        let same_entry = |a: Operand, b: Operand| a.kind() == b.kind() && a.as_entry() == b.as_entry();
-        let mut expected_epoch = if startup { 0 } else { epoch()? };
-        let mut dictionary_conflict = false;
-        let mut changed_targets = HashMap::new();
-        // Different exported aliases can denote one dictionary entry. Subsequent
-        // writes compare against our earlier publication, not the initial entry.
-        let mut published_bindings = HashMap::new();
-        let mut store_attempted = false;
-        let mut attempted = 0;
-        let mut installed = Vec::new();
-        let mut sources_swapped = false;
-        let mut foreign_attempted = 0;
+        // From this point a failed live load may leave a partial world. Do not
+        // retain inverse state or infer a transaction around replaceable sends.
         let result = (|| -> Result<(), Outcome> {
-            store_attempted = true;
-            if let Some((left, right)) = revisions {
-                if s.send(store, b"swapImageStateWith:atRevision:stagedRevision:",
-                    &[Operand::object(staged), Operand::word(left), Operand::word(right)])?.as_word() != Some(1) {
-                    return Err(bad());
-                }
-            } else if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
+            if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
                 return Err(bad());
             }
-            if decoded.sources.is_some() {
-                // The registry's stage already owns its predecessor and basis.
-                // Mark attempted before the send, which can fail after commit.
-                sources_swapped = true;
-                if s.call(q, codegen, b"swapPortableImageSources", &[])? != yes {
-                    return Err(bad());
-                }
+            if decoded.sources.is_some()
+                && s.call(q, codegen, b"swapPortableImageSources", &[])? != yes
+            {
+                return Err(bad());
             }
-            for &(index, target, selector, provenance, behavior, old) in &publication {
-                let planned = if !startup && !index.is_null() {
-                    Some(s.call(q, codegen, b"preparedPortableImageBinding:", &[index])?)
-                } else { None };
-                let prior_behavior = changed_targets.get(&target).copied().unwrap_or(behavior);
-                let prior_entry = published_bindings.get(&(prior_behavior, selector)).copied()
-                    .unwrap_or_else(|| if prior_behavior == behavior { old } else { Operand::unit() });
-                if !startup {
-                    let current = s.send(s.id.receiver, b"bindingOf:in:",
-                        &[Operand::object(selector), Operand::object(prior_behavior)])?;
-                    if epoch()? != expected_epoch || !same_entry(current, prior_entry)
-                        || s.method_behavior(target)? != prior_behavior {
-                        dictionary_conflict = true;
-                        return Err(bad());
-                    }
-                }
-                attempted += 1;
+            for &(index, target, selector, provenance, behavior) in &publication {
                 let published = (|| {
                     if index.is_null() {
                         let removed = s.send(behavior, b"removeMethod:", &[Operand::object(selector)])?;
@@ -1555,41 +1465,9 @@ unsafe fn load(
                     else if s.is_error(value)? { Err(Outcome::loaded(Operand::object(value))) }
                     else { Err(bad()) }
                 });
-                if !startup {
-                    if let Err(error) = &published {
-                        if let Some(value) = error.value.as_object() { q.keep(value)?; }
-                    }
-                    let actual_behavior = q.keep(s.method_behavior(target)?)?;
-                    let current = s.send(s.id.receiver, b"bindingOf:in:",
-                        &[Operand::object(selector), Operand::object(actual_behavior)])?;
-                    let selected = if current.as_entry().is_some() {
-                        s.send(s.named(b"Execution")?, b"methodOfEntry:", &[current])?.as_object()
-                    } else { None };
-                    let now = epoch()?;
-                    // Installation can legitimately create a private vtable.
-                    // Accept the selected Method there, but do not invent an
-                    // inverse for the association if later recovery fails.
-                    let changed_target = actual_behavior != prior_behavior && !index.is_null()
-                        && selected == planned && now > expected_epoch;
-                    let committed = changed_target || (now == expected_epoch.checked_add(1).ok_or_else(bad)?
-                        && if index.is_null() { current.kind() == abi::UNIT } else { selected == planned });
-                    dictionary_conflict |= changed_target;
-                    if changed_target { changed_targets.insert(target, actual_behavior); }
-                    let untouched = now == expected_epoch && same_entry(current, prior_entry);
-                    installed.push(current);
-                    if committed {
-                        expected_epoch = now;
-                        published_bindings.insert((actual_behavior, selector), current);
-                    }
-                    else if !untouched { dictionary_conflict = true; }
-                    // Keep the original failure, including one after a real edit.
-                    // Successful no-op or foreign publication is not our write.
-                    if published.is_ok() && !committed { return Err(bad()); }
-                }
                 if published? != target { return Err(bad()); }
             }
-            for &(recipe, target, _, _, _) in &foreign {
-                foreign_attempted += 1;
+            for &(recipe, target) in &foreign {
                 let restored = s.call(q, s.named(b"Alien")?, b"restoreWrapper:", &[recipe])?;
                 if restored != target {
                     return Err(if s.is_error(restored)? {
@@ -1622,70 +1500,23 @@ unsafe fn load(
             Ok(())
         })();
         if let Err(error) = result {
-            // The caller promised to discard this startup world on failure.
-            // Never invoke live-world inverse callbacks in that contract.
-            if startup { return Err(error); }
             if let Some(value) = error.value.as_object() {
                 q.keep(value)?;
             }
-            // Recover only data whose owner still recognizes our publication.
-            // Globals' resident storage was never written by Image: resetting its
-            // checkpoint would erase callback edits. A different restored Globals
-            // owner is conservatively retained with the current dictionary set.
-            let mut conflict = dictionary_conflict || foreign_attempted != 0;
-            let current_checkpoint = s.call(q, globals, b"imageBindingCheckpoint", &[]);
-            let checkpoint_owner = |checkpoint: Oop| -> Result<Oop, Outcome> {
-                if checkpoint == s.named(b"nil")? { Ok(checkpoint) }
-                else { s.sequence(q, checkpoint)?.first().copied().ok_or_else(bad) }
+            // Publication may already have committed, including before a failing
+            // callback. Never restore old capabilities over the resulting world.
+            // Staging cleanup still releases temporary roots; entered/captured
+            // code remains owned by Execution. No user callback is replayed.
+            let _ = s.call(q, codegen, b"abandonPortableImageRecovery", &[]);
+            *s.composition.borrow_mut() = None;
+            *s.report.borrow_mut() = Report {
+                status: if startup { b"startupFailed" } else { b"partialLoad" },
+                detail: format!("image load failed (native status={} detail={}); applied changes retained; {}",
+                    error.status, error.detail,
+                    if startup { "discard the startup world" }
+                    else { "world may be partially loaded; no rollback was attempted" }).into_bytes(),
+                ..Report::default()
             };
-            let globals_changed = current_checkpoint.and_then(checkpoint_owner).ok()
-                .zip(checkpoint_owner(binding_checkpoint).ok())
-                .is_none_or(|(current, prior)| current != prior);
-            if globals_changed || epoch().ok() != Some(expected_epoch) { conflict = true; }
-            if !conflict {
-                for (i, &(_, target, selector, _, behavior, old)) in publication[..attempted].iter().enumerate().rev() {
-                    let Some(&expected) = installed.get(i) else { conflict = true; break; };
-                    let restored = s.send(s.id.receiver, b"restoreBinding:of:in:expected:previous:atEpoch:",
-                        &[Operand::object(selector), Operand::object(target), Operand::object(behavior),
-                          expected, old, Operand::word(expected_epoch)]);
-                    match restored.ok().and_then(|v| v.as_word()) {
-                        Some(next) => expected_epoch = next,
-                        None => { conflict = true; break; }
-                    }
-                }
-                conflict |= epoch().ok() != Some(expected_epoch);
-            }
-            // Independent owner inverses are still attempted after a dictionary
-            // conflict. Neither can overwrite a callback's later owner revision.
-            if sources_swapped {
-                conflict |= s.call(q, codegen, b"rollbackPortableImageSources", &[])
-                    .map_or(true, |value| value != yes);
-            }
-            if store_attempted {
-                if let Some((left, right)) = revisions {
-                    let current = s.send(store, b"imageStateRevision", &[]).ok().and_then(|v| v.as_word());
-                    let staged_now = s.send(staged, b"imageStateRevision", &[]).ok().and_then(|v| v.as_word());
-                    if current != Some(left) || staged_now != Some(right) {
-                        let restored = left.checked_add(1).zip(right.checked_add(1)).and_then(|(left,right)| {
-                            s.send(store, b"swapImageStateWith:atRevision:stagedRevision:",
-                                &[Operand::object(staged), Operand::word(left), Operand::word(right)])
-                                .ok().and_then(|v| v.as_word())
-                        });
-                        conflict |= restored != Some(1);
-                    }
-                } else { conflict = true; }
-            }
-            if conflict {
-                // Stale preparations/adoption must not regain authority over a
-                // partially compensated world when the staging guard unwinds.
-                let _ = s.call(q, codegen, b"abandonPortableImageRecovery", &[]);
-                *s.composition.borrow_mut() = None;
-                *s.report.borrow_mut() = Report {
-                    status: b"compensationConflict",
-                    detail: format!("live image failed (native status={} detail={}); intervening owner state retained; world may be partially loaded", error.status, error.detail).into_bytes(),
-                    ..Report::default()
-                };
-            }
             return Err(error);
         }
         *s.composition.borrow_mut() = Some(composition);
@@ -1809,7 +1640,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
             load(s, &q, bytes, rebuild, matches!(e.op, Op::LoadMapped | Op::StartMapped),
                 matches!(e.op, Op::Start | Op::StartMapped | Op::StartBytes))
         })();
-        if result.is_err() && s.report.borrow().status != b"compensationConflict" {
+        if result.is_err() && !matches!(s.report.borrow().status, b"partialLoad" | b"startupFailed") {
             s.reject(b"Image admission, owner operation or publication failed");
         }
         match result {

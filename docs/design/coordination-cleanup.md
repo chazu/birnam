@@ -1,7 +1,14 @@
 # Coordination cleanup
 
 Follow-up to [ordinary mutation](minimal-mutation-and-coordination.md).
-Each implementation slice is committed separately.
+Each implementation slice was committed separately.
+
+**Superseded live failure policy (2026-10-16):** section 4 records the historical
+conditional-compensation implementation. The user subsequently selected
+[basic live loading without rollback](basic-live-image-loading.md): save first if
+recovery is needed, retain applied changes on failure, report partial application,
+and abandon stale capabilities. Sections 1–3's ordinary-edit/startup boundaries
+remain; maximal selective rollback is not pending work for basic loading.
 
 ## 1. Opt-in dictionary observation
 

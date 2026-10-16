@@ -11,6 +11,14 @@ loader ports are complete.
 - Move Logger, Config, HttpRequest, ProcResult and AppConfig fields into ordinary
   owned slots with live reflection, shallow cloning and independent explicit facts.
 
+- Simplify live image loading: save a recovery image explicitly before loading
+  another world. Failed application retains changes and reports `partialLoad`
+  without automatic rollback; stale Generation capabilities are abandoned.
+
+- Clarify the optional-Store migration plan, current live-image compensation limits,
+  ordinary-object field semantics, and remaining ownership/bootstrap acceptance work;
+  mark superseded publication proposals and historical probes explicitly.
+
 - Move Module registration, kind, dependencies and loaded flags into its owned
   registry. Expose persistent records through Module and Reflect, preserve live
   loading protocols, and protect field updates with existing task transitions.

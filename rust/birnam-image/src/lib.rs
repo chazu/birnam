@@ -1,4 +1,4 @@
-//! Live heap restoration, Store/source exchange, generation adoption and compensation.
+//! Live heap restoration, Store/source exchange, generation adoption and partial-load reporting.
 mod publication;
 pub use birnam_image_codec::{behavior_links, native_code, retained_facts, v8};
 pub mod support {

@@ -264,3 +264,7 @@ import Admission
 #print axioms Birnam.SlotReflection.clone_edit_keeps_original
 #print axioms Birnam.SlotReflection.record_edit_keeps_facts
 #print axioms Birnam.SlotReflection.reentrant_other_field_survives
+
+#print axioms Birnam.PublicationFailure.failed_load_keeps_values
+#print axioms Birnam.PublicationFailure.failed_load_drops_authority
+#print axioms Birnam.PublicationFailure.failed_load_preserves_error

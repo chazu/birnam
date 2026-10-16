@@ -1,4 +1,4 @@
-//! Live image failure must preserve intervening writes; startup runs no inverse.
+//! Failed live image loads retain applied and callback writes without inverses.
 mod support;
 use birnam_abi::{
     Oop,
@@ -259,7 +259,7 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
                 original,
             );
             if let Some(error) = probe.error {
-                assert_eq!(result.unwrap().as_object(),Some(error),"ordinary Error identity must survive compensation");
+                assert_eq!(result.unwrap().as_object(),Some(error),"ordinary Error identity must survive failed loading");
             } else {
                 let failure = result.unwrap_err();
                 assert_eq!((failure.status, failure.detail), (881, 73));
@@ -287,8 +287,9 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             assert_eq!(probe.calls.get(), 1);
             if std::env::var_os("BIRNAM_IMAGE_STARTUP").is_none() {
                 let report = h.call(system, b"imageSaveReport", &[]);
-                assert_eq!(h.call(report, b"status", &[]), id.intern_name(b"compensationConflict").unwrap());
+                assert_eq!(h.call(report, b"status", &[]), id.intern_name(b"partialLoad").unwrap());
             }
+            assert_eq!(h.call(system, b"imageCompositionIdentity", &[]), h.named(b"nil"));
             let expected = nested;
             let expected_side = nested;
             assert_eq!(global, expected_side, "unrelated Global write must survive");
@@ -300,7 +301,7 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             assert_eq!(fact, expected_side, "explicit user fact must survive");
             assert_eq!(
                 got, expected,
-                "image compensation must preserve an intervening dictionary edit"
+                "failed loading must preserve an intervening dictionary edit"
             );
             probe.calls.set(0);
         }

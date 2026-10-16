@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "bd8a532e",
+  "status": "implemented and qualified; committed with this change; not installed for the user",
+  "scope": "Basic live image loading retains applied state on failure; no automatic compensation. Earlier ordinary-record field changes are also present in this build.",
+  "prefix": "/tmp/birnam-partial/prefix",
+  "build": {
+    "result": "pass",
+    "log": "/tmp/birnam-partial/build.log",
+    "command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-partial/prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+    "image_library_sha256": "f15bc1fdbce8f618cda52c056382cc0117d98af01e8358c2a58dae90fc7f35c4",
+    "production_source_matches_installed_copy": true
+  },
+  "checks": {
+    "language": {
+      "result": "pass",
+      "assertions": 826,
+      "postchecks": "all passed",
+      "log": "/tmp/birnam-partial/language-prefix.log",
+      "command": "mise exec -- env BIRNAM_TEST_PREFIX=/tmp/birnam-partial/prefix bash scripts/birnam-test.sh"
+    },
+    "image_roundtrip": {
+      "result": "pass",
+      "log": "/tmp/birnam-partial/roundtrip-qualified.log",
+      "scope": "full parent and mapped/rebuilt/stripped/resaved children; failed application, manual reload, save rejection, source sealing, corruption and identity checks"
+    },
+    "failure_matrix": {
+      "result": "pass",
+      "log": "/tmp/birnam-partial/failure-matrix.log",
+      "modes": [
+        "ordinary-error",
+        "bound-nil",
+        "startup",
+        "authored",
+        "imported-globals"
+      ],
+      "image_modes": [
+        "mapped",
+        "rebuilt"
+      ]
+    },
+    "native_followup": {
+      "result": "pass",
+      "log": "/tmp/birnam-partial/native-followup.log",
+      "tests": [
+        "image_recovery_conflict",
+        "image_snapshot_stamp",
+        "materialization"
+      ]
+    },
+    "generation_and_resaves": {
+      "result": "pass for these tests",
+      "log": "/tmp/birnam-partial/native.log",
+      "tests": [
+        "generation_ledger (six modes)",
+        "generation_transaction",
+        "repeated_image_resaves_keep_a_fixed_live_set (twenty epochs)"
+      ],
+      "note": "The original combined command exited 101 for the obsolete image_owner_roundtrip rollback oracle. The resave test passed. The corrected complete roundtrip passed separately, and remaining groups passed in native-followup.log."
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-partial/formal.log",
+      "receipt": ".cargo-target/formal/results/rooting-3puuoxju/summary.json",
+      "lean_theorems": 321,
+      "rejected_mutations": 86,
+      "expected_tlc_outcomes": 203,
+      "command": "mise exec -- python3 scripts/check-rooting-model.py"
+    },
+    "native_test_compile": {
+      "result": "pass",
+      "log": "/tmp/birnam-partial/test-check.log"
+    }
+  },
+  "native_test_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-partial/prefix/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests"
+  },
+  "native_reproduction": "mise exec -- cargo test --offline --locked -p birnam-siphon --test image --test image_recovery_conflict --test generation_transaction --test generation_ledger --test materialization --test image_snapshot_stamp -- --include-ignored --nocapture (with native_test_environment)",
+  "test_corrections": [
+    "Initial test compile used the wrong UNIT constant namespace; corrected before qualification.",
+    "Original and first rerun image tests retained old rollback state expectations after an explicit reload; corrected source/method/object identity oracles and explicitly re-established sealing for the sealed-registry check. No production-code correction was required.",
+    "An initial language invocation used a positional prefix argument, triggering a redundant build. That task-owned build was stopped; qualification was rerun with BIRNAM_TEST_PREFIX against the isolated build."
+  ],
+  "limitations": [
+    "No arbitrary-callback atomicity or rollback is promised.",
+    "External effects and unsaved work are not recoverable through a saved snapshot.",
+    "Full Store-independent core bootstrap remains outstanding.",
+    "Formal models are abstract contracts, not a proof of the native implementation.",
+    "No performance improvement is claimed; no user installation, commit, push or release was performed."
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "e03a0c6091080761cf2fa6e51f9adf60c91dc82a0fa876741dac2f22aec96736",
+    "docs/design/42-object-canonical-relational-derived.md": "c1497b32870719197dc84dd6d102edad0821049e11db5b46921a4d591d4af911",
+    "docs/design/basic-live-image-loading.md": "6789c023632363577b99ff767f4d1e9d0115b6acb5b02c87d1acfb5f22b87871",
+    "docs/design/coordination-cleanup.md": "4d11cf49b5195e722dba84a3fb269a918312d76e272e322a279259622c23a0ef",
+    "docs/design/minimal-mutation-and-coordination.md": "ab3969ba436c074faee58a7bd7d0939ddfc59976e0a3c18fcf90d07a41869742",
+    "docs/design/optional-store-and-relational.md": "75bd8a48b754bf34c7208f48b528bb34543b28bad76174c6312bb91d19831a8e",
+    "docs/design/reflect-without-store.md": "54119a023b165a5e60852fffaa315d069bf4f7e544ed76bd13334f1fb6027db3",
+    "docs/design/store-refactor-concerns.md": "2f7f07b085c25af984844af4af32f5e431fb35c59359249ef2dbba7246ccf001",
+    "docs/guide/04-images.md": "82ae3190858621ff62a446585e40bb19bd04d193a857de488daf9d6799022b9f",
+    "formal/semantics/lean/PublicationFailure.lean": "4b77495a3c62b8ff49c022533ee705c89f7ef197d90a1c2908d042aaf6281c7f",
+    "formal/semantics/lean/SemanticsAudit.lean": "bc85ffe297fd5196c9a831c4b031462956fc53591a37615513c6417248c43c0f",
+    "formal/semantics/tla/PartialLoad.tla": "ced7b4275c85eb41053877ab7ce21ca3a6c8e0f2cb9fdcc4240d24fb93361c9d",
+    "formal/semantics/tla/PartialLoadAuthority.cfg": "c450143b4bc17f2072fba1f2c9b84f991bd9f35d93dd8abce147a82bdb450862",
+    "formal/semantics/tla/PartialLoadReplay.cfg": "f2407b3810e73b758f19e4ec2736d1f96fb87b4e537fa87eff4cd45783931d98",
+    "formal/semantics/tla/PartialLoadSafe.cfg": "9f26462a44018c690c4674d822f38609e3278d68bac284fcc08e51258ad0727a",
+    "formal/semantics/tla/PartialLoadUndo.cfg": "d1e8a09cea7ccc5adfd71e29727e287fed5bd66d84d66133edf5527d72d22b38",
+    "rust/birnam-generation/README.md": "0cf75a2d6c92c6cb41be08bed202d2d6779cc0e1d57bd20c3745e50753a78a64",
+    "rust/birnam-image/README.md": "2c2aa702d47da54d4868148e3c5bbde4963c1a49b668a8df29b5a33156fa449c",
+    "rust/birnam-image/src/lib.rs": "8e98304d2c00a4f4fed7c8b1730170608c87381d28390963d0b81fc8570872ab",
+    "rust/birnam-image/src/native.rs": "9f8b3af189ac3a6c697581818d77676243014ec85d29fdfa2a8263487f83754d",
+    "rust/birnam-siphon/tests/image.rs": "40c81da23500059ee6083efe31dc56b8b148db9a3ff6e3df57fab6d1911252b7",
+    "rust/birnam-siphon/tests/image_recovery_conflict.rs": "6d7431f998ec1d0c93f6ba2375d4290d33152b641e4e937a04ebc7cc4de8d8be",
+    "scripts/check-rooting-model.py": "872e659658e5576e0518ab5bcb8317a7261aee55966fdfd4f3e03a46ed536142"
+  },
+  "notes": "Documentation status and changelog hashes updated at commit time; production code and qualification results unchanged."
+}

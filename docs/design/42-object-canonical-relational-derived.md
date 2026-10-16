@@ -4,8 +4,11 @@
 > [Store and Relational as optional language facilities](optional-store-and-relational.md)
 > retains object authority and the modules' self-description, but changes this
 > document's mandatory Store-arbitrated MOP and system-wide mirror direction to
-> opt-in relational description. That decision document is a draft; current
-> publication and compatibility contracts remain in force until migrated.
+> opt-in relational description. As of 2026-10-16, ordinary Reflect edits use
+> dictionary owners and default mirror/Generation observer registration is removed
+> ([implementation](coordination-cleanup.md)). The mandatory Store MOP/mirror
+> requirements below are historical and superseded; explicit coordination remains
+> scoped to requested operations. Full Store-independent bootstrap is still pending.
 
 > **Status:** decision **accepted 2026-07-05**. **Supersedes the primacy claim of
 > [10a — The Cell Refounding](../archive/legacy-kernel/10a-north-star-cell-model.md)** (and the "code is a

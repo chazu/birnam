@@ -1,25 +1,22 @@
 # Store and Relational as optional language facilities
 
-2026-10-13. **Status: draft decision document.** The direction is agreed:
+2026-10-13; implementation status reviewed 2026-10-16.
+**Status: agreed direction; migration in progress.** The direction is:
 retain Store and Relational, including their self-describing bootstrap, and
 remove their mandatory role in core language operations. The migration contracts
 and sequence below guide the migration; the current implementation has completed
 several slices, but not the whole transition.
 
-The delivered slices provide owner-based reflection, local Cells, ordinary slot
-reflection, and owned Module and LSP state. [Globals now owns its bindings and
-reservation banks](owned-globals.md), with transactional image recovery. Its
-bootstrap seed/legacy adapter remains in Store. Method publication, compiler
-metadata, task state and other bootstrap dependencies still require later slices.
-The [pre-publication audit](store-removal-audit.md) records two correctness fixes
-and the [publication contract/design](method-publication-owner.md); it does not
-advance the publication migration or claim that its implementation gates are closed.
-The [failure-boundary experiment](publication-failure-boundary.md) exposes an
-adapter-dependent error mismatch across images. Subsequent direction is to unify
-ordinary message/error semantics and [investigate shared invocation](shared-invocation-investigation.md),
-rather than institutionalize two adapter conventions. Backwards compatibility is
-not a requirement for this follow-up; useful reflection, late binding and owner
-lifetimes remain required.
+The delivered slices provide owner-based reflection, local Cells, owned Module,
+LSP and Globals state, and [ordinary record fields](ordinary-record-owners.md).
+[Ordinary mutation and explicit coordination](coordination-cleanup.md) now have
+separate contracts: ordinary edits need no Store observer or Generation handshake;
+fresh startup and advanced live loading are distinct. Live loading now leaves
+applied changes in place on failure; the user owns the recovery snapshot. Compiler metadata,
+recipes, lifecycle/task state, tool state and remaining bootstrap dependencies
+still require owner migrations. Backwards compatibility is not a requirement;
+useful reflection, late binding, owner lifetimes and explicit user facts remain
+required.
 
 ## Decision
 
@@ -73,9 +70,9 @@ cost and architectural value must continue to be evaluated separately.
 This direction preserves [Design 42's object authority](42-object-canonical-relational-derived.md)
 and [Design 90's functional ownership](90-functional-modules.md). It changes
 Design 42's requirement that supported post-bootstrap method mutation be
-Store-arbitrated and that a system-wide fact mirror be mandatory. Those are
-current integration contracts to migrate deliberately, not requirements for the
-destination architecture.
+Store-arbitrated and that a system-wide fact mirror be mandatory. Those mandatory contracts have been removed from ordinary edits by the
+[coordination cleanup](coordination-cleanup.md). Explicit coordinated operations
+still own their admission and recovery contracts.
 
 Where a relational description is enabled, the honesty requirement remains:
 it must not silently claim a stale method is current. Its coverage and observation
@@ -94,9 +91,9 @@ every row.
 | --- | --- | --- |
 | Ordinary fields and local mutation | Objects, slots, Cells and collections | Explicitly published descriptions or application facts |
 | Globals and module registry | Binding and module owners | Names, dependencies and selected binding history |
-| Methods and live mutation | Object dictionaries and the supported publication protocol | Selected method descriptions and change history |
+| Methods and live mutation | Object dictionaries, with Method construction and lifetime owned by their existing protocols | Selected method descriptions and change history |
 | Compiler metadata and Alien recipes | Imageable source and recipe owners | Queryable metadata and recipe descriptions |
-| Generation and image recovery | Publication and persistence protocols spanning the affected owners | Inspection or audit data requested by a tool |
+| Generation and image recovery | Explicit coordination and persistence operations spanning the affected owners | Inspection or audit data requested by a tool |
 | Tasks, workers and I/O handles | Their lifecycle owners | Explicit diagnostics with bounded retention |
 | Asserted facts, schema and retained transitions | Store | Its primary purpose |
 | Rules and query evaluation | Relational using Store data and per-query state | Its primary purpose |
@@ -140,8 +137,9 @@ opaque native state.
 
 Keep existing Reflect spellings and behavior where they express these operations.
 Method inspection reads authoritative dictionaries; method definition/removal
-uses the publication protocol with notifications, deoptimization and code lifetime
-preserved. Binding enumeration and reverse naming use the binding owners. Slot,
+uses actual dictionary-owner messages, with dictionary invalidation, deoptimization
+and code lifetime preserved. Ordinary edits require neither Generation admission
+nor a Store observer; optional observation is explicitly enabled. Binding enumeration and reverse naming use the binding owners. Slot,
 identity, vtable and source inspection remain possible without creating facts.
 This does not claim that every such operation already has a complete Reflect API.
 
@@ -157,7 +155,8 @@ Reflect does not depend on those descriptions. See
 inventory, gaps and proposed shape of this meta-object protocol.
 
 An opted-in code description may be a snapshot, a live derived view, or retained
-facts with history. The initial mechanism is not selected here. Each exposed
+facts with history. The implemented initial mechanism is explicit snapshots in
+the code-inspector experiment; a generic live projection is not required. Each exposed
 description must specify:
 
 - Which objects and properties it covers, and how identities correspond.
@@ -166,8 +165,10 @@ description must specify:
 - Which history is retained, from when, and what unavailable history means.
 - Which references it retains and how participation ends or data is released.
 
-A read-only description cannot silently replace today's writable `db` alias for
-Globals. Historical values cannot be reconstructed from a current-only view.
+Globals now owns its bindings; explicit facts at the former keys are independent
+data. Direct owner mutation replaces the former writable fact alias. No legacy
+alias compatibility is required. Historical values cannot be reconstructed from
+a current-only view.
 An implementation that always mirrors the entire world but merely hides the
 query interface until requested does not satisfy opt-in participation.
 
@@ -212,10 +213,10 @@ retain unrelated callback writes. Generation's preparation observations,
 authorization, notifications and recovery behavior must move with the protocol.
 Replacing them with a whole-world snapshot restore is not equivalent.
 
-Old images and programs can depend on current fact names, writable aliases and
-history. Select an explicit compatibility or format transition before removing
-those contracts. Do not silently discard their state during loading or leave an
-unbounded compatibility mirror in the normal execution path.
+Backwards compatibility is not required. Specify a rebuild/version transition
+when a storage or image change needs one; do not add indefinite adapters or a
+compatibility mirror. Explicit user facts must not be silently discarded or
+reinterpreted as ordinary fields during loading.
 
 ## Migration sequence
 
@@ -246,66 +247,150 @@ unbounded compatibility mirror in the normal execution path.
 Small migrations should implement this common design. They should not invent
 different answers about authority, history or inspection in each module.
 
-## Progress as of 2026-10-15
+## Progress as of 2026-10-16
+
+The five ordinary-object field migrations are committed as `e41c4f35`. The basic
+live-loading simplification is implemented and qualified with this follow-up. Coordination cleanup is committed through
+`bd8a532e`. Implementation status does not imply release or local installation.
 
 | Plan area | Delivered | Remaining |
 | --- | --- | --- |
 | Contracts, private scratch and reflection | Ownership decision, scanner scratch cleanup, local Cells, binding/dictionary/slot inventories | Apply the same discoverable-owner contract to remaining public state. |
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
-| Ordinary records and registries | Module registry, LSP state and Globals bindings | Log, Config, HTTP request and process-result fields still use `db cellFor:`. These are not completed by the registry migrations. |
-| Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Stronger selective live recovery for imported Globals/foreign/lifecycle domains requires explicit owner receipts. |
+| Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields | Bench/Test fields and scratch need owner/consumer audits; REPL handles/buffers belong with socket/task resource-lifecycle work. |
+| Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Basic live loading now reports partial application without compensation; stronger recovery is an optional future feature, not a migration prerequisite. |
 | Step 6: durable/coordinated and process-local state | Globals already participates in owner-based recovery | Compiler metadata, Alien recipes, CompiledUnit/Generation lifecycle and compensation, Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
-The [supplied-template report](supplied-method-templates.md) records the latest
-construction qualification. It does not close publication or full bootstrap gates.
-The [publication design](method-publication-owner.md) remains the next coordinated
-migration. Its existing native-failure characterization describes the old behavior;
-the agreed destination is one ordinary message/error protocol, not preservation of
-two language conventions. Specify that result contract before translating callbacks.
+The [supplied-template report](supplied-method-templates.md) records constructor
+qualification. The earlier universal publication-owner proposal was superseded by
+the [minimal-mutation decision](minimal-mutation-and-coordination.md); the
+[coordination cleanup](coordination-cleanup.md) implements that boundary. Broader
+representation-independent error normalization remains separate work. The next
+large dependency migration is compiler metadata/source integration with its
+existing compiled-startup, lifetime and image contracts.
 
 Backwards compatibility is not required for the remaining migration. A deliberate
 artifact/image format transition may require rebuilding instead of retaining old
 adapters. This does not authorize silently discarding explicit user facts, weakening
 current-world recovery, or preserving a permanent native service under a new name.
 
-### Follow-up investigation
+### Superseded investigations and current implementation
 
-The [concerns investigation](store-refactor-concerns.md) reproduces a pre-existing
-Image rollback defect on both current code and installed 0.17.0: later dictionary
-edits, unrelated Globals and explicit facts from a failing callback can be lost.
-Correct conditional cross-owner compensation before further coordinated migration.
-An ordinary publication prototype now establishes result-aware sequencing across
-fresh/mapped/rebuilt policy. Publication can use that contract and the normal
-resumable path without waiting for language-wide synchronous cleanup; its full
-consumer/Generation cutover remains unimplemented. Startup-memory proposals are
-separate, measured work and do not change the agreed GC threshold/scaling policy.
+The [concerns investigation](store-refactor-concerns.md) recorded callback-write
+loss on its historical baseline and explored a result-aware publication pipeline.
+The [minimal-mutation decision](minimal-mutation-and-coordination.md) superseded
+that universal pipeline: ordinary edits need no publisher, mandatory description
+step or managed observer. Broad error normalization and startup-memory proposals
+remain separate work, not prerequisites for optional Store.
 
-### Minimal mutation decision
+The [ordinary editing/snapshot cutover](ordinary-edit-and-snapshot.md) implements
+direct Reflect edits and snapshots of edited worlds. Drifted managed metadata stays
+descriptive and cannot reactivate old capabilities. The
+[coordination cleanup](coordination-cleanup.md) removes default mirror registration
+and Generation's observer handshake, separates startup from live loading, and fixed
+callback-write erasure with conditional recovery. The later basic-live-loading
+decision below replaces compensation with explicit partial application. These are delivered changes,
+not pending publication work. Explicit Generation transactions retain their own
+checks and journals.
 
-The [minimal-mutation investigation](minimal-mutation-and-coordination.md) now
-supersedes mechanically transferring Store's publication pipeline to a new owner.
-Existing Method/vtable APIs pass on a floor with Store, Relational and Generation
-absent. A running-image control shows the Reflect veto even without an adopted
-generation. Explicit Generation reconciliation can still detect relevant raw edits.
-Ordinary mutation and saving actual live code should be independent of that policy.
-The user selected retaining in-place image loading as an explicit advanced feature;
-fresh-process startup and live recovery should have distinct failure contracts.
-Production cutover is not implemented by these probes.
+### Selected live-load failure contract (2026-10-16)
 
-### Ordinary editing and snapshot implementation
+The user selected basic live loading without automatic compensation. Loading an
+image into a running world is an explicit, potentially partial mutation. Validate
+and stage it before applying it where possible; if application fails, stop and
+report the original failure with `System imageSaveReport` status `#partialLoad`.
+Do not undo applied changes or callback writes at the failure boundary, replay
+callbacks, or run inverse writes. Later ordinary writes during loading may still
+supersede earlier values. Clear composition identity and abandon stale prepared/adoption capabilities.
+Cleanup still releases staging resources; Execution still owns entered/captured code.
+Early admission failures retain the ordinary rejection report, but replaceable
+validation/staging callbacks are not promised side-effect-free.
 
-The [first runtime cutover](ordinary-edit-and-snapshot.md) now routes ordinary
-Reflect definition/removal and image binding installation through dictionary owners,
-without a mandatory publisher or running-generation veto. Edited worlds can be saved
-and restored; drifted managed metadata stays descriptive and cannot reactivate old
-capabilities. Explicit Generation transactions retain their current checks/journals.
-The [coordination cleanup](coordination-cleanup.md) removes default mirror registration
-and Generation's observer handshake, separates startup from live loading, and fixes
-live recovery's erasure of callback writes using conditional owner operations.
-Conflicted live loads report partial state instead of claiming complete rollback.
-Compiler metadata, lifecycle/recipe storage and full Store-free bootstrap remain.
-The cleanup report describes the conservative live-recovery limits explicitly.
+It is the user's responsibility to save an image before loading another if recovery
+is desired, and to check that saving succeeded. No automatic checkpoint, “last
+known-good” image, restart, or retry is introduced. A failed live load is not a
+usable restored snapshot by guarantee. The user can discard that world and start
+a fresh runtime from their saved image; trying another live load remains their
+explicit choice and can fail again. Unsaved work and external effects are outside
+snapshot recovery. The loader does not automatically rerun main.
+
+Fresh startup still requires discarding its failed world; application-phase failure
+reports `#startupFailed`. Both modes retain format/native-code validation, rooting,
+source-free mapped restoration and explicit rebuild. Successful load behavior and
+image format are unchanged. Explicit Generation rollback remains a separate
+requested operation with its own contract; ordinary edits have no rollback journal.
+
+This replaces the preceding conditional live-compensation implementation. The
+[coordination cleanup](coordination-cleanup.md) remains historical evidence for why
+unconditional snapshot rollback was wrong; its inverse pass and conservative
+conflict admission are no longer the basic loader contract. The
+[basic live-loading report](basic-live-image-loading.md) records the simplification.
+
+Future robust loading could add an explicitly selected operation with owner receipts,
+isolated staging or checkpoints. It must state its limits and retain the basic
+loader; stronger recovery must not become a requirement for ordinary mutation or
+Store independence. No extra framework is needed now to reserve that possibility.
+
+### Terminology: ordinary objects and facts
+
+“Ordinary records” means objects carrying fields, such as Logger, HttpRequest and
+ProcResult. It does not mean database facts or a new language-level record type.
+Their fields previously lived in triples keyed by object identity and attribute;
+the migrated objects own reference slots instead. Explicit facts about those same
+objects remain separate data, even when attribute names match slot names.
+
+Cloning these objects now copies field references into independent slots. Replacing
+a clone's slot does not change the original; mutating a referenced object can be
+visible through both. Previously a raw clone had a fresh identity with no field
+facts at that identity. This is a deliberate semantic transition, not merely an
+unobservable representation optimization, and does not copy or delete user facts.
+
+## Actionable migration safeguards
+
+- [ ] Maintain a dependency ledger for each remaining state family: authority,
+  readers/writers and query consumers, inspection/mutation API, retention, image
+  policy, and bootstrap edge. Track native seeds, generated artifacts and implicit
+  module initialization as well as direct `db` calls. Close an entry with evidence.
+- [ ] Finish Bench/Test ordinary fields and scratch. Audit suite-discovery facts
+  separately: provide owner discovery or make the relational feature explicitly
+  optional before removing its facts. Do not turn every Store use into a slot.
+- [ ] For each field migration, document and test clone/reference sharing,
+  identity versus value equality, aliases, absent versus nil, reflective edits,
+  reentry/collection and explicit same-name facts. Preserve explicit facts and
+  intentional discovery; do not add method-identity guards around ordinary sends.
+- [ ] Audit REPL input/error handles and buffers with socket/task/worker state.
+  Replace the current `imageTransient` fact policy explicitly; specify cleanup,
+  ownership and recreation/rejection on load before moving resources into slots.
+  Test failed construction, shutdown, image restoration and retention.
+- [ ] Migrate compiler metadata/source integration with discoverable, imageable
+  owners. Preserve source identities and entered/captured code lifetimes; exercise
+  source-free mapped startup with parsing/compilation unavailable and the explicit
+  rebuild path separately. Reject missing metadata rather than falling back to ASTs.
+- [ ] Before migrating each coordinated owner, record which operations actually
+  promise rollback and why. Keep basic live Image loading free of inverse machinery; add stronger recovery
+  only as an explicitly selected feature with a demonstrated requirement. Preserve
+  applied/callback writes, truthful partial-load reports and stale-capability
+  invalidation, including collecting/reentrant failure paths.
+- [ ] Specify Alien recipe durability separately from process-local addresses and
+  resources. Preserve reconstruction, reflection and code ownership without a
+  permanent opaque native registry or a replacement global fact service.
+- [ ] Define any artifact/image version or rebuild transition before changing its
+  representation. Keep explicit facts and retained history independent; reject an
+  unsupported format rather than silently dropping data. Compatibility adapters
+  are not required.
+- [ ] Establish the final Store/Relational-absent core acceptance path and companion
+  optional-module/self-description path. Isolated exported-method floor tests are
+  useful evidence but do not prove cold bootstrap, compile/run or complete loading.
+- [ ] Keep this status table authoritative. Mark historical probes and superseded
+  proposals at their source; distinguish implemented/qualified, committed, released
+  and installed state. Review owner boundaries before accepting a new registry,
+  mirror, transaction framework or native service as a dependency replacement.
+
+These tasks refine the existing sequence: finish the bounded Bench/Test state,
+then compiler metadata/source integration; keep resource-bearing REPL state with
+lifecycle work. The selected live-load change is stated above; these tasks do not authorize changing
+GC policy or resuming the paused Relational rewrite.
 
 ## Acceptance and remaining decisions
 

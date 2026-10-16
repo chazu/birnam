@@ -1,6 +1,6 @@
 # Image persistence over Id
 
-Bootstrap loads [ImageFormat](../birnam-image-format/README.md), then Image, after
+Bootstrap loads [ImageFormat](../../modules/image-format.birnam), then Image, after
 Source Loader. ImageFormat owns complete format encoding and structural validation;
 Image consumes it through current Id messages and retains the live restoration
 transaction. System `saveImage:` writes image-v8
@@ -69,25 +69,27 @@ image-v8 additionally checksums the bundle. Compatible loading uses TCC
 These are trusted native artifacts, with the same ABI and code-ownership contract
 as generated in-memory code.
 
-Image builds facts in an independent Store. Fresh startup publishes it under the
-explicit discard-on-failure contract below. Advanced live restoration retains old
-Methods and uses conditional owner inverses. Id checks target, entry and epoch in
-one operation; Store checks both process-local revisions before exchanging state;
-the source registry checks its staged revision. Ordinary dictionary publication
-has no Store authorization/observation dependency.
+Image builds facts in an independent Store and stages executable code before
+applying the image. Fresh startup requires discarding the world on failure.
+Advanced live loading deliberately has no automatic rollback: application failure
+leaves applied changes and callback writes in place. It retains the original
+native failure or ordinary Error and reports `#partialLoad` through
+`System imageSaveReport`. An application-phase startup failure instead reports
+`#startupFailed`. Early admission failures use the ordinary rejection report;
+replaceable callbacks are not promised side-effect-free.
 
-A failing callback's later dictionary, Global, explicit fact or source-registry
-edit must survive. Image never resets resident Globals storage. It preserves the
-original native failure or ordinary Error and reports `#compensationConflict` in
-`imageSaveReport` if complete recovery cannot be established. Such a world can be
-partially loaded. Entered/captured code remains retained, while stale preparation
-and adoption capabilities are abandoned and composition identity is cleared.
+Users should save their current image and check success before loading another
+when they want a recovery snapshot. No automatic checkpoint, retry or restart is
+performed. Recovering from a saved image in a fresh runtime is the user's choice.
+External effects and unsaved work cannot be restored by that snapshot.
 
-Recovery is conservative when Globals has changed owner, foreign wrappers have
-been attempted, or lifecycle writes cannot be identified as the operation's own.
-These cases retain current state and report conflict instead of pretending that a
-whole-world snapshot can safely be restored. Complete selective recovery there
-requires owner-provided operation receipts. No arbitrary callback is replayed.
+No prior-method journal, Globals checkpoint, inverse Store/source exchange or
+dictionary epoch admission is required by live loading. Failed application clears
+composition identity and abandons old preparation/adoption capabilities; staging
+cleanup releases temporary roots. Entered/captured code remains owned by Execution.
+Explicit Generation transactions retain their separate rollback contracts.
+Future stronger loading can be an explicit facility without changing this basic
+operation or introducing a mandatory coordinator around ordinary edits.
 
 Alien wrapper recipes retain relocatable objects and target/selector identities;
 Image maps them using current foreign addresses without compilation. Map identity
@@ -129,13 +131,12 @@ entry points. Checks cover shared/cyclic objects, captures, Cells, history, name
 methods, shared and nested prototypes, inherited-method replacement, identity-keyed
 Maps, and binary embedding after deleting the source asset.
 Collection runs after every restored ordinary slot. Partial mapping failure and
-post-write publication failure exercise cleanup and exact Store/source/binding
-compensation. Final removal of references returns the restored Unit count to zero.
+post-write publication failure exercise cleanup, retained applied changes and
+partial-load diagnostics. Final removal of references returns the restored Unit count to zero.
 Codec tests retain all frozen fixtures and reject malformed references/bundles.
 
 Source-defined methods on exported behaviors such as Collection are included in
-binding inventories even though those behaviors have no ordinary owner. Restoration
-and compensation address their own method dictionaries, preserving inherited methods.
+binding inventories even though those behaviors have no ordinary owner. Restoration addresses their own method dictionaries, preserving inherited methods.
 
 Host/CLI image entry now restores global main; see the [Host contract](../birnam-host/README.md).
 Installed entry and baking checks live with Host; optimizer work remains separate.
@@ -154,10 +155,10 @@ mode, then releases every native Unit after the last roots disappear.
 
 `System startImage:rebuild:`, `startImageMapped:` and
 `startImageBytes:rebuild:` require their caller to discard the startup world on
-failure. They validate/stage normally but do not checkpoint Globals or run live
-publication compensation. CLI bootstrap, standalone/baked image entry and workers
+failure. They validate/stage normally and never run publication compensation. CLI bootstrap, standalone/baked image entry and workers
 use this path and do not enter application code after failed admission.
 
 `System loadImage:` and its existing variants remain explicit live restoration.
-A caller that may continue in the current world must use that contract instead.
-See [coordination cleanup](../../docs/design/coordination-cleanup.md).
+A caller that may inspect the current world after failure must use that contract
+and accept partial application. See
+[basic live loading](../../docs/design/basic-live-image-loading.md).
