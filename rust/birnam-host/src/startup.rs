@@ -174,7 +174,6 @@ mod tests {
             )
             .unwrap();
         q.check_result(result).unwrap();
-        host.enter_running().unwrap();
         let result = q.call(repl, b"consoleHostReadyNoMain", &[]).unwrap();
         q.check_result(result).unwrap();
         let result = q.call(repl, b"consoleDone", &[]).unwrap();

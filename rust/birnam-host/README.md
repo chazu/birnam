@@ -88,10 +88,11 @@ published configuration and bundled application code without reading source;
 Install copies the planned module/native closure. Test launches a fresh worker
 per test source against the published module root, without running application main.
 
-Console, socket, image-main and worker entry switch Generation to running mode at
-the idle Host boundary. Ordinary tracked method edits then return
-`generationNotQuiescent`; candidate publication and Image recovery use explicit
-internal extents. Source bootstrap remains open while initial modules load.
+Console, socket, image-main and worker entry need no Generation running-phase
+handshake. Ordinary method edits remain available. Explicit candidate publication
+and Image recovery retain their own admission extents; native code retirement
+still uses the Execution idle boundary. Source registration remains open during
+initial module loading.
 
 Image `main` also returns to Host before intent fulfillment and checkpoints
 Isolate after either successful entry or failure.

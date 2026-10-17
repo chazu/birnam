@@ -50,7 +50,7 @@ pub(crate) unsafe fn begin_recovery(
             );
         }
         // Move all process-local capabilities out of service without releasing
-        // their roots. A failed Image transaction can restore the old world.
+        // their roots. Cancellation before application can restore these capabilities.
         *s.candidates.recovery.borrow_mut() = Some(Recovery {
             identity: bytes,
             entries: s.candidates.entries.take(),
@@ -110,7 +110,7 @@ pub(crate) unsafe fn recover_image(
         // authority for the actual restored Methods. Its old capabilities were
         // removed at begin_recovery and are retired on successful completion.
         let descriptive = generation != nil
-            && fact(s, q, generation, b"state")? == symbol(s, q, b"drifted")?;
+            && field(s, q, generation, b"state")? == symbol(s, q, b"drifted")?;
         if generation != nil && !descriptive {
             let policy = call(
                 s,

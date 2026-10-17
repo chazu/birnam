@@ -61,7 +61,6 @@ impl HostRuntime<'_> {
                 return Err(e);
             }
         };
-        host.enter_running()?;
         let result = host.send(
             isolate,
             b"runWorker:receiver:selector:",

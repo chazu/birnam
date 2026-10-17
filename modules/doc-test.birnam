@@ -188,8 +188,8 @@ let s := [TestSuite named: "Doc" module: #doc];
 // Lifecycle reference prose is registered separately so documentation changes do
 // not alter CompiledUnit's executable method-operation stream.
 [s test: "CompiledUnit reference registrations cover the public lifecycle" do: [:t |
-  [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 17
-     describes: "all public lifecycle selectors registered"];
+  [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 19
+     describes: "documented lifecycle selectors registered"];
   let md := [Doc markdownForModule: #compiledUnit];
   [t assert: [md includesSubstring: "`activate` — Produce an activation"]
      describes: "authored activation reference is rendered"];

@@ -237,16 +237,7 @@ impl Context {
             unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern global", e))?;
         scope.call(self.named(b"Globals")?, b"at:", &[Operand::object(symbol)])
     }
-    /// Install running-phase authorization at an idle owner-thread boundary.
-    pub fn enter_running(&self) -> Result<(), HostError> {
-        let q = self.scope();
-        let result = q.call(self.named(b"Generation")?, b"enterRunning", &[])?;
-        q.check_result(result)?;
-        if result != self.named(b"true")? {
-            return Err(HostError("Codegen rejected running entry".into()));
-        }
-        Ok(())
-    }
+
 }
 impl Drop for Context {
     fn drop(&mut self) {

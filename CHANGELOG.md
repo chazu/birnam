@@ -8,6 +8,13 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move CompiledUnit/Generation lifecycle metadata into ordinary reflected fields;
+  remove automatic event facts, Store compensation reservations and Store-basis
+  invalidation from candidate operations.
+- Remove the unused Generation running-phase handshake. Lifecycle status reads no
+  longer reconcile the whole program, and image composition leaves retained
+  records and explicit user annotations intact.
+
 - Retain compiler metadata in ordinary compilation records instead of Store facts.
   Preserve original source identities and parser-free admission; expose record
   inspection/replacement, retain snapshots across registry changes, and invalidate

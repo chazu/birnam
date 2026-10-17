@@ -91,24 +91,29 @@ impl Vm {
             v
         }
     }
+    unsafe fn prototype(&self, name: &[u8]) -> Oop {
+        unsafe { self.call(self.named(b"Globals"), b"at:", &[self.sym(name)]) }
+    }
+    unsafe fn record(&self, name: &[u8]) -> Oop {
+        unsafe { self.call(self.prototype(name), b"clone", &[]) }
+    }
     unsafe fn fact(&self, e: Oop, a: &[u8]) -> Oop {
-        unsafe { self.call(self.named(b"db"), b"currentValue:attr:", &[e, self.sym(a)]) }
+        unsafe {
+            if a == b"activeGeneration" { return self.call(self.prototype(b"DispatchGeneration"), b"current", &[]); }
+            if a == b"version" || a == b"survives" { return self.call(self.named(b"db"), b"currentValue:attr:", &[e, self.sym(a)]); }
+            self.call(self.named(b"Reflect"), b"slot:in:", &[self.sym(a), e])
+        }
     }
     unsafe fn set(&self, e: Oop, a: &[u8], v: Oop) {
         unsafe {
-            assert_eq!(
-                self.call(
-                    self.named(b"db"),
-                    b"assert:attr:value:",
-                    &[e, self.sym(a), v]
-                ),
-                self.named(b"db")
-            );
+            if a == b"activeGeneration" { self.call(self.prototype(b"DispatchGeneration"), b"current:", &[v]); }
+            else if a == b"version" || a == b"survives" { self.call(self.named(b"db"), b"assert:attr:value:", &[e, self.sym(a), v]); }
+            else { assert_eq!(self.call(self.named(b"Reflect"), b"slot:in:put:", &[self.sym(a), e, v]), e); }
         }
     }
     unsafe fn carrier(&self, p: Oop, predecessor: Oop, unit: Oop) -> Oop {
         unsafe {
-            let g = self.call(self.named(b"Object"), b"clone", &[]);
+            let g = self.record(b"DispatchGeneration");
             for (attr, v) in [
                 (b"sourceMap".as_slice(), self.at(p, 1)),
                 (b"baseDigest", self.at(p, 2)),
@@ -123,15 +128,11 @@ impl Vm {
     }
     unsafe fn plan(&self, action: &[u8], unit: Oop, expected: Oop, next: Oop) -> Oop {
         unsafe {
-            let event = self.call(self.named(b"Object"), b"clone", &[]);
-            let basis = self.call(self.named(b"db"), b"basis", &[]);
             self.vector(&[
                 self.sym(action),
                 unit,
                 self.sym(b"txFixture"),
                 self.named(b"nil"),
-                event,
-                basis,
                 expected,
                 next,
             ])
@@ -216,6 +217,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        lifecycle_records(id, ns);
         let v = Vm {
             id,
             ns,
@@ -245,16 +247,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
         );
         v.call(cg, b"sealInitialGeneration", &[]);
         if running {
-            let entered = v.call(
-                cg,
-                b"evalPersisting:",
-                &[v.text(b"[Generation enterRunning]")],
-            );
-            assert_eq!(
-                v.call(entered, b"kind", &[]),
-                v.sym(b"generationNotQuiescent")
-            );
-            let fresh = v.call(v.named(b"Object"), b"clone", &[]);
+            let fresh = v.record(b"CompiledUnit");
             let before = object(send(
                 id,
                 id.receiver,
@@ -268,14 +261,6 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 b"methodOfEntry:",
                 &[v.direct(b"retireValue")],
             )));
-            assert_eq!(
-                v.call(v.named(b"Generation"), b"enterRunning", &[]),
-                v.named(b"true")
-            );
-            assert_eq!(
-                v.call(v.named(b"Generation"), b"enterRunning", &[]),
-                v.named(b"true")
-            );
             let changed = v.call(v.named(b"Reflect"), b"defineMethod:on:as:",
                 &[v.sym(b"newMethod"), fresh, block]);
             assert_eq!(changed, fresh);
@@ -327,7 +312,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 )
             };
             assert_eq!(compiled, path_object);
-            let unit = v.call(v.named(b"Object"), b"clone", &[]);
+            let unit = v.record(b"CompiledUnit");
             assert_eq!(
                 v.call(
                     v.named(b"Generation"),

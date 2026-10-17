@@ -73,11 +73,9 @@ other changed top-level forms are rejected.
 
 ## One runtime-wide generation
 
-Authority is the single-valued Store cell:
-
-```text
-entity #dispatch, attribute #activeGeneration, value DispatchGeneration
-```
+The authored `DispatchGeneration current` / `current:` protocol owns the current
+generation reference. Lifecycle records use ordinary named slots, independently
+of any explicitly asserted Store facts.
 
 The generation owns a sealed, sorted source map and its canonical digest.
 `CompiledUnit activeFor:` is only a convenience derived from that map; there is no
@@ -94,10 +92,14 @@ broaden this into arbitrary initializer or migration semantics.
 
 ## Direct edits and drift
 
-While the runtime is running, ordinary method installation/removal is rejected by
-the native Store/Codegen guard. Candidate commits are the supported mutation path.
-A raw floor mutation is unsupported corruption; reconciliation and image save
-reject it rather than adopting an untracked second authority.
+Ordinary method installation and removal remain available through the current
+owner messages. There is no running-phase authorization guard. A unit’s `state`
+reads its recorded lifecycle status; explicit `Generation reconcileCandidate:`
+checks whether the managed revision still matches live bindings. Detected drift
+can disable managed activation/rollback, but does not undo ordinary edits. Image
+snapshots preserve imageable live code even when revision metadata has drifted.
+The remaining whole-program restriction is being narrowed; it is not a language
+requirement that user code remain unchanged.
 
 ## Images and process boundaries
 
@@ -118,3 +120,9 @@ durable merely because their provenance objects did.
 Candidate bundles are trusted native input, not a security sandbox. `open:`
 performs byte-level inspection without loading code, and `map` makes the native
 boundary explicit; checksums establish identity, not authorship.
+
+Lifecycle facts are no longer created automatically. CompiledUnit and generation
+fields are discoverable through `Reflect slotsOf:` and writable through ordinary
+slot reflection. Explicit facts, including facts under the same names, are separate.
+Image composition does not delete old record fields or user annotations; retained
+records remain historical data and unreferenced records can be collected.

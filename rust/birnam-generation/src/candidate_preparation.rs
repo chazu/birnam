@@ -1,5 +1,5 @@
 //! Inert publication-plan snapshots. No candidate factory runs here. Each token
-//! roots the precise inverse bindings and is bound to Globals, Store and Id observations.
+//! roots the precise inverse bindings and is bound to owned fields, Globals and Id observations.
 use super::*;
 
 #[derive(Clone)]
@@ -20,18 +20,19 @@ pub(super) struct Prepared {
     pub rollback: bool,
     pub token: usize,
     pub unit: Oop,
-    pub plan: [Oop; 8],
-    pub basis: usize,
+    pub plan: [Oop; 6],
     pub global_basis: usize,
     pub epoch: usize,
     pub source_revision: usize,
     pub bindings: Vec<Binding>,
     pub globals: Vec<Global>,
+    pub fields: Vec<(Oop, Oop, Oop)>,
 }
 impl Prepared {
     pub(super) fn roots(&self) -> Vec<Oop> {
         let mut roots = self.plan.to_vec();
         roots.push(self.unit);
+        for &(owner, key, value) in &self.fields { roots.extend([owner, key, value]); }
         for b in &self.bindings {
             roots.extend([b.name, b.target, b.behavior, b.selector]);
             roots.extend(b.method);
@@ -50,9 +51,6 @@ pub(super) unsafe fn number(s: &State, value: Oop) -> Result<usize, Outcome> {
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or_else(invalid)
     }
-}
-pub(super) unsafe fn basis(s: &State, q: &Scope<'_>) -> Result<usize, Outcome> {
-    unsafe { number(s, call(s, q, s.named(b"db")?, b"basis", &[])?) }
 }
 pub(super) unsafe fn epoch(s: &State) -> Result<usize, Outcome> {
     unsafe {
@@ -134,8 +132,25 @@ pub(super) unsafe fn target(
         Ok((owner.as_object() == Some(target)).then_some((target, behavior)))
     }
 }
-/// Store and binding-owner bases catch intervening data edits even when values
-/// are restored; the Id epoch independently catches raw dictionary mutation/ABA.
+/// Observe the lifecycle data read by this plan. Unrelated facts do not participate.
+pub(super) unsafe fn plan_fields(s: &State, q: &Scope<'_>, plan: &[Oop; 6]) -> Result<Vec<(Oop, Oop, Oop)>, Outcome> {
+    unsafe {
+        let mut fields = vec![];
+        for (owner, names) in [
+            (plan[1], b"unitName state sourceRevision rollbackAvailable provides".as_slice()),
+            (plan[3], b"state".as_slice()),
+            (plan[4], b"sourceMap baseDigest generationSelection predecessor deltaUnit state".as_slice()),
+            (plan[5], b"sourceMap baseDigest generationSelection predecessor deltaUnit state".as_slice()),
+        ] {
+            if owner == s.named(b"nil")? { continue; }
+            for name in names.split(|b| *b == b' ') {
+                fields.push((owner, symbol(s, q, name)?, field(s, q, owner, name)?));
+            }
+        }
+        Ok(fields)
+    }
+}
+/// Explicit coordination observes its read set, binding owners and source revision.
 pub(super) unsafe fn current_snapshot(
     s: &State,
     q: &Scope<'_>,
@@ -143,12 +158,14 @@ pub(super) unsafe fn current_snapshot(
 ) -> Result<bool, Outcome> {
     unsafe {
         if s.registry.revision()!=p.source_revision
-            || current(s, q)? != p.plan[6]
-            || basis(s, q)? != p.basis
+            || current(s, q)? != p.plan[4]
             || global_basis(s, q)? != p.global_basis
             || epoch(s)? != p.epoch
         {
             return Ok(false);
+        }
+        for &(owner, key, value) in &p.fields {
+            if field(s, q, owner, &s.symbol_bytes(q, key)?.ok_or_else(invalid)?)? != value { return Ok(false); }
         }
         for b in &p.bindings {
             if target(s, q, b.name)? != Some((b.target, b.behavior))
@@ -163,8 +180,7 @@ pub(super) unsafe fn current_snapshot(
             }
         }
         Ok(s.registry.revision()==p.source_revision
-            && current(s, q)? == p.plan[6]
-            && basis(s, q)? == p.basis
+            && current(s, q)? == p.plan[4]
             && global_basis(s, q)? == p.global_basis
             && epoch(s)? == p.epoch)
     }
@@ -172,27 +188,27 @@ pub(super) unsafe fn current_snapshot(
 unsafe fn generation_plan(
     s: &State,
     q: &Scope<'_>,
-    plan: &[Oop; 8],
+    plan: &[Oop; 6],
     expected: &[u8; 64],
     selected: &[u8],
     metadata: &source_revision::RevisionMetadata,
     source: Oop,
 ) -> Result<bool, Outcome> {
     unsafe {
-        let [_, unit, name, prior_unit, _, _, predecessor, successor] = *plan;
+        let [_, unit, name, prior_unit, predecessor, successor] = *plan;
         if current(s, q)? != predecessor
-            || s.bytes(fact(s, q, predecessor, b"baseDigest")?)? != *expected
-            || fact(s, q, successor, b"predecessor")? != predecessor
-            || fact(s, q, successor, b"deltaUnit")? != unit
+            || s.bytes(field(s, q, predecessor, b"baseDigest")?)? != *expected
+            || field(s, q, successor, b"predecessor")? != predecessor
+            || field(s, q, successor, b"deltaUnit")? != unit
         {
             return Ok(false);
         }
-        let prior_map = fact(s, q, predecessor, b"sourceMap")?;
-        let next_map = fact(s, q, successor, b"sourceMap")?;
+        let prior_map = field(s, q, predecessor, b"sourceMap")?;
+        let next_map = field(s, q, successor, b"sourceMap")?;
         let prior = modules(s, q, prior_map)?;
         // Parse every revision field, not merely the source and claimed digest.
         let next = modules(s, q, next_map)?;
-        let selection = s.bytes(fact(s, q, predecessor, b"generationSelection")?)?;
+        let selection = s.bytes(field(s, q, predecessor, b"generationSelection")?)?;
         let descriptor_hashes = backend::hashes(
             s,
             q,
@@ -215,9 +231,9 @@ unsafe fn generation_plan(
         ) else {
             return Ok(false);
         };
-        if s.bytes(fact(s, q, successor, b"baseDigest")?)?
+        if s.bytes(field(s, q, successor, b"baseDigest")?)?
             != generation::raw_digest_spelling(projection.authority)
-            || s.bytes(fact(s, q, successor, b"generationSelection")?)? != projection.selection
+            || s.bytes(field(s, q, successor, b"generationSelection")?)? != projection.selection
         {
             return Ok(false);
         }
@@ -237,7 +253,7 @@ unsafe fn generation_plan(
                 if replacement
                     || old[2] != prior_unit
                     || new[2] != unit
-                    || new[1] != fact(s, q, unit, b"sourceRevision")?
+                    || new[1] != field(s, q, unit, b"sourceRevision")?
                 {
                     return Ok(false);
                 }
@@ -311,7 +327,7 @@ pub(super) unsafe fn prepare(
                 b"publication plan is not a Vector",
             );
         }
-        let Ok(plan) = <[Oop; 8]>::try_from(seq(s, q, raw_plan)?) else {
+        let Ok(plan) = <[Oop; 6]>::try_from(seq(s, q, raw_plan)?) else {
             return fail(
                 s,
                 q,
@@ -324,9 +340,9 @@ pub(super) unsafe fn prepare(
             || plan[1] != unit
             || plan[2] != name
             || plan[3] == unit
-            || [plan[4], plan[5], plan[6], plan[7]].contains(&nil)
-            || fact(s, q, unit, b"unitName")? != name
-            || fact(s, q, unit, b"state")? != symbol(s, q, b"candidate")?
+            || [plan[4], plan[5]].contains(&nil)
+            || field(s, q, unit, b"unitName")? != name
+            || field(s, q, unit, b"state")? != symbol(s, q, b"candidate")?
         {
             return fail(
                 s,
@@ -340,15 +356,14 @@ pub(super) unsafe fn prepare(
             token: 0,
             unit,
             plan,
-            basis: number(s, plan[5])?,
             global_basis: global_basis(s, q)?,
             epoch: epoch(s)?,
             source_revision:s.registry.revision(),
             bindings: vec![],
             globals: vec![],
+            fields: plan_fields(s, q, &plan)?,
         };
-        if basis(s, q)? != prepared.basis
-            || !generation_plan(s, q, &plan, &expected, &selected, &metadata, source)?
+        if !generation_plan(s, q, &plan, &expected, &selected, &metadata, source)?
         {
             return fail(
                 s,

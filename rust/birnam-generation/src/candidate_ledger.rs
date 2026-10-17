@@ -104,16 +104,14 @@ pub(super) unsafe fn matches(
         if ledger.drifted
             || s.registry.revision()!=ledger.source_revision
             || current(s, q)? != ledger.generation
-            || fact(s, q, ledger.generation, b"sourceMap")? != ledger.source_map
-            || s.bytes(fact(s, q, ledger.generation, b"baseDigest")?)? != ledger.digest
-            || s.bytes(fact(s, q, ledger.generation, b"generationSelection")?)? != ledger.selection
+            || field(s, q, ledger.generation, b"sourceMap")? != ledger.source_map
+            || s.bytes(field(s, q, ledger.generation, b"baseDigest")?)? != ledger.digest
+            || s.bytes(field(s, q, ledger.generation, b"generationSelection")?)? != ledger.selection
         {
             return Ok(Some(false));
         }
-        // Unrelated Store edits do not invalidate a managed generation. They do
-        // invalidate a prepared token; here only callbacks during this read are
-        // required to leave one coherent observation.
-        let basis = preparation::basis(s, q)?;
+        // Observe binding owners coherently across callbacks. Explicit facts are
+        // independent of this lifecycle record.
         let global_basis = preparation::global_basis(s, q)?;
         let epoch = preparation::epoch(s)?;
         for b in &ledger.bindings {
@@ -131,14 +129,13 @@ pub(super) unsafe fn matches(
         }
         let stable = s.registry.revision()==ledger.source_revision
             && current(s, q)? == ledger.generation
-            && preparation::basis(s, q)? == basis
             && preparation::global_basis(s, q)? == global_basis
             && preparation::epoch(s)? == epoch;
         Ok(stable.then_some(true))
     }
 }
 /// Returns false for a missing ledger or irreversible observed drift. Never
-/// adopts an intervening edit merely because reflected facts still say active.
+/// adopts an intervening edit merely because recorded fields still say active.
 pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<(bool, Option<Oop>), Outcome> {
     unsafe {
         let Some(ledger) = s.candidates.ledger.borrow().clone() else {
@@ -150,7 +147,7 @@ pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<(bool, Option
             Some(false) => {}
         }
         // Cache invalidation precedes callbacks. Repeated reconciliation also
-        // retries durable publication after a prior Store failure.
+        // retries durable publication after a prior field-owner failure.
         s.candidates
             .ledger
             .borrow_mut()
@@ -179,11 +176,11 @@ unsafe fn publish_drift(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<(),
         let drifted = symbol(s, q, b"drifted")?;
         let no = s.named(b"false")?;
         let nil = s.named(b"nil")?;
-        assert(s, q, ledger.generation, b"state", drifted)?;
+        set_field(s, q, ledger.generation, b"state", drifted)?;
         for &unit in &ledger.units {
             if unit != nil {
-                assert(s, q, unit, b"state", drifted)?;
-                assert(s, q, unit, b"rollbackAvailable", no)?;
+                set_field(s, q, unit, b"state", drifted)?;
+                set_field(s, q, unit, b"rollbackAvailable", no)?;
             }
         }
         Ok(())
@@ -230,7 +227,7 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
         if s.candidates.ledger.borrow().is_none() {
             let current = current(s, q)?;
             if current == s.named(b"nil")?
-                || (snapshot && fact(s, q, current, b"state")? == symbol(s, q, b"drifted")?) {
+                || (snapshot && field(s, q, current, b"state")? == symbol(s, q, b"drifted")?) {
                 return Ok(Operand::object(s.named(b"true")?));
             }
             return fail(
@@ -267,7 +264,7 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
         let descriptive = if snapshot {
             if let Some(generation) = generation {
                 current(s, q)? == generation
-                    && fact(s, q, generation, b"state")? == symbol(s, q, b"drifted")?
+                    && field(s, q, generation, b"state")? == symbol(s, q, b"drifted")?
             } else { false }
         } else { false };
         if matches || descriptive {
@@ -331,9 +328,9 @@ pub(super) unsafe fn adopt(
                     b"composed adoption requires image recovery",
                 );
             };
-            if fact(s, q, generation, b"kind")? != symbol(s, q, b"composed")?
-                || fact(s, q, generation, b"state")? != symbol(s, q, b"active")?
-                || s.bytes(fact(s, q, generation, b"compositionIdentity")?)? != identity
+            if field(s, q, generation, b"kind")? != symbol(s, q, b"composed")?
+                || field(s, q, generation, b"state")? != symbol(s, q, b"active")?
+                || s.bytes(field(s, q, generation, b"compositionIdentity")?)? != identity
             {
                 return fail(
                     s,
@@ -358,8 +355,8 @@ pub(super) unsafe fn adopt(
         let nil = s.named(b"nil")?;
         if current(s, q)? != generation
             || generation == nil
-            || fact(s, q, generation, b"predecessor")? != nil
-            || fact(s, q, generation, b"deltaUnit")? != nil
+            || field(s, q, generation, b"predecessor")? != nil
+            || field(s, q, generation, b"deltaUnit")? != nil
         {
             return fail(
                 s,
@@ -368,9 +365,8 @@ pub(super) unsafe fn adopt(
                 b"adoption requires the durable predecessor-free generation",
             );
         }
-        let basis = preparation::basis(s, q)?;
         let global_basis = preparation::global_basis(s, q)?;
-        let source_map = fact(s, q, generation, b"sourceMap")?;
+        let source_map = field(s, q, generation, b"sourceMap")?;
         let modules = modules(s, q, source_map)?;
         let rows = seq(s, q, source_map)?;
         let mut components = std::collections::BTreeMap::new();
@@ -381,13 +377,13 @@ pub(super) unsafe fn adopt(
             };
             if composed
                 && (*unit == nil
-                    || fact(s, q, *unit, b"kind")? != symbol(s, q, b"composed")?
-                    || fact(s, q, *unit, b"state")? != symbol(s, q, b"active")?
-                    || fact(s, q, *unit, b"rollbackAvailable")? != s.named(b"false")?
-                    || fact(s, q, *unit, b"unitName")? != *name
-                    || fact(s, q, *unit, b"sourceRevision")? != *revision
-                    || s.bytes(fact(s, q, *unit, b"compositionIdentity")?)?
-                        != s.bytes(fact(s, q, generation, b"compositionIdentity")?)?)
+                    || field(s, q, *unit, b"kind")? != symbol(s, q, b"composed")?
+                    || field(s, q, *unit, b"state")? != symbol(s, q, b"active")?
+                    || field(s, q, *unit, b"rollbackAvailable")? != s.named(b"false")?
+                    || field(s, q, *unit, b"unitName")? != *name
+                    || field(s, q, *unit, b"sourceRevision")? != *revision
+                    || s.bytes(field(s, q, *unit, b"compositionIdentity")?)?
+                        != s.bytes(field(s, q, generation, b"compositionIdentity")?)?)
             {
                 return fail(
                     s,
@@ -428,8 +424,8 @@ pub(super) unsafe fn adopt(
                 );
             }
         }
-        let digest = s.bytes(fact(s, q, generation, b"baseDigest")?)?;
-        let selection = s.bytes(fact(s, q, generation, b"generationSelection")?)?;
+        let digest = s.bytes(field(s, q, generation, b"baseDigest")?)?;
+        let selection = s.bytes(field(s, q, generation, b"generationSelection")?)?;
         let descriptor_hashes = backend::hashes(
             s,
             q,
@@ -468,7 +464,7 @@ pub(super) unsafe fn adopt(
         };
         // Authority parsing may collect unrelated private Block behaviors.
         // Observe dictionary stability around the live binding snapshot, after
-        // that inert work. The Store basis still covers the entire adoption.
+        // that inert work. The final ledger compares the owned lifecycle fields.
         let epoch = preparation::epoch(s)?;
         // Multiple source names can address one dictionary. Validate the final
         // writer in dependency order, while retaining every named observation.
@@ -610,9 +606,7 @@ pub(super) unsafe fn adopt(
                 return fail(s, q, b"sourceBindingMismatch", &message);
             }
         }
-        let changed = if preparation::basis(s, q)? != basis {
-            Some(b"Store basis changed during generation adoption".as_slice())
-        } else if preparation::global_basis(s, q)? != global_basis {
+        let changed = if preparation::global_basis(s, q)? != global_basis {
             Some(b"Globals basis changed during generation adoption".as_slice())
         } else if preparation::epoch(s)? != epoch {
             Some(b"behavior epoch changed during generation adoption".as_slice())

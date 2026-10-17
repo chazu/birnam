@@ -92,6 +92,8 @@ if selected interaction; then
 fi
 if selected generation; then
   host_test host_fulfills_authored_generation_intents_at_idle_boundary
+  host_test lifecycle_fields_preserve_explicit_facts_and_status_reads
+  run_check lifecycle-record-image-test.py python3 scripts/lifecycle-record-image-test.py "$scratch/relocated"
   host_test image_recovers_composed_generation_before_entry
   run_check generation-cli-test.py python3 scripts/generation-cli-test.py "$scratch/relocated"
   run_check compiled-unit-cli-test.py python3 scripts/compiled-unit-cli-test.py "$scratch/relocated"

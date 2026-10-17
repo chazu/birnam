@@ -46,7 +46,6 @@ struct RejectDrift {
     id: Protocol,
     original: NativeEntry,
     generation: Oop,
-    state: Oop,
     drifted: Oop,
     error: Oop,
     gc: Oop,
@@ -61,9 +60,8 @@ unsafe extern "C" fn reject_first_drift(
     unsafe {
         let p = &*c.cast::<RejectDrift>();
         let args = borrowed_slice(a, n).unwrap();
-        if args[0].as_object() == Some(p.generation)
-            && args[1].as_object() == Some(p.state)
-            && args[2].as_object() == Some(p.drifted)
+        if r == p.generation
+            && args[0].as_object() == Some(p.drifted)
             && p.armed.replace(false)
         {
             collect(p.id, p.gc);
@@ -98,6 +96,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        lifecycle_records(id, ns);
         let named = |name: &[u8]| {
             object(send(
                 id,
@@ -140,6 +139,8 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             )))
         };
         let at = |v, i| call(v, b"at:", &[integer(i)]);
+        let prototype = |name: &[u8]| call(named(b"Globals"), b"at:", &[sym(name)]);
+        let record = |name: &[u8]| call(prototype(name), b"clone", &[]);
         let cg = named(b"Codegen");
         let db = named(b"db");
         let yes = named(b"true");
@@ -200,19 +201,15 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             &[text(&embedded_source), sym(b"ledgerEmbedded")],
         );
         let projection = call(cg, b"initialGenerationProjection", &[]);
-        let generation = call(named(b"Object"), b"clone", &[]);
+        let generation = record(b"DispatchGeneration");
         for (attr, value) in [
             (b"sourceMap".as_slice(), at(projection, 1)),
             (b"baseDigest", at(projection, 2)),
             (b"generationSelection", at(projection, 3)),
         ] {
-            call(db, b"assert:attr:value:", &[generation, sym(attr), value]);
+            call(named(b"Reflect"), b"slot:in:put:", &[sym(attr), generation, value]);
         }
-        call(
-            db,
-            b"assert:attr:value:",
-            &[sym(b"dispatch"), sym(b"activeGeneration"), generation],
-        );
+        call(prototype(b"DispatchGeneration"), b"current:", &[generation]);
         let rejected = call(
             named(b"Generation"),
             b"adoptComposedGeneration:",
@@ -428,8 +425,8 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         let cg_vt = named(b"CodegenVt");
         let save_selector = sym(b"compilePortableImageCode:bindings:selection:");
         let case = std::env::var("BIRNAM_LEDGER_DRIFT_CASE").unwrap();
-        let assert_selector = sym(b"assert:attr:value:");
-        let store_vt = named(b"StoreVt");
+        let assert_selector = sym(b"state:");
+        let store_vt = object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(prototype(b"DispatchGeneration"))]));
         let original_assert = send(
             id,
             id.receiver,
@@ -438,11 +435,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         )
         .as_entry()
         .unwrap();
+        if let Some(method) = send(id, named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_assert)]).as_object() { keep(method); }
         let mut reject = RejectDrift {
             id,
             original: original_assert,
             generation,
-            state: sym(b"state"),
             drifted: sym(b"drifted"),
             error: call(named(b"Error"), b"kind:", &[sym(b"injectedDriftFailure")]),
             gc: named(b"GC"),
@@ -450,11 +447,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         };
         match case.as_str() {
             "retry" => {
-                let before = call(db, b"currentValue:attr:", &[generation, sym(b"state")]);
+                let before = call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]);
                 install(
                     id,
                     store_vt,
-                    b"assert:attr:value:",
+                    b"state:",
                     reject_first_drift,
                     core::ptr::from_mut(&mut reject).cast(),
                 );
@@ -472,7 +469,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 );
                 assert!(!reject.armed.get());
                 assert_eq!(
-                    call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
+                    call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
                     before
                 );
             }
@@ -526,7 +523,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         if case == "store" {
             // No implicit observer updates descriptions. Reconciliation is explicit.
             assert_ne!(
-                call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
+                call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
                 sym(b"drifted")
             );
         }
@@ -570,7 +567,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         let drift = call(named(b"Generation"), b"reconcileCandidate:", &[generation]);
         assert_eq!(call(drift, b"kind", &[]), sym(b"staleGeneration"));
         assert_eq!(
-            call(db, b"currentValue:attr:", &[generation, sym(b"state")]),
+            call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
             sym(b"drifted")
         );
         // Even restoring the exact entry cannot erase an observed divergence.

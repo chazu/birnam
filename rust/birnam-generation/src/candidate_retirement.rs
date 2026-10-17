@@ -167,7 +167,7 @@ pub(super) unsafe fn discard(s: &State, q: &Scope<'_>, unit: Oop) -> Result<Oper
                 };
             }
         }
-        transaction::discard_facts(s, q, unit)?;
+        transaction::discard_fields(s, q, unit)?;
         // No fallible publication follows. Dropping these roots never forcibly
         // unmaps code: live bindings, Methods, Blocks and Machines retain Units.
         s.candidates.entries.borrow_mut().retain(|c| c.unit != unit);

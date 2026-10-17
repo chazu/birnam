@@ -282,3 +282,8 @@ import Admission
 #print axioms Birnam.PrivateScratch.compilation_replacement_stales_plan
 #print axioms Birnam.PrivateScratch.compilation_aba_changes_stamp
 #print axioms Birnam.PrivateScratch.retained_compilation_is_snapshot
+
+#print axioms Birnam.PrivateScratch.lifecycle_selection_preserves_annotations
+#print axioms Birnam.PrivateScratch.lifecycle_selection_preserves_retained_record
+#print axioms Birnam.PrivateScratch.lifecycle_status_read_has_no_effect
+#print axioms Birnam.PrivateScratch.unrelated_fact_keeps_prepared_observation

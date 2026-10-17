@@ -7,11 +7,11 @@
 [Doc module: #compiledUnit is: "Whole-runtime dispatch generations: inspect and map CompiledUnit candidates, then activate or roll back at a host-safe boundary."];
 
 [Doc for: #state in: #compiledUnit says:
-  "The unit's reconciled lifecycle state: #candidate, #active, #superseded, #drifted, #rolledBack, or #historical."];
+  "The unit's recorded lifecycle state (reading it performs no reconciliation): #candidate, #active, #superseded, #drifted, #rolledBack, or #historical."];
 [Doc for: #kind in: #compiledUnit says:
   "The executable origin kind: #candidateArtifact for a staged native unit or #composed for a rollback-free image-recovered component."];
 [Doc for: #composedInto in: #compiledUnit says:
-  "The current composed DispatchGeneration that retired this saved-origin unit as #historical, or nil before image recovery."];
+  "Optional composition provenance. Image recovery no longer rewrites retained origin records or deletes their annotations."];
 [Doc for: #compositionIdentity in: #compiledUnit says:
   "The domain-separated checksum composition identity assigned during mapped or rebuilt image recovery."];
 [Doc for: #unitName in: #compiledUnit says:
@@ -40,3 +40,8 @@
   "Produce a rollback EvolutionIntent. Host fulfillment republishes the exact predecessor generation; drift, staleness, or unavailable process-local capability answers an Error without mutation."];
 [Doc for: #activeFor: in: #compiledUnit says:
   "The CompiledUnit delta associated with Symbol `name` in the single current DispatchGeneration, or nil for an untouched G0 entry."]
+
+[Doc for: #generationNumbers in: #compiledUnit says:
+  "Inspect the owned Map of last allocated generation numbers by module name; this does not increment a counter or read Store."];
+[Doc for: #generationNumbers: in: #compiledUnit says:
+  "Replace the owned numbering Map explicitly. The nextGenerationFor: algorithm uses the current accessor methods."];

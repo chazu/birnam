@@ -27,6 +27,24 @@ unsafe extern "C" fn returned_failure(
     Outcome::loaded(Operand::object(fault.error))
 }
 
+struct CounterReentry {
+    id: Protocol,
+    original: native::NativeEntry,
+    unit: Oop,
+    other: Oop,
+    armed: bool,
+}
+unsafe extern "C" fn counter_reentry(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &mut *c.cast::<CounterReentry>();
+        if p.armed {
+            p.armed = false;
+            if let Err(error) = p.id.send_named(p.unit, b"nextGenerationFor:", &[Operand::object(p.other)]) { return error; }
+        }
+        p.original.method.unwrap()(p.original.context, r, a, n)
+    }
+}
+
 struct RetirementFailure {
     adopt: native::NativeEntry,
     retract: native::NativeEntry,
@@ -147,8 +165,8 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
     .unwrap();
     q.check(cg, eval(b"[DispatchGeneration initializeCurrent]"))
         .unwrap();
-    host.enter_running().unwrap();
-    expect(b"[[[Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 99]] kind] = #generationNotQuiescent]");
+    expect(b"[[Reflect defineMethod: #ordinaryLifecycleValue on: Integer as: [:self | 99]] == Integer]");
+    expect(b"[[2 ordinaryLifecycleValue] = 99]");
     expect(b"[[2 hostLifecycleValue] = 10]");
     let dir = env::temp_dir().join(format!("birnam-host-lifecycle-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
@@ -298,7 +316,6 @@ fn image_recovers_composed_generation_before_entry() {
         let mode = env::var("BIRNAM_GENERATION_IMAGE_MODE").unwrap();
         eprintln!("generation Image: {mode} load");
         host.load_image_mode(&path, mode == "rebuild", false).unwrap();
-        host.enter_running().unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
         expect(b"[[[DispatchGeneration current] predecessor] isNil]");
@@ -306,11 +323,13 @@ fn image_recovers_composed_generation_before_entry() {
         expect(b"[[[DispatchGeneration current] compositionIdentity] = [System imageCompositionIdentity]]");
         expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] kind] = #composed]");
         expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] state] = #active]");
-        expect(b"[[db currentValue: [[DispatchGeneration current] unitFor: #imageGeneration] attr: #rollbackAvailable] = false]");
+        expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] rollbackAvailable] = false]");
         expect(b"[[[Generation adoptComposedGeneration: [DispatchGeneration current]] kind] = #imageRecoveryRequired]");
         expect(b"[[[CompiledUnit reconcileImageComposition: [System imageCompositionIdentity]] kind] = #imageRecoveryRequired]");
-        expect(b"[[db attrCount: savedOriginGeneration] = 0]");
-        expect(b"[[db attrCount: savedOriginPredecessor] = 0]");
+        expect(b"[[db currentValue: savedOriginGeneration attr: #userAnnotation] = 77]");
+        expect(b"[[savedOriginGeneration sourceMap] notNil]");
+        expect(b"[[db currentValue: savedOriginPredecessor attr: #sourceMap] = 88]");
+        expect(b"[[savedOriginPredecessor sourceMap] notNil]");
         expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         if mode != "resaved" {
             let resaved = path.with_extension(format!("{mode}.resaved.image"));
@@ -364,7 +383,6 @@ fn image_recovers_composed_generation_before_entry() {
     }
     q.evaluate(b"[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 11]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 10]]", Path::new("<image-generation>"), Some(b"imageGeneration")).unwrap();
     eval(b"[DispatchGeneration initializeCurrent]");
-    host.enter_running().unwrap();
     let dir = env::temp_dir().join(format!("birnam-image-generation-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     put_path(b"imageGenerationPath", &dir.join("candidate.o"));
@@ -378,7 +396,7 @@ fn image_recovers_composed_generation_before_entry() {
     .unwrap();
     expect(b"[[2 imageGenerationValue] = 20]");
     expect(b"[[imageGenerationClosure value] = 21]");
-    eval(b"let savedOriginGeneration := [DispatchGeneration current]; let savedOriginPredecessor := [savedOriginGeneration predecessor]");
+    eval(b"let savedOriginGeneration := [DispatchGeneration current]; let savedOriginPredecessor := [savedOriginGeneration predecessor]; [db assert: savedOriginGeneration attr: #userAnnotation value: 77]; [db assert: savedOriginPredecessor attr: #sourceMap value: 88]");
     let path = dir.join("active.image");
     let filename = q.string(path.as_os_str().as_bytes()).unwrap();
     let saved = q
@@ -444,7 +462,7 @@ fn image_recovers_composed_generation_before_entry() {
         )
         .unwrap();
         assert_eq!(fault.calls, 1, "{failure}");
-        expect(b"[[[System imageSaveReport] status] = #compensationConflict]");
+        expect(b"[[[System imageSaveReport] status] = #partialLoad]");
         expect(b"[[Generation validateImageGeneration] isError]");
         let stale = q.call(host.named(b"Generation").unwrap(), b"reconcileCandidate:", &[Operand::object(before)]).unwrap();
         assert!(q.check_result(stale).is_err(), "old adoption must not regain authority");
@@ -518,13 +536,9 @@ fn image_recovers_composed_generation_before_entry() {
         ],
     )
     .unwrap();
-    assert!(
-        failure.is_err(),
-        "retirement failure must reject Image recovery"
-    );
-    assert_eq!(fault.calls, 1, "retirement must stop at its first failure");
-    expect(b"[[[System imageSaveReport] status] = #compensationConflict]");
-    expect(b"[[Generation validateImageGeneration] isError]");
+    failure.unwrap();
+    assert_eq!(fault.calls, 0, "image adoption must not retract lifecycle or user facts");
+    expect(b"[[[Generation validateImageGeneration] isError] not]");
     let held = q.call(captured, b"invokeOn:", &[Operand::object(receiver)]).unwrap();
     assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(held)]).unwrap().as_word(), Some(20));
     host.load_image(&path).unwrap();
@@ -538,7 +552,7 @@ fn image_recovers_composed_generation_before_entry() {
 
 #[test]
 #[ignore = "requires installed production modules"]
-fn durable_retirement_preserves_store_retraction_errors() {
+fn lifecycle_fields_preserve_explicit_facts_and_status_reads() {
     let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
     let resources = crate::resolve_from_exe_dir(
         Path::new("/unused/bin"),
@@ -559,81 +573,70 @@ fn durable_retirement_preserves_store_retraction_errors() {
     )
     .unwrap();
     let q = host.scope();
-    let entity = q
-        .call(host.named(b"Object").unwrap(), b"clone", &[])
-        .unwrap();
-    let attribute = unsafe { host.context.id.intern_name(b"retirementProbe") }.unwrap();
-    let store = host.named(b"Store").unwrap();
-    let value = host.named(b"true").unwrap();
-    q.call(
-        store,
-        b"assert:attr:value:",
-        &[
-            Operand::object(entity),
-            Operand::object(attribute),
-            Operand::object(value),
-        ],
-    )
-    .unwrap();
-    let kind = unsafe { host.context.id.intern_name(b"retirementFailure") }.unwrap();
-    let error = q
-        .call(
-            host.named(b"Error").unwrap(),
-            b"kind:",
-            &[Operand::object(kind)],
-        )
-        .unwrap();
-    let vt = q
-        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(store)])
-        .unwrap();
-    let selector = unsafe { host.context.id.intern_name(b"retract:attr:value:") }.unwrap();
-    let original = host
-        .send(
-            host.context.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(selector), Operand::object(vt)],
-        )
-        .unwrap();
-    let mut fault = ReturnedFailure { error, calls: 0 };
-    host.send(
-        vt,
-        b"addMethod",
-        &[
-            Operand::object(selector),
-            Operand::entry(native::NativeEntry::new(
-                returned_failure,
-                (&mut fault as *mut ReturnedFailure).cast(),
-            )),
-        ],
-    )
-    .unwrap();
-    let unit = host.global(&q, b"CompiledUnit").unwrap();
-    let retired = q.call(unit, b"retireDurableEntity:", &[Operand::object(entity)]);
-    host.send(vt, b"addMethod", &[Operand::object(selector), original])
-        .unwrap();
-    assert_eq!(retired.unwrap(), error);
-    assert_eq!(fault.calls, 1);
-    assert_eq!(
-        q.call(
-            store,
-            b"currentValue:attr:",
-            &[Operand::object(entity), Operand::object(attribute),]
-        )
-        .unwrap(),
-        value
-    );
-    assert_eq!(
-        q.call(unit, b"retireDurableEntity:", &[Operand::object(entity)])
-            .unwrap(),
-        entity
-    );
-    assert_eq!(
-        q.call(
-            store,
-            b"currentValue:attr:",
-            &[Operand::object(entity), Operand::object(attribute),]
-        )
-        .unwrap(),
-        host.named(b"nil").unwrap()
-    );
+    let cg = host.named(b"Codegen").unwrap();
+    let eval = |source: &[u8]| {
+        let result = q.call(cg, b"evalPersisting:", &[Operand::object(q.string(source).unwrap())]).unwrap();
+        q.check_result(result).unwrap(); result
+    };
+    let expect = |source: &[u8]| { assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source)); };
+    eval(b"let ownedUnit := [CompiledUnit clone]; [ownedUnit setState: #candidate]; [db assert: ownedUnit attr: #state value: #annotation]; let unitAlias := ownedUnit; let unitClone := [ownedUnit clone]");
+    expect(b"[[ownedUnit state] = #candidate]");
+    expect(b"[[[Reflect slotsOf: ownedUnit] size] = 15]");
+    eval(b"[Reflect slot: #state in: unitClone put: #cloneState]");
+    expect(b"[[unitClone state] = #cloneState]");
+    expect(b"[[ownedUnit state] = #candidate]");
+    eval(b"[Reflect slot: #state in: unitAlias put: #active]");
+    expect(b"[[ownedUnit state] = #active]");
+    expect(b"[[db currentValue: ownedUnit attr: #state] = #annotation]");
+    eval(b"let oldDescription := [DispatchGeneration fromProjection: #[#generationProjection #[] nil nil] predecessor: ownedUnit delta: ownedUnit]; let freshDescription := [oldDescription fromProjection: #[#generationProjection #[] nil nil] predecessor: nil delta: nil]");
+    expect(b"[[freshDescription predecessor] isNil]");
+    expect(b"[[freshDescription deltaUnit] isNil]");
+    expect(b"[[oldDescription predecessor] == ownedUnit]");
+    let generation = host.named(b"Generation").unwrap();
+    let vt = q.call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(generation)]).unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"reconcileCandidate:") }.unwrap();
+    let original = host.send(host.context.id.receiver, b"bindingOf:in:", &[Operand::object(selector), Operand::object(vt)]).unwrap();
+    let mut fault = ReturnedFailure { error: host.named(b"nil").unwrap(), calls: 0 };
+    host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(returned_failure, (&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
+    expect(b"[[ownedUnit state] = #active]");
+    assert_eq!(fault.calls, 0, "status read performed implicit validation");
+    host.send(vt, b"addMethod", &[Operand::object(selector), original]).unwrap();
+    let unit = eval(b"ownedUnit");
+    let alias = eval(b"unitAlias");
+    assert_eq!(unit, alias);
+    let names = [b"Store".as_slice(), b"db"];
+    let values: Vec<_> = names.iter().map(|n| host.named(n).unwrap()).collect();
+    for name in names {
+        let key = unsafe { host.context.id.intern_name(name) }.unwrap();
+        host.send(host.context.namespace, b"remove:", &[Operand::object(key)]).unwrap();
+    }
+    // Invoke the actual compiled getters/setters without parsing new source.
+    let state = unsafe { host.context.id.intern_name(b"withoutStore") }.unwrap();
+    q.call(unit, b"setState:", &[Operand::object(state)]).unwrap();
+    assert_eq!(q.call(unit, b"state", &[]).unwrap(), state);
+    for (name, value) in names.into_iter().zip(values) {
+        let key = unsafe { host.context.id.intern_name(name) }.unwrap();
+        host.send(host.context.namespace, b"at:put:", &[Operand::object(key), Operand::object(value)]).unwrap();
+    }
+    expect(b"[[db currentValue: ownedUnit attr: #state] = #annotation]");
+    let owner = host.global(&q, b"CompiledUnit").unwrap();
+    let a = unsafe { host.context.id.intern_name(b"counterA") }.unwrap();
+    let b = unsafe { host.context.id.intern_name(b"counterB") }.unwrap();
+    q.call(owner, b"nextGenerationFor:", &[Operand::object(a)]).unwrap();
+    let key = unsafe { host.context.id.intern_name(b"+") }.unwrap();
+    let vt = host.named(b"IntegerVt").unwrap();
+    let original = host.send(host.context.id.receiver, b"bindingOf:in:", &[Operand::object(key), Operand::object(vt)]).unwrap().as_entry().unwrap();
+    if let Some(method) = host.send(host.named(b"Execution").unwrap(), b"methodOfEntry:", &[Operand::entry(original)]).unwrap().as_object() { q.keep(Operand::object(method)).unwrap(); }
+    let mut reentry = CounterReentry { id: host.context.id, original, unit: owner, other: b, armed: true };
+    host.send(vt, b"addMethod", &[Operand::object(key), Operand::entry(native::NativeEntry::new(counter_reentry, (&mut reentry as *mut CounterReentry).cast()))]).unwrap();
+    let next = q.call(owner, b"nextGenerationFor:", &[Operand::object(a)]);
+    host.send(vt, b"addMethod", &[Operand::object(key), Operand::entry(original)]).unwrap();
+    assert!(!reentry.armed, "counter did not use the current arithmetic send");
+    assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(next.unwrap())]).unwrap().as_word(), Some(2));
+    let other = q.call(owner, b"nextGenerationFor:", &[Operand::object(b)]).unwrap();
+    assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(other)]).unwrap().as_word(), Some(2), "counter publication overwrote a reentrant edit to another name");
+    let numbers = q.call(owner, b"generationNumbers", &[]).unwrap();
+    assert_eq!(q.call(numbers, b"at:", &[Operand::object(b)]).unwrap(), other);
+    q.call(owner, b"generationNumbers:", &[Operand::object(numbers)]).unwrap();
+
 }

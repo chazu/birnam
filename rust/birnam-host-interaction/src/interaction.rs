@@ -51,7 +51,6 @@ impl HostRuntime<'_> {
                 &[],
             )?;
             session.check_result(sealed)?;
-            self.enter_running()?;
             let ready = session.call(
                 repl,
                 if apply_config {
@@ -108,7 +107,6 @@ impl HostRuntime<'_> {
             &[],
         )?;
         q.check_result(sealed)?;
-        self.enter_running()?;
         let listener = q.call(
             repl,
             b"socketHostListen:bind:",

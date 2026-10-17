@@ -2,7 +2,7 @@
 
 `Generation` is a separately loaded native module implemented in Rust. It owns
 candidate admission and inert mappings, preparation tokens, the managed binding
-ledger, commit and exact rollback, compensation, retirement, mutation admission,
+ledger, commit and exact rollback, compensation, retirement,
 and image recovery. It also owns the source registry and its staged image
 exchange so publication updates the registry and ledger together without a
 callback between the two updates.
@@ -12,7 +12,7 @@ ordinary Vectors cross the interface; compiler state and Rust IR never do.
 Codegen supplies canonical source metadata through `compiledSourceMetadataFor:`
 and candidate factory inventories through `candidateInventory:selection:`.
 Generation uses NativeBackend for C/descriptor emission, TCC for owned native
-mappings, Execution for executable references and Store for durable records.
+mappings, Execution for executable references and authored ordinary objects for durable records.
 Compiled metadata reads reject missing/malformed metadata and never parse source
 as a fallback. Explicit candidate compilation and inspection may ask Codegen to
 analyze source.
@@ -20,12 +20,10 @@ analyze source.
 The publication messages retain their existing selectors: candidate compilation,
 inspection/mapping, successor projection, prepare/commit, rollback, adoption,
 reconciliation, retirement and telemetry. Production callers now send these
-messages to Generation; Codegen has no publication aliases. `enterRunning` marks
-an explicit-operation phase without installing a global mutation authorizer or
-Store observer. CompiledUnit,
+messages to Generation; Codegen has no publication aliases. The unused running-phase handshake has been removed. CompiledUnit,
 DispatchGeneration and EvolutionIntent continue to own authored policy.
 
-`sourceRegistry` returns `[sealed, [name, source], ...]`; `sourceRegistrySealed`
+`sourceRegistry` returns `[sealed, [name, compilationRecord], ...]`; `sourceRegistrySealed`
 returns a Boolean. Registration uses `recordCompiledSource:named:` and
 `moduleSourceFor:`. Image integration uses `prepareSourceRegistry:`,
 `swapSourceRegistry`, `beginImageRecovery:`, `recoverImageGeneration:` and
@@ -49,7 +47,7 @@ helpers, collection and author-file changes after inspection.
 
 `prepareActivation:plan:` copies the publication plan, checks the full successor
 projection and stable target ownership, and roots exact direct bindings and
-projected Globals. Preparation runs no candidate factory. Numeric Store basis
+projected Globals. Preparation runs no candidate factory. Relevant lifecycle field observations, Globals basis
 and Id behavior epoch checks reject changes during callbacks; monotonic tokens
 are consumed by `discardPrepared:`, releasing preparation-only roots.
 
@@ -70,10 +68,11 @@ adoption validates the original snapshot and cannot clear an observed divergence
 `commitPrepared:` and `commitPreparedRollback:` consume their token on every
 attempt and require Execution's quiescent native boundary. Candidate construction
 runs once and retains the exact helpers and Methods across publication retries.
-Tracked method changes, projected Globals and lifecycle facts use inverse journals;
-Store reservations cover forward publication, compensation and rollback. A failure
+Tracked method changes, projected Globals and owned lifecycle fields use inverse journals;
+Globals reservations cover binding publication, compensation and rollback. Lifecycle
+fields require no Store capacity reservations, automatic audit facts or event records. A failure
 after mutation restores candidate-owned changes while retaining unrelated callback
-facts. Successful publication switches the source registry and complete binding
+facts and differing field edits. Successful publication switches the source registry and complete binding
 ledger together. The `generation_transaction` test covers synchronous/resumable
 activation, replacement/addition/removal, failure compensation and exact rollback.
 
@@ -156,3 +155,25 @@ revision and does not spuriously invalidate unchanged metadata. Successful activ
 and rollback install the source records and the ledger's matching content revision
 together, after all callback-capable validation. Explicit rollback still retains the
 exact prior record references. See [the owner contract](../../docs/design/retained-compilation-records.md).
+
+## Owned lifecycle records
+
+`CompiledUnit`, `DispatchGeneration`, `EvolutionIntent` and `CompiledOperation`
+use ordinary reference slots with named `slotNames` descriptions. Reflect can
+inspect and edit those fields; explicit same-name Store facts are independent. Native coordination uses
+the current named field accessors, avoiding operational slot-inventory scans.
+The current-generation reference and numbering map are authored local Cells.
+`state` reads the recorded status without reconciling the whole ledger; explicit
+`reconcileCandidate:` and validation remain available.
+
+Publication plans now contain six values: `[action, unit, name, priorUnit,
+expectedGeneration, successorGeneration]`. Automatic activation-event records and
+the Store basis have been removed. Preparation captures the lifecycle fields it
+reads, so unrelated facts no longer invalidate a token. Binding-owner and source
+revision checks remain while the whole-program coordination model is narrowed.
+
+Image composition replaces its current root without erasing historical records or
+walking an old generation graph to retract facts. Unreferenced records follow GC;
+callers retaining records keep their values and annotations. Restored inverse
+capabilities remain unavailable. Rebuild images created with the old fact-backed
+record layout; no fact-to-field compatibility adapter or user-fact scrubber exists.

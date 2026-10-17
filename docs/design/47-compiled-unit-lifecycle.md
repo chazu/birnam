@@ -1,5 +1,12 @@
 # 47 — CompiledUnit Lifecycle: Staged Dispatch Generations
 
+> Historical proposal. Its Store-arbitrated MOP, running-phase edit prohibition,
+> automatic lifecycle facts and destructive image retirement are superseded by
+> [optional Store](optional-store-and-relational.md) and the
+> [lifecycle simplification review](generation-lifecycle-review.md). Use the
+> [current Generation contract](../../rust/birnam-generation/README.md) for
+> implemented behavior. Whole-program coordination is still being narrowed.
+
 > **Status:** Implemented, 2026-07-13, rev. 3 after a second adversarial review.
 > Rev. 2 corrected the Store/id MOP seam, candidate roots, stable-target rule,
 > immutable load paths, actual-base validation, recovery ordering, and composed

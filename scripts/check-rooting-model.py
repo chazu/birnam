@@ -422,6 +422,8 @@ def check_lean(lean, out):
         "owner-image-keeps-credits": ("GlobalsBinding", "{ owner with credits := fun _ => 0 }", "owner"),
         "owner-name-uses-value-equality": ("GlobalsBinding", "a.identity == b.identity", "a.spelling == b.spelling"),
         "binding-nil-is-absent": ("GlobalsBinding", "| some value => [value]", "| some value => if value = 0 then [] else [value]"),
+        "lifecycle-retirement-scrubs-facts": ("PrivateScratch", "{ s with current := next }", "{ s with current := next, facts := fun _ => 0 }"),
+        "lifecycle-retirement-scrubs-records": ("PrivateScratch", "{ s with current := next }", "{ s with current := next, records := fun _ => 0 }"),
         "compilation-owner-keeps-old-stamp": ("PrivateScratch", "else ⟨record, s.revision + 1⟩", "else ⟨record, s.revision⟩"),
         "source-inspection-publishes-cache": ("PrivateScratch", "| none => (parsed, none)", "| none => (parsed, some parsed)"),
         "suite-registration-reverses-order": ("SlotReflection", "suites else suites ++ [identity]", "suites else identity :: suites"),

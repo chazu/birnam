@@ -104,9 +104,7 @@ impl HostRuntime {
 }
 #[cfg(test)]
 impl HostRuntime {
-    pub(crate) fn enter_running(&self) -> Result<(), HostError> {
-        self.context.enter_running()
-    }
+
     pub(crate) fn load_tool(&self, name: &[u8]) -> Result<(), HostError> {
         let q = self.scope();
         let name = q.string(name)?;

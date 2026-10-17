@@ -1,0 +1,36 @@
+// Retained lifecycle descriptions are data, independent of explicit facts.
+[Module load: #os];
+[[|
+let check := [:ok | [ok ifFalse: [| [System printErrorText: "lifecycle image check failed\n"]; [OS exit: 1]]]];
+let unit := [CompiledUnit clone];
+[unit state: #candidate];
+let clone := [unit clone];
+let alias := unit;
+[unit state: #active];
+let old := [DispatchGeneration fromProjection: #[#generationProjection #[] nil nil] predecessor: unit delta: unit];
+let fresh := [old fromProjection: #[#generationProjection #[] nil nil] predecessor: nil delta: nil];
+[CompiledUnit generationNumbers: {#imageCounter -> 9}];
+[db assert: unit attr: #state value: #userAnnotation];
+[db assert: #imageCounter attr: #nextCompiledGeneration value: 99];
+[Globals at: #main put: [|
+  [System gc];
+  [check value: [unit == alias]];
+  [check value: [[unit state] == #active]];
+  [check value: [[clone state] == #candidate]];
+  [check value: [[old predecessor] == unit]];
+  [check value: [[fresh predecessor] isNil]];
+  [check value: [[fresh deltaUnit] isNil]];
+  [check value: [[db currentValue: unit attr: #state] == #userAnnotation]];
+  [check value: [[[CompiledUnit generationNumbers] at: #imageCounter] = 9]];
+  [check value: [[CompiledUnit nextGenerationFor: #imageCounter] = 10]];
+  [check value: [[db currentValue: #imageCounter attr: #nextCompiledGeneration] = 99]];
+  [unit state: #afterRestore];
+  [check value: [[alias state] == #afterRestore]];
+  [check value: [[clone state] == #candidate]];
+  [Reflect slot: #state in: clone put: #cloneChanged];
+  [check value: [[clone state] == #cloneChanged]];
+  [check value: [[unit state] == #afterRestore]];
+  [System println: "lifecycle-record-image: passed"]
+]];
+[System saveImage: IMAGE_PATH]; [System println: [[System imageSaveReport] status]]
+] value]

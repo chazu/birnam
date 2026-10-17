@@ -8,8 +8,6 @@ use birnam_codegen::{
 use core::cell::Cell;
 #[path = "candidate_ledger.rs"]
 mod ledger;
-#[path = "candidate_phase.rs"]
-mod phase;
 #[path = "candidate_preparation.rs"]
 mod preparation;
 #[path = "candidate_recovery.rs"]
@@ -19,7 +17,6 @@ mod retirement;
 #[path = "candidate_transaction.rs"]
 mod transaction;
 pub(super) use ledger::{validate_image, prepare_image_snapshot};
-pub(super) use phase::enter_running;
 pub(super) use recovery::{begin_recovery, cancel_recovery, abandon_recovery, recover_image};
 #[derive(Default)]
 pub(super) struct Candidates {
@@ -147,47 +144,21 @@ pub(super) unsafe fn seq(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, O
 pub(super) unsafe fn symbol(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Outcome> {
     unsafe { q.keep(s.id.intern_name(name)?) }
 }
-pub(super) unsafe fn fact(
-    s: &State,
-    q: &Scope<'_>,
-    entity: Oop,
-    attribute: &[u8],
-) -> Result<Oop, Outcome> {
-    unsafe {
-        let key = symbol(s, q, attribute)?;
-        call(
-            s,
-            q,
-            s.named(b"db")?,
-            b"currentValue:attr:",
-            &[Operand::object(entity), Operand::object(key)],
-        )
-    }
+pub(super) unsafe fn prototype(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { call(s, q, s.named(b"Globals")?, b"at:", &[Operand::object(symbol(s, q, name)?)]) }
 }
-pub(super) unsafe fn assert(
-    s: &State,
-    q: &Scope<'_>,
-    entity: Oop,
-    attribute: &[u8],
-    value: Oop,
-) -> Result<(), Outcome> {
+pub(super) unsafe fn record(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { call(s, q, prototype(s, q, name)?, b"clone", &[]) }
+}
+pub(super) unsafe fn field(s: &State, q: &Scope<'_>, entity: Oop, attribute: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { call(s, q, entity, attribute, &[]) }
+}
+pub(super) unsafe fn set_field(s: &State, q: &Scope<'_>, entity: Oop, attribute: &[u8], value: Oop) -> Result<(), Outcome> {
     unsafe {
-        let key = symbol(s, q, attribute)?;
-        let db = q.keep(s.named(b"db")?)?;
-        let result = call(
-            s,
-            q,
-            db,
-            b"assert:attr:value:",
-            &[
-                Operand::object(entity),
-                Operand::object(key),
-                Operand::object(value),
-            ],
-        )?;
-        if result != db {
-            return Err(Outcome::loaded(Operand::object(result)));
-        }
+        let mut selector = attribute.to_vec();
+        selector.push(b':');
+        let result = call(s, q, entity, &selector, &[Operand::object(value)])?;
+        if s.is_error(result)? { return Err(Outcome::loaded(Operand::object(result))); }
         Ok(())
     }
 }
@@ -209,7 +180,11 @@ pub(super) unsafe fn fail(
     }
 }
 pub(super) unsafe fn current(s: &State, q: &Scope<'_>) -> Result<Oop, Outcome> {
-    unsafe { fact(s, q, symbol(s, q, b"dispatch")?, b"activeGeneration") }
+    unsafe {
+        let owner = prototype(s, q, b"DispatchGeneration")?;
+        if owner == s.named(b"nil")? { return Ok(owner); }
+        call(s, q, owner, b"current", &[])
+    }
 }
 unsafe fn modules(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<generation::Module>, Outcome> {
     unsafe {
@@ -482,7 +457,7 @@ pub(super) unsafe fn operation(
                         b"candidate compilation needs a current generation",
                     );
                 }
-                let expected = s.bytes(fact(s, q, predecessor, b"baseDigest")?)?;
+                let expected = s.bytes(field(s, q, predecessor, b"baseDigest")?)?;
                 let expected = <&[u8; 64]>::try_from(expected.as_slice()).map_err(|_| invalid())?;
                 let selected = select(
                     s,
@@ -490,8 +465,8 @@ pub(super) unsafe fn operation(
                     &metadata,
                     args.get(3).copied().map(object).transpose()?,
                 )?;
-                let map = fact(s, q, predecessor, b"sourceMap")?;
-                let old_selection = s.bytes(fact(s, q, predecessor, b"generationSelection")?)?;
+                let map = field(s, q, predecessor, b"sourceMap")?;
+                let old_selection = s.bytes(field(s, q, predecessor, b"generationSelection")?)?;
                 let modules = modules(s, q, map)?;
                 let descriptor_hashes = backend::hashes(
                     s,
@@ -585,8 +560,8 @@ pub(super) unsafe fn operation(
                 };
                 let predecessor = current(s, q)?;
                 if predecessor == s.named(b"nil")?
-                    || fact(s, q, predecessor, b"sourceMap")? != map
-                    || s.bytes(fact(s, q, predecessor, b"baseDigest")?)? != expected
+                    || field(s, q, predecessor, b"sourceMap")? != map
+                    || s.bytes(field(s, q, predecessor, b"baseDigest")?)? != expected
                     || candidate_name != name
                 {
                     return fail(
@@ -606,7 +581,7 @@ pub(super) unsafe fn operation(
                     return fail(s, q, b"invalidCandidate", b"candidate revision mismatches");
                 }
                 let prior = modules(s, q, map)?;
-                let selection = s.bytes(fact(s, q, predecessor, b"generationSelection")?)?;
+                let selection = s.bytes(field(s, q, predecessor, b"generationSelection")?)?;
                 let descriptor_hashes = backend::hashes(
                     s,
                     q,
@@ -730,7 +705,7 @@ pub(super) unsafe fn operation(
                 let requires = s.vector(q, &requires)?;
                 let mut operations = Vec::new();
                 for op in &plan.metadata.operations {
-                    let row = call(s, q, s.named(b"Object")?, b"clone", &[])?;
+                    let row = record(s, q, b"CompiledOperation")?;
                     for (key, value) in [
                         (b"targetName".as_slice(), symbol(s, q, &op.target)?),
                         (b"selector", symbol(s, q, &op.selector)?),
@@ -740,7 +715,7 @@ pub(super) unsafe fn operation(
                         ),
                         (b"priorPresent", s.named(b"false")?),
                     ] {
-                        assert(s, q, row, key, value)?;
+                        set_field(s, q, row, key, value)?;
                     }
                     operations.push(row);
                 }
@@ -764,7 +739,7 @@ pub(super) unsafe fn operation(
                     (b"state", symbol(s, q, b"candidate")?),
                     (b"rollbackAvailable", s.named(b"false")?),
                 ] {
-                    assert(s, q, unit, key, value)?;
+                    set_field(s, q, unit, key, value)?;
                 }
                 s.candidates.entries.borrow_mut().push(Candidate {
                     unit,

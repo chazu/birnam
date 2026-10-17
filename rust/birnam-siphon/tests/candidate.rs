@@ -56,6 +56,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        lifecycle_records(id, ns);
         let named = |name: &[u8]| {
             object(send(
                 id,
@@ -109,6 +110,8 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 .as_word()
                 .unwrap()
         };
+        let prototype = |name: &[u8]| call(named(b"Globals"), b"at:", &[symbol(name)]);
+        let record = |name: &[u8]| call(prototype(name), b"clone", &[]);
         let codegen = named(b"Codegen");
         let db = named(b"db");
         let globals = named(b"Globals");
@@ -125,22 +128,18 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             baseline
         );
         let projection = call(codegen, b"initialGenerationProjection", &[]);
-        let generation = call(named(b"Object"), b"clone", &[]);
+        let generation = record(b"DispatchGeneration");
         for (attr, v) in [
             (b"sourceMap".as_slice(), at(projection, 1)),
             (b"baseDigest", at(projection, 2)),
             (b"generationSelection", at(projection, 3)),
         ] {
             assert_eq!(
-                call(db, b"assert:attr:value:", &[generation, symbol(attr), v]),
-                db
+                call(named(b"Reflect"), b"slot:in:put:", &[symbol(attr), generation, v]),
+                generation
             );
         }
-        call(
-            db,
-            b"assert:attr:value:",
-            &[symbol(b"dispatch"), symbol(b"activeGeneration"), generation],
-        );
+        call(prototype(b"DispatchGeneration"), b"current:", &[generation]);
         assert_eq!(
             call(
                 named(b"Generation"),
@@ -191,7 +190,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 bytes(call(codegen, b"lastError", &[]))
             );
             let artifact = std::fs::read(&path).unwrap();
-            let unit = call(named(b"Object"), b"clone", &[]);
+            let unit = record(b"CompiledUnit");
             assert_eq!(
                 call(
                     named(b"Generation"),
@@ -202,11 +201,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             );
             assert_eq!(call(named(b"Generation"), b"candidateMapped:", &[unit]), no);
             assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
-            let revision = call(
-                db,
-                b"currentValue:attr:",
-                &[unit, symbol(b"sourceRevision")],
-            );
+            let revision = call(named(b"Reflect"), b"slot:in:", &[symbol(b"sourceRevision"), unit]);
             let successor = call(
                 named(b"Generation"),
                 b"successorGenerationProjection:replacing:with:unit:",
@@ -214,7 +209,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             );
             assert_eq!(at(successor, 0), symbol(b"generationProjection"));
             assert_ne!(bytes(at(successor, 2)), bytes(at(projection, 2)));
-            let next = call(named(b"Object"), b"clone", &[]);
+            let next = record(b"DispatchGeneration");
             for (attr, v) in [
                 (b"sourceMap".as_slice(), at(successor, 1)),
                 (b"baseDigest", at(successor, 2)),
@@ -222,19 +217,15 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 (b"predecessor", generation),
                 (b"deltaUnit", unit),
             ] {
-                call(db, b"assert:attr:value:", &[next, symbol(attr), v]);
+                call(named(b"Reflect"), b"slot:in:put:", &[symbol(attr), next, v]);
             }
             let publication = || {
-                let event = call(named(b"Object"), b"clone", &[]);
-                let basis = call(db, b"basis", &[]);
-                let mut plan = call(named(b"Vector"), b"new", &[]);
+                    let mut plan = call(named(b"Vector"), b"new", &[]);
                 for value in [
                     symbol(b"activate"),
                     unit,
                     name,
                     nil,
-                    event,
-                    basis,
                     generation,
                     next,
                 ] {
@@ -302,11 +293,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                     &[Operand::object(key), entry],
                 );
             }
-            call(
-                db,
-                b"assert:attr:value:",
-                &[unit, symbol(b"unitName"), symbol(b"forgedModule")],
-            );
+            call(named(b"Reflect"), b"slot:in:put:", &[symbol(b"unitName"), unit, symbol(b"forgedModule")]);
             let mismatch = call(
                 named(b"Generation"),
                 b"prepareActivation:plan:",
@@ -316,11 +303,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 call(mismatch, b"kind", &[]),
                 symbol(b"candidatePreparationFailed")
             );
-            call(
-                db,
-                b"assert:attr:value:",
-                &[unit, symbol(b"unitName"), name],
-            );
+            call(named(b"Reflect"), b"slot:in:put:", &[symbol(b"unitName"), unit, name]);
             let plan = publication();
             let token = call(
                 named(b"Generation"),
@@ -387,7 +370,8 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 b"prepareActivation:plan:",
                 &[unit, stale],
             );
-            assert_eq!(call(rejected, b"kind", &[]), symbol(b"staleGeneration"));
+            assert_eq!(call(rejected, b"isError", &[]), no);
+            assert_eq!(call(named(b"Generation"), b"discardPrepared:", &[rejected]), unit);
             // A callback may return the old basis and then mutate Store. The
             // final snapshot check must catch that mixed observation.
             let drifting_plan = publication();
@@ -436,8 +420,9 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 b"addMethod",
                 &[Operand::object(basis_selector), Operand::entry(prior_basis)],
             );
-            assert!(drift.fired.get());
-            assert_eq!(call(rejected, b"kind", &[]), symbol(b"staleGeneration"));
+            assert!(!drift.fired.get(), "Generation consulted Store basis");
+            assert_eq!(call(rejected, b"isError", &[]), no);
+            assert_eq!(call(named(b"Generation"), b"discardPrepared:", &[rejected]), unit);
             let bad = call(named(b"Object"), b"clone", &[]);
             assert_eq!(
                 call(
@@ -463,7 +448,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 ),
                 removal_path
             );
-            let removal = call(named(b"Object"), b"clone", &[]);
+            let removal = record(b"CompiledUnit");
             assert_eq!(
                 call(
                     named(b"Generation"),
@@ -476,17 +461,13 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 call(named(b"Generation"), b"mapCandidate:", &[removal]),
                 removal
             );
-            let removal_revision = call(
-                db,
-                b"currentValue:attr:",
-                &[removal, symbol(b"sourceRevision")],
-            );
+            let removal_revision = call(named(b"Reflect"), b"slot:in:", &[symbol(b"sourceRevision"), removal]);
             let removal_projection = call(
                 named(b"Generation"),
                 b"successorGenerationProjection:replacing:with:unit:",
                 &[at(projection, 1), name, removal_revision, removal],
             );
-            let removal_next = call(named(b"Object"), b"clone", &[]);
+            let removal_next = record(b"DispatchGeneration");
             for (attr, v) in [
                 (b"sourceMap".as_slice(), at(removal_projection, 1)),
                 (b"baseDigest", at(removal_projection, 2)),
@@ -494,18 +475,14 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 (b"predecessor", generation),
                 (b"deltaUnit", removal),
             ] {
-                call(db, b"assert:attr:value:", &[removal_next, symbol(attr), v]);
+                call(named(b"Reflect"), b"slot:in:put:", &[symbol(attr), removal_next, v]);
             }
-            let event = call(named(b"Object"), b"clone", &[]);
-            let removal_basis = call(db, b"basis", &[]);
             let mut removal_plan = call(named(b"Vector"), b"new", &[]);
             for value in [
                 symbol(b"activate"),
                 removal,
                 name,
                 nil,
-                event,
-                removal_basis,
                 generation,
                 removal_next,
             ] {
@@ -584,7 +561,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 );
                 assert_eq!(call(readoption, b"kind", &[]), symbol(b"staleGeneration"));
                 assert_eq!(
-                    call(db, b"currentValue:attr:", &[generation, symbol(b"state")]),
+                    call(named(b"Reflect"), b"slot:in:", &[symbol(b"state"), generation]),
                     symbol(b"drifted")
                 );
             }

@@ -69,7 +69,6 @@ impl HostRuntime<'_> {
     /// Enter saved main, fulfill a returned intent after its frame exits, and
     /// checkpoint Isolate on success or failure. Nil and false remain successes.
     pub fn run_image_main(&self) -> Result<(), HostError> {
-        self.enter_running()?;
         let run = || -> Result<(), HostError> {
             let scope = self.scope();
             let main = self.global(&scope, b"main")?;

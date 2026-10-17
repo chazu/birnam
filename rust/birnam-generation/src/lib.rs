@@ -26,7 +26,6 @@ struct State {
     id: Protocol,
     ns: Oop,
     roots: Oop,
-    running: Cell<bool>,
     permanent: Vec<Oop>,
     candidates: candidate::Candidates,
     registry: registry::Registry,
@@ -96,7 +95,6 @@ impl State {
 enum Op {
     Candidate(candidate::Op),
     Registry(registry::Op),
-    EnterRunning,
     ValidateImage,
     PrepareImageSnapshot,
     FulfillIntent,
@@ -143,7 +141,6 @@ unsafe extern "C" fn operation(
         match e.op {
             Op::Candidate(op) => candidate::operation(s, &q, op, a),
             Op::Registry(op) => registry::operation(s, &q, op, a),
-            Op::EnterRunning => candidate::enter_running(s, &q),
             Op::ValidateImage => candidate::validate_image(s, &q),
             Op::PrepareImageSnapshot => candidate::prepare_image_snapshot(s, &q),
             Op::FulfillIntent => candidate::fulfill_intent(s, &q, object(a[0])?),
@@ -261,7 +258,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             id,
             ns,
             roots: root,
-            running: core::cell::Cell::new(false),
             permanent: vec![ns, root, vt, receiver, receipt_vt, receipt],
             candidates: Default::default(),
             registry: Default::default(),
@@ -272,7 +268,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (receipt_vt, b"logical".as_slice(), Op::Receipt(1)),
             (receipt_vt, b"physical".as_slice(), Op::Receipt(2)),
             (receipt_vt, b"reason".as_slice(), Op::Receipt(3)),
-            (vt, b"enterRunning".as_slice(), Op::EnterRunning),
             (vt, b"validateImageGeneration".as_slice(), Op::ValidateImage),
             (vt, b"prepareImageSnapshot".as_slice(), Op::PrepareImageSnapshot),
             (

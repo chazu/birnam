@@ -194,4 +194,29 @@ theorem retained_compilation_is_snapshot (records : Nat → Compilation)
     let _ := replaceCompilation s replacement
     captured = records s.selected := by rfl
 
+/-! Lifecycle retirement changes reachability, not explicit facts or retained
+    records. This models owned fields and selected observation, not native GC,
+    arbitrary callbacks, or the whole transaction implementation. -/
+structure Lifecycle where
+  records : Nat → Nat
+  facts : Nat → Nat
+  current : Nat
+
+def selectLifecycle (s : Lifecycle) (next : Nat) : Lifecycle := { s with current := next }
+def lifecycleFact (s : Lifecycle) (key value : Nat) : Lifecycle :=
+  { s with facts := put s.facts key value }
+def lifecycleRead (s : Lifecycle) (record : Nat) := (s.records record, s)
+
+theorem lifecycle_selection_preserves_annotations (s : Lifecycle) (next : Nat) :
+    (selectLifecycle s next).facts = s.facts := by rfl
+
+theorem lifecycle_selection_preserves_retained_record (s : Lifecycle) (next old : Nat) :
+    (selectLifecycle s next).records old = s.records old := by rfl
+
+theorem lifecycle_status_read_has_no_effect (s : Lifecycle) (record : Nat) :
+    (lifecycleRead s record).2 = s := by rfl
+
+theorem unrelated_fact_keeps_prepared_observation (s : Lifecycle) (key value record : Nat) :
+    (lifecycleFact s key value).records record = s.records record := by rfl
+
 end Birnam.PrivateScratch

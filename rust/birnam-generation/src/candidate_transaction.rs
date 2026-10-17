@@ -22,11 +22,11 @@ impl Constructed {
     }
 }
 #[derive(Clone)]
-struct FactWrite {
+struct FieldWrite {
     entity: Oop,
     attribute: Oop,
-    before: Option<Oop>,
-    after: Option<Oop>,
+    before: Oop,
+    after: Oop,
 }
 #[derive(Clone)]
 struct GlobalWrite {
@@ -66,7 +66,8 @@ impl Activation {
 }
 #[derive(Clone)]
 enum Write {
-    Fact(FactWrite),
+    Field(FieldWrite),
+    Current { before: Oop, after: Oop },
     Global(GlobalWrite),
     Binding {
         before: Binding,
@@ -76,95 +77,25 @@ enum Write {
 unsafe fn failure(s: &State, q: &Scope<'_>, kind: &[u8], message: &[u8]) -> Outcome {
     unsafe { fail(s, q, kind, message).map_or_else(|e| e, Outcome::loaded) }
 }
-unsafe fn raw_fact(
-    s: &State,
-    q: &Scope<'_>,
-    entity: Oop,
-    attribute: Oop,
-) -> Result<Option<Oop>, Outcome> {
-    unsafe {
-        let value = s.send(
-            s.named(b"db")?,
-            b"rawCurrentValue:attr:",
-            &[Operand::object(entity), Operand::object(attribute)],
-        )?;
-        if value.kind() == native::UNIT {
-            Ok(None)
-        } else {
-            q.keep(object(value)?).map(Some)
-        }
-    }
+unsafe fn raw_field(s: &State, q: &Scope<'_>, entity: Oop, attribute: Oop) -> Result<Oop, Outcome> {
+    unsafe { field(s, q, entity, &s.symbol_bytes(q, attribute)?.ok_or_else(invalid)?) }
 }
-unsafe fn fact_write(
+unsafe fn field_write(
     s: &State,
     q: &Scope<'_>,
     entity: Oop,
     attribute: &[u8],
     value: Oop,
-) -> Result<FactWrite, Outcome> {
+) -> Result<FieldWrite, Outcome> {
     unsafe {
         let attribute = symbol(s, q, attribute)?;
-        Ok(FactWrite {
+        Ok(FieldWrite {
             entity,
             attribute,
-            before: raw_fact(s, q, entity, attribute)?,
-            after: Some(value),
+            before: raw_field(s, q, entity, attribute)?,
+            after: value,
         })
     }
-}
-unsafe fn checked_store(
-    s: &State,
-    q: &Scope<'_>,
-    name: &[u8],
-    args: &[Operand],
-) -> Result<(), Outcome> {
-    unsafe {
-        let db = q.keep(s.named(b"db")?)?;
-        let value = call(s, q, db, name, args)?;
-        if value == db {
-            Ok(())
-        } else if s.is_error(value)? {
-            Err(Outcome::loaded(Operand::object(value)))
-        } else {
-            Err(failure(
-                s,
-                q,
-                b"candidateCommitFailed",
-                b"Store did not accept the candidate operation",
-            ))
-        }
-    }
-}
-unsafe fn reserve(s: &State, q: &Scope<'_>, owner: Oop, required: usize) -> Result<(), Outcome> {
-    unsafe {
-        let count = call(
-            s,
-            q,
-            s.named(b"db")?,
-            b"reservedCompensationFor:",
-            &[Operand::object(owner)],
-        )?;
-        let count = preparation::number(s, count)?;
-        if count >= required {
-            return Ok(());
-        }
-        let count = call(
-            s,
-            q,
-            s.named(b"Integer")?,
-            b"fromWord:",
-            &[Operand::word(required - count)],
-        )?;
-        checked_store(
-            s,
-            q,
-            b"reserveCompensationFor:count:",
-            &[Operand::object(owner), Operand::object(count)],
-        )
-    }
-}
-unsafe fn release(s: &State, q: &Scope<'_>, owner: Oop) -> Result<(), Outcome> {
-    unsafe { checked_store(s, q, b"releaseCompensationFor:", &[Operand::object(owner)]) }
 }
 unsafe fn checked_globals(s: &State, q: &Scope<'_>, selector: &[u8], args: &[Operand]) -> Result<(), Outcome> {
     unsafe {
@@ -185,72 +116,33 @@ unsafe fn reserve_bindings(s: &State, q: &Scope<'_>, token: Oop, required: usize
         checked_globals(s, q, b"reserveBindingCompensationFor:count:", &[Operand::object(token), Operand::object(count)])
     }
 }
-unsafe fn release_publication(s: &State, q: &Scope<'_>, unit: Oop, binding_token: Oop, binding_count: usize) -> Result<(), Outcome> {
+unsafe fn release_bindings(s: &State, q: &Scope<'_>, binding_token: Oop, binding_count: usize) -> Result<(), Outcome> {
     unsafe {
-        release(s, q, unit)?;
         if binding_count != 0 {
             checked_globals(s, q, b"releaseBindingCompensationFor:", &[Operand::object(binding_token)])?;
         }
         Ok(())
     }
 }
-pub(super) unsafe fn discard_facts(s: &State, q: &Scope<'_>, unit: Oop) -> Result<(), Outcome> {
+pub(super) unsafe fn discard_fields(s: &State, q: &Scope<'_>, unit: Oop) -> Result<(), Outcome> {
+    unsafe { set_field(s, q, unit, b"state", symbol(s, q, b"discarded")?) }
+}
+unsafe fn restore_field(s: &State, q: &Scope<'_>, f: &FieldWrite, inverse: bool) -> Result<(), Outcome> {
     unsafe {
-        let change = fact_write(s, q, unit, b"state", symbol(s, q, b"discarded")?)?;
-        reserve(s, q, unit, 1)?;
-        let result = (|| {
-            restore_fact(s, q, unit, &change, false)?;
-            release(s, q, unit)?;
-            if raw_fact(s, q, change.entity, change.attribute)? != change.after {
-                return Err(invalid());
-            }
-            Ok(())
-        })();
-        if let Err(error) = result {
-            if let Some(value) = error.value.as_object() {
-                q.keep(value)?;
-            }
-            reserve(s, q, unit, 1)?;
-            let restored = compensate(s, q, unit, s.named(b"nil")?, &[Write::Fact(change)]);
-            release(s, q, unit)?;
-            if !restored {
-                return Err(failure(
-                    s,
-                    q,
-                    b"candidateCompensationFailed",
-                    b"discard failed and an intervening edit prevented compensation",
-                ));
-            }
-            return Err(error);
-        }
+        let (expected, next) = if inverse { (f.after, f.before) } else { (f.before, f.after) };
+        if raw_field(s, q, f.entity, f.attribute)? != expected { return Err(invalid()); }
+        set_field(s, q, f.entity, &s.symbol_bytes(q, f.attribute)?.ok_or_else(invalid)?, next)?;
+        if raw_field(s, q, f.entity, f.attribute)? != next { return Err(invalid()); }
         Ok(())
     }
 }
-unsafe fn restore_fact(
-    s: &State,
-    q: &Scope<'_>,
-    owner: Oop,
-    f: &FactWrite,
-    inverse: bool,
-) -> Result<(), Outcome> {
+unsafe fn set_current(s: &State, q: &Scope<'_>, expected: Oop, next: Oop) -> Result<(), Outcome> {
     unsafe {
-        let (expected, previous) = if inverse {
-            (f.after, f.before)
-        } else {
-            (f.before, f.after)
-        };
-        checked_store(
-            s,
-            q,
-            b"restoreValue:attr:expected:previous:reservation:",
-            &[
-                Operand::object(f.entity),
-                Operand::object(f.attribute),
-                expected.map_or_else(Operand::unit, Operand::object),
-                previous.map_or_else(Operand::unit, Operand::object),
-                Operand::object(owner),
-            ],
-        )
+        if current(s, q)? != expected { return Err(invalid()); }
+        let result = call(s, q, prototype(s, q, b"DispatchGeneration")?, b"current:", &[Operand::object(next)])?;
+        if s.is_error(result)? { return Err(Outcome::loaded(Operand::object(result))); }
+        if current(s, q)? != next { return Err(invalid()); }
+        Ok(())
     }
 }
 pub(super) unsafe fn is_method(
@@ -364,12 +256,16 @@ unsafe fn restore_global(
         }
     }
 }
-unsafe fn compensate(s: &State, q: &Scope<'_>, owner: Oop, binding_token: Oop, writes: &[Write]) -> bool {
+unsafe fn compensate(s: &State, q: &Scope<'_>, binding_token: Oop, writes: &[Write]) -> bool {
     unsafe {
         let mut complete = true;
         for write in writes.iter().rev() {
             let restored = (|| {
                 match write {
+                    Write::Current { before, after } => {
+                        let now = current(s, q)?;
+                        if now != *before { set_current(s, q, *after, *before)?; }
+                    }
                     Write::Global(f) => {
                         let current = preparation::global(s, q, f.name)?;
                         if current == f.before {
@@ -383,16 +279,16 @@ unsafe fn compensate(s: &State, q: &Scope<'_>, owner: Oop, binding_token: Oop, w
                             return Err(invalid());
                         }
                     }
-                    Write::Fact(f) => {
-                        let current = raw_fact(s, q, f.entity, f.attribute)?;
+                    Write::Field(f) => {
+                        let current = raw_field(s, q, f.entity, f.attribute)?;
                         if current == f.before {
                             return Ok(());
                         }
                         if current != f.after {
                             return Err(invalid());
                         }
-                        restore_fact(s, q, owner, f, true)?;
-                        if raw_fact(s, q, f.entity, f.attribute)? != f.before {
+                        restore_field(s, q, f, true)?;
+                        if raw_field(s, q, f.entity, f.attribute)? != f.before {
                             return Err(invalid());
                         }
                     }
@@ -517,14 +413,14 @@ unsafe fn construct(s: &State, q: &Scope<'_>, unit: Oop) -> Result<Constructed, 
         Ok(result)
     }
 }
-unsafe fn publication(s: &State, q: &Scope<'_>, p: &Prepared) -> Result<Vec<FactWrite>, Outcome> {
+unsafe fn publication(s: &State, q: &Scope<'_>, p: &Prepared) -> Result<Vec<FieldWrite>, Outcome> {
     unsafe {
-        let [action, unit, _, prior, event, basis, _, successor] = p.plan;
+        let [_, unit, _, prior, _, _] = p.plan;
         let nil = s.named(b"nil")?;
         let state = symbol(s, q, if p.rollback { b"rolledBack" } else { b"active" })?;
         let mut changes = vec![
-            fact_write(s, q, unit, b"state", state)?,
-            fact_write(
+            field_write(s, q, unit, b"state", state)?,
+            field_write(
                 s,
                 q,
                 unit,
@@ -533,35 +429,14 @@ unsafe fn publication(s: &State, q: &Scope<'_>, p: &Prepared) -> Result<Vec<Fact
             )?,
         ];
         if prior != nil {
-            changes.push(fact_write(
+            changes.push(field_write(
                 s,
                 q,
                 prior,
                 b"state",
                 symbol(s, q, if p.rollback { b"active" } else { b"superseded" })?,
             )?);
-            if !p.rollback {
-                changes.push(fact_write(s, q, unit, b"supersedes", prior)?);
-            }
         }
-        for (attr, value) in [
-            (b"unit".as_slice(), unit),
-            (b"action", action),
-            (b"basis", basis),
-        ] {
-            changes.push(fact_write(s, q, event, attr, value)?);
-        }
-        if prior != nil {
-            changes.push(fact_write(s, q, event, b"priorUnit", prior)?);
-        }
-        changes.push(fact_write(s, q, unit, b"activationEvent", event)?);
-        changes.push(fact_write(
-            s,
-            q,
-            symbol(s, q, b"dispatch")?,
-            b"activeGeneration",
-            successor,
-        )?);
         Ok(changes)
     }
 }
@@ -699,7 +574,7 @@ pub(super) unsafe fn commit(
             // Block construction installs private value adapters, advancing Id's
             // global dictionary epoch. Accept that private registration only
             // after the pre-construction token check; the exact public bindings,
-            // Globals, Store basis and full ledger are still revalidated below.
+            // Globals, lifecycle fields and full ledger are still revalidated below.
             p.epoch = preparation::epoch(s)?;
             let mut globals = vec![];
             for g in &c.globals {
@@ -727,10 +602,10 @@ pub(super) unsafe fn commit(
                 });
             }
             let mut next = before.clone();
-            next.generation = p.plan[7];
-            next.source_map = fact(s, q, next.generation, b"sourceMap")?;
-            next.digest = s.bytes(fact(s, q, next.generation, b"baseDigest")?)?;
-            next.selection = s.bytes(fact(s, q, next.generation, b"generationSelection")?)?;
+            next.generation = p.plan[5];
+            next.source_map = field(s, q, next.generation, b"sourceMap")?;
+            next.digest = s.bytes(field(s, q, next.generation, b"baseDigest")?)?;
+            next.selection = s.bytes(field(s, q, next.generation, b"generationSelection")?)?;
             next.units = seq(s, q, next.source_map)?
                 .into_iter()
                 .map(|row| seq(s, q, row).map(|v| v[2]))
@@ -744,15 +619,12 @@ pub(super) unsafe fn commit(
         if methods.len() != p.bindings.len() {
             return Err(invalid());
         }
-        let facts = publication(s, q, &p)?;
-        // Reserve forward writes, their failure compensation, and one rollback
-        // attempt including compensation. Reservations survive successful
-        // activation; later ordinary writes cannot consume those inverse slots.
+        let fields = publication(s, q, &p)?;
+        // Reserve binding-owner capacity for forward writes, compensation and rollback.
+        // Ordinary lifecycle fields need no database capacity bank.
         let multiplier = if rollback { 2 } else { 4 };
-        let required = facts.len().checked_mul(multiplier).ok_or_else(invalid)?;
         let binding_required = global_writes.len().checked_mul(multiplier).ok_or_else(invalid)?;
-        // Distinct tokens keep both owners' credits independent, including the
-        // legacy image adapter which still routes binding inverses through Store.
+        // Binding credits belong to this explicit activation and its inverse.
         let binding_reservation = if rollback {
             saved.as_ref().ok_or_else(invalid)?.binding_reservation
         } else if binding_required == 0 {
@@ -760,13 +632,10 @@ pub(super) unsafe fn commit(
         } else {
             call(s, q, s.named(b"Object")?, b"clone", &[])?
         };
-        let reserved = (|| {
-            reserve(s, q, p.unit, required)?;
-            reserve_bindings(s, q, binding_reservation, binding_required)
-        })();
+        let reserved = reserve_bindings(s, q, binding_reservation, binding_required);
         if let Err(error) = reserved {
             if let Some(value) = error.value.as_object() { q.keep(value)?; }
-            if !rollback { release_publication(s, q, p.unit, binding_reservation, binding_required)?; }
+            if !rollback { release_bindings(s, q, binding_reservation, binding_required)?; }
             return Err(error);
         }
         let live = ledger::reconcile(s, q)?.0;
@@ -775,7 +644,7 @@ pub(super) unsafe fn commit(
             || *s.registry.entries.borrow() != old_sources
         {
             if !rollback {
-                release_publication(s, q, p.unit, binding_reservation, binding_required)?;
+                release_bindings(s, q, binding_reservation, binding_required)?;
             }
             return fail(
                 s,
@@ -847,10 +716,12 @@ pub(super) unsafe fn commit(
                     });
                 }
             }
-            for f in &facts {
-                attempted.push(Write::Fact(f.clone()));
-                restore_fact(s, q, p.unit, f, false)?;
+            for f in &fields {
+                attempted.push(Write::Field(f.clone()));
+                restore_field(s, q, f, false)?;
             }
+            attempted.push(Write::Current { before: p.plan[4], after: p.plan[5] });
+            set_current(s, q, p.plan[4], p.plan[5])?;
             if ledger::has_drifted(s)
                 || ledger::matches(s, q, &after)? != Some(true)
                 || *s.registry.entries.borrow() != old_sources
@@ -864,7 +735,7 @@ pub(super) unsafe fn commit(
             }
             if rollback {
                 let cleanup = (|| {
-                    release_publication(s, q, p.unit, binding_reservation, binding_required)?;
+                    release_bindings(s, q, binding_reservation, binding_required)?;
                     if ledger::has_drifted(s)
                         || ledger::matches(s, q, &after)? != Some(true)
                         || *s.registry.entries.borrow() != old_sources
@@ -885,7 +756,6 @@ pub(super) unsafe fn commit(
                     // A replaced release method may report failure after
                     // consuming the bank. Reacquire inverse capacity before
                     // compensating this already-published rollback.
-                    reserve(s, q, p.unit, required)?;
                     reserve_bindings(s, q, binding_reservation, binding_required)?;
                     return Err(error);
                 }
@@ -896,9 +766,9 @@ pub(super) unsafe fn commit(
             if let Some(value) = error.value.as_object() {
                 q.keep(value)?;
             }
-            let restored = compensate(s, q, p.unit, binding_reservation, &attempted);
+            let restored = compensate(s, q, binding_reservation, &attempted);
             if !rollback {
-                release_publication(s, q, p.unit, binding_reservation, binding_required)?;
+                release_bindings(s, q, binding_reservation, binding_required)?;
             }
             if !restored || ledger::matches(s, q, &before)? != Some(true) {
                 let _ = ledger::reconcile(s, q);
@@ -987,15 +857,15 @@ pub(super) unsafe fn prepare_rollback(
         if !s.exact(q, raw_plan, b"VectorVt")? {
             return Err(invalid());
         }
-        let plan: [Oop; 8] = seq(s, q, raw_plan)?.try_into().map_err(|_| invalid())?;
+        let plan: [Oop; 6] = seq(s, q, raw_plan)?.try_into().map_err(|_| invalid())?;
         if plan[0] != symbol(s, q, b"rollback")?
             || plan[1] != unit
-            || plan[2] != fact(s, q, unit, b"unitName")?
-            || plan[6] != saved.after.generation
-            || plan[7] != saved.before.generation
-            || fact(s, q, unit, b"state")? != symbol(s, q, b"active")?
-            || fact(s, q, plan[6], b"deltaUnit")? != unit
-            || fact(s, q, plan[6], b"predecessor")? != plan[7]
+            || plan[2] != field(s, q, unit, b"unitName")?
+            || plan[4] != saved.after.generation
+            || plan[5] != saved.before.generation
+            || field(s, q, unit, b"state")? != symbol(s, q, b"active")?
+            || field(s, q, plan[4], b"deltaUnit")? != unit
+            || field(s, q, plan[4], b"predecessor")? != plan[5]
         {
             return fail(
                 s,
@@ -1011,7 +881,7 @@ pub(super) unsafe fn prepare_rollback(
                 prior = row[2];
             }
         }
-        if prior != plan[3] || plan[4] == s.named(b"nil")? || !ledger::reconcile(s, q)?.0 {
+        if prior != plan[3] || !ledger::reconcile(s, q)?.0 {
             return fail(
                 s,
                 q,
@@ -1024,10 +894,10 @@ pub(super) unsafe fn prepare_rollback(
             token: 0,
             unit,
             plan,
-            basis: preparation::number(s, plan[5])?,
             global_basis: preparation::global_basis(s, q)?,
             epoch: preparation::epoch(s)?,
             source_revision:s.registry.revision(),
+            fields: preparation::plan_fields(s, q, &plan)?,
             bindings: saved.bindings_after.clone(),
             globals: saved
                 .globals
