@@ -1,9 +1,9 @@
 # Live compiled units
 
 `CompiledUnit` prepares one module's complete successor document without changing
-the running system. Activation asks the host to publish its declarative method
-delta and a new whole-runtime `DispatchGeneration` together. Rollback asks the
-host to republish the exact predecessor.
+the running system. Activation applies its declarative method delta and replaces
+that module's source record. Conditional rollback restores the exact selected
+Methods, Globals and prior source record. No adopted generation is required.
 
 Compiled global references look up the current binding by name when executed.
 They see globals published by later module loads and subsequent replacements;
@@ -49,9 +49,7 @@ may perform additional edits and return an ordinary success value; Generation
 checks that the requested binding was actually installed or removed. Errors still
 propagate and a no-op setter still fails. Commit, compensation and rollback check
 the selected state, not every binding in the managed ledger. A relevant conflict
-does not itself mark the generation drifted or revoke its inverse. Compilation
-still requires the recorded source lineage and initial adoption; removing that
-requirement is a separate source/image change.
+does not itself mark the generation drifted or revoke its inverse. Compilation uses only the registered source of the candidate's own module.
 
 
 ## Complete replacement example
@@ -87,39 +85,26 @@ other changed top-level forms are rejected.
 
 ## One runtime-wide generation
 
-The authored `DispatchGeneration current` / `current:` protocol owns the current
-generation reference. Lifecycle records use ordinary named slots, independently
-of any explicitly asserted Store facts.
+`CompiledUnit activeFor:` finds a retained candidate whose source record is current
+for that module. Candidate activity does not create or modify a DispatchGeneration.
+Different modules can be rolled back independently when their affected bindings
+do not conflict. Lifecycle records remain ordinary reflected slots.
 
-An explicitly adopted generation owns a sorted source map and its canonical digest.
-`CompiledUnit activeFor:` is only a convenience derived from that map; there is no
-per-module active-authority mirror. Activation replaces one source-map entry and
-inherits every untouched entry. Rollback republishes the predecessor map and
-restores only bindings touched by the successor.
+## Sources and certification
 
-## Dependencies and module introduction
+Source and AOT module loading remain available before, during and after candidate
+work. Registration is never sealed. Candidate compilation checks that its own
+registered module has compatible identity, dependencies and residual initializers.
+An unrelated registration does not stale the candidate or get lost on rollback.
+Recompile an ABI-4 candidate bundle: ABI 5's predecessor is a module revision,
+not a whole-program digest.
 
-Ordinary source and AOT module loading remain available before and after explicit
-adoption. Registration is never sealed. Dependencies still have to be available
-for the operation being requested; initializer effects are ordinary effects.
-
-A new or replaced source registration changes the recorded source revision. That
-can invalidate an explicitly adopted candidate baseline; it does not prevent
-ordinary loading or execution. Candidate source-lineage coupling is still being
-simplified, and in-place baseline renewal is not provided by this slice.
-
-## Direct edits and validation
-
-Ordinary method installation and removal use current owner messages. Console,
-TCP REPL and worker preparation do not initialize a generation automatically.
-Use `[DispatchGeneration adoptCurrent]` when deliberately entering the current
-managed candidate workflow.
-
-`Generation reconcileCandidate:` reports whether recorded bindings currently
-match. It does not change unit status, revoke an inverse or cache irreversible
-drift. Restoring the same binding can make validation succeed again. Source
-registry revisions still detect registration changes, including ABA. Conditional
-rollback continues to check its own affected state before restoring anything.
+Console, TCP and workers do not adopt automatically. Optional
+`DispatchGeneration adoptCurrent` certification snapshots currently registered
+source definitions; it is renewable and independent of candidate undo. Explicit
+validation reports disagreement without changing status or revoking inverses.
+Restoring a selected source record/binding to the same identity between conditional
+checks is permitted. Images preserve actual live code regardless of certification.
 
 ## Images and process boundaries
 
@@ -144,9 +129,9 @@ let baseline := [DispatchGeneration adoptCurrent];
 This validates the retained source/selection against live code, then creates one
 predecessor-free generation with no component units. A mismatch returns an Error
 and keeps the prior current record. Existing records and annotations are untouched.
-A successful baseline permits new candidate activation and rollback. The process
-must not already have an adopted baseline; use `Generation reconcileCandidate:`
-to validate an existing one. Ordinary startup and worker preparation leave adoption to the caller.
+A successful baseline enables explicit source certification. Candidate activation
+and rollback do not require it. A later call refreshes the optional certificate from current registered source.
+Use `Generation reconcileCandidate:` to validate without refreshing. Ordinary startup and worker preparation leave adoption to the caller.
 
 Candidate bundles are trusted native input, not a security sandbox. `open:`
 performs byte-level inspection without loading code, and `map` makes the native

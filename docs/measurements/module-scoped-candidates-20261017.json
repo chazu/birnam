@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-17",
+  "base_commit": "8c1e3bc8606b3e0dad3dcabb54611b20615643d7",
+  "scope": "Module-scoped candidate source and undo; independent renewable source certification",
+  "prefix": "/tmp/birnam-module-edits/prefix",
+  "checks": {
+    "build": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/build.log"
+    },
+    "codec": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/codec.log"
+    },
+    "transaction": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/transaction-pass.log"
+    },
+    "independent_modules": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/independent.log"
+    },
+    "images": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/images.log"
+    },
+    "language": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/language.log"
+    },
+    "cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/cli.log"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-module-edits/formal-stable.log"
+    }
+  },
+  "native_other": {
+    "result": "pass",
+    "log": "/tmp/birnam-module-edits/native.log",
+    "scope": "Candidate, retirement and ledger executables passed; initial transaction fixture failed and was corrected/rerun separately."
+  },
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-4m6sdy3y/summary.json",
+    "theorems": 361,
+    "rejected_mutations": 105,
+    "tlc_outcomes": 232
+  },
+  "language_assertions": 826,
+  "cli_policy_checks": 61,
+  "source_sha256": {
+    "CHANGELOG.md": "8deeb167fc0af628692f7c3821495faaeb292cf50f79bc0af49079c77b167f3f",
+    "docs/design/generation-lifecycle-review.md": "103271b4579847b0d67897c36ec407f2595738f6d7093aa1d15a1eb96e3da555",
+    "docs/design/module-scoped-candidates.md": "d163f0fc9d5768574f3c238f7e402fadc128e974f58647ef686699898815adc3",
+    "docs/design/optional-store-and-relational.md": "6e8b0c1f2f8d3b184859cd0ca5266ad23a35d07244223d2e91c8374c511084d5",
+    "docs/guide/05-compiled-units.md": "b951ba0dfb7f8c08a640c4ad43bf93d1b4f563cabedcddd0549979e836f5cf15",
+    "formal/semantics/lean/SemanticsAudit.lean": "9d347735b76df82c7b20a5ff5f13931309de5317a1de73d72a4e20fd360dc46b",
+    "formal/semantics/lean/SharedInvocation.lean": "69c221d3d4c5602c91820be5c80602def79a098d9dc46d9b5dfa2510f38a52e1",
+    "formal/semantics/tla/ModuleExchange.tla": "f3d5d77c20f9428ad81d1ddbb3c210e8c2462b1da9dbe9d6ebb889a0e6a3139b",
+    "formal/semantics/tla/ModuleExchangeConflict.cfg": "405b2d44d5c4c9a9790620e2a9ea2e127674033f93b17997fb43da17657331c1",
+    "formal/semantics/tla/ModuleExchangeLease.cfg": "b84f1d292117d46ec3c4227644d0c8e16daedd6424dcc721baa6d87d96ec9a96",
+    "formal/semantics/tla/ModuleExchangeSafe.cfg": "c395f2222bbb594203bd94a71ad59e95e7ce38a539119e47b9ec6268c303cf48",
+    "formal/semantics/tla/ModuleExchangeWhole.cfg": "6df39740f07faa10e1191e807469a13c2597ede210245c487a8f55138c5c5165",
+    "modules/compiled-unit.birnam": "2c9b84db341b0bffd4e1dd53e809c6dc84386894b75a1b456f82c15b3d5f7801",
+    "rust/birnam-artifact/src/candidate.rs": "a184eedc54a519997069e72ed4d8b0fdbf7c62f20e9938ef6806bf915e4c91f0",
+    "rust/birnam-generation/README.md": "b045944f841e83e48e59a87aa8f1aea8005394d5e8c7108954334705a682826d",
+    "rust/birnam-generation/src/candidate.rs": "cd824caf3654b60e5faa59c816fd206947569cbe1bd953f6809bca810aa91c85",
+    "rust/birnam-generation/src/candidate_ledger.rs": "af69911b03204da1012acca885965e3d91955a835b4e7cdca7d57d3610a8cca8",
+    "rust/birnam-generation/src/candidate_preparation.rs": "e67a845884634af6bfd26a41a3a64583d84532ee06483d4f60e57dfabb9adb0d",
+    "rust/birnam-generation/src/candidate_retirement.rs": "8c50e198ec2937f8a11fb0610660105e5a0517b8866eed5fc0f0a63fd8c709f9",
+    "rust/birnam-generation/src/candidate_transaction.rs": "fa5fd2a627c21481cae82ed9114d7b8806732b2a614f3d08d711dea19daaf003",
+    "rust/birnam-generation/src/lib.rs": "0ea8b06d4681bded99329561ad5f23e070ba826569e43baf2a87233e3899ed0e",
+    "rust/birnam-generation/src/registry.rs": "af71a1a6a332dea1fe54d3912bbfe2a89a0f2b1f85d0a2b20667ef1a20e3f10c",
+    "rust/birnam-host/src/lifecycle_test.rs": "c0a11e1052f3029bd2a8d78dad9dd23e070106eaf9cb2e1dd6775f602116a8ed",
+    "rust/birnam-siphon/tests/candidate.rs": "1a678ef7c5d9ddbd8965de92e01fe4c017e616574c31966a573cec127f5fd5b3",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "bd49c4421d05268717ec80d911d62916b6dce7a4a78329b250f76a61e7a4e0a2",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "cfcc0bdb9201e4dc3caf8909b5d98e81c60818f0465a75697c9c45541226b2b1",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "347824b3972c9a952ca683d19596877fe4fe25ff0e919a25bbf96d092de0ba27",
+    "scripts/check-rooting-model.py": "964de38d50625b755e1d3475a804ee5651e733f93d24f402661a4037292c6d89"
+  },
+  "status": "qualified before commit; no user installation or push",
+  "remaining": [
+    "Host-only intent admission",
+    "discard/file cleanup and diagnostics"
+  ]
+}

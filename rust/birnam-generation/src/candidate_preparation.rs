@@ -21,8 +21,8 @@ pub(super) struct Prepared {
     pub rollback: bool,
     pub token: usize,
     pub unit: Oop,
-    pub plan: [Oop; 6],
-    pub source_revision: usize,
+    pub plan: [Oop; 4],
+    pub source: Oop,
     pub bindings: Vec<Binding>,
     pub globals: Vec<Global>,
     pub fields: Vec<(Oop, Oop, Oop)>,
@@ -30,7 +30,7 @@ pub(super) struct Prepared {
 impl Prepared {
     pub(super) fn roots(&self) -> Vec<Oop> {
         let mut roots = self.plan.to_vec();
-        roots.push(self.unit);
+        roots.extend([self.unit, self.source]);
         for &(owner, key, value) in &self.fields { roots.extend([owner, key, value]); }
         for b in &self.bindings {
             roots.extend([b.name, b.target, b.behavior, b.selector]);
@@ -132,14 +132,12 @@ pub(super) unsafe fn target(
     }
 }
 /// Observe the lifecycle data read by this plan. Unrelated facts do not participate.
-pub(super) unsafe fn plan_fields(s: &State, q: &Scope<'_>, plan: &[Oop; 6]) -> Result<Vec<(Oop, Oop, Oop)>, Outcome> {
+pub(super) unsafe fn plan_fields(s: &State, q: &Scope<'_>, plan: &[Oop; 4]) -> Result<Vec<(Oop, Oop, Oop)>, Outcome> {
     unsafe {
         let mut fields = vec![];
         for (owner, names) in [
             (plan[1], b"unitName state sourceRevision rollbackAvailable provides".as_slice()),
             (plan[3], b"state".as_slice()),
-            (plan[4], b"sourceMap baseDigest generationSelection predecessor deltaUnit state".as_slice()),
-            (plan[5], b"sourceMap baseDigest generationSelection predecessor deltaUnit state".as_slice()),
         ] {
             if owner == s.named(b"nil")? { continue; }
             for name in names.split(|b| *b == b' ') {
@@ -160,8 +158,7 @@ pub(super) unsafe fn current_snapshot(
         // conditions: unrelated work between prepare and commit is allowed.
         let observed_globals = global_basis(s, q)?;
         let observed_epoch = epoch(s)?;
-        if s.registry.revision()!=p.source_revision
-            || current(s, q)? != p.plan[4]
+        if s.registry.record(p.plan[2]) != Some(p.source)
         {
             return Ok(false);
         }
@@ -180,96 +177,9 @@ pub(super) unsafe fn current_snapshot(
                 return Ok(false);
             }
         }
-        Ok(s.registry.revision()==p.source_revision
-            && current(s, q)? == p.plan[4]
+        Ok(s.registry.record(p.plan[2]) == Some(p.source)
             && global_basis(s, q)? == observed_globals
             && epoch(s)? == observed_epoch)
-    }
-}
-unsafe fn generation_plan(
-    s: &State,
-    q: &Scope<'_>,
-    plan: &[Oop; 6],
-    expected: &[u8; 64],
-    selected: &[u8],
-    metadata: &source_revision::RevisionMetadata,
-    source: Oop,
-) -> Result<bool, Outcome> {
-    unsafe {
-        let [_, unit, name, prior_unit, predecessor, successor] = *plan;
-        if current(s, q)? != predecessor
-            || s.bytes(field(s, q, predecessor, b"baseDigest")?)? != *expected
-            || field(s, q, successor, b"predecessor")? != predecessor
-            || field(s, q, successor, b"deltaUnit")? != unit
-        {
-            return Ok(false);
-        }
-        let prior_map = field(s, q, predecessor, b"sourceMap")?;
-        let next_map = field(s, q, successor, b"sourceMap")?;
-        let prior = modules(s, q, prior_map)?;
-        // Parse every revision field, not merely the source and claimed digest.
-        let next = modules(s, q, next_map)?;
-        let selection = s.bytes(field(s, q, predecessor, b"generationSelection")?)?;
-        let descriptor_hashes = backend::hashes(
-            s,
-            q,
-            prior
-                .iter()
-                .flat_map(|m| m.metadata.operations.iter().map(|o| o.selector.as_slice()))
-                .chain(metadata.operations.iter().map(|o| o.selector.as_slice())),
-        )?;
-        let Some(projection) = generation::project_candidate_generation(
-            prior,
-            generation::Module::new(s.source_data(q,source)?, metadata.clone()).ok_or_else(invalid)?,
-            &selection,
-            selected,
-            |m, i, _| {
-                descriptor_hashes
-                    .get(&m.metadata.operations.get(i)?.selector)
-                    .copied()
-                    .flatten()
-            },
-        ) else {
-            return Ok(false);
-        };
-        if s.bytes(field(s, q, successor, b"baseDigest")?)?
-            != generation::raw_digest_spelling(projection.authority)
-            || s.bytes(field(s, q, successor, b"generationSelection")?)? != projection.selection
-        {
-            return Ok(false);
-        }
-        let before = seq(s, q, prior_map)?;
-        let after = seq(s, q, next_map)?;
-        if before.len() != after.len() {
-            return Ok(false);
-        }
-        let mut replacement = false;
-        for (old, new) in before.into_iter().zip(after) {
-            let old = seq(s, q, old)?;
-            let new = seq(s, q, new)?;
-            if old.len() != 3 || new.len() != 3 || old[0] != new[0] {
-                return Ok(false);
-            }
-            if old[0] == name {
-                if replacement
-                    || old[2] != prior_unit
-                    || new[2] != unit
-                    || new[1] != field(s, q, unit, b"sourceRevision")?
-                {
-                    return Ok(false);
-                }
-                let Some(module) = next.iter().find(|m| m.name == metadata.name) else {
-                    return Ok(false);
-                };
-                if module.source != s.source_data(q,source)? {
-                    return Ok(false);
-                }
-                replacement = true;
-            } else if old != new {
-                return Ok(false);
-            }
-        }
-        Ok(replacement)
     }
 }
 pub(super) unsafe fn prepare(
@@ -288,15 +198,13 @@ pub(super) unsafe fn prepare(
             .map(|c| {
                 (
                     c.name,
-                    c.source,
                     c.expected,
-                    c.selected.clone(),
                     c.plan.metadata.clone(),
                     c.plan.outputs.clone(),
                     c.mapped.is_some(),
                 )
             });
-        let Some((name, source, expected, selected, metadata, outputs, mapped)) = snapshot else {
+        let Some((name, expected, metadata, outputs, mapped)) = snapshot else {
             return fail(s, q, b"invalidCandidate", b"candidate carrier is unknown");
         };
         if !mapped {
@@ -328,7 +236,7 @@ pub(super) unsafe fn prepare(
                 b"publication plan is not a Vector",
             );
         }
-        let Ok(plan) = <[Oop; 6]>::try_from(seq(s, q, raw_plan)?) else {
+        let Ok(request) = <[Oop; 2]>::try_from(seq(s, q, raw_plan)?) else {
             return fail(
                 s,
                 q,
@@ -337,11 +245,11 @@ pub(super) unsafe fn prepare(
             );
         };
         let nil = s.named(b"nil")?;
+        let plan = [request[0], request[1], name, active(s, name).unwrap_or(nil)];
         if plan[0] != symbol(s, q, b"activate")?
             || plan[1] != unit
             || plan[2] != name
             || plan[3] == unit
-            || [plan[4], plan[5]].contains(&nil)
             || field(s, q, unit, b"unitName")? != name
             || field(s, q, unit, b"state")? != symbol(s, q, b"candidate")?
         {
@@ -352,32 +260,24 @@ pub(super) unsafe fn prepare(
                 b"publication plan identity or state mismatches",
             );
         }
+        let Some(prior_source) = s.registry.record(name) else {
+            return fail(s, q, b"moduleNotRegistered", b"candidate module source is absent");
+        };
+        q.keep(prior_source)?;
+        let Some((_, prior_metadata)) = s.revision(q, prior_source)? else { return Err(invalid()); };
+        if prior_metadata.revision_digest != expected || !generation::transition_allowed(&prior_metadata, &metadata) {
+            return fail(s, q, b"staleGeneration", b"candidate module source has changed");
+        }
         let mut prepared = Prepared {
             rollback: false,
             token: 0,
             unit,
             plan,
-            source_revision:s.registry.revision(),
+            source: prior_source,
             bindings: vec![],
             globals: vec![],
             fields: plan_fields(s, q, &plan)?,
         };
-        if !generation_plan(s, q, &plan, &expected, &selected, &metadata, source)?
-        {
-            return fail(
-                s,
-                q,
-                b"staleGeneration",
-                b"publication plan does not match the current generation",
-            );
-        }
-        let lineage = s.candidates.ledger.borrow().clone();
-        let Some(lineage) = lineage else {
-            return fail(s, q, b"generationNotAdopted", b"candidate has no source lineage");
-        };
-        if !ledger::matches_lineage(s, q, &lineage)? {
-            return fail(s, q, b"staleGeneration", b"candidate source lineage changed");
-        }
         for operation in &metadata.operations {
             let name = symbol(s, q, &operation.target)?;
             let Some((target, behavior)) = target(s, q, name)? else {
@@ -396,20 +296,6 @@ pub(super) unsafe fn prepare(
                     q,
                     b"missingDirectMethod",
                     b"candidate removal requires a direct binding",
-                );
-            }
-            if entry.is_some()
-                && !s.candidates.ledger.borrow().as_ref().is_some_and(|l| {
-                    l.bindings
-                        .iter()
-                        .any(|b| b.binding.name == name && b.binding.selector == selector)
-                })
-            {
-                return fail(
-                    s,
-                    q,
-                    b"unmanagedMethod",
-                    b"a present binding requires explicit portable adoption",
                 );
             }
             let method = if let Some(entry) = entry {

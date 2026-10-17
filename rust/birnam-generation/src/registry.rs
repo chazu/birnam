@@ -21,6 +21,18 @@ impl Registry {
         }
         *self.entries.borrow_mut() = entries;
     }
+    pub(super) fn record(&self, name: Oop) -> Option<Oop> {
+        self.entries.borrow().iter().find(|(n, _)| *n == name).map(|(_, r)| *r)
+    }
+    // Called only after all callback-capable validation. Preserve other modules.
+    pub(super) fn replace_record(&self, name: Oop, expected: Oop, next: Oop) -> bool {
+        let mut entries = self.entries.borrow().clone();
+        let Some((_, record)) = entries.iter_mut().find(|(n, _)| *n == name) else { return false; };
+        if *record != expected { return false; }
+        *record = next;
+        self.replace_entries(entries);
+        true
+    }
     pub fn roots(&self) -> Vec<Oop> {
         self.entries
             .borrow()

@@ -201,34 +201,9 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             );
             assert_eq!(call(named(b"Generation"), b"candidateMapped:", &[unit]), no);
             assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
-            let revision = call(named(b"Reflect"), b"slot:in:", &[symbol(b"sourceRevision"), unit]);
-            let successor = call(
-                named(b"Generation"),
-                b"successorGenerationProjection:replacing:with:unit:",
-                &[at(projection, 1), name, revision, unit],
-            );
-            assert_eq!(at(successor, 0), symbol(b"generationProjection"));
-            assert_ne!(bytes(at(successor, 2)), bytes(at(projection, 2)));
-            let next = record(b"DispatchGeneration");
-            for (attr, v) in [
-                (b"sourceMap".as_slice(), at(successor, 1)),
-                (b"baseDigest", at(successor, 2)),
-                (b"generationSelection", at(successor, 3)),
-                (b"predecessor", generation),
-                (b"deltaUnit", unit),
-            ] {
-                call(named(b"Reflect"), b"slot:in:put:", &[symbol(attr), next, v]);
-            }
             let publication = || {
                     let mut plan = call(named(b"Vector"), b"new", &[]);
-                for value in [
-                    symbol(b"activate"),
-                    unit,
-                    name,
-                    nil,
-                    generation,
-                    next,
-                ] {
+                for value in [symbol(b"activate"), unit                ] {
                     plan = call(plan, b"add:", &[value]);
                 }
                 plan
@@ -461,31 +436,8 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 call(named(b"Generation"), b"mapCandidate:", &[removal]),
                 removal
             );
-            let removal_revision = call(named(b"Reflect"), b"slot:in:", &[symbol(b"sourceRevision"), removal]);
-            let removal_projection = call(
-                named(b"Generation"),
-                b"successorGenerationProjection:replacing:with:unit:",
-                &[at(projection, 1), name, removal_revision, removal],
-            );
-            let removal_next = record(b"DispatchGeneration");
-            for (attr, v) in [
-                (b"sourceMap".as_slice(), at(removal_projection, 1)),
-                (b"baseDigest", at(removal_projection, 2)),
-                (b"generationSelection", at(removal_projection, 3)),
-                (b"predecessor", generation),
-                (b"deltaUnit", removal),
-            ] {
-                call(named(b"Reflect"), b"slot:in:put:", &[symbol(attr), removal_next, v]);
-            }
             let mut removal_plan = call(named(b"Vector"), b"new", &[]);
-            for value in [
-                symbol(b"activate"),
-                removal,
-                name,
-                nil,
-                generation,
-                removal_next,
-            ] {
+            for value in [symbol(b"activate"), removal            ] {
                 removal_plan = call(removal_plan, b"add:", &[value]);
             }
             let rejected = call(

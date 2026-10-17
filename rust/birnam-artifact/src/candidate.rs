@@ -5,7 +5,7 @@
 //! so a later rung can inspect a candidate before opening its dylib.
 
 pub const CANDIDATE_MAGIC: &[u8] = b"BIRNAM-CANDIDATE-2";
-pub const CANDIDATE_ABI: u32 = 4;
+pub const CANDIDATE_ABI: u32 = 5;
 pub const CANDIDATE_PLATFORM: &[u8] = b"aarch64-macos";
 pub const MAX_CANDIDATE_BYTES: usize = 1 << 30;
 
@@ -398,7 +398,7 @@ mod tests {
         bytes.extend_from_slice(b"runtime=");
         bytes.extend_from_slice(crate::ABI);
         bytes.push(b'\n');
-        bytes.extend_from_slice(b"candidate=4\nplatform=aarch64-macos\npredecessor=");
+        bytes.extend_from_slice(b"candidate=5\nplatform=aarch64-macos\npredecessor=");
         bytes.extend_from_slice(digest);
         bytes.extend_from_slice(b"\nmanifest=v4|birnam-artifact-generation-v1|9:candidate|");
         for _ in 0..5 {
@@ -453,8 +453,8 @@ mod tests {
 
         let mut bytes = fixture(b"source");
         let candidate = bytes
-            .windows(b"candidate=4".len())
-            .position(|window| window == b"candidate=4")
+            .windows(b"candidate=5".len())
+            .position(|window| window == b"candidate=5")
             .unwrap();
         bytes[candidate + b"candidate=".len()] = b'5';
         assert_eq!(inspect(&bytes), Err(Error::CandidateAbiMismatch));

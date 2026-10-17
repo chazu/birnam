@@ -36,19 +36,17 @@ struct GlobalWrite {
 }
 #[derive(Clone)]
 pub(super) struct Activation {
-    before: ledger::Ledger,
-    after: ledger::Ledger,
+    prior_unit: Oop,
+    source_before: Oop,
+    source_after: Oop,
     bindings_before: Vec<Binding>,
     bindings_after: Vec<Binding>,
     globals: Vec<GlobalWrite>,
     binding_reservation: Oop,
-    sources_before: Vec<(Oop, Oop)>,
 }
 impl Activation {
     pub(super) fn roots(&self) -> Vec<Oop> {
-        let mut values = self.before.roots();
-        values.push(self.binding_reservation);
-        values.extend(self.after.roots());
+        let mut values = vec![self.prior_unit, self.source_before, self.source_after, self.binding_reservation];
         for b in self.bindings_before.iter().chain(&self.bindings_after) {
             values.extend([b.name, b.target, b.behavior, b.selector]);
             values.extend(b.method);
@@ -58,16 +56,12 @@ impl Activation {
             values.extend(f.before);
             values.extend(f.after);
         }
-        for &(name, source) in &self.sources_before {
-            values.extend([name, source]);
-        }
         values
     }
 }
 #[derive(Clone)]
 enum Write {
     Field(FieldWrite),
-    Current { before: Oop, after: Oop },
     Global(GlobalWrite),
     Binding {
         before: Binding,
@@ -133,15 +127,6 @@ unsafe fn restore_field(s: &State, q: &Scope<'_>, f: &FieldWrite, inverse: bool)
         if raw_field(s, q, f.entity, f.attribute)? != expected { return Err(invalid()); }
         set_field(s, q, f.entity, &s.symbol_bytes(q, f.attribute)?.ok_or_else(invalid)?, next)?;
         if raw_field(s, q, f.entity, f.attribute)? != next { return Err(invalid()); }
-        Ok(())
-    }
-}
-unsafe fn set_current(s: &State, q: &Scope<'_>, expected: Oop, next: Oop) -> Result<(), Outcome> {
-    unsafe {
-        if current(s, q)? != expected { return Err(invalid()); }
-        let result = call(s, q, prototype(s, q, b"DispatchGeneration")?, b"current:", &[Operand::object(next)])?;
-        if s.is_error(result)? { return Err(Outcome::loaded(Operand::object(result))); }
-        if current(s, q)? != next { return Err(invalid()); }
         Ok(())
     }
 }
@@ -244,10 +229,6 @@ unsafe fn compensate(s: &State, q: &Scope<'_>, binding_token: Oop, writes: &[Wri
         for write in writes.iter().rev() {
             let restored = (|| {
                 match write {
-                    Write::Current { before, after } => {
-                        let now = current(s, q)?;
-                        if now != *before { set_current(s, q, *after, *before)?; }
-                    }
                     Write::Global(f) => {
                         let current = preparation::global(s, q, f.name)?;
                         if current == f.before {
@@ -397,7 +378,7 @@ unsafe fn construct(s: &State, q: &Scope<'_>, unit: Oop) -> Result<Constructed, 
 }
 unsafe fn publication(s: &State, q: &Scope<'_>, p: &Prepared) -> Result<Vec<FieldWrite>, Outcome> {
     unsafe {
-        let [_, unit, _, prior, _, _] = p.plan;
+        let [_, unit, _, prior] = p.plan;
         let nil = s.named(b"nil")?;
         let state = symbol(s, q, if p.rollback { b"rolledBack" } else { b"active" })?;
         let mut changes = vec![
@@ -420,23 +401,6 @@ unsafe fn publication(s: &State, q: &Scope<'_>, p: &Prepared) -> Result<Vec<Fiel
             )?);
         }
         Ok(changes)
-    }
-}
-unsafe fn sources(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<(Oop, Oop)>, Outcome> {
-    unsafe {
-        let mut out = vec![];
-        for row in seq(s, q, map)? {
-            let row = seq(s, q, row)?;
-            if row.len() != 3 {
-                return Err(invalid());
-            }
-            let revision = seq(s, q, row[1])?;
-            if revision.len() != 8 {
-                return Err(invalid());
-            }
-            out.push((row[0], revision[7]));
-        }
-        Ok(out)
     }
 }
 unsafe fn take_prepared(s: &State, q: &Scope<'_>, token: Oop) -> Result<Prepared, Outcome> {
@@ -518,12 +482,6 @@ pub(super) unsafe fn commit(
         if !preparation::current_snapshot(s, q, &p)? {
             return fail(s, q, b"staleGeneration", b"publication commit is stale");
         }
-        let before = s.candidates.ledger.borrow().clone().ok_or_else(invalid)?;
-        if !ledger::matches_lineage(s, q, &before)? {
-            return fail(s, q, b"staleGeneration", b"candidate source lineage changed");
-        }
-        let old_sources = s.registry.entries.borrow().clone();
-        for &(name,record) in &old_sources {q.keep(name)?;q.keep(record)?;}
         let saved = s
             .candidates
             .entries
@@ -531,7 +489,7 @@ pub(super) unsafe fn commit(
             .iter()
             .find(|c| c.unit == p.unit)
             .and_then(|c| c.activation.clone());
-        let (methods, global_writes, mut after, new_sources) = if rollback {
+        let (methods, global_writes, new_source) = if rollback {
             let saved = saved.as_ref().ok_or_else(invalid)?;
             let globals = saved
                 .globals
@@ -549,8 +507,7 @@ pub(super) unsafe fn commit(
                     .map(|b| b.method)
                     .collect::<Vec<_>>(),
                 globals,
-                saved.before.clone(),
-                saved.sources_before.clone(),
+                saved.source_before,
             )
         } else {
             let c = construct(s, q, p.unit)?;
@@ -580,21 +537,9 @@ pub(super) unsafe fn commit(
                     after: g.value,
                 });
             }
-            let mut next = before.clone();
-            next.generation = p.plan[5];
-            next.source_map = field(s, q, next.generation, b"sourceMap")?;
-            next.digest = s.bytes(field(s, q, next.generation, b"baseDigest")?)?;
-            next.selection = s.bytes(field(s, q, next.generation, b"generationSelection")?)?;
-            next.units = seq(s, q, next.source_map)?
-                .into_iter()
-                .map(|row| seq(s, q, row).map(|v| v[2]))
-                .collect::<Result<Vec<_>, _>>()?;
-            let next_sources = sources(s, q, next.source_map)?;
-            (c.methods, globals, next, next_sources)
+            let source = s.candidates.entries.borrow().iter().find(|c| c.unit == p.unit).ok_or_else(invalid)?.source;
+            (c.methods, globals, source)
         };
-        // Source ownership changes only at the final native commit below. During
-        // activation/rollback, validate against the still-current registry stamp.
-        after.source_revision=s.registry.revision();
         if methods.len() != p.bindings.len() {
             return Err(invalid());
         }
@@ -618,7 +563,6 @@ pub(super) unsafe fn commit(
             return Err(error);
         }
         if !preparation::current_snapshot(s, q, &p)?
-            || *s.registry.entries.borrow() != old_sources
         {
             if !rollback {
                 release_bindings(s, q, binding_reservation, binding_required)?;
@@ -633,7 +577,6 @@ pub(super) unsafe fn commit(
         // The postcondition is the same dependency scope with our intended
         // writes substituted. Never learn a promise from callback-mutated state.
         let mut published = p.clone();
-        published.plan[4] = p.plan[5];
         for f in &fields {
             let (_, _, value) = published.fields.iter_mut()
                 .find(|(owner, key, _)| *owner == f.entity && *key == f.attribute)
@@ -684,37 +627,12 @@ pub(super) unsafe fn commit(
                 post[i].entry = entry;
                 post[i].method = methods[i];
             }
-            if !rollback {
-                for b in &post {
-                    after
-                        .bindings
-                        .retain(|v| v.binding.name != b.name || v.binding.selector != b.selector);
-                    after.bindings.push(ledger::ManagedBinding {
-                        unit: p.unit,
-                        binding: b.clone(),
-                    });
-                }
-                for f in &global_writes {
-                    after.globals.retain(|v| v.global.name != f.name);
-                    after.globals.push(ledger::ManagedGlobal {
-                        unit: p.unit,
-                        global: Global {
-                            name: f.name,
-                            value: f.after,
-                        },
-                    });
-                }
-            }
             for f in &fields {
                 attempted.push(Write::Field(f.clone()));
                 restore_field(s, q, f, false)?;
             }
-            attempted.push(Write::Current { before: p.plan[4], after: p.plan[5] });
-            set_current(s, q, p.plan[4], p.plan[5])?;
             published.bindings = post.clone();
-            if !preparation::current_snapshot(s, q, &published)?
-                || *s.registry.entries.borrow() != old_sources
-            {
+            if !preparation::current_snapshot(s, q, &published)? {
                 return Err(failure(
                     s,
                     q,
@@ -725,9 +643,7 @@ pub(super) unsafe fn commit(
             if rollback {
                 let cleanup = (|| {
                     release_bindings(s, q, binding_reservation, binding_required)?;
-                    if !preparation::current_snapshot(s, q, &published)?
-                        || *s.registry.entries.borrow() != old_sources
-                    {
+                    if !preparation::current_snapshot(s, q, &published)? {
                         return Err(failure(
                             s,
                             q,
@@ -770,8 +686,7 @@ pub(super) unsafe fn commit(
         }
         // Everything that can call out has completed. Install native ownership
         // together; no borrowed registry crosses an outgoing message.
-        s.registry.replace_entries(new_sources);
-        after.source_revision=s.registry.revision();
+        if !s.registry.replace_record(p.plan[2], p.source, new_source) { return Err(invalid()); }
         if !rollback {
             s.candidates
                 .entries
@@ -780,13 +695,13 @@ pub(super) unsafe fn commit(
                 .find(|c| c.unit == p.unit)
                 .ok_or_else(invalid)?
                 .activation = Some(Activation {
-                before,
-                after: after.clone(),
+                prior_unit: p.plan[3],
+                source_before: p.source,
+                source_after: new_source,
                 bindings_before: p.bindings,
                 bindings_after: post,
                 globals: global_writes,
                 binding_reservation,
-                sources_before: old_sources,
             });
         } else {
             s.candidates
@@ -797,7 +712,6 @@ pub(super) unsafe fn commit(
                 .ok_or_else(invalid)?
                 .activation = None;
         }
-        *s.candidates.ledger.borrow_mut() = Some(after);
         Ok(Operand::object(p.unit))
     }
 }
@@ -839,15 +753,12 @@ pub(super) unsafe fn prepare_rollback(
         if !s.exact(q, raw_plan, b"VectorVt")? {
             return Err(invalid());
         }
-        let plan: [Oop; 6] = seq(s, q, raw_plan)?.try_into().map_err(|_| invalid())?;
+        let request: [Oop; 2] = seq(s, q, raw_plan)?.try_into().map_err(|_| invalid())?;
+        let plan = [request[0], request[1], field(s, q, unit, b"unitName")?, saved.prior_unit];
         if plan[0] != symbol(s, q, b"rollback")?
             || plan[1] != unit
             || plan[2] != field(s, q, unit, b"unitName")?
-            || plan[4] != saved.after.generation
-            || plan[5] != saved.before.generation
             || field(s, q, unit, b"state")? != symbol(s, q, b"active")?
-            || field(s, q, plan[4], b"deltaUnit")? != unit
-            || field(s, q, plan[4], b"predecessor")? != plan[5]
         {
             return fail(
                 s,
@@ -856,27 +767,12 @@ pub(super) unsafe fn prepare_rollback(
                 b"rollback plan does not name the current delta and its predecessor",
             );
         }
-        let mut prior = s.named(b"nil")?;
-        for row in seq(s, q, saved.before.source_map)? {
-            let row = seq(s, q, row)?;
-            if row[0] == plan[2] {
-                prior = row[2];
-            }
-        }
-        if prior != plan[3] {
-            return fail(
-                s,
-                q,
-                b"staleGeneration",
-                b"rollback plan has a stale predecessor",
-            );
-        }
         let mut p = Prepared {
             rollback: true,
             token: 0,
             unit,
             plan,
-            source_revision:s.registry.revision(),
+            source: saved.source_after,
             fields: preparation::plan_fields(s, q, &plan)?,
             bindings: saved.bindings_after.clone(),
             globals: saved

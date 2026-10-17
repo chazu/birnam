@@ -73,9 +73,6 @@ impl Vm {
             .unwrap()
         }
     }
-    unsafe fn at(&self, o: Oop, i: usize) -> Oop {
-        unsafe { self.call(o, b"at:", &[self.integer(i)]) }
-    }
     unsafe fn vector(&self, values: &[Oop]) -> Oop {
         unsafe {
             let mut v = self.call(self.named(b"Vector"), b"new", &[]);
@@ -105,32 +102,8 @@ impl Vm {
             else { assert_eq!(self.call(self.named(b"Reflect"), b"slot:in:put:", &[self.sym(a), e, v]), e); }
         }
     }
-    unsafe fn carrier(&self, p: Oop, predecessor: Oop, unit: Oop) -> Oop {
-        unsafe {
-            let g = self.record(b"DispatchGeneration");
-            for (attr, v) in [
-                (b"sourceMap".as_slice(), self.at(p, 1)),
-                (b"baseDigest", self.at(p, 2)),
-                (b"generationSelection", self.at(p, 3)),
-                (b"predecessor", predecessor),
-                (b"deltaUnit", unit),
-            ] {
-                self.set(g, attr, v);
-            }
-            g
-        }
-    }
-    unsafe fn plan(&self, action: &[u8], unit: Oop, expected: Oop, next: Oop) -> Oop {
-        unsafe {
-            self.vector(&[
-                self.sym(action),
-                unit,
-                self.sym(b"txFixture"),
-                self.named(b"nil"),
-                expected,
-                next,
-            ])
-        }
+    unsafe fn plan(&self, action: &[u8], unit: Oop) -> Oop {
+        unsafe { self.vector(&[self.sym(action), unit]) }
     }
     unsafe fn direct(&self, selector: &[u8]) -> Operand {
         unsafe {
@@ -392,45 +365,11 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
         let independent_global = v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")]);
         let independent_entry = v.direct(b"txIndependent").as_entry().unwrap();
         let side_effect_entry = v.direct(b"txSetterSideEffect").as_entry().unwrap();
-        let projection = v.call(cg, b"initialGenerationProjection", &[]);
-        let generation = v.carrier(projection, nil, nil);
-        v.set(v.sym(b"dispatch"), b"activeGeneration", generation);
-        // A binding callback changes only its owner's revision. Neither adoption
-        // nor later reconciliation may call that a coherent observation.
-        global_probes[0].1.bump_after_read.set(true);
-        let unstable = v.call(
-            v.named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        assert_eq!(v.call(unstable, b"kind", &[]), v.sym(b"staleGeneration"));
-        owner_basis_offset.set(0);
-
-        assert_eq!(
-            v.call(
-                v.named(b"Generation"),
-                b"adoptInitialGeneration:",
-                &[generation]
-            ),
-            generation
-        );
-        global_probes[0].1.bump_after_read.set(true);
-        let unstable = v.call(
-            v.named(b"Generation"),
-            b"reconcileCandidate:",
-            &[generation],
-        );
-        assert_eq!(v.call(unstable, b"kind", &[]), v.sym(b"staleGeneration"));
-        owner_basis_offset.set(0);
-        assert_eq!(
-            v.call(
-                v.named(b"Generation"),
-                b"reconcileCandidate:",
-                &[generation]
-            ),
-            generation
-        );
-
+        // These outside Methods are kept by this test, not an implicit whole-world ledger.
+        for entry in [independent_entry, side_effect_entry] {
+            v.keep(object(send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(entry)])));
+        }
+        assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
         let original_helper = v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]);
         let original_replace = v.direct(b"txReplace").as_entry().unwrap();
         let original_remove = v.direct(b"txRemove").as_entry().unwrap();
@@ -473,21 +412,10 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 v.call(v.named(b"Generation"), b"mapCandidate:", &[unit]),
                 unit
             );
-            let projected = v.call(
-                v.named(b"Generation"),
-                b"successorGenerationProjection:replacing:with:unit:",
-                &[
-                    v.at(projection, 1),
-                    v.sym(b"txFixture"),
-                    v.fact(unit, b"sourceRevision"),
-                    unit,
-                ],
-            );
-            let next = v.carrier(projected, generation, unit);
             // Explicit facts at lifecycle field names are independent data.
             v.call(db, b"assert:attr:value:", &[unit, v.sym(b"state"), v.sym(b"userAnnotation")]);
             let changed_token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)]);
+                &[unit, v.plan(b"activate", unit)]);
             v.set(unit, b"state", v.sym(b"externalEdit"));
             let stale_fields = v.call(v.named(b"Generation"), b"commitPrepared:", &[changed_token]);
             assert_eq!(v.call(stale_fields, b"kind", &[]), v.sym(b"staleGeneration"));
@@ -497,7 +425,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             // A changed projected Global is relevant even when it is absent from
             // the old managed ledger. Present nil must not be confused with absence.
             let binding_token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)]);
+                &[unit, v.plan(b"activate", unit)]);
             let existing_method = v.keep(object(send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_replace)])));
             v.call(v.named(b"IntegerVt"), b"addMethod:as:", &[existing_method, v.sym(b"txAdded")]);
             let stale_binding = v.call(v.named(b"Generation"), b"commitPrepared:", &[binding_token]);
@@ -505,7 +433,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 10);
             send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txAdded"))]);
             let owner_token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)]);
+                &[unit, v.plan(b"activate", unit)]);
             v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txNewHelper"), nil]);
             let stale_owner = v.call(v.named(b"Generation"), b"commitPrepared:", &[owner_token]);
             assert_eq!(v.call(stale_owner, b"kind", &[]), v.sym(b"staleGeneration"));
@@ -514,7 +442,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)],
+                &[unit, v.plan(b"activate", unit)],
             );
             assert_eq!(v.call(token, b"isError", &[]), v.named(b"false"));
             v.set(
@@ -531,7 +459,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)],
+                &[unit, v.plan(b"activate", unit)],
             );
             v.call(ns, b"at:put:", &[v.sym(b"TxPreparedToken"), token]);
             let unsafe_commit = v.call(
@@ -552,7 +480,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 id,
                 id.receiver,
                 b"behaviorOf:",
-                &[Operand::object(v.prototype(b"DispatchGeneration"))],
+                &[Operand::object(unit)],
             ));
             let remove_key = v.sym(b"removeMethod:");
             let original = send(
@@ -580,14 +508,14 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)],
+                &[unit, v.plan(b"activate", unit)],
             );
             let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"injectedBeforeWriteFailure"));
             assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
             assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
             let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)]);
+                &[unit, v.plan(b"activate", unit)]);
             let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             let reason = v.call(cg, b"lastError", &[]);
             let description = if reason == nil {
@@ -614,17 +542,17 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             );
             assert_eq!(v.fact(v.sym(b"foreignCallback"), b"survives"), yes);
             assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-            assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), generation);
+            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
             assert_eq!(
                 v.number(v.call(db, b"reservedCompensationFor:", &[unit])),
                 0
             );
-            let restore_key = v.sym(b"current:");
+            let restore_key = v.sym(b"state:");
             let original_restore = send(
                 id,
                 id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(restore_key), Operand::object(dispatch_vt)],
+                b"bind:to:",
+                &[Operand::object(restore_key), Operand::object(unit)],
             )
             .as_entry()
             .unwrap();
@@ -632,20 +560,22 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let mut publication_failure = PublicationFailure {
                 vm: Vm { id, ns },
                 original: original_restore,
-                destination: next,
+                destination: v.keep(v.sym(b"active")),
                 armed: Cell::new(true),
             };
             install(
                 id,
                 dispatch_vt,
-                b"current:",
+                b"state:",
                 fail_after_publication,
                 core::ptr::from_mut(&mut publication_failure).cast(),
             );
+            let installed_hook = send(id, id.receiver, b"bind:to:", &[Operand::object(restore_key), Operand::object(unit)]).as_entry().unwrap();
+            assert_eq!(installed_hook.context, core::ptr::from_mut(&mut publication_failure).cast(), "hook was installed in the wrong dictionary");
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit, generation, next)],
+                &[unit, v.plan(b"activate", unit)],
             );
             let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(
@@ -653,7 +583,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 v.sym(b"injectedPublicationFactFailure")
             );
             assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-            assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), generation);
+            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
             assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
             assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
             assert_eq!(v.direct(b"txAdded").kind(), birnam_abi::id_protocol::UNIT);
@@ -666,12 +596,12 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             if let Some(method) = send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_setter)]).as_object() { v.keep(method); }
             let effects = SetterEffects { vm: Vm { id, ns }, original: original_setter, noop: Cell::new(true), fail: Cell::new(true), effects: Cell::new(0) };
             install(id, id.receiver, b"addMethod:as:", setter_effects, core::ptr::from_ref(&effects).cast_mut().cast());
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit, generation, next)]);
+            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit)]);
             let noop = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(v.call(noop, b"kind", &[]), v.sym(b"candidateCommitFailed"));
             assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
             assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit, generation, next)]);
+            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit)]);
             let reported = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
             assert_eq!(v.call(reported, b"kind", &[]), v.sym(b"setterReportedFailure"));
             assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
@@ -682,7 +612,10 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txIndependentGlobal"), v.integer(321)]);
             send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txIndependent"))]);
             collect(id, v.named(b"GC"));
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit, generation, next)]);
+            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit)]);
+            let later_source = v.text(b"[Module named: #txLater requires: #[]]; true");
+            assert_eq!(v.call(cg, b"recordModuleSource:named:", &[later_source, v.sym(b"txLater")]), later_source);
+            let later_source = v.call(cg, b"moduleSourceFor:", &[v.sym(b"txLater")]);
             let epoch = send(id, id.receiver, b"bindingEpoch", &[]).as_word().unwrap();
             // Parsing/constructing a branch Block and an unrelated method edit
             // are normal work between prepare and commit, not token expiry.
@@ -706,12 +639,6 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             v.call(ns, b"at:put:", &[v.sym(b"Store"), store]);
             v.call(ns, b"at:put:", &[v.sym(b"db"), db]);
             assert_eq!(committed, unit);
-            // Explicit validation may observe another managed module's drift,
-            // but must leave this activation's inverse usable.
-            let mismatch = v.call(v.named(b"Generation"), b"reconcileCandidate:", &[unit]);
-            assert_eq!(v.call(mismatch, b"kind", &[]), v.sym(b"staleGeneration"));
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.fact(unit, b"rollbackAvailable"), yes);
             global_probes[1].1.basis_offset.set(0);
             assert!(effects.effects.get() > 0, "replacement setter did not run");
             let side_entry = v.direct(b"txSetterSideEffect");
@@ -724,18 +651,18 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
             assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
             assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), next);
+            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
             assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
             assert_eq!(v.number(v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")])), 321);
             assert_eq!(v.direct(b"txIndependent").kind(), birnam_abi::id_protocol::UNIT);
             assert_eq!(v.number(v.call(db, b"reservedCompensationFor:", &[unit])), 0);
             effects.effects.set(2);
-            publication_failure.destination = generation;
+            publication_failure.destination = v.keep(v.sym(b"rolledBack"));
             publication_failure.armed.set(true);
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareRollback:plan:",
-                &[unit, v.plan(b"rollback", unit, next, generation)],
+                &[unit, v.plan(b"rollback", unit)],
             );
             let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
             assert_eq!(
@@ -743,7 +670,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 v.sym(b"injectedPublicationFactFailure")
             );
             assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), next);
+            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
             assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 20);
             assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
             assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
@@ -776,7 +703,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareRollback:plan:",
-                &[unit, v.plan(b"rollback", unit, next, generation)],
+                &[unit, v.plan(b"rollback", unit)],
             );
             let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
             assert_eq!(
@@ -784,7 +711,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 v.sym(b"injectedCleanupFailure")
             );
             assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), next);
+            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
             assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 20);
             assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
             assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
@@ -799,7 +726,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             let token = v.call(
                 v.named(b"Generation"),
                 b"prepareRollback:plan:",
-                &[unit, v.plan(b"rollback", unit, next, generation)],
+                &[unit, v.plan(b"rollback", unit)],
             );
             assert_eq!(v.call(token, b"isError", &[]), v.named(b"false"));
             v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txIndependentGlobal"), v.integer(654)]);
@@ -819,6 +746,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 10);
             assert_eq!(v.number(v.call(v.integer(2), b"txRemove", &[])), 30);
             assert_eq!(v.fact(unit, b"state"), v.sym(b"rolledBack"));
+            assert_eq!(v.call(cg, b"moduleSourceFor:", &[v.sym(b"txLater")]), later_source);
             assert_eq!(v.direct(b"txSetterSideEffect").as_entry(), side_entry.as_entry());
             collect(id, v.named(b"GC"));
             assert_eq!(v.number(v.call(v.integer(2), b"txSetterSideEffect", &[])), 20);
@@ -837,7 +765,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             }
 
             assert_eq!(v.call(db, b"currentValue:attr:", &[unit, v.sym(b"state")]), v.sym(b"userAnnotation"));
-            assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), generation);
+            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
             assert_eq!(
                 v.number(v.call(db, b"reservedCompensationFor:", &[unit])),
                 0
@@ -866,14 +794,6 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                     Operand::entry(original_release),
                 ],
             );
-            assert_eq!(
-                v.call(
-                    v.named(b"Generation"),
-                    b"reconcileCandidate:",
-                    &[generation]
-                ),
-                generation
-            );
             if synchronous {
                 let fresh = v.record(b"CompiledUnit");
                 assert_eq!(
@@ -888,21 +808,10 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                     v.call(v.named(b"Generation"), b"mapCandidate:", &[fresh]),
                     fresh
                 );
-                let projected = v.call(
-                    v.named(b"Generation"),
-                    b"successorGenerationProjection:replacing:with:unit:",
-                    &[
-                        v.at(projection, 1),
-                        v.sym(b"txFixture"),
-                        v.fact(fresh, b"sourceRevision"),
-                        fresh,
-                    ],
-                );
-                let changed = v.carrier(projected, generation, fresh);
                 let token = v.call(
                     v.named(b"Generation"),
                     b"prepareActivation:plan:",
-                    &[fresh, v.plan(b"activate", fresh, generation, changed)],
+                    &[fresh, v.plan(b"activate", fresh)],
                 );
                 assert_eq!(
                     v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
@@ -911,7 +820,7 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 let token = v.call(
                     v.named(b"Generation"),
                     b"prepareRollback:plan:",
-                    &[fresh, v.plan(b"rollback", fresh, changed, generation)],
+                    &[fresh, v.plan(b"rollback", fresh)],
                 );
                 let installed_replace = v.direct(b"txReplace").as_entry().unwrap();
                 send(
@@ -926,16 +835,22 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 assert_eq!(v.fact(fresh, b"state"), v.sym(b"active"));
                 assert_eq!(v.fact(fresh, b"rollbackAvailable"), yes);
                 assert_eq!(v.direct(b"txReplace").kind(), birnam_abi::id_protocol::UNIT);
-                assert_eq!(v.fact(v.sym(b"dispatch"), b"activeGeneration"), changed);
+                assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
                 assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
                 send(id, v.named(b"IntegerVt"), b"addMethod", &[Operand::object(v.sym(b"txReplace")), Operand::entry(installed_replace)]);
-                let retry = v.call(v.named(b"Generation"), b"prepareRollback:plan:", &[fresh, v.plan(b"rollback", fresh, changed, generation)]);
+                let retry = v.call(v.named(b"Generation"), b"prepareRollback:plan:", &[fresh, v.plan(b"rollback", fresh)]);
                 assert_eq!(v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[retry]), fresh);
                 assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
                 // Scoped success has not silently adopted the other module's edits.
                 send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txIndependent"))]);
-                let certificate = v.call(v.named(b"Generation"), b"reconcileCandidate:", &[generation]);
-                assert_eq!(v.call(certificate, b"kind", &[]), v.sym(b"staleGeneration"));
+                let certificate = v.call(v.prototype(b"DispatchGeneration"), b"adoptCurrent", &[]);
+                assert_eq!(v.call(certificate, b"kind", &[]), v.sym(b"sourceBindingMismatch"));
+                send(id, v.named(b"IntegerVt"), b"addMethod", &[Operand::object(v.sym(b"txIndependent")), Operand::entry(independent_entry)]);
+                let certificate = v.call(v.prototype(b"DispatchGeneration"), b"adoptCurrent", &[]);
+                assert_eq!(v.call(certificate, b"isError", &[]), v.named(b"false"));
+                let refreshed = v.call(v.prototype(b"DispatchGeneration"), b"adoptCurrent", &[]);
+                assert_ne!(certificate, refreshed);
+                assert_eq!(v.call(refreshed, b"isError", &[]), v.named(b"false"));
             }
         }
         for (selector, probe) in global_probes {

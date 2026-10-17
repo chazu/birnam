@@ -6,7 +6,8 @@ tracked in [lifecycle record owners](lifecycle-record-owners.md) and
 [prepared operation admission](prepared-operation-admission.md) and
 [scoped transactions](scoped-generation-transactions.md) and
 [explicit image adoption](explicit-image-adoption.md) and
-[opt-in baselines](opt-in-generation-baselines.md). Follows
+[opt-in baselines](opt-in-generation-baselines.md) and
+[module-scoped candidates](module-scoped-candidates.md). Follows
 [optional Store](optional-store-and-relational.md).
 
 ## Conclusion
@@ -32,13 +33,10 @@ value-based prepared admission; selected-state commit, compensation and rollback
 
 Still open:
 
-1. Ordinary startup, worker preparation and image reconstruction no longer adopt
-   automatically; source registration is no longer sealed. Finish decoupling the
-   explicit candidate source-lineage contract from whole-program certification.
-   In particular, support continued candidate work after source introduction
-   without requiring a snapshot round trip or a replacement coordination framework.
-2. Explicit validation now reports current disagreement without sticky drift or
-   inverse revocation. Keep its observation-only contract during further changes.
+1. Candidate operations now use one module source record and selected bindings;
+   whole-program certification is separate and renewable. This slice is complete.
+2. Explicit validation reports disagreement without lifecycle mutation or inverse
+   revocation. This slice is complete.
 3. Qualify activation within entered code before deciding whether Host-only
    intent fulfillment can be removed. Keep native reclamation checkpoints.
 4. Separate logical discard from optional artifact-file cleanup and diagnostics.

@@ -578,11 +578,8 @@ fn ledger_validation_preserves_state_and_reports_current_agreement() {
             b"adoptInitialGeneration:",
             &[generation],
         );
-        if case == "metadata" {
-            assert_eq!(call(readoption, b"kind", &[]), sym(b"staleGeneration"));
-        } else {
-            assert_eq!(readoption, generation);
-        }
+        // Explicit re-certification may renew even a changed content revision.
+        assert_eq!(readoption, generation);
         // Keep the authored lifecycle facade parseable as its initial adoption
         // is connected to this native mechanism.
         let facade = text(&std::fs::read("../../modules/compiled-unit.birnam").unwrap());

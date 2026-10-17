@@ -259,18 +259,6 @@ pub(super) unsafe fn adopt(
     generation: Oop,
 ) -> Result<Operand, Outcome> {
     unsafe {
-        let existing = s.candidates.ledger.borrow().as_ref().map(|l| l.generation);
-        if let Some(existing) = existing {
-            if existing != generation {
-                return fail(
-                    s,
-                    q,
-                    b"invalidLifecycleTransition",
-                    b"initial generation is already adopted",
-                );
-            }
-            return reconcile_candidate(s, q, generation);
-        }
         let nil = s.named(b"nil")?;
         if current(s, q)? != generation
             || generation == nil

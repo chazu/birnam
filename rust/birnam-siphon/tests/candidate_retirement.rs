@@ -126,17 +126,8 @@ impl Vm {
             g
         }
     }
-    unsafe fn plan(&self, action: &[u8], unit: Oop, expected: Oop, next: Oop) -> Oop {
-        unsafe {
-            self.vector(&[
-                self.sym(action),
-                unit,
-                self.sym(b"txFixture"),
-                self.named(b"nil"),
-                expected,
-                next,
-            ])
-        }
+    unsafe fn plan(&self, action: &[u8], unit: Oop) -> Oop {
+        unsafe { self.vector(&[self.sym(action), unit]) }
     }
     unsafe fn direct(&self, selector: &[u8]) -> Operand {
         unsafe {
@@ -336,21 +327,10 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             std::fs::write(&path, &artifact).unwrap();
             let mut held = None;
             if index >= 2 {
-                let projected = v.call(
-                    v.named(b"Generation"),
-                    b"successorGenerationProjection:replacing:with:unit:",
-                    &[
-                        v.at(projection, 1),
-                        v.sym(b"txFixture"),
-                        v.fact(unit, b"sourceRevision"),
-                        unit,
-                    ],
-                );
-                let next = v.carrier(projected, generation, unit);
-                let token = v.call(
+                    let token = v.call(
                     v.named(b"Generation"),
                     b"prepareActivation:plan:",
-                    &[unit, v.plan(b"activate", unit, generation, next)],
+                    &[unit, v.plan(b"activate", unit)],
                 );
                 if v.call(token,b"isError",&[])==v.named(b"true") {
                     let msg=v.call(token,b"message",&[]);let bytes=send(id,msg,b"bytes",&[]).as_bytes().unwrap();
@@ -364,7 +344,6 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     let changed=v.call(cg,b"compiledSource:metadata:",&[text,metadata]);
                     assert_ne!(old,changed);
                     v.call(cg,b"replaceCompiledSource:named:",&[changed,name]);
-                    v.call(cg,b"replaceCompiledSource:named:",&[old,name]);
                     let rejected=v.call(v.named(b"Generation"),b"commitPrepared:",&[token]);
                     assert_eq!(v.call(rejected,b"kind",&[]),v.sym(b"staleGeneration"));
                     assert_eq!(v.number(v.call(v.integer(2),b"retireValue",&[])),10);
@@ -428,7 +407,6 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     let changed=v.call(cg,b"compiledSource:metadata:",&[text,metadata]);
                     assert_ne!(old,changed);
                     v.call(cg,b"replaceCompiledSource:named:",&[changed,name]);
-                    v.call(cg,b"replaceCompiledSource:named:",&[old,name]);
                     let rejected=v.call(v.named(b"Generation"),b"commitPrepared:",&[token]);
                     assert_eq!(v.call(rejected,b"kind",&[]),v.sym(b"staleGeneration"));
                     assert_eq!(v.number(v.call(v.integer(2),b"retireValue",&[])),10);
@@ -448,7 +426,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 let rollback = v.call(
                     v.named(b"Generation"),
                     b"prepareRollback:plan:",
-                    &[unit, v.plan(b"rollback", unit, next, generation)],
+                    &[unit, v.plan(b"rollback", unit)],
                 );
                 assert_eq!(
                     v.call(

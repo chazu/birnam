@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Scope candidate compilation/source exchange to one module. Candidate activation
+  and rollback no longer require whole-world certification or advance a global
+  generation. Optional source certificates can be refreshed independently.
+  Candidate bundles now use ABI 5 and old bundles must be recompiled.
+
 - Remove automatic generation adoption from console/TCP startup and worker-image
   preparation, and remove source-registration sealing. Explicit validation now
   reports current agreement without changing lifecycle status or revoking undo.

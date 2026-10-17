@@ -35,7 +35,6 @@ pub(super) struct Candidate {
     pub name: Oop,
     pub path: Oop,
     pub expected: [u8; 64],
-    pub selected: Vec<u8>,
     pub plan: code::Plan,
     pub objects: Vec<Vec<u8>>,
     envelope: Vec<u8>,
@@ -81,7 +80,7 @@ impl Candidates {
 pub(super) enum Op {
     Compile,
     CompileSelected,
-    Successor,
+    Active,
     Inspect,
     Map,
     Mapped,
@@ -102,7 +101,7 @@ impl Op {
         match self {
             Self::RetainedCount | Self::RetainedBytes => 0,
             Self::Compile => 3,
-            Self::CompileSelected | Self::Successor => 4,
+            Self::CompileSelected => 4,
             Self::Inspect | Self::Prepare | Self::PrepareRollback => 2,
             _ => 1,
         }
@@ -358,6 +357,12 @@ unsafe fn write(s: &State, q: &Scope<'_>, path: Oop, bytes: &[u8]) -> Result<(),
         Ok(())
     }
 }
+pub(super) fn active(s: &State, name: Oop) -> Option<Oop> {
+    let source = s.registry.record(name)?;
+    s.candidates.entries.borrow().iter().rev()
+        .find(|c| c.name == name && c.source == source && c.activation.is_some())
+        .map(|c| c.unit)
+}
 pub(super) unsafe fn operation(
     s: &State,
     q: &Scope<'_>,
@@ -419,54 +424,16 @@ pub(super) unsafe fn operation(
                         b"candidate module name mismatches",
                     );
                 }
-                let predecessor = current(s, q)?;
-                if predecessor == s.named(b"nil")? {
-                    return fail(
-                        s,
-                        q,
-                        b"generationNotInitialized",
-                        b"candidate compilation needs a current generation",
-                    );
+                let Some(prior) = s.registry.record(name) else {
+                    return fail(s, q, b"moduleNotRegistered", b"candidate compilation requires the module's registered source");
+                };
+                q.keep(prior)?;
+                let Some((_, previous)) = s.revision(q, prior)? else { return Err(invalid()); };
+                if !generation::transition_allowed(&previous, &metadata) {
+                    return fail(s, q, b"invalidCandidate", b"candidate changes unsupported initializers or dependencies");
                 }
-                let expected = s.bytes(field(s, q, predecessor, b"baseDigest")?)?;
-                let expected = <&[u8; 64]>::try_from(expected.as_slice()).map_err(|_| invalid())?;
-                let selected = select(
-                    s,
-                    q,
-                    &metadata,
-                    args.get(3).copied().map(object).transpose()?,
-                )?;
-                let map = field(s, q, predecessor, b"sourceMap")?;
-                let old_selection = s.bytes(field(s, q, predecessor, b"generationSelection")?)?;
-                let modules = modules(s, q, map)?;
-                let descriptor_hashes = backend::hashes(
-                    s,
-                    q,
-                    modules
-                        .iter()
-                        .flat_map(|m| m.metadata.operations.iter().map(|o| o.selector.as_slice()))
-                        .chain(metadata.operations.iter().map(|o| o.selector.as_slice())),
-                )?;
-                let projection = generation::project_candidate_generation(
-                    modules,
-                    generation::Module::new(bytes.clone(), metadata.clone()).ok_or_else(invalid)?,
-                    &old_selection,
-                    &selected,
-                    |m, i, _| {
-                        descriptor_hashes
-                            .get(&m.metadata.operations.get(i)?.selector)
-                            .copied()
-                            .flatten()
-                    },
-                );
-                if projection.is_none() {
-                    return fail(
-                        s,
-                        q,
-                        b"invalidCandidate",
-                        b"candidate changes unsupported initializers or generation selection",
-                    );
-                }
+                let expected = &previous.revision_digest;
+                let selected = select(s, q, &metadata, args.get(3).copied().map(object).transpose()?)?;
                 let Some((plan,_)) = s.candidate_plan(q, source, &selected)? else {
                     return fail(s, q, b"invalidCandidate", b"candidate cannot be lowered");
                 };
@@ -506,99 +473,7 @@ pub(super) unsafe fn operation(
                 write(s, q, side_path, &sidecar)?;
                 Ok(Operand::object(path))
             }
-            Op::Successor => {
-                let map = object(args[0])?;
-                let name = object(args[1])?;
-                let revision = object(args[2])?;
-                let unit = object(args[3])?;
-                let snapshot = s
-                    .candidates
-                    .entries
-                    .borrow()
-                    .iter()
-                    .find(|c| c.unit == unit)
-                    .map(|c| {
-                        (
-                            c.source,
-                            c.name,
-                            c.expected,
-                            c.selected.clone(),
-                            c.plan.metadata.clone(),
-                        )
-                    });
-                let Some((source, candidate_name, expected, selected, metadata)) = snapshot else {
-                    return fail(s, q, b"invalidCandidate", b"candidate carrier is unknown");
-                };
-                let predecessor = current(s, q)?;
-                if predecessor == s.named(b"nil")?
-                    || field(s, q, predecessor, b"sourceMap")? != map
-                    || s.bytes(field(s, q, predecessor, b"baseDigest")?)? != expected
-                    || candidate_name != name
-                {
-                    return fail(
-                        s,
-                        q,
-                        b"staleGeneration",
-                        b"candidate predecessor has changed",
-                    );
-                }
-                let fields = seq(s, q, revision)?;
-                if fields.len() != 8
-                    || fields[0] != symbol(s, q, b"sourceRevision")?
-                    || fields[1] != name
-                    || s.bytes(fields[3])? != s.source_data(q,source)?
-                    || s.bytes(fields[6])? != metadata.revision_digest
-                {
-                    return fail(s, q, b"invalidCandidate", b"candidate revision mismatches");
-                }
-                let prior = modules(s, q, map)?;
-                let selection = s.bytes(field(s, q, predecessor, b"generationSelection")?)?;
-                let descriptor_hashes = backend::hashes(
-                    s,
-                    q,
-                    prior
-                        .iter()
-                        .flat_map(|m| m.metadata.operations.iter().map(|o| o.selector.as_slice()))
-                        .chain(metadata.operations.iter().map(|o| o.selector.as_slice())),
-                )?;
-                let Some(projected) = generation::project_candidate_generation(
-                    prior,
-                    generation::Module::new(s.source_data(q,source)?, metadata).ok_or_else(invalid)?,
-                    &selection,
-                    &selected,
-                    |m, i, _| {
-                        descriptor_hashes
-                            .get(&m.metadata.operations.get(i)?.selector)
-                            .copied()
-                            .flatten()
-                    },
-                ) else {
-                    return fail(
-                        s,
-                        q,
-                        b"invalidCandidate",
-                        b"candidate successor cannot be projected",
-                    );
-                };
-                let mut rows = Vec::new();
-                for row in seq(s, q, map)? {
-                    let values = seq(s, q, row)?;
-                    if values.len() != 3 {
-                        return Err(invalid());
-                    }
-                    rows.push(if values[0] == name {
-                        s.vector(q, &[name, revision, unit])?
-                    } else {
-                        row
-                    });
-                }
-                let map = s.vector(q, &rows)?;
-                let tag = symbol(s, q, b"generationProjection")?;
-                let digest = s.text(q, &generation::raw_digest_spelling(projected.authority))?;
-                let selected = s.text(q, &projected.selection)?;
-                s.vector(q, &[tag, map, digest, selected])
-                    .map(Operand::object)
-            }
+            Op::Active => Ok(Operand::object(active(s, object(args[0])?).unwrap_or(s.named(b"nil")?))),
             Op::Inspect => {
                 let path = object(args[0])?;
                 let unit = object(args[1])?;
@@ -721,7 +596,6 @@ pub(super) unsafe fn operation(
                         .expected_predecessor_digest
                         .try_into()
                         .map_err(|_| invalid())?,
-                    selected: env.artifact_selection.to_vec(),
                     plan,
                     objects,
                     envelope: side,

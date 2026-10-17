@@ -93,12 +93,7 @@ let compiledGenerationNumbers := [{} asCell];
 // baseline. It neither mints replacement units nor changes retained history.
 [Reflect defineMethod: #adoptCurrent on: DispatchGeneration as: [:self |
   let origin := [self current];
-  let projection := [[origin isNil]
-    ifTrue: [| [Codegen initialGenerationProjection]]
-    ifFalse: [|
-      let rows := [[origin sourceMap] inject: #[] into: [:rows :entry |
-        [rows add: #[[entry at: 0] [entry at: 1] nil]]]];
-      #[#generationProjection rows [origin baseDigest] [origin generationSelection]]]];
+  let projection := [Codegen initialGenerationProjection];
   [[projection isError]
     ifTrue: [| projection]
     ifFalse: [|
@@ -252,90 +247,26 @@ let compiledGenerationNumbers := [{} asCell];
 // Validation consumes no dispatch capability: preparation snapshots the complete
 // plan and discard immediately invalidates the one-shot token.
 [Reflect defineMethod: #validate on: CompiledUnit as: [:self |
-  let current := [DispatchGeneration current];
-  [[current isNil]
-    ifTrue: [| [Error kind: #generationNotInitialized]]
-    ifFalse: [|
-      let projection := [Generation successorGenerationProjection: [current sourceMap] replacing: [self unitName] with: [self sourceRevision] unit: self];
-      [[projection isError]
-        ifTrue: [| projection]
-        ifFalse: [|
-          let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
-          let token := [Generation prepareActivation: self plan: [self publicationPlan: #activate prior: [current unitFor: [self unitName]] expected: current successor: successor]];
-          [[token isNil]
-            ifTrue: [| [Error kind: #candidatePreparationFailed]]
-            ifFalse: [|
-              [[token isError]
-                ifTrue: [| token]
-                ifFalse: [|
-                  let discarded := [Generation discardPrepared: token];
-                  [[discarded isNil]
-                    ifTrue: [| [Error kind: #candidateDiscardFailed]]
-                    ifFalse: [| [[discarded isError] ifTrue: [| discarded] ifFalse: [| self]]]]]]]]]]]]]];
+  let token := [Generation prepareActivation: self plan: [self publicationPlan: #activate]];
+  [[token isError] ifTrue: [| token] ifFalse: [| [Generation discardPrepared: token]]]]];
 
-// The candidate facade chooses every object/value that the commit will publish. Generation copies
-// this positional plan during preparation and later applies it mechanically,
-// after dispatch mutation, without invoking another CompiledUnit method.
-[Reflect defineMethod: #publicationPlan:prior:expected:successor: on: CompiledUnit as: [:self :action :prior :expected :successor |
-  #[action self [self unitName] prior expected successor]]];
+[Reflect defineMethod: #publicationPlan: on: CompiledUnit as: [:self :action | #[action self]]];
 
 [Reflect defineMethod: #activate on: CompiledUnit as: [:self |
   [EvolutionIntent for: self action: #activate]]];
 
 [Reflect defineMethod: #commitActivation on: CompiledUnit as: [:self |
-  [[[self state] = #candidate]
-    ifTrue: [|
-      let name := [self unitName];
-      let current := [DispatchGeneration current];
-      [[current isNil]
-        ifTrue: [| [Error kind: #generationNotInitialized]]
-        ifFalse: [|
-          let projection := [Generation successorGenerationProjection: [current sourceMap] replacing: name with: [self sourceRevision] unit: self];
-          [[projection isError]
-            ifTrue: [| projection]
-            ifFalse: [|
-              let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
-              let prior := [current unitFor: name];
-              // Preparation and commitment are separate operations; unrelated
-              // work between them does not expire the prepared observations.
-              let committed := [Generation commitPrepared:
-                [Generation prepareActivation: self plan:
-                  [self publicationPlan: #activate prior: prior expected: current successor: successor]]];
-              [[committed isNil]
-                ifTrue: [| [Error kind: #candidateCommitFailed]]
-                ifFalse: [| committed]]]]]]]
-    ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
+  [Generation commitPrepared: [Generation prepareActivation: self plan: [self publicationPlan: #activate]]]]];
 
 [Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
   [EvolutionIntent for: self action: #rollback]]];
 
 [Reflect defineMethod: #commitRollback on: CompiledUnit as: [:self |
-  let state := [self state];
-  [[state = #rolledBack]
-    ifTrue: [| self]
-    ifFalse: [|
-      [[state = #active]
-        ifTrue: [|
-          let current := [DispatchGeneration current];
-          [[[current isNil] or: [| [[[current deltaUnit] == self] not]]]
-            ifTrue: [| [Error kind: #staleGeneration]]
-            ifFalse: [|
-              let predecessor := [current predecessor];
-              [[predecessor isNil]
-                ifTrue: [| [Error kind: #rollbackUnavailable]]
-                ifFalse: [|
-                  let prior := [predecessor unitFor: [self unitName]];
-                  let rolled := [Generation commitPreparedRollback:
-                    [Generation prepareRollback: self plan:
-                      [self publicationPlan: #rollback prior: prior expected: current successor: predecessor]]];
-                  [[rolled isNil]
-                    ifTrue: [| [Error kind: #candidateRollbackCommitFailed]]
-                    ifFalse: [| rolled]]]]]]]
-        ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]]]];
+  [[[self state] = #rolledBack] ifTrue: [| self] ifFalse: [|
+    [Generation commitPreparedRollback: [Generation prepareRollback: self plan: [self publicationPlan: #rollback]]]]]]];
 
 [Reflect defineMethod: #activeFor: on: CompiledUnit as: [:self :name |
-  let generation := [DispatchGeneration current];
-  [[generation isNil] ifTrue: [| nil] ifFalse: [| [generation unitFor: name]]]]];
+  [Generation activeCandidateFor: name]]];
 
 [Reflect defineMethod: #unitName: on: CompiledUnit as: [:self :value | [ObjectModel slot: 0 in: self put: value]]];
 [Reflect defineMethod: #generation: on: CompiledUnit as: [:self :value | [ObjectModel slot: 1 in: self put: value]]];

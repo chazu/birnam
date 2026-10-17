@@ -12,11 +12,7 @@ fn protected(s: &State, unit: Oop) -> bool {
             .borrow()
             .iter()
             .any(|c| c.unit == unit && c.activation.is_some())
-        || s.candidates.ledger.borrow().as_ref().is_some_and(|l| {
-            l.units.contains(&unit)
-                || l.bindings.iter().any(|b| b.unit == unit)
-                || l.globals.iter().any(|g| g.unit == unit)
-        })
+
 }
 unsafe fn mapped_bytes(s: &State, identities: &[usize]) -> Result<usize, Outcome> {
     unsafe {

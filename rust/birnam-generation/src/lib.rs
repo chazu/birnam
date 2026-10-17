@@ -147,10 +147,12 @@ unsafe extern "C" fn operation(
             Op::BeginRecovery => candidate::begin_recovery(s, &q, object(a[0])?),
             Op::Recover => candidate::recover_image(s, &q, object(a[0])?),
             Op::AbandonRecovery => {
+                if s.candidates.busy.get() { return candidate::fail(s, &q, b"candidateBusy", b"cannot abandon ownership during a candidate operation"); }
                 candidate::abandon_recovery(s);
                 Ok(Operand::object(s.named(b"true")?))
             }
             Op::CancelRecovery => {
+                if s.candidates.busy.get() { return candidate::fail(s, &q, b"candidateBusy", b"cannot cancel ownership during a candidate operation"); }
                 let yes = s.named(b"true")?;
                 candidate::cancel_recovery(s);
                 s.registry.stage.take();
@@ -360,8 +362,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"rollbackSourceRegistry".as_slice(), Op::Registry(registry::Op::Rollback)),
             (
                 vt,
-                b"successorGenerationProjection:replacing:with:unit:".as_slice(),
-                Op::Candidate(candidate::Op::Successor),
+                b"activeCandidateFor:".as_slice(),
+                Op::Candidate(candidate::Op::Active),
             ),
             (
                 vt,

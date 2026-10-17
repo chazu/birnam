@@ -293,7 +293,7 @@ import Admission
 #print axioms Birnam.SharedInvocation.changed_target_rejects_admission
 #print axioms Birnam.SharedInvocation.present_nil_is_not_absence
 #print axioms Birnam.SharedInvocation.changed_metadata_rejects_admission
-#print axioms Birnam.SharedInvocation.changed_source_revision_rejects_admission
+#print axioms Birnam.SharedInvocation.changed_source_record_rejects_admission
 #print axioms Birnam.SharedInvocation.setter_noop_is_rejected
 #print axioms Birnam.SharedInvocation.setter_error_is_preserved
 
@@ -313,3 +313,7 @@ import Admission
 #print axioms Birnam.SharedInvocation.source_registration_not_blocked_by_adoption
 #print axioms Birnam.SharedInvocation.source_registration_keeps_inverse
 #print axioms Birnam.SharedInvocation.restored_binding_can_validate_again
+
+#print axioms Birnam.SharedInvocation.module_update_preserves_other
+#print axioms Birnam.SharedInvocation.module_update_rejects_changed_source
+#print axioms Birnam.SharedInvocation.module_update_installs_selected

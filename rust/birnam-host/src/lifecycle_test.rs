@@ -123,8 +123,7 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
         Some(b"hostLifecycle"),
     )
     .unwrap();
-    q.check(cg, eval(b"[DispatchGeneration adoptCurrent]"))
-        .unwrap();
+    expect(b"[[DispatchGeneration current] isNil]");
     expect(b"[[Reflect defineMethod: #ordinaryLifecycleValue on: Integer as: [:self | 99]] == Integer]");
     expect(b"[[2 ordinaryLifecycleValue] = 99]");
     expect(b"[[2 hostLifecycleValue] = 10]");
@@ -585,4 +584,51 @@ fn lifecycle_fields_preserve_explicit_facts_and_status_reads() {
     assert_eq!(q.call(numbers, b"at:", &[Operand::object(b)]).unwrap(), other);
     q.call(owner, b"generationNumbers:", &[Operand::object(numbers)]).unwrap();
 
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn independent_candidate_modules_need_no_certificate() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(Path::new("/unused/bin"), crate::Overrides { lib_dir: Some(&lib), ..Default::default() }).unwrap();
+    let host = HostRuntime::start(&resources, StartupPolicy { skip_stdlib: false, precise_gc: true, source_bootstrap: false, tool_bootstrap: false }).unwrap();
+    let q = host.scope();
+    let cg = host.named(b"Codegen").unwrap();
+    let eval = |source: &[u8]| {
+        let value = q.call(cg, b"evalPersisting:", &[Operand::object(q.string(source).unwrap())]).unwrap();
+        q.check_result(value).unwrap(); value
+    };
+    let expect = |source: &[u8]| assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source));
+    let run = |source: &[u8]| { q.evaluate(source, Path::new("<scoped-module-change>"), None).unwrap(); };
+    for (name, source) in [
+        (b"independentA".as_slice(), b"[Module named: #independentA requires: #[]]; [Reflect defineMethod: #independentA on: Integer as: [:self | 1]]".as_slice()),
+        (b"independentB", b"[Module named: #independentB requires: #[]]; [Reflect defineMethod: #independentB on: Integer as: [:self | 2]]"),
+    ] { q.evaluate(source, Path::new("<module-baseline>"), Some(name)).unwrap(); }
+    let dir = env::temp_dir().join(format!("birnam-independent-candidates-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    for (key, file) in [(b"candidateAPath".as_slice(), "a.o"), (b"candidateBPath", "b.o")] {
+        q.call(host.named(b"Globals").unwrap(), b"at:put:", &[Operand::object(unsafe { host.context.id.intern_name(key) }.unwrap()), Operand::object(q.string(dir.join(file).as_os_str().as_bytes()).unwrap())]).unwrap();
+    }
+    eval(br#"[CompiledUnit compile: "[Module named: #independentA requires: #[]]; [Reflect defineMethod: #independentA on: Integer as: [:self | 11]]" named: #independentA output: candidateAPath]"#);
+    eval(br#"[CompiledUnit compile: "[Module named: #independentB requires: #[]]; [Reflect defineMethod: #independentB on: Integer as: [:self | 22]]" named: #independentB output: candidateBPath]"#);
+    eval(b"let unitA := [CompiledUnit open: candidateAPath]; [unitA map]; let unitB := [CompiledUnit open: candidateBPath]; [unitB map]");
+    run(b"[unitA activate]");
+    q.evaluate(b"[Module named: #introducedLater requires: #[]]; [Reflect defineMethod: #introducedLater on: Integer as: [:self | 33]]", Path::new("<later>"), Some(b"introducedLater")).unwrap();
+    run(b"[unitB activate]");
+    expect(b"[[3 independentA] = 11]"); expect(b"[[3 independentB] = 22]");
+    expect(b"[[DispatchGeneration current] isNil]");
+    run(b"[unitA rollback]");
+    expect(b"[[3 independentA] = 1]"); expect(b"[[3 independentB] = 22]");
+    expect(b"[[3 introducedLater] = 33]");
+    // Optional certification can be established/refreshed without changing undo.
+    eval(b"[DispatchGeneration adoptCurrent]");
+    run(b"[unitB rollback]");
+    expect(b"[[3 independentB] = 2]");
+    eval(b"[DispatchGeneration adoptCurrent]");
+    expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+    // An artifact can be opened afresh and used again after exact module rollback.
+    eval(b"let unitAgain := [CompiledUnit open: candidateAPath]; [unitAgain map]");
+    run(b"[unitAgain activate]"); expect(b"[[3 independentA] = 11]");
+    run(b"[unitAgain rollback]"); expect(b"[[3 independentA] = 1]");
+    fs::remove_dir_all(dir).unwrap();
 }

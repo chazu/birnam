@@ -165,7 +165,7 @@ structure AdmissionBasis where
   target : Nat
   projectedGlobal : Option Nat
   metadata : Nat
-  sourceRevision : Nat
+  sourceRecord : Nat
   deriving DecidableEq
 
 structure AdmissionWorld extends AdmissionBasis where
@@ -174,7 +174,7 @@ structure AdmissionWorld extends AdmissionBasis where
   deriving DecidableEq
 
 def observeAdmission (s : AdmissionWorld) : AdmissionBasis :=
-  ⟨s.binding, s.target, s.projectedGlobal, s.metadata, s.sourceRevision⟩
+  ⟨s.binding, s.target, s.projectedGlobal, s.metadata, s.sourceRecord⟩
 
 def admitObserved (basis : AdmissionBasis) (s : AdmissionWorld) : Prop :=
   observeAdmission s = basis
@@ -209,11 +209,11 @@ theorem changed_metadata_rejects_admission (s : AdmissionWorld) (next : Nat)
   intro same
   exact changed (congrArg AdmissionBasis.metadata same)
 
-theorem changed_source_revision_rejects_admission (s : AdmissionWorld) (next : Nat)
-    (changed : next ≠ s.sourceRevision) :
-    ¬ admitObserved (observeAdmission s) { s with sourceRevision := next } := by
+theorem changed_source_record_rejects_admission (s : AdmissionWorld) (next : Nat)
+    (changed : next ≠ s.sourceRecord) :
+    ¬ admitObserved (observeAdmission s) { s with sourceRecord := next } := by
   intro same
-  exact changed (congrArg AdmissionBasis.sourceRevision same)
+  exact changed (congrArg AdmissionBasis.sourceRecord same)
 
 def setterAccepted (expected actual : Nat) (reportedError : Bool) : Bool :=
   actual == expected && !reportedError
@@ -289,6 +289,24 @@ theorem restored_binding_can_validate_again (s : CertificateWorld)
     (adopted : s.adopted = true) (source : s.sourceRevision = s.recordedRevision) :
     (inspectCertificate { s with binding := s.recorded }).2 = true := by
   simp [inspectCertificate, adopted, source]
+
+-- Candidate source exchange changes one module, not a saved whole-world table.
+def replaceModule (world : Nat → Nat) (key expected replacement : Nat) : Nat → Nat :=
+  if world key = expected then fun k => if k = key then replacement else world k else world
+
+theorem module_update_preserves_other (world : Nat → Nat) (key other expected replacement : Nat)
+    (different : other ≠ key) :
+    replaceModule world key expected replacement other = world other := by
+  by_cases h : world key = expected
+  · simp [replaceModule, h, different]
+  · simp [replaceModule, h]
+
+theorem module_update_rejects_changed_source (world : Nat → Nat) (key expected replacement : Nat)
+    (changed : world key ≠ expected) :
+    replaceModule world key expected replacement = world := by simp [replaceModule, changed]
+
+theorem module_update_installs_selected (world : Nat → Nat) (key replacement : Nat) :
+    replaceModule world key (world key) replacement key = replacement := by simp [replaceModule]
 
 -- An image records current executable state. Revision metadata is descriptive
 -- after drift and must not reactivate old transaction authority on restoration.
