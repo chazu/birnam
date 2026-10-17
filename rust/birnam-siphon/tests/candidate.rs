@@ -538,7 +538,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                     b"prepareActivation:plan:",
                     &[unit, publication()],
                 );
-                assert_eq!(call(rejected, b"kind", &[]), symbol(b"staleGeneration"));
+                assert_eq!(call(rejected, b"kind", &[]), symbol(b"unstableMethodTarget"));
                 assert_eq!(
                     send(
                         id,
@@ -559,11 +559,8 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                     b"adoptInitialGeneration:",
                     &[generation],
                 );
-                assert_eq!(call(readoption, b"kind", &[]), symbol(b"staleGeneration"));
-                assert_eq!(
-                    call(named(b"Reflect"), b"slot:in:", &[symbol(b"state"), generation]),
-                    symbol(b"drifted")
-                );
+                // Scoped rejection does not poison a restored baseline.
+                assert_eq!(readoption, generation);
             }
         }
         std::fs::remove_dir_all(dir).unwrap();

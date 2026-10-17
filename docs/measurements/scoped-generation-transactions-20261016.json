@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "2671e533073c4f4a212651d0588a2c101d96c659",
+  "status": "implemented and qualified; uncommitted; includes preceding prepared-value admission work; no push, release or user installation",
+  "scope": "Selected-state activation, rollback and compensation; independent managed edits no longer invalidate transactions. Source lineage and initial adoption, strict whole-program certification, image composition and Host safe points remain.",
+  "prefix": "/tmp/birnam-scoped-admission/prefix",
+  "build_command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-scoped-admission/prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+  "build_log": "/tmp/birnam-scoped-admission/build-final.log",
+  "native_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-scoped-admission/prefix/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests"
+  },
+  "commands": {
+    "transactions": "cargo test --offline --locked -p birnam-siphon --test generation_transaction -- --include-ignored --nocapture",
+    "native": "cargo test --offline --locked -p birnam-siphon --test candidate --test candidate_retirement --test generation --test generation_ledger --test image_snapshot_stamp -- --include-ignored --nocapture",
+    "host": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib host_fulfills_authored_generation_intents_at_idle_boundary -- --ignored --nocapture",
+    "images": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib image_recovers_composed_generation_before_entry -- --ignored --nocapture",
+    "language": "/tmp/birnam-scoped-admission/prefix/bin/birnam modules/run-tests.birnam",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py"
+  },
+  "checks": {
+    "transactions": {
+      "result": "pass",
+      "log": "/tmp/birnam-scoped-admission/transactions.log"
+    },
+    "native": {
+      "result": "pass",
+      "log": "/tmp/birnam-scoped-admission/native.log"
+    },
+    "host": {
+      "result": "pass",
+      "log": "/tmp/birnam-scoped-admission/host.log"
+    },
+    "images": {
+      "result": "pass",
+      "log": "/tmp/birnam-scoped-admission/images.log"
+    },
+    "language": {
+      "result": "pass",
+      "log": "/tmp/birnam-scoped-admission/language.log"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-scoped-admission/formal.log"
+    }
+  },
+  "language_assertions": 826,
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-8e6z1pk2/summary.json",
+    "theorems": 349,
+    "rejected_mutations": 98,
+    "expected_tlc_outcomes": 224
+  },
+  "red_log": "/tmp/birnam-scoped-admission/red.log",
+  "red_prefix": "/tmp/birnam-prepared-admission/prefix",
+  "limitations": [
+    "Full source/selection lineage and initial adoption still required. Whole ledger retained for explicit certification and image recovery.",
+    "Explicit reconciliation and snapshot preparation still publish sticky whole-world drift; making certification opt-in remains pending.",
+    "Host intent fulfillment and discard/file-cleanup coupling remain.",
+    "No new ordinary-send guards, native family, ABI/image format change or measured CPU claim.",
+    "Initial build failed source-manifest consistency after concurrent implementation edits; stable final build passed. Later edits changed regression fixtures and documentation only."
+  ],
+  "production_source_copy_matches": [
+    "rust/birnam-generation/src/candidate_preparation.rs",
+    "rust/birnam-generation/src/candidate_transaction.rs",
+    "rust/birnam-generation/src/candidate_ledger.rs",
+    "modules/compiled-unit.birnam"
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "a559abb12038e2ba8bb5fe716b06c954356c8dd567fd8ac85fddf0b4cc79f6ed",
+    "docs/design/generation-lifecycle-review.md": "807eef92168a23d14dc2a66960e50241e58aae02fcdbae54ff6e7e0e614c1bba",
+    "docs/design/lifecycle-record-owners.md": "b2974d7b4eca5857da314bcba0cf4ea39b15645a9d2c8ab4dd3a0806f12b3dde",
+    "docs/design/optional-store-and-relational.md": "d3ed743d4c6b24dedff2f5ca39cecceb3277bf103cf1b54aff9807e46aec9e74",
+    "docs/design/prepared-operation-admission.md": "4f875c61970fe131f2df27977b5e68147e1d05f40e090480061b6613ea051534",
+    "docs/design/scoped-generation-transactions.md": "f0c7da1e7f897757069574582f97baa33f3e6f1d584b948cb0ff38a3019026fd",
+    "docs/guide/05-compiled-units.md": "261917ce70a19b52f0d8250226dffd203600b125241f415c259b12503e32ab7f",
+    "formal/semantics/lean/SemanticsAudit.lean": "b4e4d0c4c47e98d79ab95901241592c9bc48dd36e7d5e0c7e22ad59490e96f3d",
+    "formal/semantics/lean/SharedInvocation.lean": "111337b4841040762279ff9cac9c996c03c622dae28ddb5ffe1a7d829704f172",
+    "formal/semantics/tla/PreparedAdmission.tla": "123ded290574ae2f5337a29bb86c92fdb610712c0c556d418aa649e096ab959c",
+    "formal/semantics/tla/PreparedAdmissionBinding.cfg": "f13f7f2a1b31961c479b6d440e64067d46af47bf23d7dd6f9fc9c7f17f93c210",
+    "formal/semantics/tla/PreparedAdmissionEffects.cfg": "be5f0063f682c918714d1f23026993245bdb34bb9424456ac7eb22910e5f6cad",
+    "formal/semantics/tla/PreparedAdmissionEpoch.cfg": "1386271975053549498fe1d05a0d21f8d4d3877f846b67c0e19c370d651aeeb8",
+    "formal/semantics/tla/PreparedAdmissionError.cfg": "97239d196d27b2ab409fdb2459f9682d32a7e9de4087772b7755202098205c95",
+    "formal/semantics/tla/PreparedAdmissionGlobal.cfg": "b7a797129062214f83ad5581aacbc8adee49df3dad045ce9bf261c5a339d982e",
+    "formal/semantics/tla/PreparedAdmissionMetadata.cfg": "ef02ca0062953aeede265a40c2d04d75589091e7de4faa4f22bdfa14c744a97d",
+    "formal/semantics/tla/PreparedAdmissionNoop.cfg": "324c1e769fb15f63b44bad5d89a73fc84675eeeda8c7cf99121799d9e323747e",
+    "formal/semantics/tla/PreparedAdmissionSafe.cfg": "fc23248e021b27ea43fbd3c5b39452b94d1ab47ba51dff7aa2e3b7f5a0217cdf",
+    "formal/semantics/tla/PreparedAdmissionSource.cfg": "631a02c9ee061348d71e0bdcc4c882c6982a9297c3a4ff8fe602a25dd158efaf",
+    "formal/semantics/tla/PreparedAdmissionTarget.cfg": "c8ceab074a1f8de916d03276f7cb612b4089e71ffc271f8a76f63b75fb6894aa",
+    "formal/semantics/tla/ScopedEdit.tla": "366177ff0a22749dc690ec42e3c300badb27f532670e312922a76fba8f96a6af",
+    "formal/semantics/tla/ScopedEditCertificate.cfg": "d16062bac6491c169d196837f1fa4df1ea28dcd0ddfdf90bf468c7254ffdce42",
+    "formal/semantics/tla/ScopedEditConflict.cfg": "a550a4e4106f861623e187ae757a1876896c7e54fde2f03f303857f06104e872",
+    "formal/semantics/tla/ScopedEditSafe.cfg": "5f68ab9df72f7bd7858bb4d25d2fbc2a89b841c2842306633bfbb20411d8a73b",
+    "formal/semantics/tla/ScopedEditUndo.cfg": "4b8c9c7f9264262e5dfa55f50888f71a7adaf4cc144d7051961e5195731bd4d8",
+    "formal/semantics/tla/ScopedEditWhole.cfg": "46f588a6c362917150983cec7505a32ff0bb70e293fe18d58ef0d13b38ebccee",
+    "modules/compiled-unit.birnam": "f6fd1f56cad8d92f4a54e9e181039fbc5e3fe09678368cee8154728979ead84a",
+    "rust/birnam-generation/README.md": "91983f20cf6367549e118b45e92723f8e9937e0abbfb61b48f06bc18b9b2dee7",
+    "rust/birnam-generation/src/candidate_ledger.rs": "0096ce6aeb2981ef57623103004da8c97456a8f1672b3e7c3bfbbcd6b0439137",
+    "rust/birnam-generation/src/candidate_preparation.rs": "2ff230e2e6e74f5957696f0993fbd3995a4719bb8cab60024a5d88ce9c51fa48",
+    "rust/birnam-generation/src/candidate_transaction.rs": "328449b62029b841fc7e53a7e25007e0270a09ee3d93f2e6593c466f5fb445d1",
+    "rust/birnam-host/src/lifecycle_test.rs": "2223cda38c844053f52b93bc9b325e38d09e3fde87e2af2fd6c28d4a2321c000",
+    "rust/birnam-siphon/tests/candidate.rs": "0f33cc2791bc42cd00130d66b5dd5982539a0db20d7e18b5c32573251af8ec0d",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "55d180fcb73a635207858c8846f182bf119f82123581ae7bf239ffcac1e5c6c5",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "f959ee00d0d52098dd1b388ca6594f9e039c2997dcfd189836cf6698b00d4f3c",
+    "scripts/check-rooting-model.py": "3797bdbf2b3d7258795840e3f19966b444c8b5d1202e08081eff2cd5afc680b0"
+  },
+  "generation_libraries_sha256": {
+    "/tmp/birnam-scoped-admission/prefix/lib/libbirnam_generation.dylib": "267bc2ca09330fd2300750fac0abe934c27c2d8808c7e83c2b059acf67ce48ab"
+  }
+}

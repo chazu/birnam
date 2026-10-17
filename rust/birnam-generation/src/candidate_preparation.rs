@@ -16,13 +16,12 @@ pub(super) struct Global {
     pub name: Oop,
     pub value: Option<Oop>,
 }
+#[derive(Clone)]
 pub(super) struct Prepared {
     pub rollback: bool,
     pub token: usize,
     pub unit: Oop,
     pub plan: [Oop; 6],
-    pub global_basis: usize,
-    pub epoch: usize,
     pub source_revision: usize,
     pub bindings: Vec<Binding>,
     pub globals: Vec<Global>,
@@ -157,10 +156,12 @@ pub(super) unsafe fn current_snapshot(
     p: &Prepared,
 ) -> Result<bool, Outcome> {
     unsafe {
+        // These stamps bound this observation only. They are not token expiry
+        // conditions: unrelated work between prepare and commit is allowed.
+        let observed_globals = global_basis(s, q)?;
+        let observed_epoch = epoch(s)?;
         if s.registry.revision()!=p.source_revision
             || current(s, q)? != p.plan[4]
-            || global_basis(s, q)? != p.global_basis
-            || epoch(s)? != p.epoch
         {
             return Ok(false);
         }
@@ -181,8 +182,8 @@ pub(super) unsafe fn current_snapshot(
         }
         Ok(s.registry.revision()==p.source_revision
             && current(s, q)? == p.plan[4]
-            && global_basis(s, q)? == p.global_basis
-            && epoch(s)? == p.epoch)
+            && global_basis(s, q)? == observed_globals
+            && epoch(s)? == observed_epoch)
     }
 }
 unsafe fn generation_plan(
@@ -356,8 +357,6 @@ pub(super) unsafe fn prepare(
             token: 0,
             unit,
             plan,
-            global_basis: global_basis(s, q)?,
-            epoch: epoch(s)?,
             source_revision:s.registry.revision(),
             bindings: vec![],
             globals: vec![],
@@ -372,18 +371,13 @@ pub(super) unsafe fn prepare(
                 b"publication plan does not match the current generation",
             );
         }
-        if !ledger::reconcile(s, q)?.0 {
-            return fail(
-                s,
-                q,
-                b"staleGeneration",
-                b"current generation has no matching live binding ledger",
-            );
+        let lineage = s.candidates.ledger.borrow().clone();
+        let Some(lineage) = lineage else {
+            return fail(s, q, b"generationNotAdopted", b"candidate has no source lineage");
+        };
+        if !ledger::matches_lineage(s, q, &lineage)? {
+            return fail(s, q, b"staleGeneration", b"candidate source lineage changed");
         }
-        // Generation validation can collect unrelated behavior dictionaries.
-        // Reconciliation above checks the managed ledger; snapshot its live
-        // targets only after that inert parsing and validation have completed.
-        prepared.epoch = epoch(s)?;
         for operation in &metadata.operations {
             let name = symbol(s, q, &operation.target)?;
             let Some((target, behavior)) = target(s, q, name)? else {

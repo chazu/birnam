@@ -386,8 +386,15 @@ unobservable representation optimization, and does not copy or delete user facts
   remove implicit status reconciliation and destructive record retirement, and
   qualify exact rollback, retained code and images. See
   [lifecycle record owners](lifecycle-record-owners.md).
-- [ ] Narrow Generation's whole-world ledger/global epochs and separate optional
-  certification from ordinary compilation/loading. Preserve meaningful conditional
+- [x] Remove token-long global dictionary/Globals counter checks and the
+  exactly-one setter mutation rule; retain observed-value checks and conditional
+  inverses. See [prepared operation admission](prepared-operation-admission.md).
+- [x] Narrow transaction admission, postconditions and compensation to selected
+  bindings/Globals and lifecycle observations. Preserve outside managed edits and
+  allow retry after an affected binding is restored. See
+  [scoped transactions](scoped-generation-transactions.md).
+- [ ] Separate optional whole-program certification from ordinary
+  compilation/loading. Preserve meaningful conditional
   undo and source-free restoration; do not relocate the old policy unchanged.
 - [ ] Before migrating each coordinated owner, record which operations actually
   promise rollback and why. Keep basic live Image loading free of inverse machinery; add stronger recovery

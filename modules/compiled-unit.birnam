@@ -344,8 +344,8 @@ let compiledGenerationNumbers := [{} asCell];
             ifFalse: [|
               let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
               let prior := [current unitFor: name];
-              // Keep preparation and commitment adjacent while the legacy global
-              // binding-epoch admission remains part of explicit coordination.
+              // Preparation and commitment are separate operations; unrelated
+              // work between them does not expire the prepared observations.
               let committed := [Generation commitPrepared:
                 [Generation prepareActivation: self plan:
                   [self publicationPlan: #activate prior: prior expected: current successor: successor]]];

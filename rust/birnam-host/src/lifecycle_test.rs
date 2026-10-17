@@ -315,7 +315,18 @@ fn image_recovers_composed_generation_before_entry() {
     if let Some(path) = image {
         let mode = env::var("BIRNAM_GENERATION_IMAGE_MODE").unwrap();
         eprintln!("generation Image: {mode} load");
-        host.load_image_mode(&path, mode == "rebuild", false).unwrap();
+        host.load_image_mode(&path, mode == "rebuild" || mode == "drift-rebuild", false).unwrap();
+        if mode.starts_with("drift-") {
+            expect(b"[[2 imageGenerationValue] = 30]");
+            expect(b"[[2 imageOutsideValue] = 9]");
+            expect(b"[[imageGenerationClosure value] = 31]");
+            expect(b"[[[DispatchGeneration current] state] = #drifted]");
+            expect(b"[[Generation validateImageGeneration] isError]");
+            host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[]).unwrap();
+            expect(b"[[2 imageOutsideValue] = 9]");
+            return;
+        }
+        expect(b"[[2 imageOutsideValue] = 1]");
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
         expect(b"[[[DispatchGeneration current] predecessor] isNil]");
@@ -382,6 +393,7 @@ fn image_recovers_composed_generation_before_entry() {
         return;
     }
     q.evaluate(b"[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 11]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 10]]", Path::new("<image-generation>"), Some(b"imageGeneration")).unwrap();
+    q.evaluate(b"[Module named: #imageOutside requires: #[]]; [Reflect defineMethod: #imageOutsideValue on: Integer as: [:self | 1]]", Path::new("<image-outside>"), Some(b"imageOutside")).unwrap();
     eval(b"[DispatchGeneration initializeCurrent]");
     let dir = env::temp_dir().join(format!("birnam-image-generation-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
@@ -547,6 +559,22 @@ fn image_recovers_composed_generation_before_entry() {
     expect(b"[[imageGenerationClosure value] = 21]");
     child(&path, "mapped");
     child(&path, "rebuild");
+    // An independent managed edit must survive scoped activation and both
+    // restoration modes. Its old source revision must not replace live code.
+    eval(b"[Reflect defineMethod: #imageOutsideValue on: Integer as: [:self | 9]]");
+    put_path(b"imageGenerationPath", &dir.join("scoped.o"));
+    eval(br#"[CompiledUnit compile: "[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 31]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 30]]" named: #imageGeneration output: imageGenerationPath]"#);
+    eval(b"let scopedCandidate := [CompiledUnit open: imageGenerationPath]; [scopedCandidate map]");
+    q.evaluate(b"[scopedCandidate activate]", Path::new("<scoped-activation>"), None).unwrap();
+    expect(b"[[2 imageGenerationValue] = 30]");
+    expect(b"[[2 imageOutsideValue] = 9]");
+    let drift_path = dir.join("scoped-drift.image");
+    let filename = q.string(drift_path.as_os_str().as_bytes()).unwrap();
+    let saved = q.call(host.named(b"System").unwrap(), b"saveImage:", &[Operand::object(filename)]).unwrap();
+    q.check_result(saved).unwrap();
+    assert!(drift_path.is_file());
+    child(&drift_path, "drift-mapped");
+    child(&drift_path, "drift-rebuild");
     fs::remove_dir_all(dir).unwrap();
 }
 

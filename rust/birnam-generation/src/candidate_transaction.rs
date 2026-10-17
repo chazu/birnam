@@ -173,37 +173,19 @@ unsafe fn put_method(
     method: Option<Oop>,
 ) -> Result<(), Outcome> {
     unsafe {
-        // Conditional work explicitly observes data changes; ordinary sends
-        // stay late-bound. Exactly one owner edit is expected. Extra dictionary
-        // writes (including ABA from a callback) invalidate this transaction.
-        let epoch = preparation::epoch(s)?;
+        // Use the current setter without restricting its other effects or its
+        // non-error return value. Both publication and compensation inspect the
+        // actual resulting binding before claiming success.
         let result = if let Some(method) = method {
             s.send(b.behavior, b"addMethod:as:",
                 &[Operand::object(method), Operand::object(b.selector)])
         } else {
             s.send(b.behavior, b"removeMethod:", &[Operand::object(b.selector)])
         };
-        let after = preparation::epoch(s)?;
-        let expected = epoch.checked_add(1).ok_or_else(invalid)?;
-        if after > expected {
-            if let Some(ledger) = s.candidates.ledger.borrow_mut().as_mut() {
-                ledger.drifted = true;
-            }
-            return Err(failure(s, q, b"staleGeneration",
-                b"dictionary changed during explicit transaction write"));
-        }
         let result = result?;
         if let Some(value) = result.as_object() {
             q.keep(value)?;
             if s.is_error(value)? { return Err(Outcome::loaded(result)); }
-        }
-        if after != expected {
-            return Err(failure(s, q, b"candidateCommitFailed",
-                b"dictionary owner did not perform the requested edit"));
-        }
-        if method.is_some() && result.as_object() != method {
-            return Err(failure(s, q, b"candidateCommitFailed",
-                b"dictionary owner did not accept the selected Method"));
         }
         Ok(())
     }
@@ -496,8 +478,7 @@ pub(super) unsafe fn commit(
     rollback: bool,
 ) -> Result<Operand, Outcome> {
     unsafe {
-        // Authored policy can pipeline preparation directly into commitment,
-        // without allocating branch Blocks between the two snapshot checks.
+        // Preserve a preparation Error when authored policy pipelines the calls.
         if s.exact(q, token, b"ErrorVt")? {
             return Ok(Operand::object(token));
         }
@@ -513,7 +494,7 @@ pub(super) unsafe fn commit(
                 b"candidate preparation returned nil",
             );
         }
-        let mut p = take_prepared(s, q, token)?;
+        let p = take_prepared(s, q, token)?;
         if p.rollback != rollback {
             return fail(
                 s,
@@ -534,11 +515,13 @@ pub(super) unsafe fn commit(
                 b"generation commit requires a Host safe point",
             );
         }
-        let live = ledger::reconcile(s, q)?.0;
-        if !preparation::current_snapshot(s, q, &p)? || !live {
+        if !preparation::current_snapshot(s, q, &p)? {
             return fail(s, q, b"staleGeneration", b"publication commit is stale");
         }
         let before = s.candidates.ledger.borrow().clone().ok_or_else(invalid)?;
+        if !ledger::matches_lineage(s, q, &before)? {
+            return fail(s, q, b"staleGeneration", b"candidate source lineage changed");
+        }
         let old_sources = s.registry.entries.borrow().clone();
         for &(name,record) in &old_sources {q.keep(name)?;q.keep(record)?;}
         let saved = s
@@ -571,11 +554,8 @@ pub(super) unsafe fn commit(
             )
         } else {
             let c = construct(s, q, p.unit)?;
-            // Block construction installs private value adapters, advancing Id's
-            // global dictionary epoch. Accept that private registration only
-            // after the pre-construction token check; the exact public bindings,
-            // Globals, lifecycle fields and full ledger are still revalidated below.
-            p.epoch = preparation::epoch(s)?;
+            // Construction may install private adapters. Revalidate the observed
+            // bindings and fields below; no global epoch exemption is needed.
             let mut globals = vec![];
             for g in &c.globals {
                 let prior = p
@@ -585,14 +565,13 @@ pub(super) unsafe fn commit(
                     .ok_or_else(invalid)?;
                 // Replacing a target Global would invalidate its dictionary
                 // identity; that operation is not a dispatch-only transaction.
-                if before.bindings.iter().any(|b| b.binding.name == g.name)
-                    || p.bindings.iter().any(|b| b.name == g.name)
+                if p.bindings.iter().any(|b| b.name == g.name)
                 {
                     return fail(
                         s,
                         q,
                         b"unstableMethodTarget",
-                        b"projected Global replaces a managed target",
+                        b"projected Global replaces a selected method target",
                     );
                 }
                 globals.push(GlobalWrite {
@@ -638,9 +617,7 @@ pub(super) unsafe fn commit(
             if !rollback { release_bindings(s, q, binding_reservation, binding_required)?; }
             return Err(error);
         }
-        let live = ledger::reconcile(s, q)?.0;
         if !preparation::current_snapshot(s, q, &p)?
-            || !live
             || *s.registry.entries.borrow() != old_sources
         {
             if !rollback {
@@ -653,6 +630,18 @@ pub(super) unsafe fn commit(
                 b"candidate construction or reservation changed its base",
             );
         }
+        // The postcondition is the same dependency scope with our intended
+        // writes substituted. Never learn a promise from callback-mutated state.
+        let mut published = p.clone();
+        published.plan[4] = p.plan[5];
+        for f in &fields {
+            let (_, _, value) = published.fields.iter_mut()
+                .find(|(owner, key, _)| *owner == f.entity && *key == f.attribute)
+                .ok_or_else(invalid)?;
+            *value = f.after;
+        }
+        published.globals = global_writes.iter()
+            .map(|f| Global { name: f.name, value: f.after }).collect();
         let mut attempted = vec![];
         let mut post = vec![];
         let applied = (|| {
@@ -722,22 +711,21 @@ pub(super) unsafe fn commit(
             }
             attempted.push(Write::Current { before: p.plan[4], after: p.plan[5] });
             set_current(s, q, p.plan[4], p.plan[5])?;
-            if ledger::has_drifted(s)
-                || ledger::matches(s, q, &after)? != Some(true)
+            published.bindings = post.clone();
+            if !preparation::current_snapshot(s, q, &published)?
                 || *s.registry.entries.borrow() != old_sources
             {
                 return Err(failure(
                     s,
                     q,
                     b"staleGeneration",
-                    b"published generation does not match its live ledger",
+                    b"publication does not match its selected postcondition",
                 ));
             }
             if rollback {
                 let cleanup = (|| {
                     release_bindings(s, q, binding_reservation, binding_required)?;
-                    if ledger::has_drifted(s)
-                        || ledger::matches(s, q, &after)? != Some(true)
+                    if !preparation::current_snapshot(s, q, &published)?
                         || *s.registry.entries.borrow() != old_sources
                     {
                         return Err(failure(
@@ -770,19 +758,13 @@ pub(super) unsafe fn commit(
             if !rollback {
                 release_bindings(s, q, binding_reservation, binding_required)?;
             }
-            if !restored || ledger::matches(s, q, &before)? != Some(true) {
-                let _ = ledger::reconcile(s, q);
+            if !restored || !preparation::current_snapshot(s, q, &p)? {
                 return fail(
                     s,
                     q,
                     b"candidateCompensationFailed",
                     b"publication failed and an intervening edit prevented exact compensation",
                 );
-            }
-            if ledger::has_drifted(s) {
-                // Exact compensation can restore dispatch but cannot erase a
-                // foreign edit observed during the failed publication.
-                ledger::reconcile(s, q)?;
             }
             return Err(error);
         }
@@ -881,7 +863,7 @@ pub(super) unsafe fn prepare_rollback(
                 prior = row[2];
             }
         }
-        if prior != plan[3] || !ledger::reconcile(s, q)?.0 {
+        if prior != plan[3] {
             return fail(
                 s,
                 q,
@@ -894,8 +876,6 @@ pub(super) unsafe fn prepare_rollback(
             token: 0,
             unit,
             plan,
-            global_basis: preparation::global_basis(s, q)?,
-            epoch: preparation::epoch(s)?,
             source_revision:s.registry.revision(),
             fields: preparation::plan_fields(s, q, &plan)?,
             bindings: saved.bindings_after.clone(),

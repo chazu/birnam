@@ -287,3 +287,18 @@ import Admission
 #print axioms Birnam.PrivateScratch.lifecycle_selection_preserves_retained_record
 #print axioms Birnam.PrivateScratch.lifecycle_status_read_has_no_effect
 #print axioms Birnam.PrivateScratch.unrelated_fact_keeps_prepared_observation
+
+#print axioms Birnam.SharedInvocation.unrelated_activity_keeps_admission
+#print axioms Birnam.SharedInvocation.changed_binding_rejects_admission
+#print axioms Birnam.SharedInvocation.changed_target_rejects_admission
+#print axioms Birnam.SharedInvocation.present_nil_is_not_absence
+#print axioms Birnam.SharedInvocation.changed_metadata_rejects_admission
+#print axioms Birnam.SharedInvocation.changed_source_revision_rejects_admission
+#print axioms Birnam.SharedInvocation.setter_noop_is_rejected
+#print axioms Birnam.SharedInvocation.setter_error_is_preserved
+
+#print axioms Birnam.SharedInvocation.scoped_edit_preserves_outside
+#print axioms Birnam.SharedInvocation.scoped_edit_accepts_outside_drift
+#print axioms Birnam.SharedInvocation.scoped_edit_rejects_selected_conflict
+#print axioms Birnam.SharedInvocation.scoped_undo_preserves_later_outside
+#print axioms Birnam.SharedInvocation.scoped_edit_does_not_certify_outside

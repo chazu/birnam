@@ -47,8 +47,9 @@ helpers, collection and author-file changes after inspection.
 
 `prepareActivation:plan:` copies the publication plan, checks the full successor
 projection and stable target ownership, and roots exact direct bindings and
-projected Globals. Preparation runs no candidate factory. Relevant lifecycle field observations, Globals basis
-and Id behavior epoch checks reject changes during callbacks; monotonic tokens
+projected Globals. Preparation runs no candidate factory. Tokens retain relevant
+values and the source revision, not global dictionary/Globals counters. Current
+binding-owner stamps bound each validation pass across callbacks; monotonic tokens
 are consumed by `discardPrepared:`, releasing preparation-only roots.
 
 `adoptInitialGeneration:` records a canonical initial source/selection snapshot
@@ -60,9 +61,9 @@ rewrite without reopening assets. Capture-free projected global Blocks must also
 match the final source definition; missing, non-Block, captured or different-body
 values cannot establish the initial ledger. Dependency overrides are compared
 against the last definition. The transient ledger retains these Globals and
-displaced Methods for inverse operations. Preparation checks
-the complete ledger; `reconcileCandidate:` rejects drift without adopting the new
-binding. Unrelated Store facts remain outside that ledger. Repeating initial
+displaced Methods for inverse operations. Preparation checks its selected
+observations and source lineage; `reconcileCandidate:` checks the complete ledger
+and rejects drift without adopting the new binding. Unrelated Store facts remain outside that ledger. Repeating initial
 adoption validates the original snapshot and cannot clear an observed divergence.
 
 `commitPrepared:` and `commitPreparedRollback:` consume their token on every
@@ -80,8 +81,8 @@ activation, replacement/addition/removal, failure compensation and exact rollbac
 boundary, then scopes permission for its authored `fulfill` policy to commit.
 Running Machines and nested fulfillment cannot enter that scope; native failures
 and returned Errors always close it. Preparation Errors flow unchanged through
-the commit selectors so policy can commit immediately without constructing new
-branch Blocks between token creation and validation.
+the commit selectors. Constructing branch Blocks or making untracked edits between
+preparation and commitment does not expire the token.
 
 Installed Host and published-project console tests exercise authored activation
 and exact rollback. Image stages suspend all old candidate capabilities before
@@ -104,12 +105,25 @@ without themselves keeping code alive. File removal is retryable but is outside
 Store compensation: a failed discard can leave one or both author files removed.
 
 Generation adoption installs no Store observer. Explicit transactions send their
-Method writes directly to the vtable owner and check the result and Id binding
-epoch. Exactly one dictionary change is expected per write; extra callback writes,
-including ABA, invalidate the transaction. This is a conservative data condition
-on requested coordinated work, not a method-identity guard on ordinary sends.
-Final ledger checks, selective compensation and quiescent commit checks remain.
-Ordinary edits are detected when a consumer explicitly reconciles its revision.
+Method writes to the current vtable owner, preserve returned Errors/native failures,
+and inspect the resulting binding. They do not count dictionary mutations or
+require a particular non-error return value. A setter may perform other edits;
+conditional compensation preserves those that differ from the batch's writes.
+A setter that leaves a different binding in place cannot claim success. Selected
+postcondition checks, selective compensation and quiescent commit checks remain. Ordinary edits are detected when
+a consumer explicitly reconciles its revision.
+
+Prepared observations compare affected target/behavior identities, exact entries,
+projected Globals (including absent versus present nil), lifecycle fields and the
+source revision. Restoring the same binding/Global values between checks is not
+itself a conflict merely because the global counters advanced. Source-registry
+ABA still changes its explicit content revision. Activation/rollback compare only
+their selected bindings/Globals and lifecycle fields, including after callbacks
+and compensation. Edits to another managed module do not cause a conflict or get
+implicitly certified. Scoped conflicts do not publish whole-generation drift.
+The existing adopted source lineage, initial seal and explicit whole-program/image
+certification remain; removing them from ordinary startup is a separate step.
+See [scoped transactions](../../docs/design/scoped-generation-transactions.md).
 
 `validateImageGeneration` stays strict for callers asking whether the managed
 revision is current. Image uses `prepareImageSnapshot`: it performs the existing

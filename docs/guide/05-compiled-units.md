@@ -31,14 +31,28 @@ compile -> open -> map -> validate -> activation intent -> host safe point
 - `open:` verifies the envelope, artifact checksum, platform, ABI, exact source,
   source revision, dependencies, and declarative method manifest without mapping.
 - `map` crosses the trusted-native boundary but remains inert.
-- `validate` checks the candidate against the exact current generation and then
-  discards its one-shot prepared capability.
+- `validate` checks the candidate's selected binding observations and current
+  source lineage, then discards its one-shot prepared capability. It does not
+  certify every managed binding.
 - `activate` returns an `EvolutionIntent`. The console host fulfills it only
   between top-level forms while native quiescence is active.
 - `rollback` returns the corresponding predecessor intent.
 
 Errors are values. Rejection before commit leaves dispatch and source authority
 unchanged.
+
+A prepared token observes its target bindings and metadata; it is not a lease on
+the global dictionary or Globals counter. Creating a branch Block or editing an
+name outside the operation's binding/Global scope between preparation and
+commitment is allowed, including a name tracked in another managed module. A replaced setter
+may perform additional edits and return an ordinary success value; Generation
+checks that the requested binding was actually installed or removed. Errors still
+propagate and a no-op setter still fails. Commit, compensation and rollback check
+the selected state, not every binding in the managed ledger. A relevant conflict
+does not itself mark the generation drifted or revoke its inverse. Compilation
+still requires the recorded source lineage and initial adoption; removing that
+requirement is a separate source/image change.
+
 
 ## Complete replacement example
 

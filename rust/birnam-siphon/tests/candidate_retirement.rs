@@ -400,18 +400,9 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                         edit_after_publication,
                         core::ptr::from_mut(&mut probe).cast(),
                     );
-                    // Installing the fixture changes Id's epoch. Prepare the
-                    // actual token only after that dictionary instrumentation.
-                    assert_eq!(
-                        v.call(v.named(b"Generation"), b"discardPrepared:", &[token]),
-                        unit
-                    );
-                    let token = v.call(
-                        v.named(b"Generation"),
-                        b"prepareActivation:plan:",
-                        &[unit, v.plan(b"activate", unit, generation, next)],
-                    );
-                    let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
+                    // The token predates this replacement setter. Its extra
+                    // remove/reinstall leaves the requested Method current.
+                    let committed = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
                     send(
                         id,
                         store_vt,
@@ -419,23 +410,13 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                         &[Operand::object(key), Operand::entry(original)],
                     );
                     assert!(!probe.armed.get());
-                    // Foreign callback edits are allowed in either phase.
-                    // Their drift still invalidates the explicit transaction.
                     assert_eq!(probe.denied.get(), 0);
-                    assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"staleGeneration"));
-                    assert_eq!(v.fact(generation, b"state"), v.sym(b"drifted"));
-                    assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-                    assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
-                    v.clear();
-                    let receipt = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
-                    assert_eq!(v.call(receipt, b"logical", &[]), v.sym(b"discarded"));
-                    assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
-                    continue;
+                    assert_eq!(committed, unit);
+                    assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
+                    assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 20);
+                } else {
+                    assert_eq!(v.call(v.named(b"Generation"), b"commitPrepared:", &[token]), unit);
                 }
-                assert_eq!(
-                    v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
-                    unit
-                );
                 if v.call(token,b"isError",&[])==v.named(b"true") {
                     let msg=v.call(token,b"message",&[]);let bytes=send(id,msg,b"bytes",&[]).as_bytes().unwrap();
                     panic!("prepare failed: {}",String::from_utf8_lossy(birnam_abi::borrowed_bytes(bytes.pointer,bytes.length).unwrap()));

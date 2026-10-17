@@ -8,6 +8,15 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Scope candidate activation/rollback and compensation to selected bindings and
+  Globals. Independent managed edits survive; relevant conflicts no longer poison
+  the whole generation; explicit whole-program validation remains available.
+
+- Stop expiring prepared Generation edits on unrelated dictionary/Globals counter
+  changes. Validate observed bindings and fields at commitment; permit setter
+  side effects without an exactly-one dictionary-mutation rule, while preserving
+  errors, actual binding checks and conditional compensation.
+
 - Move CompiledUnit/Generation lifecycle metadata into ordinary reflected fields;
   remove automatic event facts, Store compensation reservations and Store-basis
   invalidation from candidate operations.

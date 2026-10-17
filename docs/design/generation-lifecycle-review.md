@@ -2,7 +2,9 @@
 
 2026-10-16. Review of `80fe2afe`; recommendations, not an implemented lifecycle
 redesign. The user subsequently approved this direction. Implementation status is
-tracked in [lifecycle record owners](lifecycle-record-owners.md). Follows
+tracked in [lifecycle record owners](lifecycle-record-owners.md) and
+[prepared operation admission](prepared-operation-admission.md) and
+[scoped transactions](scoped-generation-transactions.md). Follows
 [optional Store](optional-store-and-relational.md).
 
 ## Conclusion
@@ -18,6 +20,26 @@ Ordinary method replacement already bypasses Generation and remains late-bound.
 The excess is chiefly around explicit activation, startup, and persistence, not
 a Generation check on every message send. Removing this excess is primarily a
 design simplification; this review does not claim a measured CPU improvement.
+
+## Implementation status
+
+The simplification work remains the priority before further Store migration.
+Completed: ordinary lifecycle owners; removal of implicit history and destructive
+retirement; removal of dead phase state and status-triggered reconciliation;
+value-based prepared admission; selected-state commit, compensation and rollback.
+
+Still open:
+
+1. Decouple source-free image reconstruction from automatic generation
+   composition/adoption, then make source baseline certification opt-in.
+2. Remove sticky whole-program drift side effects and required initial sealing
+   from ordinary compilation/loading as part of that contract change.
+3. Qualify activation within entered code before deciding whether Host-only
+   intent fulfillment can be removed. Keep native reclamation checkpoints.
+4. Separate logical discard from optional artifact-file cleanup and diagnostics.
+
+The following lifecycle and evidence describe the reviewed baseline; follow the
+implementation reports above for the current behavior.
 
 ## Current lifecycle
 

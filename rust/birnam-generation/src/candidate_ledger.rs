@@ -95,18 +95,24 @@ impl Ledger {
         roots
     }
 }
+// Compilation still uses the recorded source/selection lineage. This is not a
+// claim that every live binding equals the source revision's certificate.
+pub(super) unsafe fn matches_lineage(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<bool, Outcome> {
+    unsafe {
+        Ok(s.registry.revision() == ledger.source_revision
+            && current(s, q)? == ledger.generation
+            && field(s, q, ledger.generation, b"sourceMap")? == ledger.source_map
+            && s.bytes(field(s, q, ledger.generation, b"baseDigest")?)? == ledger.digest
+            && s.bytes(field(s, q, ledger.generation, b"generationSelection")?)? == ledger.selection)
+    }
+}
 pub(super) unsafe fn matches(
     s: &State,
     q: &Scope<'_>,
     ledger: &Ledger,
 ) -> Result<Option<bool>, Outcome> {
     unsafe {
-        if ledger.drifted
-            || s.registry.revision()!=ledger.source_revision
-            || current(s, q)? != ledger.generation
-            || field(s, q, ledger.generation, b"sourceMap")? != ledger.source_map
-            || s.bytes(field(s, q, ledger.generation, b"baseDigest")?)? != ledger.digest
-            || s.bytes(field(s, q, ledger.generation, b"generationSelection")?)? != ledger.selection
+        if ledger.drifted || !matches_lineage(s, q, ledger)?
         {
             return Ok(Some(false));
         }
@@ -185,13 +191,6 @@ unsafe fn publish_drift(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<(),
         }
         Ok(())
     }
-}
-pub(super) fn has_drifted(s: &State) -> bool {
-    s.candidates
-        .ledger
-        .borrow()
-        .as_ref()
-        .is_some_and(|l| l.drifted)
 }
 /// A saved managed source map must still describe the dispatch it authorizes.
 /// Drift never becomes a second authority merely because its code is portable.

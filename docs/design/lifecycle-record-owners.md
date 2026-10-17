@@ -4,6 +4,10 @@
 [generation lifecycle simplification](generation-lifecycle-review.md), following
 `80fe2afe`. Implemented and qualified; this report accompanies the implementation commit. No release or user installation.
 
+The subsequent [prepared-operation admission slice](prepared-operation-admission.md)
+removes token-long global counter checks and the exactly-one setter mutation rule.
+The remaining-work discussion below records the boundary of this ownership slice.
+
 ## Implemented boundary
 
 CompiledUnit, DispatchGeneration, EvolutionIntent and the operation descriptions

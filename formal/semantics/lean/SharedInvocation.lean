@@ -157,6 +157,103 @@ theorem edit_invalidates_old_preparation (s : EditState) (edit planned : Nat) :
     applyPrepared s.epoch (directEdit s edit) planned = directEdit s edit := by
   simp [applyPrepared, directEdit]
 
+-- Generation tokens observe values; a global dispatch epoch is not a lease.
+-- The older EditState model above remains useful for owners explicitly choosing
+-- revision-conditioned mutation (such as the source registry).
+structure AdmissionBasis where
+  binding : Nat
+  target : Nat
+  projectedGlobal : Option Nat
+  metadata : Nat
+  sourceRevision : Nat
+  deriving DecidableEq
+
+structure AdmissionWorld extends AdmissionBasis where
+  unrelated : Nat
+  dictionaryEpoch : Nat
+  deriving DecidableEq
+
+def observeAdmission (s : AdmissionWorld) : AdmissionBasis :=
+  ⟨s.binding, s.target, s.projectedGlobal, s.metadata, s.sourceRevision⟩
+
+def admitObserved (basis : AdmissionBasis) (s : AdmissionWorld) : Prop :=
+  observeAdmission s = basis
+
+theorem unrelated_activity_keeps_admission (s : AdmissionWorld) (noise epoch : Nat) :
+    admitObserved (observeAdmission s) { s with unrelated := noise, dictionaryEpoch := epoch } := by
+  rfl
+
+theorem changed_binding_rejects_admission (s : AdmissionWorld) (next : Nat)
+    (changed : next ≠ s.binding) :
+    ¬ admitObserved (observeAdmission s) { s with binding := next } := by
+  intro same
+  exact changed (congrArg AdmissionBasis.binding same)
+
+theorem changed_target_rejects_admission (s : AdmissionWorld) (next : Nat)
+    (changed : next ≠ s.target) :
+    ¬ admitObserved (observeAdmission s) { s with target := next } := by
+  intro same
+  exact changed (congrArg AdmissionBasis.target same)
+
+theorem present_nil_is_not_absence (s : AdmissionWorld)
+    (absent : s.projectedGlobal = none) :
+    ¬ admitObserved (observeAdmission s) { s with projectedGlobal := some 0 } := by
+  intro same
+  have h := congrArg AdmissionBasis.projectedGlobal same
+  change some 0 = s.projectedGlobal at h
+  simp [absent] at h
+
+theorem changed_metadata_rejects_admission (s : AdmissionWorld) (next : Nat)
+    (changed : next ≠ s.metadata) :
+    ¬ admitObserved (observeAdmission s) { s with metadata := next } := by
+  intro same
+  exact changed (congrArg AdmissionBasis.metadata same)
+
+theorem changed_source_revision_rejects_admission (s : AdmissionWorld) (next : Nat)
+    (changed : next ≠ s.sourceRevision) :
+    ¬ admitObserved (observeAdmission s) { s with sourceRevision := next } := by
+  intro same
+  exact changed (congrArg AdmissionBasis.sourceRevision same)
+
+def setterAccepted (expected actual : Nat) (reportedError : Bool) : Bool :=
+  actual == expected && !reportedError
+
+theorem setter_noop_is_rejected (old expected : Nat) (different : old ≠ expected) :
+    setterAccepted expected old false = false := by simp [setterAccepted, different]
+
+theorem setter_error_is_preserved (expected actual : Nat) :
+    setterAccepted expected actual true = false := by simp [setterAccepted]
+
+-- An explicit batch observes its selected bindings. Whole-ledger certification
+-- is a separate predicate; even a tracked outside binding is outside this scope.
+structure ScopedWorld where
+  selected : Nat
+  outside : Nat
+  deriving DecidableEq
+
+def scopedEdit (s : ScopedWorld) (expected replacement : Nat) : ScopedWorld :=
+  if s.selected = expected then { s with selected := replacement } else s
+
+theorem scoped_edit_preserves_outside (s : ScopedWorld) (expected replacement : Nat) :
+    (scopedEdit s expected replacement).outside = s.outside := by
+  simp only [scopedEdit]; split <;> rfl
+
+theorem scoped_edit_accepts_outside_drift (old outside replacement : Nat) :
+    (scopedEdit ⟨old, outside⟩ old replacement).selected = replacement := by
+  simp [scopedEdit]
+
+theorem scoped_edit_rejects_selected_conflict (s : ScopedWorld) (expected replacement : Nat)
+    (changed : s.selected ≠ expected) :
+    scopedEdit s expected replacement = s := by simp [scopedEdit, changed]
+
+theorem scoped_undo_preserves_later_outside (old installed outside : Nat) :
+    scopedEdit ⟨installed, outside⟩ installed old = ⟨old, outside⟩ := by simp [scopedEdit]
+
+theorem scoped_edit_does_not_certify_outside (old outside replacement recorded : Nat)
+    (drift : outside ≠ recorded) :
+    (scopedEdit ⟨old, outside⟩ old replacement).outside ≠ recorded := by
+  simpa [scopedEdit] using drift
+
 -- An image records current executable state. Revision metadata is descriptive
 -- after drift and must not reactivate old transaction authority on restoration.
 structure WorldSnapshot where

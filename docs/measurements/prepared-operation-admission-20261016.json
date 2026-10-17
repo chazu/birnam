@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "2671e533",
+  "status": "implemented and qualified; uncommitted; no push, release or user installation",
+  "scope": "Prepared tokens observe relevant values and source revision, not global counter leases. Current setter effects are admitted by actual binding postconditions and error propagation. Whole-program certification remains mandatory pending its separate source/image change.",
+  "prefix": "/tmp/birnam-prepared-admission/prefix",
+  "build_log": "/tmp/birnam-prepared-admission/build.log",
+  "build_command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-prepared-admission/prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+  "native_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-prepared-admission/prefix/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests"
+  },
+  "commands": {
+    "transactions": "cargo test --offline --locked -p birnam-siphon --test generation_transaction -- --include-ignored --nocapture",
+    "candidate_retirement": "cargo test --offline --locked -p birnam-siphon --test candidate_retirement -- --include-ignored --nocapture",
+    "host": "cargo test --offline --locked -p birnam-host --lib host_fulfills_authored_generation_intents_at_idle_boundary -- --ignored --nocapture",
+    "images": "cargo test --offline --locked -p birnam-host --lib image_recovers_composed_generation_before_entry -- --ignored --nocapture",
+    "language": "/tmp/birnam-prepared-admission/prefix/bin/birnam modules/run-tests.birnam",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py"
+  },
+  "checks": {
+    "candidate": {
+      "log": "/tmp/birnam-prepared-admission/native.log",
+      "scope": "Candidate inspection/mapping/factory captures; candidate executable passed before an obsolete retirement expectation failed in another executable.",
+      "result": "pass"
+    },
+    "retirement": {
+      "log": "/tmp/birnam-prepared-admission/native-final.log",
+      "scope": "All three retirement modes passed, including same-Method ABA, captured-code retention/reclamation and source metadata ABA. A separate transaction fixture subsequently failed on its raw primitive result assumption, corrected below.",
+      "result": "pass"
+    },
+    "final_transactions": {
+      "log": "/tmp/birnam-prepared-admission/transaction-final.log",
+      "scope": "Synchronous/resumable activation, exact rollback and selective compensation; related conflicts, unrelated edits, restored identical values, current setter effects/Errors/results, Store absence, GC and captured side-effect code.",
+      "result": "pass"
+    },
+    "host": {
+      "log": "/tmp/birnam-prepared-admission/host.log",
+      "scope": "Real Host intent fulfillment, activation and exact rollback.",
+      "result": "pass"
+    },
+    "images": {
+      "log": "/tmp/birnam-prepared-admission/images.log",
+      "scope": "Mapped/rebuilt/resaved generation recovery, live failure and successor activation/rollback.",
+      "result": "pass"
+    },
+    "language": {
+      "log": "/tmp/birnam-prepared-admission/language.log",
+      "scope": "826 passed, zero failed.",
+      "result": "pass"
+    }
+  },
+  "red_log": "/tmp/birnam-prepared-admission/red.log",
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-cc4szhq9/summary.json",
+    "theorems": 344,
+    "rejected_mutations": 95,
+    "expected_tlc_outcomes": 219
+  },
+  "limitations": [
+    "Full managed ledger and source-registry revision still participate; another managed binding can still conflict.",
+    "Global stamps still bound individual validation passes for dictionary/Globals coherence.",
+    "No generic transaction framework, new native family, ordinary-send guard, ABI/image change or CPU speedup claim.",
+    "Regression fixtures were extended after the isolated runtime build; all changed production sources match its copies."
+  ],
+  "production_source_copy_matches": [
+    "rust/birnam-generation/src/candidate_preparation.rs",
+    "rust/birnam-generation/src/candidate_transaction.rs",
+    "modules/compiled-unit.birnam"
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "702f7bdf1f690f3d15450b7abe677540bedbb33fe91d64397fffb73b894164b4",
+    "docs/design/optional-store-and-relational.md": "d42c83aa62c8675a0ce7779f258dd1aacc51b92d08a1cf9b39052c0ee8f4f585",
+    "docs/design/prepared-operation-admission.md": "5b4e4f62f397a56490d99d65abe0ae2004eadee4fc56bbf4c83dc325954470ea",
+    "docs/guide/05-compiled-units.md": "8aa6961f1891f78c3a6d6312674730d139598f7b160ea4a5bd87f05188e2c596",
+    "formal/semantics/lean/SemanticsAudit.lean": "e21bac35f01e244833af7842f65a63c83a7c28676faa9ae040fa1ff07c4cc637",
+    "formal/semantics/lean/SharedInvocation.lean": "2f50e6414b99bd08a6eb2a78aabe2aec9a0b80fd594b5e57219d3e3982935c04",
+    "formal/semantics/tla/PreparedAdmission.tla": "123ded290574ae2f5337a29bb86c92fdb610712c0c556d418aa649e096ab959c",
+    "formal/semantics/tla/PreparedAdmissionBinding.cfg": "f13f7f2a1b31961c479b6d440e64067d46af47bf23d7dd6f9fc9c7f17f93c210",
+    "formal/semantics/tla/PreparedAdmissionEffects.cfg": "be5f0063f682c918714d1f23026993245bdb34bb9424456ac7eb22910e5f6cad",
+    "formal/semantics/tla/PreparedAdmissionEpoch.cfg": "1386271975053549498fe1d05a0d21f8d4d3877f846b67c0e19c370d651aeeb8",
+    "formal/semantics/tla/PreparedAdmissionError.cfg": "97239d196d27b2ab409fdb2459f9682d32a7e9de4087772b7755202098205c95",
+    "formal/semantics/tla/PreparedAdmissionGlobal.cfg": "b7a797129062214f83ad5581aacbc8adee49df3dad045ce9bf261c5a339d982e",
+    "formal/semantics/tla/PreparedAdmissionMetadata.cfg": "ef02ca0062953aeede265a40c2d04d75589091e7de4faa4f22bdfa14c744a97d",
+    "formal/semantics/tla/PreparedAdmissionNoop.cfg": "324c1e769fb15f63b44bad5d89a73fc84675eeeda8c7cf99121799d9e323747e",
+    "formal/semantics/tla/PreparedAdmissionSafe.cfg": "fc23248e021b27ea43fbd3c5b39452b94d1ab47ba51dff7aa2e3b7f5a0217cdf",
+    "formal/semantics/tla/PreparedAdmissionSource.cfg": "631a02c9ee061348d71e0bdcc4c882c6982a9297c3a4ff8fe602a25dd158efaf",
+    "formal/semantics/tla/PreparedAdmissionTarget.cfg": "c8ceab074a1f8de916d03276f7cb612b4089e71ffc271f8a76f63b75fb6894aa",
+    "modules/compiled-unit.birnam": "f6fd1f56cad8d92f4a54e9e181039fbc5e3fe09678368cee8154728979ead84a",
+    "rust/birnam-generation/README.md": "8dfab7598052522ecdddbd5dcf1c94c52a2e38711e81860f616a4bc10a56236a",
+    "rust/birnam-generation/src/candidate_preparation.rs": "36d0a56bb649f61eed637c1f2fc0a07c9ab9b6ad8388a8a313903c68ab307fcb",
+    "rust/birnam-generation/src/candidate_transaction.rs": "22c7bac45205dafd182d8358bc59d500620c9ea25e5410f6589679053bbd8040",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "55d180fcb73a635207858c8846f182bf119f82123581ae7bf239ffcac1e5c6c5",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "a0484a6638113862e9a5e32e1e8fc34f937f45ace68200746f5009346eb696f3",
+    "scripts/check-rooting-model.py": "d522d1840b14929ac57877ab4dd893608c6f439f48182f8e5557f83cfb668b6b",
+    "docs/design/lifecycle-record-owners.md": "b2974d7b4eca5857da314bcba0cf4ea39b15645a9d2c8ab4dd3a0806f12b3dde",
+    "docs/design/generation-lifecycle-review.md": "3f9f50041b88e72adedf893d28f7dcb678d235518441ec0da1dc66c017cd3177"
+  },
+  "native_generation_sha256": "86463e1b4b0299dc80ea4794a7de9d88fb6588fb4414ff10e6321cb53229f881"
+}
