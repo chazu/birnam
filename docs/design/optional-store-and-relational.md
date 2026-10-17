@@ -401,6 +401,9 @@ unobservable representation optimization, and does not copy or delete user facts
 - [x] Finish separating optional whole-program certification from ordinary
   compilation/loading. Preserve meaningful conditional
   undo and source-free restoration; do not relocate the old policy unchanged.
+- [x] Complete generation simplification before resuming Store migration: module-scoped
+  candidates, renewable optional certificates, ordinary activation, and logical
+  discard separate from files/diagnostics. See [generation review status](generation-lifecycle-review.md).
 - [ ] Before migrating each coordinated owner, record which operations actually
   promise rollback and why. Keep basic live Image loading free of inverse machinery; add stronger recovery
   only as an explicitly selected feature with a demonstrated requirement. Preserve

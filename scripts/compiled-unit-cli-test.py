@@ -102,16 +102,11 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     check('[[3 cuMethodless] isError]', 'methodless candidate removes binding')
     forms.append('[methodless rollback]')
     check('[[3 cuMethodless] = 6]', 'methodless rollback restores binding')
-    forms.append('let receipt := [methodless discard]')
-    check('[[receipt generation] == methodless]', 'discard receipt names candidate')
-    check('[[receipt logical] = #discarded]', 'logical discard published')
-    forms.append('[System gc]')
-    # Language evaluation can defer physical retirement behind its live frame.
-    # Native candidate_retirement tests prove disposal after the idle checkpoint.
-    check('[#[#retained #disposed] includes: [receipt physical]]', 'physical disposition is explicit')
-    check('[[[receipt physical] = #retained] ifTrue: [| [[receipt reason] = #codeGenerationPinned]] ifFalse: [| [[receipt reason] isNil]]]', 'receipt explains physical retention')
-    check(f'[[System readFile: {path}] isError]', 'discard deletes author file')
-    check(f'[[System readFile: [{path} , ".candidate"]] isError]', 'discard deletes sidecar')
+    check('[[methodless removeFiles] == methodless]', 'explicit file cleanup returns unit')
+    check(f'[[System readFile: {path}] isError]', 'explicit cleanup deletes admitted author file')
+    check(f'[[System readFile: [{path} , ".candidate"]] isError]', 'explicit cleanup deletes sidecar')
+    check('[[methodless discard] == methodless]', 'logical discard returns unit')
+    check('[[methodless state] = #discarded]', 'logical discard publishes status')
 
     candidate('first', 'cuChain', source('cuChain', method('cuInherited', 70)))
     forms.extend(['[first map]', '[first activate]'])
@@ -129,6 +124,10 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     check('[[first state] = #active]', 'predecessor reactivated')
     check('[[3 cuInherited] = 70]', 'rollback preserves inherited binding')
     check('[[3 cuOverlay] = 8]', 'rollback restores overlaid binding')
+    # Discard releases an active inverse and cancels pending tokens; installed code stays live.
+    check('[[first discard] == first]', 'active handle can be released')
+    check('[[first rollbackAvailable] = false]', 'discard releases undo capability')
+    check('[[3 cuInherited] = 70]', 'discard leaves installed code live')
     forms.append(':quit')
     result = subprocess.run([binary, image], cwd=work, env=env,
                             input=('\n'.join(forms) + '\n').encode(),

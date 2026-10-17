@@ -21,7 +21,7 @@
 //
 // SCOPE: one connection at a time (blocking, on the Socket floor). Native CLI
 // entry uses Host-owned turns; direct authored serveOn: retains its recursive
-// session helper and does not fulfill generation intents.
+// session helper; evaluated results are ordinary values.
 
 // -- the REPL -----------------------------------------------------------------
 
@@ -314,7 +314,7 @@
               [[err notNil]
                 ifTrue: [| [self conErr: [err , "\n"]]; #[#continue nil]]
                 ifFalse: [| #[#evaluated val]]]]]]]]]] doc:
-  "Reads and evaluates at most one form, returning a host protocol record; evaluated values are not printed or fulfilled here."];
+  "Reads and evaluates at most one form, returning a host protocol record; evaluated values are returned without printing or interpreting their type."];
 
 [Reflect defineMethod: #printHostResult: on: Repl as: [:self :value |
   [System println: [self resultString: value]];

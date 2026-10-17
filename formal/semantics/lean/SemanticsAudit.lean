@@ -321,3 +321,8 @@ import Admission
 #print axioms Birnam.SharedInvocation.entered_body_survives_installation
 #print axioms Birnam.SharedInvocation.future_dispatch_uses_replacement
 #print axioms Birnam.SharedInvocation.entered_code_cannot_retire
+
+#print axioms Birnam.SharedInvocation.discard_preserves_files
+#print axioms Birnam.SharedInvocation.discard_preserves_dispatch
+#print axioms Birnam.SharedInvocation.discard_preserves_entered_ownership
+#print axioms Birnam.SharedInvocation.discard_revokes_capabilities

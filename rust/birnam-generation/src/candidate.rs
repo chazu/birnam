@@ -45,13 +45,13 @@ pub(super) struct Candidate {
 pub(super) struct Mapped {
     pub factory: Oop,
     pub adapters: Vec<Oop>,
-    identities: Vec<usize>,
+    factory_unit: Oop,
 }
 impl Candidate {
     fn roots(&self) -> Vec<Oop> {
         let mut values = vec![self.unit, self.source, self.name, self.path];
         if let Some(m) = &self.mapped {
-            values.push(m.factory);
+            values.extend([m.factory, m.factory_unit]);
             values.extend(&m.adapters);
         }
         if let Some(v) = &self.constructed {
@@ -87,6 +87,8 @@ pub(super) enum Op {
     Prepare,
     DiscardPrepared,
     Discard,
+    RemoveFiles,
+    Watch,
     RetainedCount,
     RetainedBytes,
     AdoptInitial,
@@ -391,6 +393,8 @@ pub(super) unsafe fn operation(
         s.clear_error(q)?;
         match op {
             Op::Discard => retirement::discard(s, q, object(args[0])?),
+            Op::RemoveFiles => retirement::remove_files(s, q, object(args[0])?),
+            Op::Watch => retirement::watch(s, q, object(args[0])?),
             Op::RetainedCount | Op::RetainedBytes => {
                 retirement::telemetry(s, q, matches!(op, Op::RetainedBytes))
             }
@@ -660,7 +664,6 @@ pub(super) unsafe fn operation(
                     }
                 }
                 let mut mapped = Vec::new();
-                let mut identities = Vec::new();
                 for bytes in objects {
                     let bytes = s.text(q, &bytes)?;
                     let blob = call(s, q, bytes, b"asBytes", &[])?;
@@ -674,19 +677,10 @@ pub(super) unsafe fn operation(
                     if s.is_error(unit)? {
                         return Ok(Operand::object(unit));
                     }
-                    identities.push(
-                        s.send(
-                            s.named(b"TCC")?,
-                            b"mappingIdentityOf:",
-                            &[Operand::object(unit)],
-                        )?
-                        .as_word()
-                        .filter(|v| *v != 0)
-                        .ok_or_else(invalid)?,
-                    );
                     mapped.push(unit);
                 }
-                let factory = call(s, q, mapped[0], b"initialize", &[])?;
+                let factory_unit = mapped[0];
+                let factory = call(s, q, factory_unit, b"initialize", &[])?;
                 if factory == s.named(b"nil")? || s.is_error(factory)? {
                     return Ok(Operand::object(factory));
                 }
@@ -701,14 +695,10 @@ pub(super) unsafe fn operation(
                     .mapped = Some(Mapped {
                     factory,
                     adapters,
-                    identities,
+                    factory_unit,
                 });
                 Ok(Operand::object(unit))
             }
         }
     }
 }
-
-// Host enters with no running Machine. Only this dynamic extent may execute the
-// authored lifecycle policy and commit while its policy frames are running.
-// No ambient phase survives a returned Error or native failure.

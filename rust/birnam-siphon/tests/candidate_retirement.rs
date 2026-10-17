@@ -319,7 +319,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             }
             let artifact = std::fs::read(&path).unwrap();
             std::fs::write(&path, b"new author contents").unwrap();
-            let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
+            let rejected = v.call(v.named(b"Generation"), b"removeCandidateFiles:", &[unit]);
             assert_eq!(v.call(rejected, b"isError", &[]), v.named(b"true"));
             assert_eq!(std::fs::read(&path).unwrap(), b"new author contents");
             assert!(sidecar.exists());
@@ -351,8 +351,6 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     std::fs::remove_dir_all(&dir).unwrap();
                     return;
                 }
-                let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
-                assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 assert!(path.exists() && sidecar.exists());
                 if *mode == "callback" {
                     let store_vt = id.receiver;
@@ -414,8 +412,6 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                     std::fs::remove_dir_all(&dir).unwrap();
                     return;
                 }
-                let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
-                assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"candidateInUse"));
                 let method = v.keep(object(send(
                     id,
                     v.named(b"Execution"),
@@ -438,32 +434,24 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
                 );
                 assert_eq!(v.number(v.call(v.integer(1), b"retireValue", &[])), 10);
             }
+            assert_eq!(v.call(v.named(b"Generation"), b"watchCandidateRetirement:", &[unit]), unit);
+            // Explicit file cleanup is independent and does not release the handle.
+            if *mode != "inert" {
+                assert_eq!(v.call(v.named(b"Generation"), b"removeCandidateFiles:", &[unit]), unit);
+                assert!(!path.exists() && !sidecar.exists());
+            }
             v.clear();
-            let receipt = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
-            assert_eq!(v.call(receipt, b"generation", &[]), unit);
-            assert_eq!(v.call(receipt, b"logical", &[]), v.sym(b"discarded"));
+            assert_eq!(v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]), unit);
             assert_eq!(v.fact(unit, b"state"), v.sym(b"discarded"));
-            assert!(!path.exists() && !sidecar.exists());
+            assert_eq!(v.fact(unit, b"rollbackAvailable"), v.named(b"false"));
+            if *mode == "inert" { assert!(path.exists() && sidecar.exists(), "logical discard deleted files"); }
             collect(id, v.named(b"GC"));
-            assert_eq!(v.call(receipt, b"logical", &[]), v.sym(b"discarded"));
+            send(id, v.named(b"TCC"), b"checkpoint", &[]);
             if let Some((method, token)) = held {
-                assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"retained"));
-                assert_eq!(
-                    v.call(receipt, b"reason", &[]),
-                    v.sym(b"codeGenerationPinned")
-                );
-                assert_eq!(
-                    v.number(v.call(v.named(b"Generation"), b"retainedGenerationCount", &[])),
-                    1
-                );
-                assert!(
-                    v.number(v.call(v.named(b"Generation"), b"retainedGenerationBytes", &[])) > 0
-                );
+                assert_eq!(v.number(v.call(v.named(b"Generation"), b"retainedGenerationCount", &[])), 1);
+                assert!(v.number(v.call(v.named(b"Generation"), b"retainedGenerationBytes", &[])) > 0);
                 assert_eq!(v.number(v.call(method, b"invokeOn:", &[v.integer(1)])), 20);
                 release(id, v.named(b"Roots"), token);
-            } else {
-                assert_eq!(v.call(receipt, b"physical", &[]), v.sym(b"disposed"));
-                assert_eq!(v.call(receipt, b"reason", &[]), nil);
             }
             let rejected = v.call(v.named(b"Generation"), b"discardCandidate:", &[unit]);
             assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"invalidCandidate"));

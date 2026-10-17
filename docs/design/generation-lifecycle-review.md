@@ -8,7 +8,8 @@ tracked in [lifecycle record owners](lifecycle-record-owners.md) and
 [explicit image adoption](explicit-image-adoption.md) and
 [opt-in baselines](opt-in-generation-baselines.md) and
 [module-scoped candidates](module-scoped-candidates.md) and
-[ordinary activation](ordinary-candidate-activation.md). Follows
+[ordinary activation](ordinary-candidate-activation.md) and
+[logical discard](logical-candidate-discard.md). Follows
 [optional Store](optional-store-and-relational.md).
 
 ## Conclusion
@@ -27,7 +28,9 @@ design simplification; this review does not claim a measured CPU improvement.
 
 ## Implementation status
 
-The simplification work remains the priority before further Store migration.
+All implementation recommendations in this review are now completed and qualified.
+The original findings/evidence below describe the reviewed baseline; current
+contracts and receipts are in the linked implementation reports.
 Completed: ordinary lifecycle owners; removal of implicit history and destructive
 retirement; removal of dead phase state and status-triggered reconciliation;
 value-based prepared admission; selected-state commit, compensation and rollback.
@@ -40,7 +43,8 @@ Still open:
    revocation. This slice is complete.
 3. Activation from entered code is qualified and Host-only intent fulfillment is
    removed. Physical native reclamation checkpoints remain. This slice is complete.
-4. Separate logical discard from optional artifact-file cleanup and diagnostics.
+4. Logical discard, explicit artifact cleanup and opt-in weak diagnostics are
+   separate. Discard no longer forces GC or creates a receipt. This slice is complete.
 
 The following lifecycle and evidence describe the reviewed baseline; follow the
 implementation reports above for the current behavior.

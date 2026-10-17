@@ -97,7 +97,6 @@ enum Op {
     Registry(registry::Op),
     ValidateImage,
     PrepareImageSnapshot,
-    Receipt(usize),
     BeginRecovery,
     Recover,
     CancelRecovery,
@@ -156,16 +155,7 @@ unsafe extern "C" fn operation(
                 s.registry.stage.take();
                 Ok(Operand::object(yes))
             }
-            Op::Receipt(index) => {
-                if !s.exact(&q, receiver, b"DiscardReceiptVt")? {
-                    return Err(invalid());
-                }
-                s.send(
-                    s.named(b"ObjectModel")?,
-                    b"slotAt:in:",
-                    &[Operand::word(index), Operand::object(receiver)],
-                )
-            }
+
         }
     })())
 }
@@ -220,54 +210,18 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             b"allocate:bytes:",
             &[Operand::object(vt), Operand::word(0)],
         )?)?)?;
-        let receipt_vt = pin(object(id.send_named(
-            named(b"ObjectVt")?,
-            b"delegated",
-            &[],
-        )?)?)?;
-        let model = named(b"ObjectModel")?;
-        id.send_named(
-            model,
-            b"setLayoutOf:to:rest:",
-            &[
-                Operand::object(receipt_vt),
-                Operand::bytes(&[1; 4]),
-                Operand::word(0),
-            ],
-        )?;
-        let receipt = pin(object(id.send_named(
-            model,
-            b"allocate:bytes:",
-            &[
-                Operand::object(receipt_vt),
-                Operand::word(4 * core::mem::size_of::<Oop>()),
-            ],
-        )?)?)?;
-        for index in 0..4 {
-            id.send_named(
-                model,
-                b"slotAt:in:put:",
-                &[
-                    Operand::word(index),
-                    Operand::object(receipt),
-                    Operand::object(named(b"nil")?),
-                ],
-            )?;
-        }
         let s = Box::into_raw(Box::new(State {
             id,
             ns,
             roots: root,
-            permanent: vec![ns, root, vt, receiver, receipt_vt, receipt],
+            permanent: vec![ns, root, vt, receiver],
             candidates: Default::default(),
             registry: Default::default(),
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
-            (receipt_vt, b"generation".as_slice(), Op::Receipt(0)),
-            (receipt_vt, b"logical".as_slice(), Op::Receipt(1)),
-            (receipt_vt, b"physical".as_slice(), Op::Receipt(2)),
-            (receipt_vt, b"reason".as_slice(), Op::Receipt(3)),
+            (vt, b"watchCandidateRetirement:".as_slice(), Op::Candidate(candidate::Op::Watch)),
+            (vt, b"removeCandidateFiles:".as_slice(), Op::Candidate(candidate::Op::RemoveFiles)),
             (vt, b"validateImageGeneration".as_slice(), Op::ValidateImage),
             (vt, b"prepareImageSnapshot".as_slice(), Op::PrepareImageSnapshot),
             (
@@ -410,8 +364,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         for (n, v) in [
             (b"Generation".as_slice(), receiver),
             (b"GenerationVt", vt),
-            (b"DiscardReceipt", receipt),
-            (b"DiscardReceiptVt", receipt_vt),
         ] {
             id.send_named(
                 ns,

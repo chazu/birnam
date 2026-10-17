@@ -143,3 +143,20 @@ fields are discoverable through `Reflect slotsOf:` and writable through ordinary
 slot reflection. Explicit facts, including facts under the same names, are separate.
 Image restoration does not delete old record fields or user annotations; retained
 records remain historical data and unreferenced records can be collected.
+
+## Releasing a handle
+
+`[unit discard]` releases the candidate handle, preparation tokens and undo
+reservation. It returns the unit; installed code, Globals and source registration
+remain. It is valid for an active unit. Entered and captured Methods keep their
+code alive, and physical disposal follows ordinary GC/checkpoints.
+
+File deletion is explicit: `[unit removeFiles]` conditionally removes matching
+artifact/sidecar contents while the handle is open. Call it before discard if
+wanted. A file-cleanup failure can be partial and does not imply logical discard.
+
+Optional diagnostics start with `[Generation watchCandidateRetirement: unit]`
+after mapping. `retainedGenerationCount` and `retainedGenerationBytes` report
+still-mapped watched groups without retaining them. Neither mapping nor discard
+requires diagnostic hooks; discard does not request collection or a checkpoint.
+There is no DiscardReceipt object or promise of immediate physical disposal.

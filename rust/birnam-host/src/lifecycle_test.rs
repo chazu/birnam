@@ -116,7 +116,7 @@ fn activation_inside_entered_methods_uses_current_setters() {
             String::from_utf8_lossy(source)
         );
     };
-    let baseline = b"[Module named: #hostLifecycle requires: #[]]; let hostLifecycleTrigger := [false asCell]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | [[hostLifecycleTrigger value] ifTrue: [| [hostLifecycleTrigger set: false]; [hostLifecycleUnit activate]; [System gc]]]; 10]]";
+    let baseline = b"[Module named: #hostLifecycle requires: #[]]; let hostLifecycleTrigger := [false asCell]; let hostLifecycleDrop := [false asCell]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | [[hostLifecycleTrigger value] ifTrue: [| [hostLifecycleTrigger set: false]; [hostLifecycleUnit activate]; [[hostLifecycleDrop value] ifTrue: [| [hostLifecycleUnit discard]; [Codegen evictMaterializations]]]; [System gc]]]; 10]]";
     q.evaluate(
         baseline,
         Path::new("<lifecycle-baseline>"),
@@ -140,7 +140,7 @@ fn activation_inside_entered_methods_uses_current_setters() {
         &[Operand::object(name), Operand::object(path)],
     )
     .unwrap();
-    q.check(cg, eval(br#"[CompiledUnit compile: "[Module named: #hostLifecycle requires: #[]]; let hostLifecycleTrigger := [false asCell]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 20]]" named: #hostLifecycle output: hostLifecyclePath]"#)).unwrap();
+    q.check(cg, eval(br#"[CompiledUnit compile: "[Module named: #hostLifecycle requires: #[]]; let hostLifecycleTrigger := [false asCell]; let hostLifecycleDrop := [false asCell]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 20]]" named: #hostLifecycle output: hostLifecyclePath]"#)).unwrap();
     q.check(cg, eval(b"let hostLifecycleUnit := [CompiledUnit open: hostLifecyclePath]; [hostLifecycleUnit map]")).unwrap();
     expect(b"[[2 hostLifecycleValue] = 10]");
     let unit = eval(b"hostLifecycleUnit");
@@ -178,6 +178,15 @@ fn activation_inside_entered_methods_uses_current_setters() {
         None,
     )
     .unwrap();
+    // Release the active handle/inverse from the method being replaced. With
+    // materialization caches evicted, entered execution still owns its old code.
+    eval(b"let hostLifecycleUnit := [CompiledUnit open: hostLifecyclePath]; [hostLifecycleUnit map]; [hostLifecycleDrop set: true]; [hostLifecycleTrigger set: true]");
+    expect(b"[[2 hostLifecycleValue] = 10]");
+    expect(b"[[2 hostLifecycleValue] = 20]");
+    expect(b"[[hostLifecycleUnit state] = #discarded]");
+    expect(b"[[hostLifecycleUnit rollbackAvailable] = false]");
+    expect(b"[[[hostLifecycleUnit rollback] kind] = #rollbackUnavailable]");
+    assert!(dir.join("candidate.o").is_file(), "discard deleted the artifact");
     fs::remove_dir_all(dir).unwrap();
 }
 
@@ -605,5 +614,58 @@ fn independent_candidate_modules_need_no_certificate() {
     eval(b"let unitAgain := [CompiledUnit open: candidateAPath]; [unitAgain map]");
     run(b"[unitAgain activate]"); expect(b"[[3 independentA] = 11]");
     run(b"[unitAgain rollback]"); expect(b"[[3 independentA] = 1]");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn discard_cancels_preparation_and_keeps_bindings_and_files() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(Path::new("/unused/bin"), crate::Overrides { lib_dir: Some(&lib), ..Default::default() }).unwrap();
+    let host = HostRuntime::start(&resources, StartupPolicy { skip_stdlib: false, precise_gc: true, source_bootstrap: false, tool_bootstrap: false }).unwrap();
+    let q=host.scope(); let cg=host.named(b"Codegen").unwrap();
+    let eval=|source:&[u8]| { let v=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(source).unwrap())]).unwrap();q.check_result(v).unwrap();v };
+    let expect=|source:&[u8]| assert_eq!(eval(source),host.named(b"true").unwrap(),"{}",String::from_utf8_lossy(source));
+    q.evaluate(b"[Module named: #discardScope requires: #[]]; let discardHelper := [| 1]; [Reflect defineMethod: #discardScope on: Integer as: [:self | [discardHelper value]]]",Path::new("<discard-baseline>"),Some(b"discardScope")).unwrap();
+    let dir=env::temp_dir().join(format!("birnam-discard-scope-{}",std::process::id()));fs::create_dir_all(&dir).unwrap();
+    let path=dir.join("candidate.o");
+    q.call(host.named(b"Globals").unwrap(),b"at:put:",&[Operand::object(unsafe{host.context.id.intern_name(b"discardPath")}.unwrap()),Operand::object(q.string(path.as_os_str().as_bytes()).unwrap())]).unwrap();
+    eval(br#"[CompiledUnit compile: "[Module named: #discardScope requires: #[]]; let discardHelper := [| 2]; [Reflect defineMethod: #discardScope on: Integer as: [:self | [discardHelper value]]]" named: #discardScope output: discardPath]"#);
+    let tcc=host.named(b"TCC").unwrap();
+    let tcc_vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(tcc)]).unwrap();
+    let diagnostic_key=unsafe{host.context.id.intern_name(b"mappingIdentityOf:")}.unwrap();
+    q.call(tcc,b"methodFor:",&[Operand::object(diagnostic_key)]).unwrap();
+    let diagnostic=host.send(host.context.id.receiver,b"bind:to:",&[Operand::object(diagnostic_key),Operand::object(tcc)]).unwrap();
+    host.send(tcc_vt,b"addMethod",&[Operand::object(diagnostic_key),Operand::entry(native::NativeEntry::new(failed_fulfill,std::ptr::null_mut()))]).unwrap();
+    eval(b"let preparedUnit := [CompiledUnit open: discardPath]; [preparedUnit map]; let abandonedToken := [Generation prepareActivation: preparedUnit plan: [preparedUnit publicationPlan: #activate]]");
+    expect(b"[[Generation watchCandidateRetirement: preparedUnit] isError]");
+    let bytes=fs::read(&path).unwrap();
+    fs::write(&path,b"new author file").unwrap();
+    expect(b"[[preparedUnit discard] == preparedUnit]");
+    expect(b"[[[Generation commitPrepared: abandonedToken] kind] = #invalidPreparedToken]");
+    expect(b"[[3 discardScope] = 1]");
+    assert_eq!(fs::read(&path).unwrap(),b"new author file");
+    fs::write(&path,bytes).unwrap();
+    host.send(tcc_vt,b"addMethod",&[Operand::object(diagnostic_key),diagnostic]).unwrap();
+    eval(b"let activeUnit := [CompiledUnit open: discardPath]; [activeUnit map]");
+    let globals=host.named(b"Globals").unwrap();
+    let vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(globals)]).unwrap();
+    let key=unsafe{host.context.id.intern_name(b"releaseBindingCompensationFor:")}.unwrap();
+    q.call(globals,b"methodFor:",&[Operand::object(key)]).unwrap();
+    let original=host.send(host.context.id.receiver,b"bind:to:",&[Operand::object(key),Operand::object(globals)]).unwrap().as_entry().unwrap();
+    let error=q.call(host.named(b"Error").unwrap(),b"kind:",&[Operand::object(unsafe{host.context.id.intern_name(b"releaseDenied")}.unwrap())]).unwrap();
+    let mut fault=ReturnedFailure{error,calls:0};
+    expect(b"[[activeUnit activate] == activeUnit]");
+    host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(native::NativeEntry::new(returned_failure,(&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
+    let rejected=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(b"[activeUnit discard]").unwrap())]).unwrap();
+    assert_eq!(rejected,error);
+    assert_eq!(fault.calls,1);
+    expect(b"[[activeUnit state] = #active]");
+    host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(original)]).unwrap();
+    expect(b"[[activeUnit discard] == activeUnit]");
+    expect(b"[[activeUnit rollbackAvailable] = false]");
+    expect(b"[[3 discardScope] = 2]");
+    expect(b"[[[activeUnit rollback] kind] = #rollbackUnavailable]");
+    assert!(path.exists());
     fs::remove_dir_all(dir).unwrap();
 }

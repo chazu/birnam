@@ -324,6 +324,28 @@ def nativeRetirementAllowed (entered captured bound : Bool) : Bool :=
 theorem entered_code_cannot_retire (captured bound : Bool) :
     nativeRetirementAllowed true captured bound = false := by simp [nativeRetirementAllowed]
 
+structure DiscardState where
+  handle : Bool
+  prepared : Bool
+  inverse : Bool
+  files : Nat
+  binding : Nat
+  entered : Bool
+  deriving DecidableEq
+
+def logicalDiscard (s : DiscardState) : DiscardState :=
+  { s with handle := false, prepared := false, inverse := false }
+
+theorem discard_preserves_files (s : DiscardState) : (logicalDiscard s).files = s.files := by rfl
+
+theorem discard_preserves_dispatch (s : DiscardState) : (logicalDiscard s).binding = s.binding := by rfl
+
+theorem discard_preserves_entered_ownership (s : DiscardState) : (logicalDiscard s).entered = s.entered := by rfl
+
+theorem discard_revokes_capabilities (s : DiscardState) :
+    (logicalDiscard s).handle = false ∧ (logicalDiscard s).prepared = false ∧ (logicalDiscard s).inverse = false := by
+  exact ⟨rfl, rfl, rfl⟩
+
 -- An image records current executable state. Revision metadata is descriptive
 -- after drift and must not reactivate old transaction authority on restoration.
 structure WorldSnapshot where

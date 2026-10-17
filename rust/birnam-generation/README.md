@@ -40,8 +40,15 @@ Execution. GC/TCC checkpoints govern physical reclamation. Logical candidate
 ownership never authorizes forcibly unmapping their code.
 
 Activation and rollback are ordinary sends. Host does not detect or fulfill a
-special result type. Physical retirement checkpoints remain independent. Discard
-still couples root release with file cleanup/diagnostics; that is the next slice. Detailed contracts/evidence:
+special result type. Physical retirement checkpoints remain independent.
+
+`discardCandidate:` releases the handle, prepared tokens and inverse reservation,
+including for an active unit, and returns the unit. It does not delete files,
+collect, checkpoint or return a physical-disposal receipt. `removeCandidateFiles:`
+is separate conditional cleanup while a handle is open. Optional
+`watchCandidateRetirement:` records weak mapping identities for the existing
+retained-count/bytes queries. Unwatched discards add no diagnostic history and
+mapping does not depend on diagnostic callbacks. Detailed contracts/evidence:
 
 - [module-scoped candidates](../../docs/design/module-scoped-candidates.md)
 - [observational certification](../../docs/design/opt-in-generation-baselines.md)
@@ -49,3 +56,5 @@ still couples root release with file cleanup/diagnostics; that is the next slice
 - [compilation record ownership](../../docs/design/retained-compilation-records.md)
 
 See [ordinary activation](../../docs/design/ordinary-candidate-activation.md).
+
+See [logical discard](../../docs/design/logical-candidate-discard.md).

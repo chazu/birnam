@@ -217,6 +217,9 @@ let compiledGenerationNumbers := [{} asCell];
     ifTrue: [| [Generation mapCandidate: self]]
     ifFalse: [| [Error kind: #dependenciesMissing]]]]];
 
+[Reflect defineMethod: #removeFiles on: CompiledUnit as: [:self |
+  [Generation removeCandidateFiles: self]]];
+
 [Reflect defineMethod: #discard on: CompiledUnit as: [:self |
   [Generation discardCandidate: self]]];
 

@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Make candidate discard a logical release that preserves files and installed code.
+  Add explicit matching-file cleanup and opt-in weak retirement diagnostics; remove
+  DiscardReceipt and forced collection/checkpointing from discard.
+
 - Make candidate activation/rollback ordinary sends, including from entered code.
   Remove EvolutionIntent and Host fulfillment while retaining independent code
   lifetime roots and physical native-retirement checkpoints.

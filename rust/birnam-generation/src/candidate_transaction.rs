@@ -118,8 +118,21 @@ unsafe fn release_bindings(s: &State, q: &Scope<'_>, binding_token: Oop, binding
         Ok(())
     }
 }
+pub(super) unsafe fn release_inverse(s: &State, q: &Scope<'_>, unit: Oop) -> Result<(), Outcome> {
+    unsafe {
+        let inverse = s.candidates.entries.borrow().iter().find(|c| c.unit == unit).and_then(|c| c.activation.clone());
+        if let Some(inverse) = inverse {
+            for value in inverse.roots() { q.keep(value)?; }
+            release_bindings(s, q, inverse.binding_reservation, inverse.globals.len())?;
+        }
+        Ok(())
+    }
+}
 pub(super) unsafe fn discard_fields(s: &State, q: &Scope<'_>, unit: Oop) -> Result<(), Outcome> {
-    unsafe { set_field(s, q, unit, b"state", symbol(s, q, b"discarded")?) }
+    unsafe {
+        set_field(s, q, unit, b"state", symbol(s, q, b"discarded")?)?;
+        set_field(s, q, unit, b"rollbackAvailable", s.named(b"false")?)
+    }
 }
 unsafe fn restore_field(s: &State, q: &Scope<'_>, f: &FieldWrite, inverse: bool) -> Result<(), Outcome> {
     unsafe {

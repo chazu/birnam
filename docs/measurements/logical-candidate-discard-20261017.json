@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-17",
+  "base_commit": "bc319081ce4c5f8a72b7279984edbaabd089eb7a",
+  "scope": "Logical discard separated from explicit file cleanup and opt-in weak diagnostics; active/prepared handle release, entered/captured code ownership retained",
+  "prefix": "/tmp/birnam-logical-discard/final-prefix",
+  "runtime_qualification_prefix": "/tmp/birnam-logical-discard/prefix",
+  "checks": {
+    "build": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/build-delivery.log"
+    },
+    "entered_final": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/entered-delivery.log"
+    },
+    "discard_final": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/discard-delivery.log"
+    },
+    "native": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/native.log"
+    },
+    "language_final": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/language-delivery.log"
+    },
+    "cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/cli.log"
+    },
+    "images": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/images.log"
+    },
+    "startup": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/startup.log"
+    },
+    "independent_modules": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/independent.log"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-logical-discard/formal.log"
+    }
+  },
+  "commands": {
+    "build": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-logical-discard/final-prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+    "native": "cargo test --offline --locked -p birnam-siphon --test candidate_retirement --test generation_transaction -- --include-ignored --nocapture",
+    "entered": "cargo test --offline --locked -p birnam-host --lib activation_inside_entered_methods_uses_current_setters -- --ignored --nocapture",
+    "discard": "cargo test --offline --locked -p birnam-host --lib discard_cancels_preparation_and_keeps_bindings_and_files -- --ignored --nocapture",
+    "images": "cargo test --offline --locked -p birnam-host --lib image_restores_descriptions_and_explicit_adoption -- --ignored --nocapture",
+    "startup": "cargo test --offline --locked -p birnam-host --lib installed_bootstrap_and_console_do_not_compile_or_parse -- --ignored --nocapture",
+    "independent": "cargo test --offline --locked -p birnam-host --lib independent_candidate_modules_need_no_certificate -- --ignored --nocapture",
+    "cli": "python3 scripts/compiled-unit-cli-test.py /tmp/birnam-logical-discard/prefix",
+    "language": "/tmp/birnam-logical-discard/final-prefix/bin/birnam modules/run-tests.birnam",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py"
+  },
+  "native_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "<qualification-prefix>/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": "native tests: .cargo-target/native-message-tests; Host tests: .cargo-target/host-tests"
+  },
+  "language_assertions": 826,
+  "cli_policy_checks": 62,
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-1gon2gcd/summary.json",
+    "theorems": 368,
+    "mutations": 110,
+    "tlc": 241
+  },
+  "production_source_copy_matches": [
+    "rust/birnam-generation/src/candidate.rs",
+    "rust/birnam-generation/src/candidate_retirement.rs",
+    "rust/birnam-generation/src/candidate_transaction.rs",
+    "rust/birnam-generation/src/lib.rs",
+    "rust/birnam-host-entry/src/image.rs",
+    "modules/compiled-unit.birnam",
+    "modules/compiled-unit-docs.birnam",
+    "modules/repl.birnam"
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "f1d36c49c2ae053cae7d5ae6b61694afab5d8a7fdd97ea3ef0fc1a2160919868",
+    "docs/design/generation-lifecycle-review.md": "1d7bf0805a3fe4292d892551e39f730682598892c4f3c4cca2b9350574a4f0ed",
+    "docs/design/logical-candidate-discard.md": "074387ffef87924bb997f1fa7ac72399b913cf357b954c583193da716b967948",
+    "docs/design/optional-store-and-relational.md": "1ff3071b1c3bfc778c477d1fcdf2da2473dbd4a2b6b29d0312bb4e9fd9b5e38b",
+    "docs/guide/05-compiled-units.md": "0aa633ebd86532fb6f993260a89c2a0268ee8d4b440cdb30e30b2e95f9b55e3b",
+    "formal/semantics/lean/SemanticsAudit.lean": "4868d532b6548203d42f15423a2824b267bfafdc194558c7a8d3d8a3256adffa",
+    "formal/semantics/lean/SharedInvocation.lean": "d5f2cbcf3fa7daea75cb89c694c8ece5224cc70c8d57eb88e5007eee73b5afc7",
+    "formal/semantics/tla/LogicalDiscard.tla": "df38a52059d64ab2d561b6a3e3cc159203958c4b7be93b2be7e3b21beb327245",
+    "formal/semantics/tla/LogicalDiscardBinding.cfg": "ba82ea9bc60a25fba18e36385c183429cdd26f8723df7eed511c756325ca917c",
+    "formal/semantics/tla/LogicalDiscardCode.cfg": "2a8600deb42d56fc695485af56cfe62d011657c2486fc6685f0a525e9caa3a77",
+    "formal/semantics/tla/LogicalDiscardFiles.cfg": "5ceea74a68e13a86d7f0292ebfb0b48c75d9f2f501d2ce1907aae84ef9ec3493",
+    "formal/semantics/tla/LogicalDiscardSafe.cfg": "8fb1180e893f4565eb9a39e3a07a99b88c10a860811d939241744ae2a4d77c88",
+    "formal/semantics/tla/LogicalDiscardToken.cfg": "7ae9dd8db103937a7c24a6594eb36cfb37b8b3b1265e2ae39414e84916299624",
+    "modules/compiled-unit-docs.birnam": "bace299b2931cfa832f407f5000589265b7674f746ce78f79179d14bb6f20ee7",
+    "modules/compiled-unit.birnam": "b5121a5dc7d7c6df53060c1d7dfbdea3a358bad669e0167ce93e4ba0b3f4d545",
+    "modules/doc-test.birnam": "9ebdada86561d3a5a4be4112fcd87020dc695a267a3b49c02ce8321469caa2c7",
+    "modules/repl.birnam": "7b0109c42951144a983ac2a765f952af29eaaa6760d0e99b0d1d5f06bbc4347e",
+    "rust/birnam-generation/README.md": "605c54d4897be3cccc709ab796790f0d363a420b0dd6ed724b4a2a6a8fb1fb73",
+    "rust/birnam-generation/src/candidate.rs": "80ab4aa559b0b41fba524f44f3877a3406aba5a8660a5e94b101578e3feef25c",
+    "rust/birnam-generation/src/candidate_retirement.rs": "b357c1d6b01950edb04d38310e02a4e6f2d5b2d35e8136da4cc0b432ef9996a6",
+    "rust/birnam-generation/src/candidate_transaction.rs": "25cc4066b5d090f80980f0d1e3a94ab0baa353f49ce1345effef0c1d294a60c6",
+    "rust/birnam-generation/src/lib.rs": "2b27d90885424281fbc4035e40fab4b7bb1e43b31968f8de383237e18702b58c",
+    "rust/birnam-host-entry/src/image.rs": "f4e788213eaec9811ca86dcf8ac1e7d2298c1f1d1ee240259dece670510160ff",
+    "rust/birnam-host/src/lifecycle_test.rs": "9ad5f6a0e4bc1d5fd1cf184fbe78af3fc49f47caa1ffeb4526b7c7030f4b8073",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "55b0e8a4bdc389a2db6b62425c597246b3860b948cfc9200979d7c507e5c4b37",
+    "scripts/check-rooting-model.py": "2c6084ac473a38655931a3dc0bb673d914ee8379d23a2c4e44cbc469e28b9933",
+    "scripts/compiled-unit-cli-test.py": "a7170d1c20bc53045453742752f8d3493678692d7a5e2de85fdec9bf39f7c415"
+  },
+  "status": "qualified before commit; all planned generation simplification slices complete; no user installation or push",
+  "retained_contracts": [
+    "Private-state reentry exclusion, actual code lifetime roots and physical retirement checkpoints",
+    "Conditional selected-state compensation/undo",
+    "Explicit source certification and source registry image staging",
+    "Explicit file cleanup is per-file conditional and can be partial; handle must remain open",
+    "Diagnostics require explicit watching and do not retain code"
+  ]
+}

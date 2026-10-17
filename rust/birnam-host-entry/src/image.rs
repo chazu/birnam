@@ -66,7 +66,7 @@ impl HostRuntime<'_> {
         };
         load().map_err(|e| HostError(format!("{}: {e}", path.display())))
     }
-    /// Enter saved main, fulfill a returned intent after its frame exits, and
+    /// Enter saved main through ordinary message passing, and
     /// checkpoint Isolate on success or failure. Nil and false remain successes.
     pub fn run_image_main(&self) -> Result<(), HostError> {
         let run = || -> Result<(), HostError> {
