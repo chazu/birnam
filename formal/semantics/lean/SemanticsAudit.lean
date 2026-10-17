@@ -317,3 +317,7 @@ import Admission
 #print axioms Birnam.SharedInvocation.module_update_preserves_other
 #print axioms Birnam.SharedInvocation.module_update_rejects_changed_source
 #print axioms Birnam.SharedInvocation.module_update_installs_selected
+
+#print axioms Birnam.SharedInvocation.entered_body_survives_installation
+#print axioms Birnam.SharedInvocation.future_dispatch_uses_replacement
+#print axioms Birnam.SharedInvocation.entered_code_cannot_retire

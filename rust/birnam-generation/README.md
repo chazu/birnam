@@ -39,11 +39,13 @@ Entered Methods, captured Blocks and suspended Machines retain code through
 Execution. GC/TCC checkpoints govern physical reclamation. Logical candidate
 ownership never authorizes forcibly unmapping their code.
 
-In this slice activation still goes through Host EvolutionIntent admission, and
-discard still couples root release with file cleanup/diagnostics. Those are being
-removed separately. Detailed contracts/evidence:
+Activation and rollback are ordinary sends. Host does not detect or fulfill a
+special result type. Physical retirement checkpoints remain independent. Discard
+still couples root release with file cleanup/diagnostics; that is the next slice. Detailed contracts/evidence:
 
 - [module-scoped candidates](../../docs/design/module-scoped-candidates.md)
 - [observational certification](../../docs/design/opt-in-generation-baselines.md)
 - [image adoption](../../docs/design/explicit-image-adoption.md)
 - [compilation record ownership](../../docs/design/retained-compilation-records.md)
+
+See [ordinary activation](../../docs/design/ordinary-candidate-activation.md).

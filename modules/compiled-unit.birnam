@@ -13,36 +13,12 @@
   ifTrue: [| [Globals at: #DispatchGeneration put: [ObjectModel newSlots: #[nil nil nil nil nil nil nil] parent: ObjectVt]]]
   ifFalse: [| nil]];
 [Reflect defineMethod: #slotNames on: DispatchGeneration as: [:self | #[#sourceMap #baseDigest #generationSelection #predecessor #deltaUnit #kind #state]]];
-[[[Globals at: #EvolutionIntent] isNil]
-  ifTrue: [| [Globals at: #EvolutionIntent put: [ObjectModel newSlots: #[nil nil] parent: ObjectVt]]]
-  ifFalse: [| nil]];
-[Reflect defineMethod: #slotNames on: EvolutionIntent as: [:self | #[#intentUnit #intentAction]]];
 [[[Globals at: #CompiledOperation] isNil]
   ifTrue: [| [Globals at: #CompiledOperation put: [ObjectModel newSlots: #[nil nil nil nil] parent: ObjectVt]]]
   ifFalse: [| nil]];
 [Reflect defineMethod: #slotNames on: CompiledOperation as: [:self | #[#targetName #selector #operation #priorPresent]]];
 let currentDispatchGeneration := [nil asCell];
 let compiledGenerationNumbers := [{} asCell];
-
-[Reflect defineMethod: #for:action: on: EvolutionIntent as: [:self :unit :action |
-  let intent := [self clone];
-  [intent intentUnit: unit];
-  [intent intentAction: action];
-  intent]];
-
-[Reflect defineMethod: #isIntent: on: EvolutionIntent as: [:self :value |
-  [[Reflect vtableOf: value] == [Reflect vtableOf: self]]]];
-
-[Reflect defineMethod: #fulfill on: EvolutionIntent as: [:self |
-  let unit := [self intentUnit];
-  let action := [self intentAction];
-  [[action = #activate]
-    ifTrue: [| [unit commitActivation]]
-    ifFalse: [|
-      [[action = #rollback]
-        ifTrue: [| [unit commitRollback]]
-        ifFalse: [|
-          [Error kind: #invalidEvolutionIntent]]]]]]];
 
 [Reflect defineMethod: #current on: DispatchGeneration as: [:self |
   [currentDispatchGeneration value]]];
@@ -253,15 +229,9 @@ let compiledGenerationNumbers := [{} asCell];
 [Reflect defineMethod: #publicationPlan: on: CompiledUnit as: [:self :action | #[action self]]];
 
 [Reflect defineMethod: #activate on: CompiledUnit as: [:self |
-  [EvolutionIntent for: self action: #activate]]];
-
-[Reflect defineMethod: #commitActivation on: CompiledUnit as: [:self |
   [Generation commitPrepared: [Generation prepareActivation: self plan: [self publicationPlan: #activate]]]]];
 
 [Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
-  [EvolutionIntent for: self action: #rollback]]];
-
-[Reflect defineMethod: #commitRollback on: CompiledUnit as: [:self |
   [[[self state] = #rolledBack] ifTrue: [| self] ifFalse: [|
     [Generation commitPreparedRollback: [Generation prepareRollback: self plan: [self publicationPlan: #rollback]]]]]]];
 
@@ -290,10 +260,6 @@ let compiledGenerationNumbers := [{} asCell];
 [Reflect defineMethod: #kind: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 5 in: self put: value]]];
 [Reflect defineMethod: #state on: DispatchGeneration as: [:self | [ObjectModel slot: 6 in: self]]];
 [Reflect defineMethod: #state: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 6 in: self put: value]]];
-[Reflect defineMethod: #intentUnit on: EvolutionIntent as: [:self | [ObjectModel slot: 0 in: self]]];
-[Reflect defineMethod: #intentUnit: on: EvolutionIntent as: [:self :value | [ObjectModel slot: 0 in: self put: value]]];
-[Reflect defineMethod: #intentAction on: EvolutionIntent as: [:self | [ObjectModel slot: 1 in: self]]];
-[Reflect defineMethod: #intentAction: on: EvolutionIntent as: [:self :value | [ObjectModel slot: 1 in: self put: value]]];
 [Reflect defineMethod: #targetName on: CompiledOperation as: [:self | [ObjectModel slot: 0 in: self]]];
 [Reflect defineMethod: #targetName: on: CompiledOperation as: [:self :value | [ObjectModel slot: 0 in: self put: value]]];
 [Reflect defineMethod: #selector on: CompiledOperation as: [:self | [ObjectModel slot: 1 in: self]]];

@@ -66,7 +66,7 @@ impl HostRuntime<'_> {
                     "done" => break,
                     "continue" => {}
                     "evaluated" => {
-                        let value = q.fulfill_intent(q.vector_at(step, 1)?)?;
+                        let value = q.vector_at(step, 1)?;
                         let printed =
                             q.call(repl, b"printHostResult:", &[Operand::object(value)])?;
                         q.check_result(printed)?;
@@ -159,7 +159,7 @@ impl HostRuntime<'_> {
                 "done" => return Ok(()),
                 "continue" => {}
                 "evaluated" => {
-                    let value = q.fulfill_intent(q.vector_at(step, 1)?)?;
+                    let value = q.vector_at(step, 1)?;
                     let printed = q.call(
                         repl,
                         b"printSocketResult:to:",

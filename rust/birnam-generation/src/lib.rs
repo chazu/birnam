@@ -97,7 +97,6 @@ enum Op {
     Registry(registry::Op),
     ValidateImage,
     PrepareImageSnapshot,
-    FulfillIntent,
     Receipt(usize),
     BeginRecovery,
     Recover,
@@ -124,7 +123,7 @@ unsafe extern "C" fn operation(
         let count = match e.op {
             Op::Candidate(op) => op.count(),
             Op::Registry(op) => op.count(),
-            Op::FulfillIntent | Op::BeginRecovery | Op::Recover => 1,
+            Op::BeginRecovery | Op::Recover => 1,
             _ => 0,
         };
         if a.len() != count {
@@ -143,7 +142,6 @@ unsafe extern "C" fn operation(
             Op::Registry(op) => registry::operation(s, &q, op, a),
             Op::ValidateImage => candidate::validate_image(s, &q),
             Op::PrepareImageSnapshot => candidate::prepare_image_snapshot(s, &q),
-            Op::FulfillIntent => candidate::fulfill_intent(s, &q, object(a[0])?),
             Op::BeginRecovery => candidate::begin_recovery(s, &q, object(a[0])?),
             Op::Recover => candidate::recover_image(s, &q, object(a[0])?),
             Op::AbandonRecovery => {
@@ -292,7 +290,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"mapCandidate:".as_slice(),
                 Op::Candidate(candidate::Op::Map),
             ),
-            (vt, b"fulfillEvolutionIntent:".as_slice(), Op::FulfillIntent),
             (
                 vt,
                 b"prepareActivation:plan:".as_slice(),

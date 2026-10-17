@@ -308,6 +308,22 @@ theorem module_update_rejects_changed_source (world : Nat → Nat) (key expected
 theorem module_update_installs_selected (world : Nat → Nat) (key replacement : Nat) :
     replaceModule world key (world key) replacement key = replacement := by simp [replaceModule]
 
+-- Rebinding changes later dispatch, never the identity of an entered body.
+def installDuringFrame (entered _current replacement : Nat) : Nat × Nat :=
+  (entered, replacement)
+
+theorem entered_body_survives_installation (entered current replacement : Nat) :
+    (installDuringFrame entered current replacement).1 = entered := by rfl
+
+theorem future_dispatch_uses_replacement (entered current replacement : Nat) :
+    (installDuringFrame entered current replacement).2 = replacement := by rfl
+
+def nativeRetirementAllowed (entered captured bound : Bool) : Bool :=
+  !entered && !captured && !bound
+
+theorem entered_code_cannot_retire (captured bound : Bool) :
+    nativeRetirementAllowed true captured bound = false := by simp [nativeRetirementAllowed]
+
 -- An image records current executable state. Revision metadata is descriptive
 -- after drift and must not reactivate old transaction authority on restoration.
 structure WorldSnapshot where

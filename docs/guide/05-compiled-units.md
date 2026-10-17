@@ -19,8 +19,8 @@ deferred.
 ## Lifecycle
 
 ```text
-compile -> open -> map -> validate -> activation intent -> host safe point
-                                                     -> rollback intent
+compile -> open -> map -> validate -> activate
+                                     rollback
 ```
 
 - `compile:named:output:` accepts a complete module document and writes a dylib
@@ -34,9 +34,10 @@ compile -> open -> map -> validate -> activation intent -> host safe point
 - `validate` checks the candidate's selected binding observations and current
   source lineage, then discards its one-shot prepared capability. It does not
   certify every managed binding.
-- `activate` returns an `EvolutionIntent`. The console host fulfills it only
-  between top-level forms while native quiescence is active.
-- `rollback` returns the corresponding predecessor intent.
+- `activate` applies the selected changes immediately and returns the unit or Error.
+- `rollback` performs conditional undo and returns the unit or Error.
+Both are ordinary sends, including from entered Methods and image main. Physical
+native-code reclamation still waits for Execution/TCC's safe checkpoints.
 
 Errors are values. Rejection before commit leaves dispatch and source authority
 unchanged.

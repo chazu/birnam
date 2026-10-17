@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Make candidate activation/rollback ordinary sends, including from entered code.
+  Remove EvolutionIntent and Host fulfillment while retaining independent code
+  lifetime roots and physical native-retirement checkpoints.
+
 - Scope candidate compilation/source exchange to one module. Candidate activation
   and rollback no longer require whole-world certification or advance a global
   generation. Optional source certificates can be refreshed independently.

@@ -93,25 +93,7 @@ impl Scope<'_> {
             &[Operand::object(source), Operand::object(path)],
         )?;
         self.check(cg, result)?;
-        if module.is_none() {
-            let result = self.fulfill_intent(result)?;
-            self.check_result(result)?;
-        }
         Ok(())
-    }
-    pub fn fulfill_intent(&self, value: Oop) -> Result<Oop, HostError> {
-        let intents = self.host.global(self, b"EvolutionIntent")?;
-        if intents == self.host.named(b"nil")?
-            || self.call(intents, b"isIntent:", &[Operand::object(value)])?
-                != self.host.named(b"true")?
-        {
-            return Ok(value);
-        }
-        self.call(
-            self.host.named(b"Generation")?,
-            b"fulfillEvolutionIntent:",
-            &[Operand::object(value)],
-        )
     }
     pub fn check(&self, cg: Oop, result: Oop) -> Result<(), HostError> {
         let diagnostic = self.call(cg, b"lastError", &[])?;

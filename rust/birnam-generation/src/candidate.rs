@@ -21,7 +21,6 @@ pub(super) use recovery::{begin_recovery, cancel_recovery, abandon_recovery, rec
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
-    quiescent: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,
     prepared: RefCell<Vec<preparation::Prepared>>,
     next_token: Cell<usize>,
@@ -713,64 +712,3 @@ pub(super) unsafe fn operation(
 // Host enters with no running Machine. Only this dynamic extent may execute the
 // authored lifecycle policy and commit while its policy frames are running.
 // No ambient phase survives a returned Error or native failure.
-pub(super) unsafe fn fulfill_intent(
-    s: &State,
-    q: &Scope<'_>,
-    intent: Oop,
-) -> Result<Operand, Outcome> {
-    unsafe {
-        if s.candidates.quiescent.get()
-            || s.candidates.recovery.borrow().is_some()
-            || s.candidates.busy.get()
-            || s.send(s.named(b"Execution")?, b"retirementReady", &[])?
-                .as_word()
-                != Some(1)
-        {
-            return fail(
-                s,
-                q,
-                b"generationNotQuiescent",
-                b"intent fulfillment requires a Host safe point",
-            );
-        }
-        let prototype = call(
-            s,
-            q,
-            s.named(b"Globals")?,
-            b"at:",
-            &[Operand::object(symbol(s, q, b"EvolutionIntent")?)],
-        )?;
-        let family = call(
-            s,
-            q,
-            s.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(prototype)],
-        )?;
-        if prototype == s.named(b"nil")?
-            || call(
-                s,
-                q,
-                s.id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(intent)],
-            )? != family
-        {
-            return fail(
-                s,
-                q,
-                b"invalidEvolutionIntent",
-                b"expected an EvolutionIntent",
-            );
-        }
-        struct Quiescence<'a>(&'a Cell<bool>);
-        impl Drop for Quiescence<'_> {
-            fn drop(&mut self) {
-                self.0.set(false);
-            }
-        }
-        s.candidates.quiescent.set(true);
-        let _quiescence = Quiescence(&s.candidates.quiescent);
-        s.send(intent, b"fulfill", &[])
-    }
-}

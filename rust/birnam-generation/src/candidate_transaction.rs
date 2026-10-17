@@ -467,18 +467,6 @@ pub(super) unsafe fn commit(
                 b"prepared token has a different action",
             );
         }
-        if !s.candidates.quiescent.get()
-            && s.send(s.named(b"Execution")?, b"retirementReady", &[])?
-                .as_word()
-                != Some(1)
-        {
-            return fail(
-                s,
-                q,
-                b"generationNotQuiescent",
-                b"generation commit requires a Host safe point",
-            );
-        }
         if !preparation::current_snapshot(s, q, &p)? {
             return fail(s, q, b"staleGeneration", b"publication commit is stale");
         }

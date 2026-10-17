@@ -77,7 +77,6 @@ impl HostRuntime<'_> {
             }
             let result = scope.call(main, b"value", &[])?;
             scope.check_result(result)?;
-            let result = scope.fulfill_intent(result)?;
             scope.check_result(result)
         };
         let result = run();

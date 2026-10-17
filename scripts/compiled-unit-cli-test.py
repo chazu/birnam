@@ -1,4 +1,4 @@
-"""Exercise candidate policy with lifecycle intents fulfilled by the idle Host."""
+"""Exercise candidate changes and conditional undo through ordinary sends."""
 import json
 import os
 from pathlib import Path
@@ -65,8 +65,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     check('[[policy map] == policy]', 'map returns candidate')
     check('[[3 cuReplace] = 11]', 'mapping preserves dispatch')
     check(f'[[[System readFile: {path}] isError] not]', 'mapping preserves author file')
-    check('[[[[policy activate] fulfill] kind] = #generationNotQuiescent]', 'nested fulfillment rejected')
-    forms.append('[policy activate]')
+    forms.append('[[| [policy activate]] value]')
     check('[[policy state] = #active]', 'activation publishes state')
     check('[[CompiledUnit activeFor: #cuPolicy] == policy]', 'active unit published')
     check('[[db currentValue: policy attr: #activationEvent] isNil]', 'activation creates no event facts')
@@ -139,9 +138,9 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     assert result.returncode == 0, (result.returncode, transcript, result.stderr)
     assert result.stderr.decode().splitlines() == [
         'unit has no current binding ledger',
-        'generation commit requires a Host safe point', 'candidate is not mapped'
+        'candidate is not mapped'
     ], (transcript, result.stderr)
     for index, label in enumerate(checks, 1):
         assert f'#[#compiledUnitCheck {index} true]\n' in transcript, (label, transcript)
     assert '!! ' not in transcript, transcript
-print(f'compiled-unit: {len(checks)} policy checks through idle Host boundaries passed')
+print(f'compiled-unit: {len(checks)} policy checks through ordinary sends passed')

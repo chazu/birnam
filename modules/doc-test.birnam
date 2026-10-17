@@ -191,9 +191,9 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 18
      describes: "documented lifecycle selectors registered"];
   let md := [Doc markdownForModule: #compiledUnit];
-  [t assert: [md includesSubstring: "`activate` — Produce an activation"]
+  [t assert: [md includesSubstring: "`activate` — Apply the selected"]
      describes: "authored activation reference is rendered"];
-  [t assert: [md includesSubstring: "`rollback` — Produce a rollback"]
+  [t assert: [md includesSubstring: "`rollback` — Apply conditional"]
      describes: "guarded rollback reference is rendered"]]];
 
 // Scan the real workspace after fixture rendering: the scan registers all native

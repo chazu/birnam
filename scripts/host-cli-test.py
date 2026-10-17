@@ -81,8 +81,8 @@ result = run(['output.birnam'], executable=launcher)
 assert result.returncode == 0 and result.stdout == b'hello world\n' and not result.stderr
 stdlib_image = work / 'stdlib.image'
 source('stdlib.birnam', b'[System println: [Module isLoaded: #stdlib]]; [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; '
-       b'let savedLifecycleIntent := [EvolutionIntent for: CompiledUnit action: #activate]; '
-       b'[Globals at: #main put: [| [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; [System println: [Module libDir]]; [System println: [EvolutionIntent isIntent: savedLifecycleIntent]]]]; '
+       b'let savedLifecycleUnit := [CompiledUnit clone]; [savedLifecycleUnit state: #historical]; '
+       b'[Globals at: #main put: [| [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; [System println: [Module libDir]]; [System println: [[savedLifecycleUnit state] = #historical]]]]; '
        b'[Module libDir: "/old-install/lib"]; [System saveImage: ' + json.dumps(str(stdlib_image)).encode() + b']',
        stdlib=True, output=b'true\n#[2 3 4]\n')
 assert stdlib_image.is_file()

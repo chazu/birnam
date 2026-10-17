@@ -79,7 +79,7 @@ unsafe extern "C" fn failed_recovery(
 
 #[test]
 #[ignore = "requires production native modules; scripts/host-cli-test.sh"]
-fn host_fulfills_authored_generation_intents_at_idle_boundary() {
+fn activation_inside_entered_methods_uses_current_setters() {
     let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
     let resources = crate::resolve_from_exe_dir(
         Path::new("/unused/bin"),
@@ -116,7 +116,7 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
             String::from_utf8_lossy(source)
         );
     };
-    let baseline = b"[Module named: #hostLifecycle requires: #[]]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 10]]";
+    let baseline = b"[Module named: #hostLifecycle requires: #[]]; let hostLifecycleTrigger := [false asCell]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | [[hostLifecycleTrigger value] ifTrue: [| [hostLifecycleTrigger set: false]; [hostLifecycleUnit activate]; [System gc]]]; 10]]";
     q.evaluate(
         baseline,
         Path::new("<lifecycle-baseline>"),
@@ -140,61 +140,36 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
         &[Operand::object(name), Operand::object(path)],
     )
     .unwrap();
-    q.check(cg, eval(br#"[CompiledUnit compile: "[Module named: #hostLifecycle requires: #[]]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 20]]" named: #hostLifecycle output: hostLifecyclePath]"#)).unwrap();
+    q.check(cg, eval(br#"[CompiledUnit compile: "[Module named: #hostLifecycle requires: #[]]; let hostLifecycleTrigger := [false asCell]; [Reflect defineMethod: #hostLifecycleValue on: Integer as: [:self | 20]]" named: #hostLifecycle output: hostLifecyclePath]"#)).unwrap();
     q.check(cg, eval(b"let hostLifecycleUnit := [CompiledUnit open: hostLifecyclePath]; [hostLifecycleUnit map]")).unwrap();
     expect(b"[[2 hostLifecycleValue] = 10]");
-    expect(b"[[[[hostLifecycleUnit activate] fulfill] kind] = #generationNotQuiescent]");
-    expect(b"[[[Generation fulfillEvolutionIntent: [hostLifecycleUnit activate]] kind] = #generationNotQuiescent]");
+    let unit = eval(b"hostLifecycleUnit");
+    let selector = unsafe { host.context.id.intern_name(b"state:") }.unwrap();
+    q.call(unit, b"methodFor:", &[Operand::object(selector)]).unwrap();
+    let vt = q.call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(unit)]).unwrap();
+    let original = host.send(host.context.id.receiver, b"bind:to:", &[Operand::object(selector), Operand::object(unit)]).unwrap();
+    host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(failed_fulfill, std::ptr::null_mut()))]).unwrap();
+    let failure = q.evaluate(b"[[| [hostLifecycleUnit activate]] value]", Path::new("<entered-native-failure>"), None).unwrap_err();
+    assert!(failure.0.contains("nativeFailure"), "{failure}");
     expect(b"[[hostLifecycleUnit state] = #candidate]");
-    // A native failure during fulfillment must close the quiescence extent.
-    let intent = eval(b"[hostLifecycleUnit activate]");
-    let vt = q
-        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(intent)])
-        .unwrap();
-    let selector = unsafe { host.context.id.intern_name(b"fulfill") }.unwrap();
-    let original = host
-        .send(
-            host.context.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(selector), Operand::object(vt)],
-        )
-        .unwrap();
-    host.send(
-        vt,
-        b"addMethod",
-        &[
-            Operand::object(selector),
-            Operand::entry(native::NativeEntry {
-                method: Some(failed_fulfill),
-                context: std::ptr::null_mut(),
-            }),
-        ],
-    )
-    .unwrap();
-    let failure = q.fulfill_intent(intent).unwrap_err();
-    assert!(failure.0.contains("54321"), "{failure}");
-    // The image-main route must also fulfill only after the main frame exits,
-    // preserve native failure details, and close the extent before retrying.
-    q.check(
-        cg,
-        eval(b"[Globals at: #main put: [| [hostLifecycleUnit activate]]]"),
-    )
-    .unwrap();
-    let failure = host.run_image_main().unwrap_err();
-    assert!(failure.0.contains("54321"), "{failure}");
-    host.send(vt, b"addMethod", &[Operand::object(selector), original])
-        .unwrap();
-    host.run_image_main().unwrap();
+    expect(b"[[2 hostLifecycleValue] = 10]");
+    let error = q.call(host.named(b"Error").unwrap(), b"kind:", &[Operand::object(unsafe { host.context.id.intern_name(b"enteredSetterFailure") }.unwrap())]).unwrap();
+    let mut fault = ReturnedFailure { error, calls: 0 };
+    host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(returned_failure, (&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
+    assert_eq!(eval(b"[hostLifecycleUnit activate]"), error);
+    assert_eq!(fault.calls, 1);
+    expect(b"[[hostLifecycleUnit state] = #candidate]");
+    host.send(vt, b"addMethod", &[Operand::object(selector), original]).unwrap();
+    // This call replaces the method whose frame is currently entered. Its old
+    // body completes after GC; only subsequent dispatch selects the replacement.
+    eval(b"[hostLifecycleTrigger set: true]");
+    expect(b"[[2 hostLifecycleValue] = 10]");
     expect(b"[[2 hostLifecycleValue] = 20]");
     expect(b"[[hostLifecycleUnit state] = #active]");
     host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
         .unwrap();
-    q.evaluate(
-        b"[hostLifecycleUnit rollback]",
-        Path::new("<rollback>"),
-        None,
-    )
-    .unwrap();
+    eval(b"[Globals at: #main put: [| [hostLifecycleUnit rollback]]]");
+    host.run_image_main().unwrap();
     expect(b"[[2 hostLifecycleValue] = 10]");
     expect(b"[[hostLifecycleUnit state] = #rolledBack]");
     q.evaluate(
@@ -281,7 +256,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
         expect(b"[[db currentValue: savedOriginGeneration attr: #userAnnotation] = 77]");
         expect(b"[[db currentValue: savedOriginPredecessor attr: #sourceMap] = 88]");
         expect(b"[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]");
-        expect(b"[[[imageCandidate commitRollback] kind] = #rollbackUnavailable]");
+        expect(b"[[[imageCandidate rollback] kind] = #rollbackUnavailable]");
         if mode.starts_with("drift-") {
             expect(b"[[2 imageGenerationValue] = 30]");
             expect(b"[[2 imageOutsideValue] = 9]");

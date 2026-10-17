@@ -52,9 +52,8 @@ let main := [|
   [System println: [System nativeLoaderCount]];
   [System println: [[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] kind]];
   [System println: [[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] kind]];
-  // Image main runs under the Host's running-phase guard. Live replacement is
-  // tested at the native owner boundary; it requires an idle intent here.
-  [System println: [[Reflect defineMethod: #loadModule:arguments: on: receiver as: [:self :name :arguments | nil]] kind]];
+  // Image main replaces methods through ordinary sends.
+  [System println: [[Reflect defineMethod: #loadModule:arguments: on: receiver as: [:self :name :arguments | nil]] == receiver]];
   [System gc];
   [System println: [[receiver loadModule: path arguments: #[System]] == alias]];
   [System println: [System nativeLoaderCount]];
@@ -68,7 +67,7 @@ test ! -s "$scratch/save.err"
 grep -Fxq '#saved' "$scratch/save.out"
 test -s "$scratch/app.image"
 rm "$scratch/save.birnam"
-printf 'true\ntrue\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\n#notAModule\n#generationNotQuiescent\ntrue\n#native-load-3\nnative-loader-image-ok\n' >"$scratch/expected.out"
+printf 'true\ntrue\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\n#notAModule\ntrue\nfalse\n#native-load-2\nnative-loader-image-ok\n' >"$scratch/expected.out"
 for mode in mapped rebuilt; do
   if [[ $mode == rebuilt ]]; then
     "$bin" --rebuild "$scratch/app.image" >"$scratch/$mode.out" 2>"$scratch/$mode.err"

@@ -51,7 +51,7 @@ let main := [|
   [System println: [#["a" "b" 3] joined]];
   [System println: ["birnam" asUppercase]];
   [System println: ["BIRNAM" asLowercase]];
-  [System println: [[Reflect defineMethod: #size on: StringBuilderVt as: [:self | 99]] kind]];
+  [System println: [[Reflect defineMethod: #size on: StringBuilderVt as: [:self | 99]] == StringBuilderVt]];
   [System gc];
   [System println: [[builder size] printString]];
   [System println: "string-builder-image-ok"]
@@ -64,7 +64,7 @@ test ! -s "$scratch/save.err"
 grep -Fxq '#saved' "$scratch/save.out"
 test -s "$scratch/app.image"
 rm "$scratch/save.birnam"
-printf 'seed\ntrue\n135\nseedA\n0\nfalse\nok\n\nab3\nBIRNAM\nbirnam\n#generationNotQuiescent\n135\nstring-builder-image-ok\n' >"$scratch/expected.out"
+printf 'seed\ntrue\n135\nseedA\n0\nfalse\nok\n\nab3\nBIRNAM\nbirnam\ntrue\n99\nstring-builder-image-ok\n' >"$scratch/expected.out"
 for mode in mapped rebuilt; do
   arguments=("$scratch/app.image")
   if [[ $mode == rebuilt ]]; then arguments=(--rebuild "${arguments[@]}"); fi

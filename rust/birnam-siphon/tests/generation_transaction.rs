@@ -456,26 +456,6 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
                 v.call(consumed, b"kind", &[]),
                 v.sym(b"invalidPreparedToken")
             );
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)],
-            );
-            v.call(ns, b"at:put:", &[v.sym(b"TxPreparedToken"), token]);
-            let unsafe_commit = v.call(
-                cg,
-                b"evalPersisting:",
-                &[v.text(b"[Generation commitPrepared: TxPreparedToken]")],
-            );
-            assert_eq!(
-                v.call(unsafe_commit, b"kind", &[]),
-                v.sym(b"generationNotQuiescent")
-            );
-            let consumed = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            assert_eq!(
-                v.call(consumed, b"kind", &[]),
-                v.sym(b"invalidPreparedToken")
-            );
             let dispatch_vt = object(send(
                 id,
                 id.receiver,

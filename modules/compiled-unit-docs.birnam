@@ -4,7 +4,7 @@
 
 [Module named: #compiledUnitDocs requires: #[#doc]];
 
-[Doc module: #compiledUnit is: "Explicit source baselines and scoped candidate edits: inspect/map CompiledUnits, then activate or roll back at a Host safe point. Image loading does not adopt a baseline."];
+[Doc module: #compiledUnit is: "Explicit source baselines and scoped candidate edits: inspect/map CompiledUnits, then activate or roll back through ordinary sends. Image loading does not adopt a baseline."];
 
 [Doc for: #state in: #compiledUnit says:
   "The unit's recorded lifecycle state (reading it performs no reconciliation): #candidate, #active, #superseded or #rolledBack. Explicit validation never changes it."];
@@ -33,9 +33,9 @@
 [Doc for: #validate in: #compiledUnit says:
   "Check the mapped candidate against its selected bindings and current source lineage, then discard the one-shot prepared capability. Answers self or an Error."];
 [Doc for: #activate in: #compiledUnit says:
-  "Produce an activation EvolutionIntent. The host fulfills it only between turns while native quiescence is active; rejection leaves dispatch and source authority unchanged."];
+  "Apply the selected module changes through ordinary sends, including from entered code. Answers the unit or an Error."];
 [Doc for: #rollback in: #compiledUnit says:
-  "Produce a rollback EvolutionIntent. Host fulfillment republishes the exact predecessor generation; drift, staleness, or unavailable process-local capability answers an Error without mutation."];
+  "Apply conditional undo through ordinary sends. A relevant conflict or unavailable process-local capability answers an Error without overwriting it."];
 [Doc for: #activeFor: in: #compiledUnit says:
   "The CompiledUnit delta associated with Symbol `name` in the single current DispatchGeneration, or nil for an untouched G0 entry."]
 

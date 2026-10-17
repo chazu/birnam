@@ -7,7 +7,8 @@ tracked in [lifecycle record owners](lifecycle-record-owners.md) and
 [scoped transactions](scoped-generation-transactions.md) and
 [explicit image adoption](explicit-image-adoption.md) and
 [opt-in baselines](opt-in-generation-baselines.md) and
-[module-scoped candidates](module-scoped-candidates.md). Follows
+[module-scoped candidates](module-scoped-candidates.md) and
+[ordinary activation](ordinary-candidate-activation.md). Follows
 [optional Store](optional-store-and-relational.md).
 
 ## Conclusion
@@ -37,8 +38,8 @@ Still open:
    whole-program certification is separate and renewable. This slice is complete.
 2. Explicit validation reports disagreement without lifecycle mutation or inverse
    revocation. This slice is complete.
-3. Qualify activation within entered code before deciding whether Host-only
-   intent fulfillment can be removed. Keep native reclamation checkpoints.
+3. Activation from entered code is qualified and Host-only intent fulfillment is
+   removed. Physical native reclamation checkpoints remain. This slice is complete.
 4. Separate logical discard from optional artifact-file cleanup and diagnostics.
 
 The following lifecycle and evidence describe the reviewed baseline; follow the

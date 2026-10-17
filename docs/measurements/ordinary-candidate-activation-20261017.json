@@ -1,0 +1,92 @@
+{
+  "base_commit": "1c4b661365715b31527cb98aec8bddabca2ba82e",
+  "prefix": "/tmp/birnam-entered-activation/prefix",
+  "scope": "Ordinary entered activation/rollback; Host intent machinery removed; physical code lifetime unchanged",
+  "checks": {
+    "build": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/build.log"
+    },
+    "entered": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/entered-qualified.log"
+    },
+    "native": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/native.log"
+    },
+    "language": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/language.log"
+    },
+    "cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/cli.log"
+    },
+    "console_tcp": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/console-socket.log"
+    },
+    "host_relocation": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/host-cli.log"
+    },
+    "string_images": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/string-image.log"
+    },
+    "native_loader_images": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/loader-image.log"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-entered-activation/formal-final.log"
+    }
+  },
+  "language_assertions": 826,
+  "cli_policy_checks": 60,
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-41bqu2u5/summary.json",
+    "theorems": 364,
+    "mutations": 107,
+    "tlc": 236
+  },
+  "source_sha256": {
+    "CHANGELOG.md": "e09a6d0a0205777ba2d6ac2510266a29889b4c635e2e5bfa5ce56c3c7a0e44ea",
+    "docs/design/generation-lifecycle-review.md": "0e1e972e4f4ebb8ae37023e1177a25317fe82f07327fdcca9147c985791a6cb7",
+    "docs/design/ordinary-candidate-activation.md": "8616a8e5bc142307d906230e7af3695c00fa51063ba9665fd9b9c75c18ca98ba",
+    "docs/guide/05-compiled-units.md": "e7838ddf7d0fabc1323d69fafe45edcb9a10dd0fb708e423067ddc2724e479f9",
+    "formal/semantics/lean/SemanticsAudit.lean": "9cca14c933d72bc06323a976de3ed6345a457df758ae2b21c60fc67c14f68f1e",
+    "formal/semantics/lean/SharedInvocation.lean": "a1a9c70299bba71a9ff8644ee03107a206b1944e3ec32bd8fda9d1cc394eed43",
+    "formal/semantics/tla/EnteredActivation.tla": "288e858ae8d6823ac54e2bbe657f87093df7c74cbe6ed55e10f5432a002b5b19",
+    "formal/semantics/tla/EnteredActivationFrame.cfg": "ecb9b1f2f6d0f6991d275549f2e30da58b9428b559dbf76a4efdaa3bdd11a057",
+    "formal/semantics/tla/EnteredActivationIdle.cfg": "68633bb43cb0bce6fbcdc4779e0ea07a5c2cbbe5552d04522fc82bfff90ac3c2",
+    "formal/semantics/tla/EnteredActivationLease.cfg": "0fba592540453ef88fde2491b6ec8cd3eb1d6f881c4939073cbadbbcb7f507b3",
+    "formal/semantics/tla/EnteredActivationSafe.cfg": "171e89c73201161fb0b8e5c6fd7a5668f115d3e5e3a41c400fc9aeb0c44a1136",
+    "modules/compiled-unit-docs.birnam": "54cc6233e986a8c776adabc67d6bd2868d621c5fd39597a9b37fcfa14f90a515",
+    "modules/compiled-unit.birnam": "d5ab53b28f62ff04122ea7c42cf3ee7137800284582c3f93f94c17716ac0aa9c",
+    "modules/doc-test.birnam": "3435ace9438ce7210fdd8cc5694b8d785b89065040f643092fd1113d1ccbd223",
+    "rust/birnam-generation/README.md": "0bf24c037ce07501b0a8aac678153741d251df21a009018a2b7947f60459029f",
+    "rust/birnam-generation/src/candidate.rs": "563c9347f598f3ccc0315755aa19b86592389f88f48115be5461507065f93f4b",
+    "rust/birnam-generation/src/candidate_recovery.rs": "9d8d62366a2cdadb636415538602102d5b5fa6308f86ef69f44e1461f3c4186d",
+    "rust/birnam-generation/src/candidate_transaction.rs": "bd4c966ca29301b562c501c08ec73e6b0b11148e361440643b75b3300de410d8",
+    "rust/birnam-generation/src/lib.rs": "99e05083653f883752b376151ce8ffcf4206c4dfb2edb945a2c554079fd91b28",
+    "rust/birnam-host-entry/src/image.rs": "fb4c26e80e9d439d5fbb07e309bc5d300dfc0bb9100725d117f7b81ce35526cb",
+    "rust/birnam-host-interaction/src/interaction.rs": "da5c294517346b62b24274b5fe7011deac820804ef4e76e15e3a397a0d63544b",
+    "rust/birnam-host-support/src/runtime.rs": "4547416305dd811e5ee8aa055bd7625f1401f6940b2468fa09d67a5948fd34ef",
+    "rust/birnam-host/src/lifecycle_test.rs": "e8b86c2a8405693d898a0ef437e601ae6364205d1e9c783d5f5075ad76c66d3f",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "18c73093a9659c4279a75ebdb11a36d736f171c764adb13b479086df5a163903",
+    "scripts/check-rooting-model.py": "994d9c53a21f21bc5de1c474d578c33562b44e106356c16c5970caf5cdd300eb",
+    "scripts/compiled-unit-cli-test.py": "1e62a02e319ac5a8de52cc74e0036b0003bea46a6cfd734270fb220713d535dd",
+    "scripts/generation-cli-test.py": "84b07c4b1a82222b48d4b36296939fb4004793f3cbb39d3fef332cac585c0a8c",
+    "scripts/host-cli-test.py": "9667e0fb6ed4df030a22a0a6aea7a984c0ee6df078bff457fd4027e983a75480",
+    "scripts/host-cli-test.sh": "be2ee89338824fa282014ff438e483da63d5e3d2657f6ae0fe8154f84bd7da1c",
+    "scripts/native-loader-image-smoke.sh": "4afbd4f5b6b6562912f2be1639bccbaaea17d14f9b02569d22deabd527f5950f",
+    "scripts/string-builder-image-smoke.sh": "bec48161a78288ffd4f41200aa39b0b2e950e3d80a740b3c8c243734990e7048"
+  },
+  "status": "qualified before commit; no user installation or push",
+  "remaining": [
+    "separate discard/file cleanup/diagnostics"
+  ]
+}

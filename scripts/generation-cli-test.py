@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
         print('generation: ordinary running edits, console intent activation and exact rollback passed')
 
     # Reuse the publication with its source removed, but fresh process state and
-    # candidate output. Each reply must be fulfilled before its TCP prompt.
+    # candidate output. Each edit must complete before its TCP prompt.
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
