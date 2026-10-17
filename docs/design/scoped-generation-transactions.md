@@ -2,7 +2,7 @@
 
 2026-10-16. Implementation of the next [generation simplification](generation-lifecycle-review.md)
 slice, following [prepared value admission](prepared-operation-admission.md).
-Implemented and qualified; uncommitted. This does not complete the optional-certification redesign.
+Implemented and qualified; committed in `e4931deb`. This does not complete the optional-certification redesign.
 
 ## Contract
 
@@ -97,4 +97,5 @@ records commands, logs and source hashes. The initial build rejected a changing
 source tree; the completed build used the stable production sources. Subsequent
 edits changed test fixtures and documentation only. The old runtime failed the
 expanded managed-side-effect regression before the implementation changed.
-No commit, push, release or user installation accompanies this slice.
+The receipt records the pre-commit qualification snapshot. This slice was subsequently
+committed in `e4931deb`; no push, release or user installation accompanied it.

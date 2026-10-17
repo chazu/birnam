@@ -1,7 +1,7 @@
 # Prepared edits observe values, not a global mutation count
 
 2026-10-16. Follows lifecycle ownership commit `2671e533` and the
-[generation review](generation-lifecycle-review.md). Implemented and qualified; uncommitted. This is a bounded admission simplification, not
+[generation review](generation-lifecycle-review.md). Implemented and qualified; committed in `e4931deb`. This is a bounded admission simplification, not
 the full optional-certification migration.
 
 ## Change

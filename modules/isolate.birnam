@@ -34,29 +34,20 @@
       ifTrue: [| [Error kind: #invalidConcurrencyModule message: path]]
       ifFalse: [| #[path source [revision at: 1]]]]]]]];
 [Reflect defineMethod: #prepareSources: on: Concurrency as: [:self :paths |
-  [[[DispatchGeneration current] notNil]
-    ifTrue: [| [Error kind: #concurrencyAlreadyPrepared message: "Load the program's modules together before starting its generation."]]
-    ifFalse: [|
-      let rows := [paths collect: [:path | [self readSource: path]]];
-      let bad := [rows detect: [:row | [row isError]]];
-      [[bad notNil] ifTrue: [| bad] ifFalse: [|
-        let program := [self clone];
-        let workspace := [self newWorkspace];
-        [[workspace isNil] ifTrue: [| [Error kind: #workspaceUnavailable]] ifFalse: [|
-          [[program field: #workspace] set: workspace];
-          [[program field: #workers] set: #[]];
-          [[program field: #image] set: nil];
-          [[program field: #closed] set: false];
-          let loaded := [rows collect: [:row | [System load: [row at: 0]]]];
-          let loadError := [loaded detect: [:answer | [answer isError]]];
-          [[loadError notNil] ifTrue: [| [program removeFiles]; loadError] ifFalse: [|
-            // Source loading already installs resumable Methods. Adopt that
-            // complete batch once; candidate activation requires an idle Host
-            // boundary and is not part of initial worker preparation.
-            let generation := [DispatchGeneration initializeCurrent];
-            [[generation isError]
-              ifTrue: [| [program removeFiles]; generation]
-              ifFalse: [| program]]]]]]]]]]]];
+  let rows := [paths collect: [:path | [self readSource: path]]];
+  let bad := [rows detect: [:row | [row isError]]];
+  [[bad notNil] ifTrue: [| bad] ifFalse: [|
+    let program := [self clone];
+    let workspace := [self newWorkspace];
+    [[workspace isNil] ifTrue: [| [Error kind: #workspaceUnavailable]] ifFalse: [|
+      [[program field: #workspace] set: workspace];
+      [[program field: #workers] set: #[]];
+      [[program field: #image] set: nil];
+      [[program field: #closed] set: false];
+      let loaded := [rows collect: [:row | [System load: [row at: 0]]]];
+      let loadError := [loaded detect: [:answer | [answer isError]]];
+      [[loadError notNil] ifTrue: [| [program removeFiles]; loadError]
+        ifFalse: [| program]]]]]]]];
 // Image capture must occur after the conditional setup callbacks return: live
 // checked Machine activations intentionally remain ineligible for image capture.
 [Globals at: #ConcurrencyLoadFailure put: [Object clone]];

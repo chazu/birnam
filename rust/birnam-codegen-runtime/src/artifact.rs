@@ -169,15 +169,7 @@ pub(super) unsafe fn operation(
 }
 unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        if publication::sealed(s,q)? {
-            return s.send(
-                s.named(b"Error")?,
-                b"kind:",
-                &[Operand::object(
-                    s.id.intern_name(b"moduleIntroductionNotAvailable")?,
-                )],
-            );
-        }
+
         if !s.exact(q, path, b"StringVt")? {
             return fail(s, b"RustCodegen load path was not a String");
         }
@@ -328,15 +320,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
                 return fail(s, b"RustCodegen duplicate module source");
             }
         }
-        if publication::sealed(s,q)? {
-            return s.send(
-                s.named(b"Error")?,
-                b"kind:",
-                &[Operand::object(
-                    s.id.intern_name(b"moduleIntroductionNotAvailable")?,
-                )],
-            );
-        }
+
         let compilation=source_metadata::retain_metadata(s,q,source,&metadata)?;
         let adapter_rows = at(s, q, result, 3)?;
         let mut adapters = Vec::new();

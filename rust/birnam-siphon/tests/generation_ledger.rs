@@ -72,14 +72,14 @@ unsafe extern "C" fn reject_first_drift(
 }
 #[test]
 #[ignore = "scripts/native-message-test.sh builds production native modules"]
-fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
+fn ledger_validation_preserves_state_and_reports_current_agreement() {
     if std::env::var_os("BIRNAM_LEDGER_DRIFT_CASE").is_none() {
         for case in ["raw", "store", "source", "metadata", "save", "retry", "opaque"] {
             let status = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--ignored",
                     "--exact",
-                    "ledger_adoption_roots_portable_methods_and_never_readopts_drift",
+                    "ledger_validation_preserves_state_and_reports_current_agreement",
                     "--nocapture",
                 ])
                 .env("BIRNAM_LEDGER_DRIFT_CASE", case)
@@ -210,12 +210,6 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             call(named(b"Reflect"), b"slot:in:put:", &[sym(attr), generation, value]);
         }
         call(prototype(b"DispatchGeneration"), b"current:", &[generation]);
-        let rejected = call(
-            named(b"Generation"),
-            b"adoptComposedGeneration:",
-            &[generation],
-        );
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
         let rejected = call(cg, b"beginPortableImageRecovery:", &[text(&[b'a'; 64])]);
         assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
         let rejected = call(cg, b"recoverPortableImageGeneration:", &[text(&[b'a'; 64])]);
@@ -445,6 +439,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             gc: named(b"GC"),
             armed: Cell::new(true),
         };
+        let recorded_state = call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]);
         match case.as_str() {
             "retry" => {
                 let before = call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]);
@@ -457,7 +452,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                 );
                 call(db, b"removeMethod:on:", &[selector, vt]);
                 let failed = call(named(b"Generation"), b"reconcileCandidate:", &[generation]);
-                assert_eq!(call(failed, b"kind", &[]), sym(b"injectedDriftFailure"));
+                assert_eq!(call(failed, b"kind", &[]), sym(b"staleGeneration"));
                 send(
                     id,
                     store_vt,
@@ -467,7 +462,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
                         Operand::entry(original_assert),
                     ],
                 );
-                assert!(!reject.armed.get());
+                assert!(reject.armed.get(), "validation called the state setter");
                 assert_eq!(
                     call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
                     before
@@ -547,7 +542,7 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             assert_eq!(saved, named(b"nil"));
             assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
         } else {
-            assert_eq!(saved, yes, "an edited live world can be snapshotted as drifted data");
+            assert_eq!(saved, yes, "an edited live world can be snapshotted without certification");
             assert_ne!(std::fs::read(&path).unwrap(), b"previous image");
         }
         std::fs::remove_file(path).unwrap();
@@ -568,9 +563,10 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
         assert_eq!(call(drift, b"kind", &[]), sym(b"staleGeneration"));
         assert_eq!(
             call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
-            sym(b"drifted")
+            recorded_state
         );
-        // Even restoring the exact entry cannot erase an observed divergence.
+        // Restoring the exact Method restores agreement, unless the source
+        // registry's explicit content revision changed independently.
         send(
             id,
             vt,
@@ -582,7 +578,11 @@ fn ledger_adoption_roots_portable_methods_and_never_readopts_drift() {
             b"adoptInitialGeneration:",
             &[generation],
         );
-        assert_eq!(call(readoption, b"kind", &[]), sym(b"staleGeneration"));
+        if case == "metadata" {
+            assert_eq!(call(readoption, b"kind", &[]), sym(b"staleGeneration"));
+        } else {
+            assert_eq!(readoption, generation);
+        }
         // Keep the authored lifecycle facade parseable as its initial adoption
         // is connected to this native mechanism.
         let facade = text(&std::fs::read("../../modules/compiled-unit.birnam").unwrap());

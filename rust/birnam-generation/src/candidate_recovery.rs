@@ -1,4 +1,4 @@
-//! Rebuild transient generation ownership only inside an Image publication.
+//! Suspend and release process-local capabilities across Image application.
 use super::*;
 
 pub(super) struct Recovery {
@@ -25,7 +25,6 @@ pub(crate) unsafe fn begin_recovery(
 ) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.busy.get()
-            || s.candidates.observing.get()
             || s.candidates.quiescent.get()
             || s.candidates.recovery.borrow().is_some()
         {
@@ -96,62 +95,9 @@ pub(crate) unsafe fn recover_image(
                 b"generation recovery requires the admitted Image identity",
             );
         }
-        struct Guard<'a>(&'a Cell<bool>);
-        impl Drop for Guard<'_> {
-            fn drop(&mut self) {
-                self.0.set(false);
-            }
-        }
-        s.candidates.recovering_policy.set(true);
-        let _guard = Guard(&s.candidates.recovering_policy);
-        let nil = s.named(b"nil")?;
-        let generation = current(s, q)?;
-        // Drifted revision data is retained as history, never adopted as
-        // authority for the actual restored Methods. Its old capabilities were
-        // removed at begin_recovery and are retired on successful completion.
-        let descriptive = generation != nil
-            && field(s, q, generation, b"state")? == symbol(s, q, b"drifted")?;
-        if generation != nil && !descriptive {
-            let policy = call(
-                s,
-                q,
-                s.named(b"Globals")?,
-                b"at:",
-                &[Operand::object(symbol(s, q, b"CompiledUnit")?)],
-            )?;
-            if policy == nil {
-                return fail(
-                    s,
-                    q,
-                    b"imageCompositionRejected",
-                    b"managed Image has no lifecycle policy",
-                );
-            }
-            let adopted = call(
-                s,
-                q,
-                policy,
-                b"reconcileImageComposition:",
-                &[Operand::object(identity)],
-            )?;
-            if s.is_error(adopted)? {
-                return Ok(Operand::object(adopted));
-            }
-            let ledger = s.candidates.ledger.borrow().clone();
-            let valid = if let Some(ledger) = ledger {
-                adopted == ledger.generation && ledger::matches(s, q, &ledger)? == Some(true)
-            } else {
-                false
-            };
-            if !valid {
-                return fail(
-                    s,
-                    q,
-                    b"imageCompositionRejected",
-                    b"policy did not adopt the restored live generation",
-                );
-            }
-        }
+        // Restored records are descriptions, never process-local capabilities.
+        // Code/Method ownership was established by Image and Execution already.
+        // Establishing a new baseline is a separate explicit operation.
         // No fallible sends after committing: the old candidate mappings and
         // inverse ledgers lose their roots together. Execution retains any code
         // independently held by active frames, Methods or Blocks.

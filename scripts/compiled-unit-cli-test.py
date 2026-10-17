@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
         forms.append(f'[Codegen recordModuleSource: {json.dumps(baseline)} named: #{name}]')
     # Source identity is known, but this dependency has never been loaded.
     forms.append('[Codegen recordModuleSource: "[Module named: #cuUnavailable requires: #[]]" named: #cuUnavailable]')
-    forms.append('[DispatchGeneration initializeCurrent]')
+    forms.append('[DispatchGeneration adoptCurrent]')
     image = work / 'baseline.image'
     baseline_script = work / 'baseline.birnam'
     baseline_script.write_text(';\n'.join(forms) + ';\n' +
@@ -46,6 +46,8 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     assert prepared.returncode == 0 and image.is_file() and not prepared.stderr, prepared
     baseline_script.unlink()
     forms.clear()
+    check('[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]', 'image does not adopt automatically')
+    check('[[[DispatchGeneration adoptCurrent] isError] not]', 'explicit image baseline adoption')
 
     def candidate(variable, name, text, selection=''):
         path = json.dumps(str(work / f'{variable}.o'))
@@ -67,14 +69,14 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     forms.append('[policy activate]')
     check('[[policy state] = #active]', 'activation publishes state')
     check('[[CompiledUnit activeFor: #cuPolicy] == policy]', 'active unit published')
-    check('[[db currentValue: [db currentValue: policy attr: #activationEvent] attr: #action] = #activate]', 'activation event published')
+    check('[[db currentValue: policy attr: #activationEvent] isNil]', 'activation creates no event facts')
     check('[[3 cuReplace] = 111]', 'replacement active')
     check('[[3 cuAdd] = 222]', 'addition active')
     check('[[3 cuRemove] isError]', 'removal active')
     forms.append('[policy rollback]')
     check('[[policy state] = #rolledBack]', 'rollback publishes state')
-    check('[[CompiledUnit activeFor: #cuPolicy] == initialPolicy]', 'rollback restores the composed Image unit')
-    check('[[db currentValue: [db currentValue: policy attr: #activationEvent] attr: #action] = #rollback]', 'rollback event published')
+    check('[[CompiledUnit activeFor: #cuPolicy] == initialPolicy]', 'rollback restores the explicit baseline entry')
+    check('[[db currentValue: policy attr: #activationEvent] isNil]', 'rollback creates no event facts')
     check('[[3 cuReplace] = 11]', 'replacement restored')
     check('[[3 cuRemove] = 22]', 'removal restored')
     check('[[3 cuAdd] isError]', 'addition withdrawn')
@@ -136,6 +138,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     # Retain useful failure evidence even when an earlier form failed to compile.
     assert result.returncode == 0, (result.returncode, transcript, result.stderr)
     assert result.stderr.decode().splitlines() == [
+        'unit has no current binding ledger',
         'generation commit requires a Host safe point', 'candidate is not mapped'
     ], (transcript, result.stderr)
     for index, label in enumerate(checks, 1):

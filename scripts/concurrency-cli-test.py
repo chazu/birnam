@@ -26,7 +26,11 @@ let program := [Concurrency load: #[{quote(fixture)}]];
 [System println: [[program field: #workspace] value]];
 // Worker startup must use the captured image, after its source disappears.
 [{quote(fixture)} concurrencyDelete];
-[System println: [[Concurrency load: #[]] kind]];
+[System println: [[DispatchGeneration current] isNil]];
+let another := [Concurrency load: #[]];
+[System println: [[another isError] not]];
+[System println: [[another field: #workspace] value]];
+[another close];
 let passed := [ServiceCheck run: program];
 let closed := [program close];
 [System println: [[closed pollOutcome] at: 0]];
@@ -38,11 +42,14 @@ let closed := [program close];
     assert result.returncode == 0 and not result.stderr, (result.returncode, result.stdout, result.stderr)
     lines = result.stdout.decode().splitlines()
     assert lines[:2] == ['#invalidConcurrencyModule', 'true'], lines
-    assert lines[3:] == ['#concurrencyAlreadyPrepared',
-                         '#[#workerServiceChecks 19 #failures 0]',
+    assert lines[3:5] == ['true', 'true'], lines
+    assert lines[6:] == ['#[#workerServiceChecks 19 #failures 0]',
                          '#success', '#concurrencyClosed'], lines
     assert not fixture.exists(), 'worker fixture source survived deletion'
     workspace = Path(lines[2])
     assert workspace.is_absolute() and workspace.name.startswith('birnam-concurrency-'), lines
     assert not workspace.exists(), ('close left worker image/workspace behind', workspace)
+    another_workspace = Path(lines[5])
+    assert another_workspace != workspace and another_workspace.name.startswith('birnam-concurrency-'), lines
+    assert not another_workspace.exists(), ('second preparation left its workspace behind', another_workspace)
 print('installed Concurrency: batch admission, source-free workers, 19 service checks and cleanup passed')

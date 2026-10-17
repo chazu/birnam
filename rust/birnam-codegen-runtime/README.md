@@ -80,7 +80,7 @@ Host's project-source observations consume these selectors. Installed project
 checks cover resolution and the check/build/run commands.
 
 The existing `sourceRevisionOf:`, `recordModuleSource:named:`, `moduleSourceFor:`,
-`sealInitialGeneration`, `lastError`, `evalPersisting:` and `evalPersisting:from:`
+`lastError`, `evalPersisting:` and `evalPersisting:from:`
 selectors now use the same current owners. Revision analysis remains private pure
 compiler code; its revision Vector retains the tag, name, requirements, original source and
 three historical digests, followed by the retained compilation record.
@@ -113,7 +113,7 @@ own metadata when the current registry changes.
 source declaration retains the first registration. `replaceCompiledSource:named:`
 explicitly selects a new validated record for an existing name without installing
 methods or activating code. The registry's content revision invalidates stale
-Generation observations, including ABA; sealing alone does not change that content
+Generation observations, including ABA; ordinary registration remains available. That content
 revision. Ordinary sends acquire no observers or method-identity guards.
 
 Image transports the ordinary record graph through the existing value codec.
@@ -291,7 +291,7 @@ those same bytes to `TCC loadObject:`. It checks kind, capability and already-lo
 requirements, initializes an owned Method/source/metadata/adapter record, validates source identity
 and digests, and runs the Method on a Machine. Successfully activated, revision-indexable modules enter
 Generation's source registry. Artifact dependency discovery preserves the broader
-historical syntactic declaration scan, independently of revision admission. Conflicting sources and sealed registration fail before
+historical syntactic declaration scan, independently of revision admission. Conflicting duplicate sources fail before
 user initialization. Errors and native failures propagate; nil means unsuccessful
 activation. Ordinary user initialization is not a rollback transaction.
 
@@ -320,15 +320,15 @@ rows retain entity, attribute and value without changing collection settings.
 
 Ordinary `--compile-module SOURCE OUTPUT` artifacts already use resumable entries.
 The former `--initial-generation-resumable` bootstrap switch is retired: source
-registration comes from ordinary artifact admission, and Host seals the complete
-initial projection before running. Candidate-specific selections remain explicit.
+registration comes from ordinary artifact admission. Host does not adopt or seal
+an initial generation. Candidate-specific selections and adoption remain explicit.
 
 `initialGenerationProjection` constructs the retained four-element projection:
 `#[#generationProjection sourceMap baseDigest generationSelection]`. Source-map
 rows are sorted by module name and contain the source revision and nil component.
 The complete implementation inventory records the current source backend's
 resumable disposition; named-adapter descriptor hashes come from that backend.
-Building a projection neither installs methods nor seals the source registry.
+Building a projection does not install methods or adopt a baseline.
 Sources remain rooted across callbacks, and a registry change during construction
 rejects the mixed snapshot. The native `generation` test covers deterministic
 bytes, inert construction, collecting factories and reentrant registration.

@@ -358,32 +358,13 @@ fn source_loading_uses_live_owners() {
             retained
         );
         exercise_callbacks(&h, &temp);
-        assert_eq!(
-            h.call(codegen, b"sealInitialGeneration", &[]),
-            h.named(b"true")
-        );
-        assert_eq!(
-            h.call(
-                codegen,
-                b"recordModuleSource:named:",
-                &[gold, id.intern_name(b"gold").unwrap()]
-            ),
-            nil
-        );
-        assert!(
-            String::from_utf8_lossy(&h.bytes(h.call(codegen, b"lastError", &[])))
-                .contains("module introduction")
-        );
-        std::fs::write(&path, b"[Module named: #afterSeal requires: #[]]; 99").unwrap();
+        assert_eq!(h.call(codegen, b"recordModuleSource:named:",
+            &[gold, id.intern_name(b"gold").unwrap()]), gold);
+        let later = b"[Module named: #afterRegistration requires: #[]]; 99";
+        std::fs::write(&path, later).unwrap();
         assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 99);
-        assert_eq!(
-            h.call(
-                codegen,
-                b"moduleSourceFor:",
-                &[id.intern_name(b"afterSeal").unwrap()]
-            ),
-            nil
-        );
+        let registered = h.call(codegen, b"moduleSourceFor:", &[id.intern_name(b"afterRegistration").unwrap()]);
+        assert_eq!(h.bytes(registered), later);
         std::fs::remove_dir_all(&temp).unwrap();
     }
 }

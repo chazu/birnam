@@ -3,13 +3,11 @@ use crate::candidate::call;
 #[derive(Default)]
 pub(super) struct Registry {
     pub entries: RefCell<Vec<(Oop, Oop)>>,
-    sealed: Cell<bool>,
     revision: Cell<usize>,
     contents_revision: Cell<usize>,
     pub stage: RefCell<Option<Stage>>,
 }
 pub(super) struct Stage {
-    sealed: bool,
     entries: Vec<(Oop, Oop)>,
     basis: usize,
     published: bool,
@@ -40,12 +38,10 @@ impl Registry {
 #[derive(Clone, Copy)]
 pub(super) enum Op {
     Snapshot,
-    Sealed,
     Record,
     Find,
     FindCompilation,
     Replace,
-    Seal,
     Prepare,
     Swap,
     Rollback,
@@ -76,30 +72,16 @@ pub(super) unsafe fn operation(
                     q.keep(name)?;
                     q.keep(source)?;
                 }
-                let mut rows = vec![s.named(if s.registry.sealed.get() {
-                    b"true"
-                } else {
-                    b"false"
-                })?];
+                let mut rows = vec![q.keep(s.id.intern_name(b"sourceRegistryV1")?)?];
                 for (n, source) in entries {
                     rows.push(s.vector(q, &[n, source])?);
                 }
                 Ok(Operand::object(s.vector(q, &rows)?))
             }
-            Op::Sealed => Ok(Operand::object(s.named(if s.registry.sealed.get() {
-                b"true"
-            } else {
-                b"false"
-            })?)),
-            Op::Seal => {
-                s.registry.revision.set(s.registry.revision.get().checked_add(1).ok_or_else(invalid)?);
-                s.registry.sealed.set(true);
-                Ok(Operand::object(yes))
-            }
             Op::Prepare => {
                 let rows = candidate::seq(s, q, object(a[0])?)?;
-                let (&sealed, rows) = rows.split_first().ok_or_else(invalid)?;
-                if sealed != yes && sealed != s.named(b"false")? {
+                let (&tag, rows) = rows.split_first().ok_or_else(invalid)?;
+                if tag != s.id.intern_name(b"sourceRegistryV1")? {
                     return Err(invalid());
                 }
                 let mut entries = Vec::new();
@@ -116,7 +98,7 @@ pub(super) unsafe fn operation(
                     if s.symbol_bytes(q,*name)?.as_deref()!=Some(metadata.name.as_slice()){return Err(invalid())}
                     entries.push((*name, *source));
                 }
-                *s.registry.stage.borrow_mut() = Some(Stage { sealed: sealed == yes, entries, basis: s.registry.revision.get(), published: false });
+                *s.registry.stage.borrow_mut() = Some(Stage { entries, basis: s.registry.revision.get(), published: false });
                 Ok(Operand::object(yes))
             }
             Op::Swap | Op::Rollback => {
@@ -132,7 +114,6 @@ pub(super) unsafe fn operation(
                     s.registry.contents_revision.set(s.registry.contents_revision.get().checked_add(1).ok_or_else(invalid)?);
                 }
                 std::mem::swap(&mut *s.registry.entries.borrow_mut(), &mut stage.entries);
-                stage.sealed = s.registry.sealed.replace(stage.sealed);
                 s.registry.revision.set(next);
                 stage.basis = next;
                 stage.published = !rollback;
@@ -166,9 +147,6 @@ pub(super) unsafe fn operation(
                     Some((record,s.source_text(q,record)?,bytes))
                 } else {None};
                 loop {
-                    if is_record && !replacing && s.registry.sealed.get() {
-                        s.note(q,b"RustCodegen module introduction is not available")?;return Ok(nil_value)
-                    }
                     let revision=s.registry.revision.get();
                     let entries=s.registry.entries.borrow().clone();
                     for &(key,record) in &entries {q.keep(key)?;q.keep(record)?;}

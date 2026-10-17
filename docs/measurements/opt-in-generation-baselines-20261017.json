@@ -1,0 +1,193 @@
+{
+  "date": "2026-10-17",
+  "base_commit": "e4931deb70174a1ddf23603415c60ddbef2b7a11",
+  "status": "implemented and qualified; uncommitted on top of prior uncommitted image-adoption slice; no push, release or user installation",
+  "scope": "No automatic console/TCP/worker adoption, no registration sealing, observational certification without status changes or inverse revocation. Version-tagged source registry; explicit candidate/source lineage remains.",
+  "prefix": "/tmp/birnam-opt-in-baseline/prefix",
+  "build_command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-opt-in-baseline/prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+  "native_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-opt-in-baseline/prefix/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests"
+  },
+  "commands": {
+    "native": "cargo test --offline --locked -p birnam-siphon --test generation_ledger --test generation_transaction --test candidate_retirement --test source_loader --test artifact_activation --test image -- --include-ignored --nocapture",
+    "startup": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib installed_bootstrap_and_console_do_not_compile_or_parse -- --ignored --nocapture",
+    "images": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib image_restores_descriptions_and_explicit_adoption -- --ignored --nocapture",
+    "console_and_initial_tcp": "python3 scripts/generation-cli-test.py /tmp/birnam-opt-in-baseline/prefix",
+    "tcp_final": "python3 scripts/generation-cli-test.py /tmp/birnam-opt-in-baseline/prefix --socket-only",
+    "concurrency": "python3 scripts/concurrency-cli-test.py /tmp/birnam-opt-in-baseline/prefix",
+    "artifacts": "python3 scripts/artifact-cli-test.py /tmp/birnam-opt-in-baseline/prefix",
+    "compiled_units": "python3 scripts/compiled-unit-cli-test.py /tmp/birnam-opt-in-baseline/prefix",
+    "wire": "python3 scripts/isolate-image-wire-test.py /tmp/birnam-opt-in-baseline/prefix --baseline /tmp/birnam-image-adoption/prefix",
+    "language": "/tmp/birnam-opt-in-baseline/prefix/bin/birnam modules/run-tests.birnam",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py"
+  },
+  "checks": {
+    "build": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/build.log"
+    },
+    "native": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/native.log"
+    },
+    "language": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/language.log"
+    },
+    "startup": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/startup.log"
+    },
+    "images": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/images.log"
+    },
+    "tcp": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/socket-final.log"
+    },
+    "concurrency": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/concurrency-final.log"
+    },
+    "artifacts": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/artifact-cli.log"
+    },
+    "compiled_units": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/compiled-cli.log"
+    },
+    "wire": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/worker-wire.log"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/formal.log"
+    },
+    "console": {
+      "result": "pass",
+      "log": "/tmp/birnam-opt-in-baseline/generation-cli.log",
+      "scope": "Console phase passed. The later TCP phase exposed a Python timeout-handler incompatibility; corrected socket-only rerun passed separately."
+    }
+  },
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-nvo0iekh/summary.json",
+    "theorems": 358,
+    "rejected_mutations": 103,
+    "expected_tlc_outcomes": 228
+  },
+  "language_assertions": 826,
+  "compiled_unit_policy_checks": 61,
+  "worker_service_checks": 19,
+  "wire_cases_per_runtime": 12,
+  "image_chain_epochs": 21,
+  "red_log": "/tmp/birnam-opt-in-baseline/red.log",
+  "red_environment": {
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-image-adoption/prefix/lib",
+    "BIRNAM_LEDGER_DRIFT_CASE": "retry"
+  },
+  "schema_transition": "Source registry header changes from Boolean sealing flag to #sourceRegistryV1. Both readers reject old shape; regenerate old images. Outer image container and Id ABI unchanged.",
+  "remaining": [
+    "Candidate operations retain adopted source lineage/full predecessor selection; new registrations can stale that optional baseline. In-place renewal/source-lineage decoupling remains.",
+    "Host-only activation admission still requires qualification within entered code.",
+    "Logical discard remains coupled to artifact-file cleanup/diagnostics.",
+    "No full Store-free bootstrap or CPU performance improvement claimed."
+  ],
+  "production_source_copy_matches": [
+    "rust/birnam-generation/src/candidate.rs",
+    "rust/birnam-generation/src/candidate_ledger.rs",
+    "rust/birnam-generation/src/candidate_recovery.rs",
+    "rust/birnam-generation/src/lib.rs",
+    "rust/birnam-generation/src/registry.rs",
+    "rust/birnam-codegen-runtime/src/publication.rs",
+    "rust/birnam-codegen-runtime/src/source.rs",
+    "rust/birnam-codegen-runtime/src/artifact.rs",
+    "rust/birnam-codegen-runtime/src/lib.rs",
+    "rust/birnam-host-interaction/src/interaction.rs",
+    "rust/birnam-image/src/native.rs",
+    "modules/compiled-unit.birnam",
+    "modules/compiled-unit-docs.birnam",
+    "modules/isolate.birnam"
+  ],
+  "test_changes_after_build": [
+    "rust/birnam-host/src/startup.rs (test-only old-schema staging assertion)",
+    "scripts/generation-cli-test.py (portable timeout handler)",
+    "scripts/concurrency-cli-test.py (assert both workspaces removed)"
+  ],
+  "removed_paths": [
+    "formal/semantics/tla/CompilationOwnerSeal.cfg"
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "2bfcdfaee113e84a0711b4b61f2e6708bdaa55bc90aaa4bb9aa8626580873f5b",
+    "docs/design/explicit-image-adoption.md": "0f00663d0276f730c7b3dd4ec97bf396b844673b9c1ef2dfbda9c55fcb35b63a",
+    "docs/design/generation-lifecycle-review.md": "db72e381069e136957dcd320d51aff422e6046e8e709595acc281dd672bb66e2",
+    "docs/design/opt-in-generation-baselines.md": "2dd55fb845e0c61850f6063d3363ac01f749ca1c04b5498bbc932ad3aab431c3",
+    "docs/design/optional-store-and-relational.md": "8e7abd2ebaaacdf2a35c7aa711f71915ee1b3a394e96e2cf372aa775826de2b5",
+    "docs/design/prepared-operation-admission.md": "65990886f437179e3c25470b3950ea1262cdc5956aac951735b610dad423795a",
+    "docs/design/scoped-generation-transactions.md": "7fd6970133128e3e04d9af3f4c002511ce5da69c276dcb679f144180265e694d",
+    "docs/guide/05-compiled-units.md": "701461d96b5561d1d3db7f2b0b84a4b31541b64b295299bb1f37bb0c305c0bd5",
+    "formal/semantics/lean/SemanticsAudit.lean": "923693547cd2a563c5e57ed2f3c3367e4072deb52c1d04441677ba02f0374e7e",
+    "formal/semantics/lean/SharedInvocation.lean": "de944612e9805700009f33e21ba8e1380d98e92f4c6041f3a2dcba67e2634e4e",
+    "formal/semantics/tla/Certification.tla": "0da088d944b81616ee6b917c39bc88701654c8425b3e222bfb82e2f55caedc05",
+    "formal/semantics/tla/CertificationPoison.cfg": "2a88b96758c95662939c137b8159bfbb75830dd4f658cffa873089ed26f2a93f",
+    "formal/semantics/tla/CertificationSafe.cfg": "7acd3f822d76d960e316d15454a0e32c2324efebcbd20c23980f37c66a1002a7",
+    "formal/semantics/tla/CertificationSeal.cfg": "4a6ccaac8627ef6f84a59792b09f4c37162a227f36beb51e9bd8678492b53b6e",
+    "formal/semantics/tla/CertificationStartup.cfg": "342cd6e43a3245415cd15aea0463826aacdb78a5d2bc17d03f992a23da812d3d",
+    "formal/semantics/tla/CertificationSticky.cfg": "3b2a3c7b3d7f46fc5764f7fff6c6d8c586b0f69af9644b73eebf0526a874997a",
+    "formal/semantics/tla/CompilationOwner.tla": "22ebb0edb90824c977f500afc4ef09ddde9623b35e78bd20b9c27c38ebaf2703",
+    "formal/semantics/tla/LiveSnapshot.tla": "4ffe9ab07710ef04d309405ebc65a85f7c2078a5effab10a5e510656dadbd60e",
+    "formal/semantics/tla/LiveSnapshotAdopt.cfg": "fb3c9ac30a5d3f96288ba2e1c96df9e08b7327f41c4fc46bfc36b8a1f9cf0bcc",
+    "formal/semantics/tla/LiveSnapshotOldCode.cfg": "1f66292d4aa748fe7c4093ea8c10ae09335f7d7bb1a7636ea50108d229ae375b",
+    "formal/semantics/tla/LiveSnapshotReplay.cfg": "1346b51f008ab02e248d7db0388daa99abe098646ca629088a34d194a2ad9f7d",
+    "formal/semantics/tla/LiveSnapshotSafe.cfg": "74ae203c295e825d641015c0e6e021a3bda3cdeb37c3e1f02acad4f7bebb60bf",
+    "formal/semantics/tla/LiveSnapshotStamp.cfg": "01fa45db4e7f702368aa163d4f90ef602a8f101adcae0c5eb181821c940894f3",
+    "formal/semantics/tla/LiveSnapshotUndo.cfg": "d54dcc285c7b1cf24f38b42f445bf833f34e5fba47dd377088bd059f04f3c121",
+    "modules/compiled-unit-docs.birnam": "6b10d95d2ddbad82ab04471090564e1388a002d420039b280a8c7174c98ffa5b",
+    "modules/compiled-unit.birnam": "bdbee4417b25acb05327eac16abe1e967e4a26a28984303f44de2f49ba97318f",
+    "modules/doc-test.birnam": "7388af23bc0ed4f5e5988799f76cca7f642ac0c10a711f016b1d96191213ece8",
+    "modules/isolate.birnam": "4c7b15e1af37044b6ae49129231d1e9cf141f7804211374fca412a751a013aad",
+    "rust/birnam-codegen-runtime/README.md": "1a644871217506847d8f6896fe3b14a441e526655d5cdbd0199430f6f823b2cd",
+    "rust/birnam-codegen-runtime/src/artifact.rs": "1324090cd4062f6d93f22cd1a09281203b43bbf34f1d7fd9bcaf54071cb6bbdd",
+    "rust/birnam-codegen-runtime/src/lib.rs": "126af9fe37fbd4ba7fc83c4c3e6db8e8c9493aed9a7bfa6f3f283970f5d1e7fe",
+    "rust/birnam-codegen-runtime/src/publication.rs": "746088d1e3f392e276604cf8ead35a279290fd2b58f230a5db4d32412c84e856",
+    "rust/birnam-codegen-runtime/src/source.rs": "8546165ade843f656bec9da4621bdbd27e46d2f84a3eb820f219449bd27a838f",
+    "rust/birnam-generation/README.md": "00bdd509e76dfbba7d86ee40c329084fb323f779ce05fa98aeb45780da98a665",
+    "rust/birnam-generation/src/candidate.rs": "1f444ac89763af5b22f13979f61bcce143ea28061bad6353bd2cf024de91c2ca",
+    "rust/birnam-generation/src/candidate_ledger.rs": "84647dbb3437d390f330247e46411aea94c6baae07356cd4e1d94c90a7815bf8",
+    "rust/birnam-generation/src/candidate_recovery.rs": "aa770a30f8848757d2dd467d6463db3b0d6e17acd35537e688e2c5fcfd6dc039",
+    "rust/birnam-generation/src/lib.rs": "7d0dd6c7a86c482736cab4cf60b8ef0cf265220a8af818eaec0d26a35127e0b9",
+    "rust/birnam-generation/src/registry.rs": "a3b7f71a69f68d7e72c1434a3df247b8e54bae0b3c4f9e2a658b82d30aca7e47",
+    "rust/birnam-host-interaction/src/interaction.rs": "ecbed0ec4a9f9e2184a284932f3293c2e7423391192482641580fc2c4b727c92",
+    "rust/birnam-host/src/lifecycle_test.rs": "7e7770e7bd6e012931059024cf1d57b0cc11fee6b290facba21532c913648a7c",
+    "rust/birnam-host/src/startup.rs": "0e46516838d0338c8347f1ec1ab8405dda32e01802fde0129f72dd4295be45f1",
+    "rust/birnam-image/README.md": "73622050d0ac0f2eeb0b24e559f75ae042313b6f71f8e72818cc5b47535c3b0d",
+    "rust/birnam-image/src/native.rs": "37ca4e05c306083eb1da15a9a0b0f539468eaac5d514d60ce0b9559694337d11",
+    "rust/birnam-siphon/tests/artifact_activation.rs": "e28bcaccdc1073011cc92c3e9dcad5c729fbe2127882cb07df962e02f0c833f4",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "4a343871dc8ec8b1e0e872234c1cc1d40d51f637258b74311a58191b307fe4aa",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "106c7d902b6e090584ee7d0da04317821b0964b1bcde358bced6def56a6720e7",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "fad967bfe2cc6e2ec1c3c4bb4680529f459b2e66461de6cf6308e584294cd49c",
+    "rust/birnam-siphon/tests/image.rs": "0e6416b6c49fd64549b4c36fc8f34ba82bf0a3dfa710752e96d1c1a8d7945b67",
+    "rust/birnam-siphon/tests/source_loader.rs": "96b6e0fa819492bedfe64510640ba7df2868f2557a166ebca864bc2fb8bc4174",
+    "scripts/artifact-cli-test.py": "c3b7a94f02443159f9b844a054984f395a595253c101ea29132a15ff548a6ea1",
+    "scripts/check-rooting-model.py": "26f3216faf960211ae569203370c50cc8ffd95cc72a33fd6bf6f3bf27d9b5b36",
+    "scripts/compiled-unit-cli-test.py": "8b794cefbca116b97f13ce23c00f6030b120d79e03579c8f9dad1fabc7a6e682",
+    "scripts/concurrency-cli-test.py": "fd1bceb42e2f114484a410cad0ae1b9c0bc0380f22e65e160211d0989e26d2a5",
+    "scripts/generation-cli-test.py": "effbe58bbd10ddf4f2801b503c2429c1bbeee791cc9954f44450148b112b96d0",
+    "scripts/host-cli-test.sh": "bf30ea6c069c90cead6118b1d90f1b94bea88e6844aef6e99452c6c699a19302",
+    "scripts/isolate-fixture.birnam": "ad8b37c1012276f56f294970d289064180d55a1baf4946d940de57fc49c1d0ae",
+    "scripts/isolate-image-wire-test.py": "51c103b9b1706bb6bfa6366dd161771045dd7d2dc87e1e2e315347ff99075499",
+    "scripts/ordinary-edit-image-test.py": "95ae29a682a27b10944ae8e81fd1ae08ee4811d52b057abfe8312dda06a7cd29"
+  },
+  "native_libraries_sha256": {
+    "libbirnam_generation.dylib": "2d44ead0c6014c4add09f4a1f9a9dc3df8d7b3d4b393fabb4ba6da386cab150a",
+    "libbirnam_codegen_runtime.dylib": "f7dabc39e8b3fabb2e3fa652fc6c60c7ea0116b2b5ad7b44e3ef2e8c6417a5db",
+    "libbirnam_host_interaction.dylib": "2f07440c094aa6b0336b3a26a084e27084e439444c4e86b251451d428c038674",
+    "libbirnam_compiledUnit.dylib": "e3e1559e707983c2e6bafd7c7c2faa0e51874544be4d9dca36956c9df6ce1ac0",
+    "libbirnam_isolate.dylib": "78a108e5ff5cb6315ac7059d8c00f7596b9385beba73ff5b9e7bb2e41911e454"
+  }
+}

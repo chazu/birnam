@@ -931,7 +931,6 @@ fn image_owner_roundtrip() {
             ),
             later
         );
-        h.call(codegen, b"sealInitialGeneration", &[]);
         h.eval(b"[Reflect defineMethod: #imageFixture on: Integer as: [:self | #before]]; [Reflect defineMethod: #imageTransient on: Integer as: [:self | #transient]]; [Reflect defineMethod: #imageInherited on: Collection as: [:self | #beforeInherited]]");
         let codegen = h.named(b"Codegen");
         let codegen_vt = behavior_of(&h, codegen);
@@ -1031,17 +1030,14 @@ fn image_owner_roundtrip() {
             ),
             nil
         );
-        // The saved registry was unsealed; the explicit reload restores that
-        // state too. Re-establish the sealed-registry precondition for this check.
-        assert_eq!(h.call(h.named(b"Generation"), b"sourceRegistrySealed", &[]), h.named(b"false"));
-        h.call(codegen, b"sealInitialGeneration", &[]);
+        // Source registration remains available after explicit image reload.
         assert_eq!(
             h.call(
                 codegen,
                 b"recordModuleSource:named:",
                 &[later, h.id.intern_name(b"later").unwrap()]
             ),
-            nil
+            later
         );
         assert_eq!(
             h.call(h.int(1), b"imageFixture", &[]),

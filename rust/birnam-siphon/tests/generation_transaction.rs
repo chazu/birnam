@@ -414,7 +414,6 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             ),
             generation
         );
-        v.call(cg, b"sealInitialGeneration", &[]);
         global_probes[0].1.bump_after_read.set(true);
         let unstable = v.call(
             v.named(b"Generation"),
@@ -707,6 +706,12 @@ fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_f
             v.call(ns, b"at:put:", &[v.sym(b"Store"), store]);
             v.call(ns, b"at:put:", &[v.sym(b"db"), db]);
             assert_eq!(committed, unit);
+            // Explicit validation may observe another managed module's drift,
+            // but must leave this activation's inverse usable.
+            let mismatch = v.call(v.named(b"Generation"), b"reconcileCandidate:", &[unit]);
+            assert_eq!(v.call(mismatch, b"kind", &[]), v.sym(b"staleGeneration"));
+            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
+            assert_eq!(v.fact(unit, b"rollbackAvailable"), yes);
             global_probes[1].1.basis_offset.set(0);
             assert!(effects.effects.get() > 0, "replacement setter did not run");
             let side_entry = v.direct(b"txSetterSideEffect");

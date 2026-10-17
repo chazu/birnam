@@ -245,7 +245,6 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             ),
             generation
         );
-        v.call(cg, b"sealInitialGeneration", &[]);
         if running {
             let fresh = v.record(b"CompiledUnit");
             let before = object(send(

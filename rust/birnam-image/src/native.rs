@@ -646,7 +646,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
     unsafe {
         let admitted = s.call(q, s.named(b"Generation")?, b"prepareImageSnapshot", &[])?;
         if admitted != s.named(b"true")? {
-            s.reject(b"Managed generation is not current");
+            s.reject(b"Image snapshot admission failed");
             return if s.is_error(admitted)? {
                 Ok(Operand::object(admitted))
             } else {
@@ -804,7 +804,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         )?;
         let admitted = s.call(q, s.named(b"Generation")?, b"prepareImageSnapshot", &[])?;
         if admitted != s.named(b"true")? {
-            s.reject(b"Managed generation changed during image save");
+            s.reject(b"Image snapshot admission changed during save");
             return if s.is_error(admitted)? {
                 Ok(Operand::object(admitted))
             } else {

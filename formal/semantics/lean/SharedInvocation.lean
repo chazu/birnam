@@ -254,6 +254,42 @@ theorem scoped_edit_does_not_certify_outside (old outside replacement recorded :
     (scopedEdit ⟨old, outside⟩ old replacement).outside ≠ recorded := by
   simpa [scopedEdit] using drift
 
+-- Certification observes the world; it does not rewrite lifecycle state.
+structure CertificateWorld where
+  binding : Nat
+  recorded : Nat
+  sourceRevision : Nat
+  recordedRevision : Nat
+  adopted : Bool
+  status : Nat
+  undo : Bool
+  deriving DecidableEq
+
+def inspectCertificate (s : CertificateWorld) : CertificateWorld × Bool :=
+  (s, s.adopted && s.binding == s.recorded && s.sourceRevision == s.recordedRevision)
+
+def ordinaryStart (s : CertificateWorld) : CertificateWorld := s
+
+def registerSource (s : CertificateWorld) : CertificateWorld :=
+  { s with sourceRevision := s.sourceRevision + 1 }
+
+theorem certification_preserves_world (s : CertificateWorld) :
+    (inspectCertificate s).1 = s := by rfl
+
+theorem ordinary_start_preserves_adoption_choice (s : CertificateWorld) :
+    (ordinaryStart s).adopted = s.adopted := by rfl
+
+theorem source_registration_not_blocked_by_adoption (s : CertificateWorld) :
+    (registerSource s).sourceRevision = s.sourceRevision + 1 := by rfl
+
+theorem source_registration_keeps_inverse (s : CertificateWorld) :
+    (registerSource s).undo = s.undo := by rfl
+
+theorem restored_binding_can_validate_again (s : CertificateWorld)
+    (adopted : s.adopted = true) (source : s.sourceRevision = s.recordedRevision) :
+    (inspectCertificate { s with binding := s.recorded }).2 = true := by
+  simp [inspectCertificate, adopted, source]
+
 -- An image records current executable state. Revision metadata is descriptive
 -- after drift and must not reactivate old transaction authority on restoration.
 structure WorldSnapshot where
@@ -266,13 +302,29 @@ def snapshotLive (eligible : Bool) (code revision : Nat) : WorldSnapshot :=
   ⟨code, revision, eligible && code == revision⟩
 
 def restoreLive (image : WorldSnapshot) : Nat × Bool :=
-  (image.code, image.managedCurrent)
+  (image.code, false)
+
+-- Loading does not establish transaction authority, even for a matching revision.
+theorem matching_image_has_no_managed_authority (code : Nat) :
+    (restoreLive (snapshotLive true code code)).2 = false := by rfl
+
+def certifyBaseline (requested : Bool) (code source : Nat) : Bool :=
+  requested && code == source
+
+theorem baseline_requires_explicit_request (code source : Nat) :
+    certifyBaseline false code source = false := by simp [certifyBaseline]
+
+theorem explicit_baseline_rejects_different_code (code source : Nat) (h : code ≠ source) :
+    certifyBaseline true code source = false := by simp [certifyBaseline, h]
+
+theorem explicit_matching_baseline_can_be_adopted (code : Nat) :
+    certifyBaseline true code code = true := by simp [certifyBaseline]
 
 theorem snapshot_uses_live_code (eligible : Bool) (code revision : Nat) :
     (restoreLive (snapshotLive eligible code revision)).1 = code := by rfl
 
-theorem drifted_image_has_no_managed_authority (eligible : Bool) (code revision : Nat) (h : code ≠ revision) :
-    (restoreLive (snapshotLive eligible code revision)).2 = false := by simp [restoreLive, snapshotLive, h]
+theorem restored_image_has_no_managed_authority (eligible : Bool) (code revision : Nat) :
+    (restoreLive (snapshotLive eligible code revision)).2 = false := by rfl
 
 theorem descriptive_image_cannot_reactivate (code revision : Nat) :
     (restoreLive (snapshotLive false code revision)).2 = false := by simp [restoreLive, snapshotLive]

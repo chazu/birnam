@@ -249,7 +249,7 @@ import Admission
 #print axioms Birnam.SharedInvocation.edit_invalidates_old_preparation
 
 #print axioms Birnam.SharedInvocation.snapshot_uses_live_code
-#print axioms Birnam.SharedInvocation.drifted_image_has_no_managed_authority
+#print axioms Birnam.SharedInvocation.restored_image_has_no_managed_authority
 #print axioms Birnam.SharedInvocation.changed_snapshot_keeps_old_file
 
 #print axioms Birnam.SharedInvocation.descriptive_image_cannot_reactivate
@@ -302,3 +302,14 @@ import Admission
 #print axioms Birnam.SharedInvocation.scoped_edit_rejects_selected_conflict
 #print axioms Birnam.SharedInvocation.scoped_undo_preserves_later_outside
 #print axioms Birnam.SharedInvocation.scoped_edit_does_not_certify_outside
+
+#print axioms Birnam.SharedInvocation.matching_image_has_no_managed_authority
+#print axioms Birnam.SharedInvocation.baseline_requires_explicit_request
+#print axioms Birnam.SharedInvocation.explicit_baseline_rejects_different_code
+#print axioms Birnam.SharedInvocation.explicit_matching_baseline_can_be_adopted
+
+#print axioms Birnam.SharedInvocation.certification_preserves_world
+#print axioms Birnam.SharedInvocation.ordinary_start_preserves_adoption_choice
+#print axioms Birnam.SharedInvocation.source_registration_not_blocked_by_adoption
+#print axioms Birnam.SharedInvocation.source_registration_keeps_inverse
+#print axioms Birnam.SharedInvocation.restored_binding_can_validate_again

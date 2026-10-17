@@ -41,11 +41,11 @@ ADOPT
   SAVED_STATUS
 ]];
 [System saveImage: INITIAL]; [System println: [[System imageSaveReport] status]]
-'''.replace('MODULE',json.dumps(str(module))).replace('ADOPT','[DispatchGeneration initializeCurrent];' if managed else '').replace('RESTORED_STATUS','[System println: [db currentValue: [DispatchGeneration current] attr: #state]]; [System println: [[Generation validateImageGeneration] isError]];' if managed else '').replace('SAVED_STATUS','[System println: [db currentValue: [DispatchGeneration current] attr: #state]]' if managed else 'nil').replace('EDITED',json.dumps(str(edited))).replace('INITIAL',json.dumps(str(initial))))
+'''.replace('MODULE',json.dumps(str(module))).replace('ADOPT','[DispatchGeneration adoptCurrent];' if managed else '').replace('RESTORED_STATUS','[System println: [[DispatchGeneration current] state]]; [System println: [[Generation validateImageGeneration] isError]];' if managed else '').replace('SAVED_STATUS','[System println: [[DispatchGeneration current] state]]' if managed else 'nil').replace('EDITED',json.dumps(str(edited))).replace('INITIAL',json.dumps(str(initial))))
  run(tag+'-save',[prefix/'bin/birnam',writer],'#saved\n');writer.unlink();module.unlink()
- run(tag+'-edit',[prefix/'bin/birnam',initial],('false' if managed else 'true')+'\ntrue\n99\n41\ntrue\ntrue\n#saved\n'+('#drifted\n' if managed else ''))
+ run(tag+'-edit',[prefix/'bin/birnam',initial],('false' if managed else 'true')+'\ntrue\n99\n41\ntrue\ntrue\n#saved\n'+('nil\n' if managed else ''))
  assert edited.exists()
- expected='99\n'+('false\n#drifted\ntrue\n' if managed else 'true\n')+'true\n111\n'
+ expected='99\n'+('false\nnil\ntrue\n' if managed else 'true\n')+'true\n111\n'
  for mode,flags in [('mapped',[]),('rebuilt',['--rebuild'])]:run(tag+'-'+mode,[prefix/'bin/birnam',*flags,edited],expected)
  if managed:
   resaver=work/'resaver.birnam';resaved=work/'resaved.image'

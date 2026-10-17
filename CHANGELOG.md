@@ -8,6 +8,15 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove automatic generation adoption from console/TCP startup and worker-image
+  preparation, and remove source-registration sealing. Explicit validation now
+  reports current agreement without changing lifecycle status or revoking undo.
+  Source registry images use a `#sourceRegistryV1` header; regenerate old images.
+
+- Restore images without automatic generation adoption or replacement component
+  units. Saving/resaving preserves lifecycle descriptions; `DispatchGeneration
+  adoptCurrent` explicitly establishes a fresh validated baseline when requested.
+
 - Scope candidate activation/rollback and compensation to selected bindings and
   Globals. Independent managed edits survive; relevant conflicts no longer poison
   the whole generation; explicit whole-program validation remains available.

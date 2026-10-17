@@ -393,7 +393,12 @@ unobservable representation optimization, and does not copy or delete user facts
   bindings/Globals and lifecycle observations. Preserve outside managed edits and
   allow retry after an affected binding is restored. See
   [scoped transactions](scoped-generation-transactions.md).
-- [ ] Separate optional whole-program certification from ordinary
+- [x] Restore/resave images without automatic generation adoption, replacement
+  component units or lifecycle reconciliation. Keep explicit baseline adoption and
+  source-free mapped/rebuilt restoration; see [explicit image adoption](explicit-image-adoption.md).
+- [x] Remove ordinary console/TCP/worker adoption and all source-registry sealing;
+  make explicit validation observational. See [opt-in baselines](opt-in-generation-baselines.md).
+- [ ] Finish separating optional whole-program certification from ordinary
   compilation/loading. Preserve meaningful conditional
   undo and source-free restoration; do not relocate the old policy unchanged.
 - [ ] Before migrating each coordinated owner, record which operations actually

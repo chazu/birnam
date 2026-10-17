@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "e4931deb70174a1ddf23603415c60ddbef2b7a11",
+  "status": "implemented and qualified; uncommitted; no push, release or user installation",
+  "scope": "Image load restores descriptions and code without automatic generation adoption. Explicit DispatchGeneration adoptCurrent establishes a checked baseline. Snapshot/resave does not reconcile lifecycle records. Composed admission policy and dead composition slots removed.",
+  "prefix": "/tmp/birnam-image-adoption/prefix",
+  "build_command": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-image-adoption/prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+  "native_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-image-adoption/prefix/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": ".cargo-target/native-message-tests"
+  },
+  "commands": {
+    "native": "cargo test --offline --locked -p birnam-siphon --test generation_transaction --test generation_ledger --test candidate_retirement --test image_snapshot_stamp -- --include-ignored --nocapture",
+    "host_group_initial": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib lifecycle_test:: -- --ignored --nocapture --test-threads=1",
+    "images": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib image_restores_descriptions_and_explicit_adoption -- --ignored --nocapture",
+    "fields": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib lifecycle_fields_preserve_explicit_facts_and_status_reads -- --ignored --nocapture",
+    "startup": "CARGO_TARGET_DIR=.cargo-target/host-tests cargo test --offline --locked -p birnam-host --lib installed_bootstrap_and_console_do_not_compile_or_parse -- --ignored --nocapture",
+    "cli": "python3 scripts/compiled-unit-cli-test.py /tmp/birnam-image-adoption/prefix",
+    "language": "/tmp/birnam-image-adoption/prefix/bin/birnam modules/run-tests.birnam",
+    "ordinary_images": "python3 scripts/ordinary-edit-image-test.py /tmp/birnam-image-adoption/prefix",
+    "record_images": "python3 scripts/lifecycle-record-image-test.py /tmp/birnam-image-adoption/prefix",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py"
+  },
+  "checks": {
+    "build": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/build-qualified.log"
+    },
+    "native": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/native.log"
+    },
+    "images": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/images.log"
+    },
+    "fields": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/fields.log"
+    },
+    "startup": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/startup.log"
+    },
+    "cli": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/cli-final.log"
+    },
+    "language": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/language-final.log"
+    },
+    "ordinary_images": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/ordinary-images.log"
+    },
+    "record_images": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/record-images.log"
+    },
+    "formal": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/formal-final.log"
+    },
+    "host_intents": {
+      "result": "pass",
+      "log": "/tmp/birnam-image-adoption/host.log",
+      "scope": "First test passed. Two subsequent tests could not initialize the process-global Id runtime again; their separate fresh-process runs passed as images and fields."
+    }
+  },
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-s4cn18bj/summary.json",
+    "theorems": 353,
+    "rejected_mutations": 100,
+    "expected_tlc_outcomes": 224
+  },
+  "language_assertions": 826,
+  "cli_policy_checks": 61,
+  "standalone_receipts": [
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-ordinary-edit-zeaik3q9/results.json",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-lifecycle-records-hs7f9r0l/results.json"
+  ],
+  "removed_verified_images_sha256": {
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-ordinary-edit-zeaik3q9/unmanaged-edited.image": "0d6fb10dc837d6ddc2614e2e54bc7a6a89cb02cedee73fd5cd244c15d9e97aba",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-ordinary-edit-zeaik3q9/managed-initial.image": "939d3bf0e102881654d3de1d9961e4f60a443974a51f2df9cf0f72499d2e31de",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-ordinary-edit-zeaik3q9/unmanaged-initial.image": "5313e47fa1039af20f49688c42a8f6f2b4d5fdb06a7fffc3e9d5d6c2686f0b5b",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-ordinary-edit-zeaik3q9/managed-edited.image": "a364de7eb8716a5b2822cb833e32825af2b37d392697e93d743e123153d36e2c",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-ordinary-edit-zeaik3q9/resaved.image": "70959a692da7f8698601dfd26c93c8eaff775baf05c0dd2d9e6103a9fd1d9d84"
+  },
+  "red_log": "/tmp/birnam-image-adoption/red.log",
+  "intermediate_failures": [
+    "The prior e4931deb runtime failed the new no-automatic-adoption assertion after a successful image load.",
+    "An obsolete Lean drift hypothesis became unused after strengthening restoration to always drop authority; corrected and full formal gate passed.",
+    "A build could not publish its bootstrap image when disk filled; temporary build/test artifacts were removed and a complete build passed.",
+    "The grouped Host run initialized Id once and could not start two more runtimes in the same process; separate images/fields runs passed.",
+    "Initial language run had 825 passes and one stale help-entry count (19 instead of 18); final complete run passed all 826 assertions.",
+    "Initial CLI run returned true for all 61 checks but its diagnostic list omitted the new no-adoption check; final run passed with the complete expected list."
+  ],
+  "remaining": [
+    "Cold/REPL default adoption and initial/source-registry sealing remain.",
+    "Candidate source-lineage/certification coupling and sticky explicit drift remain.",
+    "Host-only activation admission and discard/file cleanup separation remain.",
+    "Full Store-free bootstrap and optional Generation participation in image ownership coordination are not claimed."
+  ],
+  "production_source_copy_matches": [
+    "rust/birnam-generation/src/candidate.rs",
+    "rust/birnam-generation/src/candidate_ledger.rs",
+    "rust/birnam-generation/src/candidate_recovery.rs",
+    "rust/birnam-generation/src/lib.rs",
+    "rust/birnam-image/src/native.rs",
+    "modules/compiled-unit.birnam",
+    "modules/compiled-unit-docs.birnam"
+  ],
+  "source_sha256": {
+    "CHANGELOG.md": "bcb1f4e98cea83de5ac82b8c1867f310d1aed1a21e1a5749ce948b9460608f60",
+    "docs/design/explicit-image-adoption.md": "c717ab4ecb2fce19c73b4cd150e2230e5f1fe0dcb77ef729ca3396fa255ce0cf",
+    "docs/design/generation-lifecycle-review.md": "4cd124363f073c0d594ff88f33aa1696c3b135f10d0c59f33ac54f8d137e30a4",
+    "docs/design/optional-store-and-relational.md": "613ae9c7015231a93aafa7164353d9f0dc8d81c4333f7daf6e13544f97f69de4",
+    "docs/design/prepared-operation-admission.md": "65990886f437179e3c25470b3950ea1262cdc5956aac951735b610dad423795a",
+    "docs/design/scoped-generation-transactions.md": "7fd6970133128e3e04d9af3f4c002511ce5da69c276dcb679f144180265e694d",
+    "docs/guide/05-compiled-units.md": "f51dfdf34379ba8df9153059bb3b58b098b222fe6057dd8a1e09f4586f914217",
+    "formal/semantics/lean/SemanticsAudit.lean": "d718dac50e28d0d6e836487ebe20a4e26ed59fc8e4171b3c4278f56eb05e0cf6",
+    "formal/semantics/lean/SharedInvocation.lean": "c7d5d3eb6b99fbffbad1c715bcfaeae8a1e63fa966076a9e5fe3f687af747971",
+    "formal/semantics/tla/LiveSnapshot.tla": "4ffe9ab07710ef04d309405ebc65a85f7c2078a5effab10a5e510656dadbd60e",
+    "formal/semantics/tla/LiveSnapshotAdopt.cfg": "fb3c9ac30a5d3f96288ba2e1c96df9e08b7327f41c4fc46bfc36b8a1f9cf0bcc",
+    "formal/semantics/tla/LiveSnapshotOldCode.cfg": "1f66292d4aa748fe7c4093ea8c10ae09335f7d7bb1a7636ea50108d229ae375b",
+    "formal/semantics/tla/LiveSnapshotReplay.cfg": "1346b51f008ab02e248d7db0388daa99abe098646ca629088a34d194a2ad9f7d",
+    "formal/semantics/tla/LiveSnapshotSafe.cfg": "74ae203c295e825d641015c0e6e021a3bda3cdeb37c3e1f02acad4f7bebb60bf",
+    "formal/semantics/tla/LiveSnapshotStamp.cfg": "01fa45db4e7f702368aa163d4f90ef602a8f101adcae0c5eb181821c940894f3",
+    "formal/semantics/tla/LiveSnapshotUndo.cfg": "d54dcc285c7b1cf24f38b42f445bf833f34e5fba47dd377088bd059f04f3c121",
+    "modules/compiled-unit-docs.birnam": "ad7327cf649507765bb75e60f3c1d601822dae644e65a20721da44970f5ce015",
+    "modules/compiled-unit.birnam": "65938507e8b18db3c4abb7a35b8ac622ad77dccf38098a041bb96b4cf9f9332e",
+    "modules/doc-test.birnam": "7388af23bc0ed4f5e5988799f76cca7f642ac0c10a711f016b1d96191213ece8",
+    "rust/birnam-generation/README.md": "780664c211f41c4c7604ca33f4184b263e2cfd4bf42ceb04b45ef5e93627f070",
+    "rust/birnam-generation/src/candidate.rs": "8f5399704c4f23de17f3e5fbd8632eb207aced77739372aeb1fd8b459abccbfb",
+    "rust/birnam-generation/src/candidate_ledger.rs": "a060968237aa451d32935f5e0d12b4df7010e5b0c32431652a7197acdf6979e7",
+    "rust/birnam-generation/src/candidate_recovery.rs": "c5887fdc32aed6982b472724ca091c3cb73b84682c8521625965e4f413a1f023",
+    "rust/birnam-generation/src/lib.rs": "5019ac0306fbf929c5feff5df657afe59930e6118e48862585073ab45039cf1e",
+    "rust/birnam-host/src/lifecycle_test.rs": "7679cd6672dfdecdf2048d215f5cfa308126a675af4b4d42ec92e5002c6e19d6",
+    "rust/birnam-image/README.md": "73622050d0ac0f2eeb0b24e559f75ae042313b6f71f8e72818cc5b47535c3b0d",
+    "rust/birnam-image/src/native.rs": "37ca4e05c306083eb1da15a9a0b0f539468eaac5d514d60ce0b9559694337d11",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "7e6e2645d3b15bf6354f07b2d291a6f25a2675f407275510acfd1656f1be4c01",
+    "scripts/check-rooting-model.py": "3152784325a05888bb18d547d31cb010656c7a004b0821f1b42f710b102ea32e",
+    "scripts/compiled-unit-cli-test.py": "5d8de35a5cee387540808e2dae7bd5c766ee0fdf147ed56154f29c95990a0488",
+    "scripts/host-cli-test.sh": "bf30ea6c069c90cead6118b1d90f1b94bea88e6844aef6e99452c6c699a19302",
+    "scripts/ordinary-edit-image-test.py": "2917bae805244975d8f9271911284300f71a54099f2d03683575def4d13def98"
+  },
+  "native_libraries_sha256": {
+    "libbirnam_generation.dylib": "a09cac294ae6c39166f4e98f94bb5f08fc2a88a2f27e05378838e0980abfa8fa",
+    "libbirnam_image.dylib": "28787a54effd72bffb9d4bef20d2e6dfca27a0d42bce0d87a8650f61f86c47fe",
+    "libbirnam_compiledUnit.dylib": "7287a2632486a09b80d566d46f320a4a3007d8294dc9ddff337c93c344559ba9",
+    "libbirnam_host_entry.dylib": "feed3803a7260aef0e9a3773561da156ac736c1f0a9f71101314d8c36874b54c"
+  }
+}

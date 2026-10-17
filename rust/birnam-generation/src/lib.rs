@@ -323,16 +323,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (
                 vt,
-                b"adoptComposedGeneration:".as_slice(),
-                Op::Candidate(candidate::Op::AdoptComposed),
-            ),
-            (
-                vt,
-                b"imageRecoveryIdentity".as_slice(),
-                Op::Candidate(candidate::Op::RecoveryIdentity),
-            ),
-            (
-                vt,
                 b"reconcileCandidate:".as_slice(),
                 Op::Candidate(candidate::Op::Reconcile),
             ),
@@ -350,11 +340,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 vt,
                 b"moduleSourceFor:".as_slice(),
                 Op::Registry(registry::Op::Find),
-            ),
-            (
-                vt,
-                b"sealInitialGeneration".as_slice(),
-                Op::Registry(registry::Op::Seal),
             ),
             (
                 vt,
@@ -402,11 +387,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 vt,
                 b"candidateContentPath:".as_slice(),
                 Op::Candidate(candidate::Op::Path),
-            ),
-            (
-                vt,
-                b"sourceRegistrySealed".as_slice(),
-                Op::Registry(registry::Op::Sealed),
             ),
         ] {
             let c = Box::into_raw(Box::new(Entry { state: s, op }));

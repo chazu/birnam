@@ -6,13 +6,13 @@
 
 // Lifecycle records own ordinary named reference slots. Explicit facts are independent.
 [[[Globals at: #CompiledUnit] isNil]
-  ifTrue: [| [Globals at: #CompiledUnit put: [ObjectModel newSlots: #[nil nil nil nil nil nil nil nil nil nil nil nil false nil nil] parent: ObjectVt]]]
+  ifTrue: [| [Globals at: #CompiledUnit put: [ObjectModel newSlots: #[nil nil nil nil nil nil nil nil nil nil nil nil false] parent: ObjectVt]]]
   ifFalse: [| nil]];
-[Reflect defineMethod: #slotNames on: CompiledUnit as: [:self | #[#unitName #generation #kind #state #requires #provides #sourceRevision #authoredSource #revisionDigest #artifactChecksum #expectedBaseDigest #importStatus #rollbackAvailable #composedInto #compositionIdentity]]];
+[Reflect defineMethod: #slotNames on: CompiledUnit as: [:self | #[#unitName #generation #kind #state #requires #provides #sourceRevision #authoredSource #revisionDigest #artifactChecksum #expectedBaseDigest #importStatus #rollbackAvailable]]];
 [[[Globals at: #DispatchGeneration] isNil]
-  ifTrue: [| [Globals at: #DispatchGeneration put: [ObjectModel newSlots: #[nil nil nil nil nil nil nil nil nil] parent: ObjectVt]]]
+  ifTrue: [| [Globals at: #DispatchGeneration put: [ObjectModel newSlots: #[nil nil nil nil nil nil nil] parent: ObjectVt]]]
   ifFalse: [| nil]];
-[Reflect defineMethod: #slotNames on: DispatchGeneration as: [:self | #[#sourceMap #baseDigest #generationSelection #predecessor #deltaUnit #kind #state #compositionIdentity #composedInto]]];
+[Reflect defineMethod: #slotNames on: DispatchGeneration as: [:self | #[#sourceMap #baseDigest #generationSelection #predecessor #deltaUnit #kind #state]]];
 [[[Globals at: #EvolutionIntent] isNil]
   ifTrue: [| [Globals at: #EvolutionIntent put: [ObjectModel newSlots: #[nil nil] parent: ObjectVt]]]
   ifFalse: [| nil]];
@@ -61,7 +61,6 @@ let compiledGenerationNumbers := [{} asCell];
 
 [Reflect defineMethod: #deltaUnit on: DispatchGeneration as: [:self | [ObjectModel slot: 4 in: self]]];
 
-[Reflect defineMethod: #compositionIdentity on: DispatchGeneration as: [:self | [ObjectModel slot: 7 in: self]]];
 
 [Reflect defineMethod: #entryFor: on: DispatchGeneration as: [:self :name |
   [[self sourceMap] inject: nil into: [:found :entry |
@@ -89,80 +88,33 @@ let compiledGenerationNumbers := [{} asCell];
   [generation deltaUnit: unit];
   generation]];
 
-[Reflect defineMethod: #initializeCurrent on: DispatchGeneration as: [:self |
-  let current := [self current];
-  [[current notNil]
-    ifTrue: [| current]
+// Loading an image restores descriptions and code, but no transaction authority.
+// Explicit adoption flattens the retained source map into a predecessor-free
+// baseline. It neither mints replacement units nor changes retained history.
+[Reflect defineMethod: #adoptCurrent on: DispatchGeneration as: [:self |
+  let origin := [self current];
+  let projection := [[origin isNil]
+    ifTrue: [| [Codegen initialGenerationProjection]]
     ifFalse: [|
-      let projection := [Codegen initialGenerationProjection];
-      [[projection isError]
-        ifTrue: [| projection]
-        ifFalse: [|
-          let generation := [self fromProjection: projection predecessor: nil delta: nil];
-          [currentDispatchGeneration set: generation];
-          let adopted := [Generation adoptInitialGeneration: generation];
-          [[adopted isError]
-            ifTrue: [|
-              [currentDispatchGeneration set: nil];
-              adopted]
-            ifFalse: [|
-              [Codegen sealInitialGeneration];
-              generation]]]]]]]];
-
-// Old generation records are ordinary values. Replacing the current root drops
-// ownership; callers retaining old records keep their history and explicit facts.
-// Image recovery has already restored dispatch before this policy method runs.
-// Mint one process-local composed component per source-map row, publish a fresh
-// rollback-free DispatchGeneration with the exact same source/selection
-// authority, then ask Generation to snapshot the live direct bindings into its
-// transient ledger. No candidate pointer snapshot crosses the image boundary.
-[Reflect defineMethod: #reconcileImageComposition: on: CompiledUnit as: [:self :identity |
-  [[[[identity notNil] and: [| [[Generation imageRecoveryIdentity] = identity]]] not]
-    ifTrue: [| [Error kind: #imageRecoveryRequired]]
+      let rows := [[origin sourceMap] inject: #[] into: [:rows :entry |
+        [rows add: #[[entry at: 0] [entry at: 1] nil]]]];
+      #[#generationProjection rows [origin baseDigest] [origin generationSelection]]]];
+  [[projection isError]
+    ifTrue: [| projection]
     ifFalse: [|
-  let origin := [DispatchGeneration current];
-  let existingIdentity := [origin compositionIdentity];
-  [[existingIdentity = identity]
-    ifTrue: [|
-      let adopted := [Generation adoptComposedGeneration: origin];
-      [[adopted isNil]
-        ifTrue: [| [Error kind: #imageCompositionRejected]]
-        ifFalse: [| [[adopted isError] ifTrue: [| adopted] ifFalse: [| origin]]]]]
-    ifFalse: [|
-      let components := [[origin sourceMap] inject: #[] into: [:rows :entry |
-        let name := [entry at: 0];
-        let revision := [entry at: 1];
-        let component := [self clone];
-        [component unitName: name];
-        [component generation: [self nextGenerationFor: name]];
-        [component kind: #composed];
-        [component state: #active];
-        [component rollbackAvailable: false];
-        [component sourceRevision: revision];
-        [component authoredSource: [revision at: 3]];
-        [component revisionDigest: [revision at: 6]];
-        [component requires: [revision at: 2]];
-        [component provides: #[]];
-        [component compositionIdentity: identity];
-        [rows add: #[name revision component]]]];
-      let projection := #[#generationProjection components [origin baseDigest] [origin generationSelection]];
-      let composed := [DispatchGeneration fromProjection: projection predecessor: nil delta: nil];
-      [composed kind: #composed];
-      [composed state: #active];
-      [composed compositionIdentity: identity];
-      let active := currentDispatchGeneration;
-      [active set: composed];
-      let adopted := [Generation adoptComposedGeneration: composed];
-      [[[adopted isNil] or: [| [adopted isError]]]
-        ifTrue: [| [active set: origin]; [[adopted isNil] ifTrue: [| [Error kind: #imageCompositionRejected]] ifFalse: [| adopted]]]
-        ifFalse: [|
-          composed]]]]]]]];
+      let baseline := [self fromProjection: projection predecessor: nil delta: nil];
+      [self current: baseline];
+      let adopted := [Generation adoptInitialGeneration: baseline];
+      [[adopted isError]
+        ifTrue: [|
+          [[[self current] == baseline] ifTrue: [| [self current: origin]]];
+          adopted]
+        ifFalse: [| baseline]]]]]];
 
 [Reflect defineMethod: #state on: CompiledUnit as: [:self | [ObjectModel slot: 3 in: self]]];
 
 [Reflect defineMethod: #kind on: CompiledUnit as: [:self | [ObjectModel slot: 2 in: self]]];
 
-[Reflect defineMethod: #composedInto on: CompiledUnit as: [:self | [ObjectModel slot: 13 in: self]]];
 
 [Reflect defineMethod: #unitName on: CompiledUnit as: [:self | [ObjectModel slot: 0 in: self]]];
 
@@ -398,9 +350,6 @@ let compiledGenerationNumbers := [{} asCell];
 [Reflect defineMethod: #expectedBaseDigest: on: CompiledUnit as: [:self :value | [ObjectModel slot: 10 in: self put: value]]];
 [Reflect defineMethod: #importStatus: on: CompiledUnit as: [:self :value | [ObjectModel slot: 11 in: self put: value]]];
 [Reflect defineMethod: #rollbackAvailable: on: CompiledUnit as: [:self :value | [ObjectModel slot: 12 in: self put: value]]];
-[Reflect defineMethod: #composedInto: on: CompiledUnit as: [:self :value | [ObjectModel slot: 13 in: self put: value]]];
-[Reflect defineMethod: #compositionIdentity on: CompiledUnit as: [:self | [ObjectModel slot: 14 in: self]]];
-[Reflect defineMethod: #compositionIdentity: on: CompiledUnit as: [:self :value | [ObjectModel slot: 14 in: self put: value]]];
 [Reflect defineMethod: #sourceMap: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 0 in: self put: value]]];
 [Reflect defineMethod: #baseDigest: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 1 in: self put: value]]];
 [Reflect defineMethod: #generationSelection: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 2 in: self put: value]]];
@@ -410,9 +359,6 @@ let compiledGenerationNumbers := [{} asCell];
 [Reflect defineMethod: #kind: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 5 in: self put: value]]];
 [Reflect defineMethod: #state on: DispatchGeneration as: [:self | [ObjectModel slot: 6 in: self]]];
 [Reflect defineMethod: #state: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 6 in: self put: value]]];
-[Reflect defineMethod: #compositionIdentity: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 7 in: self put: value]]];
-[Reflect defineMethod: #composedInto on: DispatchGeneration as: [:self | [ObjectModel slot: 8 in: self]]];
-[Reflect defineMethod: #composedInto: on: DispatchGeneration as: [:self :value | [ObjectModel slot: 8 in: self put: value]]];
 [Reflect defineMethod: #intentUnit on: EvolutionIntent as: [:self | [ObjectModel slot: 0 in: self]]];
 [Reflect defineMethod: #intentUnit: on: EvolutionIntent as: [:self :value | [ObjectModel slot: 0 in: self put: value]]];
 [Reflect defineMethod: #intentAction on: EvolutionIntent as: [:self | [ObjectModel slot: 1 in: self]]];

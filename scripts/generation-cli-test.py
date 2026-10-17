@@ -38,6 +38,8 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
         '[3 generationCliValue]',
         '[[Reflect defineMethod: #generationOrdinaryProbe on: Integer as: [:self | 99]] == Integer]',
         '[[Reflect removeMethod: #generationOrdinaryProbe on: Integer] == Integer]',
+        '[[DispatchGeneration current] isNil]',
+        '[[[DispatchGeneration adoptCurrent] isError] not]',
         # Published applications own their bundled method definitions as one
         # source revision; replace that admitted revision, preserving its effects.
         f'[CompiledUnit compile: [[Codegen moduleSourceFor: #__generation_cliApplication] replace: "| 10" with: "| 20"] named: #__generation_cliApplication output: {artifact}]',
@@ -59,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
         assert transcript.count('birnam> 10\n') == 2, transcript
         assert transcript.count('birnam> 20\n') == 1, transcript
         assert transcript.index('birnam> 10\n') < transcript.index('birnam> 20\n') < transcript.rindex('birnam> 10\n'), transcript
-        assert transcript.count('birnam> true\n') >= 2, transcript
+        assert transcript.count('birnam> true\n') >= 4, transcript
         assert 'error(' not in transcript.lower(), transcript
         print('generation: ordinary running edits, console intent activation and exact rollback passed')
 
@@ -106,9 +108,9 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
                     assert b'!! ' not in reply and b'error(' not in reply.lower(), reply
                     replies.append(reply)
                 assert replies[0] == b'=> 10\r\nbirnam> ', replies
-                assert replies[1:3] == [b'=> true\r\nbirnam> '] * 2, replies
-                assert replies[7] == b'=> 20\r\nbirnam> ', replies
-                assert replies[9] == b'=> 10\r\nbirnam> ', replies
+                assert replies[1:5] == [b'=> true\r\nbirnam> '] * 4, replies
+                assert replies[9] == b'=> 20\r\nbirnam> ', replies
+                assert replies[11] == b'=> 10\r\nbirnam> ', replies
                 assert request(connection, 'nil') == b'=> nil\r\nbirnam> '
                 assert request(connection, 'false') == b'=> false\r\nbirnam> '
                 assert b'!! ' in request(connection, ']')
@@ -120,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-generation-cli-') as temporary:
                 try:
                     unexpected = connection.recv(8192)
                     raise AssertionError(('incomplete form replied', unexpected))
-                except TimeoutError:
+                except (TimeoutError, socket.timeout):
                     pass
                 connection.settimeout(300)
                 assert request(connection, '2]') == b'=> 3\r\nbirnam> '

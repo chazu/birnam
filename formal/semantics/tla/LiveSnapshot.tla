@@ -17,13 +17,14 @@ Emit == /\ phase = "emit" /\ phase' = "finish" /\ changed' \in BOOLEAN
         /\ UNCHANGED <<revision, eligible, observed, selected, file, fileCurrent, entered>>
 Finish == /\ phase = "finish" /\ phase' = "restored"
           /\ file' = IF epoch = observed \/ Bug = "ignore-stamp" THEN selected ELSE file
-          /\ fileCurrent' = IF epoch = observed THEN ((eligible /\ selected = revision) \/ Bug = "adopt-drift") ELSE fileCurrent
+          /\ fileCurrent' = IF epoch = observed THEN (Bug = "adopt-drift") ELSE fileCurrent
           /\ entered' = IF epoch = observed THEN selected ELSE 0
           /\ code' = IF Bug = "undo-callback" THEN 2 ELSE code
           /\ UNCHANGED <<revision, eligible, epoch, observed, selected, changed, calls>>
 Next == Capture \/ Emit \/ Finish
 Spec == Init /\ [][Next]_vars
 LiveCodeRestored == phase = "restored" /\ ~changed => entered = 2
+NoAutomaticAdoption == ~fileCurrent
 DriftNotAdopted == fileCurrent => eligible /\ file = revision
 ChangedCaptureNotPublished == phase = "restored" /\ changed => file = 0
 CallbackEditSurvives == changed => code = 3

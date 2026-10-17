@@ -23,8 +23,9 @@ reconciliation, retirement and telemetry. Production callers now send these
 messages to Generation; Codegen has no publication aliases. The unused running-phase handshake has been removed. CompiledUnit,
 DispatchGeneration and EvolutionIntent continue to own authored policy.
 
-`sourceRegistry` returns `[sealed, [name, compilationRecord], ...]`; `sourceRegistrySealed`
-returns a Boolean. Registration uses `recordCompiledSource:named:` and
+`sourceRegistry` returns `[#sourceRegistryV1, [name, compilationRecord], ...]`.
+There is no registration-sealing API or flag. The old Boolean-header shape is
+rejected; regenerate images carrying that schema. Registration uses `recordCompiledSource:named:` and
 `moduleSourceFor:`. Image integration uses `prepareSourceRegistry:`,
 `swapSourceRegistry`, `beginImageRecovery:`, `recoverImageGeneration:` and
 `cancelImageRecovery`. The retained exchange stage supports exact compensation.
@@ -64,7 +65,8 @@ against the last definition. The transient ledger retains these Globals and
 displaced Methods for inverse operations. Preparation checks its selected
 observations and source lineage; `reconcileCandidate:` checks the complete ledger
 and rejects drift without adopting the new binding. Unrelated Store facts remain outside that ledger. Repeating initial
-adoption validates the original snapshot and cannot clear an observed divergence.
+adoption validates the current values against the recorded baseline. Disagreement
+has no lifecycle side effects, and restoring the same bindings can restore agreement.
 
 `commitPrepared:` and `commitPreparedRollback:` consume their token on every
 attempt and require Execution's quiescent native boundary. Candidate construction
@@ -86,14 +88,13 @@ preparation and commitment does not expire the token.
 
 Installed Host and published-project console tests exercise authored activation
 and exact rollback. Image stages suspend all old candidate capabilities before
-publication and retain their roots until the application outcome is known. After restoring dispatch,
-`recoverImageGeneration:` enters the authored composition policy;
-`adoptComposedGeneration:` is available only in that dynamic recovery scope and
-validates the composition identity, source/selection authority and rollback-free
-components before rebuilding the live ledger. Basic live Image application failure
-abandons the old capabilities instead of restoring caches over a partial world;
-success releases their roots. Cancellation before application can still release
-staging without changing the prior world.
+publication and retain their roots until the application outcome is known.
+`recoverImageGeneration:` verifies the admitted image identity and releases old
+capabilities. It does not invoke authored adoption policy, replace descriptive
+records or create a new ledger. Execution independently owns restored Methods.
+Basic live Image application failure abandons old capabilities instead of
+restoring them over a partial world. Cancellation before application can restore
+the suspended capabilities without changing the prior world.
 
 `discardCandidate:` rejects active, prepared and rollback-reachable candidates,
 removes only the admitted author-file contents, and publishes the discarded state
@@ -121,24 +122,25 @@ ABA still changes its explicit content revision. Activation/rollback compare onl
 their selected bindings/Globals and lifecycle fields, including after callbacks
 and compensation. Edits to another managed module do not cause a conflict or get
 implicitly certified. Scoped conflicts do not publish whole-generation drift.
-The existing adopted source lineage, initial seal and explicit whole-program/image
-certification remain; removing them from ordinary startup is a separate step.
+The existing adopted source lineage remains an explicit candidate-tool restriction.
+Ordinary startup and module loading do not adopt or seal it.
 See [scoped transactions](../../docs/design/scoped-generation-transactions.md).
 
 `validateImageGeneration` stays strict for callers asking whether the managed
-revision is current. Image uses `prepareImageSnapshot`: it performs the existing
-lazy drift reconciliation, but permits a snapshot of changed live code. This can
-mark opted-in revision records drifted and disable rollback; it does not replace
-program bindings. Unimageable opaque native replacements of tracked bindings are
-still rejected. A snapshot consistency stamp rejects detected dictionary, Globals
-or fact-state changes during serialization without replacing the destination.
+revision is current. Image uses `prepareImageSnapshot` to check operation exclusion
+and the imageability of current entries at registered authored selectors. It does
+not compare bodies with source, reconcile a ledger or modify lifecycle fields.
+Opaque native replacements are rejected even after loading without a baseline.
+Image's consistency stamp still rejects detected dictionary/Globals/fact-state
+changes during serialization without replacing the destination.
 
-Matching managed images still use composition/adoption. Drifted revision records
-reload as descriptive data with no transient ledger or activation capabilities;
-actual saved Methods remain callable and editable. Explicit managed validation and
-activation still reject stale/unadopted state. This does not make Store or Generation
-optional in full image/bootstrap paths yet. Basic live loading now reports partial
-application without automatic compensation.
+Every loaded image starts without a transient ledger or activation capabilities.
+Saved generation records remain descriptive and alias-preserving. Explicit
+`DispatchGeneration adoptCurrent` creates a predecessor-free source baseline and
+validates live code using the existing strict adoption contract. It does not mint
+component units; failed adoption restores the prior current root. Ordinary startup does not adopt; explicit validation no longer publishes sticky drift.
+This does not make Store or Generation optional in the full image/bootstrap path.
+See [explicit image adoption](../../docs/design/explicit-image-adoption.md).
 
 The native `materialization` test also retains a reflected Method after its source
 Block is released, transfers ownership to an alias binding on another Block,
@@ -150,7 +152,7 @@ by `scripts/native-message-test.sh`.
 
 Image source staging now retains an owner revision. `swapSourceRegistry` publishes
 only at its captured revision; `rollbackSourceRegistry` restores only its own still
-current publication. A later record/seal or transaction replacement is preserved.
+current publication. A later source record or transaction replacement is preserved.
 `abandonImageRecovery` discards suspended/current preparation and adoption authority
 after failed image application; it does not undo the live world's changes. Entered
 Methods retain their code independently through Execution.
@@ -164,8 +166,7 @@ its own record at index 7, while index 3 retains the original String identity.
 an existing registration explicitly. Replacement creates no method edits or facts.
 
 Content revisions cover record changes and invalidate stale ledgers/prepared tokens,
-including A-to-B-to-A changes. Registration-policy sealing uses the existing control
-revision and does not spuriously invalidate unchanged metadata. Successful activation
+including A-to-B-to-A changes. Successful activation
 and rollback install the source records and the ledger's matching content revision
 together, after all callback-capable validation. Explicit rollback still retains the
 exact prior record references. See [the owner contract](../../docs/design/retained-compilation-records.md).
@@ -191,3 +192,8 @@ walking an old generation graph to retract facts. Unreferenced records follow GC
 callers retaining records keep their values and annotations. Restored inverse
 capabilities remain unavailable. Rebuild images created with the old fact-backed
 record layout; no fact-to-field compatibility adapter or user-fact scrubber exists.
+
+See [opt-in baselines](../../docs/design/opt-in-generation-baselines.md) for removal
+of startup/worker adoption and sealing. Source-registry transactions retain their
+owner stamps for coherent image exchange; this does not add checks to ordinary
+message sends. Candidate lineage coupling and baseline renewal remain follow-up work.

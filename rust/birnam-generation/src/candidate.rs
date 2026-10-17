@@ -21,9 +21,7 @@ pub(super) use recovery::{begin_recovery, cancel_recovery, abandon_recovery, rec
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
-    observing: Cell<bool>,
     quiescent: Cell<bool>,
-    recovering_policy: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,
     prepared: RefCell<Vec<preparation::Prepared>>,
     next_token: Cell<usize>,
@@ -94,8 +92,6 @@ pub(super) enum Op {
     RetainedCount,
     RetainedBytes,
     AdoptInitial,
-    AdoptComposed,
-    RecoveryIdentity,
     Reconcile,
     Commit,
     PrepareRollback,
@@ -104,7 +100,7 @@ pub(super) enum Op {
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::RecoveryIdentity | Self::RetainedCount | Self::RetainedBytes => 0,
+            Self::RetainedCount | Self::RetainedBytes => 0,
             Self::Compile => 3,
             Self::CompileSelected | Self::Successor => 4,
             Self::Inspect | Self::Prepare | Self::PrepareRollback => 2,
@@ -370,22 +366,12 @@ pub(super) unsafe fn operation(
 ) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.recovery.borrow().is_some()
-            && !(matches!(op, Op::AdoptComposed | Op::RecoveryIdentity)
-                && s.candidates.recovering_policy.get())
         {
             return fail(
                 s,
                 q,
                 b"imageRecoveryActive",
                 b"candidate operations are unavailable during image recovery",
-            );
-        }
-        if s.candidates.observing.get() {
-            return fail(
-                s,
-                q,
-                b"candidateBusy",
-                b"candidate operation interrupts mutation observation",
             );
         }
         if s.candidates.busy.replace(true) {
@@ -404,27 +390,12 @@ pub(super) unsafe fn operation(
             Op::RetainedCount | Op::RetainedBytes => {
                 retirement::telemetry(s, q, matches!(op, Op::RetainedBytes))
             }
-            Op::RecoveryIdentity => {
-                let identity = s
-                    .candidates
-                    .recovery
-                    .borrow()
-                    .as_ref()
-                    .filter(|_| s.candidates.recovering_policy.get())
-                    .map(|r| r.identity.clone());
-                Ok(Operand::object(if let Some(identity) = identity {
-                    s.text(q, &identity)?
-                } else {
-                    s.named(b"nil")?
-                }))
-            }
             Op::Commit => transaction::commit(s, q, object(args[0])?, false),
             Op::CommitRollback => transaction::commit(s, q, object(args[0])?, true),
             Op::PrepareRollback => {
                 transaction::prepare_rollback(s, q, object(args[0])?, object(args[1])?)
             }
-            Op::AdoptInitial => ledger::adopt(s, q, object(args[0])?, false),
-            Op::AdoptComposed => ledger::adopt(s, q, object(args[0])?, true),
+            Op::AdoptInitial => ledger::adopt(s, q, object(args[0])?),
             Op::Reconcile => ledger::reconcile_candidate(s, q, object(args[0])?),
             Op::Prepare => preparation::prepare(s, q, object(args[0])?, object(args[1])?),
             Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),

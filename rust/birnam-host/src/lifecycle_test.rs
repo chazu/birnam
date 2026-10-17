@@ -45,61 +45,21 @@ unsafe extern "C" fn counter_reentry(c: *mut c_void, r: Oop, a: *const Operand, 
     }
 }
 
-struct RetirementFailure {
-    adopt: native::NativeEntry,
-    retract: native::NativeEntry,
-    error: Oop,
-    armed: bool,
-    calls: usize,
-}
-unsafe extern "C" fn arm_retirement_failure(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let fault = unsafe { &mut *context.cast::<RetirementFailure>() };
-    let result =
-        unsafe { (fault.adopt.method.unwrap())(fault.adopt.context, receiver, args, count) };
-    let generation = unsafe { birnam_abi::borrowed_slice(args, count) }
-        .and_then(|values| values.first())
-        .and_then(|value| value.as_object());
-    fault.armed = result.status == native::LOADED
-        && generation.is_some()
-        && result.value.as_object() == generation;
-    result
-}
-unsafe extern "C" fn fail_retirement_retract(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let fault = unsafe { &mut *context.cast::<RetirementFailure>() };
-    if fault.armed {
-        fault.armed = false;
-        fault.calls += 1;
-        Outcome::loaded(Operand::object(fault.error))
-    } else {
-        unsafe { (fault.retract.method.unwrap())(fault.retract.context, receiver, args, count) }
-    }
-}
-
-struct FailedAdoption {
+struct RecoveryFailure {
     original: native::NativeEntry,
     id: Protocol,
     gc: Oop,
     error: Option<Oop>,
     calls: usize,
 }
-unsafe extern "C" fn failed_adoption(
+unsafe extern "C" fn failed_recovery(
     context: *mut c_void,
     receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
     unsafe {
-        let state = &mut *context.cast::<FailedAdoption>();
+        let state = &mut *context.cast::<RecoveryFailure>();
         let result =
             (state.original.method.unwrap())(state.original.context, receiver, args, count);
         if result.status != native::LOADED {
@@ -163,7 +123,7 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
         Some(b"hostLifecycle"),
     )
     .unwrap();
-    q.check(cg, eval(b"[DispatchGeneration initializeCurrent]"))
+    q.check(cg, eval(b"[DispatchGeneration adoptCurrent]"))
         .unwrap();
     expect(b"[[Reflect defineMethod: #ordinaryLifecycleValue on: Integer as: [:self | 99]] == Integer]");
     expect(b"[[2 ordinaryLifecycleValue] = 99]");
@@ -249,7 +209,7 @@ fn host_fulfills_authored_generation_intents_at_idle_boundary() {
 
 #[test]
 #[ignore = "requires production native modules; scripts/host-cli-test.sh"]
-fn image_recovers_composed_generation_before_entry() {
+fn image_restores_descriptions_and_explicit_adoption() {
     let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
     let image = env::var_os("BIRNAM_GENERATION_IMAGE").map(PathBuf::from);
     let resources = crate::resolve_from_exe_dir(
@@ -302,7 +262,7 @@ fn image_recovers_composed_generation_before_entry() {
     let child = |path: &Path, mode: &str| {
         let status = std::process::Command::new(env::current_exe().unwrap())
             .args([
-                "image_recovers_composed_generation_before_entry",
+                "image_restores_descriptions_and_explicit_adoption",
                 "--ignored",
                 "--nocapture",
             ])
@@ -316,32 +276,29 @@ fn image_recovers_composed_generation_before_entry() {
         let mode = env::var("BIRNAM_GENERATION_IMAGE_MODE").unwrap();
         eprintln!("generation Image: {mode} load");
         host.load_image_mode(&path, mode == "rebuild" || mode == "drift-rebuild", false).unwrap();
+        expect(b"[[DispatchGeneration current] == savedOriginGeneration]");
+        expect(b"[[savedOriginGeneration predecessor] == savedOriginPredecessor]");
+        expect(b"[[savedOriginGeneration sourceMap] notNil]");
+        expect(b"[[db currentValue: savedOriginGeneration attr: #userAnnotation] = 77]");
+        expect(b"[[db currentValue: savedOriginPredecessor attr: #sourceMap] = 88]");
+        expect(b"[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]");
+        expect(b"[[[imageCandidate commitRollback] kind] = #rollbackUnavailable]");
         if mode.starts_with("drift-") {
             expect(b"[[2 imageGenerationValue] = 30]");
             expect(b"[[2 imageOutsideValue] = 9]");
             expect(b"[[imageGenerationClosure value] = 31]");
-            expect(b"[[[DispatchGeneration current] state] = #drifted]");
-            expect(b"[[Generation validateImageGeneration] isError]");
+            expect(b"[[[DispatchGeneration adoptCurrent] kind] = #sourceBindingMismatch]");
+            expect(b"[[DispatchGeneration current] == savedOriginGeneration]");
             host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[]).unwrap();
             expect(b"[[2 imageOutsideValue] = 9]");
+            let filename = q.string(path.with_extension(format!("{mode}.resaved.image")).as_os_str().as_bytes()).unwrap();
+            let saved = q.call(host.named(b"System").unwrap(), b"saveImage:", &[Operand::object(filename)]).unwrap();
+            q.check_result(saved).unwrap();
             return;
         }
         expect(b"[[2 imageOutsideValue] = 1]");
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
-        expect(b"[[[DispatchGeneration current] predecessor] isNil]");
-        expect(b"[[[DispatchGeneration current] deltaUnit] isNil]");
-        expect(b"[[[DispatchGeneration current] compositionIdentity] = [System imageCompositionIdentity]]");
-        expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] kind] = #composed]");
-        expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] state] = #active]");
-        expect(b"[[[[DispatchGeneration current] unitFor: #imageGeneration] rollbackAvailable] = false]");
-        expect(b"[[[Generation adoptComposedGeneration: [DispatchGeneration current]] kind] = #imageRecoveryRequired]");
-        expect(b"[[[CompiledUnit reconcileImageComposition: [System imageCompositionIdentity]] kind] = #imageRecoveryRequired]");
-        expect(b"[[db currentValue: savedOriginGeneration attr: #userAnnotation] = 77]");
-        expect(b"[[savedOriginGeneration sourceMap] notNil]");
-        expect(b"[[db currentValue: savedOriginPredecessor attr: #sourceMap] = 88]");
-        expect(b"[[savedOriginPredecessor sourceMap] notNil]");
-        expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
         if mode != "resaved" {
             let resaved = path.with_extension(format!("{mode}.resaved.image"));
             let filename = q.string(resaved.as_os_str().as_bytes()).unwrap();
@@ -357,6 +314,28 @@ fn image_recovers_composed_generation_before_entry() {
             child(&resaved, "resaved");
             fs::remove_file(resaved).unwrap();
         }
+        // Portability rejection must not depend on an adopted ledger.
+        let selector = unsafe { host.context.id.intern_name(b"imageOutsideValue") }.unwrap();
+        let integer_vt = host.named(b"IntegerVt").unwrap();
+        q.call(host.named(b"Integer").unwrap(), b"methodFor:", &[Operand::object(selector)]).unwrap();
+        let original = host.send(host.context.id.receiver, b"bindingOf:in:", &[Operand::object(selector), Operand::object(integer_vt)]).unwrap().as_entry().unwrap();
+        host.send(integer_vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(failed_fulfill, core::ptr::null_mut()))]).unwrap();
+        let opaque_path = path.with_extension(format!("{mode}.opaque.image"));
+        fs::write(&opaque_path, b"previous image").unwrap();
+        let filename = q.string(opaque_path.as_os_str().as_bytes()).unwrap();
+        let rejected = q.call(host.named(b"System").unwrap(), b"saveImage:", &[Operand::object(filename)]).unwrap();
+        host.send(integer_vt, b"addMethod", &[Operand::object(selector), Operand::entry(original)]).unwrap();
+        let kind = q.call(rejected, b"kind", &[]).unwrap();
+        assert_eq!(kind, unsafe { host.context.id.intern_name(b"nonPortableGeneration") }.unwrap());
+        assert_eq!(fs::read(&opaque_path).unwrap(), b"previous image");
+        fs::remove_file(opaque_path).unwrap();
+        eval(b"let adoptedBaseline := [DispatchGeneration adoptCurrent]");
+        expect(b"[[adoptedBaseline isError] not]");
+        expect(b"[[[DispatchGeneration current] predecessor] isNil]");
+        expect(b"[[[DispatchGeneration current] deltaUnit] isNil]");
+        expect(b"[[[DispatchGeneration current] unitFor: #imageGeneration] isNil]");
+        expect(b"[[savedOriginGeneration predecessor] == savedOriginPredecessor]");
+        expect(b"[[Generation reconcileCandidate: adoptedBaseline] == adoptedBaseline]");
         eprintln!("generation Image: {mode} successor and rollback");
         let artifact = path.with_extension(format!("{mode}.successor.o"));
         put_path(b"imageGenerationPath", &artifact);
@@ -383,8 +362,8 @@ fn image_recovers_composed_generation_before_entry() {
         // Loading into a process with a live inverse ledger must replace that
         // capability set, not retain its predecessor pointers as the new base.
         host.load_image(&path).unwrap();
-        expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
-        expect(b"[[[DispatchGeneration current] predecessor] isNil]");
+        expect(b"[[DispatchGeneration current] == savedOriginGeneration]");
+        expect(b"[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]");
         host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
             .unwrap();
         expect(b"[[2 imageGenerationValue] = 20]");
@@ -394,7 +373,7 @@ fn image_recovers_composed_generation_before_entry() {
     }
     q.evaluate(b"[Module named: #imageGeneration requires: #[]]; let imageGenerationClosure := [| 11]; [Reflect defineMethod: #imageGenerationValue on: Integer as: [:self | 10]]", Path::new("<image-generation>"), Some(b"imageGeneration")).unwrap();
     q.evaluate(b"[Module named: #imageOutside requires: #[]]; [Reflect defineMethod: #imageOutsideValue on: Integer as: [:self | 1]]", Path::new("<image-outside>"), Some(b"imageOutside")).unwrap();
-    eval(b"[DispatchGeneration initializeCurrent]");
+    eval(b"[DispatchGeneration adoptCurrent]");
     let dir = env::temp_dir().join(format!("birnam-image-generation-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     put_path(b"imageGenerationPath", &dir.join("candidate.o"));
@@ -420,7 +399,7 @@ fn image_recovers_composed_generation_before_entry() {
         .unwrap();
     q.check_result(saved).unwrap();
     assert!(path.is_file(), "managed Image save failed");
-    eprintln!("generation Image: returned Error and native failure compensation");
+    eprintln!("generation Image: returned Error and native recovery failure");
     let before = eval(b"[DispatchGeneration current]");
     let captured = q.call(host.named(b"Integer").unwrap(), b"methodFor:",
         &[Operand::object(unsafe { host.context.id.intern_name(b"imageGenerationValue") }.unwrap())]).unwrap();
@@ -428,7 +407,7 @@ fn image_recovers_composed_generation_before_entry() {
     let vt = q
         .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(host.named(b"Generation").unwrap())])
         .unwrap();
-    let selector = unsafe { host.context.id.intern_name(b"adoptComposedGeneration:") }.unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"recoverImageGeneration:") }.unwrap();
     let original = host
         .send(
             host.context.id.receiver,
@@ -438,7 +417,7 @@ fn image_recovers_composed_generation_before_entry() {
         .unwrap()
         .as_entry()
         .unwrap();
-    let kind = unsafe { host.context.id.intern_name(b"injectedAdoptionFailure") }.unwrap();
+    let kind = unsafe { host.context.id.intern_name(b"injectedRecoveryFailure") }.unwrap();
     let error = q
         .call(
             host.named(b"Error").unwrap(),
@@ -447,7 +426,7 @@ fn image_recovers_composed_generation_before_entry() {
         )
         .unwrap();
     for returned_error in [Some(error), None] {
-        let mut fault = FailedAdoption {
+        let mut fault = RecoveryFailure {
             original,
             id: host.context.id,
             gc: host.named(b"GC").unwrap(),
@@ -460,8 +439,8 @@ fn image_recovers_composed_generation_before_entry() {
             &[
                 Operand::object(selector),
                 Operand::entry(native::NativeEntry {
-                    method: Some(failed_adoption),
-                    context: (&mut fault as *mut FailedAdoption).cast(),
+                    method: Some(failed_recovery),
+                    context: (&mut fault as *mut RecoveryFailure).cast(),
                 }),
             ],
         )
@@ -482,83 +461,18 @@ fn image_recovers_composed_generation_before_entry() {
         assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(held)]).unwrap().as_word(), Some(20));
         // Explicitly reload a known image after a partial/conflicted live load.
         host.load_image(&path).unwrap();
-        expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+        expect(b"[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]");
         expect(b"[[2 imageGenerationValue] = 20]");
         expect(b"[[imageGenerationClosure value] = 21]");
     }
-    // Post-adoption failure has already changed multiple owners. Preserve those
-    // states and report incomplete recovery; never revive the previous ledger
-    // as authority over the partially loaded world.
-    let store = host.named(b"Store").unwrap();
-    let retract_vt = q
-        .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(store)])
-        .unwrap();
-    let retract_selector = unsafe { host.context.id.intern_name(b"retract:attr:value:") }.unwrap();
-    let retract_original = host
-        .send(
-            host.context.id.receiver,
-            b"bindingOf:in:",
-            &[
-                Operand::object(retract_selector),
-                Operand::object(retract_vt),
-            ],
-        )
-        .unwrap()
-        .as_entry()
-        .unwrap();
-    let mut fault = RetirementFailure {
-        adopt: original,
-        retract: retract_original,
-        error,
-        armed: false,
-        calls: 0,
-    };
-    let context = (&mut fault as *mut RetirementFailure).cast();
-    host.send(
-        vt,
-        b"addMethod",
-        &[
-            Operand::object(selector),
-            Operand::entry(native::NativeEntry::new(arm_retirement_failure, context)),
-        ],
-    )
-    .unwrap();
-    host.send(
-        retract_vt,
-        b"addMethod",
-        &[
-            Operand::object(retract_selector),
-            Operand::entry(native::NativeEntry::new(fail_retirement_retract, context)),
-        ],
-    )
-    .unwrap();
-    let failure = host.load_image(&path);
-    host.send(
-        vt,
-        b"addMethod",
-        &[Operand::object(selector), Operand::entry(original)],
-    )
-    .unwrap();
-    host.send(
-        retract_vt,
-        b"addMethod",
-        &[
-            Operand::object(retract_selector),
-            Operand::entry(retract_original),
-        ],
-    )
-    .unwrap();
-    failure.unwrap();
-    assert_eq!(fault.calls, 0, "image adoption must not retract lifecycle or user facts");
-    expect(b"[[[Generation validateImageGeneration] isError] not]");
     let held = q.call(captured, b"invokeOn:", &[Operand::object(receiver)]).unwrap();
     assert_eq!(host.send(host.named(b"Integer").unwrap(), b"wordOf:", &[Operand::object(held)]).unwrap().as_word(), Some(20));
     host.load_image(&path).unwrap();
-    expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
-    expect(b"[[2 imageGenerationValue] = 20]");
-    expect(b"[[imageGenerationClosure value] = 21]");
+    expect(b"[[DispatchGeneration current] == savedOriginGeneration]");
+    expect(b"[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]");
     child(&path, "mapped");
     child(&path, "rebuild");
+    eval(b"[DispatchGeneration adoptCurrent]");
     // An independent managed edit must survive scoped activation and both
     // restoration modes. Its old source revision must not replace live code.
     eval(b"[Reflect defineMethod: #imageOutsideValue on: Integer as: [:self | 9]]");
@@ -568,11 +482,15 @@ fn image_recovers_composed_generation_before_entry() {
     q.evaluate(b"[scopedCandidate activate]", Path::new("<scoped-activation>"), None).unwrap();
     expect(b"[[2 imageGenerationValue] = 30]");
     expect(b"[[2 imageOutsideValue] = 9]");
+    eval(b"let savedOriginGeneration := [DispatchGeneration current]; let savedOriginPredecessor := [savedOriginGeneration predecessor]; let imageCandidate := scopedCandidate; [db assert: savedOriginGeneration attr: #userAnnotation value: 77]; [db assert: savedOriginPredecessor attr: #sourceMap value: 88]");
     let drift_path = dir.join("scoped-drift.image");
     let filename = q.string(drift_path.as_os_str().as_bytes()).unwrap();
     let saved = q.call(host.named(b"System").unwrap(), b"saveImage:", &[Operand::object(filename)]).unwrap();
     q.check_result(saved).unwrap();
     assert!(drift_path.is_file());
+    expect(b"[[scopedCandidate state] = #active]");
+    expect(b"[scopedCandidate rollbackAvailable]");
+    expect(b"[[DispatchGeneration current] == savedOriginGeneration]");
     child(&drift_path, "drift-mapped");
     child(&drift_path, "drift-rebuild");
     fs::remove_dir_all(dir).unwrap();
@@ -609,7 +527,7 @@ fn lifecycle_fields_preserve_explicit_facts_and_status_reads() {
     let expect = |source: &[u8]| { assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source)); };
     eval(b"let ownedUnit := [CompiledUnit clone]; [ownedUnit setState: #candidate]; [db assert: ownedUnit attr: #state value: #annotation]; let unitAlias := ownedUnit; let unitClone := [ownedUnit clone]");
     expect(b"[[ownedUnit state] = #candidate]");
-    expect(b"[[[Reflect slotsOf: ownedUnit] size] = 15]");
+    expect(b"[[[Reflect slotsOf: ownedUnit] size] = 13]");
     eval(b"[Reflect slot: #state in: unitClone put: #cloneState]");
     expect(b"[[unitClone state] = #cloneState]");
     expect(b"[[ownedUnit state] = #candidate]");

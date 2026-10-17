@@ -71,7 +71,6 @@ pub(super) struct Ledger {
     pub bindings: Vec<ManagedBinding>,
     pub globals: Vec<ManagedGlobal>,
     pub units: Vec<Oop>,
-    pub drifted: bool,
     pub source_revision: usize,
 }
 impl Ledger {
@@ -112,7 +111,7 @@ pub(super) unsafe fn matches(
     ledger: &Ledger,
 ) -> Result<Option<bool>, Outcome> {
     unsafe {
-        if ledger.drifted || !matches_lineage(s, q, ledger)?
+        if !matches_lineage(s, q, ledger)?
         {
             return Ok(Some(false));
         }
@@ -140,56 +139,12 @@ pub(super) unsafe fn matches(
         Ok(stable.then_some(true))
     }
 }
-/// Returns false for a missing ledger or irreversible observed drift. Never
-/// adopts an intervening edit merely because recorded fields still say active.
-pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<(bool, Option<Oop>), Outcome> {
+/// Explicit validation reports current agreement. It neither edits records nor
+/// irreversibly revokes an inverse because a discrepancy was observed.
+pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<bool, Outcome> {
     unsafe {
-        let Some(ledger) = s.candidates.ledger.borrow().clone() else {
-            return Ok((false, None));
-        };
-        match matches(s, q, &ledger)? {
-            Some(true) => return Ok((true, Some(ledger.generation))),
-            None => return Ok((false, Some(ledger.generation))),
-            Some(false) => {}
-        }
-        // Cache invalidation precedes callbacks. Repeated reconciliation also
-        // retries durable publication after a prior field-owner failure.
-        s.candidates
-            .ledger
-            .borrow_mut()
-            .as_mut()
-            .ok_or_else(invalid)?
-            .drifted = true;
-        publish_drift(s, q, &ledger)?;
-        Ok((false, Some(ledger.generation)))
-    }
-}
-unsafe fn publish_drift(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<(), Outcome> {
-    unsafe {
-        if s.candidates.observing.replace(true) {
-            return Ok(());
-        }
-        struct Observing<'a>(&'a Cell<bool>);
-        impl Drop for Observing<'_> {
-            fn drop(&mut self) {
-                self.0.set(false);
-            }
-        }
-        let _observing = Observing(&s.candidates.observing);
-        for value in ledger.roots() {
-            q.keep(value)?;
-        }
-        let drifted = symbol(s, q, b"drifted")?;
-        let no = s.named(b"false")?;
-        let nil = s.named(b"nil")?;
-        set_field(s, q, ledger.generation, b"state", drifted)?;
-        for &unit in &ledger.units {
-            if unit != nil {
-                set_field(s, q, unit, b"state", drifted)?;
-                set_field(s, q, unit, b"rollbackAvailable", no)?;
-            }
-        }
-        Ok(())
+        let Some(ledger) = s.candidates.ledger.borrow().clone() else { return Ok(false); };
+        Ok(matches(s, q, &ledger)? == Some(true))
     }
 }
 /// A saved managed source map must still describe the dispatch it authorizes.
@@ -197,15 +152,13 @@ unsafe fn publish_drift(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<(),
 pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
     unsafe { image_admission(s, q, false) }
 }
-/// Reconcile opted-in revision metadata, but do not require a live world to
-/// equal that revision. Explicit managed validation remains strict.
+/// Check imageability without reconciling or changing lifecycle descriptions.
 pub(crate) unsafe fn prepare_image_snapshot(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
     unsafe { image_admission(s, q, true) }
 }
 unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.busy.get()
-            || s.candidates.observing.get()
             || s.candidates.recovery.borrow().is_some()
         {
             return fail(
@@ -223,61 +176,56 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
             }
         }
         let _busy = Busy(&s.candidates.busy);
-        if s.candidates.ledger.borrow().is_none() {
-            let current = current(s, q)?;
-            if current == s.named(b"nil")?
-                || (snapshot && field(s, q, current, b"state")? == symbol(s, q, b"drifted")?) {
-                return Ok(Operand::object(s.named(b"true")?));
-            }
-            return fail(
-                s,
-                q,
-                b"generationNotAdopted",
-                b"managed image has no binding ledger",
-            );
-        }
-        // General snapshots may depart from an opted-in revision, but must
-        // not silently omit a managed binding replaced by an opaque native
-        // entry. Such an entry has no implementation in the image inventory.
         if snapshot {
-            let ledger = s.candidates.ledger.borrow().clone();
-            if let Some(ledger) = ledger {
-                let epoch = preparation::epoch(s)?;
-                let nil = s.named(b"nil")?;
-                for binding in &ledger.bindings {
-                    if let Some((_, behavior)) = preparation::target(s, q, binding.binding.name)? {
-                        if let Some(entry) = preparation::direct(s, behavior, binding.binding.selector)? {
-                            let implementation = s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[Operand::entry(entry)])?;
-                            if implementation.as_object().is_none_or(|v| v == nil) {
-                                return fail(s, q, b"nonPortableGeneration", b"edited managed binding has no imageable implementation");
-                            }
+            // Authored source declarations identify entries that cannot silently
+            // disappear from the portable inventory. Inspect current entries for
+            // imageability only, without requiring equality to source or a ledger.
+            // This also works after loading an image without adopting a baseline.
+            let revision = s.registry.revision();
+            let entries = s.registry.entries.borrow().clone();
+            for &(name, record) in &entries { q.keep(name)?; q.keep(record)?; }
+            let mut keys = std::collections::BTreeSet::new();
+            for (_, record) in entries {
+                let Some((_, metadata)) = s.revision(q, record)? else { return Err(invalid()); };
+                for operation in metadata.operations {
+                    keys.insert((operation.target, operation.selector));
+                }
+            }
+            let epoch = preparation::epoch(s)?;
+            let globals = preparation::global_basis(s, q)?;
+            let nil = s.named(b"nil")?;
+            for (name, selector) in keys {
+                let name = symbol(s, q, &name)?;
+                let selector = symbol(s, q, &selector)?;
+                if let Some((_, behavior)) = preparation::target(s, q, name)? {
+                    if let Some(entry) = preparation::direct(s, behavior, selector)? {
+                        let implementation = s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[Operand::entry(entry)])?;
+                        if implementation.as_object().is_none_or(|v| v == nil) {
+                            return fail(s, q, b"nonPortableGeneration", b"authored binding has no imageable implementation");
                         }
                     }
                 }
-                if preparation::epoch(s)? != epoch {
-                    return fail(s, q, b"staleGeneration", b"bindings changed during snapshot admission");
-                }
             }
+            if s.registry.revision() != revision || preparation::epoch(s)? != epoch
+                || preparation::global_basis(s, q)? != globals {
+                return fail(s, q, b"staleGeneration", b"bindings changed during snapshot admission");
+            }
+            return Ok(Operand::object(s.named(b"true")?));
         }
-        let (matches, generation) = reconcile(s, q)?;
-        let descriptive = if snapshot {
-            if let Some(generation) = generation {
-                current(s, q)? == generation
-                    && field(s, q, generation, b"state")? == symbol(s, q, b"drifted")?
-            } else { false }
-        } else { false };
-        if matches || descriptive {
+        if s.candidates.ledger.borrow().is_none() {
+            if current(s, q)? == s.named(b"nil")? {
+                return Ok(Operand::object(s.named(b"true")?));
+            }
+            return fail(s, q, b"generationNotAdopted", b"generation has no binding ledger");
+        }
+        if reconcile(s, q)? {
             Ok(Operand::object(s.named(b"true")?))
         } else {
-            fail(
-                s,
-                q,
-                b"staleGeneration",
-                b"managed generation drift prevents image save",
-            )
+            fail(s, q, b"staleGeneration", b"managed generation has drifted")
         }
     }
 }
+
 pub(super) unsafe fn reconcile_candidate(
     s: &State,
     q: &Scope<'_>,
@@ -298,7 +246,7 @@ pub(super) unsafe fn reconcile_candidate(
                 b"unit has no current binding ledger",
             );
         }
-        if reconcile(s, q)?.0 {
+        if reconcile(s, q)? {
             Ok(Operand::object(unit))
         } else {
             fail(s, q, b"staleGeneration", b"managed generation has drifted")
@@ -309,36 +257,8 @@ pub(super) unsafe fn adopt(
     s: &State,
     q: &Scope<'_>,
     generation: Oop,
-    composed: bool,
 ) -> Result<Operand, Outcome> {
     unsafe {
-        let identity = s
-            .candidates
-            .recovery
-            .borrow()
-            .as_ref()
-            .map(|r| r.identity.clone());
-        if composed {
-            let Some(identity) = identity.filter(|_| s.candidates.recovering_policy.get()) else {
-                return fail(
-                    s,
-                    q,
-                    b"imageRecoveryRequired",
-                    b"composed adoption requires image recovery",
-                );
-            };
-            if field(s, q, generation, b"kind")? != symbol(s, q, b"composed")?
-                || field(s, q, generation, b"state")? != symbol(s, q, b"active")?
-                || s.bytes(field(s, q, generation, b"compositionIdentity")?)? != identity
-            {
-                return fail(
-                    s,
-                    q,
-                    b"invalidGeneration",
-                    b"composed generation identity mismatches image recovery",
-                );
-            }
-        }
         let existing = s.candidates.ledger.borrow().as_ref().map(|l| l.generation);
         if let Some(existing) = existing {
             if existing != generation {
@@ -371,26 +291,9 @@ pub(super) unsafe fn adopt(
         let mut components = std::collections::BTreeMap::new();
         for row in rows {
             let row = seq(s, q, row)?;
-            let [name, revision, unit] = row.as_slice() else {
+            let [name, _, unit] = row.as_slice() else {
                 return Err(invalid());
             };
-            if composed
-                && (*unit == nil
-                    || field(s, q, *unit, b"kind")? != symbol(s, q, b"composed")?
-                    || field(s, q, *unit, b"state")? != symbol(s, q, b"active")?
-                    || field(s, q, *unit, b"rollbackAvailable")? != s.named(b"false")?
-                    || field(s, q, *unit, b"unitName")? != *name
-                    || field(s, q, *unit, b"sourceRevision")? != *revision
-                    || s.bytes(field(s, q, *unit, b"compositionIdentity")?)?
-                        != s.bytes(field(s, q, generation, b"compositionIdentity")?)?)
-            {
-                return fail(
-                    s,
-                    q,
-                    b"invalidGeneration",
-                    b"composed component has inconsistent authority or rollback state",
-                );
-            }
             components.insert(s.symbol_bytes(q, *name)?.ok_or_else(invalid)?, *unit);
         }
         let source_revision=s.registry.revision();
@@ -458,7 +361,6 @@ pub(super) unsafe fn adopt(
             bindings: vec![],
             globals: vec![],
             units: components.values().copied().collect(),
-            drifted: false,
             source_revision,
         };
         // Authority parsing may collect unrelated private Block behaviors.

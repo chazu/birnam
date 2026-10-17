@@ -20,7 +20,6 @@ pub(super) enum Op {
     RetainedMetadata,
     ReplaceCompiled,
     CompilationValue,
-    Seal,
     LastError,
     MethodSources,
     InitialProjection,
@@ -30,7 +29,7 @@ pub(super) enum Op {
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Seal | Self::LastError | Self::MethodSources | Self::InitialProjection => 0,
+            Self::LastError | Self::MethodSources | Self::InitialProjection => 0,
             Self::Record | Self::RecordCompiled | Self::ReplaceCompiled | Self::CompilationValue | Self::EvalFrom => 2,
             _ => 1,
         }
@@ -237,7 +236,6 @@ pub(super) unsafe fn operation(
                     None => nil_value,
                 })
             }
-            Op::Seal => publication::send(s, scope, b"sealInitialGeneration", &[]),
             Op::EmbeddedFiles => {
                 let source = object(a[0])?;
                 let mut paths = Vec::new();

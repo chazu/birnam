@@ -91,7 +91,7 @@ The authored `DispatchGeneration current` / `current:` protocol owns the current
 generation reference. Lifecycle records use ordinary named slots, independently
 of any explicitly asserted Store facts.
 
-The generation owns a sealed, sorted source map and its canonical digest.
+An explicitly adopted generation owns a sorted source map and its canonical digest.
 `CompiledUnit activeFor:` is only a convenience derived from that map; there is no
 per-module active-authority mirror. Activation replaces one source-map entry and
 inherits every untouched entry. Rollback republishes the predecessor map and
@@ -99,37 +99,54 @@ restores only bindings touched by the successor.
 
 ## Dependencies and module introduction
 
-In L1a dependencies must already be present in G0. `prepareDependencies` remains
-useful during bootstrap, but ordinary AOT `Module load:` after G0 answers
-`#moduleIntroductionNotAvailable`. The projected block-binding subset does not
-broaden this into arbitrary initializer or migration semantics.
+Ordinary source and AOT module loading remain available before and after explicit
+adoption. Registration is never sealed. Dependencies still have to be available
+for the operation being requested; initializer effects are ordinary effects.
 
-## Direct edits and drift
+A new or replaced source registration changes the recorded source revision. That
+can invalidate an explicitly adopted candidate baseline; it does not prevent
+ordinary loading or execution. Candidate source-lineage coupling is still being
+simplified, and in-place baseline renewal is not provided by this slice.
 
-Ordinary method installation and removal remain available through the current
-owner messages. There is no running-phase authorization guard. A unit’s `state`
-reads its recorded lifecycle status; explicit `Generation reconcileCandidate:`
-checks whether the managed revision still matches live bindings. Detected drift
-can disable managed activation/rollback, but does not undo ordinary edits. Image
-snapshots preserve imageable live code even when revision metadata has drifted.
-The remaining whole-program restriction is being narrowed; it is not a language
-requirement that user code remain unchanged.
+## Direct edits and validation
+
+Ordinary method installation and removal use current owner messages. Console,
+TCP REPL and worker preparation do not initialize a generation automatically.
+Use `[DispatchGeneration adoptCurrent]` when deliberately entering the current
+managed candidate workflow.
+
+`Generation reconcileCandidate:` reports whether recorded bindings currently
+match. It does not change unit status, revoke an inverse or cache irreversible
+drift. Restoring the same binding can make validation succeed again. Source
+registry revisions still detect registration changes, including ABA. Conditional
+rollback continues to check its own affected state before restoring anything.
 
 ## Images and process boundaries
 
-An image carries the exact generation source map, its digest, and one code unit
-built from every complete document once in dependency order followed by the
-ordered source-backed method operations recorded by direct scripts and REPL
-forms. Normal boot maps that unit only when its embedded authority matches;
-`--rebuild` recompiles and maps the same accepted GenerationProjection from
-recovered source and selection, then retains the same digest. A selected
-projected global is reconstructed by that unit instead of being serialized as
-a duplicate closure fact.
+An image restores live Methods, their captures and retained source descriptions.
+Normal boot maps the recorded code; `--rebuild` reconstructs that code from the
+image's canonical programs and selection. Neither path adopts a generation or
+mints replacement CompiledUnits. Retained generation records, aliases and explicit
+annotations survive as ordinary data.
 
-Candidate handles, native roots, and rollback pointers are process-local. The
-saved `DispatchGeneration` remains durable authority, and new post-boot candidates
-may create successors, but prior-process rollback capabilities do not become
-durable merely because their provenance objects did.
+Candidate handles, preparation tokens and inverse journals are process-local.
+Loading drops them even when the saved source description exactly matches live
+code. Recorded `state` and `rollbackAvailable` fields describe history; they do
+not recreate an executable rollback capability. Saving and resaving do not
+reconcile the ledger or alter those fields.
+
+To explicitly establish a new baseline after restoration:
+
+```text
+let baseline := [DispatchGeneration adoptCurrent];
+```
+
+This validates the retained source/selection against live code, then creates one
+predecessor-free generation with no component units. A mismatch returns an Error
+and keeps the prior current record. Existing records and annotations are untouched.
+A successful baseline permits new candidate activation and rollback. The process
+must not already have an adopted baseline; use `Generation reconcileCandidate:`
+to validate an existing one. Ordinary startup and worker preparation leave adoption to the caller.
 
 Candidate bundles are trusted native input, not a security sandbox. `open:`
 performs byte-level inspection without loading code, and `map` makes the native
@@ -138,5 +155,5 @@ boundary explicit; checksums establish identity, not authorship.
 Lifecycle facts are no longer created automatically. CompiledUnit and generation
 fields are discoverable through `Reflect slotsOf:` and writable through ordinary
 slot reflection. Explicit facts, including facts under the same names, are separate.
-Image composition does not delete old record fields or user annotations; retained
+Image restoration does not delete old record fields or user annotations; retained
 records remain historical data and unreferenced records can be collected.

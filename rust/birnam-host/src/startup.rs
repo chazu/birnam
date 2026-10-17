@@ -149,6 +149,10 @@ mod tests {
             }
             out
         };
+        let old_shape = replacing(snapshot, 0, host.named(b"false").unwrap());
+        assert!(q.call(generation,b"prepareSourceRegistry:",&[Operand::object(old_shape)]).is_err(), "image source staging accepted an obsolete registry shape");
+        host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(NativeEntry::new(snapshot_value,old_shape.cast()))]).unwrap();
+        assert!(q.call(cg,b"initialGenerationProjection",&[]).is_err(), "old sealed-flag source registry accepted");
         for (bad,is_missing) in [(host.named(b"nil").unwrap(),true),(malformed,false)] {
             let bad_record=q.call(cg,b"compiledSource:metadata:",&[Operand::object(source),Operand::object(bad)]).unwrap();
             let row=q.vector_at(snapshot,row_index).unwrap();
@@ -166,14 +170,7 @@ mod tests {
         let repl = host.global(&q, b"Repl").unwrap();
         let result = q.call(repl, b"consoleHostInitNoConfig", &[]).unwrap();
         q.check_result(result).unwrap();
-        let result = q
-            .call(
-                host.global(&q, b"DispatchGeneration").unwrap(),
-                b"initializeCurrent",
-                &[],
-            )
-            .unwrap();
-        q.check_result(result).unwrap();
+        assert_eq!(q.call(host.global(&q, b"DispatchGeneration").unwrap(), b"current", &[]).unwrap(), host.named(b"nil").unwrap());
         let result = q.call(repl, b"consoleHostReadyNoMain", &[]).unwrap();
         q.check_result(result).unwrap();
         let result = q.call(repl, b"consoleDone", &[]).unwrap();

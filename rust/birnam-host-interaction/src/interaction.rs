@@ -21,9 +21,8 @@ impl HostRuntime<'_> {
     /// nearest-directory Config or application main again.
     pub fn run_repl(&self, apply_config: bool) -> Result<(), HostError> {
         // Module and Lang are present even on the minimal compiled floor.
-        // REPL entry also requires the authored generation/control bootstrap.
+        // REPL entry requires the authored bootstrap, but does not adopt a baseline.
         if self.global(&self.scope(), b"Module")? == self.named(b"nil")?
-            || self.global(&self.scope(), b"DispatchGeneration")? == self.named(b"nil")?
         {
             if !StartupPolicy::from_environment().source_bootstrap {
                 return Err(HostError("image lacks an authored bootstrap; regenerate it with the current Birnam or use BIRNAM_FORCE_SOURCE=1 for explicit source recovery".into()));
@@ -45,12 +44,6 @@ impl HostRuntime<'_> {
         // Teardown runs after initialization and on every subsequent failure.
         let run = (|| {
             session.check_result(result)?;
-            let sealed = session.call(
-                self.global(&session, b"DispatchGeneration")?,
-                b"initializeCurrent",
-                &[],
-            )?;
-            session.check_result(sealed)?;
             let ready = session.call(
                 repl,
                 if apply_config {
@@ -101,12 +94,6 @@ impl HostRuntime<'_> {
         let bind = q.string(bind.as_bytes())?;
         let repl = self.global(&q, b"Repl")?;
         let socket = self.global(&q, b"Socket")?;
-        let sealed = q.call(
-            self.global(&q, b"DispatchGeneration")?,
-            b"initializeCurrent",
-            &[],
-        )?;
-        q.check_result(sealed)?;
         let listener = q.call(
             repl,
             b"socketHostListen:bind:",

@@ -692,7 +692,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"initialGenerationProjection",
                 Op::Source(source::Op::InitialProjection),
             ),
-            (vt, b"sealInitialGeneration", Op::Source(source::Op::Seal)),
             (vt, b"lastError", Op::Source(source::Op::LastError)),
             (vt, b"evalPersisting:", Op::Source(source::Op::Eval)),
             (

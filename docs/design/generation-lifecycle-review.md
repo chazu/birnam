@@ -4,7 +4,9 @@
 redesign. The user subsequently approved this direction. Implementation status is
 tracked in [lifecycle record owners](lifecycle-record-owners.md) and
 [prepared operation admission](prepared-operation-admission.md) and
-[scoped transactions](scoped-generation-transactions.md). Follows
+[scoped transactions](scoped-generation-transactions.md) and
+[explicit image adoption](explicit-image-adoption.md) and
+[opt-in baselines](opt-in-generation-baselines.md). Follows
 [optional Store](optional-store-and-relational.md).
 
 ## Conclusion
@@ -30,10 +32,13 @@ value-based prepared admission; selected-state commit, compensation and rollback
 
 Still open:
 
-1. Decouple source-free image reconstruction from automatic generation
-   composition/adoption, then make source baseline certification opt-in.
-2. Remove sticky whole-program drift side effects and required initial sealing
-   from ordinary compilation/loading as part of that contract change.
+1. Ordinary startup, worker preparation and image reconstruction no longer adopt
+   automatically; source registration is no longer sealed. Finish decoupling the
+   explicit candidate source-lineage contract from whole-program certification.
+   In particular, support continued candidate work after source introduction
+   without requiring a snapshot round trip or a replacement coordination framework.
+2. Explicit validation now reports current disagreement without sticky drift or
+   inverse revocation. Keep its observation-only contract during further changes.
 3. Qualify activation within entered code before deciding whether Host-only
    intent fulfillment can be removed. Keep native reclamation checkpoints.
 4. Separate logical discard from optional artifact-file cleanup and diagnostics.

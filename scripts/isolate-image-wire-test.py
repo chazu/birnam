@@ -53,7 +53,6 @@ def check(prefix, root, label):
     source.write_text(
         "[Globals at: #ImportWireEcho put: [Object clone]];\n"
         "[Reflect defineMethod: #echo: on: ImportWireEcho as: [:self :value | value]];\n"
-        "[DispatchGeneration initializeCurrent];\n"
         f"[System saveImage: {json.dumps(str(image))}];\n"
         "[System println: [[System imageSaveReport] status]];\n"
     )

@@ -298,13 +298,10 @@ fn durable_artifacts_use_owned_code_and_current_messages() {
             String::from_utf8_lossy(&h.bytes(h.call(cg, b"lastError", &[]))).contains("digest")
         );
         std::fs::write(&artifact, old).unwrap();
-        h.call(cg, b"sealInitialGeneration", &[]);
-        let rejected = h.call(cg, b"load:", &[path]);
-        assert_eq!(h.call(rejected, b"isError", &[]), h.named(b"true"));
-        assert_eq!(
-            h.call(rejected, b"kind", &[]),
-            id.intern_name(b"moduleIntroductionNotAvailable").unwrap()
-        );
+        // Valid ordinary artifact loading remains available after registration.
+        let loaded = h.call(cg, b"load:", &[path]);
+        assert_eq!(h.call(loaded, b"isError", &[]), h.named(b"false"));
+        assert_ne!(loaded, h.named(b"nil"));
         std::fs::remove_dir_all(temp).unwrap();
     }
 }

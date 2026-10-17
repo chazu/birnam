@@ -139,8 +139,7 @@ probe.write_text(f'[Codegen load: {quote(registered)}]; '
     '[System println: [Codegen moduleSourceFor: #registered]]; '
     f'[System println: [[Codegen load: {quote(conflict)}] isNil]]; '
     '[System println: [Codegen lastError]]; '
-    '[Codegen sealInitialGeneration]; '
-    f'[System println: [[[Codegen load: {quote(registered)}] kind] = #moduleIntroductionNotAvailable]]')
+    f'[System println: [[Codegen load: {quote(registered)}] notNil]]')
 result = run([probe])
 assert result.returncode == 0 and not result.stderr, result
 assert result.stdout == registered_text.encode() + b'\ntrue\nRustCodegen duplicate module source\ntrue\n', result

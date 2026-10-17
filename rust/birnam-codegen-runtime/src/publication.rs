@@ -14,11 +14,12 @@ pub(super) unsafe fn send(
 pub(super) unsafe fn snapshot(s: &State, q: &Scope<'_>) -> Result<Vec<(Oop, Oop)>, Outcome> {
     unsafe {
         let rows = q.keep(object(send(s, q, b"sourceRegistry", &[])?)?)?;
-        let mut entries = Vec::new();
         let n = s.index(q, rows, b"size")?;
-        if n > 1_000_001 {
-            return Err(invalid());
-        }
+        if n == 0 || n > 1_000_001 { return Err(invalid()); }
+        let zero = q.keep(object(s.send(s.named(b"Integer")?, b"fromWord:", &[Operand::word(0)])?)?)?;
+        let tag = q.keep(object(s.send(rows, b"at:", &[Operand::object(zero)])?)?)?;
+        if tag != s.id.intern_name(b"sourceRegistryV1")? { return Err(invalid()); }
+        let mut entries = Vec::new();
         for i in 1..n {
             let index = q.keep(object(s.send(
                 s.named(b"Integer")?,
@@ -69,7 +70,4 @@ pub(super) unsafe fn error(
             &[Operand::object(kind), Operand::object(text)],
         )
     }
-}
-pub(super) unsafe fn sealed(s: &State, q: &Scope<'_>) -> Result<bool, Outcome> {
-    unsafe { Ok(send(s, q, b"sourceRegistrySealed", &[])?.as_object() == Some(s.named(b"true")?)) }
 }

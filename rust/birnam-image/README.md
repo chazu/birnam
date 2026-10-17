@@ -96,16 +96,14 @@ Image maps them using current foreign addresses without compilation. Map identit
 keys are rehashed for the admitted representation family, including private
 behaviors. ObjectModel resolves image layouts through registered ancestry.
 
-Snapshots record current executable code. `prepareImageSnapshot` reconciles
-managed metadata and marks drift descriptively; strict `validateImageGeneration`
-remains available for an explicit managed-revision check. Snapshot observation
-stamps reject changes during saving and preserve the existing destination.
-
-Codegen suspends old transient candidate capabilities during live publication.
-Authored CompiledUnit policy creates composed components and retires saved ancestry.
-Successful recovery releases old capability roots; conflict does not restore those
-capabilities as authority over a partially loaded world. Native-free rebuilds derive
-composition identity from validated program, binding and selection inventories.
+Snapshots record current executable code. `prepareImageSnapshot` checks
+imageability of entries at registered authored selectors without reconciling or
+mutating generation records. Strict `validateImageGeneration` remains an explicit
+certification operation. Restoring code never adopts a generation automatically:
+retained records and aliases stay descriptive, while process-local preparation
+and rollback capabilities are discarded. `DispatchGeneration adoptCurrent` is a
+separate explicit baseline operation. Image still computes its composition
+identity from validated program, binding and selection inventories.
 
 No service table, foreign payload access, global GC suppression or candidate
 framework is introduced. Roots survive collecting owner calls; entered, suspended
