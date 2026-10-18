@@ -468,7 +468,7 @@ fn ledger_validation_preserves_state_and_reports_current_agreement() {
             }
 
             "metadata" => {
-                let registry=call(named(b"Generation"),b"sourceRegistry",&[]);
+                let registry=call(prototype(b"SourceRegistry"),b"sourceRegistry",&[]);
                 let row=at(registry,1);let name=at(row,0);let record=at(row,1);
                 let mut replacement=call(named(b"Vector"),b"new",&[]);
                 for i in 0..3 {replacement=call(replacement,b"add:",&[at(record,i)]);}

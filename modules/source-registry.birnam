@@ -1,0 +1,124 @@
+// Early authored owner: installed before named-module admission, like Cell.
+// State is one persistent #[revision, ordered #[name, compilation] rows] value.
+// No native backing table, Store facts, image inverse, or cached Methods.
+[[|
+let registry := [ObjectModel newSlots: #[#[0 #[]]] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: registry as: [:self | #[#state]]];
+[Reflect defineMethod: #state on: registry as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #state: on: registry as: [:self :value | [ObjectModel slot: 0 in: self put: value]; self]];
+[Reflect defineMethod: #revision on: registry as: [:self | [[self state] at: 0]]];
+[Reflect defineMethod: #entries on: registry as: [:self | [[self state] at: 1]]];
+[Reflect defineMethod: #mutation: on: registry as: [:self :body |
+  let executor := TaskExecutor;
+  [[executor isNil] ifTrue: [| [body value]] ifFalse: [| [executor transition: body]]]
+]];
+[Reflect defineMethod: #recordFor:in: on: registry as: [:self :name :rows |
+  [rows inject: nil into: [:found :row |
+    [[[row at: 0] == name] ifTrue: [| [row at: 1]] ifFalse: [| found]]]]
+]];
+[Reflect defineMethod: #recordFor: on: registry as: [:self :name | [self recordFor: name in: [self entries]]]];
+[Reflect defineMethod: #moduleSourceFor: on: registry as: [:self :name |
+  let record := [self recordFor: name];
+  [[record isNil] ifTrue: [| nil] ifFalse: [| [Codegen sourceTextOf: record]]]
+]];
+[Reflect defineMethod: #compilationForSource: on: registry as: [:self :source |
+  [[self entries] inject: nil into: [:found :row |
+    [[found isNil] ifTrue: [|
+      let record := [row at: 1];
+      [[[Codegen sourceTextOf: record] == source] ifTrue: [| record] ifFalse: [| nil]]
+    ] ifFalse: [| found]]]]
+]];
+[Reflect defineMethod: #sourceRegistry on: registry as: [:self |
+  [[self entries] inject: #[#sourceRegistryV1] into: [:snapshot :row | [snapshot add: row]]]
+]];
+[Reflect defineMethod: #reject: on: registry as: [:self :message |
+  [Codegen noteCompilationError: message]; nil
+]];
+[Reflect defineMethod: #validateRecord:named: on: registry as: [:self :record :name |
+  [[[Reflect vtableOf: name] == SymbolVt] ifTrue: [|
+    let owner := [Codegen compiledSourceFor: record];
+    [[owner isError] ifTrue: [| owner] ifFalse: [|
+      [[owner == record] ifTrue: [|
+        let revision := [Codegen sourceRevisionOf: record];
+        [[revision isError] ifTrue: [| revision] ifFalse: [|
+          [[revision isNil] ifTrue: [| [self reject: "RustCodegen module source is not indexable"]] ifFalse: [|
+            [[[revision at: 1] == name] ifTrue: [| record] ifFalse: [| [self reject: "RustCodegen module source identity does not match its name"]]]
+          ]]
+        ]]
+      ] ifFalse: [| [Error kind: #invalidSourceRegistry]]]
+    ]]
+  ] ifFalse: [| [self reject: "RustCodegen module name was not a Symbol"]]]
+]];
+[Reflect defineMethod: #sameEntries:as: on: registry as: [:self :left :right |
+  [[[left size] = [right size]] ifTrue: [|
+    let pair := [left inject: #[true 0] into: [:result :row |
+      let other := [right at: [result at: 1]];
+      #[[[result at: 0] & [[[row at: 0] == [other at: 0]] & [[row at: 1] == [other at: 1]]]] [[result at: 1] + 1]]]];
+    [pair at: 0]
+  ] ifFalse: [| false]]
+]];
+[Reflect defineMethod: #publishEntries:from: on: registry as: [:self :rows :expected |
+  let revision := [[self sameEntries: [expected at: 1] as: rows]
+    ifTrue: [| [expected at: 0]] ifFalse: [| [[expected at: 0] + 1]]];
+  [[revision isError] ifTrue: [| revision] ifFalse: [|
+    [[ObjectModel replaceSlot: 0 in: self expected: expected with: #[revision rows]]
+      ifTrue: [| self] ifFalse: [| [Error kind: #sourceRegistryConflict]]]
+  ]]
+]];
+[Reflect defineMethod: #entries: on: registry as: [:self :rows |
+  [self mutation: [| [self publishEntries: rows from: [self state]]]]
+]];
+[Reflect defineMethod: #replaceRecord:named:expected: on: registry as: [:self :record :name :expected |
+  [self mutation: [|
+    let basis := [self state];
+    let rows := [basis at: 1];
+    [[[self recordFor: name in: rows] == expected] ifTrue: [|
+      [[expected isNil] ifTrue: [| [Error kind: #moduleNotRegistered]] ifFalse: [|
+        let next := [rows inject: #[] into: [:result :row |
+          [result add: [[[row at: 0] == name] ifTrue: [| #[name record]] ifFalse: [| row]]]]];
+        [self publishEntries: next from: basis]
+      ]]
+    ] ifFalse: [| [Error kind: #sourceRegistryConflict]]]
+  ]]
+]];
+[Reflect defineMethod: #recordCompiledSource:named: on: registry as: [:self :record :name |
+  let checked := [self validateRecord: record named: name];
+  [[[checked isNil] | [checked isError]] ifTrue: [| checked] ifFalse: [|
+    [self mutation: [|
+      let basis := [self state];
+      let prior := [self recordFor: name in: [basis at: 1]];
+      let text := [Codegen sourceTextOf: record];
+      [[prior isNil] ifTrue: [|
+        let result := [self publishEntries: [[basis at: 1] add: #[name record]] from: basis];
+        [[result isError] ifTrue: [| result] ifFalse: [| text]]
+      ] ifFalse: [|
+        [[[Codegen sourceTextOf: prior] = text] ifTrue: [| text] ifFalse: [| [self reject: "RustCodegen duplicate module source"]]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #replaceCompiledSource:named: on: registry as: [:self :record :name |
+  let checked := [self validateRecord: record named: name];
+  [[[checked isNil] | [checked isError]] ifTrue: [| checked] ifFalse: [|
+    let prior := [self recordFor: name];
+    [[prior isNil] ifTrue: [| [self reject: "RustCodegen module is not registered"]] ifFalse: [|
+      let result := [self replaceRecord: record named: name expected: prior];
+      [[result isError] ifTrue: [| result] ifFalse: [| [Codegen sourceTextOf: record]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #validate on: registry as: [:self |
+  let checked := [[self entries] inject: [Map new] into: [:seen :row |
+    [[seen isError] ifTrue: [| seen] ifFalse: [|
+      [[[row size] = 2] ifTrue: [|
+        let name := [row at: 0];
+        let record := [self validateRecord: [row at: 1] named: name];
+        [[[record isNil] | [record isError]] ifTrue: [| [Error kind: #invalidSourceRegistry]] ifFalse: [|
+          [[[seen at: name] isNil] ifTrue: [| [seen at: name put: true]] ifFalse: [| [Error kind: #invalidSourceRegistry]]]
+        ]]
+      ] ifFalse: [| [Error kind: #invalidSourceRegistry]]]
+    ]]]];
+  [[checked isError] ifTrue: [| checked] ifFalse: [| self]]
+]];
+[Globals at: #SourceRegistry put: registry]; registry
+] value]

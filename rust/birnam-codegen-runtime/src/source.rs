@@ -256,7 +256,7 @@ pub(super) unsafe fn operation(
                 } else {nil};
                 Ok(Operand::object(value))
             }
-            Op::ReplaceCompiled => publication::send(s,scope,b"replaceCompiledSource:named:",a),
+            Op::ReplaceCompiled => publication::source_send(s,scope,b"replaceCompiledSource:named:",a),
             Op::CompilationValue => {
                 let Some(text)=compiled_source::text(s,scope,object(a[0])?)? else{return Ok(nil_value)};
                 compiled_source::make(s,scope,text,object(a[1])?).map(Operand::object)
@@ -301,7 +301,7 @@ pub(super) unsafe fn operation(
                     Some(record)
                 } else {None};
                 let prepared=record.map(|record|[Operand::object(record),a[1]]);
-                publication::send(
+                publication::source_send(
                     s,
                     scope,
                     if matches!(op, Op::Find) {

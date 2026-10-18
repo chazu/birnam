@@ -709,8 +709,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"preparedPortableImageBinding:".as_slice(), Op::Image(image::Op::Prepared)),
             (
                 vt,
-                b"installPortableImageSources",
-                Op::Image(image::Op::InstallSources),
+                b"finishPortableImageSources",
+                Op::Image(image::Op::FinishSources),
             ),
             (
                 vt,

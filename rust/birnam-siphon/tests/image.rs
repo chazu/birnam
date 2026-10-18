@@ -975,8 +975,13 @@ fn image_owner_roundtrip() {
             Operand::object(h.id.intern_name(b"imageTransient").unwrap()),
             Operand::object(behavior_of(&h, h.named(b"Integer"))),
         ]).kind(), birnam_abi::id_protocol::UNIT);
-        assert_eq!(h.call(codegen, b"moduleSourceFor:", &[h.id.intern_name(b"later").unwrap()]), nil,
-            "source registry exchange is not undone");
+        // Source ownership follows the Globals state actually reached before
+        // the failure. There is no earlier native registry exchange or inverse.
+        let owner=global(&h,b"SourceRegistry");
+        let record=h.call(owner,b"recordFor:",&[h.id.intern_name(b"later").unwrap()]);
+        let visible=if record==nil {nil} else {h.call(codegen,b"sourceTextOf:",&[record])};
+        assert_eq!(h.call(codegen,b"moduleSourceFor:",&[h.id.intern_name(b"later").unwrap()]),visible,
+            "compiler lookup must use the visible ordinary owner after partial application");
         // Continue independent save-admission checks from an explicitly restored
         // snapshot, rather than assuming a failed load restored the session.
         assert_eq!(h.call(system, b"loadImage:", &[filename]), h.named(b"true"));

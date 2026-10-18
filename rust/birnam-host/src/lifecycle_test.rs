@@ -855,15 +855,175 @@ fn image_application_boundary_invalidates_without_restore() {
     expect(b"[[boundaryHeld invokeOn: 3] = 2]");
     expect(b"[[3 imageBoundaryValue] = 2]");
 
-    // Staged source installation is one-way. A later explicit installation may
-    // replace an intervening source write; cleanup never exchanges it back.
-    eval(b"let boundarySources := [Generation sourceRegistry]; let boundarySource := [Codegen moduleSourceFor: #imageBoundaryValue]; [Generation prepareSourceRegistry: boundarySources]");
-    eval(format!("[Codegen replaceCompiledSource: [Codegen analyzeSourceMetadata: \"{}\"] named: #imageBoundaryValue]", source(3)).as_bytes());
-    eval(b"[Generation installSourceRegistry]; [Generation finishImageApplication]");
-    expect(b"[[Codegen moduleSourceFor: #imageBoundaryValue] == boundarySource]");
-    let generation = host.named(b"Generation").unwrap();
-    assert!(q.call(generation, b"installSourceRegistry", &[]).is_err(), "installation must consume the stage");
+    // Image now restores the ordinary source owner itself; there is no native
+    // source stage or registry inverse for cleanup to exchange back.
     eval(b"[Generation finishImageApplication]; [DispatchGeneration adoptCurrent]");
     expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
     fs::remove_dir_all(dir).unwrap();
+}
+
+struct SourceRegistryFault {
+    id: Protocol,
+    original: native::NativeEntry,
+    gc: Oop,
+    globals: Oop,
+    registry_name: Oop,
+    other_owner: Oop,
+    changed_name: Oop,
+    changed_record: Oop,
+    error: Oop,
+    mode: usize,
+    calls: usize,
+}
+unsafe extern "C" fn source_registry_fault(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let f = &mut *c.cast::<SourceRegistryFault>();
+        f.calls += 1;
+        // Compensation must call current policy too, but this injected one-shot
+        // callback does not repeat its application-side effects on the inverse.
+        if f.calls > 1 { return f.original.method.unwrap()(f.original.context, r, a, n); }
+        if f.mode == 5 { return Outcome::loaded(Operand::object(f.error)); }
+        let result = f.original.method.unwrap()(f.original.context, r, a, n);
+        if result.status != native::LOADED || result.value.as_object() != Some(r) { return result; }
+        let effect = match f.mode {
+            2 => f.id.send_named(r, b"replaceCompiledSource:named:", &[Operand::object(f.changed_record), Operand::object(f.changed_name)]),
+            3 | 6 => f.id.send_named(r, b"recordCompiledSource:named:", &[Operand::object(f.changed_record), Operand::object(f.changed_name)]),
+            4 => f.id.send_named(f.globals, b"at:put:", &[Operand::object(f.registry_name), Operand::object(f.other_owner)]),
+            _ => Ok(Operand::unit()),
+        };
+        if let Err(e) = effect { return e; }
+        if let Err(e) = f.id.send_named(f.gc, b"collectPrecisely", &[]) { return e; }
+        if f.mode == 6 { result }
+        else if f.mode == 1 { Outcome::failed(native::UNBOUND, 54323) }
+        else { Outcome::loaded(Operand::object(f.error)) }
+    }
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn source_registry_sends_compensate_without_overwriting_other_owners() {
+    let lib=PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources=crate::resolve_from_exe_dir(Path::new("/unused/bin"),crate::Overrides{lib_dir:Some(&lib),..Default::default()}).unwrap();
+    let host=HostRuntime::start(&resources,StartupPolicy{skip_stdlib:false,precise_gc:true,source_bootstrap:false,tool_bootstrap:false}).unwrap();
+    let q=host.scope();let cg=host.named(b"Codegen").unwrap();
+    let eval=|source:&[u8]|{let v=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(source).unwrap())]).unwrap();q.check_result(v).unwrap();v};
+    let expect=|source:&[u8]|assert_eq!(eval(source),host.named(b"true").unwrap(),"{}",String::from_utf8_lossy(source));
+    let owner=host.global(&q,b"SourceRegistry").unwrap();
+    let vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(owner)]).unwrap();
+    let selector=unsafe{host.context.id.intern_name(b"replaceRecord:named:expected:")}.unwrap();
+    let _original_method=q.call(owner,b"methodFor:",&[Operand::object(selector)]).unwrap();
+    let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(vt)]).unwrap().as_entry().unwrap();
+    let registry_name=unsafe{host.context.id.intern_name(b"SourceRegistry")}.unwrap();
+    let error=q.call(host.named(b"Error").unwrap(),b"kind:",&[Operand::object(unsafe{host.context.id.intern_name(b"sourceWriteFailure")}.unwrap())]).unwrap();
+    let dir=env::temp_dir().join(format!("birnam-source-owner-{}",std::process::id()));fs::create_dir_all(&dir).unwrap();
+    for mode in 0..7 {
+        let name=format!("sourceOwnerMode{mode}");
+        let symbol=unsafe{host.context.id.intern_name(name.as_bytes())}.unwrap();
+        let source=|value|format!("[Module named: #{name} requires: #[]]; [Reflect defineMethod: #{name} on: Integer as: [:self | {value}]]");
+        q.evaluate(source(1).as_bytes(),Path::new("<source-owner>"),Some(name.as_bytes())).unwrap();
+        let before=q.call(owner,b"recordFor:",&[Operand::object(symbol)]).unwrap();
+        let path=dir.join(format!("{name}.o"));
+        eval(format!("[CompiledUnit compile: \"{}\" named: #{name} output: \"{}\"]",source(2),path.display()).as_bytes());
+        eval(format!("let sourceUnit := [CompiledUnit open: \"{}\"]",path.display()).as_bytes());
+        eval(b"[sourceUnit map]");
+        let other=q.call(owner,b"clone",&[]).unwrap();
+        let changed_name=if mode==2{symbol}else{unsafe{host.context.id.intern_name(format!("sourceOutside{mode}").as_bytes())}.unwrap()};
+        let changed_text=if mode==2{source(3)}else{format!("[Module named: #sourceOutside{mode} requires: #[]]")};
+        let changed_record=q.call(cg,b"analyzeSourceMetadata:",&[Operand::object(q.string(changed_text.as_bytes()).unwrap())]).unwrap();q.check_result(changed_record).unwrap();
+        let mut fault=SourceRegistryFault{id:host.context.id,original,gc:host.named(b"GC").unwrap(),globals:host.named(b"Globals").unwrap(),registry_name,other_owner:other,changed_name,changed_record,error,mode,calls:0};
+        host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(native::NativeEntry::new(source_registry_fault,(&mut fault as *mut SourceRegistryFault).cast()))]).unwrap();
+        let result=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(b"[sourceUnit activate]").unwrap())]);
+        host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
+        assert!(fault.calls>0,"mode {mode} bypassed the owner setter");
+        if mode==6 {
+            q.check_result(result.unwrap()).unwrap();
+            expect(format!("[[3 {name}] = 2]").as_bytes());
+            eval(b"[sourceUnit rollback]");
+        } else {
+            assert!(result.is_err()||q.check_result(result.unwrap()).is_err(),"mode {mode} swallowed failure");
+        }
+        if mode==4 {
+            assert_eq!(host.global(&q,b"SourceRegistry").unwrap(),other);
+            assert_eq!(q.call(other,b"recordFor:",&[Operand::object(symbol)]).unwrap(),before);
+            q.call(host.named(b"Globals").unwrap(),b"at:put:",&[Operand::object(registry_name),Operand::object(owner)]).unwrap();
+        }
+        assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(symbol)]).unwrap(),if mode==2{changed_record}else{before},"mode {mode}");
+        if mode==3||mode==6 {assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(changed_name)]).unwrap(),changed_record);}
+        expect(format!("[[3 {name}] = 1]").as_bytes());
+        eval(b"[sourceUnit discard]; [System gc]");
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn source_registry_images_preserve_aliases_and_reject_changed_snapshots() {
+    let lib=PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources=crate::resolve_from_exe_dir(Path::new("/unused/bin"),crate::Overrides{lib_dir:Some(&lib),..Default::default()}).unwrap();
+    let host=HostRuntime::start(&resources,StartupPolicy{skip_stdlib:false,precise_gc:true,source_bootstrap:false,tool_bootstrap:false}).unwrap();
+    let q=host.scope();let cg=host.named(b"Codegen").unwrap();let system=host.named(b"System").unwrap();
+    let eval=|source:&[u8]|{let v=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(source).unwrap())]).unwrap();q.check_result(v).unwrap();v};
+    let expect=|source:&[u8]|assert_eq!(eval(source),host.named(b"true").unwrap(),"{}",String::from_utf8_lossy(source));
+    let dir=env::temp_dir().join(format!("birnam-source-images-{}",std::process::id()));fs::create_dir_all(&dir).unwrap();
+    let path=dir.join("owner.image");let filename=q.string(path.as_os_str().as_bytes()).unwrap();
+    eval(b"let sourceOwnerAlias := SourceRegistry; let sourceStateAlias := [SourceRegistry state]; let sourceRowsAlias := [SourceRegistry entries]");
+    let old_owner=host.global(&q,b"SourceRegistry").unwrap();
+    let saved=q.call(system,b"saveImage:",&[Operand::object(filename)]).unwrap();q.check_result(saved).unwrap();assert!(path.is_file());
+    for rebuild in [false,true] {
+        let result=q.call(system,b"loadImage:rebuild:",&[Operand::object(filename),Operand::object(host.named(if rebuild{b"true"}else{b"false"}).unwrap())]).unwrap();q.check_result(result).unwrap();
+        let current=host.global(&q,b"SourceRegistry").unwrap();assert_ne!(old_owner,current);
+        expect(b"[SourceRegistry == sourceOwnerAlias]");
+        expect(b"[[SourceRegistry state] == sourceStateAlias]");
+        expect(b"[[SourceRegistry entries] == sourceRowsAlias]");
+        expect(b"[[[Codegen portableImageSources] at: 1] == SourceRegistry]");
+        expect(b"[[SourceRegistry validate] == SourceRegistry]");
+        eval(b"[System gc]");
+    }
+    let owner=host.global(&q,b"SourceRegistry").unwrap();
+    let vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(owner)]).unwrap();
+    let selector=unsafe{host.context.id.intern_name(b"validate")}.unwrap();
+    let original=q.call(owner,b"methodFor:",&[Operand::object(selector)]).unwrap();
+    eval(b"let sourceSaveError := [Error kind: #sourceSaveRefused]; [Reflect defineMethod: #validate on: SourceRegistry as: [:self | sourceSaveError]]");
+    let rejected_path=dir.join("rejected.image");let rejected=q.string(rejected_path.as_os_str().as_bytes()).unwrap();
+    let answer=q.call(system,b"saveImage:",&[Operand::object(rejected)]).unwrap();
+    assert_eq!(answer,host.global(&q,b"sourceSaveError").unwrap());assert!(!rejected_path.exists());
+    q.call(vt,b"addMethod:as:",&[Operand::object(original),Operand::object(selector)]).unwrap();
+
+    // Registry data is an explicit save dependency. This callback changes only
+    // ordinary registry/Cell state: no Globals binding or dictionary edit.
+    eval(b"let sourceValidation := [SourceRegistry methodFor: #validate]; let sourceSaveOnce := [Cell with: true]; let sourceSaveRecord := [Codegen analyzeSourceMetadata: \"[Module named: #registeredDuringSave requires: #[]]\"]");
+    eval(b"[Reflect defineMethod: #validate on: SourceRegistry as: [:self | [[sourceSaveOnce value] ifTrue: [| [sourceSaveOnce set: false]; [self recordCompiledSource: sourceSaveRecord named: #registeredDuringSave]]]; [sourceValidation invokeOn: self]]]");
+    let epoch=host.send(host.context.id.receiver,b"bindingEpoch",&[]).unwrap().as_word().unwrap();
+    let basis=q.call(host.named(b"Globals").unwrap(),b"bindingBasis",&[]).unwrap();
+    let answer=q.call(system,b"saveImage:",&[Operand::object(rejected)]).unwrap();
+    assert_eq!(answer,host.named(b"nil").unwrap());assert!(!rejected_path.exists());
+    assert_eq!(host.send(host.context.id.receiver,b"bindingEpoch",&[]).unwrap().as_word(),Some(epoch));
+    let after=q.call(host.named(b"Globals").unwrap(),b"bindingBasis",&[]).unwrap();
+    assert_eq!(host.send(host.named(b"Integer").unwrap(),b"wordOf:",&[Operand::object(basis)]).unwrap().as_word(),host.send(host.named(b"Integer").unwrap(),b"wordOf:",&[Operand::object(after)]).unwrap().as_word());
+    expect(b"[[SourceRegistry recordFor: #registeredDuringSave] == sourceSaveRecord]");
+    q.call(vt,b"addMethod:as:",&[Operand::object(original),Operand::object(selector)]).unwrap();
+
+    // Substitute an obsolete inventory at the actual pre-application boundary.
+    // The loader has a real active stage; rejection cannot be a missing-stage error.
+    let cvt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(cg)]).unwrap();
+    let cselector=unsafe{host.context.id.intern_name(b"preparePortableImageSources:")}.unwrap();
+    let centry=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(cselector),Operand::object(cvt)]).unwrap().as_entry().unwrap();
+    let legacy=q.call(owner,b"sourceRegistry",&[]).unwrap();
+    let mut marker=LegacySourceMarker{original:centry,legacy,calls:0};
+    host.send(cvt,b"addMethod",&[Operand::object(cselector),Operand::entry(native::NativeEntry::new(legacy_source_marker,(&mut marker as *mut LegacySourceMarker).cast()))]).unwrap();
+    let result=host.load_image(&path);
+    host.send(cvt,b"addMethod",&[Operand::object(cselector),Operand::entry(centry)]).unwrap();
+    assert!(result.is_err());assert_eq!(marker.calls,1);
+    assert_eq!(host.global(&q,b"SourceRegistry").unwrap(),owner);
+    expect(b"[[SourceRegistry validate] == SourceRegistry]");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+struct LegacySourceMarker { original: native::NativeEntry, legacy: Oop, calls: usize }
+unsafe extern "C" fn legacy_source_marker(c: *mut c_void, r: Oop, _: *const Operand, _: usize) -> Outcome {
+    unsafe {
+        let f=&mut *c.cast::<LegacySourceMarker>(); f.calls+=1;
+        let args=[Operand::object(f.legacy)];
+        f.original.method.unwrap()(f.original.context,r,args.as_ptr(),args.len())
+    }
 }

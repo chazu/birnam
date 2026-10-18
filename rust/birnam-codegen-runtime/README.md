@@ -2,7 +2,8 @@
 
 Codegen consumes Lang CST messages and produces canonical portable programs and
 compiler metadata. [Generation](../birnam-generation/README.md) owns publication,
-explicit candidate rollback, source registration and image-application invalidation. Codegen calls the separately loaded [NativeBackend](../birnam-native-backend/README.md)
+explicit candidate rollback and image-application invalidation. The authored
+SourceRegistry owns source registration. Codegen calls the separately loaded [NativeBackend](../birnam-native-backend/README.md)
 through Id for native emission, slot coloring and descriptors. `compile:` returns
 an owned resumable Method, `eval:` runs it on a real Machine, and `emit:` returns
 the generated C String. TCC compiles and owns each Unit; its initializer consumes
@@ -85,7 +86,8 @@ selectors now use the same current owners. Revision analysis remains private pur
 compiler code; its revision Vector retains the tag, name, requirements, original source and
 three historical digests, followed by the retained compilation record.
 
-Generation owns the source registry and its registration policy. Entries retain
+The authored SourceRegistry object in Globals owns the source registry and its
+registration policy; all consumers use its current Id messages. Entries retain
 ordinary compilation records: `#[#compiledSourceV1 originalSource metadata]`.
 Source Strings keep their identity; no String-keyed cache or native metadata table
 is added. Metadata retains the existing `compiledSourceMetadataV1` schema and
@@ -113,14 +115,16 @@ own metadata when the current registry changes.
 source declaration retains the first registration. `replaceCompiledSource:named:`
 explicitly selects a new validated record for an existing name without installing
 methods or activating code. The registry's content revision invalidates stale
-Generation observations, including ABA; ordinary registration remains available. That content
-revision. Ordinary sends acquire no observers or method-identity guards.
+optional certification observations, including ABA; ordinary candidate admission
+compares only its selected record and owner. Ordinary sends acquire no observers
+or method-identity guards. Duplicate source text uses the current String `=` send.
 
 Image transports the ordinary record graph through the existing value codec.
-Source-registry/revision values have changed shape; older images with bare-String
-registry entries require rebuilding and are rejected rather than recovered through
-Store facts or source parsing. The bootstrap module set and artifact metadata codec
-are unchanged. See [retained compilation records](../../docs/design/retained-compilation-records.md).
+Source ownership in images is now `#[#sourceRegistryV2 owner]`: the heap and
+Globals preserve the actual owner, its state and aliases. Old registry inventories
+and source-less images require rebuilding. Early bootstrap installs the authored
+owner before named artifacts; no native registry seed is retained. Artifact
+metadata encoding is unchanged. See [retained compilation records](../../docs/design/retained-compilation-records.md).
 
 Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
 Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated
@@ -290,7 +294,7 @@ not an OS-loadable Mach-O library. Native kernel dylibs keep their separate ABI.
 those same bytes to `TCC loadObject:`. It checks kind, capability and already-loaded
 requirements, initializes an owned Method/source/metadata/adapter record, validates source identity
 and digests, and runs the Method on a Machine. Successfully activated, revision-indexable modules enter
-Generation's source registry. Artifact dependency discovery preserves the broader
+the authored source registry. Artifact dependency discovery preserves the broader
 historical syntactic declaration scan, independently of revision admission. Conflicting duplicate sources fail before
 user initialization. Errors and native failures propagate; nil means unsuccessful
 activation. Ordinary user initialization is not a rollback transaction.

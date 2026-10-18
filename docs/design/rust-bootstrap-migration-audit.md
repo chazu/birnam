@@ -2,6 +2,12 @@
 
 Audit date: 2026-10-10. Baseline: `c072e3ac`, before the Trace port.
 
+Update 2026-10-18: [source-registry ownership](authored-source-registry.md) has
+moved from Generation into an early authored owner, including cold bootstrap.
+No native registry seed remains. Generation still contains candidate/certification
+policy; the historical counts and dependency assessments below are not a current
+crate inventory. Relational migration remains paused.
+
 The recommended next rewrites are Trace, Relational, ProjectBuild and HostProject.
 They contain behavior that can live in Birnam without replacing the compiler's
 cold-bootstrap seed. Compiler, value and execution implementations need a

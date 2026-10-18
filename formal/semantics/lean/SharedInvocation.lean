@@ -445,4 +445,37 @@ theorem certificate_release_preserves_description (s : CertificateWorld) :
 theorem certificate_release_is_idempotent (s : CertificateWorld) :
     releaseCertificate (releaseCertificate s) = releaseCertificate s := by rfl
 
+-- An explicit candidate operation retains the selected source owner. A failed
+-- ordinary send may have written; compensation observes and conditionally undoes
+-- that owner's selected record, never the subsequently rebound global owner.
+structure SourceOwners where
+  currentOwner : Nat
+  records : Nat → Nat
+  outside : Nat
+
+def compensateSource (s : SourceOwners) (selected before after : Nat) : SourceOwners :=
+  { s with records := fun owner =>
+      if owner = selected ∧ s.records owner = after then before else s.records owner }
+
+theorem source_inverse_keeps_other_owner (s : SourceOwners) (selected other before after : Nat)
+    (different : other ≠ selected) :
+    (compensateSource s selected before after).records other = s.records other := by
+  simp [compensateSource, different]
+
+theorem source_inverse_preserves_conflict (s : SourceOwners) (selected before after : Nat)
+    (changed : s.records selected ≠ after) :
+    (compensateSource s selected before after).records selected = s.records selected := by
+  simp [compensateSource, changed]
+
+theorem source_inverse_restores_owned_write (s : SourceOwners) (selected before after : Nat)
+    (owned : s.records selected = after) :
+    (compensateSource s selected before after).records selected = before := by
+  simp [compensateSource, owned]
+
+theorem source_inverse_keeps_rebinding (s : SourceOwners) (selected before after : Nat) :
+    (compensateSource s selected before after).currentOwner = s.currentOwner := by rfl
+
+theorem source_inverse_keeps_unrelated_registration (s : SourceOwners) (selected before after : Nat) :
+    (compensateSource s selected before after).outside = s.outside := by rfl
+
 end Birnam.SharedInvocation

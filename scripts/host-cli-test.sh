@@ -91,6 +91,8 @@ if selected interaction; then
   run_check lsp-project-smoke.sh bash scripts/lsp-project-smoke.sh
 fi
 if selected generation; then
+  host_test source_registry_images_preserve_aliases_and_reject_changed_snapshots
+  host_test source_registry_sends_compensate_without_overwriting_other_owners
   host_test image_application_boundary_invalidates_without_restore
   host_test certificate_release_reclaims_observations_and_preserves_candidate_undo
   host_test rollback_keeps_released_predecessors_discarded

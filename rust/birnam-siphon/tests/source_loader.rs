@@ -226,6 +226,7 @@ fn source_loading_uses_live_owners() {
             ),
             equal
         );
+
         assert_eq!(
             h.call(
                 codegen,
@@ -494,6 +495,19 @@ unsafe extern "C" fn bytes_hook(c: *mut c_void, r: Oop, a: *const Operand, n: us
             .map_or_else(|e| e, Outcome::loaded)
     }
 }
+unsafe extern "C" fn source_equality_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let hook = &*c.cast::<BytesHook>();
+        collect(hook.id, hook.gc);
+        if r == hook.trigger && !hook.once.replace(true) {
+            let recorded = send(hook.id, hook.codegen, b"recordModuleSource:named:",
+                &[Operand::object(hook.nested), Operand::object(hook.name)]);
+            assert_eq!(object(recorded), hook.nested);
+        }
+        hook.id.send_named(r, b"testSourceEquality:", borrowed_slice(a,n).unwrap())
+            .map_or_else(|e|e,Outcome::loaded)
+    }
+}
 unsafe extern "C" fn reply(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::object(c))
 }
@@ -558,8 +572,9 @@ unsafe fn exercise_callbacks(h: &H, temp: &std::path::Path) {
         std::fs::write(&path, b"[Module named: #loadedCollected requires: #[]]; 68").unwrap();
         let path_object = h.string(path.as_os_str().as_bytes());
         assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 68);
-        // Reentry while comparing retained String contents must not hold a
-        // registry borrow, suppress GC, or publish a duplicate registration.
+        // The authored owner compares retained text through current String =.
+        // Reentry must not suppress GC or duplicate registration. Bytes remains
+        // the separate compiler/loader borrow boundary exercised below.
         let old = h.call(
             codegen,
             b"moduleSourceFor:",
@@ -587,6 +602,9 @@ unsafe fn exercise_callbacks(h: &H, temp: &std::path::Path) {
             b"bytes",
             NativeEntry::new(bytes_hook, (&mut bytes as *mut BytesHook).cast()),
         );
+        let original_equal = binding(id, string_vt, b"=");
+        set(id,string_vt,b"testSourceEquality:",original_equal);
+        set(id,string_vt,b"=",NativeEntry::new(source_equality_hook,(&mut bytes as *mut BytesHook).cast()));
         assert_eq!(
             h.call(
                 codegen,
@@ -595,6 +613,8 @@ unsafe fn exercise_callbacks(h: &H, temp: &std::path::Path) {
             ),
             equal
         );
+        set(id,string_vt,b"=",original_equal);
+        send(id,string_vt,b"removeMethod:",&[Operand::object(id.intern_name(b"testSourceEquality:").unwrap())]);
         assert!(bytes.once.get());
         assert_eq!(h.call(codegen, b"moduleSourceFor:", &[bytes.name]), nested);
         // Mutate the path during source inspection, after the loader copied it.

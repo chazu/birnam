@@ -11,9 +11,20 @@ pub(super) unsafe fn send(
         s.send(owner, name, a)
     }
 }
+pub(super) unsafe fn source_owner(s: &State, q: &Scope<'_>) -> Result<Oop, Outcome> {
+    unsafe {
+        let name = q.keep(s.id.intern_name(b"SourceRegistry")?)?;
+        let owner = q.keep(object(s.send(s.named(b"Globals")?, b"at:", &[Operand::object(name)])?)?)?;
+        if owner == s.named(b"nil")? { return Err(invalid()); }
+        Ok(owner)
+    }
+}
+pub(super) unsafe fn source_send(s: &State, q: &Scope<'_>, name: &[u8], args: &[Operand]) -> Result<Operand, Outcome> {
+    unsafe { s.send(source_owner(s, q)?, name, args) }
+}
 pub(super) unsafe fn snapshot(s: &State, q: &Scope<'_>) -> Result<Vec<(Oop, Oop)>, Outcome> {
     unsafe {
-        let rows = q.keep(object(send(s, q, b"sourceRegistry", &[])?)?)?;
+        let rows = q.keep(object(source_send(s, q, b"sourceRegistry", &[])?)?)?;
         let n = s.index(q, rows, b"size")?;
         if n == 0 || n > 1_000_001 { return Err(invalid()); }
         let zero = q.keep(object(s.send(s.named(b"Integer")?, b"fromWord:", &[Operand::word(0)])?)?)?;

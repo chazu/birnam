@@ -128,16 +128,17 @@ mod tests {
         std::fs::remove_file(&fixture).unwrap();
         let name = unsafe { host.context.id.intern_name(b"stdlib") }.unwrap();
         let source = q.call(cg, b"moduleSourceFor:", &[Operand::object(name)]).unwrap();
-        let generation=host.named(b"Generation").unwrap();
+        let source_owner=host.global(&q,b"SourceRegistry").unwrap();
         let _record=q.call(cg,b"compiledSourceFor:",&[Operand::object(source)]).unwrap();
-        let snapshot=q.call(generation,b"sourceRegistry",&[]).unwrap();
+        let snapshot=q.call(source_owner,b"sourceRegistry",&[]).unwrap();
         let mut row_index=0;
         for i in 1..q.vector_size(snapshot).unwrap(){
             if q.vector_at(q.vector_at(snapshot,i).unwrap(),0).unwrap()==name {row_index=i;break}
         }
         assert_ne!(row_index,0);
-        let owner_vt=host.named(b"GenerationVt").unwrap();
+        let owner_vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(source_owner)]).unwrap();
         let selector=unsafe{host.context.id.intern_name(b"sourceRegistry")}.unwrap();
+        let _original_method=q.call(source_owner,b"methodFor:",&[Operand::object(selector)]).unwrap();
         let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(owner_vt)]).unwrap().as_entry().unwrap();
         unsafe extern "C" fn snapshot_value(c:*mut c_void,_:Oop,_:*const Operand,_:usize)->Outcome {Outcome::loaded(Operand::object(c.cast()))}
         let malformed=q.call(host.named(b"Vector").unwrap(),b"new",&[]).unwrap();
@@ -150,7 +151,7 @@ mod tests {
             out
         };
         let old_shape = replacing(snapshot, 0, host.named(b"false").unwrap());
-        assert!(q.call(generation,b"prepareSourceRegistry:",&[Operand::object(old_shape)]).is_err(), "image source staging accepted an obsolete registry shape");
+        assert!(q.call(cg,b"preparePortableImageSources:",&[Operand::object(snapshot)]).is_err(), "image source staging accepted an obsolete registry shape");
         host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(NativeEntry::new(snapshot_value,old_shape.cast()))]).unwrap();
         assert!(q.call(cg,b"initialGenerationProjection",&[]).is_err(), "old sealed-flag source registry accepted");
         for (bad,is_missing) in [(host.named(b"nil").unwrap(),true),(malformed,false)] {

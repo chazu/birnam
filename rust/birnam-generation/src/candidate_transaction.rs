@@ -38,6 +38,7 @@ struct GlobalWrite {
 pub(super) struct Activation {
     prior_unit: Oop,
     source_before: Oop,
+    source_owner: Oop,
     source_after: Oop,
     bindings_before: Vec<Binding>,
     bindings_after: Vec<Binding>,
@@ -46,7 +47,7 @@ pub(super) struct Activation {
 }
 impl Activation {
     pub(super) fn roots(&self) -> Vec<Oop> {
-        let mut values = vec![self.prior_unit, self.source_before, self.source_after, self.binding_reservation];
+        let mut values = vec![self.prior_unit, self.source_owner, self.source_before, self.source_after, self.binding_reservation];
         for b in self.bindings_before.iter().chain(&self.bindings_after) {
             values.extend([b.name, b.target, b.behavior, b.selector]);
             values.extend(b.method);
@@ -61,6 +62,7 @@ impl Activation {
 }
 #[derive(Clone)]
 enum Write {
+    Source { owner: Oop, name: Oop, before: Oop, after: Oop },
     Field(FieldWrite),
     Global(GlobalWrite),
     Binding {
@@ -242,6 +244,14 @@ unsafe fn compensate(s: &State, q: &Scope<'_>, binding_token: Oop, writes: &[Wri
         for write in writes.iter().rev() {
             let restored = (|| {
                 match write {
+                    Write::Source { owner, name, before, after } => {
+                        let current = sources::record(s, q, *owner, *name)?;
+                        if current == Some(*before) { return Ok(()); }
+                        if current != Some(*after) { return Err(invalid()); }
+                        // An ordinary setter can fail after applying its inverse.
+                        let _ = sources::replace(s, q, *owner, *name, *after, *before);
+                        if sources::record(s, q, *owner, *name)? != Some(*before) { return Err(invalid()); }
+                    }
                     Write::Global(f) => {
                         let current = preparation::global(s, q, f.name)?;
                         if current == f.before {
@@ -655,6 +665,12 @@ pub(super) unsafe fn commit(
                     b"publication does not match its selected postcondition",
                 ));
             }
+            attempted.push(Write::Source { owner: p.source_owner, name: p.plan[2], before: p.source, after: new_source });
+            sources::replace(s, q, p.source_owner, p.plan[2], p.source, new_source)?;
+            published.source = new_source;
+            if !preparation::current_snapshot(s, q, &published)? {
+                return Err(failure(s, q, b"staleGeneration", b"source publication changed its selected postcondition"));
+            }
             if rollback {
                 let cleanup = (|| {
                     release_bindings(s, q, binding_reservation, binding_required)?;
@@ -699,9 +715,8 @@ pub(super) unsafe fn commit(
             }
             return Err(error);
         }
-        // Everything that can call out has completed. Install native ownership
-        // together; no borrowed registry crosses an outgoing message.
-        if !s.registry.replace_record(p.plan[2], p.source, new_source) { return Err(invalid()); }
+        // All owner messages, including source replacement, have completed.
+        // Install only our process-local capability; no registry state lives here.
         if !rollback {
             s.candidates
                 .entries
@@ -712,6 +727,7 @@ pub(super) unsafe fn commit(
                 .activation = Some(Activation {
                 prior_unit: p.plan[3],
                 source_before: p.source,
+                source_owner: p.source_owner,
                 source_after: new_source,
                 bindings_before: p.bindings,
                 bindings_after: post,
@@ -789,6 +805,7 @@ pub(super) unsafe fn prepare_rollback(
             unit,
             plan,
             source: saved.source_after,
+            source_owner: saved.source_owner,
             fields: preparation::plan_fields(s, q, &plan)?,
             bindings: saved.bindings_after.clone(),
             globals: saved

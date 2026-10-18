@@ -1,7 +1,8 @@
 # Generation
 
 This owner holds candidate artifact/mapping capabilities, selected change records,
-source registration and optional source certificates. It does not define ordinary
+and optional source certificates. Source registration belongs to the authored
+`SourceRegistry` owner in Globals. It does not define ordinary
 message dispatch. Foreign owners are accessed through current Id messages; no
 foreign payload layouts or new service table are used.
 
@@ -27,13 +28,13 @@ replaces only that optional ledger. `reconcileCandidate:` / `validateImageGenera
 report current agreement without lifecycle setters or inverse revocation. A
 candidate commit does not manufacture a certificate or update a global generation.
 
-`sourceRegistry` is `[#sourceRegistryV1, [name, compilationRecord], ...]`.
-Registration is not sealed. Source records and image staging are rooted across
-collecting callbacks; stage exchanges retain owner revisions to reject stale
-publication. Image load suspends old capabilities and releases them after success
-or partial application, without automatically adopting. Snapshot admission checks
-imageability at registered authored selectors, not equality to old source bodies.
-Actual live code and aliases are restored independently of these descriptions.
+Source records are ordinary objects retained by SourceRegistry. Generation reads
+its public protocol through Id, with no backing table, slot-layout access or
+owner cache. Prepared work and inverses retain their selected registry receiver.
+Source replacement participates in the same conditional compensation as other
+explicit candidate writes; a rebound owner is never mistaken for that receiver.
+Snapshot admission checks imageability at registered authored selectors, not
+equality to old source bodies. Images restore the owner and its aliases directly.
 
 Entered Methods, captured Blocks and suspended Machines retain code through
 Execution. GC/TCC checkpoints govern physical reclamation. Logical candidate
@@ -64,8 +65,7 @@ See [logical discard](../../docs/design/logical-candidate-discard.md).
 `beginImageApplication` invalidates candidate handles, prepared operations and
 optional certification before image effects begin. It retains only an application
 flag, which keeps candidate operations unavailable until cleanup.
-`finishImageApplication` clears that flag and any uninstalled source stage; it
-never restores capabilities. Before application, the same cleanup leaves existing
-candidate authority intact. Source staging uses `prepareSourceRegistry:` followed
-by one-way `installSourceRegistry`; no predecessor or image rollback is retained.
+`finishImageApplication` clears that flag; it never restores capabilities. Before
+application, the same cleanup leaves existing candidate authority intact. Source
+image staging belongs to Codegen's temporary image operation, not Generation.
 Executable lifetime remains with Execution/TCC. All inter-module calls use Id.

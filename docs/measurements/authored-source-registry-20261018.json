@@ -1,0 +1,350 @@
+{
+  "date": "2026-10-18",
+  "baseline": "ab8c36cb93d9fe4d1ed92948a5a22c86e97f7a57",
+  "scope": "Source registry ordinary Birnam ownership, Id-only consumers, callback-capable source compensation, direct image owner restoration and cold bootstrap",
+  "prefix": "/tmp/birnam-source-registry/final-prefix",
+  "build_features": [
+    "birnam-tcc/resource-metrics"
+  ],
+  "precise_gc": true,
+  "commands": {
+    "build": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-source-registry/final-prefix --profile release --build-cache \"$PWD/.cargo-target/install\"",
+    "host": "mise exec -- env BIRNAM_GC_PRECISE=1 CARGO_PROFILE_DEV_PANIC=unwind CARGO_TARGET_DIR=.cargo-target/host-tests bash scripts/host-cli-test.sh --prefix /tmp/birnam-source-registry/final-prefix --group generation --prepared-binaries /tmp/birnam-source-registry/checked-host-binaries/manifest.json --timings /tmp/birnam-source-registry/host-checked-timings.json",
+    "native_initial": "mise exec -- env BIRNAM_GC_PRECISE=1 BIRNAM_TEST_MODULE_DIRECTORY=/tmp/birnam-source-registry/final-prefix/lib CARGO_PROFILE_DEV_PANIC=unwind CARGO_TARGET_DIR=.cargo-target/native-message-tests cargo test --offline --locked -p birnam-siphon --test generation --test generation_ledger --test generation_transaction --test candidate_retirement --test source_inspection --test source_loader --test image --test image_recovery_conflict --test image_snapshot_stamp -- --include-ignored --nocapture",
+    "native_roundtrip_corrected": "mise exec -- env BIRNAM_GC_PRECISE=1 BIRNAM_TEST_MODULE_DIRECTORY=/tmp/birnam-source-registry/final-prefix/lib CARGO_PROFILE_DEV_PANIC=unwind CARGO_TARGET_DIR=.cargo-target/native-message-tests cargo test --offline --locked -p birnam-siphon --test image image_owner_roundtrip -- --include-ignored --nocapture",
+    "native_remaining": "mise exec -- env BIRNAM_GC_PRECISE=1 BIRNAM_TEST_MODULE_DIRECTORY=/tmp/birnam-source-registry/final-prefix/lib CARGO_PROFILE_DEV_PANIC=unwind CARGO_TARGET_DIR=.cargo-target/native-message-tests cargo test --offline --locked -p birnam-siphon --test source_inspection --test source_loader --test image_recovery_conflict --test image_snapshot_stamp -- --include-ignored --nocapture",
+    "language": "BIRNAM_GC_PRECISE=1 /tmp/birnam-source-registry/final-prefix/bin/birnam modules/run-tests.birnam",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py",
+    "startup": "mise exec -- env BIRNAM_TEST_MODULE_DIRECTORY=/tmp/birnam-source-registry/startup-prefix/lib python3 scripts/host_test_binaries.py run /tmp/birnam-source-registry/final-host-binaries/manifest.json host-lib -- installed_bootstrap_and_console_do_not_compile_or_parse --ignored --nocapture"
+  },
+  "checks": {
+    "build": "pass",
+    "host_generation": [
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+        "started_unix_ns": 1792350127860821000,
+        "status": "passed",
+        "wall_ns": 78234861084
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "source_registry_sends_compensate_without_overwriting_other_owners",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:source_registry_sends_compensate_without_overwriting_other_owners",
+        "started_unix_ns": 1792350206149562000,
+        "status": "passed",
+        "wall_ns": 6925052292
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "image_application_boundary_invalidates_without_restore",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:image_application_boundary_invalidates_without_restore",
+        "started_unix_ns": 1792350213106822000,
+        "status": "passed",
+        "wall_ns": 47480595042
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "certificate_release_reclaims_observations_and_preserves_candidate_undo",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:certificate_release_reclaims_observations_and_preserves_candidate_undo",
+        "started_unix_ns": 1792350260634455000,
+        "status": "passed",
+        "wall_ns": 5884152166
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "rollback_keeps_released_predecessors_discarded",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:rollback_keeps_released_predecessors_discarded",
+        "started_unix_ns": 1792350266551588000,
+        "status": "passed",
+        "wall_ns": 6570922125
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "dependency_changes_use_registered_module_without_certification",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:dependency_changes_use_registered_module_without_certification",
+        "started_unix_ns": 1792350273155486000,
+        "status": "passed",
+        "wall_ns": 4962118625
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "activation_inside_entered_methods_uses_current_setters",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:activation_inside_entered_methods_uses_current_setters",
+        "started_unix_ns": 1792350278150564000,
+        "status": "passed",
+        "wall_ns": 5329888042
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "lifecycle_fields_preserve_explicit_facts_and_status_reads",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:lifecycle_fields_preserve_explicit_facts_and_status_reads",
+        "started_unix_ns": 1792350283513870000,
+        "status": "passed",
+        "wall_ns": 4570350084
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/lifecycle-record-image-test.py",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.CZSRDh/relocated"
+        ],
+        "exit_code": 0,
+        "label": "generation:lifecycle-record-image-test.py",
+        "started_unix_ns": 1792350288117578000,
+        "status": "passed",
+        "wall_ns": 59241323541
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "run",
+          "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+          "host-lib",
+          "--",
+          "image_restores_descriptions_and_explicit_adoption",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "label": "generation:host-lib:image_restores_descriptions_and_explicit_adoption",
+        "started_unix_ns": 1792350347408012000,
+        "status": "passed",
+        "wall_ns": 375111201959
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/generation-cli-test.py",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.CZSRDh/relocated"
+        ],
+        "exit_code": 0,
+        "label": "generation:generation-cli-test.py",
+        "started_unix_ns": 1792366906434308000,
+        "status": "passed",
+        "wall_ns": 15642740709
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/compiled-unit-cli-test.py",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.CZSRDh/relocated"
+        ],
+        "exit_code": 0,
+        "label": "generation:compiled-unit-cli-test.py",
+        "started_unix_ns": 1792366922110658000,
+        "status": "passed",
+        "wall_ns": 43211314208
+      }
+    ],
+    "language": {
+      "passed": 847,
+      "failed": 0
+    },
+    "startup_without_parser_or_compiler": "pass",
+    "native": {
+      "generation": "pass",
+      "generation_ledger": "pass",
+      "generation_transaction": "pass",
+      "candidate_retirement": "pass",
+      "repeated_image_resaves_keep_a_fixed_live_set": "pass in initial invocation; unchanged test body",
+      "image_owner_roundtrip": "pass on corrected fixture",
+      "source_inspection": "pass",
+      "source_loader": "pass",
+      "image_recovery_conflict": "pass",
+      "image_snapshot_stamp": "pass",
+      "initial_invocation_exit": 101,
+      "initial_failure": "Old source-stage ordering assertion in image_owner_roundtrip; replaced with visible ordinary owner coherence check and rerun successfully"
+    },
+    "formal": {
+      "receipt": ".cargo-target/formal/results/rooting-e4c3g28a/summary.json",
+      "theorems": 386,
+      "rejected_mutations": 120,
+      "tlc_outcomes": 260
+    },
+    "exports_and_dependencies": "Declared exports unchanged; affected native libraries link no other Birnam owner library",
+    "production_source_match": "Changed production code matches installed source copy; final Host/native image fixtures were rebuilt after assertion corrections",
+    "diff_check": "pass"
+  },
+  "source_sha256": {
+    "formal/semantics/lean/SemanticsAudit.lean": "b9ac7061b44506a273ef132de61c2b85415648129fdbfd1a36cc505d48728dd6",
+    "formal/semantics/lean/SharedInvocation.lean": "3544f276a0a2d886def1c4b9be8f52fd9b9128cd0e77ac5408931671dc376105",
+    "formal/semantics/tla/SourceOwner.tla": "718c04fac5a06bcebf1e9ca8800ac3d66f451e8d87088511b9515875b923c21d",
+    "formal/semantics/tla/SourceOwnerConflict.cfg": "390f1a33104428876c25d448edbde64149e1033c3aaa3bdf7bb31b5923799bb7",
+    "formal/semantics/tla/SourceOwnerJournal.cfg": "aef4d77d9292196d2bb91f93cb5bac13251e2c3f9a7a1018cd81b4e0ec61db55",
+    "formal/semantics/tla/SourceOwnerOwner.cfg": "6ad492848dd250f71995e238ec9e08f7b29ff50457a2f0878e8d557b37ba4638",
+    "formal/semantics/tla/SourceOwnerSafe.cfg": "dd43a5cda30b02f6b9744f4a41fe1e9fdf0674cf588acce705bb213d0176d300",
+    "formal/semantics/tla/SourceOwnerWhole.cfg": "4457aa2f16ab07fe28cd0d0c7ec75781d91b8f8ac5c398c2ff790ee5b8787d69",
+    "modules/modules.birnam": "d6147f72ace8c0437f24c49c07e69271cef4586b792adcdd0400e1c6059fdba9",
+    "modules/run-tests.birnam": "cb12d108585db08fa78da4e5c639411564245a408c30b1e06479a1bcc6ca7e5e",
+    "modules/source-registry-test.birnam": "01ab4c6888de5c6b1fa3a51a99cfbbebac65382896db2578da12b0e3298f03d3",
+    "modules/source-registry.birnam": "ee0545ca6a75b00a2e20a47fb623ad98c35fce8eb1b2f9fbbd43a047edf65591",
+    "rust/birnam-bootstrap/src/lib.rs": "f43f4e54a8c812648487545665dde1f6fb90b3ae4c98ce84f2a4d740cfe5af3f",
+    "rust/birnam-build/src/main.rs": "fe5b60d7bdfa7211a294ae9ac898586402ae6a5236bd61383e831f162ada9089",
+    "rust/birnam-codegen-runtime/README.md": "55a5a096d892084663b85be3a0eb9626d4f01a0a368f621fdd934cfc92f4027e",
+    "rust/birnam-codegen-runtime/src/compiled_source.rs": "e0402f147f509166780ec41afed2641be17ca5314ea7df2039615e2ea31475f3",
+    "rust/birnam-codegen-runtime/src/image.rs": "74b91e466a9d5c20510bb5c7e46cfa16e013e99b1785245914619944e15ac5ce",
+    "rust/birnam-codegen-runtime/src/lib.rs": "2a040b12506c62bc8d326869e7e1eaf2997bd02a91996c84769893e62c815a4b",
+    "rust/birnam-codegen-runtime/src/publication.rs": "c07605f5ac8c2b401b69e71bb711be6823bc66f5a7c39c9697b6d77b95ad73b1",
+    "rust/birnam-codegen-runtime/src/source.rs": "eff567b3df1e1d51e2c3f7a3e973e6e958003955fde82d486d827d929da7d10e",
+    "rust/birnam-generation/README.md": "aab1cb16749bce8aa2479cd08a9db56327b60a407fc2be9f1e4b2944e9279c1a",
+    "rust/birnam-generation/src/candidate.rs": "414e5e6cbc69f52eb9b4915428b4ccf558b1f8fda5329e93d6eea3668472fcbe",
+    "rust/birnam-generation/src/candidate_image.rs": "f414cdbf039335a4eb1aad8fea9c2702798a84342edb32b10decc5502f8aafec",
+    "rust/birnam-generation/src/candidate_ledger.rs": "fcd2baca3facb8308be9019e7876e0d83c7b60e7d6ed0bfda71afbcc8c735b1d",
+    "rust/birnam-generation/src/candidate_preparation.rs": "ecc2d5eae8a67614c955fe60bd66b6d343b19ce4b3f7bb7dded9542ae70f2a44",
+    "rust/birnam-generation/src/candidate_transaction.rs": "40c4a35a136790db5522f6de32d7a973ce79eb89cb1e48f7ee71271182f79eb6",
+    "rust/birnam-generation/src/lib.rs": "516978c61de9e5d012aa2f5cb0a4f9cfb5c7ba58e21a4b5910951101fd1424cc",
+    "rust/birnam-generation/src/sources.rs": "ed9fa96e93d488d9a1aed12a0b49d50f2a99f6254e4e4f9be60606c8268d58a4",
+    "rust/birnam-host/src/lifecycle_test.rs": "884cf350e41884071cf9ea1b0af7f7be8f3fb4639610880ea3c356e49cbfef80",
+    "rust/birnam-host/src/startup.rs": "f9528a7ca32e99cf4acabf2cf1085c17a7378a89c4f819c3594332c4a6eb51fb",
+    "rust/birnam-image/README.md": "e4b0eca74524d955ec139233aa75fbb7fc886da512a6b25bb80680129ecbd3ee",
+    "rust/birnam-image/src/native.rs": "6be62f31cd5da87e779ccf389c5cde7ad294757466e867946b60303795557de7",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "18f0c2bb74dba578e037f14a9e1863aa543d2a7d712be6c8c54b405da4f56ff3",
+    "rust/birnam-siphon/tests/image.rs": "69f67c4cc610357bb65efddb89fdedb252db7da13ad9a11997b6e7599150612b",
+    "rust/birnam-siphon/tests/source_loader.rs": "9a7bc474124bce7596f1c800a0125b50aa394c1b26c9a844e3204798d450e0c9",
+    "scripts/check-rooting-model.py": "54cc05edb0589d20ee39dac64b012788d2df1878482272329b23380debc7879a",
+    "scripts/host-cli-test.sh": "abc7488f12cc9a55d9b06b2c9e4c332b5da433545a706b75c47fe097945dc02d"
+  },
+  "deleted_sources": [
+    "rust/birnam-generation/src/registry.rs"
+  ],
+  "repeated_save_body_sha256": "3dea26c33111d585625aa4a2c7d8cc962f2d541bf68c3bfdec9a7779cb5dcc45",
+  "host_test_manifest": "/tmp/birnam-source-registry/checked-host-binaries/manifest.json",
+  "host_test_manifest_sha256": "6de5f7efa841e2c1c3f57473499ce3c58a787848a0108ffb0d1cb7f10c54fc32",
+  "log_directory": "/tmp/birnam-source-registry",
+  "log_sha256": {
+    "final-build.log": "3d6de6295bfa3fd0424abea5fb729e91425742b58913c21cb3a55c6e86d1b7d8",
+    "host-checked.log": "4b43fbceeb1c40a5a8b945775138b6d8ea9ffda2107b10de6772fe6873fe5a72",
+    "native.log": "f769dbe9e36289f5f6ba9ddd9e0c6fc088a9288342d9de6cc471d75d28a2920b",
+    "image-checked.log": "e62f0d9b6324161bea08d096770710ec22087f99834896386d3470cbad8caeb4",
+    "native-remaining.log": "962c6faddc09617bd7251aef289a7e43bdfb9ff18004d4e7f23f3ad8759dab6d",
+    "language.log": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9",
+    "formal.log": "77f34e46a1214f975cb254cbea4267792bf3a858c19348fae36a3d7f036a79b4",
+    "startup.log": "1a6786bba89b33d96afc59ebc005e98bc84833956e9bdcf52b151b061f313dab",
+    "timing.json": "aeefbdf5233797f661ad758002adfd4faa1de99f6cc52d47b77b3a29fb9d857f"
+  },
+  "startup_sample": {
+    "scope": "Exploratory fresh-process startup plus one source script, warm filesystem caches; not a CPU benchmark or release qualification",
+    "prefixes": {
+      "baseline": "/tmp/birnam-image-simplification/prefix",
+      "authored": "/tmp/birnam-source-registry/final-prefix"
+    },
+    "rows": [
+      {
+        "variant": "baseline",
+        "round": 0,
+        "seconds": 4.126420708
+      },
+      {
+        "variant": "authored",
+        "round": 0,
+        "seconds": 4.645092624999999
+      },
+      {
+        "variant": "baseline",
+        "round": 1,
+        "seconds": 4.057166625000001
+      },
+      {
+        "variant": "authored",
+        "round": 1,
+        "seconds": 4.361705542000001
+      },
+      {
+        "variant": "baseline",
+        "round": 2,
+        "seconds": 3.9234002500000003
+      },
+      {
+        "variant": "authored",
+        "round": 2,
+        "seconds": 4.413929582999998
+      }
+    ],
+    "medians": {
+      "baseline": 4.057166625000001,
+      "authored": 4.413929582999998
+    }
+  },
+  "limitations": [
+    "Remainder of Generation still Rust",
+    "No complete Store/Relational-absent bootstrap claim",
+    "No push, release or user-prefix installation",
+    "Old image registry transport requires recreating images, not merely recompiling their native code",
+    "Startup sample is exploratory and about 9 percent slower; no general execution performance claim",
+    "Formal models supplement native tests, not arbitrary callback behavior"
+  ]
+}

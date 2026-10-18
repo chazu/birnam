@@ -630,16 +630,19 @@ impl Graph<'_, '_> {
         b
     }
 }
-// Snapshot consistency is about owner data, not managed source revision or
+// Snapshot consistency is about owner data, not optional certification or
 // method identities. Monotonic epochs may conservatively reject a no-op edit.
-unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>) -> Result<(Oop, Oop, usize, usize, usize), Outcome> {
+unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>) -> Result<(Oop, Oop, Oop, usize, usize, usize, usize), Outcome> {
     unsafe {
         let store = q.keep(s.named(b"Store")?)?;
         let globals = q.keep(s.named(b"Globals")?)?;
         let facts = s.number(s.call(q, store, b"basis", &[])?)?;
         let bindings = s.number(s.call(q, globals, b"bindingBasis", &[])?)?;
         let methods = s.send(s.id.receiver, b"bindingEpoch", &[])?.as_word().ok_or_else(bad)?;
-        Ok((store, globals, facts, bindings, methods))
+        let name = q.keep(s.id.intern_name(b"SourceRegistry")?)?;
+        let sources = s.call(q, globals, b"at:", &[name])?;
+        let revision = s.number(s.call(q, sources, b"revision", &[])?)?;
+        Ok((store, globals, sources, facts, bindings, methods, revision))
     }
 }
 unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome> {
@@ -708,6 +711,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
             ]);
         }
         let sources = s.call(q, codegen, b"portableImageSources", &[])?;
+        if s.is_error(sources)? { return Err(Outcome::loaded(Operand::object(sources))); }
         let mut sources_bytes = Vec::new();
         graph.reference(sources)?.encode(&mut sources_bytes);
         let programs = graph.finish()?;
@@ -1291,6 +1295,9 @@ unsafe fn load(
         let composition = composition_identity(&owned.view());
         let native_code = owned.code.take();
         let decoded = owned.view();
+        // Current images identify their ordinary source owner explicitly.
+        // Older source-less images need rebuilding, not a hidden native fallback.
+        if decoded.sources.is_none() { return Err(bad()); }
         if mapped_only && native_code.is_none() {
             return Err(bad());
         }
@@ -1434,11 +1441,6 @@ unsafe fn load(
             if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
                 return Err(bad());
             }
-            if decoded.sources.is_some()
-                && s.call(q, codegen, b"installPortableImageSources", &[])? != yes
-            {
-                return Err(bad());
-            }
             for &(index, target, selector, provenance, behavior) in &publication {
                 let published = (|| {
                     if index.is_null() {
@@ -1470,6 +1472,14 @@ unsafe fn load(
             }
             for &o in &maps {
                 s.call(q, s.named(b"Map")?, b"rehashImage:", &[o])?;
+            }
+            // Globals and private Methods now refer to the restored ordinary
+            // source owner. Validate it; never install a second native registry.
+            if decoded.sources.is_some() {
+                let checked = s.call(q, codegen, b"finishPortableImageSources", &[])?;
+                if checked != yes {
+                    return Err(if s.is_error(checked)? { Outcome::loaded(Operand::object(checked)) } else { bad() });
+                }
             }
             let globals = q.keep(s.named(b"Globals")?)?;
             if s.call(q, globals, b"releaseImageReservations", &[])? != globals {

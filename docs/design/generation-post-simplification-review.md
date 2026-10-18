@@ -150,11 +150,12 @@ remain historical; the authoritative plan links to this follow-up list.
 - ABI-4 candidates and images/facades carrying removed lifecycle contracts need
   rebuilding. No backwards-compatibility adapter is required. This work has not
   been released, pushed or installed into the user's normal prefix.
-- Source-registry ownership, Alien recipes, Image staging and task/worker/I/O
+- At the reviewed baseline, source-registry ownership, Alien recipes, Image staging and task/worker/I/O
   ownership remain in the Store plan. Completing generation simplification does
   not establish Store/Relational-absent cold bootstrap or complete Rust migration.
 
-Next, migrate the source registry as an ordinary discoverable owner. Continue
+The next selected source-registry migration is now implemented in the
+[authored-owner report](authored-source-registry.md). Continue
 owner-by-owner; preserve source-free mapped startup and explicit rebuild, and
 keep the final Store-absent acceptance path separate from individual module tests.
 The [first Id-boundary design check](source-registry-id-boundary.md) records the

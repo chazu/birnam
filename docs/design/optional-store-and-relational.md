@@ -261,7 +261,7 @@ Implementation status does not imply release or local installation.
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
 | Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields; Bench/Test fields, local scratch and owned suite discovery implemented and qualified | REPL handles/buffers belong with socket/task resource-lifecycle work. |
 | Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Basic live loading now reports partial application without compensation; stronger recovery is an optional future feature, not a migration prerequisite. |
-| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified | Source-registry ownership migration, Alien recipes, Image staging, task/worker/I/O state and remaining seeds. |
+| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified; authored source-registry ownership implemented and qualified | Alien recipes, remaining Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
 The [supplied-template report](supplied-method-templates.md) records constructor
@@ -270,7 +270,7 @@ the [minimal-mutation decision](minimal-mutation-and-coordination.md); the
 [coordination cleanup](coordination-cleanup.md) implements that boundary. Broader
 representation-independent error normalization remains separate work. The [retained compilation record cutover](retained-compilation-records.md) implements
 compiler metadata ownership with its compiled-startup, lifetime and image contracts.
-Source-registry ownership still needs migration. Lifecycle field ownership is
+Source-registry ownership is implemented in [the authored-owner slice](authored-source-registry.md). Lifecycle field ownership is
 implemented in [the record-owner slice](lifecycle-record-owners.md); the approved
 coordination simplifications are implemented and qualified.
 
@@ -283,7 +283,10 @@ translation; settle counter semantics and image-owner identity explicitly.
 The follow-up [one-way application slice](one-way-image-application.md) removes
 recoverable capability backups and image-source rollback and passes its formal,
 Host, native/image, language and compiled-startup qualification. The implementation
-is committed with its qualification report; the source-registry owner migration itself remains pending.
+is committed with its qualification report. The subsequent
+[authored source registry](authored-source-registry.md) implements the owner
+migration and records passing formal, native/image, Host, language and cold/compiled
+bootstrap qualification.
 
 The [Generation lifecycle review](generation-lifecycle-review.md) sequence is
 complete: code ownership, module-scoped batch edits/undo and optional whole-program
@@ -445,7 +448,7 @@ unobservable representation optimization, and does not copy or delete user facts
 
 Bench/Test is committed and non-publishing project inspection is qualified. The
 retained compiler metadata ownership is now qualified; the remaining structural
-work includes source-registry ownership and Alien recipes; keep resource-bearing REPL state with
+work includes Alien recipes and remaining image/candidate coordination; keep resource-bearing REPL state with
 lifecycle work. The selected live-load change is stated above; these tasks do not authorize changing
 GC policy or resuming the paused Relational rewrite.
 

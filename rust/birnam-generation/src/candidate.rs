@@ -358,11 +358,14 @@ unsafe fn write(s: &State, q: &Scope<'_>, path: Oop, bytes: &[u8]) -> Result<(),
         Ok(())
     }
 }
-pub(super) fn active(s: &State, name: Oop) -> Option<Oop> {
-    let source = s.registry.record(name)?;
-    s.candidates.entries.borrow().iter().rev()
-        .find(|c| c.name == name && c.source == source && c.activation.is_some())
-        .map(|c| c.unit)
+pub(super) unsafe fn active(s: &State, q: &Scope<'_>, name: Oop) -> Result<Option<Oop>, Outcome> {
+    unsafe {
+        let owner = sources::owner(s, q)?;
+        let Some(source) = sources::record(s, q, owner, name)? else { return Ok(None); };
+        Ok(s.candidates.entries.borrow().iter().rev()
+            .find(|c| c.name == name && c.source == source && c.activation.is_some())
+            .map(|c| c.unit))
+    }
 }
 pub(super) unsafe fn operation(
     s: &State,
@@ -428,7 +431,8 @@ pub(super) unsafe fn operation(
                         b"candidate module name mismatches",
                     );
                 }
-                let Some(prior) = s.registry.record(name) else {
+                let owner = sources::owner(s, q)?;
+                let Some(prior) = sources::record(s, q, owner, name)? else {
                     return fail(s, q, b"moduleNotRegistered", b"candidate compilation requires the module's registered source");
                 };
                 q.keep(prior)?;
@@ -477,7 +481,7 @@ pub(super) unsafe fn operation(
                 write(s, q, side_path, &sidecar)?;
                 Ok(Operand::object(path))
             }
-            Op::Active => Ok(Operand::object(active(s, object(args[0])?).unwrap_or(s.named(b"nil")?))),
+            Op::Active => Ok(Operand::object(active(s, q, object(args[0])?)?.unwrap_or(s.named(b"nil")?))),
             Op::Inspect => {
                 let path = object(args[0])?;
                 let unit = object(args[1])?;

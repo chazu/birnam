@@ -57,7 +57,7 @@ and prepares Methods before publication. The relevant operations are:
 | `beginPortableImageRebuild:bindings:selection:` | Compile canonical programs using the existing native backend. |
 | `portableImageBlockMethod:synchronous:` | Obtain a staged Method with the saved Block disposition. |
 | `preparePortableImageBinding:implementation:` | Initialize an owned adapter for the restored implementation Block. |
-| `preparePortableImageSources:` / `installPortableImageSources` | Validate and install the source registry once; retain no predecessor. |
+| `preparePortableImageSources:` / `finishPortableImageSources` | Stage the restored owner identity, then validate it through messages after Globals/Methods/maps are restored. |
 | `finishPortableImageUnit` | Admit complete binding preparation. |
 | `beginPortableImageApplication` | Invalidate old candidate/preparation/certification capabilities before application. |
 | `installPortableImageBinding:on:as:source:` | Publish through the current vtable owner. |
@@ -168,3 +168,9 @@ before application leaves existing capabilities intact. Once beginning applicati
 is attempted, failures are conservatively reported as partial application, including
 a replaced begin method that invalidates capabilities and then returns an Error.
 The image format still validates its code/inventory checksums independently.
+
+Source ownership uses `#[#sourceRegistryV2 owner]`. This references the same ordinary
+object restored through Globals and any user aliases; there is no second registry
+inventory to install. Older/source-less images must be rebuilt. Snapshot admission
+also observes the current source owner and its content revision, so a registration
+during save cannot silently publish mixed source state. No Method identity is guarded.

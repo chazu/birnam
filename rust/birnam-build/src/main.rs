@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 // Bootstrap artifacts are admitted before the source parser exists.
 const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("error", "modules/error.birnam"),
+    ("sourceRegistry", "modules/source-registry.birnam"),
     ("cell", "modules/cell.birnam"),
     ("modules", "modules/modules.birnam"),
     ("lang", "modules/lang.birnam"),
@@ -696,7 +697,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             if key.as_encoded_bytes().starts_with(b"BIRNAM_") { compile.env_remove(key); }
         }
         compile.env("BIRNAM_NO_STDLIB", "1");
-        if matches!(*name, "trace" | "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues" | "integerValues") {
+        if matches!(*name, "sourceRegistry" | "trace" | "imageFormat" | "printing" | "sourceLoader" | "blockLoop" | "range" | "systemGc" | "nativeLoader" | "error" | "nativeValues" | "booleanValues" | "integerValues") {
             // These authored policies use synchronous bodies. Select
             // that representation at build time; startup only maps saved objects.
             let source_path = root.join(source);

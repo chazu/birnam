@@ -1,0 +1,47 @@
+// Owner-local state, identity and ordinary reflective mutation.
+[[Globals includes: #TestSuite] ifFalse: [| [System load: "modules/test.birnam"]]];
+let sourceSuite := [TestSuite named: "Source registry" module: #sourceRegistry];
+[sourceSuite test: "records preserve source identity, order and clone isolation" do: [:t |
+  let owner := [SourceRegistry clone]; [owner state: #[0 #[]]];
+  let firstText := "[Module named: #registryFirst requires: #[]]";
+  let equalText := ["[Module named: #registryFirst " , "requires: #[]]"];
+  let first := [Codegen analyzeSourceMetadata: firstText];
+  let equal := [Codegen analyzeSourceMetadata: equalText];
+  let second := [Codegen analyzeSourceMetadata: "[Module named: #registrySecond requires: #[]]"];
+  [t assert: [[owner recordCompiledSource: first named: #registryFirst] == firstText] describes: "registration returns original text"];
+  [t assert: [[owner recordCompiledSource: equal named: #registryFirst] == equalText] describes: "equal text returns supplied identity"];
+  [t expect: [owner revision] equals: 1 describes: "equal registration does not advance revision"];
+  [t assert: [[owner compilationForSource: firstText] == first] describes: "retained original source identity"];
+  [t assert: [[owner compilationForSource: equalText] isNil] describes: "equal text does not attach metadata"];
+  let clone := [owner clone];
+  [t assert: [[owner state] == [clone state]] describes: "clone initially shares immutable state"];
+  [clone recordCompiledSource: second named: #registrySecond];
+  [t expect: [[owner entries] size] equals: 1 describes: "clone edits leave original alone"];
+  [t expect: [[[clone entries] at: 0] at: 0] equals: #registryFirst describes: "first declaration stays first"];
+  [t expect: [[[clone entries] at: 1] at: 0] equals: #registrySecond describes: "new declaration appended"];
+  [t assert: [[Reflect slot: #state in: clone] == [clone state]] describes: "reflection reads actual owned state"];
+  [t assert: [[clone validate] == clone] describes: "retained metadata validates without reconstruction"];
+  [t assert: [[owner recordFor: #missingRegistryRecord] isNil] describes: "missing record is nil"];
+  [System gc];
+  [t assert: [[owner compilationForSource: firstText] == first] describes: "ordinary references keep original source alive"]
+]];
+[sourceSuite test: "conditional replacement and content revision are owner-local" do: [:t |
+  let owner := [SourceRegistry clone]; [owner state: #[0 #[]]];
+  let first := [Codegen analyzeSourceMetadata: "[Module named: #registryReplace requires: #[]]"];
+  let other := [Codegen analyzeSourceMetadata: "[Module named: #registryOther requires: #[]]"];
+  let replacement := [Codegen compiledSource: [Codegen sourceTextOf: first] metadata: [Codegen retainedSourceMetadataOf: first]];
+  [owner recordCompiledSource: first named: #registryReplace];
+  [owner recordCompiledSource: other named: #registryOther];
+  [t assert: [[owner replaceRecord: replacement named: #registryReplace expected: first] == owner] describes: "selected conditional edit succeeds"];
+  [t assert: [[owner recordFor: #registryOther] == other] describes: "unrelated registration survives"];
+  [t assert: [[owner replaceRecord: first named: #registryReplace expected: first] isError] describes: "conflict is reported"];
+  [t assert: [[owner recordFor: #registryReplace] == replacement] describes: "conflict preserves current source"];
+  [owner replaceRecord: first named: #registryReplace expected: replacement];
+  [t expect: [owner revision] equals: 4 describes: "A to B to A remains observable to explicit certification"];
+  [owner entries: [owner entries]];
+  [t expect: [owner revision] equals: 4 describes: "identical entries do not advance content revision"];
+  let held := [owner entries];
+  [owner entries: #[]];
+  [t expect: [held size] equals: 2 describes: "retained snapshot is independent of later replacement"];
+  [t assert: [[owner validate] == owner] describes: "empty owner is valid"]
+]];

@@ -342,3 +342,9 @@ import Admission
 #print axioms Birnam.PublicationFailure.application_preserves_code_owners
 #print axioms Birnam.PublicationFailure.cleanup_preserves_installed_sources
 #print axioms Birnam.PublicationFailure.installation_consumes_stage
+
+#print axioms Birnam.SharedInvocation.source_inverse_keeps_other_owner
+#print axioms Birnam.SharedInvocation.source_inverse_preserves_conflict
+#print axioms Birnam.SharedInvocation.source_inverse_restores_owned_write
+#print axioms Birnam.SharedInvocation.source_inverse_keeps_rebinding
+#print axioms Birnam.SharedInvocation.source_inverse_keeps_unrelated_registration

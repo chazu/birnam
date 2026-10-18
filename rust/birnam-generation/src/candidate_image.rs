@@ -23,9 +23,8 @@ pub(crate) unsafe fn finish_image_application(s: &State, q: &Scope<'_>) -> Resul
         if s.candidates.busy.get() {
             return fail(s, q, b"candidateBusy", b"cannot finish image application during a candidate operation");
         }
-        // Also used to discard a pre-application stage: it must not clear live
-        // candidates in that case. Cleanup never restores old capabilities.
-        s.registry.stage.take();
+        // Cleanup before application must not clear live candidates.
+        // After application, it never restores old capabilities.
         s.candidates.image_application.set(false);
         Ok(Operand::object(yes))
     }

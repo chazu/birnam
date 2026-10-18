@@ -72,10 +72,11 @@ pub(super) struct Ledger {
     pub globals: Vec<ManagedGlobal>,
     pub units: Vec<Oop>,
     pub source_revision: usize,
+    pub source_owner: Oop,
 }
 impl Ledger {
     pub(super) fn roots(&self) -> Vec<Oop> {
-        let mut roots = vec![self.generation, self.source_map];
+        let mut roots = vec![self.generation, self.source_map, self.source_owner];
         roots.extend(&self.units);
         for b in &self.bindings {
             roots.extend([
@@ -98,7 +99,7 @@ impl Ledger {
 // claim that every live binding equals the source revision's certificate.
 pub(super) unsafe fn matches_lineage(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<bool, Outcome> {
     unsafe {
-        Ok(s.registry.revision() == ledger.source_revision
+        Ok(sources::owner(s, q)? == ledger.source_owner && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
             && current(s, q)? == ledger.generation
             && field(s, q, ledger.generation, b"sourceMap")? == ledger.source_map
             && s.bytes(field(s, q, ledger.generation, b"baseDigest")?)? == ledger.digest
@@ -132,7 +133,7 @@ pub(super) unsafe fn matches(
                 return Ok(Some(false));
             }
         }
-        let stable = s.registry.revision()==ledger.source_revision
+        let stable = sources::owner(s, q)? == ledger.source_owner && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
             && current(s, q)? == ledger.generation
             && preparation::global_basis(s, q)? == global_basis
             && preparation::epoch(s)? == epoch;
@@ -181,8 +182,9 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
             // disappear from the portable inventory. Inspect current entries for
             // imageability only, without requiring equality to source or a ledger.
             // This also works after loading an image without adopting a baseline.
-            let revision = s.registry.revision();
-            let entries = s.registry.entries.borrow().clone();
+            let source_owner = sources::owner(s, q)?;
+            let revision = sources::revision(s, q, source_owner)?;
+            let entries = sources::entries(s, q, source_owner)?;
             for &(name, record) in &entries { q.keep(name)?; q.keep(record)?; }
             let mut keys = std::collections::BTreeSet::new();
             for (_, record) in entries {
@@ -206,7 +208,7 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
                     }
                 }
             }
-            if s.registry.revision() != revision || preparation::epoch(s)? != epoch
+            if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != revision || preparation::epoch(s)? != epoch
                 || preparation::global_basis(s, q)? != globals {
                 return fail(s, q, b"staleGeneration", b"bindings changed during snapshot admission");
             }
@@ -284,8 +286,9 @@ pub(super) unsafe fn adopt(
             };
             components.insert(s.symbol_bytes(q, *name)?.ok_or_else(invalid)?, *unit);
         }
-        let source_revision=s.registry.revision();
-        let registered = s.registry.entries.borrow().clone();
+        let source_owner = sources::owner(s, q)?;
+        let source_revision = sources::revision(s, q, source_owner)?;
+        let registered = sources::entries(s, q, source_owner)?;
         for &(name,record) in &registered {q.keep(name)?;q.keep(record)?;}
         if registered.len() != modules.len() {
             return fail(
@@ -350,6 +353,7 @@ pub(super) unsafe fn adopt(
             globals: vec![],
             units: components.values().copied().collect(),
             source_revision,
+            source_owner,
         };
         // Authority parsing may collect unrelated private Block behaviors.
         // Observe dictionary stability around the live binding snapshot, after
@@ -499,7 +503,7 @@ pub(super) unsafe fn adopt(
             Some(b"Globals basis changed during generation adoption".as_slice())
         } else if preparation::epoch(s)? != epoch {
             Some(b"behavior epoch changed during generation adoption".as_slice())
-        } else if s.registry.revision()!=source_revision || *s.registry.entries.borrow() != registered {
+        } else if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != source_revision || sources::entries(s, q, source_owner)? != registered {
             Some(b"source registry changed during generation adoption".as_slice())
         } else if matches(s, q, &ledger)? != Some(true) {
             Some(b"live bindings changed during generation adoption".as_slice())

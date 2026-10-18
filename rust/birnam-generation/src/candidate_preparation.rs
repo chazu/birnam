@@ -23,6 +23,7 @@ pub(super) struct Prepared {
     pub unit: Oop,
     pub plan: [Oop; 4],
     pub source: Oop,
+    pub source_owner: Oop,
     pub bindings: Vec<Binding>,
     pub globals: Vec<Global>,
     pub fields: Vec<(Oop, Oop, Oop)>,
@@ -30,7 +31,7 @@ pub(super) struct Prepared {
 impl Prepared {
     pub(super) fn roots(&self) -> Vec<Oop> {
         let mut roots = self.plan.to_vec();
-        roots.extend([self.unit, self.source]);
+        roots.extend([self.unit, self.source, self.source_owner]);
         for &(owner, key, value) in &self.fields { roots.extend([owner, key, value]); }
         for b in &self.bindings {
             roots.extend([b.name, b.target, b.behavior, b.selector]);
@@ -158,7 +159,7 @@ pub(super) unsafe fn current_snapshot(
         // conditions: unrelated work between prepare and commit is allowed.
         let observed_globals = global_basis(s, q)?;
         let observed_epoch = epoch(s)?;
-        if s.registry.record(p.plan[2]) != Some(p.source)
+        if sources::owner(s, q)? != p.source_owner || sources::record(s, q, p.source_owner, p.plan[2])? != Some(p.source)
         {
             return Ok(false);
         }
@@ -177,7 +178,7 @@ pub(super) unsafe fn current_snapshot(
                 return Ok(false);
             }
         }
-        Ok(s.registry.record(p.plan[2]) == Some(p.source)
+        Ok(sources::owner(s, q)? == p.source_owner && sources::record(s, q, p.source_owner, p.plan[2])? == Some(p.source)
             && global_basis(s, q)? == observed_globals
             && epoch(s)? == observed_epoch)
     }
@@ -245,7 +246,7 @@ pub(super) unsafe fn prepare(
             );
         };
         let nil = s.named(b"nil")?;
-        let plan = [request[0], request[1], name, active(s, name).unwrap_or(nil)];
+        let plan = [request[0], request[1], name, active(s, q, name)?.unwrap_or(nil)];
         if plan[0] != symbol(s, q, b"activate")?
             || plan[1] != unit
             || plan[2] != name
@@ -260,7 +261,8 @@ pub(super) unsafe fn prepare(
                 b"publication plan identity or state mismatches",
             );
         }
-        let Some(prior_source) = s.registry.record(name) else {
+        let source_owner = sources::owner(s, q)?;
+        let Some(prior_source) = sources::record(s, q, source_owner, name)? else {
             return fail(s, q, b"moduleNotRegistered", b"candidate module source is absent");
         };
         q.keep(prior_source)?;
@@ -274,6 +276,7 @@ pub(super) unsafe fn prepare(
             unit,
             plan,
             source: prior_source,
+            source_owner,
             bindings: vec![],
             globals: vec![],
             fields: plan_fields(s, q, &plan)?,

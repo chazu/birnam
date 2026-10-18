@@ -289,6 +289,8 @@
 // Early owner registration is runtime work, not another source declaration.
 // This document and its compiled artifact must retain the identity #modules.
 let earlyModuleManager := Module;
+[earlyModuleManager named: #sourceRegistry requires: #[]];
+[earlyModuleManager markLoaded: #sourceRegistry];
 [earlyModuleManager named: #cell requires: #[]];
 [earlyModuleManager markLoaded: #cell];
 [Module markLoaded: #modules]

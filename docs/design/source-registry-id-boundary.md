@@ -3,10 +3,15 @@
 2026-10-18. Source inspection of `b893ccee`. This is a design check, not an
 implemented migration or a runtime qualification receipt.
 
+Implementation follow-up: [authored source registry](authored-source-registry.md)
+records the owner cutover, candidate send/compensation boundary, early bootstrap
+and direct image restoration. The findings below remain the original design check.
+
 Follow-up implementation: [one-way image application](one-way-image-application.md)
 removes recoverable capability backups and image source rollback before the owner
-migration. The inventory below describes the reviewed baseline; the candidate
-callback seam and early authored-owner bootstrap gates remain open.
+migration. At that intermediate stage the candidate callback seam and early
+authored-owner bootstrap gates remained open; the authored-owner report now
+records their implementation. The inventory below describes the reviewed baseline.
 
 ## Decision and readiness
 
@@ -29,7 +34,7 @@ into the language rather than merely removing another fact lookup.
 ## Current ownership and consumers
 
 `s.registry` is a field of Generation's private Rust `State`. Its
-[implementation](../../rust/birnam-generation/src/registry.rs) contains ordered
+[implementation](https://github.com/chazu/birnam/blob/b893ccee/rust/birnam-generation/src/registry.rs) contains ordered
 `(module-name Symbol, compilation-record)` pairs, two counters and one image
 stage. The records are already ordinary Vectors carrying original source and
 retained metadata. Native GC visitation roots both current and staged entries.

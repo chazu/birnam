@@ -51,15 +51,7 @@ pub(super) unsafe fn find(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option
         if !s.exact(q, value, b"StringVt")? {
             return Ok(None);
         }
-        let owner = s
-            .send(
-                s.ns,
-                b"at:",
-                &[Operand::object(s.id.intern_name(b"Generation")?)],
-            )?
-            .as_object();
-        let Some(owner) = owner else { return Ok(None) };
-        q.keep(owner)?;
+        let owner = publication::source_owner(s, q)?;
         let found = q.keep(object(s.send(
             owner,
             b"compilationForSource:",

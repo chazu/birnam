@@ -5,13 +5,13 @@ use birnam_abi::{
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
 };
 use core::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     ffi::c_void,
 };
 mod backend;
 mod candidate;
 mod compiler;
-mod registry;
+mod sources;
 mod values;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -28,7 +28,6 @@ struct State {
     roots: Oop,
     permanent: Vec<Oop>,
     candidates: candidate::Candidates,
-    registry: registry::Registry,
     thread: std::thread::ThreadId,
 }
 struct Scope<'a> {
@@ -94,7 +93,6 @@ impl State {
 #[derive(Clone, Copy)]
 enum Op {
     Candidate(candidate::Op),
-    Registry(registry::Op),
     ValidateImage,
     PrepareImageSnapshot,
     BeginImageApplication,
@@ -119,7 +117,6 @@ unsafe extern "C" fn operation(
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let count = match e.op {
             Op::Candidate(op) => op.count(),
-            Op::Registry(op) => op.count(),
             _ => 0,
         };
         if a.len() != count {
@@ -135,7 +132,6 @@ unsafe extern "C" fn operation(
         }
         match e.op {
             Op::Candidate(op) => candidate::operation(s, &q, op, a),
-            Op::Registry(op) => registry::operation(s, &q, op, a),
             Op::ValidateImage => candidate::validate_image(s, &q),
             Op::PrepareImageSnapshot => candidate::prepare_image_snapshot(s, &q),
             Op::BeginImageApplication => candidate::begin_image_application(s, &q),
@@ -155,7 +151,6 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             .candidates
             .roots()
             .into_iter()
-            .chain(s.registry.roots())
             .chain(s.permanent.iter().copied())
         {
             s.send(v, b"visit:", &[Operand::object(o)])?;
@@ -201,7 +196,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             roots: root,
             permanent: vec![ns, root, vt, receiver],
             candidates: Default::default(),
-            registry: Default::default(),
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
@@ -265,35 +259,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"reconcileCandidate:".as_slice(),
                 Op::Candidate(candidate::Op::Reconcile),
             ),
-            (
-                vt,
-                b"sourceRegistry".as_slice(),
-                Op::Registry(registry::Op::Snapshot),
-            ),
-            (
-                vt,
-                b"recordCompiledSource:named:".as_slice(),
-                Op::Registry(registry::Op::Record),
-            ),
-            (
-                vt,
-                b"moduleSourceFor:".as_slice(),
-                Op::Registry(registry::Op::Find),
-            ),
-            (
-                vt,
-                b"prepareSourceRegistry:".as_slice(),
-                Op::Registry(registry::Op::Prepare),
-            ),
-            (
-                vt,
-                b"installSourceRegistry".as_slice(),
-                Op::Registry(registry::Op::Install),
-            ),
             (vt, b"beginImageApplication".as_slice(), Op::BeginImageApplication),
             (vt, b"finishImageApplication".as_slice(), Op::FinishImageApplication),
-            (vt, b"compilationForSource:", Op::Registry(registry::Op::FindCompilation)),
-            (vt, b"replaceCompiledSource:named:", Op::Registry(registry::Op::Replace)),
             (
                 vt,
                 b"activeCandidateFor:".as_slice(),

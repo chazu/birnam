@@ -14,14 +14,14 @@ pub(super) enum Op {
     Cancel,
     Sources,
     PrepareSources,
-    InstallSources,
+    FinishSources,
     Prepared,
     BeginApplication,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::InstallSources | Self::BeginApplication => 0,
+            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::FinishSources | Self::BeginApplication => 0,
             Self::PrepareSources | Self::Prepared => 1,
             Self::Compile | Self::Rebuild => 3,
             Self::Mapped | Self::Install => 4,
@@ -34,6 +34,7 @@ pub(super) struct Stage {
     templates: Vec<Oop>,
     prepared: Vec<Option<Oop>>,
     finished: bool,
+    source_owner: Option<Oop>,
 }
 impl Stage {
     pub fn roots(&self) -> Vec<Oop> {
@@ -42,6 +43,7 @@ impl Stage {
             .chain(&self.templates)
             .copied()
             .chain(self.prepared.iter().flatten().copied())
+            .chain(self.source_owner)
             .collect()
     }
 }
@@ -89,16 +91,30 @@ pub(super) unsafe fn operation(
                 }
                 return publication::send(s, q, b"beginImageApplication", &[]);
             }
-            Op::Sources => return publication::send(s, q, b"sourceRegistry", &[]),
+            Op::Sources => {
+                let owner = publication::source_owner(s, q)?;
+                let checked = q.keep(object(s.send(owner, b"validate", &[])?)?)?;
+                if checked != owner { return Ok(Operand::object(checked)); }
+                let tag = q.keep(s.id.intern_name(b"sourceRegistryV2")?)?;
+                return vector(s, q, &[tag, owner]).map(Operand::object);
+            }
             Op::PrepareSources => {
-                {
-                    let st = s.image_stage.borrow();
-                    let st = st.as_ref().ok_or_else(invalid)?;
-                    if st.finished {
-                        return Err(invalid());
-                    }
-                }
-                return publication::send(s, q, b"prepareSourceRegistry:", args);
+                let source = object(args[0])?;
+                if s.index(q, source, b"size")? != 2 { return Err(invalid()); }
+                let at = |i| -> Result<Oop, Outcome> {
+                    let index = q.keep(object(s.send(s.named(b"Integer")?, b"fromWord:", &[Operand::word(i)])?)?)?;
+                    q.keep(object(s.send(source, b"at:", &[Operand::object(index)])?)?)
+                };
+                if at(0)? != s.id.intern_name(b"sourceRegistryV2")? { return Err(invalid()); }
+                let owner = at(1)?;
+                if owner == nil { return Err(invalid()); }
+                // The restored object's Methods are not installed yet. Keep only
+                // its identity in this operation's existing image stage.
+                let mut stage = s.image_stage.borrow_mut();
+                let stage = stage.as_mut().ok_or_else(invalid)?;
+                if stage.finished { return Err(invalid()); }
+                stage.source_owner = Some(owner);
+                return Ok(Operand::object(yes));
             }
             Op::Prepared => {
                 let i = s.send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?.as_word().ok_or_else(invalid)?;
@@ -107,15 +123,18 @@ pub(super) unsafe fn operation(
                 q.keep(method)?;
                 return Ok(Operand::object(method));
             }
-            Op::InstallSources => {
-                {
-                    let st = s.image_stage.borrow();
-                    let st = st.as_ref().ok_or_else(invalid)?;
-                    if !st.finished {
-                        return Err(invalid());
-                    }
-                }
-                return publication::send(s, q, b"installSourceRegistry", &[]);
+            Op::FinishSources => {
+                let owner = {
+                    let stage = s.image_stage.borrow();
+                    let stage = stage.as_ref().ok_or_else(invalid)?;
+                    if !stage.finished { return Err(invalid()); }
+                    stage.source_owner.ok_or_else(invalid)?
+                };
+                q.keep(owner)?;
+                if publication::source_owner(s, q)? != owner { return Err(invalid()); }
+                let checked = q.keep(object(s.send(owner, b"validate", &[])?)?)?;
+                if checked != owner { return Ok(Operand::object(checked)); }
+                return Ok(Operand::object(yes));
             }
             Op::Bindings => {
                 let mut rows = Vec::new();
@@ -248,6 +267,7 @@ pub(super) unsafe fn operation(
                     templates: Vec::new(),
                     prepared: vec![None; plan.bindings],
                     finished: false,
+                    source_owner: None,
                 };
                 // Only identical selected payloads at the same arity share a
                 // mapping. Backend requests remain live and run in their original
