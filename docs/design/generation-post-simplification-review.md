@@ -1,7 +1,21 @@
 # Generation after lifecycle simplification
 
 2026-10-17. Review of `c4bf4451`. The original simplification sequence is
-implemented and qualified. This review records follow-ups, not implemented fixes.
+implemented and qualified. The findings below describe that baseline; resolution
+status is tracked separately here.
+
+## Resolution status
+
+1. Dependency reporting now compares against the module's current registered
+   source through ordinary Codegen sends. Missing registration reports an Error.
+   The helper remains descriptive and malleable. The production-prefix Host
+   regression passes without a certificate, with a stale certificate, before/after
+   activation and rollback, with edited dependency fields and missing registration.
+   The same regression fails against the reviewed baseline. Logs:
+   `/tmp/birnam-generation-followups/dependencies-{before,after}.log`.
+   It is included in the Host generation acceptance group.
+2. Discarded-predecessor status: open.
+3. Optional-certificate release: open.
 
 ## Assessment
 

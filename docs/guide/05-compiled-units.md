@@ -91,6 +91,10 @@ for that module. Candidate activity does not create or modify a DispatchGenerati
 Different modules can be rolled back independently when their affected bindings
 do not conflict. Lifecycle records remain ordinary reflected slots.
 
+`unit dependencyChanges` compares the unit's declared dependencies with its
+module's currently registered source. It does not consult a certificate; a missing
+module reports `#moduleNotRegistered`. This is descriptive, not candidate admission.
+
 ## Sources and certification
 
 Source and AOT module loading remain available before, during and after candidate

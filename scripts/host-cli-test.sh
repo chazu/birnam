@@ -91,6 +91,7 @@ if selected interaction; then
   run_check lsp-project-smoke.sh bash scripts/lsp-project-smoke.sh
 fi
 if selected generation; then
+  host_test dependency_changes_use_registered_module_without_certification
   host_test activation_inside_entered_methods_uses_current_setters
   host_test lifecycle_fields_preserve_explicit_facts_and_status_reads
   run_check lifecycle-record-image-test.py python3 scripts/lifecycle-record-image-test.py "$scratch/relocated"

@@ -143,16 +143,22 @@ let compiledGenerationNumbers := [{} asCell];
 
 [Reflect defineMethod: #rollbackAvailable on: CompiledUnit as: [:self | [ObjectModel slot: 12 in: self]]];
 
+// Compare with this module's currently registered source, independently of any
+// optional certificate. This is a live descriptive query, not an admission check.
 [Reflect defineMethod: #dependencyChanges on: CompiledUnit as: [:self |
-  let current := [DispatchGeneration current];
-  let priorRevision := [[current isNil] ifTrue: [| nil] ifFalse: [| [current revisionFor: [self unitName]]]];
-  let old := [[priorRevision isNil] ifTrue: [| #[]] ifFalse: [| [priorRevision at: 2]]];
-  let now := [self requires];
-  let added := [now inject: #[] into: [:rows :dep |
-    [[old includes: dep] ifTrue: [| rows] ifFalse: [| [rows add: dep]]]]];
-  let removed := [old inject: #[] into: [:rows :dep |
-    [[now includes: dep] ifTrue: [| rows] ifFalse: [| [rows add: dep]]]]];
-  {#added -> added, #removed -> removed}]];
+  let source := [Codegen moduleSourceFor: [self unitName]];
+  [[source isError] ifTrue: [| source] ifFalse: [|
+    [[source isNil] ifTrue: [| [Error kind: #moduleNotRegistered]] ifFalse: [|
+      let revision := [Codegen sourceRevisionOf: source];
+      [[revision isError] ifTrue: [| revision] ifFalse: [|
+        [[revision isNil] ifTrue: [| [Error kind: #invalidSourceRevision]] ifFalse: [|
+          let old := [revision at: 2];
+          let now := [self requires];
+          let added := [now inject: #[] into: [:rows :dep |
+            [[old includes: dep] ifTrue: [| rows] ifFalse: [| [rows add: dep]]]]];
+          let removed := [old inject: #[] into: [:rows :dep |
+            [[now includes: dep] ifTrue: [| rows] ifFalse: [| [rows add: dep]]]]];
+          {#added -> added, #removed -> removed}]]]]]]]]]];
 
 [Reflect defineMethod: #setState: on: CompiledUnit as: [:self :state |
   [self state: state];

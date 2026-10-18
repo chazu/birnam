@@ -669,3 +669,36 @@ fn discard_cancels_preparation_and_keeps_bindings_and_files() {
     assert!(path.exists());
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+#[ignore = "requires production native modules"]
+fn dependency_changes_use_registered_module_without_certification() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(Path::new("/unused/bin"), crate::Overrides { lib_dir: Some(&lib), ..Default::default() }).unwrap();
+    let host = HostRuntime::start(&resources, StartupPolicy { skip_stdlib: false, precise_gc: true, source_bootstrap: false, tool_bootstrap: false }).unwrap();
+    let q = host.scope(); let cg = host.named(b"Codegen").unwrap();
+    let eval = |source: &[u8]| { let v = q.call(cg, b"evalPersisting:", &[Operand::object(q.string(source).unwrap())]).unwrap(); q.check_result(v).unwrap(); v };
+    let expect = |source: &[u8]| assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source));
+    // A real certificate that predates this module must not become its baseline.
+    eval(b"let oldCertificate := [DispatchGeneration adoptCurrent]; [DispatchGeneration current: nil]");
+    q.evaluate(b"[Module named: #dependencyReview requires: #[#stdlib]]; [Reflect defineMethod: #dependencyReview on: Integer as: [:self | 1]]", Path::new("<dependency-baseline>"), Some(b"dependencyReview")).unwrap();
+    let dir = env::temp_dir().join(format!("birnam-dependency-review-{}", std::process::id())); fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("candidate.o");
+    q.call(host.named(b"Globals").unwrap(), b"at:put:", &[Operand::object(unsafe { host.context.id.intern_name(b"dependencyPath") }.unwrap()), Operand::object(q.string(path.as_os_str().as_bytes()).unwrap())]).unwrap();
+    eval(br#"[CompiledUnit compile: "[Module named: #dependencyReview requires: #[#stdlib]]; [Reflect defineMethod: #dependencyReview on: Integer as: [:self | 2]]" named: #dependencyReview output: dependencyPath]; let dependencyUnit := [CompiledUnit open: dependencyPath]"#);
+    let unchanged = || {
+        expect(b"[[[[dependencyUnit dependencyChanges] at: #added] size] = 0]");
+        expect(b"[[[[dependencyUnit dependencyChanges] at: #removed] size] = 0]");
+    };
+    unchanged();
+    eval(b"[DispatchGeneration current: oldCertificate]"); unchanged();
+    eval(b"[dependencyUnit map]; [dependencyUnit activate]"); unchanged();
+    eval(b"[dependencyUnit rollback]"); unchanged();
+    // The helper remains a malleable descriptive comparison, not constant empty output.
+    eval(b"[dependencyUnit requires: #[#modules]]");
+    expect(b"[[[dependencyUnit dependencyChanges] at: #added] = #[#modules]]");
+    expect(b"[[[dependencyUnit dependencyChanges] at: #removed] = #[#stdlib]]");
+    eval(b"[dependencyUnit unitName: #unregisteredReviewModule]");
+    expect(b"[[[dependencyUnit dependencyChanges] kind] = #moduleNotRegistered]");
+    fs::remove_dir_all(dir).unwrap();
+}
