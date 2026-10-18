@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Simplify image application to invalidate old candidate/preparation/certification
+  capabilities at its start, without recoverable backups or source-registry undo.
+  Cleanup releases staging state without restoring authority. Failures from a
+  replaced begin operation report partial application; explicit candidate undo
+  remains unchanged. Remove the obsolete internal recovery and source-swap APIs.
+
 - Add `DispatchGeneration releaseCurrent` to explicitly release optional
   certification roots without changing installed code, descriptions or candidate
   undo. Compare candidate dependencies with current module source independently

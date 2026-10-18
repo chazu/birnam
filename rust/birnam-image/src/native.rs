@@ -1301,7 +1301,6 @@ unsafe fn load(
         let selection = s.text(q, b"Bytes", decoded.selection)?;
         let mapped = !rebuild && native_code.is_some();
         let loaded_result = q.keep(s.named(if mapped { b"true" } else { b"false" })?)?;
-        let composition_value = s.text(q, b"String", &composition)?;
         let started = if mapped {
             let input = Scope {
                 s,
@@ -1424,27 +1423,19 @@ unsafe fn load(
             })
             .collect::<Vec<_>>();
         let store = q.keep(s.named(b"Store")?)?;
-        let admitted = s.call(
-            q,
-            codegen,
-            b"beginPortableImageRecovery:",
-            &[composition_value],
-        )?;
-        if admitted != yes {
-            return Err(if s.is_error(admitted)? {
-                Outcome::loaded(Operand::object(admitted))
-            } else {
-                bad()
-            });
-        }
-        // From this point a failed live load may leave a partial world. Do not
-        // retain inverse state or infer a transaction around replaceable sends.
+        // A replaced begin operation can invalidate capabilities before returning
+        // failure. Include that call in the partial-application boundary itself.
+        // Earlier staging failures leave the old capabilities in service.
         let result = (|| -> Result<(), Outcome> {
+            let admitted = s.call(q, codegen, b"beginPortableImageApplication", &[])?;
+            if admitted != yes {
+                return Err(if s.is_error(admitted)? { Outcome::loaded(Operand::object(admitted)) } else { bad() });
+            }
             if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
                 return Err(bad());
             }
             if decoded.sources.is_some()
-                && s.call(q, codegen, b"swapPortableImageSources", &[])? != yes
+                && s.call(q, codegen, b"installPortableImageSources", &[])? != yes
             {
                 return Err(bad());
             }
@@ -1484,19 +1475,6 @@ unsafe fn load(
             if s.call(q, globals, b"releaseImageReservations", &[])? != globals {
                 return Err(bad());
             }
-            let recovered = s.call(
-                q,
-                codegen,
-                b"recoverPortableImageGeneration:",
-                &[composition_value],
-            )?;
-            if recovered != yes {
-                return Err(if s.is_error(recovered)? {
-                    Outcome::loaded(Operand::object(recovered))
-                } else {
-                    bad()
-                });
-            }
             Ok(())
         })();
         if let Err(error) = result {
@@ -1507,7 +1485,6 @@ unsafe fn load(
             // callback. Never restore old capabilities over the resulting world.
             // Staging cleanup still releases temporary roots; entered/captured
             // code remains owned by Execution. No user callback is replayed.
-            let _ = s.call(q, codegen, b"abandonPortableImageRecovery", &[]);
             *s.composition.borrow_mut() = None;
             *s.report.borrow_mut() = Report {
                 status: if startup { b"startupFailed" } else { b"partialLoad" },

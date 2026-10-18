@@ -159,7 +159,7 @@ pub(crate) unsafe fn prepare_image_snapshot(s: &State, q: &Scope<'_>) -> Result<
 unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Operand, Outcome> {
     unsafe {
         if s.candidates.busy.get()
-            || s.candidates.recovery.borrow().is_some()
+            || s.candidates.image_application.get()
         {
             return fail(
                 s,

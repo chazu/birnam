@@ -1,4 +1,4 @@
-//! Generation admission, publication, inverse ledgers and recovery.
+//! Generation admission, publication, inverse ledgers and image application.
 //! All compiler and backend dependencies are live Id-message consumers.
 use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
@@ -97,10 +97,8 @@ enum Op {
     Registry(registry::Op),
     ValidateImage,
     PrepareImageSnapshot,
-    BeginRecovery,
-    Recover,
-    CancelRecovery,
-    AbandonRecovery,
+    BeginImageApplication,
+    FinishImageApplication,
 }
 struct Entry {
     state: *const State,
@@ -122,7 +120,6 @@ unsafe extern "C" fn operation(
         let count = match e.op {
             Op::Candidate(op) => op.count(),
             Op::Registry(op) => op.count(),
-            Op::BeginRecovery | Op::Recover => 1,
             _ => 0,
         };
         if a.len() != count {
@@ -141,20 +138,8 @@ unsafe extern "C" fn operation(
             Op::Registry(op) => registry::operation(s, &q, op, a),
             Op::ValidateImage => candidate::validate_image(s, &q),
             Op::PrepareImageSnapshot => candidate::prepare_image_snapshot(s, &q),
-            Op::BeginRecovery => candidate::begin_recovery(s, &q, object(a[0])?),
-            Op::Recover => candidate::recover_image(s, &q, object(a[0])?),
-            Op::AbandonRecovery => {
-                if s.candidates.busy.get() { return candidate::fail(s, &q, b"candidateBusy", b"cannot abandon ownership during a candidate operation"); }
-                candidate::abandon_recovery(s);
-                Ok(Operand::object(s.named(b"true")?))
-            }
-            Op::CancelRecovery => {
-                if s.candidates.busy.get() { return candidate::fail(s, &q, b"candidateBusy", b"cannot cancel ownership during a candidate operation"); }
-                let yes = s.named(b"true")?;
-                candidate::cancel_recovery(s);
-                s.registry.stage.take();
-                Ok(Operand::object(yes))
-            }
+            Op::BeginImageApplication => candidate::begin_image_application(s, &q),
+            Op::FinishImageApplication => candidate::finish_image_application(s, &q),
 
         }
     })())
@@ -302,16 +287,13 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (
                 vt,
-                b"swapSourceRegistry".as_slice(),
-                Op::Registry(registry::Op::Swap),
+                b"installSourceRegistry".as_slice(),
+                Op::Registry(registry::Op::Install),
             ),
-            (vt, b"beginImageRecovery:".as_slice(), Op::BeginRecovery),
-            (vt, b"recoverImageGeneration:".as_slice(), Op::Recover),
-            (vt, b"cancelImageRecovery".as_slice(), Op::CancelRecovery),
-            (vt, b"abandonImageRecovery".as_slice(), Op::AbandonRecovery),
+            (vt, b"beginImageApplication".as_slice(), Op::BeginImageApplication),
+            (vt, b"finishImageApplication".as_slice(), Op::FinishImageApplication),
             (vt, b"compilationForSource:", Op::Registry(registry::Op::FindCompilation)),
             (vt, b"replaceCompiledSource:named:", Op::Registry(registry::Op::Replace)),
-            (vt, b"rollbackSourceRegistry".as_slice(), Op::Registry(registry::Op::Rollback)),
             (
                 vt,
                 b"activeCandidateFor:".as_slice(),

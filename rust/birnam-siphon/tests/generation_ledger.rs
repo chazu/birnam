@@ -210,10 +210,8 @@ fn ledger_validation_preserves_state_and_reports_current_agreement() {
             call(named(b"Reflect"), b"slot:in:put:", &[sym(attr), generation, value]);
         }
         call(prototype(b"DispatchGeneration"), b"current:", &[generation]);
-        let rejected = call(cg, b"beginPortableImageRecovery:", &[text(&[b'a'; 64])]);
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
-        let rejected = call(cg, b"recoverPortableImageGeneration:", &[text(&[b'a'; 64])]);
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageRecoveryRequired"));
+        let rejected = call(cg, b"beginPortableImageApplication", &[]);
+        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageApplicationRequired"));
         let vt = named(b"IntegerVt");
         let selector = sym(b"ledgerAnswer");
         // A first-class Method capture remains portable when installed again.

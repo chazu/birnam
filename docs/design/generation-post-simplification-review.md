@@ -157,6 +157,9 @@ remain historical; the authoritative plan links to this follow-up list.
 Next, migrate the source registry as an ordinary discoverable owner. Continue
 owner-by-owner; preserve source-free mapped startup and explicit rebuild, and
 keep the final Store-absent acceptance path separate from individual module tests.
+The [first Id-boundary design check](source-registry-id-boundary.md) records the
+consumer inventory, candidate callback seam, bootstrap ordering and proposed
+simplifications. It does not claim that migration has been implemented.
 
 ## Original review evidence and limits
 

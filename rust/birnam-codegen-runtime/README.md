@@ -2,7 +2,7 @@
 
 Codegen consumes Lang CST messages and produces canonical portable programs and
 compiler metadata. [Generation](../birnam-generation/README.md) owns publication,
-rollback, source registration and image recovery. Codegen calls the separately loaded [NativeBackend](../birnam-native-backend/README.md)
+explicit candidate rollback, source registration and image-application invalidation. Codegen calls the separately loaded [NativeBackend](../birnam-native-backend/README.md)
 through Id for native emission, slot coloring and descriptors. `compile:` returns
 an owned resumable Method, `eval:` runs it on a real Machine, and `emit:` returns
 the generated C String. TCC compiles and owns each Unit; its initializer consumes
@@ -224,8 +224,8 @@ requirement to restore the old architecture:
 - **Publication and Image:** the historical compiler
   contains revision/generation projections, staged activation/rollback,
   compensation and materialization algorithms. Portable materialization is now
-  reconnected below, and Image now stages owned Methods and source registration
-  with Store-state compensation. Candidate activation, rollback, drift detection
+  reconnected below. Image stages owned Methods and source registration, then
+  applies them without automatic compensation or recoverable capability backups. Candidate activation, rollback, drift detection
   and retirement now run through the message-based lifecycle in [Generation](../birnam-generation/README.md).
   Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
   and sibling `code_bindings.rs`, `materialization_cache.rs`, `state_contract.rs`

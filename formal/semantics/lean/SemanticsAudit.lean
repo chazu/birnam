@@ -335,3 +335,10 @@ import Admission
 #print axioms Birnam.SharedInvocation.certificate_release_preserves_code_and_undo
 #print axioms Birnam.SharedInvocation.certificate_release_preserves_description
 #print axioms Birnam.SharedInvocation.certificate_release_is_idempotent
+
+#print axioms Birnam.PublicationFailure.preapplication_cleanup_preserves_capabilities
+#print axioms Birnam.PublicationFailure.application_releases_capabilities
+#print axioms Birnam.PublicationFailure.cleanup_cannot_revive_capabilities
+#print axioms Birnam.PublicationFailure.application_preserves_code_owners
+#print axioms Birnam.PublicationFailure.cleanup_preserves_installed_sources
+#print axioms Birnam.PublicationFailure.installation_consumes_stage

@@ -9,7 +9,8 @@ tracked in [lifecycle record owners](lifecycle-record-owners.md) and
 [opt-in baselines](opt-in-generation-baselines.md) and
 [module-scoped candidates](module-scoped-candidates.md) and
 [ordinary activation](ordinary-candidate-activation.md) and
-[logical discard](logical-candidate-discard.md). Follows
+[logical discard](logical-candidate-discard.md) and
+[one-way image application](one-way-image-application.md). Follows
 [optional Store](optional-store-and-relational.md).
 
 ## Conclusion

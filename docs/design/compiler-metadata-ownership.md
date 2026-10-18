@@ -44,7 +44,7 @@ inspection or bootstrap. The compiler-produced artifact metadata format is uncha
 | Artifact compile and activation | Canonical metadata in artifact plus its published language representation | Retained. Activation validates supplied metadata and source digests without parsing or compiling adapters. |
 | Candidate inventory | Compiler owns lowering; canonical programs and metadata cross the boundary | Retained. Audit candidate lifetime, failed preparation and selected implementation identity together. |
 | Compiled metadata reads / Generation projection | Validated published metadata; no fallback to parsing | Retained. Missing or malformed data must still reject admission. |
-| Source registry | Generation currently roots ordered `(name, original source)` entries, seal state and an image stage | Future owner must carry metadata with the source lifecycle, preserve identity and declared ordering, and expose useful discovery/mutation. |
+| Source registry | Updated 2026-10-18: Generation roots ordered `(name, compilation record)` entries and an image stage; sealing has been removed | The [Id-boundary design check](source-registry-id-boundary.md) specifies the ordinary-owner direction and remaining callback/bootstrap gates. Preserve source identity, declared ordering and discovery/mutation. |
 | Image | Source registry and Store facts currently transport durable inventories | Future format/owner transition must preserve shared references, source-free mapped startup and explicit rebuild. No old-format compatibility is required; no explicit user facts may be silently scrubbed. |
 | Documentation inventory | Reads compilation-produced method sources through Codegen | Retained. Must remain usable without reconstructing ASTs during compiled startup. |
 

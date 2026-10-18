@@ -127,4 +127,41 @@ theorem failed_load_drops_authority (world : PartialLoad) (error : Nat) :
 theorem failed_load_preserves_error (world : PartialLoad) (error : Nat) :
     (failLiveLoad world error).failure = error := by rfl
 
+-- Image application releases old authority at the boundary. Cleanup has no
+-- saved predecessor to reinstate; executable ownership is independent.
+structure ImageApplication where
+  capabilities : Bool
+  applying : Bool
+  sources : Nat
+  staged : Option Nat
+  codeOwners : Nat
+  deriving DecidableEq
+
+def beginApplication (w : ImageApplication) : ImageApplication :=
+  { w with capabilities := false, applying := true }
+
+def cleanApplication (w : ImageApplication) : ImageApplication :=
+  { w with applying := false, staged := none }
+
+def installSources (w : ImageApplication) (incoming : Nat) : ImageApplication :=
+  { w with sources := incoming, staged := none }
+
+theorem preapplication_cleanup_preserves_capabilities (w : ImageApplication) :
+    (cleanApplication w).capabilities = w.capabilities := by rfl
+
+theorem application_releases_capabilities (w : ImageApplication) :
+    (beginApplication w).capabilities = false := by rfl
+
+theorem cleanup_cannot_revive_capabilities (w : ImageApplication) :
+    (cleanApplication (beginApplication w)).capabilities = false := by rfl
+
+theorem application_preserves_code_owners (w : ImageApplication) :
+    (beginApplication w).codeOwners = w.codeOwners := by rfl
+
+theorem cleanup_preserves_installed_sources (w : ImageApplication) (incoming : Nat) :
+    (cleanApplication (installSources w incoming)).sources = incoming := by rfl
+
+theorem installation_consumes_stage (w : ImageApplication) (incoming : Nat) :
+    (installSources w incoming).staged = none := by rfl
+
 end Birnam.PublicationFailure

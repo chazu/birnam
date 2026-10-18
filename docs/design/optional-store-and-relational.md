@@ -274,6 +274,17 @@ Source-registry ownership still needs migration. Lifecycle field ownership is
 implemented in [the record-owner slice](lifecycle-record-owners.md); the approved
 coordination simplifications are implemented and qualified.
 
+The [source-registry Id boundary check](source-registry-id-boundary.md)
+(2026-10-18) supports an ordinary authored owner with Id-only consumers. It is
+design evidence, not an implemented port. Before cutover, resolve candidate
+commit's newly callback-capable source write and the owner's early bootstrap
+installation. Remove unused image-source rollback rather than preserving it by
+translation; settle counter semantics and image-owner identity explicitly.
+The follow-up [one-way application slice](one-way-image-application.md) removes
+recoverable capability backups and image-source rollback and passes its formal,
+Host, native/image, language and compiled-startup qualification. The implementation
+is committed with its qualification report; the source-registry owner migration itself remains pending.
+
 The [Generation lifecycle review](generation-lifecycle-review.md) sequence is
 complete: code ownership, module-scoped batch edits/undo and optional whole-program
 certification are separate. The [post-simplification review](generation-post-simplification-review.md)

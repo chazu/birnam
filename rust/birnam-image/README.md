@@ -57,10 +57,11 @@ and prepares Methods before publication. The relevant operations are:
 | `beginPortableImageRebuild:bindings:selection:` | Compile canonical programs using the existing native backend. |
 | `portableImageBlockMethod:synchronous:` | Obtain a staged Method with the saved Block disposition. |
 | `preparePortableImageBinding:implementation:` | Initialize an owned adapter for the restored implementation Block. |
-| `preparePortableImageSources:` / `swapPortableImageSources` | Prepare and exchange the source registry, retaining its predecessor. |
+| `preparePortableImageSources:` / `installPortableImageSources` | Validate and install the source registry once; retain no predecessor. |
 | `finishPortableImageUnit` | Admit complete binding preparation. |
+| `beginPortableImageApplication` | Invalidate old candidate/preparation/certification capabilities before application. |
 | `installPortableImageBinding:on:as:source:` | Publish through the current vtable owner. |
-| `cancelPortableImageUnit` | Release staging roots. Published Blocks/Methods retain their Units. |
+| `cancelPortableImageUnit` | Release staging roots and end application; never restore old capabilities. Published Blocks/Methods retain their Units. |
 
 Every generated object is owned by the existing TCC Unit. The private bundle
 binds its object count and contents' ordering to the three inventories' digest;
@@ -160,3 +161,10 @@ use this path and do not enter application code after failed admission.
 A caller that may inspect the current world after failure must use that contract
 and accept partial application. See
 [basic live loading](../../docs/design/basic-live-image-loading.md).
+
+Generation keeps only an application-in-progress flag, not a recoverable copy of
+old capabilities or a composition-digest recovery handshake. A staging failure
+before application leaves existing capabilities intact. Once beginning application
+is attempted, failures are conservatively reported as partial application, including
+a replaced begin method that invalidates capabilities and then returns an Error.
+The image format still validates its code/inventory checksums independently.

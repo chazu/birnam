@@ -58,3 +58,14 @@ mapping does not depend on diagnostic callbacks. Detailed contracts/evidence:
 See [ordinary activation](../../docs/design/ordinary-candidate-activation.md).
 
 See [logical discard](../../docs/design/logical-candidate-discard.md).
+
+## Image application
+
+`beginImageApplication` invalidates candidate handles, prepared operations and
+optional certification before image effects begin. It retains only an application
+flag, which keeps candidate operations unavailable until cleanup.
+`finishImageApplication` clears that flag and any uninstalled source stage; it
+never restores capabilities. Before application, the same cleanup leaves existing
+candidate authority intact. Source staging uses `prepareSourceRegistry:` followed
+by one-way `installSourceRegistry`; no predecessor or image rollback is retained.
+Executable lifetime remains with Execution/TCC. All inter-module calls use Id.

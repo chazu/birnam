@@ -706,13 +706,11 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"preparePortableImageSources:",
                 Op::Image(image::Op::PrepareSources),
             ),
-            (vt, b"rollbackPortableImageSources".as_slice(), Op::Image(image::Op::RollbackSources)),
             (vt, b"preparedPortableImageBinding:".as_slice(), Op::Image(image::Op::Prepared)),
-            (vt, b"abandonPortableImageRecovery".as_slice(), Op::Image(image::Op::AbandonRecovery)),
             (
                 vt,
-                b"swapPortableImageSources",
-                Op::Image(image::Op::SwapSources),
+                b"installPortableImageSources",
+                Op::Image(image::Op::InstallSources),
             ),
             (
                 vt,
@@ -746,16 +744,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (vt, b"finishPortableImageUnit", Op::Image(image::Op::Finish)),
             (vt, b"cancelPortableImageUnit", Op::Image(image::Op::Cancel)),
-            (
-                vt,
-                b"recoverPortableImageGeneration:",
-                Op::Image(image::Op::Recover),
-            ),
-            (
-                vt,
-                b"beginPortableImageRecovery:",
-                Op::Image(image::Op::BeginRecovery),
-            ),
+            (vt, b"beginPortableImageApplication", Op::Image(image::Op::BeginApplication)),
             (reflect_vt, b"defineMethod:on:as:", Op::Define),
             (reflect_vt, b"methodForArity:implementation:", Op::ConstructMethod),
             (reflect_vt, b"methodForTemplate:implementation:", Op::BindTemplate),

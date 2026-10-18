@@ -14,18 +14,15 @@ pub(super) enum Op {
     Cancel,
     Sources,
     PrepareSources,
-    SwapSources,
-    RollbackSources,
+    InstallSources,
     Prepared,
-    AbandonRecovery,
-    Recover,
-    BeginRecovery,
+    BeginApplication,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::SwapSources | Self::RollbackSources | Self::AbandonRecovery => 0,
-            Self::PrepareSources | Self::Recover | Self::BeginRecovery | Self::Prepared => 1,
+            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::InstallSources | Self::BeginApplication => 0,
+            Self::PrepareSources | Self::Prepared => 1,
             Self::Compile | Self::Rebuild => 3,
             Self::Mapped | Self::Install => 4,
             Self::Method | Self::Prepare => 2,
@@ -86,25 +83,11 @@ pub(super) unsafe fn operation(
         let nil = q.keep(s.named(b"nil")?)?;
         let yes = q.keep(s.named(b"true")?)?;
         match op {
-            Op::Recover | Op::BeginRecovery => {
-                if !s
-                    .image_stage
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|stage| stage.finished)
-                {
-                    return publication::fail(
-                        s,
-                        q,
-                        b"imageRecoveryRequired",
-                        b"generation recovery requires a prepared Image stage",
-                    );
+            Op::BeginApplication => {
+                if !s.image_stage.borrow().as_ref().is_some_and(|stage| stage.finished) {
+                    return publication::fail(s, q, b"imageApplicationRequired", b"image application requires a prepared Image stage");
                 }
-                return if matches!(op, Op::BeginRecovery) {
-                    publication::send(s, q, b"beginImageRecovery:", args)
-                } else {
-                    publication::send(s, q, b"recoverImageGeneration:", args)
-                };
+                return publication::send(s, q, b"beginImageApplication", &[]);
             }
             Op::Sources => return publication::send(s, q, b"sourceRegistry", &[]),
             Op::PrepareSources => {
@@ -117,8 +100,6 @@ pub(super) unsafe fn operation(
                 }
                 return publication::send(s, q, b"prepareSourceRegistry:", args);
             }
-            Op::AbandonRecovery => return publication::send(s, q, b"abandonImageRecovery", &[]),
-            Op::RollbackSources => return publication::send(s, q, b"rollbackSourceRegistry", &[]),
             Op::Prepared => {
                 let i = s.send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?.as_word().ok_or_else(invalid)?;
                 let method = s.image_stage.borrow().as_ref().ok_or_else(invalid)?
@@ -126,7 +107,7 @@ pub(super) unsafe fn operation(
                 q.keep(method)?;
                 return Ok(Operand::object(method));
             }
-            Op::SwapSources => {
+            Op::InstallSources => {
                 {
                     let st = s.image_stage.borrow();
                     let st = st.as_ref().ok_or_else(invalid)?;
@@ -134,7 +115,7 @@ pub(super) unsafe fn operation(
                         return Err(invalid());
                     }
                 }
-                return publication::send(s, q, b"swapSourceRegistry", &[]);
+                return publication::send(s, q, b"installSourceRegistry", &[]);
             }
             Op::Bindings => {
                 let mut rows = Vec::new();
@@ -401,7 +382,7 @@ pub(super) unsafe fn operation(
                 return Ok(if result.as_object() == Some(method) { args[1] } else { result });
             }
             Op::Cancel => {
-                publication::send(s, q, b"cancelImageRecovery", &[])?;
+                publication::send(s, q, b"finishImageApplication", &[])?;
                 *s.image_stage.borrow_mut() = None;
                 return Ok(Operand::object(yes));
             }

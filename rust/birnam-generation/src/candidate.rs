@@ -10,14 +10,14 @@ use core::cell::Cell;
 mod ledger;
 #[path = "candidate_preparation.rs"]
 mod preparation;
-#[path = "candidate_recovery.rs"]
-mod recovery;
+#[path = "candidate_image.rs"]
+mod image;
 #[path = "candidate_retirement.rs"]
 mod retirement;
 #[path = "candidate_transaction.rs"]
 mod transaction;
 pub(super) use ledger::{validate_image, prepare_image_snapshot};
-pub(super) use recovery::{begin_recovery, cancel_recovery, abandon_recovery, recover_image};
+pub(super) use image::{begin_image_application, finish_image_application};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
@@ -25,7 +25,7 @@ pub(super) struct Candidates {
     prepared: RefCell<Vec<preparation::Prepared>>,
     next_token: Cell<usize>,
     ledger: RefCell<Option<ledger::Ledger>>,
-    recovery: RefCell<Option<recovery::Recovery>>,
+    image_application: Cell<bool>,
     retained: RefCell<Vec<Vec<usize>>>,
 }
 pub(super) struct Candidate {
@@ -71,7 +71,6 @@ impl Candidates {
             .flat_map(Candidate::roots)
             .chain(self.prepared.borrow().iter().flat_map(|p| p.roots()))
             .chain(self.ledger.borrow().iter().flat_map(|l| l.roots()))
-            .chain(self.recovery.borrow().iter().flat_map(|r| r.roots()))
             .collect()
     }
 }
@@ -372,13 +371,13 @@ pub(super) unsafe fn operation(
     args: &[Operand],
 ) -> Result<Operand, Outcome> {
     unsafe {
-        if s.candidates.recovery.borrow().is_some()
+        if s.candidates.image_application.get()
         {
             return fail(
                 s,
                 q,
-                b"imageRecoveryActive",
-                b"candidate operations are unavailable during image recovery",
+                b"imageApplicationActive",
+                b"candidate operations are unavailable during image application",
             );
         }
         if s.candidates.busy.replace(true) {

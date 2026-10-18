@@ -5,12 +5,7 @@ pub(super) struct Registry {
     pub entries: RefCell<Vec<(Oop, Oop)>>,
     revision: Cell<usize>,
     contents_revision: Cell<usize>,
-    pub stage: RefCell<Option<Stage>>,
-}
-pub(super) struct Stage {
-    entries: Vec<(Oop, Oop)>,
-    basis: usize,
-    published: bool,
+    pub stage: RefCell<Option<Vec<(Oop, Oop)>>>,
 }
 impl Registry {
     pub(super) fn revision(&self)->usize {self.contents_revision.get()}
@@ -42,7 +37,7 @@ impl Registry {
                 self.stage
                     .borrow()
                     .iter()
-                    .flat_map(|stage| stage.entries.iter().flat_map(|&(n, s)| [n, s])),
+                    .flat_map(|stage| stage.iter().flat_map(|&(n, s)| [n, s])),
             )
             .collect()
     }
@@ -55,8 +50,7 @@ pub(super) enum Op {
     FindCompilation,
     Replace,
     Prepare,
-    Swap,
-    Rollback,
+    Install,
 }
 impl Op {
     pub fn count(self) -> usize {
@@ -110,25 +104,14 @@ pub(super) unsafe fn operation(
                     if s.symbol_bytes(q,*name)?.as_deref()!=Some(metadata.name.as_slice()){return Err(invalid())}
                     entries.push((*name, *source));
                 }
-                *s.registry.stage.borrow_mut() = Some(Stage { entries, basis: s.registry.revision.get(), published: false });
+                *s.registry.stage.borrow_mut() = Some(entries);
                 Ok(Operand::object(yes))
             }
-            Op::Swap | Op::Rollback => {
-                let no = s.named(b"false")?;
-                let mut stage = s.registry.stage.borrow_mut();
-                let stage = stage.as_mut().ok_or_else(invalid)?;
-                let rollback = matches!(op, Op::Rollback);
-                if rollback != stage.published || s.registry.revision.get() != stage.basis {
-                    return Ok(Operand::object(no));
-                }
-                let next = stage.basis.checked_add(1).ok_or_else(invalid)?;
-                if *s.registry.entries.borrow()!=stage.entries {
-                    s.registry.contents_revision.set(s.registry.contents_revision.get().checked_add(1).ok_or_else(invalid)?);
-                }
-                std::mem::swap(&mut *s.registry.entries.borrow_mut(), &mut stage.entries);
-                s.registry.revision.set(next);
-                stage.basis = next;
-                stage.published = !rollback;
+            Op::Install => {
+                // One-way application of validated data. No predecessor or inverse
+                // survives installation; image failure leaves applied state intact.
+                let entries = s.registry.stage.take().ok_or_else(invalid)?;
+                s.registry.replace_entries(entries);
                 Ok(Operand::object(yes))
             }
             Op::FindCompilation => {

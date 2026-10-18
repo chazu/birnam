@@ -1,5 +1,15 @@
 # Birnam Language Design Goals
 
+Current-direction note (2026-10-18): the historical architecture sections below
+retain superseded Store/MOP, generation and recovery descriptions. For those
+topics, use [Store and Relational as optional facilities](../design/optional-store-and-relational.md)
+and the [generation review](../design/generation-post-simplification-review.md).
+Ordinary edits require neither facts nor generation certification; basic live
+image loading permits partial application. Id remains the interoperability
+floor, and Rust is a current bootstrap dependency, not a permanent language-design
+requirement. The [source-registry design check](../design/source-registry-id-boundary.md)
+applies that boundary to the next proposed ownership migration.
+
 ## Current Invariants
 
 Birnam must cold-bootstrap from a source checkout using its declared non-Birnam

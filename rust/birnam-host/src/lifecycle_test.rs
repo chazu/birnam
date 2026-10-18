@@ -45,21 +45,21 @@ unsafe extern "C" fn counter_reentry(c: *mut c_void, r: Oop, a: *const Operand, 
     }
 }
 
-struct RecoveryFailure {
+struct ImageApplicationFailure {
     original: native::NativeEntry,
     id: Protocol,
     gc: Oop,
     error: Option<Oop>,
     calls: usize,
 }
-unsafe extern "C" fn failed_recovery(
+unsafe extern "C" fn failed_image_application(
     context: *mut c_void,
     receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
     unsafe {
-        let state = &mut *context.cast::<RecoveryFailure>();
+        let state = &mut *context.cast::<ImageApplicationFailure>();
         let result =
             (state.original.method.unwrap())(state.original.context, receiver, args, count);
         if result.status != native::LOADED {
@@ -382,7 +382,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
         .unwrap();
     q.check_result(saved).unwrap();
     assert!(path.is_file(), "managed Image save failed");
-    eprintln!("generation Image: returned Error and native recovery failure");
+    eprintln!("generation Image: returned Error and native application failure");
     let before = eval(b"[DispatchGeneration current]");
     let captured = q.call(host.named(b"Integer").unwrap(), b"methodFor:",
         &[Operand::object(unsafe { host.context.id.intern_name(b"imageGenerationValue") }.unwrap())]).unwrap();
@@ -390,7 +390,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
     let vt = q
         .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(host.named(b"Generation").unwrap())])
         .unwrap();
-    let selector = unsafe { host.context.id.intern_name(b"recoverImageGeneration:") }.unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"beginImageApplication") }.unwrap();
     let original = host
         .send(
             host.context.id.receiver,
@@ -400,7 +400,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
         .unwrap()
         .as_entry()
         .unwrap();
-    let kind = unsafe { host.context.id.intern_name(b"injectedRecoveryFailure") }.unwrap();
+    let kind = unsafe { host.context.id.intern_name(b"injectedImageApplicationFailure") }.unwrap();
     let error = q
         .call(
             host.named(b"Error").unwrap(),
@@ -409,7 +409,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
         )
         .unwrap();
     for returned_error in [Some(error), None] {
-        let mut fault = RecoveryFailure {
+        let mut fault = ImageApplicationFailure {
             original,
             id: host.context.id,
             gc: host.named(b"GC").unwrap(),
@@ -422,8 +422,8 @@ fn image_restores_descriptions_and_explicit_adoption() {
             &[
                 Operand::object(selector),
                 Operand::entry(native::NativeEntry {
-                    method: Some(failed_recovery),
-                    context: (&mut fault as *mut RecoveryFailure).cast(),
+                    method: Some(failed_image_application),
+                    context: (&mut fault as *mut ImageApplicationFailure).cast(),
                 }),
             ],
         )
@@ -799,5 +799,71 @@ fn certificate_release_reclaims_observations_and_preserves_candidate_undo() {
     expect(b"[[DispatchGeneration releaseCurrent] == DispatchGeneration]");
     expect(b"[[DispatchGeneration current] isNil]");
     expect(b"[[3 releaseCertValue] = 2]");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn image_application_boundary_invalidates_without_restore() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(Path::new("/unused/bin"), crate::Overrides { lib_dir: Some(&lib), ..Default::default() }).unwrap();
+    let host = HostRuntime::start(&resources, StartupPolicy { skip_stdlib: false, precise_gc: true, source_bootstrap: false, tool_bootstrap: false }).unwrap();
+    let q = host.scope(); let cg = host.named(b"Codegen").unwrap();
+    let eval = |source: &[u8]| { let v = q.call(cg, b"evalPersisting:", &[Operand::object(q.string(source).unwrap())]).unwrap(); q.check_result(v).unwrap(); v };
+    let expect = |source: &[u8]| assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source));
+    let dir = env::temp_dir().join(format!("birnam-image-application-{}", std::process::id())); fs::create_dir_all(&dir).unwrap();
+    let source = |value| format!("[Module named: #imageBoundaryValue requires: #[]]; [Reflect defineMethod: #imageBoundaryValue on: Integer as: [:self | {value}]]");
+    q.evaluate(source(1).as_bytes(), Path::new("<image-boundary>"), Some(b"imageBoundaryValue")).unwrap();
+    let path = dir.join("candidate.o");
+    eval(format!("[CompiledUnit compile: \"{}\" named: #imageBoundaryValue output: \"{}\"]; let boundaryUnit := [CompiledUnit open: \"{}\"]; [boundaryUnit map]; [boundaryUnit activate]; [DispatchGeneration adoptCurrent]", source(2), path.display(), path.display()).as_bytes());
+    eval(b"let boundaryToken := [Generation prepareRollback: boundaryUnit plan: [boundaryUnit publicationPlan: #rollback]]");
+    let image_path = dir.join("boundary.image");
+    let saved = q.call(host.named(b"System").unwrap(), b"saveImage:", &[Operand::object(q.string(image_path.as_os_str().as_bytes()).unwrap())]).unwrap();
+    q.check_result(saved).unwrap(); assert!(image_path.is_file());
+
+    // A collecting failure after preparation, before application, retains the
+    // original candidate, certificate and a usable prepared rollback token.
+    let vt = q.call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(cg)]).unwrap();
+    let selector = unsafe { host.context.id.intern_name(b"finishPortableImageUnit") }.unwrap();
+    let original = host.send(host.context.id.receiver, b"bindingOf:in:", &[Operand::object(selector), Operand::object(vt)]).unwrap().as_entry().unwrap();
+    let mut fault = ImageApplicationFailure { original, id: host.context.id, gc: host.named(b"GC").unwrap(), error: None, calls: 0 };
+    host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(failed_image_application, (&mut fault as *mut ImageApplicationFailure).cast()))]).unwrap();
+    let failed = host.load_image(&image_path);
+    host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(original)]).unwrap();
+    assert!(failed.is_err()); assert_eq!(fault.calls, 1);
+    expect(b"[[CompiledUnit activeFor: #imageBoundaryValue] == boundaryUnit]");
+    expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+    expect(b"[[Generation commitPreparedRollback: boundaryToken] == boundaryUnit]");
+    expect(b"[[3 imageBoundaryValue] = 1]");
+    eval(format!("let boundaryUnit := [CompiledUnit open: \"{}\"]", path.display()).as_bytes());
+    eval(b"[boundaryUnit map]");
+    expect(b"[[boundaryUnit activate] == boundaryUnit]");
+    eval(b"[DispatchGeneration adoptCurrent]");
+    eval(b"let boundaryToken := [Generation prepareRollback: boundaryUnit plan: [boundaryUnit publicationPlan: #rollback]]");
+    expect(b"[boundaryToken > 0]");
+    eval(b"let boundaryHeld := [3 methodFor: #imageBoundaryValue]");
+
+    // Invalidation happens at begin, not at later success/abandonment. Cleanup
+    // cannot resurrect old process-local authority or unmap held executable code.
+    eval(b"[Generation beginImageApplication]");
+    expect(b"[[[CompiledUnit activeFor: #imageBoundaryValue] kind] = #imageApplicationActive]");
+    eval(b"[Generation finishImageApplication]; [Codegen evictMaterializations]; [System gc]");
+    expect(b"[[CompiledUnit activeFor: #imageBoundaryValue] isNil]");
+    expect(b"[[[Generation commitPreparedRollback: boundaryToken] kind] = #invalidPreparedToken]");
+    expect(b"[[[Generation reconcileCandidate: [DispatchGeneration current]] kind] = #generationNotAdopted]");
+    expect(b"[[boundaryUnit rollback] isError]");
+    expect(b"[[boundaryHeld invokeOn: 3] = 2]");
+    expect(b"[[3 imageBoundaryValue] = 2]");
+
+    // Staged source installation is one-way. A later explicit installation may
+    // replace an intervening source write; cleanup never exchanges it back.
+    eval(b"let boundarySources := [Generation sourceRegistry]; let boundarySource := [Codegen moduleSourceFor: #imageBoundaryValue]; [Generation prepareSourceRegistry: boundarySources]");
+    eval(format!("[Codegen replaceCompiledSource: [Codegen analyzeSourceMetadata: \"{}\"] named: #imageBoundaryValue]", source(3)).as_bytes());
+    eval(b"[Generation installSourceRegistry]; [Generation finishImageApplication]");
+    expect(b"[[Codegen moduleSourceFor: #imageBoundaryValue] == boundarySource]");
+    let generation = host.named(b"Generation").unwrap();
+    assert!(q.call(generation, b"installSourceRegistry", &[]).is_err(), "installation must consume the stage");
+    eval(b"[Generation finishImageApplication]; [DispatchGeneration adoptCurrent]");
+    expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
     fs::remove_dir_all(dir).unwrap();
 }
