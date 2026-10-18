@@ -152,7 +152,10 @@ records remain historical data and unreferenced records can be collected.
 
 `[unit discard]` releases the candidate handle, preparation tokens and undo
 reservation. It returns the unit; installed code, Globals and source registration
-remain. It is valid for an active unit. Entered and captured Methods keep their
+remain. It is valid for an active or superseded unit. A successor can still undo
+to saved code after its predecessor handle is discarded, including discard after
+preparation; it does not reactivate the released handle or rewrite its status.
+Entered and captured Methods keep their
 code alive, and physical disposal follows ordinary GC/checkpoints.
 
 File deletion is explicit: `[unit removeFiles]` conditionally removes matching

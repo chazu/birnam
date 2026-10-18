@@ -414,4 +414,17 @@ theorem image_inverse_rejects_aba (value revision before : Nat) :
     imageInverse value (revision + 2) revision before value = value := by
   simp [imageInverse]
 
+-- Undo owns saved code independently of a predecessor's descriptive handle.
+def restorePredecessor (handleOpen : Bool) (status savedCode : Nat) : Nat × Nat :=
+  (if handleOpen then 1 else status, savedCode)
+
+theorem undo_preserves_released_status (status savedCode : Nat) :
+    (restorePredecessor false status savedCode).1 = status := by simp [restorePredecessor]
+
+theorem undo_restores_code_without_handle (status savedCode : Nat) :
+    (restorePredecessor false status savedCode).2 = savedCode := by rfl
+
+theorem undo_marks_retained_predecessor_active (status savedCode : Nat) :
+    (restorePredecessor true status savedCode).1 = 1 := by simp [restorePredecessor]
+
 end Birnam.SharedInvocation

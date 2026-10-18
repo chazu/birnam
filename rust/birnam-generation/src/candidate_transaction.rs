@@ -389,6 +389,10 @@ unsafe fn construct(s: &State, q: &Scope<'_>, unit: Oop) -> Result<Constructed, 
         Ok(result)
     }
 }
+fn retained_predecessor(s: &State, prior: Oop, nil: Oop) -> Oop {
+    if s.candidates.entries.borrow().iter().any(|c| c.unit == prior) { prior } else { nil }
+}
+
 unsafe fn publication(s: &State, q: &Scope<'_>, p: &Prepared) -> Result<Vec<FieldWrite>, Outcome> {
     unsafe {
         let [_, unit, _, prior] = p.plan;
@@ -471,7 +475,17 @@ pub(super) unsafe fn commit(
                 b"candidate preparation returned nil",
             );
         }
-        let p = take_prepared(s, q, token)?;
+        let mut p = take_prepared(s, q, token)?;
+        // Releasing a predecessor does not release the saved code/source inverse.
+        // Its descriptive fields cease to be part of this operation, including
+        // when discard happens after preparation. Private-state exclusion keeps
+        // handle ownership stable through the remaining callback-capable commit.
+        let prior = p.plan[3];
+        let nil = s.named(b"nil")?;
+        if retained_predecessor(s, prior, nil) == nil {
+            p.plan[3] = nil;
+            p.fields.retain(|(owner, _, _)| *owner != prior);
+        }
         if p.rollback != rollback {
             return fail(
                 s,
@@ -755,7 +769,8 @@ pub(super) unsafe fn prepare_rollback(
             return Err(invalid());
         }
         let request: [Oop; 2] = seq(s, q, raw_plan)?.try_into().map_err(|_| invalid())?;
-        let plan = [request[0], request[1], field(s, q, unit, b"unitName")?, saved.prior_unit];
+        let prior = retained_predecessor(s, saved.prior_unit, s.named(b"nil")?);
+        let plan = [request[0], request[1], field(s, q, unit, b"unitName")?, prior];
         if plan[0] != symbol(s, q, b"rollback")?
             || plan[1] != unit
             || plan[2] != field(s, q, unit, b"unitName")?

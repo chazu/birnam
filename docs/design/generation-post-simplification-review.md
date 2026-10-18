@@ -13,8 +13,19 @@ status is tracked separately here.
    activation and rollback, with edited dependency fields and missing registration.
    The same regression fails against the reviewed baseline. Logs:
    `/tmp/birnam-generation-followups/dependencies-{before,after}.log`.
-   It is included in the Host generation acceptance group.
-2. Discarded-predecessor status: open.
+   It is included in the Host generation acceptance group. The full language
+   suite on that build also passes all 826 assertions.
+2. Undo no longer writes lifecycle fields on released predecessor handles.
+   Preparation omits an already-released predecessor; commit drops only those
+   predecessor-field observations if it was released after preparation. Saved
+   Methods/source and selected binding checks remain. Native private-state
+   exclusion keeps handle ownership stable during callbacks. Qualified by four
+   Host scenarios (including A/B/C and release between prepare/commit), native
+   transaction and retirement tests, and 62 CLI checks. The same Host regression
+   fails on the pre-fix runtime. Logs are under
+   `/tmp/birnam-generation-followups/predecessor-{before,after,native,cli}.log`.
+   Lean checks 371 theorems and rejects 112 mutations; TLC reports 244 expected
+   outcomes. Receipt: `.cargo-target/formal/results/rooting-gmxr65x8/summary.json`.
 3. Optional-certificate release: open.
 
 ## Assessment

@@ -326,3 +326,7 @@ import Admission
 #print axioms Birnam.SharedInvocation.discard_preserves_dispatch
 #print axioms Birnam.SharedInvocation.discard_preserves_entered_ownership
 #print axioms Birnam.SharedInvocation.discard_revokes_capabilities
+
+#print axioms Birnam.SharedInvocation.undo_preserves_released_status
+#print axioms Birnam.SharedInvocation.undo_restores_code_without_handle
+#print axioms Birnam.SharedInvocation.undo_marks_retained_predecessor_active

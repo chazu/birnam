@@ -702,3 +702,51 @@ fn dependency_changes_use_registered_module_without_certification() {
     expect(b"[[[dependencyUnit dependencyChanges] kind] = #moduleNotRegistered]");
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+#[ignore = "requires production native modules"]
+fn rollback_keeps_released_predecessors_discarded() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(Path::new("/unused/bin"), crate::Overrides { lib_dir: Some(&lib), ..Default::default() }).unwrap();
+    let host = HostRuntime::start(&resources, StartupPolicy { skip_stdlib: false, precise_gc: true, source_bootstrap: false, tool_bootstrap: false }).unwrap();
+    let q = host.scope(); let cg = host.named(b"Codegen").unwrap();
+    let eval = |source: &[u8]| { let v = q.call(cg, b"evalPersisting:", &[Operand::object(q.string(source).unwrap())]).unwrap(); q.check_result(v).unwrap(); v };
+    let expect = |source: &[u8]| assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source));
+    let dir = env::temp_dir().join(format!("birnam-discard-chain-{}", std::process::id())); fs::create_dir_all(&dir).unwrap();
+    for mode in 0..4 {
+        let name = format!("discardChain{mode}");
+        let source = |value| format!("[Module named: #{name} requires: #[]]; [Reflect defineMethod: #{name} on: Integer as: [:self | {value}]]");
+        q.evaluate(source(1).as_bytes(), Path::new("<chain-baseline>"), Some(name.as_bytes())).unwrap();
+        let candidate = |var: &str, value| {
+            let path = dir.join(format!("{name}-{var}.o"));
+            let text = format!("[CompiledUnit compile: \"{}\" named: #{name} output: \"{}\"]; let {var} := [CompiledUnit open: \"{}\"]; [{var} map]", source(value), path.display(), path.display());
+            eval(text.as_bytes());
+        };
+        candidate("chainA", 2); eval(b"[chainA activate]");
+        candidate("chainB", 3);
+        if mode == 3 {
+            eval(b"let forwardToken := [Generation prepareActivation: chainB plan: [chainB publicationPlan: #activate]]; [chainA discard]");
+            expect(b"[[Generation commitPrepared: forwardToken] == chainB]");
+        } else { eval(b"[chainB activate]"); }
+        if mode == 0 { eval(b"[chainA discard]"); }
+        if mode == 2 {
+            candidate("chainC", 4); eval(b"[chainC activate]");
+            eval(b"let chainToken := [Generation prepareRollback: chainC plan: [chainC publicationPlan: #rollback]]; [chainA discard]; [chainB discard]");
+            expect(b"[[Generation commitPreparedRollback: chainToken] == chainC]");
+            expect(b"[[chainB state] = #discarded]");
+            eval(b"[chainC discard]");
+        } else {
+            eval(b"let chainToken := [Generation prepareRollback: chainB plan: [chainB publicationPlan: #rollback]]");
+            if mode == 1 { eval(b"[chainA discard]"); }
+            expect(b"[[Generation commitPreparedRollback: chainToken] == chainB]");
+            eval(b"[chainB discard]");
+        }
+        expect(b"[[chainA state] = #discarded]");
+        expect(b"[[chainA rollbackAvailable] = false]");
+        expect(b"[[[chainA rollback] kind] = #rollbackUnavailable]");
+        expect(format!("[[CompiledUnit activeFor: #{name}] isNil]").as_bytes());
+        eval(b"[Codegen evictMaterializations]; [System gc]");
+        expect(format!("[[3 {name}] = {}]", if mode == 2 { 3 } else { 2 }).as_bytes());
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
