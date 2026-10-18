@@ -427,4 +427,22 @@ theorem undo_restores_code_without_handle (status savedCode : Nat) :
 theorem undo_marks_retained_predecessor_active (status savedCode : Nat) :
     (restorePredecessor true status savedCode).1 = 1 := by simp [restorePredecessor]
 
+-- Explicit release changes only certification, never execution or undo owners.
+def releaseCertificate (s : CertificateWorld) : CertificateWorld :=
+  { s with adopted := false }
+
+theorem certificate_release_drops_observation (s : CertificateWorld) :
+    (releaseCertificate s).adopted = false := by rfl
+
+theorem certificate_release_preserves_code_and_undo (s : CertificateWorld) :
+    (releaseCertificate s).binding = s.binding ∧ (releaseCertificate s).undo = s.undo := by
+  exact ⟨rfl, rfl⟩
+
+theorem certificate_release_preserves_description (s : CertificateWorld) :
+    (releaseCertificate s).recorded = s.recorded ∧ (releaseCertificate s).status = s.status := by
+  exact ⟨rfl, rfl⟩
+
+theorem certificate_release_is_idempotent (s : CertificateWorld) :
+    releaseCertificate (releaseCertificate s) = releaseCertificate s := by rfl
+
 end Birnam.SharedInvocation

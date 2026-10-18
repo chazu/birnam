@@ -92,6 +92,7 @@ pub(super) enum Op {
     RetainedCount,
     RetainedBytes,
     AdoptInitial,
+    ReleaseCertification,
     Reconcile,
     Commit,
     PrepareRollback,
@@ -100,7 +101,7 @@ pub(super) enum Op {
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::RetainedCount | Self::RetainedBytes => 0,
+            Self::RetainedCount | Self::RetainedBytes | Self::ReleaseCertification => 0,
             Self::Compile => 3,
             Self::CompileSelected => 4,
             Self::Inspect | Self::Prepare | Self::PrepareRollback => 2,
@@ -404,6 +405,7 @@ pub(super) unsafe fn operation(
                 transaction::prepare_rollback(s, q, object(args[0])?, object(args[1])?)
             }
             Op::AdoptInitial => ledger::adopt(s, q, object(args[0])?),
+            Op::ReleaseCertification => ledger::release(s, q),
             Op::Reconcile => ledger::reconcile_candidate(s, q, object(args[0])?),
             Op::Prepare => preparation::prepare(s, q, object(args[0])?, object(args[1])?),
             Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),

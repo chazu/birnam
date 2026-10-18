@@ -330,3 +330,8 @@ import Admission
 #print axioms Birnam.SharedInvocation.undo_preserves_released_status
 #print axioms Birnam.SharedInvocation.undo_restores_code_without_handle
 #print axioms Birnam.SharedInvocation.undo_marks_retained_predecessor_active
+
+#print axioms Birnam.SharedInvocation.certificate_release_drops_observation
+#print axioms Birnam.SharedInvocation.certificate_release_preserves_code_and_undo
+#print axioms Birnam.SharedInvocation.certificate_release_preserves_description
+#print axioms Birnam.SharedInvocation.certificate_release_is_idempotent

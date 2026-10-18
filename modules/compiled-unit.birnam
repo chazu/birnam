@@ -82,6 +82,14 @@ let compiledGenerationNumbers := [{} asCell];
           adopted]
         ifFalse: [| baseline]]]]]];
 
+// Explicitly release the native certificate observation, even if current was
+// already changed by the caller. Descriptive records and candidate undo remain.
+[Reflect defineMethod: #releaseCurrent on: DispatchGeneration as: [:self |
+  let released := [Generation releaseCertification];
+  [[released isError] ifTrue: [| released] ifFalse: [|
+    let cleared := [self current: nil];
+    [[cleared isError] ifTrue: [| cleared] ifFalse: [| self]]]]]];
+
 [Reflect defineMethod: #state on: CompiledUnit as: [:self | [ObjectModel slot: 3 in: self]]];
 
 [Reflect defineMethod: #kind on: CompiledUnit as: [:self | [ObjectModel slot: 2 in: self]]];

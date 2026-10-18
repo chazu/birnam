@@ -261,7 +261,7 @@ Implementation status does not imply release or local installation.
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
 | Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields; Bench/Test fields, local scratch and owned suite discovery implemented and qualified | REPL handles/buffers belong with socket/task resource-lifecycle work. |
 | Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Basic live loading now reports partial application without compensation; stronger recovery is an optional future feature, not a migration prerequisite. |
-| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified | Source-registry ownership migration, the post-simplification review follow-ups, Alien recipes, Image staging, task/worker/I/O state and remaining seeds. |
+| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified | Source-registry ownership migration, Alien recipes, Image staging, task/worker/I/O state and remaining seeds. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
 The [supplied-template report](supplied-method-templates.md) records constructor
@@ -277,8 +277,8 @@ coordination simplifications are implemented and qualified.
 The [Generation lifecycle review](generation-lifecycle-review.md) sequence is
 complete: code ownership, module-scoped batch edits/undo and optional whole-program
 certification are separate. The [post-simplification review](generation-post-simplification-review.md)
-records two reproduced API inconsistencies and a certificate-release ownership
-follow-up to address before migrating Generation itself.
+records the resolutions of two reproduced API inconsistencies and explicit
+certificate release, with regression and native ownership evidence.
 
 Backwards compatibility is not required for the remaining migration. A deliberate
 artifact/image format transition may require rebuilding instead of retaining old
@@ -404,7 +404,7 @@ unobservable representation optimization, and does not copy or delete user facts
 - [x] Complete generation simplification before resuming Store migration: module-scoped
   candidates, renewable optional certificates, ordinary activation, and logical
   discard separate from files/diagnostics. See [generation review status](generation-lifecycle-review.md).
-- [ ] Close the [post-simplification review](generation-post-simplification-review.md)
+- [x] Close the [post-simplification review](generation-post-simplification-review.md)
   findings: dependency comparison without certification, discarded-predecessor
   status on successor rollback, and explicit release of optional certificate roots.
   Keep exact code ownership and undo; do not reintroduce whole-world admission.
@@ -434,7 +434,7 @@ unobservable representation optimization, and does not copy or delete user facts
 
 Bench/Test is committed and non-publishing project inspection is qualified. The
 retained compiler metadata ownership is now qualified; the remaining structural
-work includes source-registry ownership, the recorded lifecycle follow-ups and Alien recipes; keep resource-bearing REPL state with
+work includes source-registry ownership and Alien recipes; keep resource-bearing REPL state with
 lifecycle work. The selected live-load change is stated above; these tasks do not authorize changing
 GC policy or resuming the paused Relational rewrite.
 

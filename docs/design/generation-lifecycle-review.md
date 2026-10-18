@@ -47,8 +47,8 @@ Final delivered slices:
    separate. Discard no longer forces GC or creates a receipt. This slice is complete.
 
 A [post-simplification review](generation-post-simplification-review.md) records
-two reproduced API edge cases and an optional-certificate ownership follow-up.
-Completion of the original sequence does not close those findings.
+two reproduced API edge cases and an optional-certificate ownership follow-up;
+the linked resolution status tracks their fixes and qualification.
 
 The following lifecycle and evidence describe the reviewed baseline; follow the
 implementation reports above for the current behavior.

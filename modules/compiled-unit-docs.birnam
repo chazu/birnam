@@ -12,6 +12,8 @@
   "The executable origin kind; #candidateArtifact identifies a staged native unit."];
 [Doc for: #adoptCurrent in: #compiledUnit says:
   "Send to DispatchGeneration to explicitly create or refresh a source certificate. It validates current registered definitions against live code without changing candidate undo. Candidate operations and ordinary startup do not require it."];
+[Doc for: #releaseCurrent in: #compiledUnit says:
+  "Send to DispatchGeneration to explicitly release certificate observation roots and clear current. Returns self or Error. Retained descriptions, installed code and candidate undo remain; physical reclamation follows ordinary GC/checkpoints."];
 [Doc for: #unitName in: #compiledUnit says:
   "The stable Symbol naming this candidate generation."];
 [Doc for: #generation in: #compiledUnit says:

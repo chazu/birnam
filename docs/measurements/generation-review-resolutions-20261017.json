@@ -1,0 +1,243 @@
+{
+  "date": "2026-10-17",
+  "scope": "Generation review resolutions: module-local dependency reporting, released predecessor status, explicit certificate release",
+  "review_commit": "e05c417b",
+  "prior_fix_commits": [
+    "f735e4a9",
+    "0652da35"
+  ],
+  "prefix": "/tmp/birnam-generation-followups/release",
+  "checks": {
+    "build": {
+      "result": "pass",
+      "log": "/tmp/birnam-generation-followups/release-build.log"
+    },
+    "language": {
+      "result": "pass",
+      "assertions": 826,
+      "log": "/tmp/birnam-generation-followups/final-language.log"
+    },
+    "host_generation": {
+      "result": "pass",
+      "checks": [
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-generation-followups/host-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "certificate_release_reclaims_observations_and_preserves_candidate_undo",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:certificate_release_reclaims_observations_and_preserves_candidate_undo",
+          "started_unix_ns": 1792289006005569000,
+          "status": "passed",
+          "wall_ns": 11172979417
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-generation-followups/host-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "rollback_keeps_released_predecessors_discarded",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:rollback_keeps_released_predecessors_discarded",
+          "started_unix_ns": 1792289017240243000,
+          "status": "passed",
+          "wall_ns": 11104693959
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-generation-followups/host-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "dependency_changes_use_registered_module_without_certification",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:dependency_changes_use_registered_module_without_certification",
+          "started_unix_ns": 1792289028421221000,
+          "status": "passed",
+          "wall_ns": 9674689708
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-generation-followups/host-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "activation_inside_entered_methods_uses_current_setters",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:activation_inside_entered_methods_uses_current_setters",
+          "started_unix_ns": 1792289038154657000,
+          "status": "passed",
+          "wall_ns": 8676830750
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-generation-followups/host-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "lifecycle_fields_preserve_explicit_facts_and_status_reads",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:lifecycle_fields_preserve_explicit_facts_and_status_reads",
+          "started_unix_ns": 1792289046889877000,
+          "status": "passed",
+          "wall_ns": 7798202917
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/lifecycle-record-image-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.nY9nEq/relocated"
+          ],
+          "exit_code": 0,
+          "label": "generation:lifecycle-record-image-test.py",
+          "started_unix_ns": 1792289054756033000,
+          "status": "passed",
+          "wall_ns": 103425420875
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-generation-followups/host-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "image_restores_descriptions_and_explicit_adoption",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:image_restores_descriptions_and_explicit_adoption",
+          "started_unix_ns": 1792289158245948000,
+          "status": "passed",
+          "wall_ns": 346885739417
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/generation-cli-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.nY9nEq/relocated"
+          ],
+          "exit_code": 0,
+          "label": "generation:generation-cli-test.py",
+          "started_unix_ns": 1792289505196127000,
+          "status": "passed",
+          "wall_ns": 14466324750
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/compiled-unit-cli-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.nY9nEq/relocated"
+          ],
+          "exit_code": 0,
+          "label": "generation:compiled-unit-cli-test.py",
+          "started_unix_ns": 1792289519696831000,
+          "status": "passed",
+          "wall_ns": 36366698208
+        }
+      ],
+      "compiled_unit_policy_checks": 62,
+      "log": "/tmp/birnam-generation-followups/final-host.log"
+    },
+    "native": {
+      "result": "pass",
+      "suites": [
+        "generation_ledger",
+        "generation_transaction",
+        "candidate_retirement"
+      ],
+      "log": "/tmp/birnam-generation-followups/final-native.log"
+    },
+    "parser_compiler_disabled_startup": {
+      "result": "pass",
+      "log": "/tmp/birnam-generation-followups/final-startup.log"
+    },
+    "formal": {
+      "result": "pass",
+      "theorems": 375,
+      "rejected_mutations": 115,
+      "tlc_outcomes": 249,
+      "receipt": ".cargo-target/formal/results/rooting-ymreov90/summary.json",
+      "log": "/tmp/birnam-generation-followups/release-formal.log"
+    }
+  },
+  "regression_evidence": {
+    "dependency_before": "dependencies-before.log: expected assertion failure on unchanged dependencies",
+    "dependency_after": "dependencies-after.log: pass on production dependency-fix prefix",
+    "predecessor_before": "predecessor-before.log: expected assertion failure on discarded status",
+    "predecessor_after": "predecessor-after.log: four Host scenarios pass on predecessor-fix prefix",
+    "release_before": "release-before.log: confirms retained mapping after current:nil; fails at missing release API",
+    "release_after": "final-host.log: watched count/bytes reach zero after release and GC/checkpoint; retained descriptions, live dispatch, undo and fresh adoption pass",
+    "log_directory": "/tmp/birnam-generation-followups"
+  },
+  "commands": {
+    "build": "mise exec -- env BIRNAM_BUILD_CARGO_FEATURES=birnam-tcc/resource-metrics bash scripts/rust-install.sh install --root \"$PWD\" --prefix /tmp/birnam-generation-followups/release --profile release --build-cache \"$PWD/.cargo-target/install\"",
+    "host": "bash scripts/host-cli-test.sh --prefix /tmp/birnam-generation-followups/release --group generation --prepared-binaries /tmp/birnam-generation-followups/host-binaries/manifest.json --timings /tmp/birnam-generation-followups/final-host-timings.json",
+    "native": "cargo test --offline --locked -p birnam-siphon --test generation_ledger --test generation_transaction --test candidate_retirement -- --include-ignored --nocapture",
+    "language": "/tmp/birnam-generation-followups/release/bin/birnam modules/run-tests.birnam",
+    "formal": "mise exec -- python3 scripts/check-rooting-model.py"
+  },
+  "native_environment": {
+    "BIRNAM_GC_PRECISE": "1",
+    "BIRNAM_TEST_MODULE_DIRECTORY": "<qualified-prefix>/lib",
+    "CARGO_PROFILE_DEV_PANIC": "unwind",
+    "CARGO_TARGET_DIR": "native: .cargo-target/native-message-tests; Host: .cargo-target/host-tests"
+  },
+  "source_sha256": {
+    "CHANGELOG.md": "8ad0c19b984365ad55e5aa8f9f90ae7b9e38fb73707688684e42ba747082d764",
+    "docs/design/generation-lifecycle-review.md": "93d7c5a116445c3f34fd5cd063ac3bed4d18ad29983bf2f29929c05db6667a46",
+    "docs/design/generation-post-simplification-review.md": "1147f6995ab673ad789502f573014ccc10610d6493cb9e6ec8d0661986773ceb",
+    "docs/design/optional-store-and-relational.md": "c1c6236c412174046e274d4b760e4d40275944f149b6f0631435d5ad307930b9",
+    "docs/guide/05-compiled-units.md": "d45e7a0e8d4f897bcb2c741dd5b5cd17cf571341c9b4b8cae196f0643d56257e",
+    "formal/semantics/lean/SemanticsAudit.lean": "786de770d36e7d544916e613109a89c324fdbb4b7b5933586c6e1fb165db7335",
+    "formal/semantics/lean/SharedInvocation.lean": "e35beef541b81f293b9f316dd84398bb15b61a88742bfac789d174c5a25c7930",
+    "formal/semantics/tla/CertificateRelease.tla": "c859773a8b42cd0be26eb33f1b237f3a208aa71c9cdd0aaf89383ef599cf2bc0",
+    "formal/semantics/tla/CertificateReleaseCode.cfg": "f127f0b702351e847c49d3381bf6740c2dae0eeb0536e46765aec26f9f8723bf",
+    "formal/semantics/tla/CertificateReleaseDescription.cfg": "97abdd6cc72b6803e473027a067da511a0667af9626ed92cc4cbca301f0f26e9",
+    "formal/semantics/tla/CertificateReleaseRoots.cfg": "d0605b893ccb8a21f9459c7eff2c235280358bc712182df264cea80c2906cddc",
+    "formal/semantics/tla/CertificateReleaseSafe.cfg": "04b6e165c5df21c377a7fe1127f107006c202a4ef12b269e7c2268818ab6efad",
+    "formal/semantics/tla/CertificateReleaseUndo.cfg": "ba799f585810086aa996b2ca35e516196ec36e31749c92eb4ecad8fdb78bdb82",
+    "formal/semantics/tla/PredecessorRelease.tla": "f02ebeb231ac3534a4c96bd708b3a1732201869f018aed7cca961524c35d9ebe",
+    "formal/semantics/tla/PredecessorReleaseRevive.cfg": "11dadab944dbf2d634254cf1c95b7a0ad95c425c66015c7ff69715d608aa7c89",
+    "formal/semantics/tla/PredecessorReleaseSafe.cfg": "ffed40350280ce79e9a599d1b0a37062e300d821cf12b100cdf3bd78d7294348",
+    "formal/semantics/tla/PredecessorReleaseStale.cfg": "93053f119efe156b7ad70f8f530df7d459b05d3c5f2d409dc46abd9f581cf4f2",
+    "modules/compiled-unit-docs.birnam": "d0afc1f7d92cb5313e794a4df3207a710555aba0ab56f835fabc328c732b0b40",
+    "modules/compiled-unit.birnam": "b065d0c60513b8a246c00ec3047c95eea54a40f091ca465b198eff41225524dd",
+    "modules/doc-test.birnam": "dbe97d3ae405afbea3e5710248e7f7b0411477b6e5d059f21adbe83e98672b30",
+    "rust/birnam-generation/src/candidate.rs": "25d86577465a4775e6a38f24f2bcd863799daa416cea42bcab6167ed20f29732",
+    "rust/birnam-generation/src/candidate_ledger.rs": "cabdfc37514d4ba2e72ab237bc550e7b8e26704520c5f236f6130b3d1d10393b",
+    "rust/birnam-generation/src/candidate_transaction.rs": "e14186730ca1a8e632d5a5629282f595532e1c5792086114fbc5d36d98c386fa",
+    "rust/birnam-generation/src/lib.rs": "1c85f478cd672c846c3a60b17685072ff189a3f6044e24de0e37015f0631702c",
+    "rust/birnam-host/src/lifecycle_test.rs": "26da67d8538f26aae73c02ffbad1e4d94cf175a2a84147a373afdcd96985f6e9",
+    "scripts/check-rooting-model.py": "9c386d01ce33d45d65fced6837b5abeaacaad262307c3267cd716ecdc43d79bf",
+    "scripts/host-cli-test.sh": "2b4cb46264ba877b90f58959e18e05a5d59e6b8cc21b37483a15078e5dfd4868"
+  },
+  "limits": [
+    "Formal models do not prove the native compiler/loader implementation.",
+    "No new combined suspended-Machine lifecycle stress test is claimed.",
+    "No push, release or user-prefix installation."
+  ]
+}

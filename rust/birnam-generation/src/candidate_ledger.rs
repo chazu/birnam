@@ -513,3 +513,14 @@ pub(super) unsafe fn adopt(
         Ok(Operand::object(generation))
     }
 }
+
+// Certification owns only its observation roots. Candidate inverses and physical
+// code lifetimes have independent owners. Resolve the result before releasing;
+// no callback or collection is required to drop this optional observation.
+pub(super) unsafe fn release(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+    unsafe {
+        let yes = q.keep(s.named(b"true")?)?;
+        s.candidates.ledger.take();
+        Ok(Operand::object(yes))
+    }
+}

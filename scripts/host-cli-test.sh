@@ -91,6 +91,7 @@ if selected interaction; then
   run_check lsp-project-smoke.sh bash scripts/lsp-project-smoke.sh
 fi
 if selected generation; then
+  host_test certificate_release_reclaims_observations_and_preserves_candidate_undo
   host_test rollback_keeps_released_predecessors_discarded
   host_test dependency_changes_use_registered_module_without_certification
   host_test activation_inside_entered_methods_uses_current_setters

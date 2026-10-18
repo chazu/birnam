@@ -26,7 +26,28 @@ status is tracked separately here.
    `/tmp/birnam-generation-followups/predecessor-{before,after,native,cli}.log`.
    Lean checks 371 theorems and rejects 112 mutations; TLC reports 244 expected
    outcomes. Receipt: `.cargo-target/formal/results/rooting-gmxr65x8/summary.json`.
-3. Optional-certificate release: open.
+3. `DispatchGeneration releaseCurrent` explicitly drops the native certificate
+   observation and clears the authored current reference. It is idempotent and
+   leaves retained descriptions, candidate undo and executable ownership intact.
+   Neither release nor the ordinary current setter triggers collection. A replaced
+   setter's effects are ordinary message passing, not an atomic transaction.
+   The production Host test confirms that the stale certificate alone retains a
+   watched candidate mapping even after `current: nil`; release plus GC/checkpoint
+   reduces the watched count and bytes to zero. Live dispatch, another candidate's
+   rollback, the retained source map, idempotent release and fresh adoption pass.
+   Final qualification passes: 826 language assertions, the full Host generation
+   group (including mapped/rebuilt/resaved/divergent images and console/TCP), 62
+   compiled-unit CLI checks, native ledger/transaction/retirement suites, and
+   startup with parsing/compilation disabled. Lean checks 375 theorems, rejects
+   115 mutations, and TLC obtains 249 expected outcomes. The abstract proofs
+   supplement the production native lifetime tests.
+
+All three findings are resolved. Dependency reporting is committed in `f735e4a9`
+and predecessor handling in `0652da35`; certificate release and this final receipt
+form the third slice. The qualified prefix is
+`/tmp/birnam-generation-followups/release`. See the
+[qualification receipt](../measurements/generation-review-resolutions-20261017.json).
+No user installation, release or push accompanies these fixes.
 
 ## Assessment
 
@@ -35,12 +56,12 @@ candidate transactions provide explicitly requested conditional undo; source
 certification is optional; Execution/TCC own physical code lifetime. Nothing in
 these findings calls for global monkeypatch policing or restoring Host intents.
 
-Before migrating Generation's implementation, close the two reproduced API
-inconsistencies below and give optional certification an explicit release path.
+The two reproduced API inconsistencies now have fixes, and optional certification
+has an explicit release path. See the resolution status and qualification above.
 These are bounded follow-ups, not another lifecycle redesign. Independent small
 module ports need not wait for broader image/resource work.
 
-## Findings
+## Original findings at `c4bf4451`
 
 ### 1. Dependency reporting still assumes a certificate
 
@@ -58,7 +79,7 @@ registered baseline and a compiled/opened candidate. Candidate admission itself
 still compares module dependencies correctly; the defect is in descriptive output.
 A stale certificate can likewise make the report describe an obsolete baseline.
 
-Follow-up: make the comparison basis explicit and module-local, using retained
+Original recommendation: make the comparison basis explicit and module-local, using retained
 source metadata rather than optional certification. Decide whether this helper
 still earns its place when accepted candidates must preserve dependencies. Test
 no certificate, a stale certificate, and before/after activation. Do not add a
@@ -81,7 +102,7 @@ The cause is `candidate_transaction.rs::publication`: rollback writes `#active`
 to the saved predecessor object unconditionally, even after that handle was
 released. `plan_fields` accepts its current discarded status as the observation.
 
-Follow-up: keep restoration of saved Methods/source independent of whether the
+Original recommendation: keep restoration of saved Methods/source independent of whether the
 predecessor's handle still exists. A released handle should remain released in
 the default lifecycle description. Qualify A/B and A/B/C chains, discard between
 prepare and commit, and release of all handles while restored code remains live.
@@ -100,7 +121,7 @@ old code/data after the caller stops using it. This is an ownership/API gap;
 this review has not measured its retained byte cost or run a reclamation probe.
 It does not affect default worlds that never adopt a certificate.
 
-Follow-up: provide explicit release of certification's native observation roots
+Original recommendation: provide explicit release of certification's native observation roots
 while preserving caller-retained descriptive records, installed code and candidate
 undo. Test adopt, edit, release, GC/checkpoint, continued dispatch and fresh
 adoption. Avoid a hidden mandatory observer or automatic drift-triggered revocation.
@@ -133,12 +154,11 @@ remain historical; the authoritative plan links to this follow-up list.
   ownership remain in the Store plan. Completing generation simplification does
   not establish Store/Relational-absent cold bootstrap or complete Rust migration.
 
-Recommended order: resolve findings 1–3 with focused regression/lifetime evidence,
-then migrate the source registry as an ordinary discoverable owner. Continue
+Next, migrate the source registry as an ordinary discoverable owner. Continue
 owner-by-owner; preserve source-free mapped startup and explicit rebuild, and
 keep the final Store-absent acceptance path separate from individual module tests.
 
-## Evidence and limits
+## Original review evidence and limits
 
 The worktree was clean at review start; all requested implementation changes
 were already committed through `c4bf4451`. No runtime implementation changes were

@@ -274,6 +274,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"adoptInitialGeneration:".as_slice(),
                 Op::Candidate(candidate::Op::AdoptInitial),
             ),
+            (vt, b"releaseCertification".as_slice(), Op::Candidate(candidate::Op::ReleaseCertification)),
             (
                 vt,
                 b"reconcileCandidate:".as_slice(),

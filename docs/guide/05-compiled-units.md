@@ -138,6 +138,15 @@ A successful baseline enables explicit source certification. Candidate activatio
 and rollback do not require it. A later call refreshes the optional certificate from current registered source.
 Use `Generation reconcileCandidate:` to validate without refreshing. Ordinary startup and worker preparation leave adoption to the caller.
 
+`[DispatchGeneration releaseCurrent]` explicitly drops certification's native
+observation roots and clears its current reference, returning DispatchGeneration
+or an Error. It is idempotent, including after `current: nil`; that setter alone
+only changes the descriptive reference. Retained certificate objects/source maps,
+installed code and candidate inverses remain untouched. Release neither collects
+nor unmaps code: ordinary GC/checkpoints reclaim it when its last real owner goes
+away. Certification may be adopted again later. Replaced facade methods/setters
+follow normal message passing; their arbitrary effects are not transactional.
+
 Candidate bundles are trusted native input, not a security sandbox. `open:`
 performs byte-level inspection without loading code, and `map` makes the native
 boundary explicit; checksums establish identity, not authorship.

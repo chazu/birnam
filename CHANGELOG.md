@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Add `DispatchGeneration releaseCurrent` to explicitly release optional
+  certification roots without changing installed code, descriptions or candidate
+  undo. Compare candidate dependencies with current module source independently
+  of certification, and keep discarded predecessor handles discarded on undo.
+
 - Make candidate discard a logical release that preserves files and installed code.
   Add explicit matching-file cleanup and opt-in weak retirement diagnostics; remove
   DiscardReceipt and forced collection/checkpointing from discard.

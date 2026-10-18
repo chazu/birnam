@@ -750,3 +750,54 @@ fn rollback_keeps_released_predecessors_discarded() {
     }
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+#[ignore = "requires production native modules"]
+fn certificate_release_reclaims_observations_and_preserves_candidate_undo() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(Path::new("/unused/bin"), crate::Overrides { lib_dir: Some(&lib), ..Default::default() }).unwrap();
+    let host = HostRuntime::start(&resources, StartupPolicy { skip_stdlib: false, precise_gc: true, source_bootstrap: false, tool_bootstrap: false }).unwrap();
+    let q = host.scope(); let cg = host.named(b"Codegen").unwrap();
+    let eval = |source: &[u8]| { let v = q.call(cg, b"evalPersisting:", &[Operand::object(q.string(source).unwrap())]).unwrap(); q.check_result(v).unwrap(); v };
+    let expect = |source: &[u8]| assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source));
+    let checkpoint = || {
+        eval(b"[Codegen evictMaterializations]; [System gc]");
+        host.send(host.named(b"TCC").unwrap(), b"checkpoint", &[]).unwrap();
+    };
+    let dir = env::temp_dir().join(format!("birnam-certificate-release-{}", std::process::id())); fs::create_dir_all(&dir).unwrap();
+    for (name, var, before, after) in [("releaseCertValue", "certUnit", 1, 2), ("releaseUndoValue", "undoUnit", 10, 20)] {
+        let source = |value| format!("[Module named: #{name} requires: #[]]; [Reflect defineMethod: #{name} on: Integer as: [:self | {value}]]");
+        q.evaluate(source(before).as_bytes(), Path::new("<certificate-baseline>"), Some(name.as_bytes())).unwrap();
+        let path = dir.join(format!("{name}.o"));
+        eval(format!("[CompiledUnit compile: \"{}\" named: #{name} output: \"{}\"]; let {var} := [CompiledUnit open: \"{}\"]; [{var} map]; [{var} activate]", source(after), path.display(), path.display()).as_bytes());
+    }
+    eval(b"let retainedCertificate := [DispatchGeneration adoptCurrent]; let retainedDescription := [retainedCertificate sourceMap]; [Generation watchCandidateRetirement: certUnit]; [certUnit discard]");
+    expect(b"[[3 releaseCertValue] = 2]");
+    eval(b"[Reflect defineMethod: #releaseCertValue on: Integer as: [:self | 3]]");
+    checkpoint();
+    expect(b"[[Generation retainedGenerationCount] = 1]");
+    expect(b"[[Generation retainedGenerationBytes] > 0]");
+    // Clearing the descriptive pointer does not implicitly release certification.
+    eval(b"[DispatchGeneration current: nil]"); checkpoint();
+    expect(b"[[Generation retainedGenerationCount] = 1]");
+    expect(b"[[DispatchGeneration releaseCurrent] == DispatchGeneration]");
+    expect(b"[[DispatchGeneration current] isNil]");
+    expect(b"[[[Generation reconcileCandidate: retainedCertificate] kind] = #generationNotAdopted]");
+    expect(b"[[retainedCertificate sourceMap] == retainedDescription]");
+    expect(b"[[undoUnit rollbackAvailable] = true]");
+    checkpoint();
+    expect(b"[[Generation retainedGenerationCount] = 0]");
+    expect(b"[[Generation retainedGenerationBytes] = 0]");
+    expect(b"[[3 releaseCertValue] = 3]");
+    expect(b"[[3 releaseUndoValue] = 20]");
+    expect(b"[[undoUnit rollback] == undoUnit]");
+    expect(b"[[3 releaseUndoValue] = 10]");
+    expect(b"[[DispatchGeneration releaseCurrent] == DispatchGeneration]");
+    // Explicit fresh adoption remains available after ordinary code matches source.
+    eval(b"[Reflect defineMethod: #releaseCertValue on: Integer as: [:self | 2]]; [DispatchGeneration adoptCurrent]");
+    expect(b"[[Generation reconcileCandidate: [DispatchGeneration current]] == [DispatchGeneration current]]");
+    expect(b"[[DispatchGeneration releaseCurrent] == DispatchGeneration]");
+    expect(b"[[DispatchGeneration current] isNil]");
+    expect(b"[[3 releaseCertValue] = 2]");
+    fs::remove_dir_all(dir).unwrap();
+}
