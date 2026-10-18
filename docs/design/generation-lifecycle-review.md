@@ -35,7 +35,7 @@ Completed: ordinary lifecycle owners; removal of implicit history and destructiv
 retirement; removal of dead phase state and status-triggered reconciliation;
 value-based prepared admission; selected-state commit, compensation and rollback.
 
-Still open:
+Final delivered slices:
 
 1. Candidate operations now use one module source record and selected bindings;
    whole-program certification is separate and renewable. This slice is complete.
@@ -45,6 +45,10 @@ Still open:
    removed. Physical native reclamation checkpoints remain. This slice is complete.
 4. Logical discard, explicit artifact cleanup and opt-in weak diagnostics are
    separate. Discard no longer forces GC or creates a receipt. This slice is complete.
+
+A [post-simplification review](generation-post-simplification-review.md) records
+two reproduced API edge cases and an optional-certificate ownership follow-up.
+Completion of the original sequence does not close those findings.
 
 The following lifecycle and evidence describe the reviewed baseline; follow the
 implementation reports above for the current behavior.

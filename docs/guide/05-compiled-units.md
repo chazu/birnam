@@ -43,7 +43,7 @@ Errors are values. Rejection before commit leaves dispatch and source authority
 unchanged.
 
 A prepared token observes its target bindings and metadata; it is not a lease on
-the global dictionary or Globals counter. Creating a branch Block or editing an
+the global dictionary or Globals counter. Creating a branch Block or editing a
 name outside the operation's binding/Global scope between preparation and
 commitment is allowed, including a name tracked in another managed module. A replaced setter
 may perform additional edits and return an ordinary success value; Generation
@@ -68,12 +68,12 @@ let path := "/tmp/pricing-next.dylib";
 let unit := [CompiledUnit open: path];
 [unit map];
 [unit validate];
-[unit activate]                  // return the intent as the top-level result
+[unit activate]                  // applies immediately; returns unit or Error
 ```
 
-The REPL host recognizes that result, enters quiescence, fulfills it, exits the
-guard, and prints the committed unit. A later top-level `[unit rollback]` follows
-the same path.
+Activation is an ordinary send and may run inside an entered Method or Block.
+A later `[unit rollback]` performs conditional undo through the same ordinary
+message boundary. Neither operation requires special REPL fulfillment.
 
 The candidate declaration must match the existing module. Its dependency vector
 and residual effectful initializer digest must equal the active revision.
@@ -84,7 +84,7 @@ and rollback. Duplicate bindings, captured projected blocks, indirect targets,
 first-time target specialization, malformed declarations, stale bases, and
 other changed top-level forms are rejected.
 
-## One runtime-wide generation
+## Module-scoped changes
 
 `CompiledUnit activeFor:` finds a retained candidate whose source record is current
 for that module. Candidate activity does not create or modify a DispatchGeneration.
