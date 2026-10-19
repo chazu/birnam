@@ -279,6 +279,32 @@ Failed construction publishes no cache entry. Production `materialization` tests
 cover these behaviors, collecting replacements and final Unit reclamation. Image
 uses the same canonical programs and code owners; optimizer work remains separate.
 
+## Image body demand
+
+An image stage retains private immutable native bytes (mapped load) or canonical
+backend requests (rebuild). `portableImageBlockMethod:synchronous:` loads or emits
+only the requested program/disposition on its first use. It resolves the current
+TCC/NativeBackend operations through Id, initializes the Unit, and caches only a
+successful Method. Repeat requests return that Method; the other disposition
+remains independently available. No stage borrow crosses a callback. The existing
+image-operation reentry boundary still applies.
+
+Stage creation validates inventory/bundle framing and prepares named adapters;
+it does not initialize every body. Unrequested native payloads are not relocated
+or checked for linker errors. Required body failures occur during heap restoration,
+before normal image application begins. A failed individual request remains
+retryable until cancellation. This changes optional loader/backend call counts
+and their timing; those operations run at demand, not at stage creation.
+
+Stage roots protect initialized Methods during restoration. Cancelling the stage
+releases pending inputs and its Method roots; returned Blocks/Methods and entered
+or suspended frames retain their actual Units independently. This introduces no
+persistent native cache or inter-module ABI. Saving still includes both variants
+in the existing format, and mapped loading needs no compiler. Production
+`artifact_templates` tests cover demand, both dispositions, replacement, collecting
+callbacks, rejected reentry, failed emission/loading/initialization, retry,
+malformed requested objects and final Unit reclamation.
+
 ## Durable module artifacts
 
 `compile:output:`, `compile:output:from:` and `compile:output:root:` write a

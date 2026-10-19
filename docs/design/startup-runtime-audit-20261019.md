@@ -162,3 +162,205 @@ dependencies are unchanged.
 
 This is a cached development build and local qualification, not a cold release
 qualification. No user-prefix installation or push was performed.
+
+## Follow-up after memory-loader commit `7547af98`
+
+The [follow-up receipt](../measurements/startup-redundancy-probes-20261019.json)
+records fresh profiles, read-only image/ELF inventories, diagnostic patches,
+drivers and raw timing rows. These are **opportunity measurements**, not additional
+qualified runtime changes. All diagnostic production-source edits were reverted.
+The measured prefix and user installation were kept separate.
+
+### Highest payoff: load only requested image body variants
+
+`Codegen` currently maps and initializes both variants of every portable program
+before heap restoration. `Image` then requests a particular variant through
+`portableImageBlockMethod:synchronous:` for each restored Block. Inspection of the
+actual bootstrap heap found:
+
+| Item | Count |
+| --- | ---: |
+| Portable programs | 2,009 |
+| Eagerly loaded body objects | 4,018 |
+| Restored Blocks | 787 |
+| Distinct body variants referenced by those Blocks | 731 |
+| Of those, resumable / synchronous | 513 / 218 |
+| Body variants not referenced by restored Blocks | 3,287 |
+| ELF bytes in those unreferenced variants | 172.32 MiB |
+
+This census follows Block locators to their CodeObject program indexes; it does
+not infer demand from text matches or assume that synchronous bodies are unused.
+The objects are still valid code. They are unnecessary for these restored Blocks,
+not forbidden from being requested by a replacement loader or another operation.
+The existing image stage drops its temporary method roots when loading finishes;
+ordinary later materialization uses its separate CodeObject path.
+
+A disposable probe skipped the exact unreferenced indexes for this one known
+bootstrap. It preserved positions with `nil` placeholders; **that is not a general
+implementation**. The trivial script still ran successfully. Three interleaved
+fresh-process runs per variant, after warmups, gave these medians:
+
+| Startup probe | Wall | CPU |
+| --- | ---: | ---: |
+| Current memory loader, diagnostic switches disabled | 4.037 s | 4.031 s |
+| Load only body variants referenced by this heap | 2.761 s | 2.752 s |
+| Selected bodies plus runtime/SDK setup bypass | 2.637 s | 2.632 s |
+
+The body omission saves 1.277 seconds, about 32%. This is a measured opportunity
+on this image, not an established performance result for a general lazy loader.
+
+**Recommended implementation:** preserve the existing stage and request API.
+Keep its private owned object bytes available; load and initialize each body on
+its first `portableImageBlockMethod:synchronous:` request, retaining the resulting
+Method for repeat requests. Keep adapter handling and Method/Unit ownership with
+their existing owners. Release unused bytes with the stage. This needs no new
+persistent generation registry, foreign object-layout access, frozen method
+lookup, or permanent native language service. Rebuild should avoid emitting and
+compiling variants that its stage never requests as well.
+
+Before accepting it, test mapped, rebuilt and stripped images, compiler-disabled
+startup, both body dispositions, repeated requests, GC during loader callbacks,
+failed initialization and cleanup, custom/replaced loader operations, live-image
+partial failure, callbacks and suspended/deoptimizing frames. Preserve the
+pre-application boundary for failures of bodies needed by the restored heap.
+Measure peak memory too: retaining the input bundle during heap restoration has a
+cost, even when it avoids thousands of mappings. Existing rooting/lifetime formal
+models should accompany those concrete tests; the omission probe proves none of
+these safety or semantic properties.
+
+### Second: repeated native runtime and SDK setup
+
+The new late-startup sample still contains `stat`, `open`, archive reads and SDK
+resolution underneath libtcc. `tcc_set_output_type` discovers the macOS SDK for
+each memory-output state; `tcc_add_runtime` searches for libc and reads libtcc's
+support archive for each relocation. Removing object staging did not remove this
+independent work.
+
+All 4,758 ELF payloads in the measured bootstrap refer only to these undefined
+native symbols: `memmove`, `memset`, `strlen`, `realloc`, `free`, `strcmp`, and (in
+1,669 objects) `memcpy`. This is a census of this image, not a restriction on the
+public native compiler.
+
+| Probe with all current body variants | Startup wall | Saved-image wall |
+| --- | ---: | ---: |
+| Control | 4.033 s | 4.547 s |
+| Skip automatic runtime libraries/archive | 3.862 s | 4.368 s |
+| Also skip SDK discovery | 3.631 s | 4.161 s |
+
+Three interleaved runs per variant/workload passed their `ready` oracle. CPU
+medians fell from 4.025 to 3.626 seconds for startup and 4.537 to 4.149 seconds for
+saved-image execution. Skipping SDK discovery **alone failed startup**: the
+remaining libc search still needs its SDK stub. The useful change is coordinated
+resolution, not deleting that one call.
+
+A production solution should resolve already-resident native symbols and defer
+SDK/library/archive work until unresolved dependencies require it, retaining the
+existing helper/library fallback. Do not use `-nostdlib` as a substitute: it also
+disables libtcc's ordinary `RTLD_DEFAULT` symbol resolution. Arbitrary generated C
+can require compiler helpers even though this bootstrap does not. Add fixtures
+that actually require those helpers and compare ordinary file/memory loading.
+This is a contained libtcc change, not a new inter-module Birnam ABI.
+
+These savings overlap with selective body loading: after skipping unused bodies,
+the setup bypass saves only another 0.123 seconds in the paired probe. Do not add
+the standalone 0.40-second result to the 1.277-second body result.
+
+### Remaining opportunities and rejected shortcuts
+
+- **Warm dispatch:** both application profiles still put Id binding first among
+  named leaves. Ordinary sends repeatedly look up the metabehavior's `lookup`
+  implementation before looking up the target method. Investigate cheaper access
+  to the current entry or owner-maintained invalidation, preserving replacement,
+  custom metabehaviors, parent changes and retirement. No new runtime speedup was
+  measured here; this remains the leading application-CPU investigation.
+- **Image buffer copies:** ImageFormat slices the large code record and its unit
+  suffix; Image and Codegen then take independent private snapshots across Id
+  calls. A narrower owned-buffer/slice protocol may eliminate some full-size
+  copies. Ordinary borrowed views cannot simply survive sends. Preserve current
+  message semantics and measure before choosing a new Bytes API.
+- **Generated helper duplication:** the ELF census finds repeated initializer,
+  cleanup, selector and rooting helpers. Sharing immutable helpers with explicit
+  per-Unit context could reduce bytes, but adds a native calling/lifetime contract.
+  Defer that design until selective loading is measured; it is substantially more
+  intrusive than avoiding work that the current load never consumes.
+- **Exact adapter duplicates:** 16.55 MiB of stored duplicate objects does not mean
+  16.55 MiB of redundant live code. The current loader already reuses identical
+  selected adapter templates at the same arity. Storage deduplication alone will
+  not reproduce the body-loading gain. Byte-identical program objects still must
+  not be treated as permission to share mutable Unit state.
+
+At this checkpoint the recommended next slice was demand-driven body loading
+within the existing image stage, followed by conditional native runtime setup.
+The body-loading implementation and acceptance are recorded below; warm Id binding
+remains a separate target for application execution costs.
+
+## Implemented: demand-driven image body loading
+
+Codegen now retains pending inputs in the existing image stage and resolves each
+program/disposition on its first `portableImageBlockMethod:synchronous:` request.
+Mapped stages share one private immutable bundle snapshot; rebuilt stages retain
+canonical backend requests. A successful Method replaces its pending input. No
+stage borrow survives an Id call. GC traces only ready Methods, adapters, prepared
+bindings and the source owner. Cancellation drops unused inputs and temporary
+roots; returned Methods/Blocks and active or suspended frames retain their Units.
+
+Named adapter handling is unchanged. Saving still emits the complete existing
+bundle; this slice improves loading and rebuilding, not image size or save-time
+code emission. No new service, artifact version, exported native symbol, foreign
+layout access or monkeypatch guard was introduced. Current TCC/NativeBackend
+bindings are resolved when a pending body is demanded, and a successful cached
+Method continues to own that implementation. Unrequested payloads are not checked
+for linker errors. Required body failures remain in heap restoration before normal
+image application; direct stage requests can retry failures until cancellation.
+
+The regression exercises both dispositions, zero body work at stage creation,
+current loader replacement after stage creation, stage-only GC protection,
+collecting callbacks and rejected reentry, emitter/load/initializer rejection,
+native initializer failure, repeat-request identity, malformed demanded ELF,
+cancellation, post-stage execution and complete Unit reclamation. It fails against
+the previous loader at the eager-allocation assertion.
+
+Qualification passed:
+
+- Fresh cached development installation: 38 native libraries, five source
+  bootstrap modules, 24 authored tools. Installed production source matches the
+  worktree. Native exports and dynamic dependencies are unchanged.
+- All 847 language assertions, plus compiler, artifact activation/templates,
+  materialization, candidate retirement, borrowed-input and byte-ABI checks.
+- Image failure/owner/conflict checks; fresh-prefix mapped, rebuilt, stripped and
+  resaved roundtrips; twenty successive resaves with a fixed expected live set.
+- Parser/compiler-disabled startup and an existing compiled image with nonexistent
+  temporary storage.
+- Existing abstract formal suite: 391 Lean theorems, 122 rejected mutations and
+  266 expected TLC outcomes. These are existing rooting, invocation and image
+  lifetime contracts, not a new formal proof of the demand-loader implementation.
+
+No user-prefix installation, release qualification, commit or push was performed
+for this slice. The follow-up libtcc setup optimization remains unimplemented.
+
+The [implementation receipt](../measurements/image-body-demand-20261019.json)
+records five interleaved fresh processes per variant/workload after warmups, with
+precise GC and identical preexisting image/artifact bytes. The measured overlay
+changes only Codegen runtime, using the exact binary from the fresh prefix.
+Correctness checks finished before timing; other user workloads were not controlled.
+
+| Workload | Eager wall | Demand wall | Eager CPU | Demand CPU | Wall reduction |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Startup plus trivial script | 4.136 s | 2.973 s | 4.089 s | 2.959 s | 28.1% |
+| Existing saved image and compiled main | 4.549 s | 3.615 s | 4.541 s | 3.606 s | 20.5% |
+
+These are the implementation results, replacing the earlier omission probe as the
+basis for a delivered speedup claim. They measure startup/image execution, not
+warm application CPU or release-wide performance.
+
+Memory is a tradeoff, not a claimed win: median maximum RSS rose from 1,504.4 to
+1,524.5 MiB for startup (+20.1 MiB, 1.3%), and fell from 1,556.9 to 1,553.6 MiB for
+the saved image. macOS peak footprint fell by about 4.4 MiB and 1.3 MiB,
+respectively, effectively unchanged at roughly 1.3 GiB. The private input bundle
+now remains available during restoration until its stage is cancelled. There is
+no permanent pending-body registry, and the twenty-resave fixed-live-set check
+passed. Further large-buffer-copy work remains worthwhile.
+
+Next: condition libtcc runtime-library/SDK setup on actual unresolved dependencies,
+with compiler-helper fallback tests. Do not add its standalone diagnostic saving
+to the body-loading saving; the opportunities overlap.

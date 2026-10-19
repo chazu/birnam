@@ -1,0 +1,320 @@
+{
+  "baseline_commit": "7547af98",
+  "change": "Demand-driven image body loading and rebuilding within the existing image stage.",
+  "measurement": {
+    "rows": [
+      {
+        "mode": "startup_script",
+        "variant": "eager",
+        "repeat": 0,
+        "wall_seconds": 4.135505458,
+        "cpu_seconds": 4.088835,
+        "max_rss_bytes": 1577451520,
+        "peak_footprint_bytes": 1406111936
+      },
+      {
+        "mode": "startup_script",
+        "variant": "demand",
+        "repeat": 0,
+        "wall_seconds": 3.0806492920000004,
+        "cpu_seconds": 3.0174500000000006,
+        "max_rss_bytes": 1615085568,
+        "peak_footprint_bytes": 1403015872
+      },
+      {
+        "mode": "startup_script",
+        "variant": "demand",
+        "repeat": 1,
+        "wall_seconds": 2.972944041999998,
+        "cpu_seconds": 2.958519,
+        "max_rss_bytes": 1601929216,
+        "peak_footprint_bytes": 1390448960
+      },
+      {
+        "mode": "startup_script",
+        "variant": "eager",
+        "repeat": 1,
+        "wall_seconds": 6.333621375,
+        "cpu_seconds": 4.362473999999999,
+        "max_rss_bytes": 1594376192,
+        "peak_footprint_bytes": 1395822912
+      },
+      {
+        "mode": "startup_script",
+        "variant": "eager",
+        "repeat": 2,
+        "wall_seconds": 8.599911291999998,
+        "cpu_seconds": 5.3534330000000026,
+        "max_rss_bytes": 1614217216,
+        "peak_footprint_bytes": 1399689664
+      },
+      {
+        "mode": "startup_script",
+        "variant": "demand",
+        "repeat": 2,
+        "wall_seconds": 3.346036290999997,
+        "cpu_seconds": 3.261727999999999,
+        "max_rss_bytes": 1587183616,
+        "peak_footprint_bytes": 1385796288
+      },
+      {
+        "mode": "startup_script",
+        "variant": "demand",
+        "repeat": 3,
+        "wall_seconds": 2.8847976669999937,
+        "cpu_seconds": 2.8790849999999986,
+        "max_rss_bytes": 1587970048,
+        "peak_footprint_bytes": 1395200384
+      },
+      {
+        "mode": "startup_script",
+        "variant": "eager",
+        "repeat": 3,
+        "wall_seconds": 3.950311708000001,
+        "cpu_seconds": 3.9441189999999997,
+        "max_rss_bytes": 1576697856,
+        "peak_footprint_bytes": 1389547840
+      },
+      {
+        "mode": "startup_script",
+        "variant": "eager",
+        "repeat": 4,
+        "wall_seconds": 4.003939500000001,
+        "cpu_seconds": 3.999667000000004,
+        "max_rss_bytes": 1573027840,
+        "peak_footprint_bytes": 1382486272
+      },
+      {
+        "mode": "startup_script",
+        "variant": "demand",
+        "repeat": 4,
+        "wall_seconds": 2.8666700419999955,
+        "cpu_seconds": 2.8628370000000007,
+        "max_rss_bytes": 1598554112,
+        "peak_footprint_bytes": 1391219072
+      },
+      {
+        "mode": "saved_image",
+        "variant": "eager",
+        "repeat": 0,
+        "wall_seconds": 4.560892832999997,
+        "cpu_seconds": 4.557249000000004,
+        "max_rss_bytes": 1640513536,
+        "peak_footprint_bytes": 1426805376
+      },
+      {
+        "mode": "saved_image",
+        "variant": "demand",
+        "repeat": 0,
+        "wall_seconds": 3.5885908339999943,
+        "cpu_seconds": 3.5809020000000027,
+        "max_rss_bytes": 1634156544,
+        "peak_footprint_bytes": 1422479808
+      },
+      {
+        "mode": "saved_image",
+        "variant": "demand",
+        "repeat": 1,
+        "wall_seconds": 3.603867292000004,
+        "cpu_seconds": 3.6008809999999967,
+        "max_rss_bytes": 1629093888,
+        "peak_footprint_bytes": 1431933312
+      },
+      {
+        "mode": "saved_image",
+        "variant": "eager",
+        "repeat": 1,
+        "wall_seconds": 4.548553249999998,
+        "cpu_seconds": 4.5406620000000055,
+        "max_rss_bytes": 1632518144,
+        "peak_footprint_bytes": 1422004608
+      },
+      {
+        "mode": "saved_image",
+        "variant": "eager",
+        "repeat": 2,
+        "wall_seconds": 4.520604250000005,
+        "cpu_seconds": 4.514462999999993,
+        "max_rss_bytes": 1634369536,
+        "peak_footprint_bytes": 1414631872
+      },
+      {
+        "mode": "saved_image",
+        "variant": "demand",
+        "repeat": 2,
+        "wall_seconds": 3.6783915000000036,
+        "cpu_seconds": 3.667063000000013,
+        "max_rss_bytes": 1616183296,
+        "peak_footprint_bytes": 1427935744
+      },
+      {
+        "mode": "saved_image",
+        "variant": "demand",
+        "repeat": 3,
+        "wall_seconds": 3.6147246660000008,
+        "cpu_seconds": 3.6055719999999987,
+        "max_rss_bytes": 1635893248,
+        "peak_footprint_bytes": 1423888832
+      },
+      {
+        "mode": "saved_image",
+        "variant": "eager",
+        "repeat": 3,
+        "wall_seconds": 4.607523291999996,
+        "cpu_seconds": 4.603149000000009,
+        "max_rss_bytes": 1628028928,
+        "peak_footprint_bytes": 1425232320
+      },
+      {
+        "mode": "saved_image",
+        "variant": "eager",
+        "repeat": 4,
+        "wall_seconds": 4.523812083999999,
+        "cpu_seconds": 4.515637999999997,
+        "max_rss_bytes": 1617821696,
+        "peak_footprint_bytes": 1427345792
+      },
+      {
+        "mode": "saved_image",
+        "variant": "demand",
+        "repeat": 4,
+        "wall_seconds": 3.662945999999991,
+        "cpu_seconds": 3.6554369999999885,
+        "max_rss_bytes": 1615560704,
+        "peak_footprint_bytes": 1409536448
+      }
+    ],
+    "medians": {
+      "startup_script": {
+        "eager": {
+          "wall_seconds": 4.135505458,
+          "cpu_seconds": 4.088835,
+          "max_rss_bytes": 1577451520,
+          "peak_footprint_bytes": 1395822912
+        },
+        "demand": {
+          "wall_seconds": 2.972944041999998,
+          "cpu_seconds": 2.958519,
+          "max_rss_bytes": 1598554112,
+          "peak_footprint_bytes": 1391219072
+        }
+      },
+      "saved_image": {
+        "eager": {
+          "wall_seconds": 4.548553249999998,
+          "cpu_seconds": 4.5406620000000055,
+          "max_rss_bytes": 1632518144,
+          "peak_footprint_bytes": 1425232320
+        },
+        "demand": {
+          "wall_seconds": 3.6147246660000008,
+          "cpu_seconds": 3.6055719999999987,
+          "max_rss_bytes": 1629093888,
+          "peak_footprint_bytes": 1423888832
+        }
+      }
+    },
+    "scope": "Five interleaved fresh processes after warmups; precise GC, warm filesystem, identical preexisting images/artifacts, only Codegen runtime binary replaced; macOS time -l memory measurements are bytes. No diagnostic omissions."
+  },
+  "driver": "import subprocess,time,resource,statistics,json,sys,re,hashlib\nfrom pathlib import Path\nsys.path.insert(0,str(Path.cwd()/'scripts'))\nfrom validation_support import clean_environment\nw=Path('/tmp/birnam-demand-bodies-20261019');old=Path('/tmp/birnam-runtime-audit-20261019')\nprefixes={'eager':old/'final-prefix','demand':w/'prefix'}\nenv=clean_environment();env['BIRNAM_GC_PRECISE']='1';rows=[]\ndef run(n,script):\n before=resource.getrusage(resource.RUSAGE_CHILDREN);start=time.perf_counter()\n p=subprocess.run(['/usr/bin/time','-l',prefixes[n]/'bin/birnam',script],env=env,capture_output=True,text=True,timeout=60)\n wall=time.perf_counter()-start;after=resource.getrusage(resource.RUSAGE_CHILDREN)\n assert p.returncode==0 and p.stdout=='ready\\n',(n,p)\n rss=re.search(r'(\\d+)\\s+maximum resident set size',p.stderr);assert rss,p.stderr\n footprint=re.search(r'(\\d+)\\s+peak memory footprint',p.stderr)\n assert not ('birnam:' in p.stderr or 'Error' in p.stderr),p.stderr\n return dict(wall_seconds=wall,cpu_seconds=after.ru_utime+after.ru_stime-before.ru_utime-before.ru_stime,max_rss_bytes=int(rss[1]),peak_footprint_bytes=int(footprint[1]) if footprint else None)\nfor mode,script in [('startup_script',old/'ready.birnam'),('saved_image',old/'no-temp.image')]:\n for n in prefixes:run(n,script)\n for i in range(5):\n  for n in (list(prefixes) if i%2==0 else list(reversed(prefixes))):\n   rows.append(dict(mode=mode,variant=n,repeat=i,**run(n,script)))\n  (w/'comparison.json').write_text(json.dumps({'rows':rows},indent=2)+'\\n');print(mode,i+1,flush=True)\nkeys=['wall_seconds','cpu_seconds','max_rss_bytes','peak_footprint_bytes']\nmedians={m:{n:{k:statistics.median(r[k] for r in rows if r['variant']==n and r['mode']==m and r[k] is not None) for k in keys} for n in prefixes} for m in ['startup_script','saved_image']}\n(w/'comparison.json').write_text(json.dumps({'rows':rows,'medians':medians,'scope':'Five interleaved fresh processes after warmups; precise GC, warm filesystem, identical preexisting images/artifacts, only Codegen runtime binary replaced; macOS time -l memory measurements are bytes. No diagnostic omissions.'},indent=2)+'\\n')\nprint(json.dumps(medians,indent=2),flush=True)\n",
+  "native_boundary": {
+    "exports": [
+      "_birnam_native_module_v1"
+    ],
+    "dependencies": [
+      "\t@rpath/libbirnam_codegen_runtime.dylib (compatibility version 0.0.0, current version 0.0.0)",
+      "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)"
+    ],
+    "unchanged": true
+  },
+  "overlay": {
+    "changed_native_modules": [
+      "libbirnam_codegen_runtime.dylib"
+    ],
+    "baseline": "ab1ae5c5038edaf7cf49a8ca43f568d493cd44a0a840470deeb290d47255e409",
+    "candidate": "9f2d05f9eca0339aef97bcacaa5791a440f327018db3c423a1cee1247a734b73",
+    "identical_images": true
+  },
+  "no_temp": {
+    "exit_code": 0,
+    "stdout": "ready\n",
+    "stderr": "",
+    "TMPDIR": "/tmp/birnam-demand-bodies-20261019/nonexistent-tmp",
+    "image": "/tmp/birnam-runtime-audit-20261019/no-temp.image"
+  },
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-2wdf3s8v/summary.json",
+    "sha256": "d89a80037055b794c865957625b0607d921e6250f2a2036f2a58d1c5677b5589",
+    "theorems": 391,
+    "rejected_mutations": 122,
+    "tla_outcomes": 266,
+    "scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+  },
+  "qualification": {
+    "language_assertions": 847,
+    "fresh_prefix": "/tmp/birnam-demand-bodies-20261019/final-prefix",
+    "native_suites": [
+      "artifact_activation",
+      "artifact_templates",
+      "borrowed_read_inputs",
+      "byte_abi",
+      "candidate_retirement",
+      "compiler",
+      "image_recovery_conflict",
+      "image_recovery_owners",
+      "materialization",
+      "publication_failure_image"
+    ],
+    "fresh_prefix_suites": [
+      "artifact_templates with demand and malformed-object regressions",
+      "image_owner_roundtrip",
+      "repeated_image_resaves_keep_a_fixed_live_set",
+      "installed_bootstrap_and_console_do_not_compile_or_parse"
+    ],
+    "negative_regression": "New demand regression fails against the prior eager loader: 253 Units versus expected 251 immediately after beginning the stage.",
+    "scope": "Cached development install and local qualification, not cold release qualification. Language and general native suites used the initial overlay; final image, demand and startup suites used the fresh prefix. The final measured runtime binary matches that fresh prefix exactly. No user-prefix update or commit/push."
+  },
+  "sources": {
+    "rust/birnam-codegen-runtime/src/image.rs": "1999514dbb3a2c72102f5a5395871cdd25bd673624cf6455282e0cb22ab5c6b9",
+    "rust/birnam-siphon/tests/artifact_templates.rs": "3b425f6bf91a8041296267402ea884be71ae53e0e7469ec70e43b70a2c1d2bad",
+    "rust/birnam-codegen-runtime/README.md": "603761cbd5b20ae1a060491bb7e03d6935e21f9049cade8b562875b9a64956a8"
+  },
+  "logs": {
+    "demand-before.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/demand-before.log",
+      "sha256": "40633d38d94245d26b5a9be913c7c0f001e37ea5ce77d472689fecb78d73e3d6"
+    },
+    "demand-final.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/demand-final.log",
+      "sha256": "3071767d2d04c4c5819bca912d154dd665ef8b24abc17a48674ffce8f74c801f"
+    },
+    "native-tests.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/native-tests.log",
+      "sha256": "f31736f6c7544df67c36af4806ae3fe44944393dc85f4bd9de3c6c9fb39eb277"
+    },
+    "language.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/language.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "image-final.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/image-final.log",
+      "sha256": "e1182fcd7d4bd2982369ee6df071ddcb9fc127791ae8615cec5e470d55b222ba"
+    },
+    "startup-final.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/startup-final.log",
+      "sha256": "7d0be454ea47280cee91a7a49a33152b541fbe8ab2498fbdcdc620b4603543cd"
+    },
+    "formal.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/formal.log",
+      "sha256": "162b3ae0f1337942b5212f341608c3676b6181b17f6c1353bdfb7ca492844217"
+    },
+    "final-build-stable.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/final-build-stable.log",
+      "sha256": "a71d592cedcbfd3206e099b202a6de054f4e06cfc795b09d0acc09a3cbdffd04"
+    },
+    "comparison.log": {
+      "path": "/tmp/birnam-demand-bodies-20261019/comparison.log",
+      "sha256": "877a13bbd035bbc46816296c6e1792fd3c73380f0fa55251fc01228000a81f5e"
+    }
+  }
+}

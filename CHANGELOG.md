@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Load image program bodies only when restoration requests their disposition;
+  rebuild likewise emits and compiles only requested bodies. Keep pending inputs
+  within the existing image stage and retain successful Method/Unit ownership,
+  without changing image formats or Id-facing messages.
+
 - Load compiled ELF objects directly from memory through libtcc's existing
   relocation machinery. Remove the per-object temporary directory/file round
   trip and an intermediate TCC input copy, retaining independent Unit data and

@@ -29,8 +29,16 @@ impl Op {
         }
     }
 }
+// Private immutable inputs, never foreign borrowed views. Cloning a pending
+// object keeps its bytes alive without holding a Stage borrow across Id calls.
+#[derive(Clone)]
+enum Body {
+    Object { bytes: std::rc::Rc<Vec<u8>>, range: std::ops::Range<usize> },
+    Rebuild(Request),
+    Ready(Oop),
+}
 pub(super) struct Stage {
-    methods: Vec<Oop>,
+    bodies: Vec<Body>,
     templates: Vec<Oop>,
     prepared: Vec<Option<Oop>>,
     finished: bool,
@@ -38,10 +46,10 @@ pub(super) struct Stage {
 }
 impl Stage {
     pub fn roots(&self) -> Vec<Oop> {
-        self.methods
+        self.bodies
             .iter()
-            .chain(&self.templates)
-            .copied()
+            .filter_map(|body| match body { Body::Ready(method) => Some(*method), _ => None })
+            .chain(self.templates.iter().copied())
             .chain(self.prepared.iter().flatten().copied())
             .chain(self.source_owner)
             .collect()
@@ -54,6 +62,13 @@ unsafe fn value(s: &State, q: &Scope<'_>, family: &[u8], bytes: &[u8]) -> Result
             b"fromBytes:",
             &[Operand::bytes(bytes)],
         )?)?)
+    }
+}
+unsafe fn load_object(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
+    unsafe {
+        let input = Scope { s, tokens: RefCell::new(Vec::new()) };
+        let bytes = value(s, &input, b"Bytes", bytes)?;
+        q.keep(object(s.send(s.named(b"TCC")?, b"loadObject:", &[Operand::object(bytes)])?)?)
     }
 }
 unsafe fn vector(s: &State, q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Outcome> {
@@ -227,7 +242,7 @@ pub(super) unsafe fn operation(
                 let generated = if matches!(op, Op::Mapped) {
                     vec![]
                 } else {
-                    match backend::all(s, q, &plan.requests) {
+                    match backend::all(s, q, if matches!(op, Op::Compile) { &plan.requests } else { &plan.requests[2 * plan.programs..] }) {
                         Ok(v) => v,
                         Err(backend::Failure::Native(e)) => return Err(e),
                         Err(backend::Failure::Rejected(_)) => return Ok(Operand::object(nil)),
@@ -254,7 +269,7 @@ pub(super) unsafe fn operation(
                 // of this private immutable snapshot. No foreign borrow crosses
                 // a send, and the snapshot outlives every loader request.
                 let bundle = if matches!(op, Op::Mapped) {
-                    Some(s.bytes(object(args[0])?)?)
+                    Some(std::rc::Rc::new(s.bytes(object(args[0])?)?))
                 } else {
                     None
                 };
@@ -263,20 +278,29 @@ pub(super) unsafe fn operation(
                     .map(|bytes| plan.decode(bytes).ok_or_else(invalid))
                     .transpose()?;
                 let mut stage = Stage {
-                    methods: Vec::new(),
+                    bodies: if let Some(ref objects) = objects {
+                        let bytes = bundle.as_ref().ok_or_else(invalid)?;
+                        objects[..2 * plan.programs].iter().map(|object| {
+                            let start = object.as_ptr().addr() - bytes.as_ptr().addr();
+                            Body::Object { bytes: bytes.clone(), range: start..start + object.len() }
+                        }).collect()
+                    } else {
+                        plan.requests[..2 * plan.programs].iter().cloned().map(Body::Rebuild).collect()
+                    },
                     templates: Vec::new(),
                     prepared: vec![None; plan.bindings],
                     finished: false,
                     source_owner: None,
                 };
                 // Only identical selected payloads at the same arity share a
-                // mapping. Backend requests remain live and run in their original
-                // order; arity alone never substitutes a different program.
+                // mapping. Adapter requests remain live and ordered; arity alone
+                // never substitutes a different selected program. Bodies are
+                // emitted/loaded only by Method, before normal image application.
                 let mut templates = std::collections::HashMap::new();
-                for i in 0..plan.requests.len() {
+                for i in 2 * plan.programs..plan.requests.len() {
                     let selected = if let Some(ref objects) = objects {
                         objects[i]
-                    } else { generated[i].as_slice() };
+                    } else { generated[i - 2 * plan.programs].as_slice() };
                     let key = match plan.requests[i] {
                         Request::Named { arity, synchronous: false } => Some((arity, selected)),
                         _ => None,
@@ -286,40 +310,20 @@ pub(super) unsafe fn operation(
                         continue;
                     }
                     let unit = if let Some(ref objects) = objects {
-                        // The loader may retain the input itself. Our temporary
-                        // carrier only needs protection through this request;
-                        // the returned unit is handed to the enclosing scope.
-                        let input = Scope {
-                            s,
-                            tokens: RefCell::new(Vec::new()),
-                        };
-                        let bytes = value(s, &input, b"Bytes", objects[i])?;
-                        q.keep(object(s.send(
-                            s.named(b"TCC")?,
-                            b"loadObject:",
-                            &[Operand::object(bytes)],
-                        )?)?)?
+                        load_object(s, q, objects[i])?
                     } else {
-                        s.native_unit(q, &generated[i])?
+                        s.native_unit(q, &generated[i - 2 * plan.programs])?
                     };
                     if s.is_error(unit)? {
                         return Ok(Operand::object(unit));
                     }
-                    if i < 2 * plan.programs {
-                        let method = q.keep(object(s.send(unit, b"initialize", &[])?)?)?;
-                        if method == nil || s.is_error(method)? {
-                            return Ok(Operand::object(method));
-                        }
-                        stage.methods.push(method);
-                    } else {
-                        let template = q.keep(object(s.send(unit, b"initializeWith:",
-                            &[Operand::object(nil)])?)?)?;
-                        if template == nil || s.is_error(template)? {
-                            return Ok(Operand::object(template));
-                        }
-                        templates.insert(key.ok_or_else(invalid)?, template);
-                        stage.templates.push(template);
+                    let template = q.keep(object(s.send(unit, b"initializeWith:",
+                        &[Operand::object(nil)])?)?)?;
+                    if template == nil || s.is_error(template)? {
+                        return Ok(Operand::object(template));
                     }
+                    templates.insert(key.ok_or_else(invalid)?, template);
+                    stage.templates.push(template);
                 }
                 *s.image_stage.borrow_mut() = Some(stage);
                 return Ok(Operand::object(yes));
@@ -330,17 +334,28 @@ pub(super) unsafe fn operation(
                     .as_word()
                     .ok_or_else(invalid)?;
                 let sync = object(args[1])? == yes;
-                let v = s
-                    .image_stage
-                    .borrow()
-                    .as_ref()
-                    .and_then(|st| {
-                        st.methods
-                            .get(i.checked_mul(2)?.checked_add(usize::from(sync))?)
-                    })
-                    .copied()
-                    .ok_or_else(invalid)?;
-                return Ok(Operand::object(v));
+                let index = i.checked_mul(2).and_then(|i| i.checked_add(usize::from(sync))).ok_or_else(invalid)?;
+                let body = s.image_stage.borrow().as_ref()
+                    .and_then(|stage| stage.bodies.get(index)).cloned().ok_or_else(invalid)?;
+                let unit = match body {
+                    Body::Ready(method) => return Ok(Operand::object(method)),
+                    Body::Object { bytes, range } => load_object(s, q, &bytes[range])?,
+                    Body::Rebuild(request) => {
+                        let c = match backend::emit(s, q, &request) {
+                            Ok(c) => c,
+                            Err(backend::Failure::Native(e)) => return Err(e),
+                            Err(backend::Failure::Rejected(_)) => return Ok(Operand::object(nil)),
+                        };
+                        s.native_unit(q, &c)?
+                    }
+                };
+                if s.is_error(unit)? { return Ok(Operand::object(unit)); }
+                let method = q.keep(object(s.send(unit, b"initialize", &[])?)?)?;
+                if method == nil || s.is_error(method)? { return Ok(Operand::object(method)); }
+                // The existing image_busy extent prevents nested stage mutation.
+                // Publish only success; a failed request can be retried or cancelled.
+                s.image_stage.borrow_mut().as_mut().ok_or_else(invalid)?.bodies[index] = Body::Ready(method);
+                return Ok(Operand::object(method));
             }
             Op::Prepare => {
                 let i = s

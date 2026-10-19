@@ -327,6 +327,7 @@ fn supplied_artifact_templates_share_code_without_sharing_binding_state() {
         }
         std::fs::remove_dir_all(dir).unwrap();
         image_selection(&h, baseline);
+        image_body_demand(&h);
         h.clear(0);
     }
 }
@@ -478,5 +479,159 @@ unsafe fn image_selection(h: &H, baseline: bool) {
                 );
             }
         }
+    }
+}
+
+struct DemandProbe<'a> {
+    h: &'a H,
+    original: NativeEntry,
+    calls: Cell<usize>,
+    answer: Cell<Option<Oop>>,
+}
+unsafe extern "C" fn demand_probe(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<DemandProbe<'_>>();
+        p.calls.set(p.calls.get() + 1);
+        // Neither GC root enumeration nor a rejected nested operation may find
+        // a held RefCell borrow or destroy the outer request's pending input.
+        collect_units(p.h);
+        let nested = p.h.id.send_named(p.h.named(b"Codegen"), b"cancelPortableImageUnit", &[]);
+        assert!(nested.is_err());
+        if let Some(answer) = p.answer.get() {
+            Outcome::loaded(Operand::object(answer))
+        } else {
+            p.original.method.unwrap()(p.original.context, r, a, n)
+        }
+    }
+}
+unsafe fn image_body_demand(h: &H) {
+    use birnam_artifact_codec::{
+        code_binding_inventory as b, materialization_selection as m, portable_inventory as p,
+    };
+    unsafe {
+        let programs = p::encode_closure(&[include_bytes!("../../../tests/fixtures/portable-code-v1/program-empty.bin")]).unwrap();
+        let bindings = b::encode(&[]).unwrap();
+        let selection = m::encode(&programs, &bindings, &[], &[m::Disposition::Resumable]).unwrap();
+        let owned = |bytes: &[u8]| h.keep(object(send(h.id, h.named(b"Bytes"), b"fromBytes:", &[Operand::bytes(bytes)])));
+        let inputs = [owned(&programs), owned(&bindings), owned(&selection)];
+        let codegen = h.named(b"Codegen");
+        let tcc = h.named(b"TCC");
+        let backend = h.named(b"NativeBackend");
+        let emit_selector = b"emit:source:filename:persistent:synchronous:";
+        let emitter = lookup(h, backend, emit_selector);
+        let error = h.call(h.named(b"Error"), b"kind:message:", &[h.keep(h.id.intern_name(b"demandRejected").unwrap()), h.text(b"demand probe rejected")]);
+        let fake_unit = h.eval(b"[Object clone]");
+        let mut initializer = Box::new(Probe { id: h.id, gc: h.named(b"GC"), answer: h.named(b"nil"), calls: Cell::new(0), failure: false });
+        replace(h, fake_unit, b"initialize", NativeEntry::new(probe, (&mut *initializer as *mut Probe).cast()));
+        // Saving still emits both variants, so the supplied bundle serves either
+        // future request without source compilation or a new image format.
+        let bundle = h.call(codegen, b"compilePortableImageCode:bindings:selection:", &inputs);
+        for mapped in [true, false] {
+            let loader_selector: &[u8] = if mapped { b"loadObject:" } else { b"compile:" };
+            let loader = lookup(h, tcc, loader_selector);
+            let mut emit_probe = Box::new(DemandProbe { h, original: emitter, calls: Cell::new(0), answer: Cell::new(None) });
+            let mut load_probe = Box::new(DemandProbe { h, original: loader, calls: Cell::new(0), answer: Cell::new(None) });
+            replace(h, backend, emit_selector, NativeEntry::new(demand_probe, (&mut *emit_probe as *mut DemandProbe<'_>).cast()));
+            collect_units(h);
+            let before = units(h);
+            let mark = h.tokens.borrow().len();
+            let begin = || if mapped {
+                h.call(codegen, b"beginPortableImageMapped:programs:bindings:selection:", &[bundle, inputs[0], inputs[1], inputs[2]])
+            } else { h.call(codegen, b"beginPortableImageRebuild:bindings:selection:", &inputs) };
+            assert_eq!(begin(), h.named(b"true"));
+            // Replace after stage creation: first demand must resolve the live operation.
+            replace(h, tcc, loader_selector, NativeEntry::new(demand_probe, (&mut *load_probe as *mut DemandProbe<'_>).cast()));
+            collect_units(h);
+            assert_eq!(units(h), before);
+            assert_eq!(emit_probe.calls.get(), 0);
+            assert_eq!(load_probe.calls.get(), 0);
+            // A source rejection is observed on demand and leaves a retryable stage.
+            let index = h.integer(0);
+            let resumable = [index, h.named(b"false")];
+            if !mapped {
+                emit_probe.answer.set(Some(error));
+                assert_eq!(h.call(codegen, b"portableImageBlockMethod:synchronous:", &resumable), h.named(b"nil"));
+                assert_eq!(load_probe.calls.get(), 0);
+                emit_probe.answer.set(None);
+            }
+            for answer in [error, fake_unit] {
+                load_probe.answer.set(Some(answer));
+                let result = h.call(codegen, b"portableImageBlockMethod:synchronous:", &resumable);
+                assert_eq!(result, if answer == error { error } else { h.named(b"nil") });
+                collect_units(h);
+                assert_eq!(units(h), before);
+            }
+            load_probe.answer.set(Some(fake_unit));
+            initializer.failure = true;
+            let failed = h.id.send_named(codegen, b"portableImageBlockMethod:synchronous:",
+                &resumable.map(Operand::object)).unwrap_err();
+            assert_eq!((failed.status, failed.detail), (881, 17));
+            initializer.failure = false;
+            load_probe.answer.set(None);
+            // Leave the first result protected only by the image stage while
+            // collecting, then retain it through the repeated request below.
+            let method = object(send(h.id, codegen, b"portableImageBlockMethod:synchronous:", &resumable.map(Operand::object)));
+            let calls = load_probe.calls.get();
+            let emitted = emit_probe.calls.get();
+            collect_units(h);
+            assert_eq!(units(h), before + 1);
+            assert_eq!(h.call(codegen, b"portableImageBlockMethod:synchronous:", &resumable), method);
+            assert_eq!(load_probe.calls.get(), calls);
+            assert_eq!(emit_probe.calls.get(), emitted);
+            // The other disposition remains independently available. A current
+            // replacement is used for its first request, never a saved binding.
+            load_probe.answer.set(Some(error));
+            let synchronous = [index, h.named(b"true")];
+            assert_eq!(h.call(codegen, b"portableImageBlockMethod:synchronous:", &synchronous), error);
+            load_probe.answer.set(None);
+            let sync = h.call(codegen, b"portableImageBlockMethod:synchronous:", &synchronous);
+            assert_ne!(sync, method);
+            assert_eq!(emit_probe.calls.get(), if mapped { 0 } else { load_probe.calls.get() + 1 });
+            assert!(h.id.send_named(codegen, b"portableImageBlockMethod:synchronous:", &[Operand::object(h.integer(1)), Operand::object(h.named(b"false"))]).is_err());
+            assert_eq!(h.call(codegen, b"cancelPortableImageUnit", &[]), h.named(b"true"));
+            collect_units(h);
+            assert_eq!(units(h), before + 2); // returned Methods retain their Units
+            for method in [method, sync] {
+                let captures = h.call(h.named(b"Vector"), b"new", &[]);
+                let block = h.call(h.named(b"Block"), b"fromMethod:captures:", &[method, captures]);
+                let machine = h.call(h.named(b"Machine"), b"new", &[]);
+                let answer = h.call(machine, b"runBlock:", &[block]);
+                assert_eq!(answer, h.named(b"nil"));
+            }
+            h.clear(mark);
+            collect_units(h);
+            assert_eq!(units(h), before);
+            // Cancelling before any demand maps no body at all.
+            assert_eq!(begin(), h.named(b"true"));
+            assert_eq!(h.call(codegen, b"cancelPortableImageUnit", &[]), h.named(b"true"));
+            collect_units(h);
+            assert_eq!(units(h), before);
+            replace(h, backend, emit_selector, emitter);
+            replace(h, tcc, loader_selector, loader);
+        }
+        // Bundle framing is admitted up front; a native-object rejection is
+        // deferred until that body is requested and never cached as a Method.
+        let carrier = send(h.id, bundle, b"bytes", &[]).as_bytes().unwrap();
+        let mut corrupt = birnam_abi::borrowed_bytes(carrier.pointer, carrier.length).unwrap().to_vec();
+        let first_len = u64::from_le_bytes(corrupt[44..52].try_into().unwrap()) as usize;
+        corrupt[52 + first_len + 8] = 0; // second ELF header, synchronous body
+        let corrupt = owned(&corrupt);
+        let mark = h.tokens.borrow().len();
+        collect_units(h);
+        let before = units(h);
+        assert_eq!(h.call(codegen, b"beginPortableImageMapped:programs:bindings:selection:", &[corrupt, inputs[0], inputs[1], inputs[2]]), h.named(b"true"));
+        let index = h.integer(0);
+        let method = h.call(codegen, b"portableImageBlockMethod:synchronous:", &[index, h.named(b"false")]);
+        assert_ne!(method, h.named(b"nil"));
+        for _ in 0..2 {
+            let rejected = h.call(codegen, b"portableImageBlockMethod:synchronous:", &[index, h.named(b"true")]);
+            assert_eq!(h.call(rejected, b"isError", &[]), h.named(b"true"));
+        }
+        h.call(codegen, b"cancelPortableImageUnit", &[]);
+        h.clear(mark);
+        collect_units(h);
+        assert_eq!(units(h), before);
+        let fake_behavior = h.call(h.id.receiver, b"behaviorOf:", &[fake_unit]);
+        send(h.id, fake_behavior, b"removeMethod", &[Operand::object(h.id.intern_name(b"initialize").unwrap())]);
     }
 }
