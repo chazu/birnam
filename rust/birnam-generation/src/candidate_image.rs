@@ -10,7 +10,6 @@ pub(crate) unsafe fn begin_image_application(s: &State, q: &Scope<'_>) -> Result
             return fail(s, q, b"candidateBusy", b"image application cannot interrupt a candidate operation");
         }
         s.candidates.image_application.set(true);
-        s.candidates.prepared.borrow_mut().clear();
         s.candidates.ledger.take();
         s.candidates.entries.borrow_mut().clear();
         Ok(Operand::object(yes))

@@ -46,6 +46,11 @@ impl HostRuntime<'_> {
             None,
         )?;
         scope.evaluate(
+            include_bytes!("../../../modules/candidate-policy.birnam"),
+            Path::new("<candidate-policy>"),
+            Some(b"candidatePolicy"),
+        )?;
+        scope.evaluate(
             include_bytes!("../../../modules/compiled-unit.birnam"),
             Path::new("<compiledUnit>"),
             Some(b"compiledUnit"),

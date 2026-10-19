@@ -153,13 +153,20 @@ fn activation_inside_entered_methods_uses_current_setters() {
     assert!(failure.0.contains("nativeFailure"), "{failure}");
     expect(b"[[hostLifecycleUnit state] = #candidate]");
     expect(b"[[2 hostLifecycleValue] = 10]");
+    // Failure retains the attempted operation for explicit undo, even when a
+    // descriptive setter failed before the first code write.
+    expect(b"[hostLifecycleUnit rollbackAvailable]");
+    host.send(vt, b"addMethod", &[Operand::object(selector), original]).unwrap();
+    q.check_result(eval(b"[hostLifecycleUnit rollback]")).unwrap();
+    expect(b"[[hostLifecycleUnit state] = #rolledBack]");
     let error = q.call(host.named(b"Error").unwrap(), b"kind:", &[Operand::object(unsafe { host.context.id.intern_name(b"enteredSetterFailure") }.unwrap())]).unwrap();
     let mut fault = ReturnedFailure { error, calls: 0 };
     host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(returned_failure, (&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
     assert_eq!(eval(b"[hostLifecycleUnit activate]"), error);
-    assert_eq!(fault.calls, 1);
-    expect(b"[[hostLifecycleUnit state] = #candidate]");
+    assert_eq!(fault.calls, 2); // applying, then failed; original Error is retained
+    expect(b"[[hostLifecycleUnit state] = #rolledBack]");
     host.send(vt, b"addMethod", &[Operand::object(selector), original]).unwrap();
+    q.check_result(eval(b"[hostLifecycleUnit rollback]")).unwrap();
     // This call replaces the method whose frame is currently entered. Its old
     // body completes after GC; only subsequent dispatch selects the replacement.
     eval(b"[hostLifecycleTrigger set: true]");
@@ -391,11 +398,13 @@ fn image_restores_descriptions_and_explicit_adoption() {
         .call(host.context.id.receiver, b"behaviorOf:", &[Operand::object(host.named(b"Generation").unwrap())])
         .unwrap();
     let selector = unsafe { host.context.id.intern_name(b"beginImageApplication") }.unwrap();
+    let direct = host.send(host.context.id.receiver, b"bindingOf:in:",
+        &[Operand::object(selector), Operand::object(vt)]).unwrap();
     let original = host
         .send(
             host.context.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(selector), Operand::object(vt)],
+            b"bind:to:",
+            &[Operand::object(selector), Operand::object(host.named(b"Generation").unwrap())],
         )
         .unwrap()
         .as_entry()
@@ -429,12 +438,11 @@ fn image_restores_descriptions_and_explicit_adoption() {
         )
         .unwrap();
         let failure = host.load_image(&path).unwrap_err();
-        host.send(
-            vt,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(original)],
-        )
-        .unwrap();
+        if direct.kind() == native::UNIT {
+            host.send(vt, b"removeMethod:", &[Operand::object(selector)]).unwrap();
+        } else {
+            host.send(vt, b"addMethod", &[Operand::object(selector), direct]).unwrap();
+        }
         assert_eq!(fault.calls, 1, "{failure}");
         expect(b"[[[System imageSaveReport] status] = #partialLoad]");
         expect(b"[[Generation validateImageGeneration] isError]");
@@ -529,7 +537,13 @@ fn lifecycle_fields_preserve_explicit_facts_and_status_reads() {
     host.send(vt, b"addMethod", &[Operand::object(selector), Operand::entry(native::NativeEntry::new(returned_failure, (&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
     expect(b"[[ownedUnit state] = #active]");
     assert_eq!(fault.calls, 0, "status read performed implicit validation");
-    host.send(vt, b"addMethod", &[Operand::object(selector), original]).unwrap();
+    // Authored Generation methods specialize its behavior; the native query
+    // can be inherited, so restore absence rather than install a UNIT operand.
+    if original.kind() == native::UNIT {
+        host.send(vt, b"removeMethod:", &[Operand::object(selector)]).unwrap();
+    } else {
+        host.send(vt, b"addMethod", &[Operand::object(selector), original]).unwrap();
+    }
     let unit = eval(b"ownedUnit");
     let alias = eval(b"unitAlias");
     assert_eq!(unit, alias);
@@ -657,12 +671,11 @@ fn discard_cancels_preparation_and_keeps_bindings_and_files() {
     let mut fault=ReturnedFailure{error,calls:0};
     expect(b"[[activeUnit activate] == activeUnit]");
     host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(native::NativeEntry::new(returned_failure,(&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
-    let rejected=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(b"[activeUnit discard]").unwrap())]).unwrap();
-    assert_eq!(rejected,error);
-    assert_eq!(fault.calls,1);
-    expect(b"[[activeUnit state] = #active]");
-    host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(original)]).unwrap();
+    // Candidate policy no longer reserves/releases Globals compensation banks.
     expect(b"[[activeUnit discard] == activeUnit]");
+    assert_eq!(fault.calls,0);
+    host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(original)]).unwrap();
+    expect(b"[[activeUnit state] = #discarded]");
     expect(b"[[activeUnit rollbackAvailable] = false]");
     expect(b"[[3 discardScope] = 2]");
     expect(b"[[[activeUnit rollback] kind] = #rollbackUnavailable]");
@@ -840,7 +853,7 @@ fn image_application_boundary_invalidates_without_restore() {
     expect(b"[[boundaryUnit activate] == boundaryUnit]");
     eval(b"[DispatchGeneration adoptCurrent]");
     eval(b"let boundaryToken := [Generation prepareRollback: boundaryUnit plan: [boundaryUnit publicationPlan: #rollback]]");
-    expect(b"[boundaryToken > 0]");
+    expect(b"[[boundaryToken unit] == boundaryUnit]");
     eval(b"let boundaryHeld := [3 methodFor: #imageBoundaryValue]");
 
     // Invalidation happens at begin, not at later success/abandonment. Cleanup
@@ -879,10 +892,11 @@ unsafe extern "C" fn source_registry_fault(c: *mut c_void, r: Oop, a: *const Ope
     unsafe {
         let f = &mut *c.cast::<SourceRegistryFault>();
         f.calls += 1;
-        // Compensation must call current policy too, but this injected one-shot
+        // Explicit undo must call current policy too, but this injected one-shot
         // callback does not repeat its application-side effects on the inverse.
         if f.calls > 1 { return f.original.method.unwrap()(f.original.context, r, a, n); }
         if f.mode == 5 { return Outcome::loaded(Operand::object(f.error)); }
+        if f.mode == 7 { return Outcome::loaded(Operand::object(r)); } // trusted no-op
         let result = f.original.method.unwrap()(f.original.context, r, a, n);
         if result.status != native::LOADED || result.value.as_object() != Some(r) { return result; }
         let effect = match f.mode {
@@ -901,7 +915,7 @@ unsafe extern "C" fn source_registry_fault(c: *mut c_void, r: Oop, a: *const Ope
 
 #[test]
 #[ignore = "requires production native modules"]
-fn source_registry_sends_compensate_without_overwriting_other_owners() {
+fn source_registry_sends_retain_partial_edits_for_explicit_undo() {
     let lib=PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
     let resources=crate::resolve_from_exe_dir(Path::new("/unused/bin"),crate::Overrides{lib_dir:Some(&lib),..Default::default()}).unwrap();
     let host=HostRuntime::start(&resources,StartupPolicy{skip_stdlib:false,precise_gc:true,source_bootstrap:false,tool_bootstrap:false}).unwrap();
@@ -916,7 +930,7 @@ fn source_registry_sends_compensate_without_overwriting_other_owners() {
     let registry_name=unsafe{host.context.id.intern_name(b"SourceRegistry")}.unwrap();
     let error=q.call(host.named(b"Error").unwrap(),b"kind:",&[Operand::object(unsafe{host.context.id.intern_name(b"sourceWriteFailure")}.unwrap())]).unwrap();
     let dir=env::temp_dir().join(format!("birnam-source-owner-{}",std::process::id()));fs::create_dir_all(&dir).unwrap();
-    for mode in 0..7 {
+    for mode in 0..8 {
         let name=format!("sourceOwnerMode{mode}");
         let symbol=unsafe{host.context.id.intern_name(name.as_bytes())}.unwrap();
         let source=|value|format!("[Module named: #{name} requires: #[]]; [Reflect defineMethod: #{name} on: Integer as: [:self | {value}]]");
@@ -926,6 +940,14 @@ fn source_registry_sends_compensate_without_overwriting_other_owners() {
         eval(format!("[CompiledUnit compile: \"{}\" named: #{name} output: \"{}\"]",source(2),path.display()).as_bytes());
         eval(format!("let sourceUnit := [CompiledUnit open: \"{}\"]",path.display()).as_bytes());
         eval(b"[sourceUnit map]");
+        if mode == 0 {
+            eval(b"let savedRecordRead := [SourceRegistry methodFor: #recordFor:]; let sourceReadFailure := [Error kind: #sourceReadFailure]; [Reflect defineMethod: #recordFor: on: SourceRegistry as: [:self :name | sourceReadFailure]]");
+            expect(b"[[CompiledUnit activeFor: #sourceOwnerMode0] == sourceReadFailure]");
+            expect(b"[[sourceUnit activate] == sourceReadFailure]");
+            eval(b"[[Reflect vtableOf: SourceRegistry] addMethod: savedRecordRead as: #recordFor:]");
+            expect(b"[[3 sourceOwnerMode0] = 1]");
+            expect(b"[[[[Generation candidatePolicyCellFor: sourceUnit] value] at: #busy] not]");
+        }
         let other=q.call(owner,b"clone",&[]).unwrap();
         let changed_name=if mode==2{symbol}else{unsafe{host.context.id.intern_name(format!("sourceOutside{mode}").as_bytes())}.unwrap()};
         let changed_text=if mode==2{source(3)}else{format!("[Module named: #sourceOutside{mode} requires: #[]]")};
@@ -935,19 +957,31 @@ fn source_registry_sends_compensate_without_overwriting_other_owners() {
         let result=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(b"[sourceUnit activate]").unwrap())]);
         host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
         assert!(fault.calls>0,"mode {mode} bypassed the owner setter");
-        if mode==6 {
-            q.check_result(result.unwrap()).unwrap();
-            expect(format!("[[3 {name}] = 2]").as_bytes());
-            eval(b"[sourceUnit rollback]");
-        } else {
-            assert!(result.is_err()||q.check_result(result.unwrap()).is_err(),"mode {mode} swallowed failure");
-        }
+        if mode==6||mode==7 { q.check_result(result.unwrap()).unwrap(); }
+        else { assert!(result.is_err()||q.check_result(result.unwrap()).is_err(),"mode {mode} swallowed failure"); }
+        // No automatic inverse: methods written before the source failure stay live.
+        expect(format!("[[3 {name}] = 2]").as_bytes());
+        expect(b"[sourceUnit rollbackAvailable]");
+        if mode==7 { assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(symbol)]).unwrap(),before); }
         if mode==4 {
             assert_eq!(host.global(&q,b"SourceRegistry").unwrap(),other);
             assert_eq!(q.call(other,b"recordFor:",&[Operand::object(symbol)]).unwrap(),before);
+        }
+        if mode==2 {
+            assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(symbol)]).unwrap(),changed_record);
+            expect(b"[[[sourceUnit rollback] kind] = #undoConflict]");
+            expect(format!("[[3 {name}] = 2]").as_bytes());
+            let unit=host.global(&q,b"sourceUnit").unwrap();
+            let info=q.call(host.named(b"Generation").unwrap(),b"candidateDataFor:",&[Operand::object(unit)]).unwrap();
+            let after=q.vector_at(info,2).unwrap();
+            q.call(owner,b"replaceCompiledSource:named:",&[Operand::object(after),Operand::object(symbol)]).unwrap();
+        }
+        eval(b"[sourceUnit rollback]");
+        assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(symbol)]).unwrap(),before,"mode {mode}");
+        if mode==4 {
+            assert_eq!(host.global(&q,b"SourceRegistry").unwrap(),other,"undo overwrote a rebound owner");
             q.call(host.named(b"Globals").unwrap(),b"at:put:",&[Operand::object(registry_name),Operand::object(owner)]).unwrap();
         }
-        assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(symbol)]).unwrap(),if mode==2{changed_record}else{before},"mode {mode}");
         if mode==3||mode==6 {assert_eq!(q.call(owner,b"recordFor:",&[Operand::object(changed_name)]).unwrap(),changed_record);}
         expect(format!("[[3 {name}] = 1]").as_bytes());
         eval(b"[sourceUnit discard]; [System gc]");
@@ -1059,4 +1093,77 @@ fn registry_validation_uses_one_metadata_read_and_current_query() {
         host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
         assert_eq!(actual.unwrap(),expected);assert_eq!(fault.calls,expected_calls);
     }
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn direct_method_observations_restore_native_abi_and_owned_identity() {
+    let lib=PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources=crate::resolve_from_exe_dir(Path::new("/unused/bin"),crate::Overrides{lib_dir:Some(&lib),..Default::default()}).unwrap();
+    let host=HostRuntime::start(&resources,StartupPolicy{skip_stdlib:false,precise_gc:true,source_bootstrap:false,tool_bootstrap:false}).unwrap();
+    let q=host.scope();let execution=host.named(b"Execution").unwrap();let vt=host.named(b"IntegerVt").unwrap();
+    let key=q.keep(Operand::object(unsafe{host.context.id.intern_name(b"word")}.unwrap())).unwrap();
+    let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(key),Operand::object(vt)]).unwrap().as_entry().unwrap();
+    let held=q.call(execution,b"directMethodFor:in:",&[Operand::object(key),Operand::object(vt)]).unwrap();
+    assert_eq!(q.call(held,b"bindingMatchesIn:as:",&[Operand::object(vt),Operand::object(key)]).unwrap(),host.named(b"true").unwrap());
+    host.send(vt,b"removeMethod:",&[Operand::object(key)]).unwrap();
+    host.send(host.named(b"GC").unwrap(),b"collectPrecisely",&[]).unwrap();
+    assert_eq!(q.call(held,b"bindingMatchesIn:as:",&[Operand::object(vt),Operand::object(key)]).unwrap(),host.named(b"false").unwrap());
+    q.call(vt,b"addMethod:as:",&[Operand::object(held),Operand::object(key)]).unwrap();
+    let restored=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(key),Operand::object(vt)]).unwrap().as_entry().unwrap();
+    assert_eq!(restored,original,"restoration wrapped a raw native binding");
+    let integer=q.keep(host.send(host.named(b"Integer").unwrap(),b"fromWord:",&[Operand::word(71)]).unwrap()).unwrap();
+    assert_eq!(host.send(integer,b"word",&[]).unwrap().as_word(),Some(71));
+    q.evaluate(b"let bindingProbe := [Object clone]; [Reflect defineMethod: #answer on: bindingProbe as: [:self | 29]]",Path::new("<binding-probe>"),None).unwrap();
+    let target=host.global(&q,b"bindingProbe").unwrap();
+    let vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(target)]).unwrap();
+    let key=q.keep(Operand::object(unsafe{host.context.id.intern_name(b"answer")}.unwrap())).unwrap();
+    let one=q.call(execution,b"directMethodFor:in:",&[Operand::object(key),Operand::object(vt)]).unwrap();
+    let two=q.call(execution,b"directMethodFor:in:",&[Operand::object(key),Operand::object(vt)]).unwrap();assert_eq!(one,two);assert_ne!(one,host.named(b"nil").unwrap());
+    host.send(vt,b"removeMethod:",&[Operand::object(key)]).unwrap();host.send(host.named(b"GC").unwrap(),b"collectPrecisely",&[]).unwrap();
+    q.call(vt,b"addMethod:as:",&[Operand::object(one),Operand::object(key)]).unwrap();
+    let answer=q.call(target,b"answer",&[]).unwrap(); q.check_result(answer).unwrap();
+    assert_eq!(host.send(host.named(b"Integer").unwrap(),b"wordOf:",&[Operand::object(answer)]).unwrap().as_word(),Some(29));
+}
+
+#[test]
+#[ignore = "requires production native modules"]
+fn candidate_task_exit_retains_explicit_undo_and_releases_operation_scope() {
+    let lib=PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources=crate::resolve_from_exe_dir(Path::new("/unused/bin"),crate::Overrides{lib_dir:Some(&lib),..Default::default()}).unwrap();
+    let host=HostRuntime::start(&resources,StartupPolicy{skip_stdlib:false,precise_gc:true,source_bootstrap:false,tool_bootstrap:false}).unwrap();
+    let q=host.scope();let cg=host.named(b"Codegen").unwrap();
+    let eval=|source:&[u8]|{let v=q.call(cg,b"evalPersisting:",&[Operand::object(q.string(source).unwrap())]).unwrap();q.check_result(v).unwrap();v};
+    let expect=|source:&[u8]|assert_eq!(eval(source),host.named(b"true").unwrap(),"{}",String::from_utf8_lossy(source));
+    let dir=env::temp_dir().join(format!("birnam-candidate-task-{}",std::process::id()));fs::create_dir_all(&dir).unwrap();let path=dir.join("task.o");
+    q.evaluate(b"[Module named: #candidateTask requires: #[]]; [Reflect defineMethod: #candidateTaskValue on: Integer as: [:self | 1]]",Path::new("<candidate-task>"),Some(b"candidateTask")).unwrap();
+    eval(format!("[CompiledUnit compile: \"[Module named: #candidateTask requires: #[]]; [Reflect defineMethod: #candidateTaskValue on: Integer as: [:self | 2]]\" named: #candidateTask output: \"{}\"]",path.display()).as_bytes());
+    eval(format!("let taskCandidate := [CompiledUnit open: \"{}\"]; [taskCandidate map]",path.display()).as_bytes());
+    eval(br#"
+[Globals at: #outsidePolicyWrites put: [Cell with: 0]];
+[Globals at: #checkedPolicyWrites put: [Cell with: 0]];
+[Globals at: #interruptCandidate put: [Cell with: true]];
+let taskSourceSetter := [SourceRegistry methodFor: #replaceRecord:named:expected:];
+[Reflect defineMethod: #replaceRecord:named:expected: on: SourceRegistry as: [:self :record :name :expected |
+  [checkedPolicyWrites inc];
+  [[[[[TaskExecutor current] field: #transitionDepth] value] = 0] ifTrue: [| [outsidePolicyWrites inc]]];
+  [taskSourceSetter invokeOn: self arguments: #[record name expected]];
+  [[interruptCandidate value] ifTrue: [| [[TaskExecutor current] fail: #candidateInterrupted]] ifFalse: [| self]]
+]]
+"#);
+    expect(b"[[checkedPolicyWrites value] = 0]");
+    eval(b"let candidateTaskRun := [TaskControl start: [:task | [taskCandidate activate]]]");
+    expect(b"[[[candidateTaskRun pollOutcome] at: 0] = #failure]");
+    expect(b"[[[candidateTaskRun field: #transitionDepth] value] = 0]");
+    eval(b"[interruptCandidate set: false]");
+    expect(b"[[3 candidateTaskValue] = 2]");
+    expect(b"[taskCandidate rollbackAvailable]");
+    expect(b"[[[[Generation candidatePolicyCellFor: taskCandidate] value] at: #busy] = false]");
+    eval(b"let candidateUndoTask := [TaskControl start: [:task | [taskCandidate rollback]]]");
+    expect(b"[[[candidateUndoTask pollOutcome] at: 0] = #success]");
+    let writes=eval(b"[checkedPolicyWrites value]");
+    assert_eq!(host.send(host.named(b"Integer").unwrap(),b"wordOf:",&[Operand::object(writes)]).unwrap().as_word(),Some(2));
+    expect(b"[[outsidePolicyWrites value] = 0]");
+    expect(b"[[3 candidateTaskValue] = 1]");
+    eval(b"[taskCandidate discard]");fs::remove_dir_all(dir).unwrap();
 }

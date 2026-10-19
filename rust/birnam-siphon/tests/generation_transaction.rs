@@ -1,4 +1,4 @@
-//! End-to-end candidate publication, compensation and inverse dispatch.
+//! Authored candidate preflight, partial application and explicit conditional undo.
 mod support;
 use birnam_abi::{
     Oop,
@@ -88,13 +88,6 @@ impl Vm {
     unsafe fn record(&self, name: &[u8]) -> Oop {
         unsafe { self.call(self.prototype(name), b"clone", &[]) }
     }
-    unsafe fn fact(&self, e: Oop, a: &[u8]) -> Oop {
-        unsafe {
-            if a == b"activeGeneration" { return self.call(self.prototype(b"DispatchGeneration"), b"current", &[]); }
-            if a == b"version" || a == b"survives" { return self.call(self.named(b"db"), b"currentValue:attr:", &[e, self.sym(a)]); }
-            self.call(self.named(b"Reflect"), b"slot:in:", &[self.sym(a), e])
-        }
-    }
     unsafe fn set(&self, e: Oop, a: &[u8], v: Oop) {
         unsafe {
             if a == b"activeGeneration" { self.call(self.prototype(b"DispatchGeneration"), b"current:", &[v]); }
@@ -119,735 +112,102 @@ impl Vm {
         }
     }
 }
-struct Failure {
-    vm: Vm,
-    original: NativeEntry,
-    before: Cell<bool>,
-    armed: Cell<bool>,
-    helper: Cell<Oop>,
-}
-unsafe extern "C" fn fail_after_removal(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
+struct Fault { id:Protocol, ns:Oop, original:NativeEntry, key:Oop, error:Oop, armed:Cell<bool>, calls:Cell<usize>, after:bool, extra:bool }
+unsafe extern "C" fn fault(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
     unsafe {
-        let c = &*c.cast::<Failure>();
-        if c.before.replace(false) {
-            return Outcome::loaded(Operand::object(c.vm.call(
-                c.vm.named(b"Error"), b"kind:", &[c.vm.sym(b"injectedBeforeWriteFailure")])));
+        let f=&*c.cast::<Fault>();
+        let args=birnam_abi::borrowed_slice(a,n).unwrap();
+        let selected=args.last().and_then(|v|v.as_object())==Some(f.key) || f.key.is_null();
+        if !selected || !f.armed.replace(false){return f.original.method.unwrap()(f.original.context,r,a,n);}
+        f.calls.set(f.calls.get()+1);
+        if f.after {
+            let result=f.original.method.unwrap()(f.original.context,r,a,n);
+            if result.status!=birnam_abi::id_protocol::LOADED{return result;}
+            if f.extra {
+                let alias=f.id.intern_name(b"txCallback").unwrap();
+                f.original.method.unwrap()(f.original.context,r,[args[0],Operand::object(alias)].as_ptr(),2);
+            }
         }
-        let result = c.original.method.unwrap()(c.original.context, r, a, n);
-        let args = birnam_abi::borrowed_slice(a, n).unwrap();
-        if args[0].as_object() == Some(c.vm.sym(b"txRemove")) && c.armed.replace(false) {
-            let entry = c.vm.direct(b"txReplace");
-            let block = object(send(
-                c.vm.id,
-                c.vm.named(b"Execution"),
-                b"implementationOfEntry:",
-                &[entry],
-            ));
-            c.helper
-                .set(c.vm.call(block, b"captureAt:", &[c.vm.integer(0)]));
-            c.vm.set(
-                c.vm.sym(b"foreignCallback"),
-                b"survives",
-                c.vm.named(b"true"),
-            );
-            return Outcome::loaded(Operand::object(c.vm.call(
-                c.vm.named(b"Error"),
-                b"kind:",
-                &[c.vm.sym(b"injectedPublicationFailure")],
-            )));
-        }
-        result
+        let v=Vm{id:f.id,ns:f.ns};collect(f.id,v.named(b"GC"));
+        Outcome::loaded(Operand::object(f.error))
     }
 }
-// A legitimate replacement setter may edit another dictionary entry and return
-// an ordinary success value. A no-op or returned Error must still fail the batch.
-struct SetterEffects {
-    vm: Vm,
-    original: NativeEntry,
-    noop: Cell<bool>,
-    fail: Cell<bool>,
-    effects: Cell<usize>,
+unsafe fn entry(v:&Vm,owner:Oop,name:&[u8])->NativeEntry {
+    unsafe{send(v.id,v.id.receiver,b"bindingOf:in:",&[Operand::object(v.sym(name)),Operand::object(owner)]).as_entry().unwrap()}
 }
-unsafe extern "C" fn setter_effects(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<SetterEffects>();
-        let args = birnam_abi::borrowed_slice(a, n).unwrap();
-        if args[1].as_object() != Some(p.vm.sym(b"txReplace")) {
-            return p.original.method.unwrap()(p.original.context, r, a, n);
-        }
-        if p.noop.replace(false) { return Outcome::loaded(args[0]); }
-        let result = p.original.method.unwrap()(p.original.context, r, a, n);
-        if result.status != 0 { return result; }
-        if p.effects.get() < 2 {
-            let extra = [args[0], Operand::object(p.vm.sym(b"txSetterSideEffect"))];
-            let effect = p.original.method.unwrap()(p.original.context, r, extra.as_ptr(), extra.len());
-            if effect.status != 0 { return effect; }
-            p.effects.set(p.effects.get() + 1);
-        }
-        if p.fail.replace(false) {
-            return Outcome::loaded(Operand::object(p.vm.call(p.vm.named(b"Error"), b"kind:", &[p.vm.sym(b"setterReportedFailure")])));
-        }
-        Outcome::loaded(Operand::object(r))
-    }
-}
-struct PublicationFailure {
-    vm: Vm,
-    original: NativeEntry,
-    destination: Oop,
-    armed: Cell<bool>,
-}
-unsafe extern "C" fn fail_after_publication(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<PublicationFailure>();
-        let result = c.original.method.unwrap()(c.original.context, r, a, n);
-        let args = birnam_abi::borrowed_slice(a, n).unwrap();
-        if args[0].as_object() == Some(c.destination)
-            && c.armed.replace(false)
-        {
-            return Outcome::loaded(Operand::object(c.vm.call(
-                c.vm.named(b"Error"),
-                b"kind:",
-                &[c.vm.sym(b"injectedPublicationFactFailure")],
-            )));
-        }
-        result
-    }
-}
-struct ReleaseFailure {
-    vm: Vm,
-    original: NativeEntry,
-    armed: Cell<bool>,
-}
-unsafe extern "C" fn fail_after_release(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<ReleaseFailure>();
-        let result = c.original.method.unwrap()(c.original.context, r, a, n);
-        if c.armed.replace(false) {
-            return Outcome::loaded(Operand::object(c.vm.call(
-                c.vm.named(b"Error"),
-                b"kind:",
-                &[c.vm.sym(b"injectedCleanupFailure")],
-            )));
-        }
-        result
-    }
-}
-// Independent owner observations must be consulted even while the transitional
-// owner happens to store its values in db. Collect inside each replaced send.
-struct GlobalProbe {
-    vm: Vm,
-    original: NativeEntry,
-    calls: Cell<usize>,
-    basis_offset: std::rc::Rc<Cell<usize>>,
-    bump_after_read: Cell<bool>,
-    is_basis: bool,
-}
-unsafe extern "C" fn probe_global(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<GlobalProbe>();
-        p.calls.set(p.calls.get() + 1);
-        collect(p.vm.id, p.vm.named(b"GC"));
-        let result = p.original.method.unwrap()(p.original.context, r, a, n);
-        if p.bump_after_read.replace(false) {
-            p.basis_offset.set(p.basis_offset.get() + 1);
-        }
-        if p.is_basis && p.basis_offset.get() != 0 && result.value.as_object().is_some() {
-            return Outcome::loaded(Operand::object(
-                p.vm.integer(p.vm.number(object(result.value)) + p.basis_offset.get()),
-            ));
-        }
-        result
-    }
+unsafe fn replace(v:&Vm,owner:Oop,name:&[u8],e:NativeEntry) {
+    unsafe{send(v.id,owner,b"addMethod",&[Operand::object(v.sym(name)),Operand::entry(e)]);}
 }
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production native modules"]
-fn candidate_transactions_restore_exact_dispatch_globals_and_preserve_callback_facts() {
+#[ignore = "requires production native modules"]
+fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
     unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        lifecycle_records(id, ns);
-        let v = Vm { id, ns };
-        let cg = v.named(b"Codegen");
-        let db = v.named(b"db");
-        let nil = v.named(b"nil");
-        let yes = v.named(b"true");
-        let mut global_probes = Vec::new();
-        let owner_basis_offset = std::rc::Rc::new(Cell::new(0));
-        for selector in [
-            b"bindingAt:".as_slice(),
-            b"bindingBasis",
-            b"restoreBinding:expected:previous:reservation:",
-        ] {
-            let original = send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[
-                    Operand::object(v.sym(selector)),
-                    Operand::object(object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))]))),
-                ],
-            )
-            .as_entry()
-            .unwrap();
-            if let Some(method) = send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original)]).as_object() { v.keep(method); }
-            let mut probe = Box::new(GlobalProbe {
-                vm: Vm { id, ns },
-                original,
-                calls: Cell::new(0),
-                basis_offset: owner_basis_offset.clone(),
-                bump_after_read: Cell::new(false),
-                is_basis: selector == b"bindingBasis",
-            });
-            install(
-                id,
-                object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))])),
-                selector,
-                probe_global,
-                core::ptr::from_mut(&mut *probe).cast(),
-            );
-            global_probes.push((selector, probe));
-        }
-
-        for (commit, kind) in [
-            (
-                b"commitPrepared:".as_slice(),
-                b"candidatePreparationFailed".as_slice(),
-            ),
-            (
-                b"commitPreparedRollback:",
-                b"candidateRollbackPreparationFailed",
-            ),
-        ] {
-            let rejected = v.call(v.named(b"Generation"), commit, &[nil]);
-            assert_eq!(v.call(rejected, b"kind", &[]), v.sym(kind));
-            assert_eq!(
-                v.call(v.named(b"Generation"), commit, &[rejected]),
-                rejected
-            );
-        }
-
-        let baseline=b"let txHelper := [| 10]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txRemove on: Integer as: [:self | 30]]";
-        let initial = v.call(cg, b"evalPersisting:", &[v.text(baseline)]);
-        assert_eq!(v.call(initial, b"isError", &[]), v.named(b"false"));
-        let mut source = b"[Module named: #txFixture requires: #[]]; ".to_vec();
-        source.extend_from_slice(baseline);
-        let source = v.text(&source);
-        v.call(
-            cg,
-            b"recordModuleSource:named:",
-            &[source, v.sym(b"txFixture")],
-        );
-        // A separate managed module is outside this candidate's read/write set.
-        let independent = b"let txIndependentGlobal := [| 5]; [Reflect defineMethod: #txIndependent on: Integer as: [:self | 5]]; [Reflect defineMethod: #txSetterSideEffect on: Integer as: [:self | 5]]";
-        v.call(cg, b"evalPersisting:", &[v.text(independent)]);
-        let mut independent_source = b"[Module named: #txIndependentFixture requires: #[]]; ".to_vec();
-        independent_source.extend_from_slice(independent);
-        v.call(cg, b"recordModuleSource:named:", &[v.text(&independent_source), v.sym(b"txIndependentFixture")]);
-        let independent_global = v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")]);
-        let independent_entry = v.direct(b"txIndependent").as_entry().unwrap();
-        let side_effect_entry = v.direct(b"txSetterSideEffect").as_entry().unwrap();
-        // These outside Methods are kept by this test, not an implicit whole-world ledger.
-        for entry in [independent_entry, side_effect_entry] {
-            v.keep(object(send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(entry)])));
-        }
-        assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-        let original_helper = v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]);
-        let original_replace = v.direct(b"txReplace").as_entry().unwrap();
-        let original_remove = v.direct(b"txRemove").as_entry().unwrap();
-        let source=v.text(b"[Module named: #txFixture requires: #[]]; let txHelper := [| 20]; let txNewHelper := [| 7]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txAdded on: Integer as: [:self | 40]]; [Reflect removeMethod: #txRemove on: Integer]");
-        let dir = std::env::temp_dir().join(format!(
-            "birnam-generation-transaction-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        for synchronous in [false, true] {
-            let path = v.text(
-                dir.join(if synchronous { "sync.o" } else { "resume.o" })
-                    .as_os_str()
-                    .as_bytes(),
-            );
-            let compiled = if synchronous {
-                v.call(
-                    v.named(b"Generation"),
-                    b"compileCandidate:named:output:selection:",
-                    &[source, v.sym(b"txFixture"), path, v.vector(&[])],
-                )
-            } else {
-                v.call(
-                    v.named(b"Generation"),
-                    b"compileCandidate:named:output:",
-                    &[source, v.sym(b"txFixture"), path],
-                )
-            };
-            assert_eq!(compiled, path);
-            let unit = v.record(b"CompiledUnit");
-            assert_eq!(
-                v.call(
-                    v.named(b"Generation"),
-                    b"inspectCandidate:into:",
-                    &[path, unit]
-                ),
-                unit
-            );
-            assert_eq!(
-                v.call(v.named(b"Generation"), b"mapCandidate:", &[unit]),
-                unit
-            );
-            // Explicit facts at lifecycle field names are independent data.
-            v.call(db, b"assert:attr:value:", &[unit, v.sym(b"state"), v.sym(b"userAnnotation")]);
-            let changed_token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)]);
-            v.set(unit, b"state", v.sym(b"externalEdit"));
-            let stale_fields = v.call(v.named(b"Generation"), b"commitPrepared:", &[changed_token]);
-            assert_eq!(v.call(stale_fields, b"kind", &[]), v.sym(b"staleGeneration"));
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"externalEdit"));
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            v.set(unit, b"state", v.sym(b"candidate"));
-            // A changed projected Global is relevant even when it is absent from
-            // the old managed ledger. Present nil must not be confused with absence.
-            let binding_token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)]);
-            let existing_method = v.keep(object(send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_replace)])));
-            v.call(v.named(b"IntegerVt"), b"addMethod:as:", &[existing_method, v.sym(b"txAdded")]);
-            let stale_binding = v.call(v.named(b"Generation"), b"commitPrepared:", &[binding_token]);
-            assert_eq!(v.call(stale_binding, b"kind", &[]), v.sym(b"staleGeneration"));
-            assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 10);
-            send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txAdded"))]);
-            let owner_token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)]);
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txNewHelper"), nil]);
-            let stale_owner = v.call(v.named(b"Generation"), b"commitPrepared:", &[owner_token]);
-            assert_eq!(v.call(stale_owner, b"kind", &[]), v.sym(b"staleGeneration"));
-            assert_eq!(v.number(v.call(v.call(v.named(b"Globals"), b"bindingAt:", &[v.sym(b"txNewHelper")]), b"size", &[])), 1);
-            v.call(v.named(b"Globals"), b"remove:", &[v.sym(b"txNewHelper")]);
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)],
-            );
-            assert_eq!(v.call(token, b"isError", &[]), v.named(b"false"));
-            v.set(
-                v.sym(b"unrelated"),
-                b"version",
-                v.integer(if synchronous { 2 } else { 1 }),
-            );
-            assert_eq!(v.call(v.named(b"Generation"), b"discardPrepared:", &[token]), unit);
-            let consumed = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            assert_eq!(
-                v.call(consumed, b"kind", &[]),
-                v.sym(b"invalidPreparedToken")
-            );
-            let dispatch_vt = object(send(
-                id,
-                id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(unit)],
-            ));
-            let remove_key = v.sym(b"removeMethod:");
-            let original = send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(remove_key), Operand::object(id.receiver)],
-            )
-            .as_entry()
-            .unwrap();
-            let mut failure = Failure {
-                vm: Vm { id, ns },
-                original,
-                before: Cell::new(true),
-                armed: Cell::new(true),
-                helper: Cell::new(core::ptr::null_mut()),
-            };
-            install(
-                id,
-                id.receiver,
-                b"removeMethod:",
-                fail_after_removal,
-                core::ptr::from_mut(&mut failure).cast(),
-            );
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)],
-            );
-            let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"injectedBeforeWriteFailure"));
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)]);
-            let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            let reason = v.call(cg, b"lastError", &[]);
-            let description = if reason == nil {
-                None
-            } else {
-                send(id, reason, b"bytes", &[]).as_bytes()
-            };
-            let description = description.map(|b| {
-                String::from_utf8_lossy(birnam_abi::borrowed_bytes(b.pointer, b.length).unwrap())
-                    .into_owned()
-            });
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"injectedPublicationFailure"),
-                "commit failure: {:?}",
-                description
-            );
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
-            assert_eq!(v.direct(b"txAdded").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(
-                v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
-                original_helper
-            );
-            assert_eq!(v.fact(v.sym(b"foreignCallback"), b"survives"), yes);
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-            assert_eq!(
-                v.number(v.call(db, b"reservedCompensationFor:", &[unit])),
-                0
-            );
-            let restore_key = v.sym(b"state:");
-            let original_restore = send(
-                id,
-                id.receiver,
-                b"bind:to:",
-                &[Operand::object(restore_key), Operand::object(unit)],
-            )
-            .as_entry()
-            .unwrap();
-            if let Some(method) = send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_restore)]).as_object() { v.keep(method); }
-            let mut publication_failure = PublicationFailure {
-                vm: Vm { id, ns },
-                original: original_restore,
-                destination: v.keep(v.sym(b"active")),
-                armed: Cell::new(true),
-            };
-            install(
-                id,
-                dispatch_vt,
-                b"state:",
-                fail_after_publication,
-                core::ptr::from_mut(&mut publication_failure).cast(),
-            );
-            let installed_hook = send(id, id.receiver, b"bind:to:", &[Operand::object(restore_key), Operand::object(unit)]).as_entry().unwrap();
-            assert_eq!(installed_hook.context, core::ptr::from_mut(&mut publication_failure).cast(), "hook was installed in the wrong dictionary");
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, v.plan(b"activate", unit)],
-            );
-            let rejected = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"injectedPublicationFactFailure")
-            );
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
-            assert_eq!(v.direct(b"txAdded").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(
-                v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
-                original_helper
-            );
-            let setter_key = v.sym(b"addMethod:as:");
-            let original_setter = send(id, id.receiver, b"bindingOf:in:", &[Operand::object(setter_key), Operand::object(id.receiver)]).as_entry().unwrap();
-            if let Some(method) = send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_setter)]).as_object() { v.keep(method); }
-            let effects = SetterEffects { vm: Vm { id, ns }, original: original_setter, noop: Cell::new(true), fail: Cell::new(true), effects: Cell::new(0) };
-            install(id, id.receiver, b"addMethod:as:", setter_effects, core::ptr::from_ref(&effects).cast_mut().cast());
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit)]);
-            let noop = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            assert_eq!(v.call(noop, b"kind", &[]), v.sym(b"candidateCommitFailed"));
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"candidate"));
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit)]);
-            let reported = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            assert_eq!(v.call(reported, b"kind", &[]), v.sym(b"setterReportedFailure"));
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            // Compensation must not erase the callback's unrelated binding. Its
-            // second write installs the restored Method under that separate name.
-            assert_eq!(v.number(v.call(v.integer(2), b"txSetterSideEffect", &[])), 10);
-            effects.effects.set(0);
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txIndependentGlobal"), v.integer(321)]);
-            send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txIndependent"))]);
-            collect(id, v.named(b"GC"));
-            let token = v.call(v.named(b"Generation"), b"prepareActivation:plan:", &[unit, v.plan(b"activate", unit)]);
-            let later_source = v.text(b"[Module named: #txLater requires: #[]]; true");
-            assert_eq!(v.call(cg, b"recordModuleSource:named:", &[later_source, v.sym(b"txLater")]), later_source);
-            let later_source = v.call(cg, b"moduleSourceFor:", &[v.sym(b"txLater")]);
-            let epoch = send(id, id.receiver, b"bindingEpoch", &[]).as_word().unwrap();
-            // Parsing/constructing a branch Block and an unrelated method edit
-            // are normal work between prepare and commit, not token expiry.
-            v.call(cg, b"evalPersisting:", &[v.text(b"[:x | [x isNil]]")]);
-            let prior_method = v.keep(object(send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_replace)])));
-            v.call(v.named(b"IntegerVt"), b"addMethod:as:", &[prior_method, v.sym(b"txUnrelated")]);
-            send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txReplace"))]);
-            v.call(v.named(b"IntegerVt"), b"addMethod:as:", &[prior_method, v.sym(b"txReplace")]);
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txNewHelper"), nil]);
-            v.call(v.named(b"Globals"), b"remove:", &[v.sym(b"txNewHelper")]);
-
-            assert!(send(id, id.receiver, b"bindingEpoch", &[]).as_word().unwrap() > epoch);
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txUnrelatedGlobal"), v.integer(123)]);
-            global_probes[1].1.basis_offset.set(1);
-            v.set(v.sym(b"unrelated"), b"version", v.integer(99));
-            let store = v.keep(v.named(b"Store"));
-            v.keep(db);
-            v.call(ns, b"remove:", &[v.sym(b"Store")]);
-            v.call(ns, b"remove:", &[v.sym(b"db")]);
-            let committed = v.call(v.named(b"Generation"), b"commitPrepared:", &[token]);
-            v.call(ns, b"at:put:", &[v.sym(b"Store"), store]);
-            v.call(ns, b"at:put:", &[v.sym(b"db"), db]);
-            assert_eq!(committed, unit);
-            global_probes[1].1.basis_offset.set(0);
-            assert!(effects.effects.get() > 0, "replacement setter did not run");
-            let side_entry = v.direct(b"txSetterSideEffect");
-            assert_eq!(v.number(v.call(v.integer(2), b"txSetterSideEffect", &[])), 20);
-            assert_eq!(
-                v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
-                failure.helper.get()
-            );
-            assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 20);
-            assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
-            assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.number(v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")])), 321);
-            assert_eq!(v.direct(b"txIndependent").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(v.number(v.call(db, b"reservedCompensationFor:", &[unit])), 0);
-            effects.effects.set(2);
-            publication_failure.destination = v.keep(v.sym(b"rolledBack"));
-            publication_failure.armed.set(true);
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareRollback:plan:",
-                &[unit, v.plan(b"rollback", unit)],
-            );
-            let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"injectedPublicationFactFailure")
-            );
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-            assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 20);
-            assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
-            assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.number(v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")])), 321);
-            assert_eq!(v.direct(b"txIndependent").kind(), birnam_abi::id_protocol::UNIT);
-            let globals_vt = object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))]));
-            let release_key = v.sym(b"releaseBindingCompensationFor:");
-            let original_release = send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(release_key), Operand::object(globals_vt)],
-            )
-            .as_entry()
-            .unwrap();
-            if let Some(method) = send(id, v.named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_release)]).as_object() { v.keep(method); }
-            let mut release_failure = ReleaseFailure {
-                vm: Vm { id, ns },
-                original: original_release,
-                armed: Cell::new(true),
-            };
-            install(
-                id,
-                globals_vt,
-                b"releaseBindingCompensationFor:",
-                fail_after_release,
-                core::ptr::from_mut(&mut release_failure).cast(),
-            );
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareRollback:plan:",
-                &[unit, v.plan(b"rollback", unit)],
-            );
-            let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
-            assert_eq!(
-                v.call(rejected, b"kind", &[]),
-                v.sym(b"injectedCleanupFailure")
-            );
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-            assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 20);
-            assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
-            assert_eq!(v.direct(b"txRemove").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(
-                v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
-                failure.helper.get()
-            );
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"active"));
-            assert_eq!(v.number(v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")])), 321);
-            assert_eq!(v.direct(b"txIndependent").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(v.number(v.call(db, b"reservedCompensationFor:", &[unit])), 0);
-            let token = v.call(
-                v.named(b"Generation"),
-                b"prepareRollback:plan:",
-                &[unit, v.plan(b"rollback", unit)],
-            );
-            assert_eq!(v.call(token, b"isError", &[]), v.named(b"false"));
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txIndependentGlobal"), v.integer(654)]);
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txUnrelatedGlobal"), v.integer(456)]);
-            v.call(v.named(b"IntegerVt"), b"addMethod:as:", &[prior_method, v.sym(b"txBetweenRollback")]);
-            assert_eq!(
-                v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]),
-                unit
-            );
-            assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-            assert_eq!(v.direct(b"txRemove").as_entry(), Some(original_remove));
-            assert_eq!(v.direct(b"txAdded").kind(), birnam_abi::id_protocol::UNIT);
-            assert_eq!(
-                v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txHelper")]),
-                original_helper
-            );
-            assert_eq!(v.number(v.call(v.integer(2), b"txReplace", &[])), 10);
-            assert_eq!(v.number(v.call(v.integer(2), b"txRemove", &[])), 30);
-            assert_eq!(v.fact(unit, b"state"), v.sym(b"rolledBack"));
-            assert_eq!(v.call(cg, b"moduleSourceFor:", &[v.sym(b"txLater")]), later_source);
-            assert_eq!(v.direct(b"txSetterSideEffect").as_entry(), side_entry.as_entry());
-            collect(id, v.named(b"GC"));
-            assert_eq!(v.number(v.call(v.integer(2), b"txSetterSideEffect", &[])), 20);
-            assert_eq!(v.number(v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txUnrelatedGlobal")])), 456);
-            assert_eq!(v.number(v.call(v.call(v.named(b"Globals"), b"bindingAt:", &[v.sym(b"txNewHelper")]), b"size", &[])), 0);
-            send(id, id.receiver, b"addMethod", &[Operand::object(setter_key), Operand::entry(original_setter)]);
-            assert_eq!(v.number(v.call(v.named(b"Globals"), b"at:", &[v.sym(b"txIndependentGlobal")])), 654);
-            assert_eq!(v.direct(b"txIndependent").kind(), birnam_abi::id_protocol::UNIT);
-            // Restore the independent module before explicitly certifying the whole ledger.
-            v.call(v.named(b"Globals"), b"at:put:", &[v.sym(b"txIndependentGlobal"), independent_global]);
-            for (key, entry) in [(b"txIndependent".as_slice(), independent_entry), (b"txSetterSideEffect", side_effect_entry)] {
-                send(id, v.named(b"IntegerVt"), b"addMethod", &[Operand::object(v.sym(key)), Operand::entry(entry)]);
-            }
-            for key in [b"txUnrelated".as_slice(), b"txBetweenRollback"] {
-                send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(key))]);
-            }
-
-            assert_eq!(v.call(db, b"currentValue:attr:", &[unit, v.sym(b"state")]), v.sym(b"userAnnotation"));
-            assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-            assert_eq!(
-                v.number(v.call(db, b"reservedCompensationFor:", &[unit])),
-                0
-            );
-            send(
-                id,
-                id.receiver,
-                b"addMethod",
-                &[Operand::object(remove_key), Operand::entry(original)],
-            );
-            send(
-                id,
-                dispatch_vt,
-                b"addMethod",
-                &[
-                    Operand::object(restore_key),
-                    Operand::entry(original_restore),
-                ],
-            );
-            send(
-                id,
-                globals_vt,
-                b"addMethod",
-                &[
-                    Operand::object(release_key),
-                    Operand::entry(original_release),
-                ],
-            );
-            if synchronous {
-                let fresh = v.record(b"CompiledUnit");
-                assert_eq!(
-                    v.call(
-                        v.named(b"Generation"),
-                        b"inspectCandidate:into:",
-                        &[path, fresh]
-                    ),
-                    fresh
-                );
-                assert_eq!(
-                    v.call(v.named(b"Generation"), b"mapCandidate:", &[fresh]),
-                    fresh
-                );
-                let token = v.call(
-                    v.named(b"Generation"),
-                    b"prepareActivation:plan:",
-                    &[fresh, v.plan(b"activate", fresh)],
-                );
-                assert_eq!(
-                    v.call(v.named(b"Generation"), b"commitPrepared:", &[token]),
-                    fresh
-                );
-                let token = v.call(
-                    v.named(b"Generation"),
-                    b"prepareRollback:plan:",
-                    &[fresh, v.plan(b"rollback", fresh)],
-                );
-                let installed_replace = v.direct(b"txReplace").as_entry().unwrap();
-                send(
-                    id,
-                    v.named(b"IntegerVt"),
-                    b"removeMethod:",
-                    &[Operand::object(v.sym(b"txReplace"))],
-                );
-                let rejected = v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[token]);
-                assert_eq!(v.call(rejected, b"kind", &[]), v.sym(b"staleGeneration"));
-                // A scoped conflict does not poison the generation or revoke the inverse.
-                assert_eq!(v.fact(fresh, b"state"), v.sym(b"active"));
-                assert_eq!(v.fact(fresh, b"rollbackAvailable"), yes);
-                assert_eq!(v.direct(b"txReplace").kind(), birnam_abi::id_protocol::UNIT);
-                assert_eq!(v.call(v.prototype(b"DispatchGeneration"), b"current", &[]), nil);
-                assert_eq!(v.number(v.call(v.integer(2), b"txAdded", &[])), 40);
-                send(id, v.named(b"IntegerVt"), b"addMethod", &[Operand::object(v.sym(b"txReplace")), Operand::entry(installed_replace)]);
-                let retry = v.call(v.named(b"Generation"), b"prepareRollback:plan:", &[fresh, v.plan(b"rollback", fresh)]);
-                assert_eq!(v.call(v.named(b"Generation"), b"commitPreparedRollback:", &[retry]), fresh);
-                assert_eq!(v.direct(b"txReplace").as_entry(), Some(original_replace));
-                // Scoped success has not silently adopted the other module's edits.
-                send(id, v.named(b"IntegerVt"), b"removeMethod:", &[Operand::object(v.sym(b"txIndependent"))]);
-                let certificate = v.call(v.prototype(b"DispatchGeneration"), b"adoptCurrent", &[]);
-                assert_eq!(v.call(certificate, b"kind", &[]), v.sym(b"sourceBindingMismatch"));
-                send(id, v.named(b"IntegerVt"), b"addMethod", &[Operand::object(v.sym(b"txIndependent")), Operand::entry(independent_entry)]);
-                let certificate = v.call(v.prototype(b"DispatchGeneration"), b"adoptCurrent", &[]);
-                assert_eq!(v.call(certificate, b"isError", &[]), v.named(b"false"));
-                let refreshed = v.call(v.prototype(b"DispatchGeneration"), b"adoptCurrent", &[]);
-                assert_ne!(certificate, refreshed);
-                assert_eq!(v.call(refreshed, b"isError", &[]), v.named(b"false"));
-            }
-        }
-        for (selector, probe) in global_probes {
-            assert!(
-                probe.calls.get() > 0,
-                "binding owner send was bypassed: {:?}",
-                selector
-            );
-            send(
-                id,
-                object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(v.named(b"Globals"))])),
-                b"addMethod",
-                &[
-                    Operand::object(v.sym(selector)),
-                    Operand::entry(probe.original),
-                ],
-            );
+        let id=id();let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);lifecycle_records(id,ns);let v=Vm{id,ns};
+        let cg=v.named(b"Codegen");let generation=v.named(b"Generation");let globals=v.named(b"Globals");let nil=v.named(b"nil");let yes=v.named(b"true");
+        let eval=|text:&[u8]|v.call(cg,b"evalPersisting:",&[v.text(text)]);
+        let before=v.text(b"[Module named: #txFixture requires: #[]]; let txHelper := [| 10]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txRemove on: Integer as: [:self | 30]]");
+        eval(b"let txHelper := [| 10]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txRemove on: Integer as: [:self | 30]]");
+        v.call(cg,b"recordModuleSource:named:",&[before,v.sym(b"txFixture")]);
+        let helper=v.call(globals,b"at:",&[v.sym(b"txHelper")]);let old_replace=v.direct(b"txReplace").as_entry().unwrap();let old_remove=v.direct(b"txRemove").as_entry().unwrap();
+        let after=v.text(b"[Module named: #txFixture requires: #[]]; let txHelper := [| 20]; let txNewHelper := [| 7]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txAdded on: Integer as: [:self | 40]]; [Reflect removeMethod: #txRemove on: Integer]");
+        let dir=std::env::temp_dir().join(format!("birnam-candidate-partial-{}",std::process::id()));std::fs::create_dir_all(&dir).unwrap();
+        for synchronous in [false,true] {
+            let path=v.text(dir.join(if synchronous{"sync.o"}else{"resumable.o"}).as_os_str().as_bytes());
+            let compiled=if synchronous{v.call(generation,b"compileCandidate:named:output:selection:",&[after,v.sym(b"txFixture"),path,v.vector(&[])])}else{v.call(generation,b"compileCandidate:named:output:",&[after,v.sym(b"txFixture"),path])};assert_eq!(compiled,path);
+            let unit=v.record(b"CompiledUnit");assert_eq!(v.call(generation,b"inspectCandidate:into:",&[path,unit]),unit);v.call(generation,b"mapCandidate:",&[unit]);
+            let prepare=||v.call(generation,b"prepareActivation:plan:",&[unit,v.plan(b"activate",unit)]);
+            let token=prepare();v.call(globals,b"at:put:",&[v.sym(b"txNewHelper"),nil]);
+            assert_eq!(v.call(v.call(generation,b"commitPrepared:",&[token]),b"kind",&[]),v.sym(b"staleGeneration"));
+            assert_eq!(v.direct(b"txReplace").as_entry(),Some(old_replace));v.call(globals,b"remove:",&[v.sym(b"txNewHelper")]);
+            let token=prepare();assert_eq!(v.call(generation,b"discardPrepared:",&[token]),unit);assert_eq!(v.call(v.call(generation,b"commitPrepared:",&[token]),b"kind",&[]),v.sym(b"invalidPreparedToken"));
+            let setter=entry(&v,id.receiver,b"addMethod:as:");
+            let error=v.call(v.named(b"Error"),b"kind:",&[v.sym(b"setterReportedFailure")]);
+            let mut f=Fault{id,ns,original:setter,key:v.sym(b"txReplace"),error,armed:Cell::new(true),calls:Cell::new(0),after:true,extra:true};
+            replace(&v,id.receiver,b"addMethod:as:",NativeEntry::new(fault,core::ptr::from_mut(&mut f).cast()));
+            let token=prepare();v.set(unit,b"state",v.sym(b"externalDescription"));
+            v.call(v.named(b"db"),b"assert:attr:value:",&[unit,v.sym(b"state"),v.sym(b"explicitUserFact")]);
+            let failed=v.call(generation,b"commitPrepared:",&[token]);replace(&v,id.receiver,b"addMethod:as:",setter);
+            assert_eq!(failed,error);assert_eq!(f.calls.get(),1);
+            assert_eq!(v.number(v.call(v.integer(2),b"txReplace",&[])),20,"failure ran an automatic inverse");
+            assert_eq!(v.direct(b"txRemove").as_entry(),Some(old_remove));assert_eq!(v.direct(b"txAdded").kind(),birnam_abi::id_protocol::UNIT);
+            assert_eq!(v.call(unit,b"rollbackAvailable",&[]),yes);
+            let installed=v.call(v.named(b"Execution"),b"directMethodFor:in:",&[v.sym(b"txReplace"),v.named(b"IntegerVt")]);
+            let outside=v.direct(b"txCallback").as_entry();
+            eval(b"[Reflect defineMethod: #txReplace on: Integer as: [:self | 999]]");
+            assert_eq!(v.call(v.call(unit,b"rollback",&[]),b"kind",&[]),v.sym(b"undoConflict"));
+            assert_eq!(v.number(v.call(v.integer(2),b"txReplace",&[])),999);
+            assert_eq!(v.number(v.call(v.call(globals,b"at:",&[v.sym(b"txHelper")]),b"value",&[])),20);
+            v.call(v.named(b"IntegerVt"),b"addMethod:as:",&[installed,v.sym(b"txReplace")]);
+            assert_eq!(v.call(unit,b"rollback",&[]),unit);
+            assert_eq!(v.direct(b"txReplace").as_entry(),Some(old_replace));assert_eq!(v.direct(b"txRemove").as_entry(),Some(old_remove));
+            assert_eq!(v.direct(b"txCallback").as_entry(),outside,"undo erased the setter's unrelated effect");
+            assert_eq!(v.call(globals,b"at:",&[v.sym(b"txHelper")]),helper);assert_eq!(v.number(v.call(v.call(globals,b"bindingAt:",&[v.sym(b"txNewHelper")]),b"size",&[])),0);
+            assert_eq!(v.call(v.named(b"db"),b"currentValue:attr:",&[unit,v.sym(b"state")]),v.sym(b"explicitUserFact"));
+            // The retained construction can be activated again; no reservation
+            // or global-basis service participates in this explicit policy.
+            let global_vt=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(globals)]));
+            let reserve=entry(&v,global_vt,b"reserveBindingCompensationFor:count:");
+            let mut unused=Fault{id,ns,original:reserve,key:core::ptr::null_mut(),error,armed:Cell::new(true),calls:Cell::new(0),after:false,extra:false};
+            replace(&v,global_vt,b"reserveBindingCompensationFor:count:",NativeEntry::new(fault,core::ptr::from_mut(&mut unused).cast()));
+            assert_eq!(v.call(unit,b"activate",&[]),unit);assert_eq!(unused.calls.get(),0);replace(&v,global_vt,b"reserveBindingCompensationFor:count:",reserve);
+            assert_eq!(v.number(v.call(v.integer(2),b"txAdded",&[])),40);assert_eq!(v.direct(b"txRemove").kind(),birnam_abi::id_protocol::UNIT);
+            let removal=entry(&v,id.receiver,b"removeMethod:");
+            let mut f=Fault{id,ns,original:removal,key:v.sym(b"txAdded"),error,armed:Cell::new(true),calls:Cell::new(0),after:true,extra:false};
+            replace(&v,id.receiver,b"removeMethod:",NativeEntry::new(fault,core::ptr::from_mut(&mut f).cast()));
+            assert_eq!(v.call(unit,b"rollback",&[]),error);replace(&v,id.receiver,b"removeMethod:",removal);
+            assert_eq!(v.direct(b"txAdded").kind(),birnam_abi::id_protocol::UNIT,"failed undo was automatically redone");
+            assert_eq!(v.direct(b"txRemove").as_entry(),Some(old_remove));assert_eq!(v.number(v.call(v.integer(2),b"txReplace",&[])),20);
+            assert_eq!(v.call(unit,b"rollback",&[]),unit);assert_eq!(v.direct(b"txReplace").as_entry(),Some(old_replace));assert_eq!(v.call(globals,b"at:",&[v.sym(b"txHelper")]),helper);
+            assert_eq!(v.call(unit,b"discard",&[]),unit);assert_eq!(v.call(generation,b"candidatePolicyCellFor:",&[unit]),nil);
+            // An initializer failure is never silently replayed.
+            let second=v.record(b"CompiledUnit");v.call(generation,b"inspectCandidate:into:",&[path,second]);v.call(generation,b"mapCandidate:",&[second]);
+            let info=v.call(generation,b"candidateDataFor:",&[second]);let adapters=v.call(info,b"at:",&[v.integer(7)]);let adapter=v.call(adapters,b"at:",&[v.integer(0)]);
+            let avt=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(adapter)]));let init=entry(&v,avt,b"initializeWith:");
+            let mut f=Fault{id,ns,original:init,key:core::ptr::null_mut(),error,armed:Cell::new(true),calls:Cell::new(0),after:false,extra:false};
+            replace(&v,avt,b"initializeWith:",NativeEntry::new(fault,core::ptr::from_mut(&mut f).cast()));
+            assert_eq!(v.call(second,b"activate",&[]),error);
+            assert_eq!(v.call(v.call(second,b"activate",&[]),b"kind",&[]),v.sym(b"candidateConstructionFailed"));assert_eq!(f.calls.get(),1);
+            replace(&v,avt,b"initializeWith:",init);v.call(second,b"discard",&[]);
         }
         std::fs::remove_dir_all(dir).unwrap();
     }

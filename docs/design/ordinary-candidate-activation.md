@@ -1,5 +1,11 @@
 # Candidate activation is an ordinary send
 
+**2026-10-18 follow-up:** [Candidate policy is now authored in Birnam](candidate-policy-migration.md).
+Its selected contract retains partial effects for explicit conditional undo, removes
+automatic compensation/reservations and setter postchecks, and treats lifecycle
+fields as descriptions. The implementation and qualification below describe the
+earlier slice; those stronger failure promises are superseded.
+
 2026-10-17. Follows `1c4b6613`. Implemented and qualified.
 
 `CompiledUnit activate` and `rollback` now perform their operations directly.

@@ -45,6 +45,9 @@ struct Callable {
     execution: *const Execution,
     object: Oop,
     entry: NativeEntry,
+    // Only direct observations of foreign native bindings use this entry.
+    // Ordinary methodFor: captures and withImplementation: remain independent.
+    direct_native_binding: bool,
     owner: Oop,
     implementation: Option<Oop>,
     image: Option<Rc<image::Image>>,
@@ -211,6 +214,13 @@ impl Execution {
         ))
     }
     fn message_entry(&self, method: Oop, selector: Oop) -> Result<NativeEntry, Outcome> {
+        {
+            let methods = self.methods.borrow();
+            let callable = methods.get(&method.addr()).ok_or_else(invalid)?;
+            if callable.direct_native_binding {
+                return Ok(callable.entry);
+            }
+        }
         let mut entry = self.entry(method, selector == self.names[b"lookup".as_slice()])?;
         if selector == self.names[b"doesNotUnderstand:".as_slice()] && self.methods.borrow().get(&method.addr()).is_some_and(|m| m.implementation.is_some()) {
             entry.method = Some(call_dnu);
@@ -242,6 +252,7 @@ impl Execution {
             execution: self,
             object: value,
             entry,
+            direct_native_binding: false,
             owner,
             image,
         });
@@ -538,6 +549,34 @@ unsafe extern "C" fn method_for(c: *mut c_void, r: Oop, a: *const Operand, n: us
             return Ok(Operand::object(s.nil));
         }
         s.capture(native_entry(selected)?)
+    })())
+}
+// Direct observation is distinct from lookup/capture: it neither follows
+// delegation nor substitutes a new wrapper for an already-owned Method.
+unsafe extern "C" fn direct_method(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [selector,behavior]=borrowed_slice(a,n).ok_or_else(invalid)? else{return Err(invalid());};
+        let (selector,behavior)=(object(*selector)?,object(*behavior)?);
+        let roots=s.scope(&[r,selector,behavior]);
+        let raw=s.id.send_named(s.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(behavior)])?;
+        if raw.kind()==native::UNIT{return Ok(Operand::object(s.nil));}
+        let entry=native_entry(raw)?;
+        if let Some(method)=s.selected(entry){return Ok(Operand::object(method));}
+        let value=s.capture(entry)?;let method=object(value)?;roots.keep(method);
+        s.methods.borrow_mut().get_mut(&method.addr()).ok_or_else(invalid)?.direct_native_binding=true;
+        Ok(value)
+    })())
+}
+unsafe extern "C" fn binding_matches(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [behavior,selector]=borrowed_slice(a,n).ok_or_else(invalid)? else{return Err(invalid());};
+        let (behavior,selector)=(object(*behavior)?,object(*selector)?);
+        let _roots=s.scope(&[r,behavior,selector]);
+        let expected=s.message_entry(r,selector)?;
+        let actual=s.id.send_named(s.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(behavior)])?;
+        s.id.send_named(s.namespace,b"at:",&[Operand::object(s.id.intern_name(if actual.as_entry()==Some(expected){b"true"}else{b"false"})?)])
     })())
 }
 unsafe extern "C" fn install(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -855,6 +894,8 @@ const NAMES: &[&[u8]] = &[
     b"invokeOn:",
     b"invokeOn:arguments:",
     b"methodFor:",
+    b"directMethodFor:in:",
+    b"bindingMatchesIn:as:",
     b"withWordExpression:bindings:parameters:",
     b"withWordHelperAdapter",
     b"addMethod:as:",
@@ -978,6 +1019,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (method_behavior,b"withWordExpression:bindings:parameters:",word_helper::attach),
             (method_behavior,b"withWordHelperAdapter",word_helper::adapter),
             (method_behavior, b"clone", identity),
+            (behavior, b"directMethodFor:in:", direct_method),
+            (method_behavior, b"bindingMatchesIn:as:", binding_matches),
             (method_behavior, b"invokeOn:", invoke),
             (method_behavior, b"invokeOn:arguments:", invoke_arguments),
             (object_behavior, b"methodFor:", method_for),

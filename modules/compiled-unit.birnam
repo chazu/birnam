@@ -2,7 +2,7 @@
 // candidate/ledger mechanism (docs/design/47). Candidate opening and validation
 // are inert; dependency loading and native mapping are explicit operations.
 
-[Module named: #compiledUnit requires: #[#modules #stdlib]];
+[Module named: #compiledUnit requires: #[#modules #stdlib #candidatePolicy]];
 
 // Lifecycle records own ordinary named reference slots. Explicit facts are independent.
 [[[Globals at: #CompiledUnit] isNil]
@@ -248,9 +248,7 @@ let compiledGenerationNumbers := [{} asCell];
 [Reflect defineMethod: #activate on: CompiledUnit as: [:self |
   [Generation commitPrepared: [Generation prepareActivation: self plan: [self publicationPlan: #activate]]]]];
 
-[Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
-  [[[self state] = #rolledBack] ifTrue: [| self] ifFalse: [|
-    [Generation commitPreparedRollback: [Generation prepareRollback: self plan: [self publicationPlan: #rollback]]]]]]];
+[Reflect defineMethod: #rollback on: CompiledUnit as: [:self | [CandidatePolicy rollback: self]]];
 
 [Reflect defineMethod: #activeFor: on: CompiledUnit as: [:self :name |
   [Generation activeCandidateFor: name]]];

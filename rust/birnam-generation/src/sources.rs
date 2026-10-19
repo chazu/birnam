@@ -38,12 +38,3 @@ pub(super) unsafe fn entries(s: &State, q: &Scope<'_>, owner: Oop) -> Result<Vec
         Ok(entries)
     }
 }
-pub(super) unsafe fn replace(s: &State, q: &Scope<'_>, owner: Oop, name: Oop, expected: Oop, next: Oop) -> Result<(), Outcome> {
-    unsafe {
-        let result = call(s, q, owner, b"replaceRecord:named:expected:",
-            &[Operand::object(next), Operand::object(name), Operand::object(expected)])?;
-        if s.is_error(result)? { return Err(Outcome::loaded(Operand::object(result))); }
-        if result != owner { return Err(invalid()); }
-        Ok(())
-    }
-}

@@ -1,5 +1,10 @@
 # Native module decomposition roadmap
 
+**Candidate follow-up (2026-10-18):** Native preparation/transaction files referenced
+in this historical analysis have been removed. Links now point to the
+[authored candidate policy](candidate-policy-migration.md); automatic compensation,
+reservation and setter-postcheck promises below are superseded by explicit undo.
+
 The follow-on [runtime and ABI simplification plan](runtime-and-abi-simplification.md)
 tracks interface, rooting, representation and bootstrap cleanup separately from
 the completed extractions recorded here.
@@ -377,7 +382,7 @@ reclamation only after old executable references are gone.
 
 Sources: [candidate state](../../rust/birnam-generation/src/candidate.rs),
 [ledger](../../rust/birnam-generation/src/candidate_ledger.rs),
-[transactions](../../rust/birnam-generation/src/candidate_transaction.rs),
+[transactions](../../modules/candidate-policy.birnam),
 [authored policy](../../modules/compiled-unit.birnam).
 
 ### Extraction checkpoint: 2026-10-02

@@ -2,8 +2,8 @@
 
 `CompiledUnit` prepares one module's complete successor document without changing
 the running system. Activation applies its declarative method delta and replaces
-that module's source record. Conditional rollback restores the exact selected
-Methods, Globals and prior source record. No adopted generation is required.
+that module's source record. Explicit conditional rollback restores the selected Methods, Globals and prior
+source record when their recorded owners still contain the intended values. No adopted generation is required.
 
 Compiled global references look up the current binding by name when executed.
 They see globals published by later module loads and subsequent replacements;
@@ -42,15 +42,21 @@ native-code reclamation still waits for Execution/TCC's safe checkpoints.
 Errors are values. Rejection before commit leaves dispatch and source authority
 unchanged.
 
-A prepared token observes its target bindings and metadata; it is not a lease on
-the global dictionary or Globals counter. Creating a branch Block or editing a
-name outside the operation's binding/Global scope between preparation and
-commitment is allowed, including a name tracked in another managed module. A replaced setter
-may perform additional edits and return an ordinary success value; Generation
-checks that the requested binding was actually installed or removed. Errors still
-propagate and a no-op setter still fails. Commit, compensation and rollback check
-the selected state, not every binding in the managed ledger. A relevant conflict
-does not itself mark the generation drifted or revoke its inverse. Compilation uses only the registered source of the candidate's own module.
+Prepared operations observe their selected source, targets, Methods and Globals,
+including absence versus present nil. Unrelated edits do not expire a request.
+Preparation descriptors are ordinary one-use objects, not numeric tokens.
+
+Activation is a sequence of ordinary sends, not an automatic transaction. It
+records intended writes before calling current setters. An Error stops the
+operation but can follow real effects; those effects remain, with an explicit undo
+record. No-op or replaced setters are not policed by postchecks. Description fields
+report history and do not authorize code changes.
+
+`rollback` is explicitly requested conditional undo. It skips already-restored
+values, preserves a differing later write and reports `#undoConflict`. Undo can
+itself stop after partial progress; another request resumes by observing current
+values. Neither failure runs a compensating pass or replays the candidate factory.
+Construction is attempted once per retained carrier.
 
 
 ## Complete replacement example
@@ -79,8 +85,9 @@ The candidate declaration must match the existing module. Its dependency vector
 and residual effectful initializer digest must equal the active revision.
 Declarative method additions, replacements, and removals may differ, as may a
 capture-free top-level block binding. Activation rebuilds every such binding
-exactly once and journals its Globals root for compensation, drift detection,
-and rollback. Duplicate bindings, captured projected blocks, indirect targets,
+exactly once and retains before/after Globals values for explicit conditional
+undo. No compensation-capacity reservation is required. Duplicate bindings, captured
+projected blocks, indirect targets,
 first-time target specialization, malformed declarations, stale bases, and
 other changed top-level forms are rejected.
 
@@ -119,9 +126,9 @@ image's canonical programs and selection. Neither path adopts a generation or
 mints replacement CompiledUnits. Retained generation records, aliases and explicit
 annotations survive as ordinary data.
 
-Candidate handles, preparation tokens and inverse journals are process-local.
-Loading drops them even when the saved source description exactly matches live
-code. Recorded `state` and `rollbackAvailable` fields describe history; they do
+Candidate handles and undo state are process-local. Preparation descriptors may
+survive as ordinary descriptions, but loading drops their process-local state even
+when the saved source description exactly matches live code. Recorded `state` and `rollbackAvailable` fields describe history; they do
 not recreate an executable rollback capability. Saving and resaving do not
 reconcile the ledger or alter those fields.
 
@@ -159,8 +166,8 @@ records remain historical data and unreferenced records can be collected.
 
 ## Releasing a handle
 
-`[unit discard]` releases the candidate handle, preparation tokens and undo
-reservation. It returns the unit; installed code, Globals and source registration
+`[unit discard]` releases the candidate handle, preparation descriptors and undo
+state. It returns the unit; installed code, Globals and source registration
 remain. It is valid for an active or superseded unit. A successor can still undo
 to saved code after its predecessor handle is discarded, including discard after
 preparation; it does not reactivate the released handle or rewrite its status.

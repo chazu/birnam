@@ -347,7 +347,7 @@ pub unsafe fn clear_source_bindings(id: Protocol, ns: Oop) {
 pub unsafe fn lifecycle_records(id: Protocol, ns: Oop) {
     unsafe {
         let named = |name: &[u8]| object(send(id, ns, b"at:", &[Operand::object(id.intern_name(name).unwrap())]));
-        for bytes in [include_bytes!("../../../../modules/stdlib.birnam").as_slice(), include_bytes!("../../../../modules/compiled-unit.birnam").as_slice()] {
+        for bytes in [include_bytes!("../../../../modules/stdlib.birnam").as_slice(), include_bytes!("../../../../modules/candidate-policy.birnam").as_slice(), include_bytes!("../../../../modules/compiled-unit.birnam").as_slice()] {
             let source = object(send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(bytes)]));
             let token = retain(id, named(b"Roots"), source);
             let result = object(send(id, named(b"Codegen"), b"evalPersisting:", &[Operand::object(source)]));

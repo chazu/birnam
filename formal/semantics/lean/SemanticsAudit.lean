@@ -348,3 +348,9 @@ import Admission
 #print axioms Birnam.SharedInvocation.source_inverse_restores_owned_write
 #print axioms Birnam.SharedInvocation.source_inverse_keeps_rebinding
 #print axioms Birnam.SharedInvocation.source_inverse_keeps_unrelated_registration
+
+#print axioms Birnam.SharedInvocation.candidate_failure_keeps_effects
+#print axioms Birnam.SharedInvocation.candidate_failure_keeps_undo
+#print axioms Birnam.SharedInvocation.candidate_explicit_undo_preserves_conflict
+#print axioms Birnam.SharedInvocation.candidate_explicit_undo_restores_owned_write
+#print axioms Birnam.SharedInvocation.candidate_explicit_undo_is_idempotent

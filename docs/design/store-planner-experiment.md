@@ -1,5 +1,10 @@
 # Store versus persistent snapshots: build-planning experiment
 
+**Candidate follow-up (2026-10-18):** Native preparation/transaction files referenced
+in this historical analysis have been removed. Links now point to the
+[authored candidate policy](candidate-policy-migration.md); automatic compensation,
+reservation and setter-postcheck promises below are superseded by explicit undo.
+
 **Direction update, 2026-10-13:** retain Store and Relational with their
 self-describing bootstrap, and remove their mandatory role in core language
 operations. Code description through them becomes opt-in. See the
@@ -458,7 +463,7 @@ is not automatically equivalent to previously absent Store fields.
 [REPL enumeration](../../modules/repl.birnam),
 [Doc reverse naming](../../modules/doc.birnam),
 [reflection](../../rust/birnam-codegen-runtime/src/reflection.rs), and
-[Generation's exact global capture](../../rust/birnam-generation/src/candidate_preparation.rs)
+[Generation's exact global capture](../../modules/candidate-policy.birnam)
 read the underlying facts directly. Moving only the Globals getter/setter would
 leave those clients observing another authority.
 
@@ -489,7 +494,7 @@ already enumerates actual Id dictionaries. Its remaining Store dependency includ
 reverse naming through global facts. This supports moving reflection toward owner
 interfaces and making method-fact projection optional.
 
-However, [Generation's running-phase policy](../../rust/birnam-generation/src/candidate_phase.rs)
+However, Generation's historical running-phase policy (`candidate_phase.rs`, since removed)
 is installed through Store's authorizer/observer slots. Reflect, Codegen, Alien
 and Image all participate in that publication route. Retain current admission,
 post-commit notification ordering, errors, reentrant callback handling and Method/
@@ -502,7 +507,7 @@ justify deleting the existing callbacks or changing running-phase policy.
 reads one `#compiledSourceMetadata` value by source identity, validates its digest,
 and persists a Vector if absent. A differing already-present value is rejected.
 This path does not use temporal or relational query evaluation.
-[Generation already has a separate source registry](../../rust/birnam-generation/src/registry.rs)
+Generation then had a separate source registry (`registry.rs`, since removed)
 with sealed state, roots and staged exchange. An explicit imageable source record
 could associate original source and compiler metadata without putting the mapping
 in the global fact table.
@@ -537,11 +542,11 @@ fields and immutable source/selection projections in Store. Much of that data
 could eventually become owned records. The transaction mechanisms need separate
 analysis:
 
-- [Prepared tokens](../../rust/birnam-generation/src/candidate_preparation.rs) bind
+- [Prepared tokens](../../modules/candidate-policy.birnam) bind
   Store's numeric basis, Id's binding epoch, precise direct bindings, and exact
   global absence/value. Change-and-restore (ABA) is detectable. A saved Map root or
   equality comparison alone is not a replacement for all these observations.
-- [Inverse journals](../../rust/birnam-generation/src/candidate_transaction.rs)
+- [Inverse journals](../../modules/candidate-policy.birnam)
   restore only candidate-owned writes, conditionally on expected current values.
   They reserve capacity for forward publication and compensation. Unrelated
   callback facts must survive failure; restoring an entire previous world would

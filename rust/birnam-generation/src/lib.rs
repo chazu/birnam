@@ -205,8 +205,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             (vt, b"prepareImageSnapshot".as_slice(), Op::PrepareImageSnapshot),
             (
                 vt,
-                b"discardCandidate:".as_slice(),
-                Op::Candidate(candidate::Op::Discard),
+                b"releaseCandidate:".as_slice(),
+                Op::Candidate(candidate::Op::Release),
             ),
             (
                 vt,
@@ -223,31 +223,9 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"mapCandidate:".as_slice(),
                 Op::Candidate(candidate::Op::Map),
             ),
-            (
-                vt,
-                b"prepareActivation:plan:".as_slice(),
-                Op::Candidate(candidate::Op::Prepare),
-            ),
-            (
-                vt,
-                b"discardPrepared:".as_slice(),
-                Op::Candidate(candidate::Op::DiscardPrepared),
-            ),
-            (
-                vt,
-                b"commitPrepared:".as_slice(),
-                Op::Candidate(candidate::Op::Commit),
-            ),
-            (
-                vt,
-                b"prepareRollback:plan:".as_slice(),
-                Op::Candidate(candidate::Op::PrepareRollback),
-            ),
-            (
-                vt,
-                b"commitPreparedRollback:".as_slice(),
-                Op::Candidate(candidate::Op::CommitRollback),
-            ),
+            (vt, b"candidateUnits".as_slice(), Op::Candidate(candidate::Op::Units)),
+            (vt, b"candidateDataFor:".as_slice(), Op::Candidate(candidate::Op::Data)),
+            (vt, b"candidatePolicyCellFor:".as_slice(), Op::Candidate(candidate::Op::PolicyCell)),
             (
                 vt,
                 b"adoptInitialGeneration:".as_slice(),
@@ -261,11 +239,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (vt, b"beginImageApplication".as_slice(), Op::BeginImageApplication),
             (vt, b"finishImageApplication".as_slice(), Op::FinishImageApplication),
-            (
-                vt,
-                b"activeCandidateFor:".as_slice(),
-                Op::Candidate(candidate::Op::Active),
-            ),
             (
                 vt,
                 b"compileCandidate:named:output:".as_slice(),

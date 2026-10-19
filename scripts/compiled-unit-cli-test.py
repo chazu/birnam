@@ -136,8 +136,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     # Retain useful failure evidence even when an earlier form failed to compile.
     assert result.returncode == 0, (result.returncode, transcript, result.stderr)
     assert result.stderr.decode().splitlines() == [
-        'unit has no current binding ledger',
-        'candidate is not mapped'
+        'unit has no current binding ledger'
     ], (transcript, result.stderr)
     for index, label in enumerate(checks, 1):
         assert f'#[#compiledUnitCheck {index} true]\n' in transcript, (label, transcript)

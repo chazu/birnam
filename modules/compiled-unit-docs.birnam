@@ -47,6 +47,6 @@
   "Replace the owned numbering Map explicitly. The nextGenerationFor: algorithm uses the current accessor methods."];
 
 [Doc for: #discard in: #compiledUnit says:
-  "Release this handle, its prepared tokens and inverse reservation. Answers self; installed bindings and files remain. Does not force GC or native retirement."];
+  "Release this handle, its prepared tokens and explicit undo record. Answers self; installed bindings and files remain. Does not force GC or native retirement."];
 [Doc for: #removeFiles in: #compiledUnit says:
   "Explicitly remove matching admitted artifact/sidecar contents while this handle is open. Answers self or Error; does not discard the handle. Partial file cleanup is not rolled back."];

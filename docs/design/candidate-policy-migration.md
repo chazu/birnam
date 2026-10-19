@@ -30,8 +30,7 @@ prove that all of the earlier startup regression has disappeared.
 
 ## 2. Candidate failure contract
 
-Investigation and implementation status will be recorded here before the policy
-cutover. Ordinary message dispatch, Id-only module interoperability, deoptimization
+Ordinary message dispatch, Id-only module interoperability, deoptimization
 and independently owned executable lifetimes remain language invariants. Automatic
 compensation after candidate failure is a separate feature choice, not a condition
 of native memory safety or of explicit conditional undo.
@@ -62,14 +61,17 @@ requirement. They also could not promise arbitrary callback atomicity.
 This is an explicit change to the candidate API's failure contract, aligned with
 the selected responsibility boundary for image application. It is not a change to
 Id dispatch, GC/code ownership, calling conventions or deoptimization.
+This removes the candidate's use of Globals compensation reservations; the
+generic optional Globals reservation operations themselves are unchanged.
 
 ## 3. Authored policy boundary
 
-The planned port puts preparation, construction sequencing, activation, explicit
+The port puts preparation, construction sequencing, activation, explicit
 undo, active-unit queries and discard policy in `candidate-policy.birnam`.
 Native Generation retains artifact admission/mapping, optional certification and
 an opaque ordinary policy Cell rooted by each existing process-local artifact
-carrier. Native code never interprets the Cell's contents. The Cell and its data
+carrier. Native code never interprets the Cell's contents. Discard releases the carrier before updating descriptive fields; an
+Error from a replaced description setter cannot resurrect the handle. The Cell and its data
 are inspectable through the carrier's Id protocol; there is no second native
 policy representation or new registry service. This bridge is tied to the remaining
 artifact implementation, not a permanent bootstrap dependency.
@@ -87,4 +89,61 @@ bindings must retain their original raw ABI on restoration; ordinary methodFor:
 capture behavior is unchanged. This is owner-level representation conversion, not
 Generation inspecting foreign layouts or guarding ordinary sends against replacement.
 
-Implementation and qualification of this boundary are in progress.
+The native preparation and transaction files are removed (1,241 lines); a small
+read-only observation helper remains for optional certification. Candidate policy
+is now 418 lines of Birnam. The existing carrier owns one opaque ordinary
+Cell, not a second native representation of plans or undo journals. The generic
+Execution additions expose direct Method observations and exact binding matching
+through Id; they also preserve the raw ABI of foreign native bindings on restore.
+A direct-native observation reuses its existing entry with a Boolean flag; it does
+not add a second native-entry copy to every Method.
+
+The policy participates in the five-module source bootstrap and is retained in
+compiled tool metadata. There is no new native policy seed. Task cancellation uses
+the existing TaskControl cleanup protocol to release the per-carrier operation
+scope while retaining attempted writes for explicit undo. Each conditional
+check-and-write runs in an existing TaskExecutor transition so automatic budget
+scheduling cannot split it. This does not make arbitrary replaced callbacks atomic:
+they still have their ordinary effects, and explicit waits inside a transition
+follow TaskControl's existing error behavior. A before/after probe observed four
+writes outside a transition before the fix and zero afterward.
+
+## Qualification and limits
+
+Qualification results and source/log hashes are recorded in the
+[receipt](../measurements/candidate-policy-20261018.json). This is a cached Cargo
+development build into a fresh disposable prefix, not a cold release qualification
+or user installation. The migration does not prove Store-free full bootstrap:
+TaskExecutor and other pending owners still have their existing dependencies.
+Artifact admission/mapping and optional certification remain native; their future
+migration must remove the carrier bridge rather than preserve it as a permanent
+native policy service.
+
+The formal models establish bounded failure/undo, conflict preservation, at-most-once
+construction and executable lifetime properties. They do not verify the production
+compiler. Earlier PreparedAdmission/SourceOwner examples remain historical models
+of stronger compensation/postcondition contracts; CandidateUndo is the model for
+this slice. The native tests exercise both synchronous and resumable candidates;
+Host tests exercise ordinary task failure and entered-code replacement.
+Native fault-injection fixtures now distinguish direct from inherited bindings
+after Generation acquires authored behavior. They locate inherited primitives
+through lookup and restore the original dictionary absence. Other fixture updates
+replace automatic-compensation expectations with explicit undo, root observed
+selectors across precise GC, and check the expanded installed module inventory.
+
+
+Qualification completed: 847 language assertions; all 17 Host generation checks
+(across the group and its corrected image/CLI continuation); native candidate,
+certification, invocation and image suites, including 20 repeated image-resave
+cycles; installed-manifest/relocation checks; and parser/compiler-disabled startup.
+Lean checked 391 theorems and rejected 122 mutations; TLC produced 266 expected
+outcomes. Execution, Generation and HostEntry retain their original native exports
+and dynamic dependency sets.
+
+The complete policy matrix ran before the final representation-only Execution
+compaction. The final `compact-prefix` build repeated the seven affected native
+suites, four Host binding/task/source/entered-code checks, lifecycle-record image
+roundtrips, parser/compiler-disabled startup and all 847 language assertions.
+Production source hashes match the packaged source. The receipt distinguishes
+these builds and records the fixture corrections; this is not a new release or a
+user-prefix installation.

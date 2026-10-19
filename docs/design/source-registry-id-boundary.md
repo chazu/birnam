@@ -1,5 +1,10 @@
 # Source registry: Id-only ownership design check
 
+**Candidate follow-up (2026-10-18):** Native preparation/transaction files referenced
+in this historical analysis have been removed. Links now point to the
+[authored candidate policy](candidate-policy-migration.md); automatic compensation,
+reservation and setter-postcheck promises below are superseded by explicit undo.
+
 2026-10-18. Source inspection of `b893ccee`. This is a design check, not an
 implemented migration or a runtime qualification receipt.
 
@@ -104,7 +109,7 @@ conditional-slot messages are available to the authored owner through Id.
 
 ## Gate 1: candidate commit has a newly fallible boundary
 
-The [current commit](../../rust/birnam-generation/src/candidate_transaction.rs)
+The [current commit](../../modules/candidate-policy.birnam)
 finishes callback-capable writes, checks and compensation handling, then calls
 `registry.replace_record` and installs native candidate ownership without further
 outgoing messages. Turning only that call into an Id send is insufficient: the

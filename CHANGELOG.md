@@ -8,10 +8,21 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move candidate preparation, activation, explicit undo and discard policy into
+  Birnam. Remove native prepared/undo tables, Globals compensation reservations,
+  automatic failure compensation and setter postchecks. Failures retain partial
+  effects for explicitly requested conditional undo; later conflicting writes
+  survive. Ordinary preparation descriptors become inert across image loads.
+  Native artifact carriers root opaque ordinary policy Cells; Execution/TCC still
+  own executable lifetimes and inter-module operations use Id.
+- Validate registry names through `moduleMetadataOf:` instead of constructing full
+  source revisions: one retained-metadata read instead of two; about 25% faster
+  for the measured startup-plus-30-validations workload.
+
 - Move source-registry ownership into an early Birnam object in Globals. Compiler,
   candidate and image consumers use current Id messages; remove the native table
   and its seed requirement. Include source writes in conditional candidate
-  compensation. Images preserve the ordinary owner and aliases via
+  undo. Images preserve the ordinary owner and aliases via
   `sourceRegistryV2`; recreate older inventory-only images with the new runtime.
 
 - Simplify image application to invalidate old candidate/preparation/certification

@@ -1,0 +1,418 @@
+// Candidate coordination is ordinary policy. Native Generation retains admitted
+// artifact carriers and roots one opaque Cell per carrier, never its contents.
+[Module named: #candidatePolicy requires: #[#modules #stdlib]];
+[[|
+let policy := [Object clone];
+let preparation := [ObjectModel newSlots: #[nil] parent: ObjectVt];
+let one := [Execution wordResultOf: 1 selector: #word];
+[Reflect defineMethod: #slotNames on: preparation as: [:self | #[#unit]]];
+[Reflect defineMethod: #unit on: preparation as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #unit: on: preparation as: [:self :unit | [ObjectModel slot: 0 in: self put: unit]; self]];
+[Globals at: #CandidatePreparation put: preparation];
+[Globals at: #CandidatePolicy put: policy];
+
+[Reflect defineMethod: #put:in:value: on: policy as: [:self :key :cell :value |
+  [cell set: [[cell value] at: key put: value]]
+]];
+[Reflect defineMethod: #transition: on: policy as: [:self :body |
+  let executor := TaskExecutor;
+  [[executor isNil] ifTrue: [| [body value]] ifFalse: [| [executor transition: body]]]
+]];
+[Reflect defineMethod: #ensure:cleanup: on: policy as: [:self :body :cleanup |
+  let executor := TaskExecutor;
+  [[executor isNil] ifTrue: [| [body ensure: cleanup]] ifFalse: [|
+    let task := [executor current];
+    [[task isNil] ifTrue: [| [body ensure: cleanup]] ifFalse: [|
+      [[task canControl] ifTrue: [| [task ensure: body cleanup: cleanup]] ifFalse: [| [body ensure: cleanup]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #cellFor: on: policy as: [:self :unit |
+  let cell := [Generation candidatePolicyCellFor: unit];
+  [[[cell isError] | [cell isNil]] ifTrue: [| cell] ifFalse: [|
+    [self transition: [|
+      [[[cell value] isNil] ifTrue: [| [cell set: {#busy -> false, #prepared -> nil, #undo -> nil, #constructed -> nil, #started -> false, #status -> #candidate}]]];
+      cell
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #withUnit:do: on: policy as: [:self :unit :body |
+  let cell := [self cellFor: unit];
+  [[cell isError] ifTrue: [| cell] ifFalse: [|
+    [[cell isNil] ifTrue: [| [Error kind: #invalidCandidate]] ifFalse: [|
+      let entered := [self transition: [|
+        [[[cell value] at: #busy] ifTrue: [| [Error kind: #candidateBusy]] ifFalse: [| [self put: #busy in: cell value: true]; cell]]
+      ]];
+      [[entered isError] ifTrue: [| entered] ifFalse: [|
+        [self ensure: [| [body value: cell]] cleanup: [| [self put: #busy in: cell value: false]]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #open:cell: on: policy as: [:self :unit :cell |
+  let live := [Generation candidatePolicyCellFor: unit];
+  [[live isError] ifTrue: [| live] ifFalse: [|
+    [[live == cell] ifTrue: [| true] ifFalse: [| [Error kind: #invalidCandidate]]]
+  ]]
+]];
+[Reflect defineMethod: #targetFor: on: policy as: [:self :name |
+  let target := [[Globals includes: name] ifTrue: [| [Globals at: name]] ifFalse: [| [Namespace at: name]]];
+  [target ifNotError: [:value |
+    [[value isNil] ifTrue: [| [Error kind: #unstableMethodTarget]] ifFalse: [|
+      let flag := [Execution optionalWordResultOf: Vtable selector: #isBehavior: argument: value resultFactory: Word];
+      [flag ifNotError: [:bits |
+        [[bits = one] ifTrue: [|
+          [[[Namespace nameOf: value] isNil] ifTrue: [| [Error kind: #unstableMethodTarget]] ifFalse: [| #[value value]]]
+        ] ifFalse: [|
+          let behavior := [Reflect vtableOf: value];
+          [behavior ifNotError: [:vt |
+            [[[Vtable ownerOf: vt] == value] ifTrue: [| #[value vt]] ifFalse: [| [Error kind: #unstableMethodTarget]]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #bindingsFor: on: policy as: [:self :info |
+  [[info at: 4] inject: #[] into: [:out :operation |
+    [[out isError] ifTrue: [| out] ifFalse: [|
+      let target := [self targetFor: [operation at: 0]];
+      [[target isError] ifTrue: [| target] ifFalse: [|
+        let method := [Execution directMethodFor: [operation at: 1] in: [target at: 1]];
+        [[method isError] ifTrue: [| method] ifFalse: [|
+          [[[[operation at: 2] not] & [method isNil]] ifTrue: [| [Error kind: #missingDirectMethod]] ifFalse: [|
+            [out add: #[[operation at: 0] [target at: 0] [target at: 1] [operation at: 1] method]]
+          ]]
+        ]]
+      ]]
+    ]]]]
+]];
+[Reflect defineMethod: #globalsFor: on: policy as: [:self :info |
+  [[info at: 5] inject: #[] into: [:out :output |
+    [[out isError] ifTrue: [| out] ifFalse: [|
+      [[[output at: 0] == #global] ifTrue: [|
+        let name := [output at: 1];
+        let value := [Globals bindingAt: name];
+        [[value isError] ifTrue: [| value] ifFalse: [| [out add: #[name value]]]]
+      ] ifFalse: [| out]]
+    ]]]]
+]];
+[Reflect defineMethod: #rowsEqual:to: on: policy as: [:self :left :right |
+  [[[left size] = [right size]] ifTrue: [|
+    [[[left size] = 0] ifTrue: [| true] ifFalse: [| [[left at: 0] == [right at: 0]]]]
+  ] ifFalse: [| false]]
+]];
+// The same selected-value check serves preflight and explicit undo. It does not
+// check which implementation answers an ordinary message.
+[Reflect defineMethod: #matches:with: on: policy as: [:self :row :expected |
+  let kind := [row at: 0]; let owner := [row at: 1]; let key := [row at: 2];
+  [[kind == #method] ifTrue: [|
+    [[expected isNil] ifTrue: [|
+      [[Execution directMethodFor: key in: owner] ifNotError: [:method | [method isNil]]]
+    ] ifFalse: [| [expected bindingMatchesIn: owner as: key]]]
+  ] ifFalse: [|
+    [[kind == #global] ifTrue: [|
+      [[owner bindingAt: key] ifNotError: [:row | [self rowsEqual: row to: expected]]]
+    ] ifFalse: [| [[owner recordFor: key] ifNotError: [:record | [record == expected]]]]]
+  ]]
+]];
+[Reflect defineMethod: #require:kind: on: policy as: [:self :answer :kind |
+  [answer ifNotError: [:matched | [matched ifTrue: [| true] ifFalse: [| [Error kind: kind]]]]]
+]];
+[Reflect defineMethod: #write:value: on: policy as: [:self :row :value |
+  let kind := [row at: 0]; let owner := [row at: 1]; let key := [row at: 2];
+  [[kind == #method] ifTrue: [|
+    [[value isNil] ifTrue: [| [owner removeMethod: key]] ifFalse: [| [owner addMethod: value as: key]]]
+  ] ifFalse: [|
+    [[kind == #global] ifTrue: [|
+      [[[value size] = 0] ifTrue: [| [owner remove: key]] ifFalse: [| [owner at: key put: [value at: 0]]]]
+    ] ifFalse: [|
+      let expected := [[value == [row at: 3]] ifTrue: [| [row at: 4]] ifFalse: [| [row at: 3]]];
+      [owner replaceRecord: value named: key expected: expected]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #preflight: on: policy as: [:self :plan |
+  let info := [plan at: 2]; let sourceOwner := [plan at: 3];
+  [[SourceRegistry == sourceOwner] ifTrue: [|
+    [[sourceOwner recordFor: [info at: 1]] ifNotError: [:source |
+      [[source == [plan at: 4]] ifTrue: [|
+        let bindings := [[plan at: 6] inject: true into: [:ok :binding |
+          [ok ifNotError: [:ignored |
+            [[self targetFor: [binding at: 0]] ifNotError: [:target |
+              [[[[target at: 0] == [binding at: 1]] & [[target at: 1] == [binding at: 2]]] ifTrue: [|
+                let row := #[#method [binding at: 2] [binding at: 3] [binding at: 4] nil];
+                [self require: [self matches: row with: [binding at: 4]] kind: #staleGeneration]
+              ] ifFalse: [| [Error kind: #staleGeneration]]]
+            ]]
+          ]]]];
+        [bindings ifNotError: [:ignored |
+          [[plan at: 7] inject: true into: [:ok :binding |
+            [ok ifNotError: [:ignored |
+              [[Globals bindingAt: [binding at: 0]] ifNotError: [:row |
+                [self require: [self rowsEqual: row to: [binding at: 1]] kind: #staleGeneration]
+              ]]
+            ]]]]
+        ]]
+      ] ifFalse: [| [Error kind: #staleGeneration]]]
+    ]]
+  ] ifFalse: [| [Error kind: #staleGeneration]]]
+]];
+[Reflect defineMethod: #prepare:plan: on: policy as: [:self :unit :request |
+  [self withUnit: unit do: [:cell |
+    let data := [cell value];
+    [[[[data at: #prepared] notNil] | [[data at: #undo] notNil]] ifTrue: [| [Error kind: #candidatePreparationFailed]] ifFalse: [|
+      [[[[request size] = 2] & [[[request at: 0] == #activate] & [[request at: 1] == unit]]] ifTrue: [|
+        let info := [Generation candidateDataFor: unit];
+        [[info isError] ifTrue: [| info] ifFalse: [|
+          [[[info at: 6] isNil] ifTrue: [| [Error kind: #candidatePreparationFailed]] ifFalse: [|
+            let owner := SourceRegistry; let source := [owner recordFor: [info at: 1]];
+            [source ifNotError: [:source |
+            [[source isNil] ifTrue: [| [Error kind: #moduleNotRegistered]] ifFalse: [|
+              let metadata := [Codegen moduleMetadataOf: source];
+              [[metadata isError] ifTrue: [| metadata] ifFalse: [|
+                [[[[metadata isNil] not] & [[metadata at: 4] = [info at: 3]]] ifTrue: [|
+                  let bindings := [self bindingsFor: info]; let globals := [self globalsFor: info];
+                  [[bindings isError] ifTrue: [| bindings] ifFalse: [|
+                    [[globals isError] ifTrue: [| globals] ifFalse: [|
+                      let token := [CandidatePreparation clone]; [token unit: unit];
+                      let plan := #[token #activate info owner source [self activeFor: [info at: 1]] bindings globals];
+                      let valid := [self preflight: plan];
+                      [[valid isError] ifTrue: [| valid] ifFalse: [| [self put: #prepared in: cell value: plan]; token]]
+                    ]]
+                  ]]
+                ] ifFalse: [| [Error kind: #staleGeneration]]]
+              ]]
+            ]]
+            ]]
+          ]]
+        ]]
+      ] ifFalse: [| [Error kind: #candidatePreparationFailed]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #construct:cell: on: policy as: [:self :info :cell |
+  let data := [cell value]; let cached := [data at: #constructed];
+  [[cached notNil] ifTrue: [| cached] ifFalse: [|
+    [[data at: #started] ifTrue: [| [Error kind: #candidateConstructionFailed]] ifFalse: [|
+      [self put: #started in: cell value: true];
+      let factory := [Block fromMethod: [info at: 6] captures: #[]];
+      let values := [[Machine new] runBlock: factory];
+      [[values isError] ifTrue: [| values] ifFalse: [|
+        let outputs := [info at: 5]; let adapters := [info at: 7];
+        [[[values size] = [outputs size]] ifTrue: [|
+          let methods := [Cell with: [Map new]]; let globals := [Cell with: #[]]; let nextAdapter := [Cell with: 0];
+          let built := [0 to: [[outputs size] - 1] do: [:i |
+            let output := [outputs at: i]; let value := [values at: i];
+            [[[output at: 0] == #global] ifTrue: [|
+              [globals set: [[[globals value] reject: [:row | [[row at: 0] == [output at: 1]]]] add: #[[output at: 1] #[value]]]]
+            ] ifFalse: [|
+              let method := [[adapters at: [nextAdapter value]] initializeWith: value];
+              [[method isError] ifTrue: [| method] ifFalse: [|
+                [methods set: [[methods value] at: [output at: 1] put: method]]; [nextAdapter inc]
+              ]]
+            ]]
+          ]];
+          [[built isError] ifTrue: [| built] ifFalse: [|
+            [[[nextAdapter value] = [adapters size]] ifTrue: [|
+              let result := #[[methods value] [globals value]]; [self put: #constructed in: cell value: result]; result
+            ] ifFalse: [| [Error kind: #invalidCandidate]]]
+          ]]
+        ] ifFalse: [| [Error kind: #invalidCandidate]]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #attempt:unit:cell: on: policy as: [:self :row :unit :cell |
+  // One conditional write must not be split by automatic task scheduling.
+  [self transition: [|
+  [[self open: unit cell: cell] ifNotError: [:ignored |
+    [[self require: [self matches: row with: [row at: 3]] kind: #staleGeneration] ifNotError: [:ignored |
+      let undo := [[cell value] at: #undo];
+      [self put: #undo in: cell value: [undo at: #attempts put: [[undo at: #attempts] add: row]]];
+      [self write: row value: [row at: 4]]
+    ]]
+  ]]
+  ]]
+]];
+[Reflect defineMethod: #apply:unit:cell: on: policy as: [:self :plan :unit :cell |
+  let valid := [self preflight: plan];
+  [[valid isError] ifTrue: [| valid] ifFalse: [|
+    let info := [plan at: 2]; let made := [self construct: info cell: cell];
+    [[made isError] ifTrue: [| made] ifFalse: [|
+      let still := [self preflight: plan];
+      [[still isError] ifTrue: [| still] ifFalse: [|
+        // Retain the planned owners/values before any publication can call out.
+        [self put: #undo in: cell value: {#attempts -> #[], #prior -> [plan at: 5], #info -> info}];
+        [self put: #status in: cell value: #applying];
+        let described := [unit rollbackAvailable: true];
+        let starting := [[described isError] ifTrue: [| described] ifFalse: [| [unit state: #applying]]];
+        let globalResult := [[starting isError] ifTrue: [| starting] ifFalse: [|
+          [[made at: 1] inject: unit into: [:result :global |
+          [[result isError] ifTrue: [| result] ifFalse: [|
+            let name := [global at: 0];
+            let target := [[plan at: 6] detect: [:b | [[b at: 0] == name]]];
+            [[target notNil] ifTrue: [| [Error kind: #unstableMethodTarget]] ifFalse: [|
+              let before := [[plan at: 7] detect: [:b | [[b at: 0] == name]]];
+              [self attempt: #[#global Globals name [before at: 1] [global at: 1]] unit: unit cell: cell]
+            ]]
+          ]]]];
+        ]];
+        let changed := [[globalResult isError] ifTrue: [| globalResult] ifFalse: [|
+          [0 to: [[[plan at: 6] size] - 1] do: [:i |
+            let binding := [[plan at: 6] at: i];
+            let target := [self targetFor: [binding at: 0]];
+            [[target isError] ifTrue: [| target] ifFalse: [|
+              [[[[target at: 0] == [binding at: 1]] & [[target at: 1] == [binding at: 2]]] ifTrue: [|
+                [self attempt: #[#method [binding at: 2] [binding at: 3] [binding at: 4] [[made at: 0] at: i]] unit: unit cell: cell]
+              ] ifFalse: [| [Error kind: #staleGeneration]]]
+            ]]
+          ]]
+        ]];
+        let sourced := [[changed isError] ifTrue: [| changed] ifFalse: [|
+          [[SourceRegistry == [plan at: 3]] ifTrue: [|
+            [self attempt: #[#source [plan at: 3] [info at: 1] [plan at: 4] [info at: 2]] unit: unit cell: cell]
+          ] ifFalse: [| [Error kind: #staleGeneration]]]
+        ]];
+        [[sourced isError] ifTrue: [|
+          [self put: #status in: cell value: #failed]; [unit rollbackAvailable: true]; [unit state: #failed]; sourced
+        ] ifFalse: [|
+          [self put: #status in: cell value: #active];
+          let before := [plan at: 5];
+          [[[before notNil] & [[Generation candidatePolicyCellFor: before] notNil]] ifTrue: [| [before state: #superseded]]];
+          let described := [unit rollbackAvailable: true];
+          [[described isError] ifTrue: [| described] ifFalse: [| [unit state: #active]]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #prepareUndo:plan: on: policy as: [:self :unit :request |
+  let holder := [self cellFor: unit];
+  [[holder isNil] ifTrue: [| [Error kind: #rollbackUnavailable]] ifFalse: [|
+    [self withUnit: unit do: [:cell |
+      let undo := [[cell value] at: #undo];
+      [[undo isNil] ifTrue: [| [Error kind: #rollbackUnavailable]] ifFalse: [|
+        [[[[cell value] at: #prepared] notNil] ifTrue: [| [Error kind: #candidatePreparationFailed]] ifFalse: [|
+          [[[[request size] = 2] & [[[request at: 0] == #rollback] & [[request at: 1] == unit]]] ifTrue: [|
+            let token := [CandidatePreparation clone]; [token unit: unit];
+            [self put: #prepared in: cell value: #[token #rollback undo]]; token
+          ] ifFalse: [| [Error kind: #invalidPreparedToken]]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #undoRow:unit:cell:write: on: policy as: [:self :row :unit :cell :write |
+  [self transition: [|
+  [[self open: unit cell: cell] ifNotError: [:ignored |
+    [[self matches: row with: [row at: 3]] ifNotError: [:before |
+      [before ifTrue: [| unit] ifFalse: [|
+        [[self require: [self matches: row with: [row at: 4]] kind: #undoConflict] ifNotError: [:ignored |
+          [write ifTrue: [| [self write: row value: [row at: 3]]] ifFalse: [| unit]]
+        ]]
+      ]]
+    ]]
+  ]]
+  ]]
+]];
+[Reflect defineMethod: #undo:unit:cell: on: policy as: [:self :undo :unit :cell |
+  let possible := [[undo at: #attempts] inject: unit into: [:ok :row |
+    [ok ifNotError: [:ignored | [self undoRow: row unit: unit cell: cell write: false]]]
+  ]];
+  [possible ifNotError: [:ignored |
+    let result := [[[undo at: #attempts] reversed] inject: unit into: [:answer :row |
+      [answer ifNotError: [:ignored | [self undoRow: row unit: unit cell: cell write: true]]]
+    ]];
+    [result ifNotError: [:ignored |
+      [self put: #undo in: cell value: nil]; [self put: #status in: cell value: #rolledBack];
+      let prior := [undo at: #prior];
+      [[[prior notNil] & [[Generation candidatePolicyCellFor: prior] notNil]] ifTrue: [| [prior state: #active]]];
+      let described := [unit rollbackAvailable: false];
+      [[described isError] ifTrue: [| described] ifFalse: [| [unit state: #rolledBack]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #tokenState:do: on: policy as: [:self :token :body |
+  [[token isError] ifTrue: [| token] ifFalse: [|
+    [[token isNil] ifTrue: [| [Error kind: #candidatePreparationFailed]] ifFalse: [|
+      [[token unit] ifNotError: [:unit |
+        [[self cellFor: unit] ifNotError: [:holder |
+          [[holder isNil] ifTrue: [| [Error kind: #invalidPreparedToken]] ifFalse: [|
+            [self withUnit: unit do: [:cell |
+              let plan := [[cell value] at: #prepared];
+              [[plan isNil] ifTrue: [| [Error kind: #invalidPreparedToken]] ifFalse: [|
+                [[[plan at: 0] == token] ifTrue: [| [body value: unit value: cell value: plan]] ifFalse: [| [Error kind: #invalidPreparedToken]]]
+              ]]
+            ]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #commit:action: on: policy as: [:self :token :action |
+  [self tokenState: token do: [:unit :cell :plan |
+    [[[plan at: 1] == action] ifTrue: [|
+      [self put: #prepared in: cell value: nil];
+      [[action == #activate] ifTrue: [| [self apply: plan unit: unit cell: cell]] ifFalse: [|
+        [[[plan at: 2] == [[cell value] at: #undo]] ifTrue: [| [self undo: [plan at: 2] unit: unit cell: cell]] ifFalse: [| [Error kind: #invalidPreparedToken]]]
+      ]]
+    ] ifFalse: [| [Error kind: #invalidPreparedToken]]]
+  ]]
+]];
+[Reflect defineMethod: #discardPrepared: on: policy as: [:self :token |
+  [self tokenState: token do: [:unit :cell :plan | [self put: #prepared in: cell value: nil]; unit]]
+]];
+[Reflect defineMethod: #rollback: on: policy as: [:self :unit |
+  let cell := [self cellFor: unit];
+  [[cell isError] ifTrue: [| cell] ifFalse: [|
+    [[cell isNil] ifTrue: [| [Error kind: #rollbackUnavailable]] ifFalse: [|
+      [[[[[cell value] at: #undo] isNil] & [[[cell value] at: #status] == #rolledBack]] ifTrue: [| unit] ifFalse: [|
+        [self commit: [self prepareUndo: unit plan: #[#rollback unit]] action: #rollback]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #discard: on: policy as: [:self :unit |
+  [self withUnit: unit do: [:cell |
+    let released := [Generation releaseCandidate: unit];
+    [[released isError] ifTrue: [| released] ifFalse: [|
+      let described := [unit rollbackAvailable: false];
+      [[described isError] ifTrue: [| described] ifFalse: [| [unit state: #discarded]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #activeFor: on: policy as: [:self :name |
+  let source := [SourceRegistry recordFor: name];
+  [source ifNotError: [:source |
+  let units := [Generation candidateUnits];
+  [[units isError] ifTrue: [| units] ifFalse: [|
+    [units inject: nil into: [:found :unit |
+      [[found isError] ifTrue: [| found] ifFalse: [|
+        let cell := [Generation candidatePolicyCellFor: unit];
+        [[cell isError] ifTrue: [| cell] ifFalse: [|
+          let data := [cell value];
+          [[data isNil] ifTrue: [| found] ifFalse: [|
+            let undo := [data at: #undo];
+            [[undo isNil] ifTrue: [| found] ifFalse: [|
+              let info := [undo at: #info];
+              [[[[info at: 1] == name] & [[info at: 2] == source]] ifTrue: [| unit] ifFalse: [| found]]
+            ]]
+          ]]
+        ]]
+      ]]]]
+  ]]
+  ]]
+]];
+policy
+] value];
+
+[Reflect defineMethod: #prepareActivation:plan: on: Generation as: [:self :unit :plan | [CandidatePolicy prepare: unit plan: plan]]];
+[Reflect defineMethod: #prepareRollback:plan: on: Generation as: [:self :unit :plan | [CandidatePolicy prepareUndo: unit plan: plan]]];
+[Reflect defineMethod: #commitPrepared: on: Generation as: [:self :token | [CandidatePolicy commit: token action: #activate]]];
+[Reflect defineMethod: #commitPreparedRollback: on: Generation as: [:self :token | [CandidatePolicy commit: token action: #rollback]]];
+[Reflect defineMethod: #discardPrepared: on: Generation as: [:self :token | [CandidatePolicy discardPrepared: token]]];
+[Reflect defineMethod: #discardCandidate: on: Generation as: [:self :unit | [CandidatePolicy discard: unit]]];
+[Reflect defineMethod: #activeCandidateFor: on: Generation as: [:self :name | [CandidatePolicy activeFor: name]]];
+[Module markLoaded: #candidatePolicy]

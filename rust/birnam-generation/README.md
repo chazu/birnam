@@ -13,14 +13,20 @@ Identity, dependency and residual-initializer compatibility remain checked.
 Inspection and mapping do not run the candidate factory; construction runs once
 and is retained across retries.
 
-`prepareActivation:plan:` and `prepareRollback:plan:` accept `[action, unit]`.
-Their one-use tokens retain selected target/behavior identities, direct Methods,
-projected Globals (including presence), lifecycle fields and one source record.
-Commit sends to current setters and checks actual results, preserving Errors and
-other effects. Conditional compensation/undo never erases a differing callback
-write. Source publication replaces only the selected module row. Independent
-modules can roll back independently; shared bindings and changed selected source
-records can conflict. No source-registry-wide mutation count expires a token.
+Candidate preparation, construction sequencing, activation, undo, active queries
+and discard policy are authored in `candidate-policy.birnam`. The native carrier
+roots one opaque ordinary Cell per admitted artifact; native code never reads its
+contents. The Cell is exposed through `candidatePolicyCellFor:`. Carrier data and
+unit enumeration use `candidateDataFor:` / `candidateUnits`; `releaseCandidate:`
+releases only carrier ownership. There is no native prepared-token or undo table.
+
+The authored `prepareActivation:plan:` / `prepareRollback:plan:` messages accept
+`[action, unit]` and return ordinary one-use preparation descriptors. Activation
+records planned writes before outgoing sends. Failure retains partial effects and
+explicit undo; it never attempts automatic compensation. Undo is conditional on
+recorded owners/values, preserves intervening writes, and can be retried after a
+partial failure. No-op setters and descriptive fields are not policed by postchecks.
+Ordinary message dispatch is independent of all of these operations.
 
 Whole-program certification is separate: `DispatchGeneration adoptCurrent`
 projects registered source and calls `adoptInitialGeneration:`. Re-certification
@@ -31,8 +37,8 @@ candidate commit does not manufacture a certificate or update a global generatio
 Source records are ordinary objects retained by SourceRegistry. Generation reads
 its public protocol through Id, with no backing table, slot-layout access or
 owner cache. Prepared work and inverses retain their selected registry receiver.
-Source replacement participates in the same conditional compensation as other
-explicit candidate writes; a rebound owner is never mistaken for that receiver.
+Source replacement participates in the same explicit conditional undo as other
+candidate writes; a rebound owner is never mistaken for that receiver.
 Snapshot admission checks imageability at registered authored selectors, not
 equality to old source bodies. Images restore the owner and its aliases directly.
 
@@ -43,7 +49,7 @@ ownership never authorizes forcibly unmapping their code.
 Activation and rollback are ordinary sends. Host does not detect or fulfill a
 special result type. Physical retirement checkpoints remain independent.
 
-`discardCandidate:` releases the handle, prepared tokens and inverse reservation,
+`discardCandidate:` releases the handle, preparation descriptors and explicit undo state,
 including for an active unit, and returns the unit. It does not delete files,
 collect, checkpoint or return a physical-disposal receipt. `removeCandidateFiles:`
 is separate conditional cleanup while a handle is open. Optional

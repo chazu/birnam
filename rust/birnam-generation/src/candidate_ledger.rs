@@ -1,7 +1,7 @@
 //! Transient observations of the durable current generation. The dictionary is
 //! canonical; these snapshots detect drift and retain exact inverse Methods.
 use super::*;
-use preparation::{Binding, Global};
+use observation::{Binding, Global};
 
 // Inspect only Block values through their owner messages. Behavior ancestry
 // includes compiler-created private Block behaviors; it cannot admit a scalar
@@ -38,7 +38,7 @@ unsafe fn projected_program(
             return Ok(None);
         }
         let captures = call(s, q, value, b"captureCount", &[])?;
-        if preparation::number(s, captures)? != 0 {
+        if observation::number(s, captures)? != 0 {
             return Ok(None);
         }
         let bytes = call(
@@ -118,25 +118,25 @@ pub(super) unsafe fn matches(
         }
         // Observe binding owners coherently across callbacks. Explicit facts are
         // independent of this lifecycle record.
-        let global_basis = preparation::global_basis(s, q)?;
-        let epoch = preparation::epoch(s)?;
+        let global_basis = observation::global_basis(s, q)?;
+        let epoch = observation::epoch(s)?;
         for b in &ledger.bindings {
             let b = &b.binding;
-            if preparation::target(s, q, b.name)? != Some((b.target, b.behavior))
-                || preparation::direct(s, b.behavior, b.selector)? != b.entry
+            if observation::target(s, q, b.name)? != Some((b.target, b.behavior))
+                || observation::direct(s, b.behavior, b.selector)? != b.entry
             {
                 return Ok(Some(false));
             }
         }
         for g in &ledger.globals {
-            if preparation::global(s, q, g.global.name)? != g.global.value {
+            if observation::global(s, q, g.global.name)? != g.global.value {
                 return Ok(Some(false));
             }
         }
         let stable = sources::owner(s, q)? == ledger.source_owner && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
             && current(s, q)? == ledger.generation
-            && preparation::global_basis(s, q)? == global_basis
-            && preparation::epoch(s)? == epoch;
+            && observation::global_basis(s, q)? == global_basis
+            && observation::epoch(s)? == epoch;
         Ok(stable.then_some(true))
     }
 }
@@ -193,14 +193,14 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
                     keys.insert((operation.target, operation.selector));
                 }
             }
-            let epoch = preparation::epoch(s)?;
-            let globals = preparation::global_basis(s, q)?;
+            let epoch = observation::epoch(s)?;
+            let globals = observation::global_basis(s, q)?;
             let nil = s.named(b"nil")?;
             for (name, selector) in keys {
                 let name = symbol(s, q, &name)?;
                 let selector = symbol(s, q, &selector)?;
-                if let Some((_, behavior)) = preparation::target(s, q, name)? {
-                    if let Some(entry) = preparation::direct(s, behavior, selector)? {
+                if let Some((_, behavior)) = observation::target(s, q, name)? {
+                    if let Some(entry) = observation::direct(s, behavior, selector)? {
                         let implementation = s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[Operand::entry(entry)])?;
                         if implementation.as_object().is_none_or(|v| v == nil) {
                             return fail(s, q, b"nonPortableGeneration", b"authored binding has no imageable implementation");
@@ -208,8 +208,8 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
                     }
                 }
             }
-            if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != revision || preparation::epoch(s)? != epoch
-                || preparation::global_basis(s, q)? != globals {
+            if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != revision || observation::epoch(s)? != epoch
+                || observation::global_basis(s, q)? != globals {
                 return fail(s, q, b"staleGeneration", b"bindings changed during snapshot admission");
             }
             return Ok(Operand::object(s.named(b"true")?));
@@ -274,7 +274,7 @@ pub(super) unsafe fn adopt(
                 b"adoption requires the durable predecessor-free generation",
             );
         }
-        let global_basis = preparation::global_basis(s, q)?;
+        let global_basis = observation::global_basis(s, q)?;
         let source_map = field(s, q, generation, b"sourceMap")?;
         let modules = modules(s, q, source_map)?;
         let rows = seq(s, q, source_map)?;
@@ -358,7 +358,7 @@ pub(super) unsafe fn adopt(
         // Authority parsing may collect unrelated private Block behaviors.
         // Observe dictionary stability around the live binding snapshot, after
         // that inert work. The final ledger compares the owned lifecycle fields.
-        let epoch = preparation::epoch(s)?;
+        let epoch = observation::epoch(s)?;
         // Multiple source names can address one dictionary. Validate the final
         // writer in dependency order, while retaining every named observation.
         let mut programs = Vec::<(Oop, Oop, Option<&[u8]>, Option<Vec<u8>>)>::new();
@@ -368,7 +368,7 @@ pub(super) unsafe fn adopt(
             let unit = components[&module.name];
             for operation in &module.metadata.operations {
                 let name = symbol(s, q, &operation.target)?;
-                let Some((target, behavior)) = preparation::target(s, q, name)? else {
+                let Some((target, behavior)) = observation::target(s, q, name)? else {
                     return fail(
                         s,
                         q,
@@ -382,7 +382,7 @@ pub(super) unsafe fn adopt(
                     );
                 };
                 let selector = symbol(s, q, &operation.selector)?;
-                let entry = preparation::direct(s, behavior, selector)?;
+                let entry = observation::direct(s, behavior, selector)?;
                 let mut actual_program = None;
                 let method = if let Some(entry) = entry {
                     // Native entries lacking a portable implementation cannot be
@@ -452,7 +452,7 @@ pub(super) unsafe fn adopt(
             }
             for projected in &module.metadata.projected_globals {
                 let name = symbol(s, q, &projected.name)?;
-                let value = preparation::global(s, q, name)?;
+                let value = observation::global(s, q, name)?;
                 global_programs.retain(|(n, _, _)| *n != name);
                 global_programs.push((name, &projected.program, value));
                 ledger.globals.retain(|g| g.global.name != name);
@@ -499,9 +499,9 @@ pub(super) unsafe fn adopt(
                 return fail(s, q, b"sourceBindingMismatch", &message);
             }
         }
-        let changed = if preparation::global_basis(s, q)? != global_basis {
+        let changed = if observation::global_basis(s, q)? != global_basis {
             Some(b"Globals basis changed during generation adoption".as_slice())
-        } else if preparation::epoch(s)? != epoch {
+        } else if observation::epoch(s)? != epoch {
             Some(b"behavior epoch changed during generation adoption".as_slice())
         } else if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != source_revision || sources::entries(s, q, source_owner)? != registered {
             Some(b"source registry changed during generation adoption".as_slice())

@@ -32,6 +32,8 @@ that initialized Execution instance; repeated loading returns that instance.
 |---|---|---|
 | Method `fromNative:owner:` | NativeEntry, Object owning its code/context | A Method capturing that exact entry and an opaque owner reference. Native authors enumerate their own context references. |
 | Object or behavior `methodFor:` | selector Object | An owned Method for current lookup, or canonical nil. A raw native method can be captured only if its resident image can be pinned. Its author still owns its native context. |
+| Execution `directMethodFor:in:` | selector Object, behavior Object | Observe only that dictionary through Id. Return nil when absent, the actual installed Method when Execution owns it, or an image-pinned observation of a foreign native entry. |
+| Method instance `bindingMatchesIn:as:` | behavior Object, selector Object | Compare its installable entry with the current direct Id binding, returning the ordinary Boolean. This is an explicit observation, not a dispatch guard. |
 | Method instance `invokeOn:` | receiver Object | Invoke its captured implementation with no arguments, applying the existing language result conversion. |
 | Method instance `invokeOn:arguments:` | receiver Object, argument-sequence Object | Read through live `size`/`at:` messages and invoke the captured implementation. Retain the sequence and each intermediate result across callbacks. |
 | Method instance `clone` | none | The same Method identity. |
@@ -41,6 +43,9 @@ that initialized Execution instance; repeated loading returns that instance.
 All sends use current Id lookup. Capturing an actual callable for exact invocation
 is the existing Method semantics, not permission to cache dependency services.
 NativeEntry context is never guessed to be an Oop or decoded by another owner.
+Restoring a direct foreign-native observation with `addMethod:as:` preserves its
+raw entry and ABI, including non-Object results. Ordinary `methodFor:` capture and
+`withImplementation:` construction keep their existing independent semantics.
 At the language invocation boundary, Object stays Object, Unit becomes nil,
 NativeEntry becomes an owned Method, and scalar results/native failures use the
 existing `nativeResultRequiresWrapper`, `nativeInvalidRequest` and `nativeFailure`

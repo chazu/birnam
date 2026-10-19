@@ -1,5 +1,11 @@
 # Prepared edits observe values, not a global mutation count
 
+**2026-10-18 follow-up:** [Candidate policy is now authored in Birnam](candidate-policy-migration.md).
+Its selected contract retains partial effects for explicit conditional undo, removes
+automatic compensation/reservations and setter postchecks, and treats lifecycle
+fields as descriptions. The implementation and qualification below describe the
+earlier slice; those stronger failure promises are superseded.
+
 2026-10-16. Follows lifecycle ownership commit `2671e533` and the
 [generation review](generation-lifecycle-review.md). Implemented and qualified; committed in `e4931deb`. This is a bounded admission simplification, not
 the full optional-certification migration.

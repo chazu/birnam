@@ -1,5 +1,11 @@
 # Logical discard, explicit files and optional diagnostics
 
+**2026-10-18 follow-up:** [Candidate policy is now authored in Birnam](candidate-policy-migration.md).
+Its selected contract retains partial effects for explicit conditional undo, removes
+automatic compensation/reservations and setter postchecks, and treats lifecycle
+fields as descriptions. The implementation and qualification below describe the
+earlier slice; those stronger failure promises are superseded.
+
 2026-10-17. Follows `bc319081`. Implemented and qualified.
 
 `CompiledUnit discard` returns the unit after releasing its native candidate

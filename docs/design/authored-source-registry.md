@@ -1,5 +1,11 @@
 # Source registry owned by Birnam
 
+**2026-10-18 follow-up:** [Candidate policy is now authored in Birnam](candidate-policy-migration.md).
+Its selected contract retains partial effects for explicit conditional undo, removes
+automatic compensation/reservations and setter postchecks, and treats lifecycle
+fields as descriptions. The implementation and qualification below describe the
+earlier slice; those stronger failure promises are superseded.
+
 2026-10-18. Implements the bounded Generation migration selected after
 [one-way image application](one-way-image-application.md), baseline `ab8c36cb`.
 The rest of Generation's candidate and certification implementation remains Rust.

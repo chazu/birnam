@@ -41,6 +41,7 @@ const OPTIONAL_MODULES: &[(&str, &str)] = &[];
 const TOOL_MODULES: &[(&str, &str)] = &[
     ("stdlib", "modules/stdlib.birnam"),
     ("stacklessControl", "modules/stackless-control.birnam"),
+    ("candidatePolicy", "modules/candidate-policy.birnam"),
     ("compiledUnit", "modules/compiled-unit.birnam"),
     ("toml", "modules/toml.birnam"),
     ("config", "modules/config.birnam"),
@@ -907,7 +908,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "build_seed": { "grammar": "birnam-lang-seed", "published": false },
         "production_bootstrap_invocation": std::iter::once("cargo".to_owned()).chain(production_arguments).collect::<Vec<_>>(),
         "stage1_modules": TOOL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
-        "source_bootstrap_modules": ["stdlib", "stacklessControl", "compiledUnit", "isolate"],
+        "source_bootstrap_modules": ["stdlib", "stacklessControl", "candidatePolicy", "compiledUnit", "isolate"],
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
         "staged_manifest": staged_manifest,
@@ -971,7 +972,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "rust-install: published {} ({} native libraries, {} source bootstrap modules, {} authored tools)",
         prefix.display(),
         CANONICAL_DYNAMIC_LIBRARIES.len(),
-        4,
+        5,
         TOOL_MODULES.len()
     );
     Ok(())

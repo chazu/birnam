@@ -8,22 +8,18 @@ use birnam_codegen::{
 use core::cell::Cell;
 #[path = "candidate_ledger.rs"]
 mod ledger;
-#[path = "candidate_preparation.rs"]
-mod preparation;
+#[path = "candidate_observation.rs"]
+mod observation;
 #[path = "candidate_image.rs"]
 mod image;
 #[path = "candidate_retirement.rs"]
 mod retirement;
-#[path = "candidate_transaction.rs"]
-mod transaction;
 pub(super) use ledger::{validate_image, prepare_image_snapshot};
 pub(super) use image::{begin_image_application, finish_image_application};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
     pub entries: RefCell<Vec<Candidate>>,
-    prepared: RefCell<Vec<preparation::Prepared>>,
-    next_token: Cell<usize>,
     ledger: RefCell<Option<ledger::Ledger>>,
     image_application: Cell<bool>,
     retained: RefCell<Vec<Vec<usize>>>,
@@ -38,9 +34,8 @@ pub(super) struct Candidate {
     pub objects: Vec<Vec<u8>>,
     envelope: Vec<u8>,
     pub mapped: Option<Mapped>,
-    construction_started: bool,
-    constructed: Option<transaction::Constructed>,
-    activation: Option<transaction::Activation>,
+    // Opaque ordinary Cell, interpreted only by authored candidate policy.
+    pub policy_cell: Oop,
 }
 pub(super) struct Mapped {
     pub factory: Oop,
@@ -49,16 +44,10 @@ pub(super) struct Mapped {
 }
 impl Candidate {
     fn roots(&self) -> Vec<Oop> {
-        let mut values = vec![self.unit, self.source, self.name, self.path];
+        let mut values = vec![self.unit, self.source, self.name, self.path, self.policy_cell];
         if let Some(m) = &self.mapped {
             values.extend([m.factory, m.factory_unit]);
             values.extend(&m.adapters);
-        }
-        if let Some(v) = &self.constructed {
-            values.extend(v.roots());
-        }
-        if let Some(v) = &self.activation {
-            values.extend(v.roots());
         }
         values
     }
@@ -69,7 +58,6 @@ impl Candidates {
             .borrow()
             .iter()
             .flat_map(Candidate::roots)
-            .chain(self.prepared.borrow().iter().flat_map(|p| p.roots()))
             .chain(self.ledger.borrow().iter().flat_map(|l| l.roots()))
             .collect()
     }
@@ -78,14 +66,14 @@ impl Candidates {
 pub(super) enum Op {
     Compile,
     CompileSelected,
-    Active,
+    Units,
+    Data,
+    PolicyCell,
     Inspect,
     Map,
     Mapped,
     Path,
-    Prepare,
-    DiscardPrepared,
-    Discard,
+    Release,
     RemoveFiles,
     Watch,
     RetainedCount,
@@ -93,17 +81,14 @@ pub(super) enum Op {
     AdoptInitial,
     ReleaseCertification,
     Reconcile,
-    Commit,
-    PrepareRollback,
-    CommitRollback,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::RetainedCount | Self::RetainedBytes | Self::ReleaseCertification => 0,
+            Self::Units | Self::RetainedCount | Self::RetainedBytes | Self::ReleaseCertification => 0,
             Self::Compile => 3,
             Self::CompileSelected => 4,
-            Self::Inspect | Self::Prepare | Self::PrepareRollback => 2,
+            Self::Inspect => 2,
             _ => 1,
         }
     }
@@ -358,15 +343,6 @@ unsafe fn write(s: &State, q: &Scope<'_>, path: Oop, bytes: &[u8]) -> Result<(),
         Ok(())
     }
 }
-pub(super) unsafe fn active(s: &State, q: &Scope<'_>, name: Oop) -> Result<Option<Oop>, Outcome> {
-    unsafe {
-        let owner = sources::owner(s, q)?;
-        let Some(source) = sources::record(s, q, owner, name)? else { return Ok(None); };
-        Ok(s.candidates.entries.borrow().iter().rev()
-            .find(|c| c.name == name && c.source == source && c.activation.is_some())
-            .map(|c| c.unit))
-    }
-}
 pub(super) unsafe fn operation(
     s: &State,
     q: &Scope<'_>,
@@ -395,22 +371,15 @@ pub(super) unsafe fn operation(
         let _busy = Busy(&s.candidates.busy);
         s.clear_error(q)?;
         match op {
-            Op::Discard => retirement::discard(s, q, object(args[0])?),
+            Op::Release => retirement::release(s, q, object(args[0])?),
             Op::RemoveFiles => retirement::remove_files(s, q, object(args[0])?),
             Op::Watch => retirement::watch(s, q, object(args[0])?),
             Op::RetainedCount | Op::RetainedBytes => {
                 retirement::telemetry(s, q, matches!(op, Op::RetainedBytes))
             }
-            Op::Commit => transaction::commit(s, q, object(args[0])?, false),
-            Op::CommitRollback => transaction::commit(s, q, object(args[0])?, true),
-            Op::PrepareRollback => {
-                transaction::prepare_rollback(s, q, object(args[0])?, object(args[1])?)
-            }
             Op::AdoptInitial => ledger::adopt(s, q, object(args[0])?),
             Op::ReleaseCertification => ledger::release(s, q),
             Op::Reconcile => ledger::reconcile_candidate(s, q, object(args[0])?),
-            Op::Prepare => preparation::prepare(s, q, object(args[0])?, object(args[1])?),
-            Op::DiscardPrepared => preparation::discard(s, q, object(args[0])?),
             Op::Compile | Op::CompileSelected => {
                 let source = s.analyze(q,object(args[0])?)?;
                 let name = object(args[1])?;
@@ -481,7 +450,42 @@ pub(super) unsafe fn operation(
                 write(s, q, side_path, &sidecar)?;
                 Ok(Operand::object(path))
             }
-            Op::Active => Ok(Operand::object(active(s, q, object(args[0])?)?.unwrap_or(s.named(b"nil")?))),
+            Op::Units => {
+                let units=s.candidates.entries.borrow().iter().map(|c|c.unit).collect::<Vec<_>>();
+                for &unit in &units {q.keep(unit)?;}
+                s.vector(q,&units).map(Operand::object)
+            }
+            Op::PolicyCell => {
+                let unit=object(args[0])?;
+                let cell=s.candidates.entries.borrow().iter().find(|c|c.unit==unit).map(|c|c.policy_cell);
+                Ok(Operand::object(cell.unwrap_or(s.named(b"nil")?)))
+            }
+            Op::Data => {
+                let unit=object(args[0])?;
+                let snapshot=s.candidates.entries.borrow().iter().find(|c|c.unit==unit)
+                    .map(|c|(c.name,c.source,c.expected,c.plan.metadata.operations.clone(),c.plan.outputs.clone(),
+                        c.mapped.as_ref().map(|m|(m.factory,m.adapters.clone()))));
+                let Some((name,source,expected,operations,outputs,mapped))=snapshot else{return Ok(Operand::object(s.named(b"nil")?));};
+                q.keep(name)?;q.keep(source)?;
+                let nil=s.named(b"nil")?;
+                let mut rows=Vec::new();
+                for op in operations { rows.push(s.vector(q,&[symbol(s,q,&op.target)?,symbol(s,q,&op.selector)?,s.named(if op.install{b"true"}else{b"false"})?])?); }
+                let operations=s.vector(q,&rows)?;
+                let mut rows=Vec::new();
+                for output in outputs {
+                    let (tag,value)=match output {
+                        code::Output::Global(name)=>(b"global".as_slice(),symbol(s,q,&name)?),
+                        code::Output::Method(index)=>(b"method".as_slice(),call(s,q,s.named(b"Integer")?,b"fromWord:",&[Operand::word(index)])?),
+                    };
+                    rows.push(s.vector(q,&[symbol(s,q,tag)?,value])?);
+                }
+                let outputs=s.vector(q,&rows)?;
+                let (factory,adapters)=if let Some((factory,adapters))=mapped {
+                    q.keep(factory)?;for &adapter in &adapters{q.keep(adapter)?;}
+                    (factory,s.vector(q,&adapters)?)
+                }else{(nil,s.vector(q,&[])?) };
+                s.vector(q,&[symbol(s,q,b"candidatePayloadV1")?,name,source,s.text(q,&expected)?,operations,outputs,factory,adapters]).map(Operand::object)
+            }
             Op::Inspect => {
                 let path = object(args[0])?;
                 let unit = object(args[1])?;
@@ -595,6 +599,8 @@ pub(super) unsafe fn operation(
                 ] {
                     set_field(s, q, unit, key, value)?;
                 }
+                let policy_cell=call(s,q,prototype(s,q,b"Cell")?,b"with:",&[Operand::object(s.named(b"nil")?)])?;
+                if policy_cell==s.named(b"nil")? || s.is_error(policy_cell)? { return Ok(Operand::object(policy_cell)); }
                 s.candidates.entries.borrow_mut().push(Candidate {
                     unit,
                     source,
@@ -608,9 +614,7 @@ pub(super) unsafe fn operation(
                     objects,
                     envelope: side,
                     mapped: None,
-                    construction_started: false,
-                    constructed: None,
-                    activation: None,
+                    policy_cell,
                 });
                 Ok(Operand::object(unit))
             }

@@ -478,4 +478,40 @@ theorem source_inverse_keeps_rebinding (s : SourceOwners) (selected before after
 theorem source_inverse_keeps_unrelated_registration (s : SourceOwners) (selected before after : Nat) :
     (compensateSource s selected before after).outside = s.outside := by rfl
 
+-- Failed candidate application has no automatic inverse. Explicit undo is
+-- conditional on the values it intended to write, never a callback's new value.
+structure PartialCandidate where
+  before : Nat
+  after : Nat
+  live : Nat
+  undoAvailable : Bool
+  deriving DecidableEq
+
+def failCandidate (s : PartialCandidate) : PartialCandidate := s
+
+def undoCandidate (s : PartialCandidate) : PartialCandidate :=
+  if s.live = s.before ∨ s.live = s.after then
+    { s with live := s.before, undoAvailable := false }
+  else s
+
+theorem candidate_failure_keeps_effects (s : PartialCandidate) :
+    (failCandidate s).live = s.live := by rfl
+
+theorem candidate_failure_keeps_undo (s : PartialCandidate) :
+    (failCandidate s).undoAvailable = s.undoAvailable := by rfl
+
+theorem candidate_explicit_undo_preserves_conflict (s : PartialCandidate)
+    (notBefore : s.live ≠ s.before) (notAfter : s.live ≠ s.after) :
+    undoCandidate s = s := by simp [undoCandidate, notBefore, notAfter]
+
+theorem candidate_explicit_undo_restores_owned_write (s : PartialCandidate)
+    (owned : s.live = s.after) :
+    (undoCandidate s).live = s.before ∧ (undoCandidate s).undoAvailable = false := by
+  simp [undoCandidate, owned]
+
+theorem candidate_explicit_undo_is_idempotent (s : PartialCandidate) :
+    undoCandidate (undoCandidate s) = undoCandidate s := by
+  unfold undoCandidate
+  split <;> simp_all
+
 end Birnam.SharedInvocation

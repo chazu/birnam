@@ -1,0 +1,655 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "baseline": "0fa5fc5a",
+  "scope": "Authored candidate policy with partial failure and explicit conditional undo",
+  "prefix": "/tmp/birnam-candidate-policy/compact-prefix",
+  "build_mode": "development-cache",
+  "cargo_features": "birnam-tcc/resource-metrics",
+  "installation_receipt": {
+    "path": "/tmp/birnam-candidate-policy/compact-prefix/share/birnam/rust-install.json",
+    "sha256": "0dd85f4a3d89135a656a9613e207decf4268baef57d2f1184fd4cf62c5781863"
+  },
+  "module_inventory": {
+    "native_libraries": 38,
+    "source_bootstrap_modules": 5,
+    "authored_tools": 24
+  },
+  "source_sha256": {
+    "formal/semantics/lean/SemanticsAudit.lean": "14c2adabf8ad82647f69c1ac03d6630a47165d3ce6ed2369754608094f793a55",
+    "formal/semantics/lean/SharedInvocation.lean": "4cb04e21e872e318a6e93bc3c2da3fab52ba0bcbad45d9d3958bc871b8886490",
+    "modules/compiled-unit-docs.birnam": "a9d55ea1c1dc331cbf926dd3413048beed4a1f0fbf25543ae8c414f21e23e443",
+    "modules/compiled-unit.birnam": "e260237d0a03ff66591130ec9b0fe265c5cfd0c2e03d00b25e15d7f94b89928a",
+    "rust/birnam-build/src/main.rs": "c255106ff147f86676a2d2673fc8e33927941f15990e94ce32e7d245eccc20df",
+    "rust/birnam-execution/src/lib.rs": "9c1babcf1e19fda7c3f66ed20acdc9cea3bde4aa2e307dfdf01a9f834fe4cba6",
+    "rust/birnam-generation/src/candidate.rs": "f85d2d9ca3baad0a4b4a1f11ba67ae32f9510e747d818e926c6d6ad1a22cb590",
+    "rust/birnam-generation/src/candidate_image.rs": "d3be3cb85d2b040e0449f0a575f6c7ee7328cc79d5f77916daccc80ddc790d49",
+    "rust/birnam-generation/src/candidate_ledger.rs": "07df788f93ce35cc8ecf63b59b09fa57bbb730cb19d624a9424bd0c0bde41e55",
+    "rust/birnam-generation/src/candidate_retirement.rs": "0e51f1a01a3ea1bdffbf0a50c099cb50b7f7e7bba681624fe69266fbfcfbc937",
+    "rust/birnam-generation/src/lib.rs": "8530df087c3017091a18d7236c242918afa568920fffde6a988d3622e4222de8",
+    "rust/birnam-generation/src/sources.rs": "5b932efe26a2a49cf6e00054b814543e66c70ffafbbbd35a19ea25a3f40f01cf",
+    "rust/birnam-host-entry/src/startup.rs": "96125016d10b5416b27e803af6e8d87cd93a9b64e4e6f28851ac8cb07e2bc2b7",
+    "rust/birnam-host/src/lifecycle_test.rs": "4dfb707205eac107e83d1d1137c3b77a96cfc060d1858f818de5f598b8bc25e7",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "440be9732e5aae8372b2be31a1fdfc5192a33781911305cd4f5b867d72cade07",
+    "rust/birnam-siphon/tests/support/mod.rs": "2cac66ed2d3e1c2db9c0f2428f62ff56f62ff715ae843442d47ddeafd77abf69",
+    "scripts/check-rooting-model.py": "a1e06b3a5e98a0961d65902f915e1dc22dfa54e2c40974116067e67103fcc6d8",
+    "scripts/compiled-unit-cli-test.py": "c96ccd0a670bed925f412e03237774534a584d015201caee637404381e77d513",
+    "scripts/host-cli-test.py": "5f0d22f718b2c98489c2ae7976a95bcaa0c10e32c04ae4e645fa9c71c4f7afaf",
+    "scripts/host-cli-test.sh": "f4c943b8c2980ba49aba0d436363c5ad7dabd25b4f8a899248965ccaf02b444e",
+    "formal/semantics/tla/CandidateUndo.tla": "56a1eba70fcb896031d7d40d0c59da159adce366d027deb15ddc40a50666e52d",
+    "formal/semantics/tla/CandidateUndoAutomatic.cfg": "3e6134f112ef4274f79ad664c749d00b5592e69ca95aa5e8a846589be8caac85",
+    "formal/semantics/tla/CandidateUndoCode.cfg": "240429780587f39348ae290cc3c93576821157fa9ca1272811021e71d51b400e",
+    "formal/semantics/tla/CandidateUndoForget.cfg": "fb086750d823ab59733b56e4a1e9df1ce52066dd497492daeeca94fb2f559f6b",
+    "formal/semantics/tla/CandidateUndoLearn.cfg": "f2528deede39dd3772a3081115ef3ec03c6005866c862bf2759ae6d8bae63cf7",
+    "formal/semantics/tla/CandidateUndoReplay.cfg": "41c24bcb13218d9d981726faa177f312193a6714fbf32c21ae5b0c4c8a3787bc",
+    "formal/semantics/tla/CandidateUndoSafe.cfg": "8e968e16df1bd43bc95f7b2b640cbcacd7c4c8ce4c07b72b765019411f0eea43",
+    "modules/candidate-policy.birnam": "08fc0885693df94a9608566e139af58abf21b8ee3d6b773bfcf6363b61ff2d82",
+    "rust/birnam-generation/src/candidate_observation.rs": "b9cada10dc59a03231beef41b2c93477cb55a640587d99d57930c2376a9d424d"
+  },
+  "packaged_source_comparison": {
+    "modules/compiled-unit-docs.birnam": {
+      "source_sha256": "a9d55ea1c1dc331cbf926dd3413048beed4a1f0fbf25543ae8c414f21e23e443",
+      "prefix_source_sha256": "a9d55ea1c1dc331cbf926dd3413048beed4a1f0fbf25543ae8c414f21e23e443",
+      "match": true
+    },
+    "modules/compiled-unit.birnam": {
+      "source_sha256": "e260237d0a03ff66591130ec9b0fe265c5cfd0c2e03d00b25e15d7f94b89928a",
+      "prefix_source_sha256": "e260237d0a03ff66591130ec9b0fe265c5cfd0c2e03d00b25e15d7f94b89928a",
+      "match": true
+    },
+    "rust/birnam-build/src/main.rs": {
+      "source_sha256": "c255106ff147f86676a2d2673fc8e33927941f15990e94ce32e7d245eccc20df",
+      "prefix_source_sha256": "c255106ff147f86676a2d2673fc8e33927941f15990e94ce32e7d245eccc20df",
+      "match": true
+    },
+    "rust/birnam-execution/src/lib.rs": {
+      "source_sha256": "9c1babcf1e19fda7c3f66ed20acdc9cea3bde4aa2e307dfdf01a9f834fe4cba6",
+      "prefix_source_sha256": "9c1babcf1e19fda7c3f66ed20acdc9cea3bde4aa2e307dfdf01a9f834fe4cba6",
+      "match": true
+    },
+    "rust/birnam-generation/src/candidate.rs": {
+      "source_sha256": "f85d2d9ca3baad0a4b4a1f11ba67ae32f9510e747d818e926c6d6ad1a22cb590",
+      "prefix_source_sha256": "f85d2d9ca3baad0a4b4a1f11ba67ae32f9510e747d818e926c6d6ad1a22cb590",
+      "match": true
+    },
+    "rust/birnam-generation/src/candidate_image.rs": {
+      "source_sha256": "d3be3cb85d2b040e0449f0a575f6c7ee7328cc79d5f77916daccc80ddc790d49",
+      "prefix_source_sha256": "d3be3cb85d2b040e0449f0a575f6c7ee7328cc79d5f77916daccc80ddc790d49",
+      "match": true
+    },
+    "rust/birnam-generation/src/candidate_ledger.rs": {
+      "source_sha256": "07df788f93ce35cc8ecf63b59b09fa57bbb730cb19d624a9424bd0c0bde41e55",
+      "prefix_source_sha256": "07df788f93ce35cc8ecf63b59b09fa57bbb730cb19d624a9424bd0c0bde41e55",
+      "match": true
+    },
+    "rust/birnam-generation/src/candidate_preparation.rs": {
+      "removed": true,
+      "absent_from_prefix": true
+    },
+    "rust/birnam-generation/src/candidate_retirement.rs": {
+      "source_sha256": "0e51f1a01a3ea1bdffbf0a50c099cb50b7f7e7bba681624fe69266fbfcfbc937",
+      "prefix_source_sha256": "0e51f1a01a3ea1bdffbf0a50c099cb50b7f7e7bba681624fe69266fbfcfbc937",
+      "match": true
+    },
+    "rust/birnam-generation/src/candidate_transaction.rs": {
+      "removed": true,
+      "absent_from_prefix": true
+    },
+    "rust/birnam-generation/src/lib.rs": {
+      "source_sha256": "8530df087c3017091a18d7236c242918afa568920fffde6a988d3622e4222de8",
+      "prefix_source_sha256": "8530df087c3017091a18d7236c242918afa568920fffde6a988d3622e4222de8",
+      "match": true
+    },
+    "rust/birnam-generation/src/sources.rs": {
+      "source_sha256": "5b932efe26a2a49cf6e00054b814543e66c70ffafbbbd35a19ea25a3f40f01cf",
+      "prefix_source_sha256": "5b932efe26a2a49cf6e00054b814543e66c70ffafbbbd35a19ea25a3f40f01cf",
+      "match": true
+    },
+    "rust/birnam-host-entry/src/startup.rs": {
+      "source_sha256": "96125016d10b5416b27e803af6e8d87cd93a9b64e4e6f28851ac8cb07e2bc2b7",
+      "prefix_source_sha256": "96125016d10b5416b27e803af6e8d87cd93a9b64e4e6f28851ac8cb07e2bc2b7",
+      "match": true
+    },
+    "rust/birnam-host/src/lifecycle_test.rs": {
+      "source_sha256": "4dfb707205eac107e83d1d1137c3b77a96cfc060d1858f818de5f598b8bc25e7",
+      "prefix_source_sha256": "4dfb707205eac107e83d1d1137c3b77a96cfc060d1858f818de5f598b8bc25e7",
+      "match": true
+    },
+    "rust/birnam-siphon/tests/generation_transaction.rs": {
+      "source_sha256": "440be9732e5aae8372b2be31a1fdfc5192a33781911305cd4f5b867d72cade07",
+      "prefix_source_sha256": "440be9732e5aae8372b2be31a1fdfc5192a33781911305cd4f5b867d72cade07",
+      "match": true
+    },
+    "rust/birnam-siphon/tests/support/mod.rs": {
+      "source_sha256": "2cac66ed2d3e1c2db9c0f2428f62ff56f62ff715ae843442d47ddeafd77abf69",
+      "prefix_source_sha256": "2cac66ed2d3e1c2db9c0f2428f62ff56f62ff715ae843442d47ddeafd77abf69",
+      "match": true
+    },
+    "scripts/check-rooting-model.py": {
+      "source_sha256": "a1e06b3a5e98a0961d65902f915e1dc22dfa54e2c40974116067e67103fcc6d8",
+      "in_prefix": false
+    },
+    "scripts/compiled-unit-cli-test.py": {
+      "source_sha256": "c96ccd0a670bed925f412e03237774534a584d015201caee637404381e77d513",
+      "in_prefix": false
+    },
+    "scripts/host-cli-test.py": {
+      "source_sha256": "5f0d22f718b2c98489c2ae7976a95bcaa0c10e32c04ae4e645fa9c71c4f7afaf",
+      "in_prefix": false
+    },
+    "scripts/host-cli-test.sh": {
+      "source_sha256": "f4c943b8c2980ba49aba0d436363c5ad7dabd25b4f8a899248965ccaf02b444e",
+      "in_prefix": false
+    },
+    "modules/candidate-policy.birnam": {
+      "source_sha256": "08fc0885693df94a9608566e139af58abf21b8ee3d6b773bfcf6363b61ff2d82",
+      "prefix_source_sha256": "08fc0885693df94a9608566e139af58abf21b8ee3d6b773bfcf6363b61ff2d82",
+      "match": true
+    },
+    "rust/birnam-generation/src/candidate_observation.rs": {
+      "source_sha256": "b9cada10dc59a03231beef41b2c93477cb55a640587d99d57930c2376a9d424d",
+      "prefix_source_sha256": "b9cada10dc59a03231beef41b2c93477cb55a640587d99d57930c2376a9d424d",
+      "match": true
+    }
+  },
+  "qualification": {
+    "language": {
+      "status": "passed",
+      "assertions": 847,
+      "log": "language-compact.log"
+    },
+    "host_generation": {
+      "status": "passed across group and targeted continuation",
+      "coverage_checks": 17,
+      "group_passed": [
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "direct_method_observations_restore_native_abi_and_owned_identity",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:direct_method_observations_restore_native_abi_and_owned_identity",
+          "started_unix_ns": 1792374144518985000,
+          "status": "passed",
+          "wall_ns": 8385138000
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "candidate_task_exit_retains_explicit_undo_and_releases_operation_scope",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:candidate_task_exit_retains_explicit_undo_and_releases_operation_scope",
+          "started_unix_ns": 1792374152957205000,
+          "status": "passed",
+          "wall_ns": 7737767583
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "registry_validation_uses_one_metadata_read_and_current_query",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:registry_validation_uses_one_metadata_read_and_current_query",
+          "started_unix_ns": 1792374160736615000,
+          "status": "passed",
+          "wall_ns": 6154766958
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+          "started_unix_ns": 1792374166932377000,
+          "status": "passed",
+          "wall_ns": 97959363750
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "source_registry_sends_retain_partial_edits_for_explicit_undo",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:source_registry_sends_retain_partial_edits_for_explicit_undo",
+          "started_unix_ns": 1792374264943102000,
+          "status": "passed",
+          "wall_ns": 7845831250
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "image_application_boundary_invalidates_without_restore",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:image_application_boundary_invalidates_without_restore",
+          "started_unix_ns": 1792374272822221000,
+          "status": "passed",
+          "wall_ns": 46275879834
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "certificate_release_reclaims_observations_and_preserves_candidate_undo",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:certificate_release_reclaims_observations_and_preserves_candidate_undo",
+          "started_unix_ns": 1792374319130595000,
+          "status": "passed",
+          "wall_ns": 6238960125
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "discard_cancels_preparation_and_keeps_bindings_and_files",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:discard_cancels_preparation_and_keeps_bindings_and_files",
+          "started_unix_ns": 1792374325402191000,
+          "status": "passed",
+          "wall_ns": 5011968750
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "independent_candidate_modules_need_no_certificate",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:independent_candidate_modules_need_no_certificate",
+          "started_unix_ns": 1792374330447035000,
+          "status": "passed",
+          "wall_ns": 6037073334
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "rollback_keeps_released_predecessors_discarded",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:rollback_keeps_released_predecessors_discarded",
+          "started_unix_ns": 1792374336516683000,
+          "status": "passed",
+          "wall_ns": 6804189416
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "dependency_changes_use_registered_module_without_certification",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:dependency_changes_use_registered_module_without_certification",
+          "started_unix_ns": 1792374343353786000,
+          "status": "passed",
+          "wall_ns": 5474434583
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "activation_inside_entered_methods_uses_current_setters",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:activation_inside_entered_methods_uses_current_setters",
+          "started_unix_ns": 1792374348862628000,
+          "status": "passed",
+          "wall_ns": 5860109667
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/tmp/birnam-candidate-policy/qualified-tests/manifest.json",
+            "host-lib",
+            "--",
+            "lifecycle_fields_preserve_explicit_facts_and_status_reads",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "generation:host-lib:lifecycle_fields_preserve_explicit_facts_and_status_reads",
+          "started_unix_ns": 1792374354755490000,
+          "status": "passed",
+          "wall_ns": 4907052041
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/lifecycle-record-image-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.oeQOda/relocated"
+          ],
+          "exit_code": 0,
+          "label": "generation:lifecycle-record-image-test.py",
+          "started_unix_ns": 1792374359695424000,
+          "status": "passed",
+          "wall_ns": 70677162917
+        }
+      ],
+      "continuation": {
+        "image_restores_descriptions_and_explicit_adoption": "image-final.log",
+        "generation-cli-test.py": "generation-cli-delivery.log",
+        "compiled-unit-cli-test.py": "compiled-cli-delivery.log"
+      },
+      "note": "The group stopped at an obsolete fault-injector assumption that the native beginImageApplication binding was direct. Corrected to lookup plus restoration of original dictionary absence; image test and remaining CLI checks then passed separately.",
+      "prefix": "/tmp/birnam-candidate-policy/delivery-prefix",
+      "group_test_manifest_sha256": "98b34064024f50fb386012b78a625d9f2e8c2e1daaec128352bbb4a9d7826fef",
+      "corrected_test_manifest_sha256": "f580c8725744f23613bbba4fec5a2071818791f6442d0002bbcbce2cc761203d"
+    },
+    "native_broad": {
+      "status": "passed",
+      "prefix": "/tmp/birnam-candidate-policy/native-prefix",
+      "log": "native-checked.log",
+      "targets": [
+        "generation",
+        "generation_ledger",
+        "generation_transaction",
+        "execution_methods",
+        "execution_machines",
+        "method_binding",
+        "method_invocation",
+        "shared_invocation_probe",
+        "image",
+        "image_snapshot_stamp",
+        "image_recovery_conflict"
+      ],
+      "image_resave_cycles": 20
+    },
+    "native_policy_delivery": {
+      "status": "passed",
+      "prefix": "/tmp/birnam-candidate-policy/delivery-prefix",
+      "log": "native-delivery.log",
+      "targets": [
+        "generation",
+        "generation_transaction",
+        "candidate_retirement"
+      ]
+    },
+    "compact_representation_followup": {
+      "status": "passed",
+      "prefix": "/tmp/birnam-candidate-policy/compact-prefix",
+      "change": "Replace the duplicate optional native entry in Callable with a Boolean that reuses its existing entry; authored policy unchanged.",
+      "native_targets": [
+        "execution_methods",
+        "execution_machines",
+        "method_binding",
+        "method_invocation",
+        "shared_invocation_probe",
+        "generation_transaction",
+        "candidate_retirement"
+      ],
+      "host_tests": [
+        "direct_method_observations_restore_native_abi_and_owned_identity",
+        "candidate_task_exit_retains_explicit_undo_and_releases_operation_scope",
+        "source_registry_sends_retain_partial_edits_for_explicit_undo",
+        "activation_inside_entered_methods_uses_current_setters"
+      ],
+      "other": [
+        "847 language assertions",
+        "lifecycle record image roundtrips",
+        "parser/compiler-disabled startup"
+      ],
+      "logs": [
+        "native-compact.log",
+        "host-compact.log",
+        "image-compact.log",
+        "startup-compact.log",
+        "language-compact.log"
+      ]
+    },
+    "installed_manifest_and_relocation": {
+      "status": "passed",
+      "prefix": "/tmp/birnam-candidate-policy/delivery-prefix",
+      "log": "manifest-cli.log"
+    },
+    "formal": {
+      "status": "passed",
+      "receipt": ".cargo-target/formal/results/rooting-h2i78xq2/summary.json",
+      "receipt_sha256": "c744349a9adbceaaf84ebe1f09d052b76d3efd010ce9e43a29c58e207f36417c",
+      "source_hashes_match": true,
+      "lean_theorems": 391,
+      "rejected_lean_mutations": 122,
+      "expected_tlc_outcomes": 266,
+      "new_models": {
+        "CandidateUndoSafe": {
+          "expected_violation": null,
+          "seconds": 0.538,
+          "generated_states": 26,
+          "distinct_states": 24,
+          "log": "tlc-CandidateUndoSafe.log"
+        },
+        "CandidateUndoAutomatic": {
+          "expected_violation": "Invariant FailureRetainsEffects is violated.",
+          "seconds": 0.548,
+          "generated_states": 16,
+          "distinct_states": 14,
+          "log": "tlc-CandidateUndoAutomatic.log"
+        },
+        "CandidateUndoForget": {
+          "expected_violation": "Invariant FailureRetainsUndo is violated.",
+          "seconds": 0.545,
+          "generated_states": 15,
+          "distinct_states": 13,
+          "log": "tlc-CandidateUndoForget.log"
+        },
+        "CandidateUndoLearn": {
+          "expected_violation": "Invariant UndoPreservesForeign is violated.",
+          "seconds": 0.558,
+          "generated_states": 22,
+          "distinct_states": 20,
+          "log": "tlc-CandidateUndoLearn.log"
+        },
+        "CandidateUndoCode": {
+          "expected_violation": "Invariant HeldCodeLives is violated.",
+          "seconds": 0.556,
+          "generated_states": 18,
+          "distinct_states": 16,
+          "log": "tlc-CandidateUndoCode.log"
+        },
+        "CandidateUndoReplay": {
+          "expected_violation": "Invariant NoReplay is violated.",
+          "seconds": 0.556,
+          "generated_states": 15,
+          "distinct_states": 13,
+          "log": "tlc-CandidateUndoReplay.log"
+        }
+      },
+      "scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+    },
+    "scheduler_probe": {
+      "writes": 4,
+      "outside_transition_before": 4,
+      "outside_transition_after": 0
+    },
+    "native_exports_and_dependencies": {
+      "execution": {
+        "exports_equal": true,
+        "dependencies_equal": true,
+        "exports": [
+          "_birnam_native_module_v1",
+          "_birnam_symbol_borrow_v1"
+        ],
+        "dependencies": [
+          "@rpath/libbirnam_execution.dylib",
+          "/usr/lib/libSystem.B.dylib"
+        ],
+        "sha256": "a0417b3e69e307ade5c49935418b72722a66e85e4a7d429c95005337235444b1"
+      },
+      "generation": {
+        "exports_equal": true,
+        "dependencies_equal": true,
+        "exports": [
+          "_birnam_native_module_v1"
+        ],
+        "dependencies": [
+          "@rpath/libbirnam_generation.dylib",
+          "/usr/lib/libSystem.B.dylib"
+        ],
+        "sha256": "0a67b6443f086b9d55c18eb0d7564c6beb79fab11eb9e7a14474c2f6042dca65"
+      },
+      "host_entry": {
+        "exports_equal": true,
+        "dependencies_equal": true,
+        "exports": [
+          "_birnam_native_module_v1",
+          "_birnam_symbol_borrow_v1"
+        ],
+        "dependencies": [
+          "@rpath/libbirnam_host_entry.dylib",
+          "/usr/lib/libSystem.B.dylib"
+        ],
+        "sha256": "d2e7955912650245619d4d0044c6e0b66a1111f8291ec5fdc1ae4d83b43ecff7"
+      }
+    },
+    "static_checks": [
+      "git diff --check",
+      "bash -n scripts/host-cli-test.sh",
+      "Python syntax checks",
+      "changed-document relative links"
+    ]
+  },
+  "logs": {
+    "compact-build.log": {
+      "path": "/tmp/birnam-candidate-policy/compact-build.log",
+      "sha256": "14d076eba7a048251cd76d7d7ed68c1701def469012e98e6bfa2cff44a23b696"
+    },
+    "language-compact.log": {
+      "path": "/tmp/birnam-candidate-policy/language-compact.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "native-compact.log": {
+      "path": "/tmp/birnam-candidate-policy/native-compact.log",
+      "sha256": "054d4f206095ffd6163f4e393fa1b12ca810c518ad18da50cff9c39284ebcea6"
+    },
+    "host-compact.log": {
+      "path": "/tmp/birnam-candidate-policy/host-compact.log",
+      "sha256": "a1b5867b82340d25d8b0998a18f25ce3936621b8c6f83029e8b86988aa949e86"
+    },
+    "image-compact.log": {
+      "path": "/tmp/birnam-candidate-policy/image-compact.log",
+      "sha256": "8b18bff69aa854abcfbadb2dd1076370cfa91f12ab44c1137971edc83065ee6d"
+    },
+    "startup-compact.log": {
+      "path": "/tmp/birnam-candidate-policy/startup-compact.log",
+      "sha256": "a4bcd5b859ae936ccfde13671db29c997ed490d322746848ec83c110478dede2"
+    },
+    "host-final.log": {
+      "path": "/tmp/birnam-candidate-policy/host-final.log",
+      "sha256": "35bbcb8d348a3f8d8b0a88b74c37805a3b497f8fda4bb516d9916e51478ca2ca"
+    },
+    "image-final.log": {
+      "path": "/tmp/birnam-candidate-policy/image-final.log",
+      "sha256": "6997c2ee01c3823dc59c479306f51c04b1aed6d2eb5c006f900732d83ad8099c"
+    },
+    "native-checked.log": {
+      "path": "/tmp/birnam-candidate-policy/native-checked.log",
+      "sha256": "b5a95e3e55d0c03157b2c8e3d663be8cdfdcec006510165c71be1bcc0320c443"
+    },
+    "native-delivery.log": {
+      "path": "/tmp/birnam-candidate-policy/native-delivery.log",
+      "sha256": "3fd110ede7257dfd54527ce0a05d207844fc1608ca90cb0d1d7daf2c068e873e"
+    },
+    "manifest-cli.log": {
+      "path": "/tmp/birnam-candidate-policy/manifest-cli.log",
+      "sha256": "0b90f67b6a18f161a156ffac52449ca7998f9f639c3cbafa729d68aa6282f5ae"
+    },
+    "generation-cli-delivery.log": {
+      "path": "/tmp/birnam-candidate-policy/generation-cli-delivery.log",
+      "sha256": "639d92a5b8e8ba0337a16660d00a9cc8590a91c91b6496013a54c1c4c797ab30"
+    },
+    "compiled-cli-delivery.log": {
+      "path": "/tmp/birnam-candidate-policy/compiled-cli-delivery.log",
+      "sha256": "71704a25713fcc5b025349c219ec714f688cf76c1aa5e3a16e02253fba886ac4"
+    },
+    "formal.log": {
+      "path": "/tmp/birnam-candidate-policy/formal.log",
+      "sha256": "82518dfd09c2bf0184a86422b250e64bd4195b091c4606dad608050de57b4e09"
+    },
+    "scheduling-before.log": {
+      "path": "/tmp/birnam-candidate-policy/scheduling-before.log",
+      "sha256": "2381c8d6c780a4eaa3480c85debafe5ce510a4024f2a5ecbd3deb67298fbf937"
+    },
+    "scheduling-after.log": {
+      "path": "/tmp/birnam-candidate-policy/scheduling-after.log",
+      "sha256": "e01a4b60c80a8c7bdabef8f1f648ccae0ec94786fe5301859248b3c039dd0d6c"
+    }
+  },
+  "limits": [
+    "No cold release qualification, push or user-prefix installation.",
+    "The broad image/Host matrix preceded the representation-only Execution compaction; the listed focused native, Host, image, startup and full language checks were repeated on the final build.",
+    "Formal results cover bounded abstract properties, not verification of the production compiler.",
+    "Artifact admission/mapping and optional certification remain native; the artifact carrier roots an opaque ordinary policy Cell.",
+    "Complete Store/Relational-absent bootstrap remains pending.",
+    "Registry timing evidence belongs to the preceding metadata-query slice; this receipt makes no claim of a general candidate-policy speedup."
+  ]
+}

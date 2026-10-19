@@ -1,5 +1,11 @@
 # Scoped generation transactions
 
+**2026-10-18 follow-up:** [Candidate policy is now authored in Birnam](candidate-policy-migration.md).
+Its selected contract retains partial effects for explicit conditional undo, removes
+automatic compensation/reservations and setter postchecks, and treats lifecycle
+fields as descriptions. The implementation and qualification below describe the
+earlier slice; those stronger failure promises are superseded.
+
 2026-10-16. Implementation of the next [generation simplification](generation-lifecycle-review.md)
 slice, following [prepared value admission](prepared-operation-admission.md).
 Implemented and qualified; committed in `e4931deb`. This does not complete the optional-certification redesign.

@@ -90,16 +90,13 @@ pub(super) unsafe fn remove_files(s: &State, q: &Scope<'_>, unit: Oop) -> Result
     }
 }
 
-pub(super) unsafe fn discard(s: &State, q: &Scope<'_>, unit: Oop) -> Result<Operand, Outcome> {
+pub(super) unsafe fn release(s: &State, q: &Scope<'_>, unit: Oop) -> Result<Operand, Outcome> {
     unsafe {
         if !s.candidates.entries.borrow().iter().any(|c| c.unit == unit) {
             return fail(s, q, b"invalidCandidate", b"candidate carrier is unknown or already discarded");
         }
-        // Keep ownership until callback-capable cleanup succeeds. No file, GC or
-        // physical-retirement operation participates in this logical release.
-        transaction::release_inverse(s, q, unit)?;
-        transaction::discard_fields(s, q, unit)?;
-        s.candidates.prepared.borrow_mut().retain(|p| p.unit != unit);
+        // Release only this native artifact carrier and its opaque policy root.
+        // Authored policy handles descriptions and explicit undo through Id.
         s.candidates.entries.borrow_mut().retain(|c| c.unit != unit);
         Ok(Operand::object(unit))
     }
