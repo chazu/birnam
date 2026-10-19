@@ -1,0 +1,785 @@
+{
+  "baseline_runtime_commit": "2dc87f5a",
+  "scope": "Ordinary owned TaskControl, TaskExecutor, Worker and RemoteFailure state, current owner accessors, explicit aliased field views, no Store calls in the actual control initializer. Full Store-free Host/Image composition remains pending.",
+  "source_sha256": {
+    "modules/stackless-control.birnam": "20c9ba43b514392c59e1616ad5cc3e0d6b2e88a75da5f6c9d226112af62e41a1",
+    "rust/birnam-siphon/tests/task_control.rs": "4674d64000607ff0dd764a7760d91ef60c29818649c4d005560bf7b8acbe4da4",
+    "rust/birnam-siphon/tests/task_without_store.rs": "d1ed9e1e3918b010e1c71c5178a41d7a1493ad23ab689629feb54d40c2b0453d",
+    "scripts/task-fields-test.py": "48699b9026bbd9873740cbd271e4df07d919f8439b1109efcddefc12193f3feb",
+    "scripts/task-without-store-test.py": "9d444f639a4af7ff912b148a9006cee00c45ab03026e95181cec06e92416b917",
+    "scripts/host-cli-test.sh": "080e2707a4cca159bccf2e45a1ba83953f13161097d7c56ab7f859aad62ce202"
+  },
+  "final_prefix": "/tmp/birnam-store-independent/04-task-fields/final-prefix",
+  "install_receipt_sha256": "6c9a6225981392d12034209a43800013e7860c92fdcababdefe04343b2d4e0c4",
+  "final_control_artifact_sha256": "b331e8dec69f16c8a35289dc56ab9c289151c0cdb9078deb91b76c570032d08a",
+  "qualification": {
+    "task_checks": 177,
+    "language_checks": 847,
+    "host_tasks": {
+      "checks": [
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "prepare",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.pOVv5B/test-binaries"
+          ],
+          "exit_code": 0,
+          "label": "tasks:prepare",
+          "started_unix_ns": 1792440978037185000,
+          "status": "passed",
+          "wall_ns": 66727033875
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/task-image-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.pOVv5B/relocated"
+          ],
+          "exit_code": 0,
+          "label": "tasks:task-image-test.py",
+          "started_unix_ns": 1792441046387193000,
+          "status": "passed",
+          "wall_ns": 52722019875
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/concurrency-cli-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.pOVv5B/relocated"
+          ],
+          "exit_code": 0,
+          "label": "tasks:concurrency-cli-test.py",
+          "started_unix_ns": 1792441099159956000,
+          "status": "passed",
+          "wall_ns": 86994035334
+        },
+        {
+          "argv": [
+            "bash",
+            "scripts/multicore-smoke.sh",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.pOVv5B/relocated"
+          ],
+          "exit_code": 0,
+          "label": "tasks:multicore-smoke.sh",
+          "started_unix_ns": 1792441186203096000,
+          "status": "passed",
+          "wall_ns": 63365320292
+        },
+        {
+          "argv": [
+            "bash",
+            "scripts/closure-observation-test.sh",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.pOVv5B/relocated"
+          ],
+          "exit_code": 0,
+          "label": "tasks:closure-observation-test.sh",
+          "started_unix_ns": 1792441249610617000,
+          "status": "passed",
+          "wall_ns": 82024922083
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.pOVv5B/test-binaries/manifest.json",
+            "task-control",
+            "--",
+            "--ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "label": "tasks:task-control:--ignored",
+          "started_unix_ns": 1792441331683478000,
+          "status": "passed",
+          "wall_ns": 24749811291
+        }
+      ],
+      "schema": 1
+    },
+    "field_aliases_images_and_refusal": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-wdkyq0tk/results.json",
+      "sha256": "d37b294e3a2460f7bd84641886515db2b9ddc73634bfd3476a6e8b151f196fa2",
+      "runs": [
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/04-task-fields/final-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-wdkyq0tk/fields.birnam"
+          ],
+          "exit_code": 0,
+          "name": "source",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n",
+          "wall_ns": 35222422542
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/04-task-fields/final-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-wdkyq0tk/fields.image"
+          ],
+          "exit_code": 0,
+          "name": "mapped",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 3078450375
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/04-task-fields/final-prefix/bin/birnam",
+            "--rebuild",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-wdkyq0tk/fields.image"
+          ],
+          "exit_code": 0,
+          "name": "rebuilt",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 5969419375
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/04-task-fields/final-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-wdkyq0tk/retained-task-field.birnam"
+          ],
+          "exit_code": 0,
+          "name": "retained-task-field-rejected",
+          "output": "#rejected\n",
+          "stderr": "",
+          "stdout": "#rejected\n",
+          "wall_ns": 3315758416
+        }
+      ],
+      "scope": null
+    },
+    "actual_initializer_absence_and_gc_lifetime": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-8bdvf_7m/results.json",
+      "sha256": "dcf01cbb143d1480ce60121f0eb6918fb543bca884a882bfca3c4c4a8be13d86",
+      "runs": {
+        "argv": [
+          "mise",
+          "exec",
+          "--",
+          "cargo",
+          "test",
+          "--offline",
+          "--locked",
+          "-p",
+          "birnam-siphon",
+          "--test",
+          "task_without_store",
+          "--",
+          "--include-ignored",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stdout": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s\n\n",
+        "wall_ns": 739893208
+      },
+      "scope": "Actual compiled task initializer, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence."
+    },
+    "formal": {
+      "path": ".cargo-target/formal/results/rooting-4t4z83z5/summary.json",
+      "sha256": "0d1d4af8c1ef73da50bcaa5d9ad24efd7bb91118c76c344f056298882e1b2320",
+      "theorems": 396,
+      "rejected_mutations": 125,
+      "tla_expected_outcomes": 272,
+      "scope": "Existing abstract slot/reflection, rooting, image payload and execution contracts. No claim of extracting a scheduler proof from the authored implementation."
+    },
+    "builds": "Broad language/Host qualification used qualified-prefix. Review then added only three explicit nil writes to fresh-task preparation. final-prefix includes that correction; the current-source 177-check task suite and final-artifact owner/image/absence tests pass. The field suite is now included in the regular Host tasks group.",
+    "fixture_repairs": "The new absence harness initially treated Unit-valued native installers as object results and omitted marking the real stdlib initializer loaded. Both harness errors were corrected; no production fallback, fake Globals/Store or exported-method substitute was introduced."
+  },
+  "performance": {
+    "paired_tasks": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "read_cpu_ns": 219718042,
+          "write_cpu_ns": 217012500,
+          "tasks_cpu_ns": 839133542,
+          "task_fact_delta": 562
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "read_cpu_ns": 144456708,
+          "write_cpu_ns": 231666791,
+          "tasks_cpu_ns": 166486417,
+          "task_fact_delta": 0
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "read_cpu_ns": 138074458,
+          "write_cpu_ns": 214929500,
+          "tasks_cpu_ns": 165136292,
+          "task_fact_delta": 0
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "read_cpu_ns": 218017000,
+          "write_cpu_ns": 214185833,
+          "tasks_cpu_ns": 871917042,
+          "task_fact_delta": 562
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "read_cpu_ns": 217051875,
+          "write_cpu_ns": 213798458,
+          "tasks_cpu_ns": 830604542,
+          "task_fact_delta": 562
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "read_cpu_ns": 137231708,
+          "write_cpu_ns": 221895541,
+          "tasks_cpu_ns": 179982958,
+          "task_fact_delta": 0
+        }
+      ],
+      "medians": {
+        "read": {
+          "baseline": 218017000,
+          "candidate": 138074458
+        },
+        "write": {
+          "baseline": 214185833,
+          "candidate": 221895541
+        },
+        "tasks": {
+          "baseline": 839133542,
+          "candidate": 166486417
+        }
+      },
+      "ratios": {
+        "read": 0.6333196860795259,
+        "write": 1.0359954152523243,
+        "tasks": 0.19840276745843632
+      },
+      "source": "[Module load: #time];\n[[|\n[System gc];\nlet started := [16 clockNanos];\n[1 to: 500 do: [:i | [TaskExecutor current]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[TaskExecutor current] isNil]];\n[System gc];\nlet started := [16 clockNanos];\n[1 to: 500 do: [:i | [[TaskExecutor field: #quantum] set: i]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[[TaskExecutor field: #quantum] value] = 500]];\n[[TaskExecutor field: #quantum] set: 128];\n[System gc];\nlet facts := [db retainedFactCount];\nlet started := [16 clockNanos];\nlet task := [TaskControl start: [:self | 42]];\n[1 to: 30 do: [:i | [TaskControl start: [:self | 42]]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[task pollOutcome] = #[#success 42]]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+    },
+    "explicit_handle_diagnostic": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "cached_field_ns": 116188750,
+          "construct_handle_ns": 195476083,
+          "direct_slot_ns": 0,
+          "large_quantum_tasks_ns": 846439667
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "cached_field_ns": 125159291,
+          "construct_handle_ns": 186105333,
+          "direct_slot_ns": 117369833,
+          "large_quantum_tasks_ns": 157320291
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "cached_field_ns": 125783125,
+          "construct_handle_ns": 186569333,
+          "direct_slot_ns": 117497500,
+          "large_quantum_tasks_ns": 169720167
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "cached_field_ns": 118305416,
+          "construct_handle_ns": 197955500,
+          "direct_slot_ns": 0,
+          "large_quantum_tasks_ns": 810613000
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "cached_field_ns": 117921708,
+          "construct_handle_ns": 198220000,
+          "direct_slot_ns": 0,
+          "large_quantum_tasks_ns": 830645125
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "cached_field_ns": 125328708,
+          "construct_handle_ns": 185873666,
+          "direct_slot_ns": 117799750,
+          "large_quantum_tasks_ns": 157180708
+        }
+      ],
+      "medians": {
+        "cached_field_ns": {
+          "baseline": 117921708,
+          "candidate": 125328708
+        },
+        "construct_handle_ns": {
+          "baseline": 197955500,
+          "candidate": 186105333
+        },
+        "direct_slot_ns": {
+          "baseline": 0,
+          "candidate": 117497500
+        },
+        "large_quantum_tasks_ns": {
+          "baseline": 830645125,
+          "candidate": 157320291
+        }
+      },
+      "scope": "Diagnostic only: cached handles and direct owner slot reads in a separate caller; production policy is not replaced. Large-quantum tasks distinguish scheduling frequency from helper cost."
+    },
+    "startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 2.7990670409053564,
+          "cpu_seconds": 2.780497
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 3.0939675830304623,
+          "cpu_seconds": 2.987256
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.90192470792681,
+          "cpu_seconds": 2.8980189999999983
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.7864866671152413,
+          "cpu_seconds": 2.780427000000001
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.8376643750816584,
+          "cpu_seconds": 2.833824999999999
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.905130457598716,
+          "cpu_seconds": 2.898596000000003
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.7990670409053564,
+          "cpu_seconds": 2.780497
+        },
+        "candidate": {
+          "wall_seconds": 2.905130457598716,
+          "cpu_seconds": 2.898596000000003
+        }
+      }
+    },
+    "logue_quiet": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "median_cpu_ns": 26523729.5,
+          "samples": [
+            26401625,
+            26670875,
+            26846875,
+            26716333,
+            27349333,
+            26304667,
+            26517292,
+            26530167,
+            26856167,
+            26315250,
+            26232833,
+            26335625
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.129826124757528
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "median_cpu_ns": 26209562.0,
+          "samples": [
+            26118208,
+            25975750,
+            25799583,
+            26418875,
+            27784584,
+            27846125,
+            27368709,
+            25976291,
+            25855833,
+            26300916,
+            25814791,
+            28538834
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.526229625102133
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "median_cpu_ns": 26450958.0,
+          "samples": [
+            26202792,
+            26448958,
+            26116833,
+            26170750,
+            26217542,
+            26725083,
+            26275000,
+            26452958,
+            26614500,
+            27704375,
+            28266875,
+            27881458
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.338610833045095
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "median_cpu_ns": 26093354.0,
+          "samples": [
+            26109667,
+            25843750,
+            26024292,
+            25707625,
+            26259458,
+            26589875,
+            26492417,
+            25974709,
+            26239750,
+            25830125,
+            26268292,
+            26077041
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.2627554587088525
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "median_cpu_ns": 26309458.0,
+          "samples": [
+            26083792,
+            26642542,
+            26392291,
+            26104792,
+            25983041,
+            26334625,
+            26233958,
+            26394042,
+            26360417,
+            26807333,
+            26284291,
+            25999334
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.094109792262316
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "median_cpu_ns": 26350229.5,
+          "samples": [
+            26382542,
+            26123125,
+            26775000,
+            26136750,
+            26735500,
+            26317917,
+            26126625,
+            25867375,
+            26638375,
+            26510917,
+            26479375,
+            26200250
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.2203109581023455
+        }
+      ],
+      "median_process_cpu_ns": {
+        "baseline": 26309458.0,
+        "candidate": 26350229.5
+      },
+      "candidate_over_baseline": 1.001549689849179
+    },
+    "untimed_final_send_counts": [
+      {
+        "case": "current",
+        "object_result": true,
+        "selectors": {
+          "allocate": 13,
+          "allocate:bytes:": 15,
+          "allocationAt:": 1,
+          "allocationChargeFor:": 13,
+          "allocationSizeOf:": 15,
+          "at:": 13,
+          "behaviorEpoch": 12,
+          "behaviorOf:": 3,
+          "bind:to:": 14,
+          "canOmitAllocationFor:": 4,
+          "current": 1,
+          "fromWord:": 2,
+          "identityOf:": 2,
+          "intern:": 2,
+          "nativeBindingsMatch:": 8,
+          "prepareAllocation": 1,
+          "releaseMany:protecting:batch:": 2,
+          "retain:": 8,
+          "slotAt:in:": 1,
+          "symbolBytesOf:": 13,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 2,
+          "tryRepresentationIdentityOf:behavior:bytes:": 7,
+          "usesDefaultAllocation": 4,
+          "usesDefaultLookup:": 4,
+          "wordOf:": 3
+        },
+        "total_sends": 165
+      },
+      {
+        "case": "cached-field",
+        "object_result": true,
+        "selectors": {
+          "allocate": 15,
+          "allocate:bytes:": 19,
+          "allocationAt:": 3,
+          "allocationChargeFor:": 15,
+          "allocationSizeOf:": 19,
+          "at:": 27,
+          "behaviorEpoch": 24,
+          "behaviorOf:": 7,
+          "bind:to:": 28,
+          "canOmitAllocationFor:": 8,
+          "fromWord:": 4,
+          "identityOf:": 6,
+          "intern:": 2,
+          "nativeBindingsMatch:": 16,
+          "prepareAllocation": 1,
+          "releaseMany:protecting:batch:": 4,
+          "retain:": 16,
+          "slotAt:in:": 3,
+          "symbolBytesOf:": 27,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 4,
+          "tryRepresentationIdentityOf:behavior:bytes:": 15,
+          "usesDefaultAllocation": 8,
+          "usesDefaultLookup:": 8,
+          "value": 1,
+          "wordOf:": 7
+        },
+        "total_sends": 289
+      },
+      {
+        "case": "field-handle",
+        "object_result": true,
+        "selectors": {
+          "allocate": 65,
+          "allocate:bytes:": 114,
+          "allocationAt:": 1,
+          "allocationChargeFor:": 70,
+          "allocationSizeOf:": 132,
+          "at:": 196,
+          "behaviorEpoch": 150,
+          "behaviorOf:": 50,
+          "bind:to:": 180,
+          "canOmitAllocationFor:": 50,
+          "collectionHash": 2,
+          "delegated": 1,
+          "delegatedWith:as:": 4,
+          "field:": 1,
+          "fromMethod:captureOperands:": 4,
+          "fromWord:": 42,
+          "identityOf:": 11,
+          "intern:": 9,
+          "isBehavior:": 2,
+          "nativeBindingsMatch:": 101,
+          "newBehaviorWithParent:": 1,
+          "newBehaviorWithParent:method:as:": 4,
+          "oopAt:": 7,
+          "oopAt:put:": 5,
+          "ownerOf:put:": 1,
+          "prepareAllocation": 22,
+          "release:": 28,
+          "releaseMany:protecting:batch:": 27,
+          "resolveGlobal:": 1,
+          "retain:": 180,
+          "returnAt:": 1,
+          "setLayoutOf:to:rest:": 1,
+          "size": 1,
+          "slotAt:in:": 1,
+          "slotAt:in:put:": 2,
+          "symbolBytesOf:": 195,
+          "symbolNamed:": 9,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 1,
+          "tryPrepareCall:slots:selector:in:tail:": 24,
+          "tryRepresentationIdentityOf:behavior:bytes:": 136,
+          "usesDefaultAllocation": 50,
+          "usesDefaultLookup:": 50,
+          "value:": 1,
+          "wordOf:": 44
+        },
+        "total_sends": 1977
+      },
+      {
+        "case": "task",
+        "object_result": true,
+        "selectors": {
+          "&": 4,
+          "==": 4,
+          "allocate": 2275,
+          "allocate:bytes:": 4358,
+          "allocationAt:": 99,
+          "allocationChargeFor:": 2446,
+          "allocationSizeOf:": 4708,
+          "applyInteger:with:": 4,
+          "at:": 8896,
+          "behaviorEpoch": 6520,
+          "behaviorOf:": 2198,
+          "bind:to:": 7707,
+          "bits": 4,
+          "canOmitAllocationFor:": 2176,
+          "collectionHash": 33,
+          "delegatedWith:as:": 169,
+          "fromBits:": 8,
+          "fromMethod:captureOperands:": 169,
+          "fromWord:": 1992,
+          "identityOf:": 352,
+          "integerAddBits:with:": 3,
+          "integerBinary:operation:": 4,
+          "integerBitsOf:": 8,
+          "integerExactError:": 4,
+          "integerFromBits:": 4,
+          "integerSubtractBits:with:": 1,
+          "intern:": 16,
+          "internBytes:": 2,
+          "isNil": 4,
+          "nativeBindingsMatch:": 4559,
+          "newBehaviorWithParent:method:as:": 169,
+          "notNil": 8,
+          "objectResultOf:selector:wordArgument:": 4,
+          "oopAt:": 251,
+          "oopAt:put:": 326,
+          "optionalWordResultOf:selector:argument:resultFactory:": 8,
+          "prepareAllocation": 979,
+          "release:": 317,
+          "releaseMany:protecting:batch:": 1247,
+          "resolveGlobal:": 33,
+          "retain:": 7788,
+          "returnAt:": 132,
+          "selectIfSameObject:with:ifEqual:ifDifferent:": 40,
+          "selectIfTrue:ifFalse:otherwise:": 16,
+          "slotAt:in:": 99,
+          "slotAt:in:put:": 51,
+          "start:": 1,
+          "symbolBytesOf:": 8896,
+          "symbolNamed:": 16,
+          "tryBorrowCaptureOperands:": 60,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 32,
+          "tryPrepareCall:slots:selector:in:tail:": 1052,
+          "tryPrimitiveExpression:": 4,
+          "tryRepresentationIdentityOf:behavior:bytes:": 6269,
+          "tryRepresentationsOf:behavior:bytes:": 8,
+          "usesDefaultAllocation": 2176,
+          "usesDefaultLookup:": 2168,
+          "value:": 14,
+          "value:value:": 28,
+          "value:value:value:": 12,
+          "value:value:value:value:": 16,
+          "value:value:value:value:value:": 12,
+          "valueAt:": 4,
+          "vtableOf:": 4,
+          "wordOf:": 2145,
+          "wrappingAdd:": 3,
+          "wrappingSubtract:": 1
+        },
+        "total_sends": 83116
+      },
+      {
+        "case": "direct-slot",
+        "object_result": true,
+        "selectors": {
+          "allocationAt:": 1,
+          "at:": 1,
+          "behaviorOf:": 1,
+          "identityOf:": 2,
+          "intern:": 2,
+          "slot:in:": 1,
+          "slotAt:in:": 1,
+          "symbolBytesOf:": 1,
+          "symbolNamed:": 2,
+          "tryRepresentationIdentityOf:behavior:bytes:": 1,
+          "wordOf:": 1
+        },
+        "total_sends": 14
+      }
+    ],
+    "configuration": "Interleaved standard release runtimes; three observations per variant, default GC and task quantum unchanged. The separate Id dispatch census uses dispatch-metrics and is not timing evidence."
+  },
+  "remaining": "Concurrency program state, REPL/socket owners, obsolete Machine preparation, duplicate Store local Cells, Alien recipes, optional fact persistence, tooling/composition separation, end-to-end absence/cold/recovery acceptance and release remain incomplete.",
+  "logs": {
+    "final-install.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/final-install.log",
+      "sha256": "ec469dfc8cc4d1498a4a548da29472d47fc992b88b6324f97c2743f541174735"
+    },
+    "task-control-final.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/task-control-final.log",
+      "sha256": "e736de200fa6f5cf571fd2514351668337ff386bf9d28bb0369c0cee1a75cc0e"
+    },
+    "fields-accepted.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/fields-accepted.log",
+      "sha256": "62965ccd8b780f1029383d24792affde614cee8dbfd9f07c9a7e3c8c3435e49f"
+    },
+    "absence-accepted.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/absence-accepted.log",
+      "sha256": "268cc81ff2b376642034e8af508478c12c5a5612de6c2407c07d4fb6036ba687"
+    },
+    "host-tasks.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/host-tasks.log",
+      "sha256": "cf8d6d8da3be7af270ca426b5878ba75b3759a253e338a6699422ec7f5788f71"
+    },
+    "language-tests.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/language-tests.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "formal.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/formal.log",
+      "sha256": "15b9e04db352af66c8cf0b07783e6d1de7be86e357b4f584caedcf4feb177fad"
+    },
+    "qualified-performance.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/qualified-performance.log",
+      "sha256": "b7a7062b2a8c04c3256b81852ccb24120dddf6b09f9ed21f97300ae20ed513b3"
+    },
+    "final-decomposition.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/final-decomposition.log",
+      "sha256": "7d53ce689fcb769bff8fdfde226069f2f87424b7ad1d7b7a26ce7db6821dd2f8"
+    },
+    "quiet-paired.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/quiet-paired.log",
+      "sha256": "fc4670bf339d6a9e536e876967b48103867ebfa9c1777bfb8161ea9cf1794dbb"
+    },
+    "startup.log": {
+      "path": "/tmp/birnam-store-independent/04-task-fields/startup.log",
+      "sha256": "333f17f5a1bc9d44832c5c4be132109c88556777d3c4b7c58c6b8e45ac91a514"
+    }
+  }
+}

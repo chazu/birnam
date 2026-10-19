@@ -1,4 +1,4 @@
-//! Authored task scheduling over Store and Execution, with actual native barriers.
+//! Authored task scheduling over owned fields and Execution, with actual native barriers.
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,

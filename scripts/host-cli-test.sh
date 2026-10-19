@@ -112,6 +112,7 @@ fi
 
 if selected tasks; then
   run_check task-image-test.py python3 scripts/task-image-test.py "$scratch/relocated"
+  run_check task-fields-test.py python3 scripts/task-fields-test.py "$scratch/relocated"
   run_check concurrency-cli-test.py python3 scripts/concurrency-cli-test.py "$scratch/relocated"
   run_check multicore-smoke.sh bash scripts/multicore-smoke.sh "$scratch/relocated"
   run_check closure-observation-test.sh bash scripts/closure-observation-test.sh "$scratch/relocated"

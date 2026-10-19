@@ -112,7 +112,7 @@ sketched in 80A or a background I/O executor.
 
 ## Runtime connection and invariants
 
-[task_control.rs](../../rust/birnam-runtime/src/runtime/task_control.rs) supplies
+[machine.rs](../../rust/birnam-execution/src/machine.rs) supplies
 small generic Machine adapters: `runBlock:`, `resumeWith:`, `protectedBlock:`,
 `leaveBoundary:`, `park`, and `controlEligible`. `prepareBlockControl` prepares
 their registrations. The eligibility query runs as a StepMethod and checks
@@ -132,10 +132,12 @@ resumable control unit, so normal builds and source recovery include them.
 Existing `Object ensure:` keeps its prior behavior; explicit task cleanup uses
 `ensure:cleanup:`. Task and executor policy remains replaceable ordinary Birnam.
 
-Task/executor fields use namespaced `TaskControl.*` Store attributes with the
-existing `imageTransient` policy. They do not alter application attributes such
-as `machine`, `outcome`, or `history`. A retained task handle is not an imageable
-execution snapshot. Independently retained outcomes can be ordinary image data.
+Task/executor fields now live in ordinary named reference slots. Internal
+accessors and explicit `field:` views share those slots; there are no field facts,
+schemas or synthetic attribute names. The owner `imagePayload` protocol rejects
+prepared task handles and resets executor state without changing the live owner.
+A retained task handle is not an imageable execution snapshot. Independently
+retained outcomes and unused task factory clones can be ordinary image data.
 The executor initializes empty process-local state when first used after image
 loading. No IdApi/Method ABI, descriptor grammar, or image version changes.
 

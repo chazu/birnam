@@ -1,4 +1,4 @@
-# Task field migration: performance hold
+# Task field migration: regression and approved remediation
 
 2026-10-19. Baseline `2dc87f5a`. The owned-field implementation is a working-tree
 prototype, not a qualified or committed runtime change. The user explicitly
@@ -76,7 +76,7 @@ owner/index values takes **118.41 ms for 500 reads**, near the old cached-field
 loop's 120.39 ms. This is a lower-level diagnostic, not a measured implementation
 of the proposed fix or a promised end-to-end task speedup.
 
-## Recommended next implementation, pending approval
+## Approved next implementation
 
 Use ordinary owner getters/setters for the scheduler's internal field accesses.
 Their default implementations should read/write the known owned slot directly.
@@ -114,4 +114,80 @@ The implementation should:
 
 The broader completion and release goal remains unchanged. Evidence and exact
 source hashes are in the [measurement receipt](../measurements/task-field-regression-20261019.json).
-The current prototype is held for human approval before implementing this fix.
+The user approved this fix on 2026-10-19. Implementation and qualification are
+in progress; the failed prototype measurements above remain the historical baseline.
+
+## Remediation implementation and qualification
+
+The scheduler now sends ordinary named getters/setters to its owners. Those
+methods capture the ObjectModel receiver and immutable index values at
+installation, following Globals and Trace; each operation still dispatches the
+current method on that receiver through Id. They do not cache native entries or
+validate method identities. `pollOutcome` remains distinct from the waiting
+`outcome` operation; `quantum` still initializes restored executor state lazily.
+
+Explicit `field:` requests create ordinary owner/index views. The view factory
+and ObjectModel/Reflect dependencies are ordinary lexical captures, not repeated
+global lookups for every handle operation. Their methods remain replaceable, as
+do the owner accessors and `field:` itself. Reloading the source captures the
+then-current dependency objects. There is no promise that an internal state read
+will invoke `field:` or re-resolve a captured global binding.
+
+`watch:` retains its field-handle result. The new internal setters answer the
+owner; scheduler call sites discard those setter results. Worker shutdown still
+conditionally clears the exact stopped handle, so a replacement survives.
+
+The actual compiled task initializer has now run on a floor with no Store,
+Relational, Bootstrap, Image, Alien or Isolate libraries. Local wait/resume,
+cancellation/cleanup and GC owner-retention/release checks passed. This is
+component evidence: complete Host/worker/image independence is still unfinished.
+The 177-check task suite and targeted field tests (including mapped and rebuilt
+images in the existing Store-containing composition) passed. Final measurements and broader qualification are recorded below.
+
+Review also caught an ownership-conversion edge case: ordinary `clone` copies
+slots, whereas the former fresh fact entity had no request fields. `prepare:parent:`
+now explicitly resets `requestWorker`, `requestId` and `externalResult` along with
+all other task state. A regression test prepares a task from a factory containing
+stale request values and requires all three new fields to be nil. A completed
+task retained only through a field view is also tested as an image refusal, with
+the existing destination left intact.
+
+
+## Accepted measurements
+
+Final standard release artifact, three interleaved runs per variant:
+
+| Batch | Committed baseline | Owned fields/accessors | Change |
+| --- | ---: | ---: | ---: |
+| 31 immediate tasks | 839.13 ms | 166.49 ms | 80.2% less CPU |
+| 500 current-task reads | 218.02 ms | 138.07 ms | 36.7% less CPU |
+| 500 requested-handle writes | 214.19 ms | 221.90 ms | 3.6% more CPU |
+| 500 retained-handle reads | 117.92 ms | 125.33 ms | 6.3% more CPU |
+| 500 handle constructions | 197.96 ms | 186.11 ms | 6.0% less CPU |
+| Logue quiet-turn median | 26.309 ms | 26.350 ms | 0.2% more CPU |
+| Startup wall median | 2.799 s | 2.905 s | 3.8% longer |
+
+Startup CPU rises from 2.780 s to 2.899 s (4.2%). These are mixed small costs,
+not a claim that every operation became faster. The large task regression is
+resolved, with a substantial net improvement for task execution and no material
+Logue regression. Retained views still pay for their authored owner/index reads;
+internal scheduler accesses do not. Default GC and quantum policy are unchanged.
+The same task batch adds 562 facts before and **zero** after.
+
+The untimed send census falls from 409,837 to 83,116 sends per task and from
+2,261 to 165 per `current` read. Retained field reads take 289 sends versus the
+native Store Cell's 6; explicit handle construction falls from 2,077 to 1,977.
+These figures explain the remaining view cost; they are not CPU measurements.
+
+Qualification: 847 language checks; 177 task checks; installed task-image,
+19 Concurrency service, 27 multicore and conservative/precise closure checks;
+owner/alias/GC/image/refusal tests; actual initializer absence with GC reclamation;
+396 Lean theorems, 125 rejected mutations and 272 expected TLC outcomes.
+The formal checks cover the existing abstract contracts; runtime acceptance
+establishes this implementation's behavior.
+
+The final review correction adds three nil writes in fresh-task preparation.
+The final source task suite and final-artifact field/image/absence checks include
+that correction. Broad Host/language checks preceded only those three writes.
+See the [accepted receipt](../measurements/task-owned-fields-20261019.json) for
+source/artifact hashes, exact runs, timings and qualification boundaries.

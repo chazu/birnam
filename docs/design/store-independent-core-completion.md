@@ -340,21 +340,41 @@ Next is ordinary TaskControl/TaskExecutor field ownership using this image
 contract, with actual field aliases, scheduling transitions and task retention
 preserved. Store fact transport and production optional composition remain pending.
 
-## Current hold: task/worker field prototype (2026-10-19)
+## Qualified task/worker field ownership (2026-10-19)
 
-The working prototype moves TaskControl, TaskExecutor, Worker and RemoteFailure
-state out of Store, eliminating all db calls from stackless-control initialization.
-It builds, but task completion is 3.14× slower and field loops are about 39% slower.
-The runtime change is **uncommitted and unqualified**. Per the user's explicit
-performance condition, implementation is held for approval. The investigation
-identifies disposable field views and their helper dispatch as the main cause;
-ordinary direct owner accessors are the proposed next step. See the
-[report](task-field-migration-performance.md) for measurements, protocol tradeoffs
-and the acceptance requirements. The overall core-independence/release goal is
-not complete or reduced by this hold.
+TaskControl, TaskExecutor, Worker and RemoteFailure now own ordinary reference
+slots. Internal state operations use replaceable owner accessors; explicit
+`field:` requests retain ordinary aliased owner/index views. There are no Store/db
+calls, field schemas or attribute-prefix construction in stackless-control.
+Worker compare-and-clear, task transitions, cancellation/shielding, handle aliasing
+and owner image admission/reset behavior are retained. Fresh-task preparation
+explicitly resets every state field, including request fields copied by `clone`.
+
+The initial owned-view prototype regressed task CPU 3.14× and was held for user
+approval. The approved direct-accessor remediation now uses **80.2% less task CPU**
+than the committed Store baseline and adds zero task facts versus 562. Current-task
+reads use 36.7% less CPU. Explicit view operations have smaller mixed changes;
+startup is about 0.1 s slower (3.8% wall / 4.2% CPU), and Logue quiet turns are
+within 0.2% of baseline. This is not an across-the-board speedup claim.
+
+Acceptance includes all 847 language checks, 177 task checks, installed task
+images, Concurrency/multicore/closure gates, retained-field aliases and image
+refusal, fresh-task reset and actual initializer operation with Store/Relational
+physically absent. GC checks prove a retained view keeps its owner/payload alive
+and releasing it makes them collectible. Existing formal contracts pass 396 Lean
+proofs, 125 mutation rejections and 272 expected TLC outcomes. See the
+[report](task-field-migration-performance.md) and
+[receipt](../measurements/task-owned-fields-20261019.json).
+
+This completes the task-field implementation and the Worker/RemoteFailure part
+of the resource slice. **Store-free Image and complete Host/worker composition
+are not yet proven:** quiescent-image owner semantics pass in the existing
+composition; actual Store-free image acceptance remains with the Image slice.
+Concurrency program ownership, REPL/socket resources, Alien, optional persistence
+and tools/composition still remain. The original release objective is unchanged.
 
 A further source-backed cleanup found during this investigation is
 `Machine prepareBlockControl`: its native `Op::Prepare` now only returns the
 receiver, and adapter installation already occurs during Execution loading.
-Remove the obsolete call/selector/operation after the performance hold is resolved;
+Remove the obsolete call/selector/operation as the next small simplification;
 retain meaningful adapter/repeated-loading coverage instead of testing a no-op.

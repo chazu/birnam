@@ -235,51 +235,234 @@
 // Structured task policy. These ordinary methods share the selected control
 // unit so waiting never leaves a synchronous library frame on the native stack.
 [Machine prepareBlockControl];
-[Globals at: #TaskControl put: [ObjectModel newSlots: #[false] parent: ObjectVt]];
-[Globals at: #TaskExecutor put: [Object clone]];
-
-[Reflect defineMethod: #attribute: on: TaskControl as: [:self :name |
-  [["TaskControl." , [name asString]] asSymbol]]];
-[Reflect defineMethod: #stateFields on: TaskControl as: [:self |
-  #[#machine #outcome #waitToken #shieldDepth #failures #cancelled #cancelReason
-    #parent #children #waiters #failureSources #childFailures #body #joining #protectedFromParent
-    #controlError #queue #draining #current #quantum #transitionDepth #bodyActive
-    #ingress #requestWorker #requestId #externalResult #serviceTask]]];
-[Reflect defineMethod: #initializeStateSchema on: TaskControl as: [:self |
-  [[self stateFields] do: [:name |
-    let attribute := [self attribute: name];
-    [db assert: attribute attr: #cardinality value: #one];
-    [db assert: attribute attr: #history value: false];
-    [db assert: attribute attr: #imageTransient value: true]]]]];
-[TaskControl initializeStateSchema];
-// This ordinary owner field replaces the Store's imageTransientObject fact.
-// A factory clone has no process capability; preparation marks a real handle.
-// The marker remains set after its Machine is released on completion.
-[Reflect defineMethod: #slotNames on: TaskControl as: [:self | #[#processLocal]]];
+// Field handles are ordinary views of a concrete owner/slot. Each request
+// creates a fresh handle; retained handles share mutation and keep the owner
+// alive. There is no schema, attribute spelling or external state table.
+[[|
+let model := ObjectModel; let reflect := Reflect;
+let field := [model newSlots: #[nil nil] parent: ObjectVt];
+let ownerSlot := 0; let indexSlot := 1;
+[Reflect defineMethod: #slotNames on: field as: [:self | #[#owner #slot]]];
+[Reflect defineMethod: #owner:slot: on: field as: [:self :owner :index |
+  [model newSlots: #[owner index] parent: [reflect vtableOf: self]]
+]];
+[Reflect defineMethod: #value on: field as: [:self |
+  [model slot: [model slot: indexSlot in: self] in: [model slot: ownerSlot in: self]]
+]];
+[Reflect defineMethod: #set: on: field as: [:self :value |
+  [model slot: [model slot: indexSlot in: self] in: [model slot: ownerSlot in: self] put: value]; self
+]];
+[Reflect defineMethod: #replace:with: on: field as: [:self :expected :value |
+  [model replaceSlot: [model slot: indexSlot in: self] in: [model slot: ownerSlot in: self] expected: expected with: value]
+]];
+[Reflect defineMethod: #history on: field as: [:self | 0]];
+[Globals at: #TaskField put: field]
+] value];
+[[|
+let names := #[#processLocal #machine #outcome #waitToken #shieldDepth #failures #cancelled #cancelReason #parent #children #waiters #failureSources #childFailures #body #joining #protectedFromParent #controlError #transitionDepth #bodyActive #requestWorker #requestId #externalResult];
+let fieldView := TaskField;
+let indices := {#processLocal -> 0, #machine -> 1, #outcome -> 2, #waitToken -> 3, #shieldDepth -> 4, #failures -> 5, #cancelled -> 6, #cancelReason -> 7, #parent -> 8, #children -> 9, #waiters -> 10, #failureSources -> 11, #childFailures -> 12, #body -> 13, #joining -> 14, #protectedFromParent -> 15, #controlError -> 16, #transitionDepth -> 17, #bodyActive -> 18, #requestWorker -> 19, #requestId -> 20, #externalResult -> 21};
+let prototype := [ObjectModel newSlots: #[false nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
+[Reflect defineMethod: #fieldIndex: on: prototype as: [:self :name | [indices at: name]]];
+[Reflect defineMethod: #field: on: prototype as: [:self :name |
+  let index := [self fieldIndex: name];
+  [[index isError] ifTrue: [| index] ifFalse: [|
+    [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
+      [fieldView owner: self slot: index]
+    ]]
+  ]]
+]];
+// Internal state access uses ordinary replaceable owner methods. Explicit
+// field: callers retain views of these same slots. Captures are values, not methods.
+let model := ObjectModel;
+let processLocalSlot := 0;
+[Reflect defineMethod: #processLocal on: prototype as: [:self | [model slot: processLocalSlot in: self]]];
+[Reflect defineMethod: #processLocal: on: prototype as: [:self :value |
+  [model slot: processLocalSlot in: self put: value]; self
+]];
+let machineSlot := 1;
+[Reflect defineMethod: #machine on: prototype as: [:self | [model slot: machineSlot in: self]]];
+[Reflect defineMethod: #machine: on: prototype as: [:self :value |
+  [model slot: machineSlot in: self put: value]; self
+]];
+let outcomeSlot := 2;
+[Reflect defineMethod: #pollOutcome on: prototype as: [:self | [model slot: outcomeSlot in: self]]];
+[Reflect defineMethod: #outcome: on: prototype as: [:self :value |
+  [model slot: outcomeSlot in: self put: value]; self
+]];
+let waitTokenSlot := 3;
+[Reflect defineMethod: #waitToken on: prototype as: [:self | [model slot: waitTokenSlot in: self]]];
+[Reflect defineMethod: #waitToken: on: prototype as: [:self :value |
+  [model slot: waitTokenSlot in: self put: value]; self
+]];
+let shieldDepthSlot := 4;
+[Reflect defineMethod: #shieldDepth on: prototype as: [:self | [model slot: shieldDepthSlot in: self]]];
+[Reflect defineMethod: #shieldDepth: on: prototype as: [:self :value |
+  [model slot: shieldDepthSlot in: self put: value]; self
+]];
+let failuresSlot := 5;
+[Reflect defineMethod: #failures on: prototype as: [:self | [model slot: failuresSlot in: self]]];
+[Reflect defineMethod: #failures: on: prototype as: [:self :value |
+  [model slot: failuresSlot in: self put: value]; self
+]];
+let cancelledSlot := 6;
+[Reflect defineMethod: #cancelled on: prototype as: [:self | [model slot: cancelledSlot in: self]]];
+[Reflect defineMethod: #cancelled: on: prototype as: [:self :value |
+  [model slot: cancelledSlot in: self put: value]; self
+]];
+let cancelReasonSlot := 7;
+[Reflect defineMethod: #cancelReason on: prototype as: [:self | [model slot: cancelReasonSlot in: self]]];
+[Reflect defineMethod: #cancelReason: on: prototype as: [:self :value |
+  [model slot: cancelReasonSlot in: self put: value]; self
+]];
+let parentSlot := 8;
+[Reflect defineMethod: #parent on: prototype as: [:self | [model slot: parentSlot in: self]]];
+[Reflect defineMethod: #parent: on: prototype as: [:self :value |
+  [model slot: parentSlot in: self put: value]; self
+]];
+let childrenSlot := 9;
+[Reflect defineMethod: #children on: prototype as: [:self | [model slot: childrenSlot in: self]]];
+[Reflect defineMethod: #children: on: prototype as: [:self :value |
+  [model slot: childrenSlot in: self put: value]; self
+]];
+let waitersSlot := 10;
+[Reflect defineMethod: #waiters on: prototype as: [:self | [model slot: waitersSlot in: self]]];
+[Reflect defineMethod: #waiters: on: prototype as: [:self :value |
+  [model slot: waitersSlot in: self put: value]; self
+]];
+let failureSourcesSlot := 11;
+[Reflect defineMethod: #failureSources on: prototype as: [:self | [model slot: failureSourcesSlot in: self]]];
+[Reflect defineMethod: #failureSources: on: prototype as: [:self :value |
+  [model slot: failureSourcesSlot in: self put: value]; self
+]];
+let childFailuresSlot := 12;
+[Reflect defineMethod: #childFailures on: prototype as: [:self | [model slot: childFailuresSlot in: self]]];
+[Reflect defineMethod: #childFailures: on: prototype as: [:self :value |
+  [model slot: childFailuresSlot in: self put: value]; self
+]];
+let bodySlot := 13;
+[Reflect defineMethod: #body on: prototype as: [:self | [model slot: bodySlot in: self]]];
+[Reflect defineMethod: #body: on: prototype as: [:self :value |
+  [model slot: bodySlot in: self put: value]; self
+]];
+let joiningSlot := 14;
+[Reflect defineMethod: #joining on: prototype as: [:self | [model slot: joiningSlot in: self]]];
+[Reflect defineMethod: #joining: on: prototype as: [:self :value |
+  [model slot: joiningSlot in: self put: value]; self
+]];
+let protectedFromParentSlot := 15;
+[Reflect defineMethod: #protectedFromParent on: prototype as: [:self | [model slot: protectedFromParentSlot in: self]]];
+[Reflect defineMethod: #protectedFromParent: on: prototype as: [:self :value |
+  [model slot: protectedFromParentSlot in: self put: value]; self
+]];
+let controlErrorSlot := 16;
+[Reflect defineMethod: #controlError on: prototype as: [:self | [model slot: controlErrorSlot in: self]]];
+[Reflect defineMethod: #controlError: on: prototype as: [:self :value |
+  [model slot: controlErrorSlot in: self put: value]; self
+]];
+let transitionDepthSlot := 17;
+[Reflect defineMethod: #transitionDepth on: prototype as: [:self | [model slot: transitionDepthSlot in: self]]];
+[Reflect defineMethod: #transitionDepth: on: prototype as: [:self :value |
+  [model slot: transitionDepthSlot in: self put: value]; self
+]];
+let bodyActiveSlot := 18;
+[Reflect defineMethod: #bodyActive on: prototype as: [:self | [model slot: bodyActiveSlot in: self]]];
+[Reflect defineMethod: #bodyActive: on: prototype as: [:self :value |
+  [model slot: bodyActiveSlot in: self put: value]; self
+]];
+let requestWorkerSlot := 19;
+[Reflect defineMethod: #requestWorker on: prototype as: [:self | [model slot: requestWorkerSlot in: self]]];
+[Reflect defineMethod: #requestWorker: on: prototype as: [:self :value |
+  [model slot: requestWorkerSlot in: self put: value]; self
+]];
+let requestIdSlot := 20;
+[Reflect defineMethod: #requestId on: prototype as: [:self | [model slot: requestIdSlot in: self]]];
+[Reflect defineMethod: #requestId: on: prototype as: [:self :value |
+  [model slot: requestIdSlot in: self put: value]; self
+]];
+let externalResultSlot := 21;
+[Reflect defineMethod: #externalResult on: prototype as: [:self | [model slot: externalResultSlot in: self]]];
+[Reflect defineMethod: #externalResult: on: prototype as: [:self :value |
+  [model slot: externalResultSlot in: self put: value]; self
+]];
+[Globals at: #TaskControl put: prototype]
+] value];
 [Reflect defineMethod: #imagePayload on: TaskControl as: [:self |
   [[ObjectModel slot: 0 in: self] ifTrue: [| false] ifFalse: [| self]]
 ]];
-[Reflect defineMethod: #field: on: TaskControl as: [:self :name |
-  [db cellFor: self attr: [self attribute: name]]]];
-[Reflect defineMethod: #field: on: TaskExecutor as: [:self :name |
-  [db cellFor: self attr: [TaskControl attribute: name]]]];
-[[TaskExecutor field: #queue] set: #[]];
-[[TaskExecutor field: #ingress] set: #[]];
-[[TaskExecutor field: #draining] set: false];
-[[TaskExecutor field: #current] set: nil];
-[[TaskExecutor field: #quantum] set: 128];
-[Reflect defineMethod: #current on: TaskExecutor as: [:self | [[self field: #current] value]]];
+[[|
+let names := #[#queue #ingress #draining #current #quantum #serviceTask];
+let fieldView := TaskField;
+let indices := {#queue -> 0, #ingress -> 1, #draining -> 2, #current -> 3, #quantum -> 4, #serviceTask -> 5};
+let prototype := [ObjectModel newSlots: #[nil nil nil nil nil nil] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
+[Reflect defineMethod: #fieldIndex: on: prototype as: [:self :name | [indices at: name]]];
+[Reflect defineMethod: #field: on: prototype as: [:self :name |
+  let index := [self fieldIndex: name];
+  [[index isError] ifTrue: [| index] ifFalse: [|
+    [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
+      [fieldView owner: self slot: index]
+    ]]
+  ]]
+]];
+// Internal state access uses ordinary replaceable owner methods. Explicit
+// field: callers retain views of these same slots. Captures are values, not methods.
+let model := ObjectModel;
+let queueSlot := 0;
+[Reflect defineMethod: #queue on: prototype as: [:self | [model slot: queueSlot in: self]]];
+[Reflect defineMethod: #queue: on: prototype as: [:self :value |
+  [model slot: queueSlot in: self put: value]; self
+]];
+let ingressSlot := 1;
+[Reflect defineMethod: #ingress on: prototype as: [:self | [model slot: ingressSlot in: self]]];
+[Reflect defineMethod: #ingress: on: prototype as: [:self :value |
+  [model slot: ingressSlot in: self put: value]; self
+]];
+let drainingSlot := 2;
+[Reflect defineMethod: #draining on: prototype as: [:self | [model slot: drainingSlot in: self]]];
+[Reflect defineMethod: #draining: on: prototype as: [:self :value |
+  [model slot: drainingSlot in: self put: value]; self
+]];
+let currentSlot := 3;
+[Reflect defineMethod: #current on: prototype as: [:self | [model slot: currentSlot in: self]]];
+[Reflect defineMethod: #current: on: prototype as: [:self :value |
+  [model slot: currentSlot in: self put: value]; self
+]];
+let quantumSlot := 4;
+[Reflect defineMethod: #storedQuantum on: prototype as: [:self | [model slot: quantumSlot in: self]]];
+[Reflect defineMethod: #quantum: on: prototype as: [:self :value |
+  [model slot: quantumSlot in: self put: value]; self
+]];
+let serviceTaskSlot := 5;
+[Reflect defineMethod: #serviceTask on: prototype as: [:self | [model slot: serviceTaskSlot in: self]]];
+[Reflect defineMethod: #serviceTask: on: prototype as: [:self :value |
+  [model slot: serviceTaskSlot in: self put: value]; self
+]];
+[Globals at: #TaskExecutor put: prototype]
+] value];
+// Executor fields describe this process. Retained views still refer to the
+// same owner after restore, whose fields are reset just as the former transient
+// fields were. initialize supplies the normal queue/quantum defaults lazily.
+[Reflect defineMethod: #imagePayload on: TaskExecutor as: [:self |
+  [ObjectModel newSlots: #[nil nil nil nil nil nil] parent: ObjectVt]
+]];
+[TaskExecutor queue: #[]];
+[TaskExecutor ingress: #[]];
+[TaskExecutor draining: false];
+[TaskExecutor current: nil];
+[TaskExecutor quantum: 128];
 [Reflect defineMethod: #initialize on: TaskExecutor as: [:self |
-  [[[[self field: #queue] value] isNil] ifTrue: [|
-    [[self field: #queue] set: #[]];
-    [[self field: #ingress] set: #[]];
-    [[self field: #draining] set: false];
-    [[self field: #quantum] set: 128];
-    [[self field: #current] set: nil]]];
+  [[[self queue] isNil] ifTrue: [|
+    [self queue: #[]];
+    [self ingress: #[]];
+    [self draining: false];
+    [self quantum: 128];
+    [self current: nil]]];
   self]];
 [Reflect defineMethod: #quantum on: TaskExecutor as: [:self |
   [self initialize];
-  [[self field: #quantum] value]]];
+  [self storedQuantum]]];
 // Only the executing task needs a transition guard. Host executor work and
 // synchronous native callbacks already run without another task being selected.
 [Reflect defineMethod: #transition: on: TaskExecutor as: [:self :body |
@@ -301,85 +484,83 @@
 [Reflect defineMethod: #enqueue: on: TaskExecutor as: [:self :job |
   [TaskExecutor transition: [|
     [self initialize];
-    [[self field: #queue] set: [[[self field: #queue] value] add: job]];
+    [self queue: [[self queue] add: job]];
     self]]]];
 // Queue notifications; never recursively drive another task from a completing
 // child's native entry. Each drive returns before the next task can run.
 [Reflect defineMethod: #hasWork on: TaskExecutor as: [:self |
-  [[[[[self field: #queue] value] size] > 0]
+  [[[[self queue] size] > 0]
     ifTrue: [| true]
     ifFalse: [|
-      [[[[[self field: #ingress] value] size] > 0]
+      [[[[self ingress] size] > 0]
         ifTrue: [| true]
         ifFalse: [|
-          let task := [[self field: #serviceTask] value];
+          let task := [self serviceTask];
           [[task isNil] ifTrue: [| false] ifFalse: [| [[task pollOutcome] isNil]]]]]]]]];
 [Reflect defineMethod: #watch: on: TaskExecutor as: [:self :task |
   [self transition: [|
-    [[self field: #ingress] set: [[[self field: #ingress] value] add: task]]]]]];
+    [self ingress: [[self ingress] add: task]];
+    [self field: #ingress]]]]];
 [Reflect defineMethod: #pollIngress on: TaskExecutor as: [:self |
-  let service := [[self field: #serviceTask] value];
+  let service := [self serviceTask];
   [[service notNil] ifTrue: [|
     let control := [Isolate pollServiceControl];
     [[control = true] ifTrue: [| [service cancel: #remoteCancellation]]];
     [[control = #ownerLost] ifTrue: [| [service cancel: #ownerLost]]]]];
-  [[[self field: #ingress] value] do: [:task | [task pollExternal]]];
-  [[self field: #ingress] set: [[[self field: #ingress] value] select: [:task |
-    [[[task field: #externalResult] value] isNil]]]];
+  [[self ingress] do: [:task | [task pollExternal]]];
+  [self ingress: [[self ingress] select: [:task |
+    [[task externalResult] isNil]]]];
   self]];
 [Reflect defineMethod: #idle on: TaskExecutor as: [:self |
   [Isolate idleFor: 1]]];
 [Reflect defineMethod: #driveNext on: TaskExecutor as: [:self |
-  let queue := [[self field: #queue] value];
+  let queue := [self queue];
   let job := [queue at: 0];
-  [[self field: #queue] set: [queue copyFrom: 1 to: [queue size]]];
+  [self queue: [queue copyFrom: 1 to: [queue size]]];
   let task := [job at: 0];
-  [[self field: #current] set: task];
+  [self current: task];
   let progress := [task drive: job];
-  [[self field: #current] set: nil];
+  [self current: nil];
   progress]];
 [Reflect defineMethod: #drain on: TaskExecutor as: [:self |
   [self initialize];
-  [[[self field: #draining] value]
+  [[self draining]
     ifTrue: [| nil]
     ifFalse: [|
-      [[self field: #draining] set: true];
+      [self draining: true];
       let result := [[| [self hasWork]] whileTrue: [|
         [self pollIngress];
-        [[[[[self field: #queue] value] size] > 0]
+        [[[[self queue] size] > 0]
           ifTrue: [| [self driveNext]]
           ifFalse: [| [[self hasWork] ifTrue: [| [self idle]]]]]]];
-      [[self field: #draining] set: false];
+      [self draining: false];
       result]]]];
 
-[Reflect defineMethod: #machine on: TaskControl as: [:self | [[self field: #machine] value]]];
-[Reflect defineMethod: #pollOutcome on: TaskControl as: [:self | [[self field: #outcome] value]]];
-[Reflect defineMethod: #waitToken on: TaskControl as: [:self | [[self field: #waitToken] value]]];
-[Reflect defineMethod: #shieldDepth on: TaskControl as: [:self | [[self field: #shieldDepth] value]]];
-[Reflect defineMethod: #failures on: TaskControl as: [:self | [[self field: #failures] value]]];
-[Reflect defineMethod: #children on: TaskControl as: [:self | [[self field: #children] value]]];
 
 [Reflect defineMethod: #prepare:parent: on: TaskControl as: [:self :body :parent |
   let task := [self clone];
   [ObjectModel slot: 0 in: task put: true];
-  [[task field: #machine] set: [Machine new]];
-  [[task field: #outcome] set: nil];
-  [[task field: #waitToken] set: nil];
-  [[task field: #shieldDepth] set: 0];
-  [[task field: #failures] set: #[]];
-  [[task field: #failureSources] set: #[]];
-  [[task field: #childFailures] set: #[]];
-  [[task field: #cancelled] set: false];
-  [[task field: #cancelReason] set: nil];
-  [[task field: #parent] set: parent];
-  [[task field: #children] set: #[]];
-  [[task field: #waiters] set: #[]];
-  [[task field: #body] set: body];
-  [[task field: #joining] set: false];
-  [[task field: #protectedFromParent] set: false];
-  [[task field: #controlError] set: nil];
-  [[task field: #transitionDepth] set: 0];
-  [[task field: #bodyActive] set: false];
+  [task machine: [Machine new]];
+  [task outcome: nil];
+  [task waitToken: nil];
+  [task shieldDepth: 0];
+  [task failures: #[]];
+  [task failureSources: #[]];
+  [task childFailures: #[]];
+  [task cancelled: false];
+  [task cancelReason: nil];
+  [task parent: parent];
+  [task children: #[]];
+  [task waiters: #[]];
+  [task body: body];
+  [task joining: false];
+  [task protectedFromParent: false];
+  [task controlError: nil];
+  [task transitionDepth: 0];
+  [task bodyActive: false];
+  [task requestWorker: nil];
+  [task requestId: nil];
+  [task externalResult: nil];
   task]];
 
 [Reflect defineMethod: #start: on: TaskControl as: [:self :body |
@@ -399,13 +580,13 @@
   [[parent isNil]
     ifTrue: [|
       let task := [self prepare: body parent: nil];
-      [[task field: #shieldDepth] set: 1];
+      [task shieldDepth: 1];
       [TaskExecutor enqueue: #[task #start nil]];
       [TaskExecutor drain]; task]
     ifFalse: [|
       [TaskExecutor transition: [|
         let task := [parent fork: body];
-        [[task isError] ifFalse: [| [[task field: #shieldDepth] set: 1]]];
+        [[task isError] ifFalse: [| [task shieldDepth: 1]]];
         task]]]]]];
 
 [Reflect defineMethod: #fork: on: TaskControl as: [:self :body |
@@ -413,15 +594,15 @@
     [[[self pollOutcome] notNil]
       ifTrue: [| [Error kind: #taskClosed]]
       ifFalse: [|
-        [[[self field: #joining] value]
+        [[self joining]
           ifTrue: [| [Error kind: #taskClosed]]
           ifFalse: [|
             let child := [TaskControl prepare: body parent: self];
-            [[child field: #protectedFromParent] set: [[self shieldDepth] > 0]];
-            [[self field: #children] set: [[self children] add: child]];
+            [child protectedFromParent: [[self shieldDepth] > 0]];
+            [self children: [[self children] add: child]];
             [[[self shieldDepth] = 0] ifTrue: [|
-              [[[self field: #cancelled] value] ifTrue: [|
-                [child cancel: [[self field: #cancelReason] value]]]]]];
+              [[self cancelled] ifTrue: [|
+                [child cancel: [self cancelReason]]]]]];
             [TaskExecutor enqueue: #[child #start nil]];
             child]]]]]]]];
 
@@ -432,8 +613,8 @@
   let quantum := [TaskExecutor quantum];
   let progress := [[[job at: 1] = #start]
     ifTrue: [|
-      let body := [[self field: #body] value];
-      [[self field: #body] set: nil];
+      let body := [self body];
+      [self body: nil];
       [machine runBlock: [| [self execute: body]] budget: quantum]]
     ifFalse: [|
       [[[job at: 1] = #resume]
@@ -443,60 +624,60 @@
           [[delivery isError]
             ifTrue: [| delivery]
             ifFalse: [| [machine continueWithBudget: quantum]]]]]]];
-  [[progress isError] ifTrue: [| [[self field: #controlError] set: progress]]];
+  [[progress isError] ifTrue: [| [self controlError: progress]]];
   // A budget expiry may split a library transition, but cannot hand the owner
   // to a peer until the transition finishes. Explicit parks still release it.
   [[| [self mustFinishTransitionOn: machine]] whileTrue: [|
     let next := [machine continueWithBudget: quantum];
-    [[next isError] ifTrue: [| [[self field: #controlError] set: next]]]]];
-  [[[[self field: #controlError] value] isNil] ifTrue: [|
+    [[next isError] ifTrue: [| [self controlError: next]]]]];
+  [[[self controlError] isNil] ifTrue: [|
     [[machine isRunnable] ifTrue: [| [TaskExecutor enqueue: #[self #continue nil]]]]]];
-  [[self field: #controlError] value]]];
+  [self controlError]]];
 [Reflect defineMethod: #mustFinishTransitionOn: on: TaskControl as: [:self :machine |
-  [[[[self field: #controlError] value] notNil]
+  [[[self controlError] notNil]
     ifTrue: [| false]
     ifFalse: [|
       [[machine isRunnable]
         ifTrue: [|
-          [[[[self field: #transitionDepth] value] > 0]
+          [[[self transitionDepth] > 0]
             ifTrue: [| true]
             ifFalse: [| [[self pollOutcome] notNil]]]]
         ifFalse: [| false]]]]]];
 [Reflect defineMethod: #deliverCancellationTo: on: TaskControl as: [:self :machine |
-  [[[self field: #cancelled] value] ifTrue: [|
-    [[[self field: #bodyActive] value] ifTrue: [|
+  [[self cancelled] ifTrue: [|
+    [[self bodyActive] ifTrue: [|
       [[[self shieldDepth] = 0] ifTrue: [|
-        [[[[self field: #transitionDepth] value] = 0] ifTrue: [|
+        [[[self transitionDepth] = 0] ifTrue: [|
           [[machine boundaryDeliveryPending] ifFalse: [|
-            [machine exitRunnableBoundary: #[#cancelled [[self field: #cancelReason] value]]]]]]]]]]]]]]];
+            [machine exitRunnableBoundary: #[#cancelled [self cancelReason]]]]]]]]]]]]]]];
 
 // These are internal scheduler transitions, not application mutexes. Their
 // boundary restores nesting on explicit fail:/exit; Error-valued returns remain
 // ordinary values. Policy and state stay replaceable Birnam.
 [Reflect defineMethod: #transition: on: TaskControl as: [:self :body |
   let machine := [self machine];
-  let depth := [[self field: #transitionDepth] value];
-  [[self field: #transitionDepth] set: [depth + 1]];
+  let depth := [self transitionDepth];
+  [self transitionDepth: [depth + 1]];
   let answer := [machine protectedBlock: [| #[#success [body value]]]];
   [machine acknowledgeBoundaryDelivery];
-  [[self field: #transitionDepth] set: depth];
+  [self transitionDepth: depth];
   [[[answer at: 0] = #success]
     ifTrue: [| [answer at: 1]]
     ifFalse: [| [machine leaveBoundary: answer]]]]];
 
 [Reflect defineMethod: #recordFailures:from: on: TaskControl as: [:self :evidence :source |
   [TaskExecutor transition: [|
-    let known := [[[self field: #failureSources] value] detect: [:each | [each == source]]];
+    let known := [[self failureSources] detect: [:each | [each == source]]];
     [[known isNil] ifTrue: [|
-      [[self field: #failureSources] set: [[[self field: #failureSources] value] add: source]];
-      [evidence do: [:each | [[self field: #failures] set: [[self failures] add: each]]]]]];
+      [self failureSources: [[self failureSources] add: source]];
+      [evidence do: [:each | [self failures: [[self failures] add: each]]]]]];
     self]]]];
 [Reflect defineMethod: #recordOutcome:from: on: TaskControl as: [:self :result :source |
   [TaskExecutor transition: [|
-    let known := [[[self field: #failureSources] value] detect: [:each | [each == source]]];
+    let known := [[self failureSources] detect: [:each | [each == source]]];
     [[known isNil] ifTrue: [|
       [self recordFailures: [result at: 1] from: source];
-      [[self field: #childFailures] set: [[[self field: #childFailures] value] add: result]]]];
+      [self childFailures: [[self childFailures] add: result]]]];
     self]]]];
 [Reflect defineMethod: #fail: on: TaskControl as: [:self :evidence |
   [[self canControl]
@@ -508,17 +689,17 @@
     ifFalse: [| [Error kind: #taskContextRequired]]]]];
 
 [Reflect defineMethod: #shield on: TaskControl as: [:self |
-  [[self field: #shieldDepth] set: [[self shieldDepth] + 1]];
+  [self shieldDepth: [[self shieldDepth] + 1]];
   [[self machine] acknowledgeBoundaryDelivery];
   self]];
 [Reflect defineMethod: #unshield on: TaskControl as: [:self |
-  [[self field: #shieldDepth] set: [[self shieldDepth] - 1]];
+  [self shieldDepth: [[self shieldDepth] - 1]];
   self]];
 [Reflect defineMethod: #checkpoint on: TaskControl as: [:self |
   [[[self shieldDepth] = 0] ifTrue: [|
-    [[[self field: #cancelled] value] ifTrue: [|
+    [[self cancelled] ifTrue: [|
       [[[self machine] boundaryDeliveryPending] ifFalse: [|
-        [[self machine] leaveBoundary: #[#cancelled [[self field: #cancelReason] value]]]]]]]]];
+        [[self machine] leaveBoundary: #[#cancelled [self cancelReason]]]]]]]]];
   self]];
 [Reflect defineMethod: #canControl on: TaskControl as: [:self |
   [[[TaskExecutor current] == self]
@@ -526,10 +707,10 @@
     ifFalse: [| false]]]];
 [Reflect defineMethod: #canWait on: TaskControl as: [:self |
   [[self canControl]
-    ifTrue: [| [[[self field: #transitionDepth] value] = 0]]
+    ifTrue: [| [[self transitionDepth] = 0]]
     ifFalse: [| false]]]];
 [Reflect defineMethod: #waitError on: TaskControl as: [:self |
-  [[[[self field: #transitionDepth] value] > 0]
+  [[[self transitionDepth] > 0]
     ifTrue: [| [Error kind: #taskTransitionWait]]
     ifFalse: [| [Error kind: #taskContextRequired]]]]];
 [Reflect defineMethod: #wait on: TaskControl as: [:self |
@@ -537,7 +718,7 @@
     ifTrue: [|
       let value := [TaskExecutor transition: [|
         [self checkpoint];
-        [[self field: #waitToken] set: [Object clone]];
+        [self waitToken: [Object clone]];
         [[self machine] park]]];
       [self checkpoint];
       value]
@@ -549,7 +730,7 @@
     ifTrue: [|
       [TaskExecutor transition: [|
         [self checkpoint];
-        [[self field: #waitToken] set: [Object clone]];
+        [self waitToken: [Object clone]];
         [self enqueueResolution: [self waitToken] with: nil];
         [[self machine] park]]];
       [self checkpoint];
@@ -567,7 +748,7 @@
           ifTrue: [|
             [[token == [self waitToken]]
               ifTrue: [|
-                [[self field: #waitToken] set: nil];
+                [self waitToken: nil];
                 [TaskExecutor enqueue: #[self #resume value]];
                 true]
               ifFalse: [| false]]]
@@ -583,14 +764,14 @@
 [Reflect defineMethod: #cancelChildren: on: TaskControl as: [:self :reason |
   [TaskExecutor transition: [|
     [[self children] do: [:child |
-      [[[child field: #protectedFromParent] value] ifFalse: [| [child requestCancellation: reason]]]]];
+      [[child protectedFromParent] ifFalse: [| [child requestCancellation: reason]]]]];
     self]]]];
 [Reflect defineMethod: #requestCancellation: on: TaskControl as: [:self :reason |
   [TaskExecutor transition: [|
     [[[self pollOutcome] isNil] ifTrue: [|
-      [[[self field: #cancelled] value] ifFalse: [|
-        [[self field: #cancelled] set: true];
-        [[self field: #cancelReason] set: reason];
+      [[self cancelled] ifFalse: [|
+        [self cancelled: true];
+        [self cancelReason: reason];
         [self cancelChildren: reason]]];
       [[[self shieldDepth] = 0] ifTrue: [|
         [self enqueueResolution: [self waitToken] with: nil]]]]];
@@ -619,7 +800,7 @@
 
 [Reflect defineMethod: #removeWaiter: on: TaskControl as: [:self :token |
   [TaskExecutor transition: [|
-    [[self field: #waiters] set: [[[self field: #waiters] value] reject: [:entry |
+    [self waiters: [[self waiters] reject: [:entry |
       [[entry at: 1] == token]]]];
     self]]]];
 [Reflect defineMethod: #waitFor: on: TaskControl as: [:self :target |
@@ -628,8 +809,8 @@
     [TaskExecutor transition: [|
       [self checkpoint];
       [[[target pollOutcome] isNil] ifTrue: [|
-        [[self field: #waitToken] set: token];
-        [[target field: #waiters] set: [[[target field: #waiters] value] add: #[self token]]];
+        [self waitToken: token];
+        [target waiters: [[target waiters] add: #[self token]]];
         [[self machine] park]]]]];
     [self checkpoint]]
   cleanup: [| [target removeWaiter: token]]];
@@ -672,32 +853,32 @@
 [Reflect defineMethod: #publish: on: TaskControl as: [:self :answer |
   [TaskExecutor transition: [|
     let result := [[[[self failures] size] > 0]
-      ifTrue: [| #[#failure [self failures] [[self field: #cancelReason] value] [[self field: #childFailures] value]]]
+      ifTrue: [| #[#failure [self failures] [self cancelReason] [self childFailures]]]
       ifFalse: [|
-        [[[self field: #cancelled] value]
-          ifTrue: [| #[#cancelled [[self field: #cancelReason] value]]]
+        [[self cancelled]
+          ifTrue: [| #[#cancelled [self cancelReason]]]
           ifFalse: [| answer]]]];
-    [[self field: #outcome] set: result];
-    [[self field: #machine] set: nil];
-    [[self field: #waitToken] set: nil];
-    let parent := [[self field: #parent] value];
+    [self outcome: result];
+    [self machine: nil];
+    [self waitToken: nil];
+    let parent := [self parent];
     [[parent notNil] ifTrue: [| [parent childSettled: self]]];
-    let waiters := [[self field: #waiters] value];
-    [[self field: #waiters] set: #[]];
-    [[self field: #children] set: #[]];
-    [[self field: #parent] set: nil];
-    [[self field: #failureSources] set: #[]];
+    let waiters := [self waiters];
+    [self waiters: #[]];
+    [self children: #[]];
+    [self parent: nil];
+    [self failureSources: #[]];
     [waiters do: [:entry | [[entry at: 0] resolve: [entry at: 1] with: nil]]];
     result]]]];
 [Reflect defineMethod: #execute: on: TaskControl as: [:self :body |
   let answer := [[self machine] protectedBlock: [|
-    [[self field: #bodyActive] set: true];
+    [self bodyActive: true];
     [self checkpoint];
     #[#success [body value: self]]]];
   [TaskExecutor transition: [|
-    [[self field: #bodyActive] set: false];
+    [self bodyActive: false];
     [self shield];
-    [[self field: #joining] set: true];
+    [self joining: true];
     [[[answer at: 0] = #failure] ifTrue: [| [self cancelAllChildren: #parentFailed]]]]];
   // The join is shielded, but cancellation still reaches ordinary children.
   // Resource cleanup can explicitly await children before releasing resources.
@@ -714,39 +895,39 @@
       [TaskExecutor transition: [|
         let id := [worker submit: value timeout: timeout];
         [[id isError]
-          ifTrue: [| [[task field: #externalResult] set: id]]
+          ifTrue: [| [task externalResult: id]]
           ifFalse: [|
-            [[task field: #requestWorker] set: worker];
-            [[task field: #requestId] set: id];
+            [task requestWorker: worker];
+            [task requestId: id];
             [TaskExecutor watch: task]]]]];
       [task waitExternal]]
     cleanup: [|
       // No request was admitted if cancellation arrived before submission.
-      [[[[task field: #requestId] value] notNil] ifTrue: [|
+      [[[task requestId] notNil] ifTrue: [|
         let settled := [task waitExternal];
-        [[[[task field: #cancelled] value] & [settled isError]] ifTrue: [|
+        [[[task cancelled] & [settled isError]] ifTrue: [|
           [task recordFailures: #[settled] from: worker]]]]];
-      [[task field: #requestWorker] set: nil];
-      [[task field: #requestId] set: nil];
-      [[task field: #externalResult] set: nil]]];
+      [task requestWorker: nil];
+      [task requestId: nil];
+      [task externalResult: nil]]];
     [[answer isError]
       ifTrue: [| [task fail: answer]]
       ifFalse: [| [answer at: 0]]]]]]];
 [Reflect defineMethod: #waitExternal on: TaskControl as: [:self |
   [TaskExecutor transition: [|
     [self checkpoint];
-    [[[[self field: #externalResult] value] isNil] ifTrue: [|
-      [[self field: #waitToken] set: [Object clone]];
+    [[[self externalResult] isNil] ifTrue: [|
+      [self waitToken: [Object clone]];
       [[self machine] park]]]]];
   [self checkpoint];
-  [[self field: #externalResult] value]]];
+  [self externalResult]]];
 [Reflect defineMethod: #pollExternal on: TaskControl as: [:self |
-  let worker := [[self field: #requestWorker] value];
-  [[[self field: #cancelled] value] ifTrue: [|
-    [worker cancelRequest: [[self field: #requestId] value]]]];
-  let answer := [worker pollRequest: [[self field: #requestId] value]];
+  let worker := [self requestWorker];
+  [[self cancelled] ifTrue: [|
+    [worker cancelRequest: [self requestId]]]];
+  let answer := [worker pollRequest: [self requestId]];
   [[answer notNil] ifTrue: [|
-    [[self field: #externalResult] set: answer];
+    [self externalResult: answer];
     [self enqueueResolution: [self waitToken] with: nil]]];
   self]];
 
@@ -756,10 +937,10 @@
 [Globals at: #TaskService put: [Object clone]];
 [Reflect defineMethod: #serve:request: on: TaskService as: [:self :receiver :argument |
   let task := [TaskControl prepare: [:request | [receiver handle: argument]] parent: nil];
-  [[TaskExecutor field: #serviceTask] set: task];
+  [TaskExecutor serviceTask: task];
   [TaskExecutor enqueue: #[task #start nil]];
   let progress := [TaskExecutor drain];
-  [[TaskExecutor field: #serviceTask] set: nil];
+  [TaskExecutor serviceTask: nil];
   [[progress isError]
     ifTrue: [| #[#failure #[#[#controlFailure [progress printString]]] nil #[]]]
     ifFalse: [| [self wireOutcome: [task pollOutcome]]]]]];
@@ -774,39 +955,76 @@
         [[outcome at: 3] collect: [:child | [self wireOutcome: child]]]]]
     ifFalse: [| outcome]]]];
 
-[Globals at: #Worker put: [Object clone]];
-[Globals at: #RemoteFailure put: [Object clone]];
-[#["Worker.activeRequest" "Worker.closing"] do: [:name |
-  [db assert: [name asSymbol] attr: #imageTransient value: true]]];
-[Reflect defineMethod: #field: on: Worker as: [:self :name |
-  [db cellFor: self attr: [["Worker." , [name asString]] asSymbol]]]];
+[[|
+let names := #[#workerHandle #activeRequest #closing];
+let fieldView := TaskField;
+let indices := {#workerHandle -> 0, #activeRequest -> 1, #closing -> 2};
+let prototype := [ObjectModel newSlots: #[nil nil nil] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
+[Reflect defineMethod: #fieldIndex: on: prototype as: [:self :name | [indices at: name]]];
+[Reflect defineMethod: #field: on: prototype as: [:self :name |
+  let index := [self fieldIndex: name];
+  [[index isError] ifTrue: [| index] ifFalse: [|
+    [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
+      [fieldView owner: self slot: index]
+    ]]
+  ]]
+]];
+// Internal state access uses ordinary replaceable owner methods. Explicit
+// field: callers retain views of these same slots. Captures are values, not methods.
+let model := ObjectModel;
+let workerHandleSlot := 0;
+[Reflect defineMethod: #workerHandle on: prototype as: [:self | [model slot: workerHandleSlot in: self]]];
+[Reflect defineMethod: #workerHandle: on: prototype as: [:self :value |
+  [model slot: workerHandleSlot in: self put: value]; self
+]];
+let activeRequestSlot := 1;
+[Reflect defineMethod: #activeRequest on: prototype as: [:self | [model slot: activeRequestSlot in: self]]];
+[Reflect defineMethod: #activeRequest: on: prototype as: [:self :value |
+  [model slot: activeRequestSlot in: self put: value]; self
+]];
+let closingSlot := 2;
+[Reflect defineMethod: #closing on: prototype as: [:self | [model slot: closingSlot in: self]]];
+[Reflect defineMethod: #closing: on: prototype as: [:self :value |
+  [model slot: closingSlot in: self put: value]; self
+]];
+[Reflect defineMethod: #replaceWorkerHandle:with: on: prototype as: [:self :expected :value |
+  [model replaceSlot: workerHandleSlot in: self expected: expected with: value]
+]];
+[Globals at: #Worker put: prototype]
+] value];
+[Reflect defineMethod: #imagePayload on: Worker as: [:self |
+  [ObjectModel newSlots: #[[self workerHandle] nil nil] parent: ObjectVt]
+]];
+[Globals at: #RemoteFailure put: [ObjectModel newSlots: #[nil] parent: ObjectVt]];
+[Reflect defineMethod: #slotNames on: RemoteFailure as: [:self | #[#outcome]]];
 [Reflect defineMethod: #fromHandle: on: Worker as: [:self :handle |
   [[handle isError]
     ifTrue: [| handle]
     ifFalse: [|
       let worker := [self clone];
-      [[worker field: #workerHandle] set: handle];
-      [[worker field: #activeRequest] set: nil];
-      [[worker field: #closing] set: false];
+      [worker workerHandle: handle];
+      [worker activeRequest: nil];
+      [worker closing: false];
       worker]]]];
 [Reflect defineMethod: #request: on: Worker as: [:self :value |
   [self request: value timeout: 60000]]];
 [Reflect defineMethod: #request:timeout: on: Worker as: [:self :value :timeout |
   [TaskControl request: value from: self timeout: timeout]]];
 [Reflect defineMethod: #submit:timeout: on: Worker as: [:self :value :timeout |
-  [[[self field: #closing] value]
+  [[self closing]
     ifTrue: [| [Error kind: #workerClosing]]
     ifFalse: [|
-      let active := [[self field: #activeRequest] value];
+      let active := [self activeRequest];
       let busy := [[active isNil] ifTrue: [| false] ifFalse: [| [[active pollOutcome] isNil]]];
       [busy ifTrue: [| [Error kind: #workerBusy]] ifFalse: [|
-        let id := [[[self field: #workerHandle] value] submit: value timeout: timeout];
-        [[id isError] ifFalse: [| [[self field: #activeRequest] set: [TaskExecutor current]]]];
+        let id := [[self workerHandle] submit: value timeout: timeout];
+        [[id isError] ifFalse: [| [self activeRequest: [TaskExecutor current]]]];
         id]]]]]];
 [Reflect defineMethod: #cancelRequest: on: Worker as: [:self :id |
-  [[[self field: #workerHandle] value] cancelRequest: id]]];
+  [[self workerHandle] cancelRequest: id]]];
 [Reflect defineMethod: #pollRequest: on: Worker as: [:self :id |
-  let answer := [[[self field: #workerHandle] value] pollRequest: id];
+  let answer := [[self workerHandle] pollRequest: id];
   [[[answer isNil] | [answer isError]]
     ifTrue: [| answer]
     ifFalse: [|
@@ -816,41 +1034,41 @@
         ifFalse: [|
           [[[outcome at: 0] = #cancelled]
             ifTrue: [|
-              [[[self field: #activeRequest] value] cancel: [outcome at: 1]];
+              [[self activeRequest] cancel: [outcome at: 1]];
               #[nil]]
             ifFalse: [| [RemoteFailure fromOutcome: outcome]]]]]]]]];
 [Reflect defineMethod: #shutdown on: Worker as: [:self |
-  [TaskExecutor transition: [| [[self field: #closing] set: true]]];
+  [TaskExecutor transition: [| [self closing: true]]];
   [TaskControl startCleanup: [:task |
     // A cancelled shutdown observer still owns the drain-and-stop cleanup.
     [task ensure: [| nil] cleanup: [|
-      let active := [[self field: #activeRequest] value];
+      let active := [self activeRequest];
       [[active notNil] ifTrue: [| [active outcome]]];
-      let handle := [[self field: #workerHandle] value];
+      let handle := [self workerHandle];
       [[handle notNil] ifTrue: [|
         let stopped := [handle stop];
         [[stopped isError] ifTrue: [| [task fail: stopped]]];
-        [db retract: self attr: ["Worker.workerHandle" asSymbol] value: handle]]];
-      [[self field: #activeRequest] set: nil]]]]]]];
+        [self replaceWorkerHandle: handle with: nil]]];
+      [self activeRequest: nil]]]]]]];
 [Reflect defineMethod: #cancel on: Worker as: [:self |
   [TaskExecutor transition: [|
-    [[self field: #closing] set: true];
-    let active := [[self field: #activeRequest] value];
+    [self closing: true];
+    let active := [self activeRequest];
     [[active notNil] ifTrue: [| [active cancel: #serviceCancelled]]]]];
   [self shutdown]]];
 [Reflect defineMethod: #state on: Worker as: [:self |
-  let handle := [[self field: #workerHandle] value];
+  let handle := [self workerHandle];
   [[handle isNil] ifTrue: [| #exited] ifFalse: [| [handle state]]]]];
 [Reflect defineMethod: #terminate on: Worker as: [:self |
-  [[self field: #closing] set: true];
-  [[[self field: #workerHandle] value] terminate]]];
+  [self closing: true];
+  [[self workerHandle] terminate]]];
 [Reflect defineMethod: #fromOutcome: on: RemoteFailure as: [:self :outcome |
   let failure := [self clone];
-  [db assert: failure attr: #remoteOutcome value: outcome];
+  [ObjectModel slot: 0 in: failure put: outcome];
   failure]];
 [Reflect defineMethod: #isError on: RemoteFailure as: [:self | true]];
 [Reflect defineMethod: #kind on: RemoteFailure as: [:self | #remoteFailure]];
-[Reflect defineMethod: #outcome on: RemoteFailure as: [:self | [db currentValue: self attr: #remoteOutcome]]];
+[Reflect defineMethod: #outcome on: RemoteFailure as: [:self | [ObjectModel slot: 0 in: self]]];
 [Reflect defineMethod: #message on: RemoteFailure as: [:self | [[self outcome] printString]]];
 
 // Module initialization succeeds independently of the last prototype defined.
