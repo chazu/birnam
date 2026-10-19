@@ -1,7 +1,15 @@
 # Store and Relational as optional language facilities
 
-2026-10-13; implementation status reviewed 2026-10-16.
-**Status: agreed direction; migration in progress.** The direction is:
+2026-10-13; implementation status and release scope reviewed 2026-10-19.
+**Status: agreed direction; migration in progress and a prerequisite for the next release.**
+The user selected completion of the Store-independent core before releasing.
+The [source-backed completion plan](store-independent-core-completion.md) defines
+remaining dependencies, ordered implementation slices and the required core-absent
+and optional-facility acceptance matrix. Native implementation language alone is
+not a dependency failure: further artifact/certification ports remain separate
+self-hosting work unless this acceptance exposes a concrete Store dependency.
+
+The direction is:
 retain Store and Relational, including their self-describing bootstrap, and
 remove their mandatory role in core language operations. The migration contracts
 and sequence below guide the migration; the current implementation has completed
@@ -247,7 +255,7 @@ reinterpreted as ordinary fields during loading.
 Small migrations should implement this common design. They should not invent
 different answers about authority, history or inspection in each module.
 
-## Progress as of 2026-10-18
+## Progress as of 2026-10-19
 
 The five ordinary-object field migrations are committed as `e41c4f35`; Bench/Test
 ownership is committed as `5c70fe4c`. The basic
@@ -261,7 +269,7 @@ Implementation status does not imply release or local installation.
 | Opt-in description experiment | Code inspector with explicit snapshots, joins and retained observations | A generic live projection is not selected or required for the first optional core. Keep coverage, history and retained references explicit. |
 | Ordinary records and registries | Module registry, LSP, Globals, Logger, Config, HttpRequest, ProcResult and AppConfig fields; Bench/Test fields, local scratch and owned suite discovery implemented and qualified | REPL handles/buffers belong with socket/task resource-lifecycle work. |
 | Step 5: construction and publication | Independent Method construction/templates; direct Reflect edits; no default authorizer/mirror; direct Generation writes; descriptive snapshots; separate startup/live Image contracts | Basic live loading now reports partial application without compensation; stronger recovery is an optional future feature, not a migration prerequisite. |
-| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified; authored source-registry ownership and candidate preparation/undo policy implemented and qualified | Native artifact admission/mapping and optional certification; Alien recipes, remaining Image staging, task/worker/I/O state and remaining seeds. |
+| Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified; authored source-registry ownership and candidate preparation/undo policy implemented and qualified | Store-independent bootstrap bindings, resource persistence policy, Alien recipes/publication, Image's mandatory Store operations, task/worker/I/O state and optional tool composition. Further native artifact/certification migration is a separate self-hosting follow-up. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
 The [supplied-template report](supplied-method-templates.md) records constructor
@@ -380,10 +388,10 @@ unobservable representation optimization, and does not copy or delete user facts
 
 ## Actionable migration safeguards
 
-- [ ] Maintain a dependency ledger for each remaining state family: authority,
-  readers/writers and query consumers, inspection/mutation API, retention, image
-  policy, and bootstrap edge. Track native seeds, generated artifacts and implicit
-  module initialization as well as direct `db` calls. Close an entry with evidence.
+- [x] Establish the [remaining-dependency ledger](store-independent-core-completion.md#remaining-dependency-ledger),
+  including hidden Globals seed import, image transient policy, Alien publication,
+  late optional initialization and tool-image composition. Keep it current during
+  each slice and close entries with owner, lifetime and acceptance evidence.
 - [x] Qualify Bench/Test ordinary fields, scratch and discovery. Test now owns its
   suite registry and explicitly describes suites into a caller-selected Store;
   intentional discovery remains available without facts. See
@@ -434,9 +442,11 @@ unobservable representation optimization, and does not copy or delete user facts
   the failure contract. Remove automatic compensation and reservation banks;
   retain partial writes, one-use preparations, at-most-once construction and
   conditional undo. See [candidate policy](candidate-policy-migration.md).
-- [ ] Migrate remaining artifact admission/mapping and optional certification at
-  their owner boundaries; remove the opaque policy-Cell carrier bridge with the
-  artifact implementation. Do not turn it into a permanent native policy service.
+- [ ] Continue the separate self-hosting migration of artifact admission/mapping
+  and optional certification at their owner boundaries; remove the opaque policy-Cell
+  carrier bridge with the artifact implementation. Do not make it permanent. This
+  port is not itself a Store-independence release gate; the absence tests must prove
+  its current owner operations have no Store dependency.
 - [ ] Before migrating each coordinated owner, record which operations actually
   promise rollback and why. Keep basic live Image loading free of inverse machinery; add stronger recovery
   only as an explicitly selected feature with a demonstrated requirement. Preserve
@@ -463,8 +473,10 @@ unobservable representation optimization, and does not copy or delete user facts
 
 Bench/Test is committed and non-publishing project inspection is qualified. The
 retained compiler metadata ownership is now qualified; the remaining structural
-work includes Alien recipes and remaining native artifact/certification and image staging; keep resource-bearing REPL state with
-lifecycle work. The selected live-load change is stated above; these tasks do not authorize changing
+work includes bootstrap Globals, resource persistence policy, Alien recipes,
+optional Image fact participation, task/worker/REPL/socket state and production
+composition. Native artifact/certification self-hosting remains separate. The
+selected live-load change is stated above; these tasks do not authorize changing
 GC policy or resuming the paused Relational rewrite.
 
 ## Acceptance and remaining decisions
@@ -495,3 +507,14 @@ and default module-loading policy. Legacy writable fact aliases need not be pres
 and delivery decisions; the destination is fixed: **relational facilities remain
 available and self-describing, while ordinary language operation is independent
 of them.**
+
+## Release gate selected on 2026-10-19
+
+Do not prepare the next release as a merely intermediate Store-refactor milestone.
+Complete and qualify the [core-independence plan](store-independent-core-completion.md)
+first. The completion criterion is the actual absence of Store/Relational from core
+bootstrap and execution, plus preserved explicit optional use and self-description.
+This does not resume Relational conversion, require a generic live mirror, or expand
+native compiler/performance work. The approved Generation simplifications and
+source/candidate policy ports are already qualified; preserve their Id-only and
+partial-failure contracts while removing the remaining dependencies.

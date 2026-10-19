@@ -4,9 +4,15 @@ Audit date: 2026-10-10. Baseline: `c072e3ac`, before the Trace port.
 
 Update 2026-10-18: [source-registry ownership](authored-source-registry.md) has
 moved from Generation into an early authored owner, including cold bootstrap.
-No native registry seed remains. Generation still contains candidate/certification
-policy; the historical counts and dependency assessments below are not a current
+No native registry seed remains. Candidate preparation/activation/undo policy has
+also moved to Birnam; native artifact admission/mapping and optional certification
+remain. The historical counts and dependency assessments below are not a current
 crate inventory. Relational migration remains paused.
+
+Update 2026-10-19: the next release requires a
+[Store-independent core](store-independent-core-completion.md). Follow that
+source-backed dependency plan before selecting further native module rewrites.
+It does not require porting Store/Relational or every remaining native owner.
 
 The recommended next rewrites are Trace, Relational, ProjectBuild and HostProject.
 They contain behavior that can live in Birnam without replacing the compiler's
@@ -106,11 +112,12 @@ Rust largely assembles observations, runs compilation and constructs publication
 Preserve atomic publication, digest/reuse validation and explicit dependency
 fetching.
 
-HostInteraction is not merely a small loop. Generation requires
-`Execution retirementReady`, which checks that no execution is entered. An
-enclosing Birnam loop changes that condition. Keep a minimal native host driver
-until the authored interaction protocol explicitly returns to the host for
-generation changes. See [running entry](../../rust/birnam-generation/src/candidate_phase.rs).
+The earlier HostInteraction assessment depended on the now-removed
+`candidate_phase.rs` and its Host-only generation handshake. Ordinary candidate
+activation now works from entered code; see [ordinary activation](ordinary-candidate-activation.md).
+Physical native retirement checkpoints remain a separate code-lifetime obligation.
+Assess further Host migration against its current process/I/O responsibilities,
+not the superseded generation-intent requirement.
 
 ## Current cold compiler and bootstrap dependencies
 
