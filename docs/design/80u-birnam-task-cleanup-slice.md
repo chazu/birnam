@@ -114,8 +114,8 @@ sketched in 80A or a background I/O executor.
 
 [machine.rs](../../rust/birnam-execution/src/machine.rs) supplies
 small generic Machine adapters: `runBlock:`, `resumeWith:`, `protectedBlock:`,
-`leaveBoundary:`, `park`, and `controlEligible`. `prepareBlockControl` prepares
-their registrations. The eligibility query runs as a StepMethod and checks
+`leaveBoundary:`, `park`, and `controlEligible`. Execution loading installs
+their registrations once. The eligibility query runs as a StepMethod and checks
 actual drive/native-entry barriers; a library-level "current task" alone is not
 proof that a native callback can wait. Protected calls, returns, exits and
 suspension use the checked action publishers and descriptor V2 frames. No native
@@ -126,8 +126,8 @@ distinct method addresses, and release optimization otherwise merged the
 self-referencing wrapper functions. The ordinary installed release smoke covers
 this path, beyond tests linked into a Rust test executable.
 
-Preparation respects existing bindings and does not reinstall methods after
-user replacement. Calls retain ordinary lookup. Definitions live in the existing
+Repeated Execution loading and new Machines preserve existing bindings and do
+not reinstall methods after user replacement. Calls retain ordinary lookup. Definitions live in the existing
 resumable control unit, so normal builds and source recovery include them.
 Existing `Object ensure:` keeps its prior behavior; explicit task cleanup uses
 `ensure:cleanup:`. Task and executor policy remains replaceable ordinary Birnam.

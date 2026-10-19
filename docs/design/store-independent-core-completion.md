@@ -373,8 +373,20 @@ composition; actual Store-free image acceptance remains with the Image slice.
 Concurrency program ownership, REPL/socket resources, Alien, optional persistence
 and tools/composition still remain. The original release objective is unchanged.
 
-A further source-backed cleanup found during this investigation is
-`Machine prepareBlockControl`: its native `Op::Prepare` now only returns the
-receiver, and adapter installation already occurs during Execution loading.
-Remove the obsolete call/selector/operation as the next small simplification;
-retain meaningful adapter/repeated-loading coverage instead of testing a no-op.
+## Removed obsolete Machine preparation (2026-10-19)
+
+The `Machine prepareBlockControl` no-op, native operation/selector and authored
+initialization call are removed. Execution loading remains the single adapter
+installation owner. The Machine fixture now reloads Execution, creates Machines,
+collects and actually dispatches user-replaced `park`/`protectedBlock:` methods;
+those replacements survive without any preparation hook.
+
+A fresh installed build, the Machine lifecycle fixture, all 177 task checks and
+actual Store-absent task initialization pass. Three paired timing runs show task
+CPU +0.6%, reads -1.1% and writes -1.2%: no material regression or speedup claim.
+The task absence fixture is now part of the regular native-message gate. See the
+[receipt](../measurements/remove-machine-preparation-20261019.json).
+
+Next is the remaining resource ownership: Concurrency preparation objects, then
+REPL and socket connection state. Worker and RemoteFailure ownership was already
+included in `9e7c91ed` so the task initializer could be genuinely independent.

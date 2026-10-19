@@ -1137,7 +1137,6 @@ enum Op {
     BorrowCaptures(bool),
     BorrowCaptureOperands,
     CloneBlock,
-    Prepare,
     New,
     Disabled,
     Run(bool),
@@ -1379,7 +1378,6 @@ unsafe extern "C" fn operation(
                 return integer(s, value);
             }
             Op::New if args.is_empty() => return new_machine(s).map(Operand::object),
-            Op::Prepare if args.is_empty() => return Ok(Operand::object(receiver)),
             Op::Disabled if args.is_empty() => return Ok(Operand::object(s.nil)),
             _ => (),
         }
@@ -1866,7 +1864,6 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"protectedBlock:",
     b"leaveBoundary:",
     b"park",
-    b"prepareBlockControl",
     b"doesNotUnderstand:",
     b"restoreContinuation:with:",
     b"valueSlot",
@@ -2233,7 +2230,6 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         install_op(s, machine_vtable, b"continueWithBudget:", Op::ContinueDrive)?;
         install_op(s, machine_vtable, b"executionState", Op::Lifecycle)?;
         install_op(s, machine_vtable, b"isRunnable", Op::Runnable)?;
-        install_op(s, machine_vtable, b"prepareBlockControl", Op::Prepare)?;
         install_op(s, machine_vtable, b"destroy", Op::Destroy)?;
         install_op(s, machine_vtable, b"tryPrepareCall:slots:selector:in:tail:", Op::TryPrepareCall)?;
         install_op(s, machine_vtable, b"tryPrepareCall:slots:copies:selector:in:tail:", Op::TryPrepareCallCopies)?;

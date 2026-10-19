@@ -1,0 +1,118 @@
+{
+  "baseline_commit": "9e7c91ed",
+  "scope": "Delete Machine prepareBlockControl no-op, its unused native operation/selector, and the authored initialization call. Adapter installation remains owned by Execution loading.",
+  "source_sha256": {
+    "modules/stackless-control.birnam": "b85c9de059debb6854c23b27c4ec02b4fdb53dae11fa1ce2557b4f95e2ccef45",
+    "rust/birnam-execution/src/machine.rs": "bad3b8ba69aa97328ec11cbf2efe843fc290afc30c9a31a3123f1ab3ec9ee396",
+    "rust/birnam-siphon/tests/execution_machines.rs": "d203773d55439df6c8eecb93003cb9f8c0a485d38b4bb3072023d8ff13a91b53",
+    "scripts/native-message-test.sh": "27574ddc6f30b90892ff28a7e8ae65f5aff81e99f9607afbfaaa9342fecce0bb"
+  },
+  "qualification": {
+    "installed_prefix": "/tmp/birnam-store-independent/05-no-preparation/prefix",
+    "install_receipt_sha256": "5f4bb7e4dd3f9020cf8fb7a8dd780ec1f278644030013631547de1168c3410c7",
+    "native_tests": [
+      "production_machine_calls_blocks_budgets_waits_and_lifetimes",
+      "authored_task_scheduling_preserves_native_boundaries"
+    ],
+    "task_checks": 177,
+    "adapter_replacement": "Repeated actual Execution loading, fresh Machines and collection preserve replacements for park/protectedBlock:, and current dispatch calls those replacements.",
+    "absence": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-js1uk676/results.json",
+      "sha256": "991d6d6acd142664fb0dac08360c31da0f0c8670527a9d9b858363229742c785",
+      "passed": true
+    },
+    "fixture_setup": "The first native invocation lacked the separately compiled C fixtures. The accepted run uses the normal execution_machine/execution_method fixture sources built with the same flags as native-message-test.sh; production libraries are hardlinks to the installed prefix.",
+    "formal": "No abstract model changed. The preceding slice passed the existing 396-proof, 125-mutation, 272-TLC contract suite; this no-op deletion is qualified by actual loader/Machine/task tests, not a new formal proof."
+  },
+  "performance": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "read_cpu_ns": 139941584,
+        "write_cpu_ns": 218075750,
+        "tasks_cpu_ns": 167528625,
+        "task_fact_delta": 0
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "read_cpu_ns": 133719625,
+        "write_cpu_ns": 210969416,
+        "tasks_cpu_ns": 163958541,
+        "task_fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "read_cpu_ns": 134302916,
+        "write_cpu_ns": 210167375,
+        "tasks_cpu_ns": 162687584,
+        "task_fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "read_cpu_ns": 134913000,
+        "write_cpu_ns": 213538458,
+        "tasks_cpu_ns": 163038333,
+        "task_fact_delta": 0
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "read_cpu_ns": 135813084,
+        "write_cpu_ns": 212952834,
+        "tasks_cpu_ns": 162115875,
+        "task_fact_delta": 0
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "read_cpu_ns": 135909375,
+        "write_cpu_ns": 214088584,
+        "tasks_cpu_ns": 164242542,
+        "task_fact_delta": 0
+      }
+    ],
+    "medians": {
+      "read": {
+        "baseline": 135813084,
+        "candidate": 134302916
+      },
+      "write": {
+        "baseline": 213538458,
+        "candidate": 210969416
+      },
+      "tasks": {
+        "baseline": 163038333,
+        "candidate": 163958541
+      }
+    },
+    "ratios": {
+      "read": 0.9888805411413822,
+      "write": 0.9879691835182214,
+      "tasks": 1.0056441205148976
+    },
+    "source": "[Module load: #time];\n[[|\n[System gc];\nlet started := [16 clockNanos];\n[1 to: 500 do: [:i | [TaskExecutor current]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[TaskExecutor current] isNil]];\n[System gc];\nlet started := [16 clockNanos];\n[1 to: 500 do: [:i | [[TaskExecutor field: #quantum] set: i]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[[TaskExecutor field: #quantum] value] = 500]];\n[[TaskExecutor field: #quantum] set: 128];\n[System gc];\nlet facts := [db retainedFactCount];\nlet started := [16 clockNanos];\nlet task := [TaskControl start: [:self | 42]];\n[1 to: 30 do: [:i | [TaskControl start: [:self | 42]]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[task pollOutcome] = #[#success 42]]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "assessment": "Three interleaved runs per variant: task batch +0.56%, current reads -1.11%, explicit writes -1.20%. No material regression and no speedup claim. No hot-path behavior or GC/quantum policy changed.",
+  "logs": {
+    "install.log": {
+      "path": "/tmp/birnam-store-independent/05-no-preparation/install.log",
+      "sha256": "07be3ddb8a677e32ef2c80065c4d8a278b2a3aebad89e55878777c3df0bca4e4"
+    },
+    "native-accepted.log": {
+      "path": "/tmp/birnam-store-independent/05-no-preparation/native-accepted.log",
+      "sha256": "114e053ffea1ca639107a4c0beed15d895a3dacfb725d604085ebf4793cf2751"
+    },
+    "absence.log": {
+      "path": "/tmp/birnam-store-independent/05-no-preparation/absence.log",
+      "sha256": "5187e23d3780383e08807eb962dac9cb33075ef6a3731dfa092002b21477a0aa"
+    },
+    "performance.log": {
+      "path": "/tmp/birnam-store-independent/05-no-preparation/performance.log",
+      "sha256": "68366c4160a68daa666cbe93c46d47292e93e5a6b225345ab914291445d0d549"
+    }
+  }
+}

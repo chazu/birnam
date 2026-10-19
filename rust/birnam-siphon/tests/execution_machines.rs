@@ -236,8 +236,8 @@ unsafe extern "C" fn control_replacement(
     Outcome::loaded(Operand::object(receiver))
 }
 
-// Preserve the former Runtime task-control acceptance: repeated preparation
-// and new Machines must never overwrite an intentionally replaced adapter.
+// Repeated Execution loading and new Machines must preserve intentionally
+// replaced adapters. There is no separate preparation phase.
 unsafe fn control_replacements(h: &mut H) {
     unsafe {
         let machine = h.machine();
@@ -267,9 +267,8 @@ unsafe fn control_replacements(h: &mut H) {
             h.keep(method);
             install(h.id, behavior, name, control_replacement, ptr::null_mut());
             for _ in 0..2 {
-                send(h.id, machine, b"prepareBlockControl", &[]);
+                load(h.id, "execution", &[Operand::object(h.ns)]);
                 let other = h.machine();
-                send(h.id, other, b"prepareBlockControl", &[]);
                 collect(h.id, h.gc);
                 let current = send(
                     h.id,
@@ -283,6 +282,10 @@ unsafe fn control_replacements(h: &mut H) {
                     current.method.unwrap() as usize,
                     control_replacement as *const () as usize
                 );
+                let arguments = if name == b"park" { vec![] } else {
+                    vec![Operand::object(h.named(b"nil"))]
+                };
+                assert_eq!(object(send(h.id, other, name, &arguments)), other);
                 assert_eq!(h.value(send(h.id, other, b"liveFrameCount", &[])), 0);
             }
             send(

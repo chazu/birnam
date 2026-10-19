@@ -234,7 +234,6 @@
 
 // Structured task policy. These ordinary methods share the selected control
 // unit so waiting never leaves a synchronous library frame on the native stack.
-[Machine prepareBlockControl];
 // Field handles are ordinary views of a concrete owner/slot. Each request
 // creates a fresh handle; retained handles share mutation and keep the owner
 // alive. There is no schema, attribute spelling or external state table.
