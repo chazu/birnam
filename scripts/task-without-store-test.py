@@ -27,10 +27,11 @@ receipt = {'passed': run['exit_code'] == 0, 'run': run,
                ROOT / 'modules/stackless-control.birnam',
                ROOT / 'modules/cell.birnam',
                ROOT / 'modules/isolate.birnam',
+               ROOT / 'modules/repl.birnam',
                ROOT / 'rust/birnam-siphon/tests/task_without_store.rs',
                Path(__file__).resolve()]},
            'floor_sha256': {p.name: sha(p) for p in floor.iterdir()},
-           'scope': 'Actual compiled task initializer and actual Concurrency source initializer, owned field aliases, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence.'}
+           'scope': 'Actual compiled task initializer and actual Concurrency/REPL source initializers, owned field aliases and message-based buffer retirement, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence.'}
 save_json(work / 'results.json', receipt)
 assert receipt['passed'], work
 print('tasks-without-store: passed; ' + str(work / 'results.json'))

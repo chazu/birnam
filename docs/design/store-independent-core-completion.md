@@ -1,7 +1,7 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: Globals cleanup/early ownership and owner image payloads implemented and qualified. Task/resource fields, optional fact persistence and production composition remain Store-dependent.**
+**Status: Globals, owner image payloads, task/worker/Concurrency state and socket ownership are qualified. REPL ownership and one-time setup are qualified. Alien recipes, optional fact persistence and production composition remain Store-dependent.**
 The next release is blocked on completing this milestone, per the user's decision.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
@@ -43,10 +43,10 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Area | Current edge and evidence | Required destination / proof |
 | --- | --- | --- |
 | Bootstrap bindings | [authored Globals](../../modules/globals-owner.birnam) now constructs its own facade and state before SourceRegistry/named modules. Store's facade, seed conversion and fact cleanup are removed. | The real compiled initializer passes on a floor without Store/Relational, followed by explicit late loading without owner replacement. Slice qualification passes; full Bootstrap absence still awaits other owners. |
-| Task and scheduler state | [stackless-control](../../modules/stackless-control.birnam) initializes Store schema and uses `db cellFor:` for TaskControl/TaskExecutor fields. Candidate policy and other ordinary modules use its transitions. | Ordinary per-object state with preserved field aliases, queue order, cancellation, shielding, transitions and suspension. Remove schema initialization and fact-backed field ownership. |
-| Workers and outcomes | The same module stores Worker fields and RemoteFailure outcomes in facts; [isolate policy](../../modules/isolate.birnam) stores Concurrency fields in db and marks them transient. | Owned state and explicit resource lifecycle; worker preparation, copied messages, failure reporting, cancellation and cleanup run without Store. |
-| REPL and sockets | [REPL](../../modules/repl.birnam) stores `cin`, `cerr`, `cbuf` plus transient declarations; [socket](../../modules/socket.birnam) stores connection descriptors/buffers in db. These are included in prepared startup. | Resource-bearing ordinary owners; preserve acquisition, close-once behavior, failed construction, repeated sessions and buffer safety. Define reconstruction/rejection before moving fields. |
-| Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) now sends current `imagePayload`; Globals projection and task-handle rejection use this owner protocol. TaskControl's process-local marker is an ordinary slot. Task/resource field omission still uses Store schema until those fields move. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
+| Task and scheduler state | Completed: [stackless-control](../../modules/stackless-control.birnam) owns ordinary slots, with explicit aliased TaskField views. | Actual initializer, task transitions/cancellation and GC pass without Store. Full Host/worker/image absence awaits the remaining composition. |
+| Workers and outcomes | Completed owned fields for Worker, RemoteFailure and [Concurrency](../../modules/isolate.birnam), with explicit image projection/refusal. | Aliases, reset, worker execution and image checks pass. Full Store-free worker execution still awaits Alien/Image composition. |
+| REPL and sockets | Socket and REPL ownership are qualified; REPL uses ordinary session/readiness Cells and borrowed process stdio. | Preserve conditional retirement, aliasing, failed setup and image reset/refusal. Actual REPL initializer/cleanup passes without Store; real I/O still requires Alien. |
+| Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) now sends current `imagePayload`; Globals projection and task-handle rejection use this owner protocol. TaskControl's process-local marker is an ordinary slot. Task/resource projection now lives with the ordinary owners; no Store transient schema is needed for those fields. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
 | Alien wrappers | [Alien runtime](../../rust/birnam-alien/src/runtime.rs) keeps recipes under `__aliens__`, reuses code by reading those facts, and publishes wrapper Methods through Store. | Imageable owned recipe data with discoverable inspection/editing; native addresses/handles remain process-local. Construct/publish through the existing Method/dictionary owners. Preserve wrapper identity, signature distinctions, live replacement and Unit lifetime. |
 | Alien restoration | [Image::foreign_publication](../../rust/birnam-image/src/native.rs) finds recipes by inspecting staged `__aliens__` facts. | Restore from the actual recipe owner via Id; resolve foreign addresses in the destination process and preserve partial-load failure reporting. |
 | Image facts and Store Cells | Image unconditionally reads Store basis/retention metadata, exports facts, creates a staging Store, swaps Store state, and special-cases Store-owned CellVt. [ImageFormat](../../modules/image-format.birnam) admits that locator family. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
@@ -487,7 +487,7 @@ storage still prevents complete Store-free socket initialization; Alien, Image,
 optional composition and release remain unfinished.
 
 
-## Performance hold: REPL session ownership (2026-10-19)
+## Initial REPL ownership performance hold (resolved below)
 
 The REPL draft removes its Store fields and transient schema. An ordinary shared
 Cell owns session bindings and the read buffer, with alias-preserving image reset
@@ -501,10 +501,48 @@ operations (+59.6%). Per-session `wrapStdio` reinstalls seven wrappers instead o
 four. Installing once in an isolated diagnostic reduces those totals to 15.30 ms
 and 31.91 ms respectively, identifying repeated setup as the dominant work.
 
-The runtime draft remains uncommitted. The proposed remediation is ordinary
+The runtime draft was held uncommitted. The approved remediation is ordinary
 shared one-time setup state, with explicit `wrapStdio` still available and no
 method-identity checking or automatic repair of user replacements. Source-first,
 image and cold/warm behavior must be qualified. Per the user's regression gate,
-this initialization-policy change awaits approval. See the
+the user approved this initialization-policy change; final qualification is recorded below. See the
 [report](repl-owner-migration-performance.md) and
 [receipt](../measurements/repl-owner-regression-20261019.json).
+
+
+### Alien recovery audit added by REPL qualification
+
+The REPL image test reproduced older Alien recipes overwriting a saved authored
+method replacement. Recovery now excludes a recipe when the same saved target and
+selector has an authored binding. Source replacement, explicit foreign reinstall,
+untouched wrappers and mapped/rebuilt/baked recovery have dedicated coverage.
+
+During the upcoming recipe migration, also investigate different foreign functions
+registered to the same target/selector, and removed wrappers. Recipe code reuse is
+not method authority; inspect the actual current bindings during explicit snapshot
+construction. Do not add guards to ordinary execution or preserve dead recipes as
+live definitions simply because the cache retains their code.
+
+
+## Qualified REPL ownership and one-time setup (2026-10-19)
+
+REPL no longer creates session facts or transient schema. Its ordinary owner Cell
+holds borrowed process stdio and an owned buffer; teardown retires the observed
+state before callbacks. Images reset session capabilities while retaining aliases.
+Shared ordinary readiness initializes wrappers once, retains explicit `wrapStdio`
+and allows failure/retry. Sessions use current methods without checking their
+identities or reinstalling user replacements. This also removes leaked per-session
+`fdopen` FILE allocations while preserving unread libc input across sessions.
+
+The repeated-session regression is resolved: 20 sessions take 33.84 ms versus
+4,984.07 ms CPU (147x faster), adding zero facts instead of three. Fresh console
+startup is 11.0% faster; ordinary source-file startup has a small observed 2.9%
+(71 ms) overhead. Setup, actual-initializer absence, resource/GC/image/replacement,
+installed interaction and no-compilation startup checks pass. Image round trips,
+a 20-generation resave chain, partial-load conflicts and snapshot mutation pass.
+The recovery fix and remaining recipe-authority audit are described above.
+
+See the [report](repl-owner-migration-performance.md) and
+[receipt](../measurements/repl-owned-resources-20261019.json). Alien recipes and
+publication are next, followed by optional Image/Store contributions, duplicate
+Store local-Cell removal, optional tool composition, full absence gates and release.

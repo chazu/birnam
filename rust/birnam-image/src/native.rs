@@ -1239,7 +1239,7 @@ unsafe fn foreign_publication(
     s: &State,
     q: &Scope<'_>,
     staged: Oop,
-) -> Result<Vec<(Oop, Oop)>, Outcome> {
+) -> Result<Vec<(Oop, Oop, Oop)>, Outcome> {
     unsafe {
         let entity = q.keep(s.id.intern_name(b"__aliens__")?)?;
         let count = s.call(q, staged, b"attrCount:", &[entity])?;
@@ -1253,10 +1253,10 @@ unsafe fn foreign_publication(
             let key = s.call(q, staged, b"attrAt:index:", &[entity, index])?;
             let recipe = s.call(q, staged, b"currentValue:attr:", &[entity, key])?;
             let fields = s.sequence(q, recipe)?;
-            let [_, _, _, target, _] = fields.as_slice() else {
+            let [_, _, selector, target, _] = fields.as_slice() else {
                 return Err(bad());
             };
-            publication.push((recipe, *target));
+            publication.push((recipe, *target, *selector));
         }
         Ok(publication)
     }
@@ -1348,7 +1348,7 @@ unsafe fn load(
             }
         }
         let staged = restore_facts(s, q, &decoded, &objects)?;
-        let foreign = foreign_publication(s, q, staged)?;
+        let mut foreign = foreign_publication(s, q, staged)?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1372,6 +1372,11 @@ unsafe fn load(
             q.keep(behavior)?;
             publication.push((index, target, selector, provenance, behavior));
         }
+        // Recipes cache foreign code, but a saved authored replacement is the
+        // definition to restore. Do not replay an older wrapper over that binding.
+        foreign.retain(|&(_, target, selector)| !publication.iter().any(
+            |&(_, t, n, _, _)| t == target && n == selector,
+        ));
         // A restored snapshot must also remove later source-defined bindings on
         // resident exports. Old heap objects held by callers keep their methods.
         let current = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
@@ -1442,7 +1447,7 @@ unsafe fn load(
                 });
                 if published? != target { return Err(bad()); }
             }
-            for &(recipe, target) in &foreign {
+            for &(recipe, target, _) in &foreign {
                 let restored = s.call(q, s.named(b"Alien")?, b"restoreWrapper:", &[recipe])?;
                 if restored != target {
                     return Err(if s.is_error(restored)? {

@@ -1,7 +1,6 @@
-# REPL ownership migration: performance hold
+# REPL ownership migration: qualified
 
-2026-10-19, baseline `3d45e084`. The runtime draft is uncommitted. The user's
-performance gate requires approval before implementing the remediation below.
+2026-10-19, baseline `3d45e084`. The user approved the one-time initialization remediation below; it is implemented and qualified.
 
 ## Ownership and behavior
 
@@ -64,7 +63,7 @@ allocation and cleanup remain active. The same batch takes **15.30 ms before and
 The new borrowed-stream lookup has a small absolute cost of its own; the
 experiment does not claim it became free or that a production fix is delivered.
 
-## Recommended remediation, awaiting approval
+## Implemented remediation
 
 Initialize wrappers once per shared REPL setup state, using an ordinary owned
 readiness value. The compiled startup image already prepares these wrappers;
@@ -86,3 +85,63 @@ checks pass without a significant regression.
 
 Evidence and exact source hashes are in the
 [receipt](../measurements/repl-owner-regression-20261019.json).
+
+
+## Recovery finding during remediation
+
+A new replacement test reproduced an existing Image defect: after installing the
+saved authored method bindings, recovery replayed every Alien recipe, overwriting
+an authored replacement of the same target/selector. Readiness itself restored
+correctly, but the saved replacement was lost before the next console session.
+
+The fix excludes recipes shadowed by an actual saved authored binding. This is
+snapshot reconstruction, not a runtime method-identity guard or automatic repair.
+Untouched foreign wrappers still restore; deliberately reinstalled wrappers must
+also survive. Mapped, rebuilt and baked recovery checks cover those cases.
+
+The upcoming Alien slice must distinguish cached function/signature object code
+from active target/selector registrations. The existing recipe catalog also keeps
+multiple different functions registered to the same target/selector and has no
+explicit deletion representation. Audit latest-wrapper selection and removed
+wrappers during that slice; this finding does not establish that those cases are
+already correct.
+
+
+## Final qualification
+
+Three interleaved standard-release observations, normal GC, against `3d45e084`:
+
+| Measurement | Baseline median | Final median | Change |
+| --- | ---: | ---: | ---: |
+| CPU for 20 session setups/teardowns | 4,984.07 ms | 33.84 ms | -99.3% (147x faster) |
+| Retained facts added by that batch | 3 | 0 | removed |
+| Fresh-process console startup wall | 2.839 s | 2.526 s | -11.0% |
+| Fresh-process source-file startup wall | 2.469 s | 2.540 s | +2.9% (71 ms) |
+
+These are local macOS samples, not a general language speedup claim. The small
+ordinary startup overhead is retained and reported; the repeated-session regression
+is resolved. The initial borrowed-stream diagnostic's extra per-session cost is
+still present, but wrapper reinstallation no longer dominates ordinary sessions.
+
+All 12 setup checks pass: compiled readiness, actual source initializer, shared
+clone readiness, failure on the third wrapper with no later calls, retry, current
+replacement dispatch and explicit reinstallation. Resource tests cover borrowed
+descriptors, unread input/EOF, repeated setup, aliases, collecting/reentrant cleanup,
+replacement preservation, failed stream lookup and live-stream refusal. Mapped and
+rebuilt images retain both readiness and an authored wrapper replacement.
+
+The Alien image regression fails on the baseline and passes with the correction,
+including untouched wrappers and explicit foreign reinstallation through mapped,
+rebuilt and baked recovery. The native image suite passes round-trip/GC checks,
+20 alternating mapped/rebuilt resaves with a bounded live code set, partial-load
+conflicts and snapshot mutation. The native suite requires resource-metrics TCC;
+the initial standard-library fixture failure and corrected run are both retained
+in the receipt. Installed interaction and no-compilation startup checks also pass.
+
+The unchanged ResourceOwner/ImagePayload formal contracts cover owner retirement
+and image projection; this slice does not claim a new formal run. Actual REPL
+initialization/cleanup passes with Store/Relational absent, but complete Store-free
+I/O, Host and images still await Alien/Image/composition work.
+
+Exact measurements, source hashes, setup source and test logs are in the
+[qualified receipt](../measurements/repl-owned-resources-20261019.json).

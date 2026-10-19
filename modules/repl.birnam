@@ -26,11 +26,38 @@
 // -- the REPL -----------------------------------------------------------------
 
 [Module named: #repl requires: #[#config]];
-[Globals at: #Repl put: [Object clone]];
-[db assert: #imageTransient attr: #cardinality value: #one];
-[db assert: #cin attr: #imageTransient value: true];
-[db assert: #cerr attr: #imageTransient value: true];
-[db assert: #cbuf attr: #imageTransient value: true];
+// The service and its clones share ordinary session state. Image projection
+// resets that owner, retaining aliases; borrowed process streams never close.
+[[|
+let model := ObjectModel; let ownerSlot := 0; let setupSlot := 1;
+let inputSlot := 0; let errorSlot := 1; let bufferSlot := 2;
+let empty := #[nil nil nil];
+let ownerPrototype := [Cell with: empty];
+[Reflect defineMethod: #imagePayload on: ownerPrototype as: [:self | [Cell with: empty]]];
+let repl := [model newSlots: #[[ownerPrototype with: empty] [Cell with: false]] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: repl as: [:self | #[#consoleOwner #stdioState]]];
+[Reflect defineMethod: #stdioState on: repl as: [:self | [model slot: setupSlot in: self]]];
+[Reflect defineMethod: #stdioReady on: repl as: [:self | [[self stdioState] value]]];
+[Reflect defineMethod: #consoleOwner on: repl as: [:self | [model slot: ownerSlot in: self]]];
+[Reflect defineMethod: #consoleOwner: on: repl as: [:self :owner |
+  [model slot: ownerSlot in: self put: owner]; self
+]];
+[Reflect defineMethod: #installConsoleState: on: repl as: [:self :state |
+  [self consoleOwner: [ownerPrototype with: state]]
+]];
+[Reflect defineMethod: #consoleInput on: repl as: [:self | [[[self consoleOwner] value] at: inputSlot]]];
+[Reflect defineMethod: #consoleError on: repl as: [:self | [[[self consoleOwner] value] at: errorSlot]]];
+[Reflect defineMethod: #consoleBuffer on: repl as: [:self | [[[self consoleOwner] value] at: bufferSlot]]];
+[Reflect defineMethod: #closeConsoleResources on: repl as: [:self |
+  let owner := [self consoleOwner]; let observed := [owner value];
+  [[owner replace: observed with: empty] ifTrue: [|
+    let buffer := [observed at: bufferSlot];
+    let freed := [[buffer isNil] ifTrue: [| nil] ifFalse: [| [buffer free]]];
+    [[freed isError] ifTrue: [| freed] ifFalse: [| self]]
+  ] ifFalse: [| self]]
+]];
+[Globals at: #Repl put: repl]
+] value];
 [Reflect docModule: #repl is: "The REPL — bracket-aware form reader, eval-print loop, console session, and the --listen network server."];
 
 // Brackets balanced? Rides the native `bracketDepth` scanner (per-byte work is
@@ -144,27 +171,33 @@
 // write), and puts located compile errors on STDERR so stdout stays values-only.
 // Recurses once per form, like the socket session — fine for interactive use.
 
-// The libc stdio wraps. A method, not just top-level forms: consoleInit runs it
-// at every session start because a FRESH `--repl` (and a REPL over an image saved
-// from a non-console run) has no stdio wraps yet. On an image saved from a console
-// session the wraps already replayed at boot (`__aliens__` facts → replayAliens),
-// and this re-run is an idempotent re-install whose records dedupe to nothing.
+// Setup is shared across clones and retained with restored wrapper code in images.
+// Explicit wrapStdio reinstalls; sessions never repair or overwrite user edits.
 [Reflect defineMethod: #wrapStdio on: Repl as: [:self |
-  // FILE *fdopen(int fd, const char *mode)  — receiver = the fd (0 stdin, 2 stderr).
-  [Alien wrap: "fdopen" signature: "p i s"   as: #fdopenMode:     on: Integer];
-  // char *fgets(char *buf, int size, FILE *stream)  — receiver = buf; NULL at EOF.
-  [Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: ForeignAddress];
-  // int fputs(const char *s, FILE *stream)  — receiver = the string.
-  [Alien wrap: "fputs"  signature: "i s p"   as: #fputsTo:        on: String];
-  // int fflush(FILE *stream)  — receiver = the FILE* capability.
-  [Alien wrap: "fflush" signature: "i p"     as: #fflush          on: ForeignAddress];
-  self] doc:
-  "Installs the libc stdio Alien wraps (fdopen/fgets/fputs/fflush); idempotent, re-run at every console session start."];
+  [[self stdioState] set: false];
+  let wrappers := #[
+    #["dlopen" "p p i" #consoleOpenProcess: ForeignAddress]
+    #["dlsym" "p p s" #consoleSymbol: ForeignAddress]
+    #["dlclose" "i p" #consoleCloseLibrary ForeignAddress]
+    #["clearerr" "v p" #consoleClearError ForeignAddress]
+    #["fgets" "p p i p" #fgetsSize:stream: ForeignAddress]
+    #["fputs" "i s p" #fputsTo: String]
+    #["fflush" "i p" #fflush ForeignAddress]
+  ];
+  let result := [wrappers inject: self into: [:status :row |
+    [[status isError] ifTrue: [| status] ifFalse: [|
+      [Alien wrap: [row at: 0] signature: [row at: 1] as: [row at: 2] on: [row at: 3]]
+    ]]
+  ]];
+  [[result isError] ifTrue: [| result] ifFalse: [|
+    [[self stdioState] set: true]; self
+  ]]] doc:
+  "Explicitly installs stdio wrappers, marking shared setup ready only after success; partial failure remains retryable."];
 
 // Write `s` to stderr, immediately (fputs is buffered; the flush keeps stderr
 // interleaved correctly with the unbuffered stdout prompts).
 [Reflect defineMethod: #conErr: on: Repl as: [:self :s |
-  let fe := [[db cellFor: self attr: #cerr] value];
+  let fe := [self consoleError];
   [s fputsTo: fe];
   [fe fflush];
   self] doc:
@@ -178,8 +211,8 @@
 // module replay); the floor is kept deliberately: the console is boot-critical,
 // and the fewer layers it rides during bring-up, the less can strand it.
 [Reflect defineMethod: #readLineInto: on: Repl as: [:self :acc |
-  let buf := [[db cellFor: self attr: #cbuf] value];
-  let fp  := [[db cellFor: self attr: #cin] value];
+  let buf := [self consoleBuffer];
+  let fp  := [self consoleInput];
   let r   := [buf fgetsSize: 4096 stream: fp];
   [[r isNull]
     ifTrue:  [| [[[acc size] = 0] ifTrue: [| nil] ifFalse: [| acc]]]
@@ -361,26 +394,67 @@
     ifFalse: [| [self consoleHostReady]]]] doc:
   "Compatibility bring-up combining consoleHostInit and consoleHostReady; the normal host inserts G0 publication between them."];
 
+// The standard stream variable names differ between Darwin and libc targets.
+// These are C data symbols, read through Alien's public pointer protocol.
+[Reflect defineMethod: #consoleSymbol:or:in: on: Repl as: [:self :first :fallback :library |
+  let address := [library consoleSymbol: first];
+  [[address isError] ifTrue: [| address] ifFalse: [|
+    let resolved := [[address isNull] ifTrue: [| [library consoleSymbol: fallback]] ifFalse: [| address]];
+    [[resolved isError] ifTrue: [| resolved] ifFalse: [|
+      [[resolved isNull] ifTrue: [| [Error kind: #consoleStdioUnavailable message: fallback]] ifFalse: [| resolved]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #borrowConsoleStreams on: Repl as: [:self |
+  let library := [ForeignAddress consoleOpenProcess: 1];
+  [[library isError] ifTrue: [| library] ifFalse: [|
+    [[library isNull] ifTrue: [| [Error kind: #consoleStdioUnavailable]] ifFalse: [|
+      let input := [self consoleSymbol: "__stdinp" or: "stdin" in: library];
+      let error := [self consoleSymbol: "__stderrp" or: "stderr" in: library];
+      let streams := [[input isError] ifTrue: [| input] ifFalse: [|
+        [[error isError] ifTrue: [| error] ifFalse: [| #[[input peekPtrAt: 0] [error peekPtrAt: 0]]]]
+      ]];
+      let closed := [library consoleCloseLibrary];
+      [[streams isError] ifTrue: [| streams] ifFalse: [|
+        [[closed isError] ifTrue: [| closed] ifFalse: [|
+          [[closed < 0] ifTrue: [| [Error kind: #consoleLibraryCloseFailed]] ifFalse: [|
+            [[[[streams at: 0] isNull] | [[streams at: 1] isNull]]
+              ifTrue: [| [Error kind: #consoleStdioUnavailable]] ifFalse: [| streams]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #openConsoleResources on: Repl as: [:self |
+  let wrapped := [[self stdioReady] ifTrue: [| self] ifFalse: [| [self wrapStdio]]];
+  [[wrapped isError] ifTrue: [| wrapped] ifFalse: [|
+    let retired := [self closeConsoleResources];
+    [[retired isError] ifTrue: [| retired] ifFalse: [|
+      let streams := [self borrowConsoleStreams];
+      [[streams isError] ifTrue: [| streams] ifFalse: [|
+        let buffer := [Alien alloc: 4096];
+        [[buffer isError] ifTrue: [| buffer] ifFalse: [|
+          [[streams at: 0] consoleClearError]; [[streams at: 1] consoleClearError];
+          [self installConsoleState: #[[streams at: 0] [streams at: 1] buffer]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
 [Reflect defineMethod: #consoleHostInit on: Repl as: [:self |
-  [self wrapStdio];
-  [[db cellFor: self attr: #cin]  set: [0 fdopenMode: "r"]];
-  [[db cellFor: self attr: #cerr] set: [2 fdopenMode: "w"]];
-  [[db cellFor: self attr: #cbuf] set: [Alien alloc: 4096]];
-  let config := [Globals at: #Config];
-  [[config notNil] ifTrue: [| [config refresh]] ifFalse: [| nil]];
-  [self applyConfigLoads]] doc:
-  "Wires stdio and loads configured modules while the runtime is still bootstrapping."];
+  let opened := [self openConsoleResources];
+  [[opened isError] ifTrue: [| opened] ifFalse: [|
+    let config := [Globals at: #Config];
+    [[config notNil] ifTrue: [| [config refresh]] ifFalse: [| nil]];
+    [self applyConfigLoads]
+  ]]
+] doc: "Borrows process stdio, owns a read buffer, and loads configured modules during bootstrap."];
 
-// Project `birnam run --repl=tty` has already resolved and loaded its artifact
-// graph and evaluated main. It needs the same host-owned stdio capabilities,
-// but must not rediscover the caller's Config or run the project entry twice.
+// Published project entry has already applied its configuration and main.
 [Reflect defineMethod: #consoleHostInitNoConfig on: Repl as: [:self |
-  [self wrapStdio];
-  [[db cellFor: self attr: #cin]  set: [0 fdopenMode: "r"]];
-  [[db cellFor: self attr: #cerr]  set: [2 fdopenMode: "w"]];
-  [[db cellFor: self attr: #cbuf]  set: [Alien alloc: 4096]];
-  self] doc:
-  "Wires stdio for a project run without applying Config loads or Config main."];
+  [self openConsoleResources]
+] doc: "Opens a console session without applying Config loads or main."];
 
 [Reflect defineMethod: #consoleHostReady on: Repl as: [:self |
   let configured := [self applyConfigMain];
@@ -398,15 +472,8 @@
 
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];
-  let input := [db currentValue: self attr: #cin];
-  let error := [db currentValue: self attr: #cerr];
-  let buffer := [db currentValue: self attr: #cbuf];
-  [buffer free];
-  [db retract: self attr: #cin value: input];
-  [db retract: self attr: #cerr value: error];
-  [db retract: self attr: #cbuf value: buffer];
-  self] doc:
-  "Session teardown: prints a final newline, frees the stdin read buffer, and retires the process-local stdio capability facts."];
+  [self closeConsoleResources]
+] doc: "Retires the session, frees its owned read buffer and prints a final newline. Process stdio streams are borrowed and remain open."];
 
 // The whole session: bring-up, the read-eval-print loop, teardown. The loop is
 // a native whileTrue: (stack-flat), so it lives here and not in a separate driver

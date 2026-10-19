@@ -1,0 +1,227 @@
+{
+  "baseline_commit": "3d45e084",
+  "status": "Qualified ordinary REPL ownership and approved one-time stdio setup; saved authored replacements take precedence over stale Alien recipes.",
+  "source_sha256": {
+    "modules/repl.birnam": "91500d58e708054f027c36feeb6467e5994f4cd75215426a4c2575ba04a95686",
+    "rust/birnam-image/src/native.rs": "0be155c0a982152f3972c1c8b50ef168ea49124f120d9a19bbcb2259fd1d636e",
+    "rust/birnam-siphon/tests/task_without_store.rs": "9616181a055d181045915885e2757a33e43f560eaf278bae123e9cbeb34534fa",
+    "scripts/repl-owner-test.py": "7c49a55d13174dffd33d7653ad7bfb45d74866d17630209aebbbe4650e33744c",
+    "scripts/alien-image-test.py": "88b6e578af60526342e5a74ff80a50d5609429222f0a11d287912ee6ade42bb1",
+    "scripts/task-without-store-test.py": "92a44600d31a7c8bbf8ccbb7691aa2d5dcbbf7592b7a3b7077ef7e1e86c8b445",
+    "scripts/host-cli-test.sh": "2909cddd7a5bf4de29c8bc2442653a0d180eb02e6fb0483e1d7e14128c3ef3d7"
+  },
+  "prefixes": {
+    "baseline": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/prefix",
+      "manifest_sha256": "2b8464514db831009417e1fde2faafcb629567a9b982c1592ea59bbb659542da"
+    },
+    "candidate": {
+      "path": "/tmp/birnam-store-independent/10-repl-setup/final-prefix",
+      "manifest_sha256": "3ce91d80b2a0f9680255589c7f8868c94dc318089cd6de1a22c28636098142c7"
+    }
+  },
+  "performance": {
+    "performance": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "cpu_ns": 4995487584,
+          "fact_delta": 3
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "cpu_ns": 33552625,
+          "fact_delta": 0
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "cpu_ns": 34763292,
+          "fact_delta": 0
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "cpu_ns": 4984072125,
+          "fact_delta": 3
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "cpu_ns": 4966827583,
+          "fact_delta": 3
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "cpu_ns": 33841500,
+          "fact_delta": 0
+        }
+      ],
+      "medians": {
+        "baseline": 4984072125,
+        "candidate": 33841500
+      },
+      "source": "[Module load: #time]; [Module load: #repl]; [Repl wrapStdio];\n[[|\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let start := [16 clockNanos];\n[1 to: 20 do: [:i |\n  [[[Repl consoleHostInitNoConfig] isError] ifTrue: [| [failures inc]]];\n  [[[Repl consoleDone] isError] ifTrue: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+    },
+    "startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 2.4688336667604744,
+          "cpu_seconds": 2.462117
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 2.562721624970436,
+          "cpu_seconds": 2.5586789999999997
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.533410375006497,
+          "cpu_seconds": 2.5300269999999996
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.454663374926895,
+          "cpu_seconds": 2.4473420000000004
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.49833120778203,
+          "cpu_seconds": 2.492645
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.540028417017311,
+          "cpu_seconds": 2.5206260000000005
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.4688336667604744,
+          "cpu_seconds": 2.462117
+        },
+        "candidate": {
+          "wall_seconds": 2.540028417017311,
+          "cpu_seconds": 2.5300269999999996
+        }
+      }
+    },
+    "console-startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 2.8390802079811692,
+          "cpu_seconds": 2.831869
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 2.5253617921844125,
+          "cpu_seconds": 2.5169420000000002
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.5642167911864817,
+          "cpu_seconds": 2.549414
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.8315039589069784,
+          "cpu_seconds": 2.822529000000001
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.859070499893278,
+          "cpu_seconds": 2.8563230000000006
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.525766000151634,
+          "cpu_seconds": 2.520414999999999
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.8390802079811692,
+          "cpu_seconds": 2.831869
+        },
+        "candidate": {
+          "wall_seconds": 2.525766000151634,
+          "cpu_seconds": 2.520414999999999
+        }
+      }
+    }
+  },
+  "repl_checks": {
+    "image_sha256": "ba8231b668ccdb4c0a5b229cff56ba0938a83e73d4da9d7316767bef15586e99",
+    "passed": true,
+    "prefix": "/private/tmp/birnam-store-independent/10-repl-setup/final-prefix",
+    "runner_sha256": "7c49a55d13174dffd33d7653ad7bfb45d74866d17630209aebbbe4650e33744c",
+    "runs": [
+      {
+        "exit_code": 0,
+        "name": "setup",
+        "stderr": "",
+        "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "wall_seconds": 4.382879292126745
+      },
+      {
+        "exit_code": 0,
+        "name": "source",
+        "stderr": "",
+        "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\ntrue\n#rejected\n",
+        "wall_seconds": 50.08710629167035
+      },
+      {
+        "exit_code": 0,
+        "name": "mapped",
+        "stderr": "",
+        "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "wall_seconds": 3.3269563750363886
+      },
+      {
+        "exit_code": 0,
+        "name": "rebuilt",
+        "stderr": "",
+        "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "wall_seconds": 7.620019417256117
+      }
+    ],
+    "setup_source": "[System println: [Repl stdioReady]];\n[System load: \"/private/tmp/birnam-store-independent/10-repl-setup/final-prefix/share/birnam/src/modules/repl.birnam\"];\n[[|\n[System println: [[Repl stdioReady] not]];\nlet alias := [Repl clone];\n[System println: [[alias stdioState] == [Repl stdioState]]];\nlet alien := Alien; let calls := [0 asCell]; let failing := [Object clone];\n[Reflect defineMethod: #wrap:signature:as:on: on: failing as: [:self :name :signature :selector :target |\n  [calls inc];\n  [[[calls value] = 3] ifTrue: [| [Error kind: #forcedWrapperFailure]] ifFalse: [| self]]\n]];\n[Globals at: #Alien put: failing];\nlet failed := [alias consoleHostInitNoConfig];\n[Globals at: #Alien put: alien];\n[System println: [[failed kind] == #forcedWrapperFailure]];\n[System println: [[calls value] = 3]];\n[System println: [[alias stdioReady] not]];\n[System println: [[alias consoleInput] isNil]];\n// A later first session retries setup; success is visible through the shared owner.\n[System println: [[[alias consoleHostInitNoConfig] isError] not]];\n[System println: [Repl stdioReady]];\n[alias closeConsoleResources];\nlet clears := [0 asCell];\n[Reflect defineMethod: #consoleClearError on: ForeignAddress as: [:self | [clears inc]; nil]];\n[alias consoleHostInitNoConfig]; [alias closeConsoleResources];\n[System println: [[clears value] = 2]];\n// Explicit installation remains available, even after readiness was true.\n[System println: [[[alias wrapStdio] isError] not]];\n[alias consoleHostInitNoConfig]; [alias closeConsoleResources];\n[System println: [[clears value] = 2]]\n] value]\n",
+    "source": "[Module load: #repl];\n[Alien wrap: \"fileno\" signature: \"i p\" as: #ownerStreamDescriptor on: ForeignAddress];\n[[|\nlet repl := [Repl clone];\n[System println: [[[repl consoleHostInitNoConfig] isError] not]];\nlet input := [repl consoleInput]; let error := [repl consoleError]; let buffer := [repl consoleBuffer];\nlet alias := [repl clone];\n[System println: [[repl consoleOwner] == [alias consoleOwner]]];\n[System println: [[input ownerStreamDescriptor] = 0]];\n[System println: [[error ownerStreamDescriptor] = 2]];\n[System println: [[repl readLineInto: \"\"] = \"first\\n\"]];\n[repl closeConsoleResources]; [alias closeConsoleResources];\n[System println: [[alias consoleInput] isNil]];\n[System println: [buffer isNull]];\n[System println: [[input ownerStreamDescriptor] = 0]];\n[System println: [[error ownerStreamDescriptor] = 2]];\n[repl consoleHostInitNoConfig];\n// libc retains any unread bytes across session boundaries.\n[System println: [[repl readLineInto: \"\"] = \"second\\n\"]];\n[System println: [[repl readLineInto: \"\"] isNil]];\n[repl closeConsoleResources]; [repl consoleHostInitNoConfig];\n[System println: [[repl readLineInto: \"\"] isNil]];\n[repl closeConsoleResources];\n// Repeated initialization retires its old buffer.\n[repl consoleHostInitNoConfig]; let before := [repl consoleBuffer];\n[repl consoleHostInitNoConfig]; [System println: [before isNull]];\nlet actualBuffer := [repl consoleBuffer]; let count := [0 asCell];\nlet cleanup := [Object clone];\n[Reflect defineMethod: #free on: cleanup as: [:self |\n  [count inc]; [System gc]; [repl closeConsoleResources]; [actualBuffer free]\n]];\n[[repl consoleOwner] set: #[input error cleanup]];\n[repl closeConsoleResources]; [System println: [[count value] = 1]];\n// A cleanup callback can install a new session; it is not cleared afterward.\nlet replacement := [Alien alloc: 4096]; let replacing := [Object clone];\n[Reflect defineMethod: #free on: replacing as: [:self |\n  [repl installConsoleState: #[input error replacement]]; [System gc]; nil\n]];\n[repl installConsoleState: #[input error replacing]]; [repl closeConsoleResources];\n[System println: [[repl consoleBuffer] == replacement]];\n[repl closeConsoleResources]; [System println: [replacement isNull]];\n// Failure retires old state and publishes no half-open replacement.\nlet broken := [Repl clone]; [broken consoleHostInitNoConfig]; let oldBuffer := [broken consoleBuffer];\n[Reflect defineMethod: #borrowConsoleStreams on: broken as: [:self | [Error kind: #forcedStdioFailure]]];\n[System println: [[[broken consoleHostInitNoConfig] kind] == #forcedStdioFailure]];\n[System println: [oldBuffer isNull]];\n[System println: [[broken consoleInput] isNil]];\n[broken closeConsoleResources];\nlet library := [ForeignAddress consoleOpenProcess: 1];\n[System println: [[[repl consoleSymbol: \"__birnam_missing_stdio__\" or: \"__birnam_missing_stdio_fallback__\" in: library] kind] == #consoleStdioUnavailable]];\n[library consoleCloseLibrary];\n// A current wrapper replacement and readiness both survive image recovery.\nlet clears := [0 asCell]; [Globals at: #SavedConsoleClears put: clears];\n[Reflect defineMethod: #consoleClearError on: ForeignAddress as: [:self | [clears inc]; nil]];\n// Save active session bookkeeping, but reject an independently retained stream.\n[repl consoleHostInitNoConfig];\n[Globals at: #SavedConsole put: repl]; [Globals at: #SavedConsoleAlias put: [repl clone]];\n[Globals at: #SavedConsoleOwner put: [repl consoleOwner]];\n[Globals at: #main put: [|\n  [System gc];\n  [System println: [[SavedConsole consoleInput] isNil]];\n  [System println: [[SavedConsole consoleBuffer] isNil]];\n  [System println: [[SavedConsole consoleOwner] == SavedConsoleOwner]];\n  [System println: [[SavedConsoleAlias consoleOwner] == SavedConsoleOwner]];\n  [System println: [[[SavedConsoleOwner value] at: 1] isNil]];\n  [System println: [SavedConsole stdioReady]];\n  let before := [SavedConsoleClears value];\n  [System println: [[[SavedConsole consoleHostInitNoConfig] isError] not]];\n  [System println: [[SavedConsoleClears value] = [before + 2]]];\n  [SavedConsole closeConsoleResources]\n]]\n] value];\n[System gc]; [System saveImage: \"/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-repl-owner-ryl1zjb9/console.image\"];\n[System println: [[System imageSaveReport] status]];\n[System println: [[SavedConsole consoleInput] notNil]];\n[Globals at: #RetainedStream put: [SavedConsole consoleInput]];\n[System saveImage: \"/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-repl-owner-ryl1zjb9/stream.image\"]; [System println: [[System imageSaveReport] status]];\n[SavedConsole closeConsoleResources]\n"
+  },
+  "absence_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-y86h1j9h/results.json",
+  "logs": {
+    "owner-final.log": "repl owner: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-repl-owner-ryl1zjb9/results.json\n",
+    "alien-baseline.log": "Traceback (most recent call last):\n  File \"/Users/chazu/dev/zig/birnam/scripts/alien-image-test.py\", line 18, in <module>\n    assert run([binary,image])==b'99\\n7\\n7\\n'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+    "alien-final.log": "Alien/Image: saved replacement and other wrapper survive source deletion, mapped/rebuilt recovery and baked entry\n",
+    "floor.log": "tasks-without-store: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-y86h1j9h/results.json\n",
+    "interaction.log": "tooling: init/wrap preservation, doc and docgen passed\nimage tooling: rebuild and executable trailer recovery passed\ninteractive: persistent TCP sessions, bind failure, published project tty/socket and main-once passed\n",
+    "no-compilation-final.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s\n     Running unittests src/lib.rs (.cargo-target/native-message-tests/debug/deps/birnam_host-ae1905f6c16f2591)\n\nrunning 1 test\nbirnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n\ntest startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 18.79s\n\n",
+    "native-image.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s\n     Running tests/image.rs (.cargo-target/native-message-tests/debug/deps/image-0b8e9ae2809216fd)\n\nrunning 2 tests\n\nrunning 1 test\ntest image_owner_roundtrip ... FAILED\n\nthread 'repeated_image_resaves_keep_a_fixed_live_set' (3015345205) panicked at rust/birnam-siphon/tests/support/mod.rs:278:18:\ncalled `Option::unwrap()` on a `None` value\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest repeated_image_resaves_keep_a_fixed_live_set ... FAILED\n\nfailures:\n\nfailures:\n    repeated_image_resaves_keep_a_fixed_live_set\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.54s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... FAILED\n\nfailures:\n\n---- image_owner_roundtrip stdout ----\n\nthread 'image_owner_roundtrip' (3015345201) panicked at rust/birnam-siphon/tests/support/mod.rs:278:18:\ncalled `Option::unwrap()` on a `None` value\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- repeated_image_resaves_keep_a_fixed_live_set stdout ----\n\nthread 'repeated_image_resaves_keep_a_fixed_live_set' (3015345202) panicked at rust/birnam-siphon/tests/image.rs:351:5:\nresident cleanup control failed\n\n\nfailures:\n    image_owner_roundtrip\n    repeated_image_resaves_keep_a_fixed_live_set\n\ntest result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s\n\nerror: test failed, to rerun pass `-p birnam-siphon --test image`\n",
+    "native-image-metrics.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s\n     Running tests/image.rs (.cargo-target/native-message-tests/debug/deps/image-0b8e9ae2809216fd)\n\nrunning 2 tests\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.61s\n\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.64s\n\n\nrunning 1 test\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.22s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 25.71s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.90s\n\n\nrunning 1 test\ntest image_owner_roundtrip has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 13.85s\n\n\nrunning 1 test\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.66s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.13s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 21.72s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.78s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.64s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 58.03s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.48s\n\n\nrunning 1 test\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.90s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 14.98s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 20.59s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.82s\n\n\nrunning 1 test\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.15s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 57.39s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.93s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.92s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.39s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.05s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.28s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.25s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.22s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.01s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.97s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.42s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.61s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.24s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.43s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.17s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.45s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 386.54s\n\n     Running tests/image_recovery_conflict.rs (.cargo-target/native-message-tests/debug/deps/image_recovery_conflict-6c7d20f521e2f7b1)\n\nrunning 1 test\ntest image_compensation_characterizes_intervening_dictionary_write ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.81s\n\n     Running tests/image_snapshot_stamp.rs (.cargo-target/native-message-tests/debug/deps/image_snapshot_stamp-6f930399cb799551)\n\nrunning 1 test\ntest snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 34.07s\n\n"
+  },
+  "qualification_limits": [
+    "macOS qualification; libc stdin/stderr fallback is not a Linux qualification claim.",
+    "Native image tests initially used a standard TCC build without required resource counters and failed fixture setup. Corrected tests use an isolated floor with the unchanged resource-metrics TCC library; performance uses the standard build.",
+    "Interaction and component-absence tests ran against the first prefix with byte-identical REPL/source artifacts; final image/native/startup tests cover the later Image fix.",
+    "Existing ResourceOwner/ImagePayload formal contracts remain applicable and unchanged; no fresh formal run is claimed for this slice.",
+    "Component absence proves real REPL initialization and message-based cleanup, not complete Store-free Host, worker, real Alien I/O or image composition.",
+    "Follow-up: distinguish active Alien registrations from cached code; audit multiple foreign replacements and removed wrappers."
+  ]
+}

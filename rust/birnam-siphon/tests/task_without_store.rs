@@ -96,6 +96,15 @@ let left := [owner field: #workspace]; let right := [owner field: #workspace];
 [[[right value] == #owned] & [[owner workspace] == #owned]]
 ] value]"#),h.named(b"true"));
 
+    let initialized=eval(include_bytes!("../../../modules/repl.birnam"));
+    assert_eq!(h.call(initialized,b"isError",&[]),h.named(b"false"));
+    assert_eq!(eval(br#"[[|
+let calls := [0 asCell]; let buffer := [Object clone];
+[Reflect defineMethod: #free on: buffer as: [:self | [calls inc]; [System gc]; nil]];
+[Repl installConsoleState: #[#borrowedInput #borrowedError buffer]];
+let alias := [Repl clone]; [Repl closeConsoleResources]; [alias closeConsoleResources];
+[[[calls value] = 1] & [[[alias consoleInput] isNil] & [[Repl consoleBuffer] isNil]]]
+] value]"#),h.named(b"true"));
     let result=eval(br#"[[|
 let task := [TaskControl start: [:self | [self wait]; 42]];
 let token := [task waitToken];
