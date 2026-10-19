@@ -485,3 +485,26 @@ The expanded formal contracts pass 405 Lean proofs, 128 mutation rejections and
 The performance hold is resolved. REPL stdio ownership is next. Alien's recipe
 storage still prevents complete Store-free socket initialization; Alien, Image,
 optional composition and release remain unfinished.
+
+
+## Performance hold: REPL session ownership (2026-10-19)
+
+The REPL draft removes its Store fields and transient schema. An ordinary shared
+Cell owns session bindings and the read buffer, with alias-preserving image reset
+and conditional teardown before callbacks. It borrows the process's current stdio
+streams instead of allocating fresh FILE objects with `fdopen` each session.
+Actual initializer absence, cleanup/alias/image tests, installed interaction and
+no-compilation startup checks pass.
+
+Repeated session setup/teardown nevertheless rises from 4.902 to 7.824 s per 20
+operations (+59.6%). Per-session `wrapStdio` reinstalls seven wrappers instead of
+four. Installing once in an isolated diagnostic reduces those totals to 15.30 ms
+and 31.91 ms respectively, identifying repeated setup as the dominant work.
+
+The runtime draft remains uncommitted. The proposed remediation is ordinary
+shared one-time setup state, with explicit `wrapStdio` still available and no
+method-identity checking or automatic repair of user replacements. Source-first,
+image and cold/warm behavior must be qualified. Per the user's regression gate,
+this initialization-policy change awaits approval. See the
+[report](repl-owner-migration-performance.md) and
+[receipt](../measurements/repl-owner-regression-20261019.json).

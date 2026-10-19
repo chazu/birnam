@@ -1,0 +1,195 @@
+{
+  "baseline_commit": "3d45e084",
+  "status": "Uncommitted REPL owner draft held for approval after a 59.6% repeated-session CPU regression.",
+  "source_sha256": {
+    "modules/repl.birnam": "58ee2f709613d573c85e127a885debff904f886908cad4c725005efcff95d1ff",
+    "scripts/repl-owner-test.py": "921a0f7ba78dd50af8b82cb26af9aecd96f4fbbb3207a26b556d7dc8d7a78d89",
+    "rust/birnam-siphon/tests/task_without_store.rs": "9616181a055d181045915885e2757a33e43f560eaf278bae123e9cbeb34534fa",
+    "scripts/task-without-store-test.py": "92a44600d31a7c8bbf8ccbb7691aa2d5dcbbf7592b7a3b7077ef7e1e86c8b445",
+    "scripts/host-cli-test.sh": "2909cddd7a5bf4de29c8bc2442653a0d180eb02e6fb0483e1d7e14128c3ef3d7"
+  },
+  "performance": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "cpu_ns": 4976211917,
+        "fact_delta": 3
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "cpu_ns": 7841474167,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "cpu_ns": 7748619667,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "cpu_ns": 4896928625,
+        "fact_delta": 3
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "cpu_ns": 4902329208,
+        "fact_delta": 3
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "cpu_ns": 7823756458,
+        "fact_delta": 0
+      }
+    ],
+    "medians": {
+      "baseline": 4902329208,
+      "candidate": 7823756458
+    },
+    "source": "[Module load: #time]; [Module load: #repl]; [Repl wrapStdio];\n[[|\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let start := [16 clockNanos];\n[1 to: 20 do: [:i |\n  [[[Repl consoleHostInitNoConfig] isError] ifTrue: [| [failures inc]]];\n  [[[Repl consoleDone] isError] ifTrue: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "setup_isolation": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "cpu_ns": 15299834,
+        "fact_delta": 3
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "cpu_ns": 31603375,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "cpu_ns": 32591709,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "cpu_ns": 15299666,
+        "fact_delta": 3
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "cpu_ns": 15201292,
+        "fact_delta": 3
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "cpu_ns": 31912833,
+        "fact_delta": 0
+      }
+    ],
+    "medians": {
+      "baseline": 15299666,
+      "candidate": 31912833
+    },
+    "source": "[Module load: #time]; [Module load: #repl]; [Repl wrapStdio];\n[[|\nlet session := [Repl clone];\n// Diagnostic only: the real wrappers are already installed above. Replace only\n// this instance's setup hook, leaving actual stdio, allocation and cleanup live.\n[Reflect defineMethod: #wrapStdio on: session as: [:self | self]];\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let start := [16 clockNanos];\n[1 to: 20 do: [:i |\n  [[[session consoleHostInitNoConfig] isError] ifTrue: [| [failures inc]]];\n  [[[session consoleDone] isError] ifTrue: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "probe": {
+    "source": "[Alien wrap: \"dlopen\" signature: \"p p i\" as: #probeOpenProcess: on: ForeignAddress];\n[Alien wrap: \"dlsym\" signature: \"p p s\" as: #probeSymbol: on: ForeignAddress];\n[Alien wrap: \"dlclose\" signature: \"i p\" as: #probeCloseLibrary on: ForeignAddress];\n[Alien wrap: \"fileno\" signature: \"i p\" as: #probeDescriptor on: ForeignAddress];\n[[|\nlet library := [ForeignAddress probeOpenProcess: 1];\nlet input := [library probeSymbol: \"__stdinp\"];\nlet input := [[input isNull] ifTrue: [| [library probeSymbol: \"stdin\"]] ifFalse: [| input]];\nlet error := [library probeSymbol: \"__stderrp\"];\nlet error := [[error isNull] ifTrue: [| [library probeSymbol: \"stderr\"]] ifFalse: [| error]];\n[System println: [[input isNull] not]];\n[System println: [[error isNull] not]];\nlet inputFile := [input peekPtrAt: 0]; let errorFile := [error peekPtrAt: 0];\n[System println: [[inputFile probeDescriptor] = 0]];\n[System println: [[errorFile probeDescriptor] = 2]];\n[System println: [[library probeCloseLibrary] = 0]];\n[System println: [[inputFile probeDescriptor] = 0]];\n[System println: [[errorFile probeDescriptor] = 2]]\n] value]\n",
+    "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n"
+  },
+  "qualification": {
+    "owner": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-repl-owner-3ksu8ov0/results.json",
+      "sha256": "e5a33c787690e8db421b531420832509d3f419d541c9adcadb8a6b3176be0153",
+      "runs": [
+        {
+          "exit_code": 0,
+          "name": "source",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\ntrue\n#rejected\n",
+          "wall_seconds": 40.22198170796037
+        },
+        {
+          "exit_code": 0,
+          "name": "mapped",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_seconds": 2.974525083322078
+        },
+        {
+          "exit_code": 0,
+          "name": "rebuilt",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_seconds": 5.944841042160988
+        }
+      ]
+    },
+    "actual_initializer_absence": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-g20h9oh3/results.json",
+      "sha256": "f4075f558bd0f56beb7e8ec4126509734ba707621361e74533cdbc408feb39dd",
+      "runs": {
+        "argv": [
+          "mise",
+          "exec",
+          "--",
+          "cargo",
+          "test",
+          "--offline",
+          "--locked",
+          "-p",
+          "birnam-siphon",
+          "--test",
+          "task_without_store",
+          "--",
+          "--include-ignored",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.23s\n\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.96s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stderr": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.96s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stdout": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.23s\n\n",
+        "wall_ns": 2250566000
+      }
+    },
+    "interaction": "Passed tooling, image rebuild/bake, tty/TCP sessions, bind failure and main-once checks.",
+    "no_compilation": "Installed bootstrap/console test passed with compilation/parsing forbidden.",
+    "formal": "Uses the previously qualified ResourceOwner and ImagePayload contracts; no model change or new formal run in this draft."
+  },
+  "proposal": "One-time successful wrapper setup in ordinary shared state; explicit wrapStdio remains available. Preserve current method dispatch and user replacements; qualify cold/source/image and warm sessions before commit.",
+  "logs": {
+    "install-fixed.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/install-fixed.log",
+      "sha256": "46ef81d7d8423dcc1327f96c36695c06545770a3d48f724ac508b44bc1b48bdd"
+    },
+    "owner.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/owner.log",
+      "sha256": "8d5a5e04ce2769e57587f507f26d2831077832f14a73006d8fc30ac0172cd453"
+    },
+    "repl-floor.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/repl-floor.log",
+      "sha256": "8c2f2915e26066ed6a2e1ad477f38ba00e1d629b1fe1c3aaf0d152e3dde9b53b"
+    },
+    "interaction.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/interaction.log",
+      "sha256": "cd1be49f595eb6ec490607e9d9d3dde2e96b556f7d25427302e3d3665313846e"
+    },
+    "no-compilation.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/no-compilation.log",
+      "sha256": "2dc560fee5c2d93f9262347986638db4f1792bf452f115e527bab67b75184235"
+    },
+    "performance.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/performance.log",
+      "sha256": "fa91bd77e4f805b4bd5184e18377d904acd19d09abf9a7e51b493cd2c4f2150d"
+    },
+    "setup-diagnostic.log": {
+      "path": "/tmp/birnam-store-independent/09-repl/setup-diagnostic.log",
+      "sha256": "8aaaa45842c23d0cd404aec90af6d9df54f82d24fadedc2837f322ff7cbf9942"
+    }
+  }
+}
