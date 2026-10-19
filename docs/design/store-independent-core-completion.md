@@ -390,3 +390,49 @@ The task absence fixture is now part of the regular native-message gate. See the
 Next is the remaining resource ownership: Concurrency preparation objects, then
 REPL and socket connection state. Worker and RemoteFailure ownership was already
 included in `9e7c91ed` so the task initializer could be genuinely independent.
+
+
+## Qualified Concurrency preparation ownership (2026-10-19)
+
+Concurrency now owns five ordinary reference slots. Its current accessors and
+explicit `field:` views use those locations; the schema declarations and prefixed
+fact attributes are gone. Image projection preserves platform setup and resets
+workspace, workers, image path and closed bookkeeping without modifying live
+state. Fresh preparation resets every field, including the per-object platform
+flag that ordinary cloning would otherwise copy from its factory.
+
+The migration also exposed an unnecessary `fieldIndex:` forwarding method added
+during the prior task slice. Its sole caller was `field:`. It is removed from all
+four field owners; `field:` directly sends `at:` to its captured Map. There is no
+new replacement check, fixed method pointer or field-index service.
+
+Actual initializer operation with Store/Relational physically absent, owner/field
+aliases, mapped and rebuilt images, source-free workers, 19 service checks and
+177 task checks pass. The native absence fixture now runs the actual Concurrency
+source initializer, matching its production source-bootstrap entry. Worker and
+image workflows themselves still depend on the existing Alien/Image composition;
+this is not yet full Store-free worker acceptance.
+
+Three paired observations show 20 preparations/cleanups at 187.3 to 191.1 ms
+(+2.0%) and 500 explicit field requests/reads at 195.1 to 207.1 ms (+6.1%). The
+batch adds **zero facts instead of 80**. These small costs are recorded rather
+than presented as a speedup. See the
+[receipt](../measurements/concurrency-owned-fields-20261019.json).
+
+### Resource teardown checks for the next slice
+
+Before completing REPL/socket ownership, resolve these source-review concerns
+with actual resource probes and tests:
+
+- `SockConn close` currently retains its numeric descriptor after closing it.
+  Check repeated/reentrant close and descriptor reuse so an old connection cannot
+  close a different connection that later receives the same descriptor number.
+- Console setup calls `fdopen` for stdin/stderr each session; teardown frees the
+  read buffer but does not close those FILE objects. Establish ownership explicitly
+  while preserving the process's standard descriptors, and test repeated sessions
+  plus failed initialization.
+
+These concerns come from existing code, not a demonstrated regression in the
+Concurrency migration. Keep resource retirement local to its owner, preserving
+intervening replacements and actual cleanup errors; do not add a general resource
+registry, rollback system or method-identity policing.

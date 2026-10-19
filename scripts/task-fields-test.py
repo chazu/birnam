@@ -60,6 +60,28 @@ let failure := [RemoteFailure fromOutcome: #[#failure #[#test] nil #[]]];
 [System gc];
 [System println: [[failure outcome] = #[#failure #[#test] nil #[]]]];
 [System println: [[failure kind] == #remoteFailure]];
+// Preparation owners preserve platform state but project process-local fields.
+let preparation := [Concurrency clone];
+[preparation platformReady: true]; [preparation workers: #[factory]];
+[preparation image: #liveImage]; [preparation closed: true];
+let preparationLeft := [preparation field: #workspace];
+let preparationRight := [preparation field: #workspace];
+[preparationLeft set: #liveWorkspace]; [System gc];
+[System println: [[preparationRight value] == #liveWorkspace]];
+[System println: [[preparation workspace] == #liveWorkspace]];
+// Real preparation must reset fields copied from a configured factory.
+let configured := [Concurrency clone]; [configured initializePlatform];
+[configured workers: #[#oldWorker]]; [configured image: #oldImage];
+[configured closed: true];
+let fresh := [configured prepareSources: #[]];
+[System println: [[fresh platformReady] isNil]];
+[System println: [[fresh workers] = #[]]];
+[System println: [[fresh image] isNil]];
+[System println: [[fresh closed] == false]];
+[System println: [[[[fresh close] pollOutcome] at: 0] == #success]];
+[Globals at: #SavedPreparation put: preparation];
+[Globals at: #SavedPreparationField put: preparationLeft];
+[Globals at: #SavedPreparationAlias put: preparationRight];
 [Globals at: #SavedTaskField put: left];
 [Globals at: #SavedTaskFieldAlias put: right];
 [Globals at: #SavedTaskFactory put: factory];
@@ -80,19 +102,28 @@ let failure := [RemoteFailure fromOutcome: #[#failure #[#test] nil #[]]];
   [System println: [[SavedExecutorField value] = 128]];
   [System println: [[SavedWorker workerHandle] == #new]];
   [System println: [[SavedWorkerField value] isNil]];
-  [System println: [[SavedWorker closing] isNil]]
+  [System println: [[SavedWorker closing] isNil]];
+  [System println: [[SavedPreparation platformReady] == true]];
+  [System println: [[SavedPreparationField value] isNil]];
+  [System println: [[SavedPreparation workers] isNil]];
+  [System println: [[SavedPreparation image] isNil]];
+  [System println: [[SavedPreparation closed] isNil]];
+  [SavedPreparationField set: #restored];
+  [System println: [[SavedPreparationAlias value] == #restored]];
+  [System println: [[SavedPreparation workspace] == #restored]]
 ]]
 ] value];
 // The prepared task above is no longer rooted when the image is collected.
 [System gc];
 [System saveImage: IMAGE];
 [System println: [[System imageSaveReport] status]]
+[System println: [[SavedPreparation workspace] == #liveWorkspace]]
 '''.replace('IMAGE', json.dumps(str(image))))
 receipt = {'passed': False, 'prefix': str(prefix), 'source': source.read_text(),
            'runner_sha256': sha(Path(__file__).resolve()), 'runs': []}
-for name, args, expected in [('source', [source], 'true\n' * 22 + '#saved\n'),
-                             ('mapped', [image], 'true\n' * 9),
-                             ('rebuilt', ['--rebuild', image], 'true\n' * 9)]:
+for name, args, expected in [('source', [source], 'true\n' * 29 + '#saved\ntrue\n'),
+                             ('mapped', [image], 'true\n' * 16),
+                             ('rebuilt', ['--rebuild', image], 'true\n' * 16)]:
     run = command([prefix / 'bin/birnam', *args], cwd=work, env=env, timeout=600)
     receipt['runs'].append(dict(name=name, **run))
     (work / (name + '.log')).write_text(run['output'])

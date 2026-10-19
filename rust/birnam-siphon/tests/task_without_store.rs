@@ -74,6 +74,19 @@ fn tasks_work_without_store_or_relational() { unsafe {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
     }
     let eval=|source: &[u8]| h.call(h.named(b"Codegen"), b"evalPersisting:", &[text(source)]);
+    // Production loads this authored module from source into the startup image.
+    // Run its actual initializer; its resource methods still require Alien/Image
+    // when called, but owned preparation fields do not require Store.
+    h.call(module,b"markLoaded:",&[id.intern_name(b"stacklessControl").unwrap()]);
+    let initialized=eval(include_bytes!("../../../modules/isolate.birnam"));
+    assert_eq!(h.call(initialized,b"isError",&[]),h.named(b"false"));
+    assert_eq!(eval(br#"[[|
+let owner := [Concurrency clone];
+let left := [owner field: #workspace]; let right := [owner field: #workspace];
+[left set: #owned]; [System gc];
+[[[right value] == #owned] & [[owner workspace] == #owned]]
+] value]"#),h.named(b"true"));
+
     let result=eval(br#"[[|
 let task := [TaskControl start: [:self | [self wait]; 42]];
 let token := [task waitToken];

@@ -1,10 +1,11 @@
 # Task field migration: regression and approved remediation
 
-2026-10-19. Baseline `2dc87f5a`. The owned-field implementation is a working-tree
-prototype, not a qualified or committed runtime change. The user explicitly
-requires a hold for approval after a significant performance regression.
+2026-10-19. Baseline `2dc87f5a`. The initial owned-field prototype regressed
+performance and was held for approval. The approved remediation was subsequently
+qualified and committed as `9e7c91ed`; the original failed measurements below are
+retained as diagnostic history.
 
-## What the prototype establishes
+## Initial prototype and its qualification gap
 
 TaskControl, TaskExecutor and Worker now have ordinary named reference slots.
 `TaskField` is a fresh, ordinary owner/slot view; handles share the actual mutable
@@ -14,9 +15,9 @@ attribute-name synthesis. Worker cleanup retains compare-and-clear behavior so
 an intervening replacement handle is not overwritten.
 
 Executor and Worker image projections preserve the prior transient-field reset
-policy; task handles use the already-qualified process-local marker. These field
-moves still need dedicated alias, GC, image, worker and genuine initializer-absence
-tests. A successful installed build is not that qualification.
+policy; task handles use the already-qualified process-local marker. At that stage these field
+moves still needed dedicated alias, GC, image, worker and genuine initializer-absence
+tests. The subsequent qualification is recorded below.
 
 The private field helper now addresses declared slots and answers `unknownSlot`
 for an unknown name. It no longer doubles as an arbitrary fact-backed property
@@ -191,3 +192,10 @@ The final source task suite and final-artifact field/image/absence checks includ
 that correction. Broad Host/language checks preceded only those three writes.
 See the [accepted receipt](../measurements/task-owned-fields-20261019.json) for
 source/artifact hashes, exact runs, timings and qualification boundaries.
+
+
+The later Concurrency ownership slice removes the unused `fieldIndex:` forwarding
+methods from the field owners: `field:` now reads its captured Map directly.
+The measurements above describe the `9e7c91ed` artifact, not that subsequent
+simplification; its evidence is in the
+[Concurrency receipt](../measurements/concurrency-owned-fields-20261019.json).

@@ -5,20 +5,59 @@
 // Batch source preparation and image ownership for ordinary Birnam programs.
 // These setup operations run before tasks/workers start. Task and worker
 // scheduling live in stacklessControl; preparation ownership stays here.
-[Globals at: #Concurrency put: [Object clone]];
-// A preparation object's paths and live service ownership are process-local
-// bookkeeping, not state to recreate inside every worker image.
-[#[#workspace #workers #image #closed] do: [:name |
-  [db assert: [["Concurrency." , [name asString]] asSymbol] attr: #imageTransient value: true]]];
-[Reflect defineMethod: #field: on: Concurrency as: [:self :name |
-  [db cellFor: self attr: [["Concurrency." , [name asString]] asSymbol]]]];
+// Preparation state is ordinary owned data. Explicit field handles share
+// those locations; only platform setup survives the existing image projection.
+[[|
+let model := ObjectModel; let fieldView := TaskField;
+let names := #[#platformReady #workspace #workers #image #closed];
+let indices := {#platformReady -> 0, #workspace -> 1, #workers -> 2, #image -> 3, #closed -> 4};
+let prototype := [model newSlots: #[nil nil nil nil nil] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
+[Reflect defineMethod: #field: on: prototype as: [:self :name |
+  let index := [indices at: name];
+  [[index isError] ifTrue: [| index] ifFalse: [|
+    [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
+      [fieldView owner: self slot: index]
+    ]]
+  ]]
+]];
+let platformReadySlot := 0;
+[Reflect defineMethod: #platformReady on: prototype as: [:self | [model slot: platformReadySlot in: self]]];
+[Reflect defineMethod: #platformReady: on: prototype as: [:self :value |
+  [model slot: platformReadySlot in: self put: value]; self
+]];
+let workspaceSlot := 1;
+[Reflect defineMethod: #workspace on: prototype as: [:self | [model slot: workspaceSlot in: self]]];
+[Reflect defineMethod: #workspace: on: prototype as: [:self :value |
+  [model slot: workspaceSlot in: self put: value]; self
+]];
+let workersSlot := 2;
+[Reflect defineMethod: #workers on: prototype as: [:self | [model slot: workersSlot in: self]]];
+[Reflect defineMethod: #workers: on: prototype as: [:self :value |
+  [model slot: workersSlot in: self put: value]; self
+]];
+let imageSlot := 3;
+[Reflect defineMethod: #image on: prototype as: [:self | [model slot: imageSlot in: self]]];
+[Reflect defineMethod: #image: on: prototype as: [:self :value |
+  [model slot: imageSlot in: self put: value]; self
+]];
+let closedSlot := 4;
+[Reflect defineMethod: #closed on: prototype as: [:self | [model slot: closedSlot in: self]]];
+[Reflect defineMethod: #closed: on: prototype as: [:self :value |
+  [model slot: closedSlot in: self put: value]; self
+]];
+[Reflect defineMethod: #imagePayload on: prototype as: [:self |
+  [model newSlots: #[[self platformReady] nil nil nil nil] parent: ObjectVt]
+]];
+[Globals at: #Concurrency put: prototype]
+] value];
 [Reflect defineMethod: #initializePlatform on: Concurrency as: [:self |
-  [[[[self field: #platformReady] value] isNil] ifTrue: [|
+  [[[self platformReady] isNil] ifTrue: [|
     [Alien wrap: "strcpy" signature: "p p s" as: #concurrencyCopy: on: ForeignAddress];
     [Alien wrap: "mkdtemp" signature: "s p" as: #concurrencyDirectory on: ForeignAddress];
     [Alien wrap: "unlink" signature: "i s" as: #concurrencyDelete on: String];
     [Alien wrap: "rmdir" signature: "i s" as: #concurrencyRemoveDirectory on: String];
-    [[self field: #platformReady] set: true]]];
+    [self platformReady: true]]];
   self]];
 [Reflect defineMethod: #newWorkspace on: Concurrency as: [:self |
   [self initializePlatform];
@@ -38,12 +77,14 @@
   let bad := [rows detect: [:row | [row isError]]];
   [[bad notNil] ifTrue: [| bad] ifFalse: [|
     let program := [self clone];
+    // A fresh preparation has no per-object setup state from its factory.
+    [program platformReady: nil];
     let workspace := [self newWorkspace];
     [[workspace isNil] ifTrue: [| [Error kind: #workspaceUnavailable]] ifFalse: [|
-      [[program field: #workspace] set: workspace];
-      [[program field: #workers] set: #[]];
-      [[program field: #image] set: nil];
-      [[program field: #closed] set: false];
+      [program workspace: workspace];
+      [program workers: #[]];
+      [program image: nil];
+      [program closed: false];
       let loaded := [rows collect: [:row | [System load: [row at: 0]]]];
       let loadError := [loaded detect: [:answer | [answer isError]]];
       [[loadError notNil] ifTrue: [| [program removeFiles]; loadError]
@@ -61,27 +102,27 @@
   let finisher := [[prepared isError] ifTrue: [| ConcurrencyLoadFailure] ifFalse: [| self]];
   [finisher finish: prepared]]];
 [Reflect defineMethod: #captureWorkerImage on: Concurrency as: [:self |
-  let image := [[[self field: #workspace] value] , "/workers.image"];
+  let image := [[self workspace] , "/workers.image"];
   [System saveImage: image];
   [[[[System imageSaveReport] status] = #saved]
-    ifTrue: [| [[self field: #image] set: image]; self]
+    ifTrue: [| [self image: image]; self]
     ifFalse: [| [Error kind: #workerImageRejected message: [[System imageSaveReport] detail]]]]]];
 [Reflect defineMethod: #worker: on: Concurrency as: [:self :receiver |
-  [[[self field: #closed] value] ifTrue: [| [Error kind: #concurrencyClosed]] ifFalse: [|
-    let worker := [Worker fromHandle: [Isolate startService: receiver image: [[self field: #image] value]]];
+  [[self closed] ifTrue: [| [Error kind: #concurrencyClosed]] ifFalse: [|
+    let worker := [Worker fromHandle: [Isolate startService: receiver image: [self image]]];
     [[worker isError] ifFalse: [|
-      [[self field: #workers] set: [[[self field: #workers] value] add: worker]]]];
+      [self workers: [[self workers] add: worker]]]];
     worker]]]];
 [Reflect defineMethod: #removeFiles on: Concurrency as: [:self |
-  let workspace := [[self field: #workspace] value];
+  let workspace := [self workspace];
   [[workspace , "/workers.image"] concurrencyDelete];
   [workspace concurrencyRemoveDirectory];
   self]];
 
 [Reflect defineMethod: #close on: Concurrency as: [:self |
-  [[self field: #closed] set: true];
+  [self closed: true];
   [TaskControl startCleanup: [:task |
     [task ensure: [| nil] cleanup: [|
-      [[[self field: #workers] value] do: [:worker | [[worker shutdown] outcome]]];
-      [[self field: #workers] set: #[]];
+      [[self workers] do: [:worker | [[worker shutdown] outcome]]];
+      [self workers: #[]];
       [self removeFiles]]]]]]];

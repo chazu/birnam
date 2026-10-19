@@ -263,9 +263,8 @@ let fieldView := TaskField;
 let indices := {#processLocal -> 0, #machine -> 1, #outcome -> 2, #waitToken -> 3, #shieldDepth -> 4, #failures -> 5, #cancelled -> 6, #cancelReason -> 7, #parent -> 8, #children -> 9, #waiters -> 10, #failureSources -> 11, #childFailures -> 12, #body -> 13, #joining -> 14, #protectedFromParent -> 15, #controlError -> 16, #transitionDepth -> 17, #bodyActive -> 18, #requestWorker -> 19, #requestId -> 20, #externalResult -> 21};
 let prototype := [ObjectModel newSlots: #[false nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil] parent: ObjectVt];
 [Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
-[Reflect defineMethod: #fieldIndex: on: prototype as: [:self :name | [indices at: name]]];
 [Reflect defineMethod: #field: on: prototype as: [:self :name |
-  let index := [self fieldIndex: name];
+  let index := [indices at: name];
   [[index isError] ifTrue: [| index] ifFalse: [|
     [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
       [fieldView owner: self slot: index]
@@ -396,9 +395,8 @@ let fieldView := TaskField;
 let indices := {#queue -> 0, #ingress -> 1, #draining -> 2, #current -> 3, #quantum -> 4, #serviceTask -> 5};
 let prototype := [ObjectModel newSlots: #[nil nil nil nil nil nil] parent: ObjectVt];
 [Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
-[Reflect defineMethod: #fieldIndex: on: prototype as: [:self :name | [indices at: name]]];
 [Reflect defineMethod: #field: on: prototype as: [:self :name |
-  let index := [self fieldIndex: name];
+  let index := [indices at: name];
   [[index isError] ifTrue: [| index] ifFalse: [|
     [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
       [fieldView owner: self slot: index]
@@ -960,9 +958,8 @@ let fieldView := TaskField;
 let indices := {#workerHandle -> 0, #activeRequest -> 1, #closing -> 2};
 let prototype := [ObjectModel newSlots: #[nil nil nil] parent: ObjectVt];
 [Reflect defineMethod: #slotNames on: prototype as: [:self | names]];
-[Reflect defineMethod: #fieldIndex: on: prototype as: [:self :name | [indices at: name]]];
 [Reflect defineMethod: #field: on: prototype as: [:self :name |
-  let index := [self fieldIndex: name];
+  let index := [indices at: name];
   [[index isError] ifTrue: [| index] ifFalse: [|
     [[index isNil] ifTrue: [| [Error kind: #unknownSlot]] ifFalse: [|
       [fieldView owner: self slot: index]

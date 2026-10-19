@@ -1,0 +1,245 @@
+{
+  "baseline_commit": "c49c70f7",
+  "scope": "Concurrency preparation fields own ordinary slots and explicit aliased field views. Keep the existing image projection: platformReady survives; workspace/workers/image/closed reset. No Store schema or attribute-prefix synthesis. Remove unused fieldIndex forwarding methods from all field owners.",
+  "source_sha256": {
+    "modules/isolate.birnam": "549c6b195a78a621a329280dde30a582017ff01f6ece0bb248b6413e23f066fb",
+    "modules/stackless-control.birnam": "a644dcf1e686b5bd8e5f22150d7797d954f851667e3c94a85f0f195cbbf2ecad",
+    "rust/birnam-siphon/tests/task_without_store.rs": "f78cfd8022b1c8246a139dcf9035d4db9863e55a45d8370553da4522b2cad793",
+    "scripts/task-fields-test.py": "f2979d7a3da4b29fc620f2c69f43d58c77981b0084d13d537fa3d19a39d0e73c",
+    "scripts/task-without-store-test.py": "2825ab43f5364afb6195bf72759a3ac83972eadb34914ff1a96f41a4bd53c65e"
+  },
+  "qualification": {
+    "prefix": "/tmp/birnam-store-independent/06-concurrency/final-prefix",
+    "install_receipt_sha256": "437b1772a968355fdbbd0cdc1e62322731870cc249737613aa49919a03fcaa3b",
+    "fields_gc_images_and_refusal": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-3_aycd74/results.json",
+      "sha256": "b701297fd24d4bc81c330a4a287d0ac091a47205ce5d20e34f279fca10409fe9",
+      "runs": [
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/06-concurrency/final-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-3_aycd74/fields.birnam"
+          ],
+          "exit_code": 0,
+          "name": "source",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\ntrue\n",
+          "wall_ns": 39114170083
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/06-concurrency/final-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-3_aycd74/fields.image"
+          ],
+          "exit_code": 0,
+          "name": "mapped",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 3166427417
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/06-concurrency/final-prefix/bin/birnam",
+            "--rebuild",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-3_aycd74/fields.image"
+          ],
+          "exit_code": 0,
+          "name": "rebuilt",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 6127220583
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/06-concurrency/final-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-3_aycd74/retained-task-field.birnam"
+          ],
+          "exit_code": 0,
+          "name": "retained-task-field-rejected",
+          "output": "#rejected\n",
+          "stderr": "",
+          "stdout": "#rejected\n",
+          "wall_ns": 3419183125
+        }
+      ],
+      "scope": null
+    },
+    "actual_initializer_absence": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-6vj9nq9s/results.json",
+      "sha256": "732a51c15f32cefb22591feac4cb40480ef93ccdfa9b5e463ad956426330c593",
+      "runs": {
+        "argv": [
+          "mise",
+          "exec",
+          "--",
+          "cargo",
+          "test",
+          "--offline",
+          "--locked",
+          "-p",
+          "birnam-siphon",
+          "--test",
+          "task_without_store",
+          "--",
+          "--include-ignored",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s\n\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.91s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stderr": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.91s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stdout": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s\n\n",
+        "wall_ns": 1830582125
+      },
+      "scope": "Actual compiled task initializer and actual Concurrency source initializer, owned field aliases, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence."
+    },
+    "task_checks": 177,
+    "worker_service_checks": 19,
+    "worker_scope": "Actual source batch admission, source-free subprocess workers, cancellation/shutdown and both workspace cleanup paths.",
+    "formal_scope": "Reuses the existing slot/reflection/rooting/image-payload contracts qualified in task-owned-fields-20261019.json. No new lifecycle transition or abstract model was added; actual owner projection, aliases and resets are exercised here."
+  },
+  "performance": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "field_cpu_ns": 193127084,
+        "prepare_close_cpu_ns": 187387250,
+        "fact_delta": 80
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "field_cpu_ns": 207051500,
+        "prepare_close_cpu_ns": 192890959,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "field_cpu_ns": 209872375,
+        "prepare_close_cpu_ns": 191127334,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "field_cpu_ns": 196326000,
+        "prepare_close_cpu_ns": 187288666,
+        "fact_delta": 80
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "field_cpu_ns": 195124208,
+        "prepare_close_cpu_ns": 186985167,
+        "fact_delta": 80
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "field_cpu_ns": 206915625,
+        "prepare_close_cpu_ns": 188360625,
+        "fact_delta": 0
+      }
+    ],
+    "medians": {
+      "field_cpu_ns": {
+        "baseline": 195124208,
+        "candidate": 207051500
+      },
+      "prepare_close_cpu_ns": {
+        "baseline": 187288666,
+        "candidate": 191127334
+      }
+    },
+    "source": "[Module load: #time];\n[Concurrency initializePlatform];\n[[|\n[System gc]; let started := [16 clockNanos];\n[1 to: 500 do: [:i | [[Concurrency field: #platformReady] value]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[[Concurrency field: #platformReady] value] == true]];\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let started := [16 clockNanos];\n[1 to: 20 do: [:i |\n  let program := [Concurrency prepareSources: #[]];\n  let closed := [program close];\n  [[[[closed pollOutcome] at: 0] == #success] ifFalse: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "initial_performance_before_removing_forwarder": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "field_cpu_ns": 209220875,
+        "prepare_close_cpu_ns": 223323709,
+        "fact_delta": 80
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "field_cpu_ns": 213032291,
+        "prepare_close_cpu_ns": 189339792,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "field_cpu_ns": 224254125,
+        "prepare_close_cpu_ns": 204203083,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "field_cpu_ns": 192541084,
+        "prepare_close_cpu_ns": 186769209,
+        "fact_delta": 80
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "field_cpu_ns": 194874584,
+        "prepare_close_cpu_ns": 187856416,
+        "fact_delta": 80
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "field_cpu_ns": 214994542,
+        "prepare_close_cpu_ns": 189378208,
+        "fact_delta": 0
+      }
+    ],
+    "medians": {
+      "field_cpu_ns": {
+        "baseline": 194874584,
+        "candidate": 214994542
+      },
+      "prepare_close_cpu_ns": {
+        "baseline": 187856416,
+        "candidate": 189378208
+      }
+    },
+    "source": "[Module load: #time];\n[Concurrency initializePlatform];\n[[|\n[System gc]; let started := [16 clockNanos];\n[1 to: 500 do: [:i | [[Concurrency field: #platformReady] value]]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[[Concurrency field: #platformReady] value] == true]];\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let started := [16 clockNanos];\n[1 to: 20 do: [:i |\n  let program := [Concurrency prepareSources: #[]];\n  let closed := [program close];\n  [[[[closed pollOutcome] at: 0] == #success] ifFalse: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - started]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "assessment": "Three interleaved runs per variant: 20 prepare/close operations 187.289 to 191.127 ms (+2.0%); 500 explicitly requested field reads 195.124 to 207.052 ms (+6.1%). The preparation batch adds zero retained facts versus 80. These are small costs, not a speedup claim or a significant end-to-end regression. The initial explicit-view loop was +10.3%; removing the redundant mapper hop reduced that cost. No GC or scheduling policy changed.",
+  "limits": "Initializer independence is proven with Store/Relational/Bootstrap/Image/Alien/Isolate libraries absent. Actual worker/image operations still use the existing Store-containing composition; full dependency removal awaits Alien and Image migration.",
+  "logs": {
+    "final-install.log": {
+      "path": "/tmp/birnam-store-independent/06-concurrency/final-install.log",
+      "sha256": "e457e351077a3a5a51a8002753392d23158ebc3b110a330055184bfbcfc80613"
+    },
+    "fields-final.log": {
+      "path": "/tmp/birnam-store-independent/06-concurrency/fields-final.log",
+      "sha256": "50dee015fff07c1960487d8b5843c32cea59407fcdb5ec648f9bca61f8b6d389"
+    },
+    "absence-final.log": {
+      "path": "/tmp/birnam-store-independent/06-concurrency/absence-final.log",
+      "sha256": "55838976547ee94e9c193fa8c63e9ecc28ccc2938ed6df26dcbdd0b19f86892b"
+    },
+    "concurrency-final.log": {
+      "path": "/tmp/birnam-store-independent/06-concurrency/concurrency-final.log",
+      "sha256": "f51c6f4890770d90d60f7861fc375f581fcb0919e3ba92b135b06634509832e6"
+    },
+    "task-control.log": {
+      "path": "/tmp/birnam-store-independent/06-concurrency/task-control.log",
+      "sha256": "a073b56c06b5d3609e5aea16318454e8f4105efb99c5732dd13b321603861f32"
+    },
+    "performance-final.log": {
+      "path": "/tmp/birnam-store-independent/06-concurrency/performance-final.log",
+      "sha256": "267af893512c64e5c8fa6fe19590c0ba662a63f5628b21a4b10ad127a5b38db0"
+    }
+  }
+}

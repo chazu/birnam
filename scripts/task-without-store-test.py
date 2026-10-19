@@ -25,10 +25,11 @@ run = command(['mise', 'exec', '--', 'cargo', 'test', '--offline', '--locked',
 receipt = {'passed': run['exit_code'] == 0, 'run': run,
            'source_sha256': {str(p.relative_to(ROOT)): sha(p) for p in [
                ROOT / 'modules/stackless-control.birnam',
+               ROOT / 'modules/isolate.birnam',
                ROOT / 'rust/birnam-siphon/tests/task_without_store.rs',
                Path(__file__).resolve()]},
            'floor_sha256': {p.name: sha(p) for p in floor.iterdir()},
-           'scope': 'Actual compiled task initializer, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence.'}
+           'scope': 'Actual compiled task initializer and actual Concurrency source initializer, owned field aliases, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence.'}
 save_json(work / 'results.json', receipt)
 assert receipt['passed'], work
 print('tasks-without-store: passed; ' + str(work / 'results.json'))
