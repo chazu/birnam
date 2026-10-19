@@ -39,7 +39,8 @@ let registry := [ObjectModel newSlots: #[#[0 #[]]] parent: ObjectVt];
     let owner := [Codegen compiledSourceFor: record];
     [[owner isError] ifTrue: [| owner] ifFalse: [|
       [[owner == record] ifTrue: [|
-        let revision := [Codegen sourceRevisionOf: record];
+        // Registration needs the declared name, not a full candidate revision.
+        let revision := [Codegen moduleMetadataOf: record];
         [[revision isError] ifTrue: [| revision] ifFalse: [|
           [[revision isNil] ifTrue: [| [self reject: "RustCodegen module source is not indexable"]] ifFalse: [|
             [[[revision at: 1] == name] ifTrue: [| record] ifFalse: [| [self reject: "RustCodegen module source identity does not match its name"]]]

@@ -1027,3 +1027,36 @@ unsafe extern "C" fn legacy_source_marker(c: *mut c_void, r: Oop, _: *const Oper
         f.original.method.unwrap()(f.original.context,r,args.as_ptr(),args.len())
     }
 }
+
+struct MetadataReadCounter { original: native::NativeEntry, calls: usize }
+unsafe extern "C" fn count_metadata_reads(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
+    unsafe { let f=&mut *c.cast::<MetadataReadCounter>(); f.calls+=1; f.original.method.unwrap()(f.original.context,r,a,n) }
+}
+#[test]
+#[ignore = "requires production native modules"]
+fn registry_validation_uses_one_metadata_read_and_current_query() {
+    let lib=PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources=crate::resolve_from_exe_dir(Path::new("/unused/bin"),crate::Overrides{lib_dir:Some(&lib),..Default::default()}).unwrap();
+    let host=HostRuntime::start(&resources,StartupPolicy{skip_stdlib:false,precise_gc:true,source_bootstrap:false,tool_bootstrap:false}).unwrap();
+    let q=host.scope();let cg=host.named(b"Codegen").unwrap();let owner=host.global(&q,b"SourceRegistry").unwrap();
+    let name=unsafe{host.context.id.intern_name(b"stdlib")}.unwrap();
+    let record=q.call(owner,b"recordFor:",&[Operand::object(name)]).unwrap();
+    let vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(cg)]).unwrap();
+    let selector=unsafe{host.context.id.intern_name(b"retainedSourceMetadataOf:")}.unwrap();
+    let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(vt)]).unwrap().as_entry().unwrap();
+    let mut counter=MetadataReadCounter{original,calls:0};
+    host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(native::NativeEntry::new(count_metadata_reads,(&mut counter as *mut MetadataReadCounter).cast()))]).unwrap();
+    let checked=q.call(owner,b"validateRecord:named:",&[Operand::object(record),Operand::object(name)]);
+    host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
+    assert_eq!(checked.unwrap(),record);assert_eq!(counter.calls,1,"registry validation decoded retained metadata redundantly");
+    let error=q.call(host.named(b"Error").unwrap(),b"kind:",&[Operand::object(unsafe{host.context.id.intern_name(b"metadataQueryRefused")}.unwrap())]).unwrap();
+    for (query,expected_calls,expected) in [(b"sourceRevisionOf:".as_slice(),0,record),(b"moduleMetadataOf:".as_slice(),1,error)] {
+        let selector=unsafe{host.context.id.intern_name(query)}.unwrap();
+        let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(vt)]).unwrap().as_entry().unwrap();
+        let mut fault=ReturnedFailure{error,calls:0};
+        host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(native::NativeEntry::new(returned_failure,(&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
+        let actual=q.call(owner,b"validateRecord:named:",&[Operand::object(record),Operand::object(name)]);
+        host.send(vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
+        assert_eq!(actual.unwrap(),expected);assert_eq!(fault.calls,expected_calls);
+    }
+}

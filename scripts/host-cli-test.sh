@@ -91,6 +91,7 @@ if selected interaction; then
   run_check lsp-project-smoke.sh bash scripts/lsp-project-smoke.sh
 fi
 if selected generation; then
+  host_test registry_validation_uses_one_metadata_read_and_current_query
   host_test source_registry_images_preserve_aliases_and_reject_changed_snapshots
   host_test source_registry_sends_compensate_without_overwriting_other_owners
   host_test image_application_boundary_invalidates_without_restore

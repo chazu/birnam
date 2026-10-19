@@ -1,0 +1,121 @@
+{
+  "baseline": "d58da032",
+  "scope": "Use a smaller current metadata query for registry name validation",
+  "prefix": "/tmp/birnam-candidate-policy/metadata-prefix",
+  "metadata_reads": {
+    "before": 2,
+    "after": 1
+  },
+  "timings": {
+    "rows": [
+      {
+        "workload": "startup",
+        "variant": "full_revision",
+        "repeat": 0,
+        "seconds": 4.62317875
+      },
+      {
+        "workload": "startup",
+        "variant": "module_metadata",
+        "repeat": 0,
+        "seconds": 4.637400458000001
+      },
+      {
+        "workload": "startup",
+        "variant": "full_revision",
+        "repeat": 1,
+        "seconds": 4.476873207999999
+      },
+      {
+        "workload": "startup",
+        "variant": "module_metadata",
+        "repeat": 1,
+        "seconds": 4.3419212909999985
+      },
+      {
+        "workload": "startup",
+        "variant": "full_revision",
+        "repeat": 2,
+        "seconds": 4.364981333000003
+      },
+      {
+        "workload": "startup",
+        "variant": "module_metadata",
+        "repeat": 2,
+        "seconds": 4.281741875000002
+      },
+      {
+        "workload": "validation",
+        "variant": "full_revision",
+        "repeat": 0,
+        "seconds": 8.954319291999997
+      },
+      {
+        "workload": "validation",
+        "variant": "module_metadata",
+        "repeat": 0,
+        "seconds": 6.721071041999998
+      },
+      {
+        "workload": "validation",
+        "variant": "full_revision",
+        "repeat": 1,
+        "seconds": 9.057997
+      },
+      {
+        "workload": "validation",
+        "variant": "module_metadata",
+        "repeat": 1,
+        "seconds": 6.749215749999998
+      },
+      {
+        "workload": "validation",
+        "variant": "full_revision",
+        "repeat": 2,
+        "seconds": 8.968191207999993
+      },
+      {
+        "workload": "validation",
+        "variant": "module_metadata",
+        "repeat": 2,
+        "seconds": 6.692528292000006
+      }
+    ],
+    "medians": {
+      "startup": {
+        "full_revision": 4.476873207999999,
+        "module_metadata": 4.3419212909999985
+      },
+      "validation": {
+        "full_revision": 8.968191207999993,
+        "module_metadata": 6.721071041999998
+      }
+    },
+    "scope": "Fresh processes, warm filesystem caches, precise GC; validation workload includes startup and 30 complete registry validations"
+  },
+  "checks": {
+    "fresh_prefix_build": "pass",
+    "current_query_and_read_count": "pass; regression fails on baseline",
+    "parser_compiler_disabled_startup": "pass",
+    "source_registry_assertions": 21,
+    "native_source_inspection": "pass",
+    "native_source_loader": "pass"
+  },
+  "logs": {
+    "metadata-build.log": "/tmp/birnam-candidate-policy/metadata-build.log",
+    "metadata-test.log": "/tmp/birnam-candidate-policy/metadata-test.log",
+    "metadata-before.log": "/tmp/birnam-candidate-policy/metadata-before.log",
+    "metadata-startup.log": "/tmp/birnam-candidate-policy/metadata-startup.log",
+    "metadata-suite.log": "/tmp/birnam-candidate-policy/metadata-suite.log",
+    "metadata-native.log": "/tmp/birnam-candidate-policy/metadata-native.log"
+  },
+  "source_sha256": {
+    "modules/source-registry.birnam": "9ee8fe43ae4c6276d719189162ea8938ead869674fee5ca59b9fdecfc1bb79a7",
+    "rust/birnam-host/src/lifecycle_test.rs": "d09afb5ae04fbaea6b0159b5b10cf82e0375ee5c1bc697a972331c79381512d0",
+    "scripts/host-cli-test.sh": "a13195895aa1253560bf50203cccaa4b0513422e6350752577bfeb10beaab834"
+  },
+  "limitations": [
+    "Small timing sample; no general execution speedup claim",
+    "No normal-prefix installation or push"
+  ]
+}
