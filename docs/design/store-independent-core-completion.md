@@ -592,3 +592,18 @@ adding another format section, native registry or cross-owner layout decoder.
 Failures in that phase must follow the selected partial-load contract. Source and
 compiled bootstrap, no-Store wrapping, code reuse, reentrant publication, removal,
 aliasing, GC and successive mapped/rebuilt images are the acceptance boundaries.
+
+## Alien recipe migration: approved performance remediation
+
+The ordinary recipe-owner draft removes Alien's remaining Store calls and Image's
+fact-table recipe discovery. Actual Store-absent wrapping, current replacement/
+removal, reentry, native reclamation and successive images pass. The expanded
+formal gate passes 413 Lean theorems, 132 mutation rejections and 282 expected TLC
+outcomes. Runtime work remains uncommitted: repeated wrapping regressed 74% and
+startup CPU 22% with the initial linear-vector implementation.
+
+The user approved ordinary Map indexes, avoiding unchanged cache rewrites and
+reconstructing process-local registration keys on restoration. Preserve independently
+edited cache data and finish the owner-discovery/Map-rehash ordering probe before
+qualification. See the [report](alien-recipes-migration-performance.md) and
+[receipt](../measurements/alien-recipes-regression-20261019.json).
