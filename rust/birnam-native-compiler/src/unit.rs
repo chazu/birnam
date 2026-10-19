@@ -72,7 +72,7 @@ impl Unit {
         let raw = state.as_ptr();
         let ok = unsafe {
             tcc_set_error_func(raw, core::ptr::null_mut(), Some(discard_diagnostic));
-            tcc_set_output_type(raw, 1) >= 0
+            birnam_tcc_set_memory_output(raw) >= 0
                 && tcc_add_object_memory(raw, bytes.as_ptr().cast(), bytes.len()) >= 0
                 && tcc_relocate(raw) >= 0
         };
@@ -99,7 +99,7 @@ impl Unit {
         // strings and symbol names outlive these synchronous calls.
         let compiled = unsafe {
             tcc_set_error_func(raw, core::ptr::null_mut(), Some(discard_diagnostic));
-            tcc_set_output_type(raw, 1) >= 0
+            birnam_tcc_set_memory_output(raw) >= 0
                 && symbols.iter().all(|(name, address)| {
                     !address.is_null() && tcc_add_symbol(raw, name.as_ptr(), *address) >= 0
                 })
@@ -283,6 +283,81 @@ mod tests {
         assert_eq!(unsafe { other(c"abc".as_ptr()) }, 44);
         assert_eq!(unsafe { next(c"abc".as_ptr()) }, 45);
         assert_eq!(unsafe { other(c"abc".as_ptr()) }, 45);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn resident_symbols_skip_default_runtime_setup_without_caching_addresses() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        let source = c"extern unsigned long strlen(const char *); long answer(const char *s) { return strlen(s); }";
+        let bytes = Unit::compile_object(source).unwrap();
+        for unit in [unsafe { Unit::compile(source, &[]) }.unwrap(), unsafe { Unit::load_object(&bytes) }.unwrap()] {
+            assert_eq!(unsafe { birnam_tcc_uses_host_runtime(unit.state.as_ptr()) }, 1);
+            let answer: unsafe extern "C" fn(*const c_char) -> i64 = unsafe { core::mem::transmute(unit.symbol(c"answer").unwrap().as_ptr()) };
+            assert_eq!(unsafe { answer(c"abcdef".as_ptr()) }, 6);
+        }
+        // Explicitly supplied native symbols remain per Unit, not global.
+        unsafe extern "C" fn triple(n: i64) -> i64 { n * 3 }
+        let source = c"extern long scale(long); long answer(long n) { return scale(n); }";
+        let first = unsafe { Unit::compile(source, &[(c"scale", twice as *const c_void)]) }.unwrap();
+        let second = unsafe { Unit::compile(source, &[(c"scale", triple as *const c_void)]) }.unwrap();
+        for (unit, expected) in [(&first, 12), (&second, 18)] {
+            assert_eq!(unsafe { birnam_tcc_uses_host_runtime(unit.state.as_ptr()) }, 1);
+            let answer: unsafe extern "C" fn(i64) -> i64 = unsafe { core::mem::transmute(unit.symbol(c"answer").unwrap().as_ptr()) };
+            assert_eq!(unsafe { answer(6) }, expected);
+        }
+    }
+
+    // A conflicting host export must not displace the runtime archive's own
+    // compiler helper. Keep this fixture in the test executable, not production.
+    #[cfg(target_os = "macos")]
+    #[unsafe(export_name = "__builtin_popcountll")]
+    pub extern "C" fn shadow_popcount(_: u64) -> i32 { 97 }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn unresolved_builtin_helpers_take_the_original_archive_path() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        #[cfg(feature = "allocation-metrics")]
+        let before = Unit::compiler_heap_totals();
+        unsafe extern "C" { fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void; }
+        // Darwin RTLD_DEFAULT. The deliberately wrong host implementation is
+        // available, but ordinary archive-first helper resolution must win.
+        let host = unsafe { dlsym((-2isize) as *mut c_void, c"__builtin_popcountll".as_ptr()) };
+        assert_eq!(host, shadow_popcount as *mut c_void);
+        // TinyCC supplies the correct builtin through libtcc1's builtin.o.
+        let source = c"extern int __builtin_popcountll(unsigned long long); long answer(unsigned long long n) { return __builtin_popcountll(n); }";
+        let bytes = Unit::compile_object(source).unwrap();
+        assert!(bytes.windows(b"___builtin_popcountll".len()).any(|part| part == b"___builtin_popcountll"));
+        for unit in [unsafe { Unit::compile(source, &[]) }.unwrap(), unsafe { Unit::load_object(&bytes) }.unwrap()] {
+            let answer: unsafe extern "C" fn(i64) -> i64 = unsafe { core::mem::transmute(unit.symbol(c"answer").unwrap().as_ptr()) };
+            assert_eq!(unsafe { answer(0x10203040) }, 5);
+            assert_eq!(unsafe { answer(-1) }, 64);
+            assert_eq!(unsafe { birnam_tcc_uses_host_runtime(unit.state.as_ptr()) }, 0);
+        }
+        #[cfg(feature = "allocation-metrics")]
+        assert_eq!(Unit::compiler_heap_totals(), before);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn explicit_libraries_and_unresolved_imports_keep_their_failures() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        #[cfg(feature = "allocation-metrics")]
+        let before = Unit::compiler_heap_totals();
+        let unit = unsafe { Unit::compile(c"#pragma comment(lib, \"m\")\nextern double cos(double); double answer(double n) { return cos(n); }", &[]) }.unwrap();
+        assert_eq!(unsafe { birnam_tcc_uses_host_runtime(unit.state.as_ptr()) }, 0);
+        let answer: unsafe extern "C" fn(f64) -> f64 = unsafe { core::mem::transmute(unit.symbol(c"answer").unwrap().as_ptr()) };
+        assert_eq!(unsafe { answer(0.0) }, 1.0);
+        drop(unit);
+        // A requested library is an obligation even when no symbol needs it.
+        assert!(unsafe { Unit::compile(c"#pragma comment(lib, \"birnam_missing_runtime_library_fixture\")\nlong answer(void) { return 42; }", &[]) }.is_none());
+        let source = c"extern long birnam_missing_native_import(void); long answer(void) { return birnam_missing_native_import(); }";
+        let bytes = Unit::compile_object(source).unwrap();
+        assert!(unsafe { Unit::compile(source, &[]) }.is_none());
+        assert!(unsafe { Unit::load_object(&bytes) }.is_none());
+        #[cfg(feature = "allocation-metrics")]
+        assert_eq!(Unit::compiler_heap_totals(), before);
     }
 
     #[test]

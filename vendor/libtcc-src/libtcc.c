@@ -998,7 +998,8 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
 
 #elif defined TCC_TARGET_MACHO
 # ifdef TCC_IS_NATIVE
-    tcc_add_macos_sdkpath(s);
+    if (!s->host_runtime)
+        tcc_add_macos_sdkpath(s);
 # endif
 
 #else

@@ -1,0 +1,322 @@
+{
+  "baseline_commit": "daa8c443",
+  "change": "Conditional SDK and automatic runtime-library setup for fresh native memory-output Units; reserved runtime names retain ordinary archive precedence.",
+  "measurement": {
+    "rows": [
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 0,
+        "wall_seconds": 2.8569977920000005,
+        "cpu_seconds": 2.851591,
+        "max_rss_bytes": 1563328512,
+        "peak_footprint_bytes": 1382715584
+      },
+      {
+        "mode": "startup_script",
+        "variant": "resident",
+        "repeat": 0,
+        "wall_seconds": 2.741653833000001,
+        "cpu_seconds": 2.731814,
+        "max_rss_bytes": 1586659328,
+        "peak_footprint_bytes": 1404129536
+      },
+      {
+        "mode": "startup_script",
+        "variant": "resident",
+        "repeat": 1,
+        "wall_seconds": 2.748686916999999,
+        "cpu_seconds": 2.7417079999999996,
+        "max_rss_bytes": 1576976384,
+        "peak_footprint_bytes": 1395282112
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 1,
+        "wall_seconds": 2.8670408750000007,
+        "cpu_seconds": 2.862055,
+        "max_rss_bytes": 1595703296,
+        "peak_footprint_bytes": 1395953984
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 2,
+        "wall_seconds": 2.835192792000001,
+        "cpu_seconds": 2.8318350000000008,
+        "max_rss_bytes": 1582120960,
+        "peak_footprint_bytes": 1401180352
+      },
+      {
+        "mode": "startup_script",
+        "variant": "resident",
+        "repeat": 2,
+        "wall_seconds": 2.7546993330000014,
+        "cpu_seconds": 2.746057000000002,
+        "max_rss_bytes": 1585070080,
+        "peak_footprint_bytes": 1406030016
+      },
+      {
+        "mode": "startup_script",
+        "variant": "resident",
+        "repeat": 3,
+        "wall_seconds": 2.7346218749999984,
+        "cpu_seconds": 2.725663999999999,
+        "max_rss_bytes": 1573404672,
+        "peak_footprint_bytes": 1395232960
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 3,
+        "wall_seconds": 2.870110750000002,
+        "cpu_seconds": 2.8678109999999983,
+        "max_rss_bytes": 1596325888,
+        "peak_footprint_bytes": 1381535808
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 4,
+        "wall_seconds": 2.8645691250000027,
+        "cpu_seconds": 2.8589040000000012,
+        "max_rss_bytes": 1557004288,
+        "peak_footprint_bytes": 1379061952
+      },
+      {
+        "mode": "startup_script",
+        "variant": "resident",
+        "repeat": 4,
+        "wall_seconds": 2.9633785829999972,
+        "cpu_seconds": 2.909595999999998,
+        "max_rss_bytes": 1600241664,
+        "peak_footprint_bytes": 1396986496
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 0,
+        "wall_seconds": 3.6985267089999994,
+        "cpu_seconds": 3.6848879999999973,
+        "max_rss_bytes": 1630076928,
+        "peak_footprint_bytes": 1426461056
+      },
+      {
+        "mode": "saved_image",
+        "variant": "resident",
+        "repeat": 0,
+        "wall_seconds": 3.575253250000003,
+        "cpu_seconds": 3.565568,
+        "max_rss_bytes": 1630437376,
+        "peak_footprint_bytes": 1413861760
+      },
+      {
+        "mode": "saved_image",
+        "variant": "resident",
+        "repeat": 1,
+        "wall_seconds": 3.5955779159999963,
+        "cpu_seconds": 3.5853099999999976,
+        "max_rss_bytes": 1615396864,
+        "peak_footprint_bytes": 1413796224
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 1,
+        "wall_seconds": 3.6574217499999975,
+        "cpu_seconds": 3.651658000000003,
+        "max_rss_bytes": 1633402880,
+        "peak_footprint_bytes": 1421840704
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 2,
+        "wall_seconds": 3.613798250000002,
+        "cpu_seconds": 3.6107039999999997,
+        "max_rss_bytes": 1616068608,
+        "peak_footprint_bytes": 1416794624
+      },
+      {
+        "mode": "saved_image",
+        "variant": "resident",
+        "repeat": 2,
+        "wall_seconds": 3.5578527080000057,
+        "cpu_seconds": 3.5505180000000056,
+        "max_rss_bytes": 1625292800,
+        "peak_footprint_bytes": 1426575808
+      },
+      {
+        "mode": "saved_image",
+        "variant": "resident",
+        "repeat": 3,
+        "wall_seconds": 3.527204832999999,
+        "cpu_seconds": 3.5220009999999906,
+        "max_rss_bytes": 1625669632,
+        "peak_footprint_bytes": 1421545856
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 3,
+        "wall_seconds": 3.6543176250000045,
+        "cpu_seconds": 3.647039000000002,
+        "max_rss_bytes": 1644937216,
+        "peak_footprint_bytes": 1421464064
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 4,
+        "wall_seconds": 3.625256125000007,
+        "cpu_seconds": 3.617829999999995,
+        "max_rss_bytes": 1625276416,
+        "peak_footprint_bytes": 1417449984
+      },
+      {
+        "mode": "saved_image",
+        "variant": "resident",
+        "repeat": 4,
+        "wall_seconds": 3.541422707999999,
+        "cpu_seconds": 3.533984999999995,
+        "max_rss_bytes": 1638907904,
+        "peak_footprint_bytes": 1433751872
+      }
+    ],
+    "medians": {
+      "startup_script": {
+        "baseline": {
+          "wall_seconds": 2.8645691250000027,
+          "cpu_seconds": 2.8589040000000012,
+          "max_rss_bytes": 1582120960,
+          "peak_footprint_bytes": 1382715584
+        },
+        "resident": {
+          "wall_seconds": 2.748686916999999,
+          "cpu_seconds": 2.7417079999999996,
+          "max_rss_bytes": 1585070080,
+          "peak_footprint_bytes": 1396986496
+        }
+      },
+      "saved_image": {
+        "baseline": {
+          "wall_seconds": 3.6543176250000045,
+          "cpu_seconds": 3.647039000000002,
+          "max_rss_bytes": 1630076928,
+          "peak_footprint_bytes": 1421464064
+        },
+        "resident": {
+          "wall_seconds": 3.5578527080000057,
+          "cpu_seconds": 3.5505180000000056,
+          "max_rss_bytes": 1625669632,
+          "peak_footprint_bytes": 1421545856
+        }
+      }
+    },
+    "scope": "Five interleaved fresh processes after warmups; precise GC, warm filesystem, identical preexisting images/artifacts, only TCC binary changed; macOS time -l memory measurements are bytes. No diagnostic omissions."
+  },
+  "driver": "import subprocess,time,resource,statistics,json,sys,re,hashlib\nfrom pathlib import Path\nsys.path.insert(0,str(Path.cwd()/'scripts'))\nfrom validation_support import clean_environment\nw=Path('/tmp/birnam-runtime-setup-20261019');old=Path('/tmp/birnam-runtime-audit-20261019')\nprefixes={'baseline':Path('/tmp/birnam-demand-bodies-20261019/final-prefix'),'resident':w/'prefix-fixed'}\nenv=clean_environment();env['BIRNAM_GC_PRECISE']='1';rows=[]\ndef run(n,script):\n before=resource.getrusage(resource.RUSAGE_CHILDREN);start=time.perf_counter()\n p=subprocess.run(['/usr/bin/time','-l',prefixes[n]/'bin/birnam',script],env=env,capture_output=True,text=True,timeout=60)\n wall=time.perf_counter()-start;after=resource.getrusage(resource.RUSAGE_CHILDREN)\n assert p.returncode==0 and p.stdout=='ready\\n',(n,p)\n rss=re.search(r'(\\d+)\\s+maximum resident set size',p.stderr);assert rss,p.stderr\n footprint=re.search(r'(\\d+)\\s+peak memory footprint',p.stderr)\n assert not ('birnam:' in p.stderr or 'Error' in p.stderr),p.stderr\n return dict(wall_seconds=wall,cpu_seconds=after.ru_utime+after.ru_stime-before.ru_utime-before.ru_stime,max_rss_bytes=int(rss[1]),peak_footprint_bytes=int(footprint[1]) if footprint else None)\nfor mode,script in [('startup_script',old/'ready.birnam'),('saved_image',old/'no-temp.image')]:\n for n in prefixes:run(n,script)\n for i in range(5):\n  for n in (list(prefixes) if i%2==0 else list(reversed(prefixes))):\n   rows.append(dict(mode=mode,variant=n,repeat=i,**run(n,script)))\n  (w/'comparison-final.json').write_text(json.dumps({'rows':rows},indent=2)+'\\n');print(mode,i+1,flush=True)\nkeys=['wall_seconds','cpu_seconds','max_rss_bytes','peak_footprint_bytes']\nmedians={m:{n:{k:statistics.median(r[k] for r in rows if r['variant']==n and r['mode']==m and r[k] is not None) for k in keys} for n in prefixes} for m in ['startup_script','saved_image']}\n(w/'comparison-final.json').write_text(json.dumps({'rows':rows,'medians':medians,'scope':'Five interleaved fresh processes after warmups; precise GC, warm filesystem, identical preexisting images/artifacts, only TCC binary changed; macOS time -l memory measurements are bytes. No diagnostic omissions.'},indent=2)+'\\n')\nprint(json.dumps(medians,indent=2),flush=True)\n",
+  "native_boundary": {
+    "exports": [
+      "_birnam_native_module_v1"
+    ],
+    "dependencies": [
+      "\t@rpath/libbirnam_tcc.dylib (compatibility version 0.0.0, current version 0.0.0)",
+      "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)"
+    ],
+    "baseline_sha256": "490bb09af3fb84c165b2df8e71ee78923b21636f1259d25d5bca1991e71d52f2",
+    "candidate_sha256": "f99684de06e47e3cafce19bf8b597511d2dd88e6151e563be6a4d538a7f587d6",
+    "measured_binary_matches_fresh_prefix": true
+  },
+  "sources": {
+    "rust/birnam-native-compiler/src/lib.rs": "9de3f6b8fd81b32dde24ee788faf8cada21aff4b4f19d2297505e50b551f47ca",
+    "rust/birnam-native-compiler/src/resource_metrics.c": "9115002b145c6a2b869695443772ade13fcc271d9a64030cd37c9a38deafa5b9",
+    "rust/birnam-native-compiler/src/unit.rs": "a4b3d28e17e4ca98f1b38b6929573c4ae455ee6ff99610b31952b487f29177fe",
+    "vendor/libtcc-src/libtcc.c": "34e2ead9295811807bb50fcca4ee36e0df3fb654aee61429936a3b09a469df4f",
+    "vendor/libtcc-src/tcc.h": "e61e1e0107e651d3ae59170dce0d6d9847e734e7d97045de23d29ee19a8e2e3a",
+    "vendor/libtcc-src/tccelf.c": "b82850085d937698c9900afdca5ccbb261489de1caf2bb367919aef6cd4191a8"
+  },
+  "qualification": {
+    "native_compiler_tests": 12,
+    "asan_native_compiler_tests": 12,
+    "language_assertions": 847,
+    "fresh_prefix": "/tmp/birnam-runtime-setup-20261019/final-prefix",
+    "integration_suites": [
+      "compiler",
+      "artifact_activation",
+      "artifact_templates",
+      "materialization",
+      "candidate_retirement",
+      "borrowed_read_inputs",
+      "byte_abi"
+    ],
+    "fresh_prefix_tests": [
+      "image_owner_roundtrip with mapped/rebuilt/stripped/resaved child processes",
+      "installed_bootstrap_and_console_do_not_compile_or_parse",
+      "existing compiled image with nonexistent TMPDIR"
+    ],
+    "scope": "Cached development build, not cold release qualification. Native and language integration used an overlay whose changed TCC binary matches the fresh prefix exactly. No user-prefix installation or push. This new slice is uncommitted."
+  },
+  "negative_test": {
+    "scope": "Rejected initial prototype, before the reserved-runtime-name fallback",
+    "fixture": "Host executable exports __builtin_popcountll returning 97; libtcc1 helper should return 5 for 0x10203040.",
+    "result": "Reproduced wrong result 97; corrected normal and ASan tests return 5 and 64 for all bits set."
+  },
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-uvpa9_mn/summary.json",
+    "sha256": "9720e0c9473cb295073b04d23d8be207a46767e22134f95c89e8f5084600145f",
+    "theorems": 391,
+    "rejected_mutations": 122,
+    "tla_outcomes": 266,
+    "scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+  },
+  "no_temp": {
+    "exit_code": 0,
+    "stdout": "ready\n",
+    "stderr": "",
+    "TMPDIR": "/tmp/birnam-runtime-setup-20261019/nonexistent-tmp"
+  },
+  "logs": {
+    "native-tests.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/native-tests.log",
+      "sha256": "215b40dc9323354046995000859c494193a2a71f6d26c169662bc1c408c1f5a0"
+    },
+    "asan-final.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/asan-final.log",
+      "sha256": "3bcea77b87df59c31f0e0c7a7c83fa2963284c64d76a3d33ecdffadb7c84f747"
+    },
+    "helper-precedence-before.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/helper-precedence-before.log",
+      "sha256": "ea4bbd794714394e3438e248f9070d3eadb3dc4cd4fe15606df9b8bfbaebb38c"
+    },
+    "integration-final.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/integration-final.log",
+      "sha256": "b3865bfcb15dac230616c2bbbbf133bbdf2df57be8533128dddccb047e55a002"
+    },
+    "language-final.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/language-final.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "image-final.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/image-final.log",
+      "sha256": "b8df706b7724a1cb73959b5b3a32895ca755d30c60f34559fefe9dc3dfa92d0d"
+    },
+    "startup-final.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/startup-final.log",
+      "sha256": "58abaf1e80d7702606e69321c62037edae22873dd8fc0a5068635521cccf5c03"
+    },
+    "formal.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/formal.log",
+      "sha256": "75f542161d53f5f93dece312c7bbd6c250c7a10282a2ca352eeeb692ba1dfcf2"
+    },
+    "final-build-fixed.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/final-build-fixed.log",
+      "sha256": "b8c99b4633e7293b739f1a8074affc14fa79cd7ef03c779e9bec0d75ae07ac2a"
+    },
+    "comparison-final.log": {
+      "path": "/tmp/birnam-runtime-setup-20261019/comparison-final.log",
+      "sha256": "1c69ff359d6aa97027e63461121684b58a3899633496af7b2f20ed8bd6b97cc0"
+    }
+  }
+}

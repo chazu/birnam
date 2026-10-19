@@ -1074,6 +1074,45 @@ static void update_gnu_hash(TCCState *s1, Section *gnu_hash)
 }
 #endif /* ELF_OBJ_ONLY */
 
+#if defined TCC_IS_NATIVE && !defined TCC_TARGET_PE
+/* Consult the current dynamic linker, never a process-wide symbol cache. */
+static void *runtime_symbol(TCCState *s1, const char *name)
+{
+    const char *name_ud = name + s1->leading_underscore;
+    void *addr = NULL;
+    int i;
+    if (!s1->nostdlib)
+        addr = dlsym(RTLD_DEFAULT, name_ud);
+    for (i = 0; !addr && i < s1->nb_loaded_dlls; i++)
+        addr = dlsym(s1->loaded_dlls[i]->handle, name_ud);
+    return addr;
+}
+#endif
+
+#if defined TCC_IS_NATIVE && defined TCC_TARGET_MACHO
+static int host_runtime_suffices(TCCState *s1)
+{
+    ElfW(Sym) *sym;
+    if (s1->nostdlib || s1->static_link || s1->option_pthread
+        || s1->nb_pragma_libs || s1->do_backtrace)
+        return 0;
+#ifdef CONFIG_TCC_BCHECK
+    if (s1->do_bounds_check)
+        return 0;
+#endif
+    for_each_elem(s1->symtab, 1, sym, ElfW(Sym)) {
+        if (sym->st_shndx == SHN_UNDEF) {
+            const char *name = (char *)s1->symtab->link->data + sym->st_name;
+            /* Runtime/compiler names retain archive-first precedence even if
+               an identically named symbol is also exported by the host. */
+            if (name[s1->leading_underscore] == '_' || !runtime_symbol(s1, name))
+                return 0;
+        }
+    }
+    return 1;
+}
+#endif
+
 /* relocate symbol table, resolve undefined symbols if do_resolve is
    true and output error if undefined symbol. */
 ST_FUNC void relocate_syms(TCCState *s1, Section *symtab, int do_resolve)
@@ -1091,17 +1130,7 @@ ST_FUNC void relocate_syms(TCCState *s1, Section *symtab, int do_resolve)
             /* Use ld.so to resolve symbol for us (for tcc -run) */
             if (do_resolve) {
 #if defined TCC_IS_NATIVE && !defined TCC_TARGET_PE
-                /* dlsym() needs the undecorated name.  */
-                const char *name_ud = &name[s1->leading_underscore];
-                void *addr = NULL;
-                if (!s1->nostdlib)
-                    addr = dlsym(RTLD_DEFAULT, name_ud);
-		if (addr == NULL) {
-		    int i;
-		    for (i = 0; i < s1->nb_loaded_dlls; i++)
-                        if ((addr = dlsym(s1->loaded_dlls[i]->handle, name_ud)))
-			    break;
-		}
+                void *addr = runtime_symbol(s1, name);
                 if (addr) {
                     sym->st_value = (addr_t) addr;
 #ifdef DEBUG_RELOC
@@ -1822,6 +1851,18 @@ ST_FUNC void tccelf_add_crtend(TCCState *s1)
 ST_FUNC void tcc_add_runtime(TCCState *s1)
 {
     s1->filetype = 0;
+
+#if defined TCC_IS_NATIVE && defined TCC_TARGET_MACHO
+    if (s1->host_runtime) {
+        /* Only the private fresh-state memory owner opts in. Explicit library
+           pragmas and unresolved compiler helpers take the ordinary path. No
+           addresses are saved: actual relocation resolves symbols as before. */
+        if (host_runtime_suffices(s1))
+            return;
+        s1->host_runtime = 0;
+        tcc_add_macos_sdkpath(s1);
+    }
+#endif
 
 #ifdef CONFIG_TCC_BCHECK
     tcc_add_bcheck(s1);

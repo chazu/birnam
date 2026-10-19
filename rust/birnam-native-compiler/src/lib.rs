@@ -34,6 +34,9 @@ unsafe extern "C" {
         opaque: *mut c_void,
         func: Option<TccErrorFunc>,
     );
+    fn birnam_tcc_set_memory_output(state: *mut TccState) -> c_int;
+    #[cfg(test)]
+    fn birnam_tcc_uses_host_runtime(state: *const TccState) -> c_int;
     pub fn tcc_set_output_type(state: *mut TccState, output_type: c_int) -> c_int;
     pub fn tcc_compile_string(state: *mut TccState, source: *const c_char) -> c_int;
     pub fn tcc_add_library(state: *mut TccState, name: *const c_char) -> c_int;

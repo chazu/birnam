@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Avoid repeated macOS SDK and runtime-library setup for native Units whose
+  imports are already provided by the running process. Preserve ordinary
+  library/compiler-helper fallback and explicit library failures; cache no
+  native symbol addresses across Units.
+
 - Load image program bodies only when restoration requests their disposition;
   rebuild likewise emits and compiles only requested bodies. Keep pending inputs
   within the existing image stage and retain successful Method/Unit ownership,

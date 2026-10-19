@@ -335,8 +335,9 @@ Qualification passed:
   266 expected TLC outcomes. These are existing rooting, invocation and image
   lifetime contracts, not a new formal proof of the demand-loader implementation.
 
-No user-prefix installation, release qualification, commit or push was performed
-for this slice. The follow-up libtcc setup optimization remains unimplemented.
+The demand-loading slice was committed as `daa8c443`. No user-prefix installation,
+release qualification or push was performed. The follow-up libtcc setup work is
+recorded below.
 
 The [implementation receipt](../measurements/image-body-demand-20261019.json)
 records five interleaved fresh processes per variant/workload after warmups, with
@@ -361,6 +362,67 @@ now remains available during restoration until its stage is cancelled. There is
 no permanent pending-body registry, and the twenty-resave fixed-live-set check
 passed. Further large-buffer-copy work remains worthwhile.
 
-Next: condition libtcc runtime-library/SDK setup on actual unresolved dependencies,
-with compiler-helper fallback tests. Do not add its standalone diagnostic saving
-to the body-loading saving; the opportunities overlap.
+The next slice, recorded below, conditions libtcc runtime-library/SDK setup on
+actual dependencies. Its standalone diagnostic saving must not be added to the
+body-loading saving; the opportunities overlap.
+
+## Implemented: conditional native runtime setup
+
+The private native compiler owner now opts its fresh macOS memory-output states
+into resident-runtime resolution. When every undefined ordinary symbol is
+available through the current dynamic linker, libtcc skips SDK discovery and the
+automatic libc/support-archive search. Actual relocation still resolves symbols
+through the same lookup routine. No address cache survives across Units, and no
+Birnam method dispatch, Module dependency, image format or exported ABI changes.
+
+Reserved runtime/compiler names always take the original SDK/archive path, as do
+unresolved imports, explicit library pragmas and special runtime/linking options.
+This preserves compiler-helper precedence and required-library failures. Ordinary
+libtcc clients retain eager setup and their existing search-path order. Object-file
+emission remains unchanged. This is a small vendored-libtcc adjustment configured
+by the existing private native compiler owner, not a new language service.
+
+Review caught and reproduced a defect in the initial prototype: a host-exported
+`__builtin_popcountll` could displace libtcc1's helper. The regression exports a
+deliberately wrong implementation returning 97; the incomplete optimization used
+it where 5 was expected. The retained version takes the archive path and returns
+5 (and 64 for all bits set) through both compiled-source and memory-object routes.
+Explicit symbols supplied to separate Units remain independent.
+
+Native tests also cover libc-only imports, explicit math-library loading, a
+missing requested library with no required symbols, unresolved strong imports,
+malformed objects, and exact compiler-allocation cleanup. The reserved-name
+fallback is conservative: some internal system symbols use the slower path even
+when the host could supply them. It avoids changing runtime-helper selection for
+a marginal additional saving.
+
+The [runtime-setup receipt](../measurements/native-runtime-setup-20261019.json)
+records the corrected implementation's five interleaved fresh-process runs per
+variant/workload after warmups, with precise GC and identical preexisting images.
+Only TCC's binary differs; the candidate matches the fresh prefix byte-for-byte.
+Correctness jobs finished before measurement. Other user activity was uncontrolled.
+
+| Workload | Prior wall | Conditional setup wall | Prior CPU | Conditional setup CPU | Wall reduction |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Startup plus trivial script | 2.865 s | 2.749 s | 2.859 s | 2.742 s | 4.0% |
+| Existing image and compiled main | 3.654 s | 3.558 s | 3.647 s | 3.551 s | 2.6% |
+
+This is an incremental saving on top of demand-driven body loading. It does not
+establish a warm-language execution or release-time speedup. Peak memory is
+essentially unchanged; the receipt includes maximum RSS and macOS footprint for
+every process, and no memory reduction is claimed.
+
+Qualification passed: twelve native compiler tests normally and under ASan,
+including independent Unit data, memory/file relocation parity, malformed input,
+required-library failures, host/helper precedence and allocation cleanup; all
+847 language assertions; compiler, artifact, materialization, retirement and
+borrowed-input integration checks; fresh-prefix image roundtrips and
+compiler/parser-disabled startup. Existing abstract checks also pass: 391 Lean
+theorems, 122 rejected mutations and 266 expected TLC outcomes. They are not a
+formal verification of this C linker change. Native exports and dynamic-library
+dependencies are unchanged, and installed production sources match the worktree.
+
+This new slice remains uncommitted and was tested in isolated prefixes. No normal
+user installation, push or release was performed. The next larger startup target
+is duplicate image-buffer storage and copying; warm dispatch admission remains a
+separate application-CPU target.

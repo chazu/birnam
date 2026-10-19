@@ -33,6 +33,20 @@ of other Units loaded from identical bytes. This changes neither artifact bytes
 nor the Id-facing protocol. General library/archive file loading remains a
 libtcc facility; `loadObject:` is the single relocatable-object route.
 
+On native macOS, the private compiler owner configures its fresh memory-output
+states to use the running process's runtime when all undefined symbols are already
+resolvable. It then avoids repeated SDK discovery, libc library searches and
+support-archive reads. The check and actual relocation use the same live dynamic
+linker lookup; no process-wide symbol/address cache is added.
+
+A reserved runtime/compiler name, unresolved import, explicit library pragma, or runtime instrumentation/linking
+option falls back to the existing SDK and library setup before relocation.
+Compiler helpers supplied by `libtcc1` therefore remain supported, and a missing
+requested library still fails even when none of its symbols are needed. Ordinary
+libtcc clients keep their eager configuration and library-path ordering; this
+optimization is private to Birnam's fresh states with default search paths.
+Unit ownership, page protections and retirement still follow the same path.
+
 `compileObject:` still uses libtcc's file-output API. Its output directory is
 needed because the writer unlinks/recreates its destination. Loading existing
 compiled code no longer takes that detour. See the
