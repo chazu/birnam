@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Load compiled ELF objects directly from memory through libtcc's existing
+  relocation machinery. Remove the per-object temporary directory/file round
+  trip and an intermediate TCC input copy, retaining independent Unit data and
+  executable lifetimes. Artifact formats and Id-facing messages are unchanged.
+
 - Move candidate preparation, activation, explicit undo and discard policy into
   Birnam. Remove native prepared/undo tables, Globals compensation reservations,
   automatic failure compensation and setter postchecks. Failures retain partial

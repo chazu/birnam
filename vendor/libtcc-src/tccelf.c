@@ -3255,41 +3255,98 @@ ST_FUNC int tcc_object_type(int fd, ElfW(Ehdr) *h)
     return 0;
 }
 
+/* One input adapter for the existing object merger. Memory inputs are borrowed
+   only for this call; all retained section/symbol storage is copied as before. */
+typedef struct TCCObjectInput {
+    int fd;
+    unsigned long file_offset;
+    const unsigned char *bytes;
+    size_t length;
+} TCCObjectInput;
+
+static int object_read_at(const TCCObjectInput *input, void *data,
+                          unsigned long offset, unsigned long size)
+{
+    ssize_t count;
+    if (input->bytes) {
+        if (offset > input->length || size > input->length - offset)
+            return -1;
+        memcpy(data, input->bytes + offset, size);
+        return 0;
+    }
+    if (offset > (unsigned long)-1 - input->file_offset
+        || lseek(input->fd, input->file_offset + offset, SEEK_SET) < 0)
+        return -1;
+    count = full_read(input->fd, data, size);
+    return count >= 0 && (size_t)count == size ? 0 : -1;
+}
+
+static void *object_load_data(const TCCObjectInput *input,
+                              unsigned long offset, unsigned long size)
+{
+    void *data;
+    /* Check a memory range before allocating, including malicious huge sizes. */
+    if (input->bytes && (offset > input->length || size > input->length - offset))
+        return NULL;
+    data = tcc_malloc(size ? size : 1);
+    if (object_read_at(input, data, offset, size) < 0) {
+        tcc_free(data);
+        return NULL;
+    }
+    return data;
+}
+
 /* load an object file and merge it with current files */
 /* XXX: handle correctly stab (debug) info */
-ST_FUNC int tcc_load_object_file(TCCState *s1,
-                                int fd, unsigned long file_offset)
+static int tcc_load_object_input(TCCState *s1, const TCCObjectInput *input)
 {
     ElfW(Ehdr) ehdr;
-    ElfW(Shdr) *shdr, *sh;
+    ElfW(Shdr) *shdr = NULL, *sh;
     unsigned long size, offset, offseti;
-    int i, j, nb_syms, sym_index, ret, seencompressed;
-    char *strsec, *strtab;
+    int i, j, nb_syms, sym_index, ret = -1, seencompressed;
+    char *strsec = NULL, *strtab = NULL;
+    unsigned long strtab_size = 0;
     int stab_index, stabstr_index;
-    int *old_to_new_syms;
+    int *old_to_new_syms = NULL;
     char *sh_name, *name;
-    SectionMergeInfo *sm_table, *sm;
-    ElfW(Sym) *sym, *symtab;
+    SectionMergeInfo *sm_table = NULL, *sm;
+    ElfW(Sym) *sym, *symtab = NULL;
     ElfW_Rel *rel;
     Section *s;
 
-    lseek(fd, file_offset, SEEK_SET);
-    if (tcc_object_type(fd, &ehdr) != AFF_BINTYPE_REL)
-        goto invalid;
-    /* test CPU specific stuff */
-    if (ehdr.e_ident[5] != ELFDATA2LSB ||
-        ehdr.e_machine != EM_TCC_TARGET) {
-invalid:
+    if (object_read_at(input, &ehdr, 0, sizeof ehdr) < 0
+        || memcmp(ehdr.e_ident, ELFMAG, 4) || ehdr.e_type != ET_REL
+        || ehdr.e_ident[4] != ELFCLASSW || ehdr.e_ident[5] != ELFDATA2LSB
+        || ehdr.e_machine != EM_TCC_TARGET
+        || ehdr.e_shentsize != sizeof(ElfW(Shdr)) || !ehdr.e_shnum
+        || ehdr.e_shstrndx >= ehdr.e_shnum)
         return tcc_error_noabort("invalid object file");
-    }
     /* read sections */
-    shdr = load_data(fd, file_offset + ehdr.e_shoff,
-                     sizeof(ElfW(Shdr)) * ehdr.e_shnum);
+    shdr = object_load_data(input, ehdr.e_shoff,
+                            sizeof(ElfW(Shdr)) * ehdr.e_shnum);
+    if (!shdr)
+        goto invalid_input;
     sm_table = tcc_mallocz(sizeof(SectionMergeInfo) * ehdr.e_shnum);
 
     /* load section names */
     sh = &shdr[ehdr.e_shstrndx];
-    strsec = load_data(fd, file_offset + sh->sh_offset, sh->sh_size);
+    strsec = object_load_data(input, sh->sh_offset, sh->sh_size);
+    if (!strsec)
+        goto invalid_input;
+    for (i = 1; i < ehdr.e_shnum; i++) {
+        sh = &shdr[i];
+        if (sh->sh_name >= shdr[ehdr.e_shstrndx].sh_size
+            || !memchr(strsec + sh->sh_name, 0,
+                       shdr[ehdr.e_shstrndx].sh_size - sh->sh_name)
+            || sh->sh_link >= ehdr.e_shnum
+            || (input->bytes && sh->sh_type != SHT_NOBITS
+                && (sh->sh_offset > input->length
+                    || sh->sh_size > input->length - sh->sh_offset))
+            || (sh->sh_addralign && (sh->sh_addralign & (sh->sh_addralign - 1)))
+            || (sh->sh_type == SHT_RELX
+                && (sh->sh_info >= ehdr.e_shnum || sh->sh_size % sizeof(ElfW_Rel))))
+            goto invalid_input;
+    }
 
     /* load symtab and strtab */
     old_to_new_syms = NULL;
@@ -3307,13 +3364,28 @@ invalid:
                 tcc_error_noabort("object must contain only one symtab");
                 goto the_end;
             }
+            if (sh->sh_size % sizeof(ElfW(Sym))
+                || sh->sh_size / sizeof(ElfW(Sym)) > 0x7fffffff)
+                goto invalid_input;
             nb_syms = sh->sh_size / sizeof(ElfW(Sym));
-            symtab = load_data(fd, file_offset + sh->sh_offset, sh->sh_size);
+            symtab = object_load_data(input, sh->sh_offset, sh->sh_size);
+            if (!symtab)
+                goto invalid_input;
             sm_table[i].s = symtab_section;
 
             /* now load strtab */
             sh = &shdr[sh->sh_link];
-            strtab = load_data(fd, file_offset + sh->sh_offset, sh->sh_size);
+            strtab_size = sh->sh_size;
+            strtab = object_load_data(input, sh->sh_offset, strtab_size);
+            if (!strtab)
+                goto invalid_input;
+            for (j = 1; j < nb_syms; j++) {
+                sym = &symtab[j];
+                if (sym->st_name >= strtab_size
+                    || !memchr(strtab + sym->st_name, 0, strtab_size - sym->st_name)
+                    || (sym->st_shndx < SHN_LORESERVE && sym->st_shndx >= ehdr.e_shnum))
+                    goto invalid_input;
+            }
         }
 	if (sh->sh_flags & SHF_COMPRESSED)
 	    seencompressed = 1;
@@ -3411,9 +3483,9 @@ invalid:
         /* concatenate sections */
         if (sh->sh_type != SHT_NOBITS && size) {
             unsigned char *ptr;
-            lseek(fd, file_offset + sh->sh_offset, SEEK_SET);
             ptr = s->data + offset;
-            full_read(fd, ptr, size);
+            if (object_read_at(input, ptr, sh->sh_offset, size) < 0)
+                goto invalid_input;
         }
 #if defined TCC_TARGET_ARM || defined TCC_TARGET_ARM64 || defined TCC_TARGET_RISCV64
         /* align code sections to instruction lenght */
@@ -3555,6 +3627,9 @@ invalid:
     }
  done:
     ret = 0;
+    goto the_end;
+ invalid_input:
+    tcc_error_noabort("invalid or truncated object data");
  the_end:
     tcc_free(symtab);
     tcc_free(strtab);
@@ -3562,6 +3637,26 @@ invalid:
     tcc_free(sm_table);
     tcc_free(strsec);
     tcc_free(shdr);
+    return ret;
+}
+
+/* Existing file/archive callers retain the same relocation implementation. */
+ST_FUNC int tcc_load_object_file(TCCState *s1, int fd, unsigned long file_offset)
+{
+    TCCObjectInput input = { fd, file_offset, NULL, 0 };
+    return tcc_load_object_input(s1, &input);
+}
+
+LIBTCCAPI int tcc_add_object_memory(TCCState *s1, const void *bytes, size_t length)
+{
+    TCCObjectInput input = { -1, 0, bytes, length };
+    const char *filename = s1->current_filename;
+    int ret;
+    if (!bytes || length < sizeof(ElfW(Ehdr)))
+        return tcc_error_noabort("invalid object buffer");
+    s1->current_filename = "<memory-object>";
+    ret = tcc_load_object_input(s1, &input);
+    s1->current_filename = filename;
     return ret;
 }
 

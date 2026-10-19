@@ -1,0 +1,3819 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "baseline": "cc9a82a9",
+  "platform": "macOS-14.6-arm64-arm-64bit",
+  "scope": "Startup/runtime audit; in-memory ELF input for existing libtcc relocation; private address-index and directory-only experiments rejected",
+  "final_prefix": "/tmp/birnam-runtime-audit-20261019/final-prefix",
+  "build_mode": "development-cache",
+  "installation_receipt_sha256": "dfe346405328c6b442916a964feb8bb08c41cb546c72ffec2d26b0ae70fa9aff",
+  "production_source_sha256": {
+    "rust/birnam-native-compiler/build.rs": "400adf4717700bbd1882a7218d263f47fca52ad594c5de3b755e3d1726371833",
+    "rust/birnam-native-compiler/src/lib.rs": "c4cf7200a6290b381073bb8a0dd592f3df7d640d39f695660e48f78eb16be421",
+    "rust/birnam-native-compiler/src/unit.rs": "89acc63a623388ee295fd6bec96bcb49b9dbc85be79bfb4ba3d8ed8ed38eeaef",
+    "rust/birnam-tcc/src/lib.rs": "671683ecf1e458fadd4d334c5497602533466d86b85a657fcba349dbd829ba25",
+    "vendor/libtcc-src/libtcc.h": "d7931c0eb2df93d7666c267f1d9ccb1db86d4ed8c8961c5a28e9ad3cd8a811f5",
+    "vendor/libtcc-src/tccelf.c": "723267553231d0cd93db16d7337dfa191e6138183572da8170aba732746677f3"
+  },
+  "native_artifact_audit": {
+    "tcc": {
+      "measured_artifact_matches_final": true,
+      "sha256": "490bb09af3fb84c165b2df8e71ee78923b21636f1259d25d5bca1991e71d52f2",
+      "exports_unchanged": true,
+      "dependencies_unchanged": true,
+      "exports": [
+        "_birnam_native_module_v1"
+      ],
+      "dependencies": [
+        "@rpath/libbirnam_tcc.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ]
+    },
+    "native_backend": {
+      "measured_artifact_matches_final": true,
+      "sha256": "bc7172e2b64d05f22b115b176398c172faa88750a1faa911a03b370a37196413",
+      "exports_unchanged": true,
+      "dependencies_unchanged": true,
+      "exports": [
+        "_birnam_native_module_v1",
+        "_birnam_symbol_borrow_v1"
+      ],
+      "dependencies": [
+        "@rpath/libbirnam_native_backend.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ]
+    }
+  },
+  "startup": {
+    "rows": [
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 0,
+        "wall_seconds": 4.758922,
+        "cpu_seconds": 4.701469000000001
+      },
+      {
+        "mode": "startup_script",
+        "variant": "memory",
+        "repeat": 0,
+        "wall_seconds": 4.007055583000001,
+        "cpu_seconds": 3.9995909999999997
+      },
+      {
+        "mode": "startup_script",
+        "variant": "memory",
+        "repeat": 1,
+        "wall_seconds": 4.066952000000001,
+        "cpu_seconds": 4.058305
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 1,
+        "wall_seconds": 4.822385000000001,
+        "cpu_seconds": 4.715040000000004
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 2,
+        "wall_seconds": 4.849482875,
+        "cpu_seconds": 4.740506
+      },
+      {
+        "mode": "startup_script",
+        "variant": "memory",
+        "repeat": 2,
+        "wall_seconds": 4.012635708000001,
+        "cpu_seconds": 4.006461999999999
+      },
+      {
+        "mode": "startup_script",
+        "variant": "memory",
+        "repeat": 3,
+        "wall_seconds": 4.154980250000001,
+        "cpu_seconds": 4.037098999999997
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 3,
+        "wall_seconds": 4.764409417000003,
+        "cpu_seconds": 4.697883000000003
+      },
+      {
+        "mode": "startup_script",
+        "variant": "baseline",
+        "repeat": 4,
+        "wall_seconds": 4.779854582999995,
+        "cpu_seconds": 4.7164719999999996
+      },
+      {
+        "mode": "startup_script",
+        "variant": "memory",
+        "repeat": 4,
+        "wall_seconds": 4.030945416999998,
+        "cpu_seconds": 4.024388999999996
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 0,
+        "wall_seconds": 5.347922708000006,
+        "cpu_seconds": 5.2742350000000044
+      },
+      {
+        "mode": "saved_image",
+        "variant": "memory",
+        "repeat": 0,
+        "wall_seconds": 4.596465749999993,
+        "cpu_seconds": 4.583371000000001
+      },
+      {
+        "mode": "saved_image",
+        "variant": "memory",
+        "repeat": 1,
+        "wall_seconds": 4.477564000000001,
+        "cpu_seconds": 4.4699480000000005
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 1,
+        "wall_seconds": 5.209489833999996,
+        "cpu_seconds": 5.138490999999988
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 2,
+        "wall_seconds": 5.179735374999993,
+        "cpu_seconds": 5.111701000000004
+      },
+      {
+        "mode": "saved_image",
+        "variant": "memory",
+        "repeat": 2,
+        "wall_seconds": 4.445998500000002,
+        "cpu_seconds": 4.441978000000013
+      },
+      {
+        "mode": "saved_image",
+        "variant": "memory",
+        "repeat": 3,
+        "wall_seconds": 4.440865875,
+        "cpu_seconds": 4.4368319999999954
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 3,
+        "wall_seconds": 5.183610291999997,
+        "cpu_seconds": 5.132123999999994
+      },
+      {
+        "mode": "saved_image",
+        "variant": "baseline",
+        "repeat": 4,
+        "wall_seconds": 5.20626,
+        "cpu_seconds": 5.141640000000002
+      },
+      {
+        "mode": "saved_image",
+        "variant": "memory",
+        "repeat": 4,
+        "wall_seconds": 4.443402875000004,
+        "cpu_seconds": 4.440292999999997
+      }
+    ],
+    "medians": {
+      "startup_script": {
+        "baseline": {
+          "wall_seconds": 4.779854582999995,
+          "cpu_seconds": 4.715040000000004
+        },
+        "memory": {
+          "wall_seconds": 4.030945416999998,
+          "cpu_seconds": 4.024388999999996
+        }
+      },
+      "saved_image": {
+        "baseline": {
+          "wall_seconds": 5.20626,
+          "cpu_seconds": 5.138490999999988
+        },
+        "memory": {
+          "wall_seconds": 4.445998500000002,
+          "cpu_seconds": 4.441978000000013
+        }
+      }
+    },
+    "scope": "Five interleaved fresh processes after one warmup per variant/workload; precise GC and identical preexisting authored artifacts/images; diagnostic native overlay only. Background user workloads active."
+  },
+  "no_temporary_directory": {
+    "rows": [
+      {
+        "variant": "baseline",
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": "birnam: load /private/tmp/birnam-candidate-policy/compact-prefix/lib/libbirnam_bootstrap.dylib: native status=1 detail=0\n"
+      },
+      {
+        "variant": "memory",
+        "exit_code": 0,
+        "stdout": "ready\n",
+        "stderr": ""
+      }
+    ],
+    "image": "/tmp/birnam-runtime-audit-20261019/no-temp.image",
+    "source": "[Globals at: #main put: [| [System println: \"ready\"]]]; [System saveImage: \"/tmp/birnam-runtime-audit-20261019/no-temp.image\"]\n",
+    "temporary_directory": "/tmp/birnam-runtime-audit-20261019/nonexistent-temp-directory"
+  },
+  "image_inventory": [
+    {
+      "path": "/private/tmp/birnam-image-simplification/prefix/lib/birnam-bootstrap.image",
+      "image_bytes": 208322386,
+      "bundle_offset": 7956965,
+      "bundle_bytes": 200365421,
+      "objects": 4139,
+      "unique_objects": 3462,
+      "object_bytes": 200332265,
+      "duplicate_object_bytes": 16003655,
+      "programs": 1728,
+      "resumable_body_bytes": 103792576,
+      "synchronous_body_bytes": 80392400,
+      "named_adapter_objects": 683,
+      "named_adapter_bytes": 16147289,
+      "largest_duplicate_groups": [
+        {
+          "offset": 192169641,
+          "bytes": 23643,
+          "count": 284
+        },
+        {
+          "offset": 192288088,
+          "bytes": 23435,
+          "count": 221
+        },
+        {
+          "offset": 192264245,
+          "bytes": 23835,
+          "count": 134
+        },
+        {
+          "offset": 192358625,
+          "bytes": 24043,
+          "count": 37
+        },
+        {
+          "offset": 194988830,
+          "bytes": 24235,
+          "count": 5
+        },
+        {
+          "offset": 193446347,
+          "bytes": 24443,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "path": "/private/tmp/birnam-source-registry/final-prefix/lib/birnam-bootstrap.image",
+      "image_bytes": 216311840,
+      "bundle_offset": 8113801,
+      "bundle_bytes": 208198039,
+      "objects": 4281,
+      "unique_objects": 3584,
+      "object_bytes": 208163747,
+      "duplicate_object_bytes": 16476819,
+      "programs": 1789,
+      "resumable_body_bytes": 107900591,
+      "synchronous_body_bytes": 83642703,
+      "named_adapter_objects": 703,
+      "named_adapter_bytes": 16620453,
+      "largest_duplicate_groups": [
+        {
+          "offset": 199685771,
+          "bytes": 23643,
+          "count": 291
+        },
+        {
+          "offset": 199804218,
+          "bytes": 23435,
+          "count": 227
+        },
+        {
+          "offset": 199780375,
+          "bytes": 23835,
+          "count": 140
+        },
+        {
+          "offset": 199874755,
+          "bytes": 24043,
+          "count": 38
+        },
+        {
+          "offset": 202647218,
+          "bytes": 24235,
+          "count": 5
+        },
+        {
+          "offset": 201104735,
+          "bytes": 24443,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "path": "/private/tmp/birnam-candidate-policy/compact-prefix/lib/birnam-bootstrap.image",
+      "image_bytes": 255999808,
+      "bundle_offset": 9136034,
+      "bundle_bytes": 246863774,
+      "objects": 4758,
+      "unique_objects": 4024,
+      "object_bytes": 246825666,
+      "duplicate_object_bytes": 17356074,
+      "programs": 2009,
+      "resumable_body_bytes": 129469203,
+      "synchronous_body_bytes": 99856755,
+      "named_adapter_objects": 740,
+      "named_adapter_bytes": 17499708,
+      "largest_duplicate_groups": [
+        {
+          "offset": 238494188,
+          "bytes": 23643,
+          "count": 307
+        },
+        {
+          "offset": 238612635,
+          "bytes": 23435,
+          "count": 229
+        },
+        {
+          "offset": 238588792,
+          "bytes": 23835,
+          "count": 154
+        },
+        {
+          "offset": 238683172,
+          "bytes": 24043,
+          "count": 42
+        },
+        {
+          "offset": 242380856,
+          "bytes": 24235,
+          "count": 6
+        },
+        {
+          "offset": 240408911,
+          "bytes": 24443,
+          "count": 2
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "json": {
+      "phases": {
+        "empty": {
+          "cpu_ns": [
+            223083,
+            207375,
+            211125
+          ],
+          "median_cpu_ns": 211125,
+          "allocation": {
+            "allocation_bytes_delta": 2016,
+            "cpu_ns": 209125,
+            "object_delta": 204,
+            "wall_ns": 24000
+          }
+        },
+        "full": {
+          "cpu_ns": [
+            279948125,
+            279470000,
+            274259541
+          ],
+          "median_cpu_ns": 279470000,
+          "allocation": {
+            "allocation_bytes_delta": 2753834,
+            "cpu_ns": 273299666,
+            "object_delta": 104680,
+            "wall_ns": 273200000
+          }
+        },
+        "split_trim": {
+          "cpu_ns": [
+            19843375,
+            20289583,
+            20742250
+          ],
+          "median_cpu_ns": 20289583,
+          "allocation": {
+            "allocation_bytes_delta": 180971,
+            "cpu_ns": 19986208,
+            "object_delta": 7138,
+            "wall_ns": 19842000
+          }
+        },
+        "parse": {
+          "cpu_ns": [
+            153098417,
+            150991792,
+            155155833
+          ],
+          "median_cpu_ns": 153098417,
+          "allocation": {
+            "allocation_bytes_delta": 1702110,
+            "cpu_ns": 152504625,
+            "object_delta": 60249,
+            "wall_ns": 152385000
+          }
+        },
+        "peg": {
+          "cpu_ns": [
+            11826291,
+            11689333,
+            11354625
+          ],
+          "median_cpu_ns": 11689333,
+          "allocation": {
+            "allocation_bytes_delta": 74112,
+            "cpu_ns": 11276667,
+            "object_delta": 3800,
+            "wall_ns": 11131000
+          }
+        },
+        "lower": {
+          "cpu_ns": [
+            172783209,
+            175231459,
+            175823417
+          ],
+          "median_cpu_ns": 175231459,
+          "allocation": {
+            "allocation_bytes_delta": 1751022,
+            "cpu_ns": 172374125,
+            "object_delta": 63424,
+            "wall_ns": 172253000
+          }
+        },
+        "validate": {
+          "cpu_ns": [
+            45575584,
+            45143958,
+            45376708
+          ],
+          "median_cpu_ns": 45376708,
+          "allocation": {
+            "allocation_bytes_delta": 344188,
+            "cpu_ns": 44900959,
+            "object_delta": 17399,
+            "wall_ns": 44761000
+          }
+        },
+        "render": {
+          "cpu_ns": [
+            23681833,
+            25109875,
+            24445542
+          ],
+          "median_cpu_ns": 24445542,
+          "allocation": {
+            "allocation_bytes_delta": 207629,
+            "cpu_ns": 22656250,
+            "object_delta": 9258,
+            "wall_ns": 22511000
+          }
+        },
+        "decode_strings": {
+          "cpu_ns": [
+            92468917,
+            93394084,
+            88049875
+          ],
+          "median_cpu_ns": 92468917,
+          "allocation": {
+            "allocation_bytes_delta": 587031,
+            "cpu_ns": 88774375,
+            "object_delta": 28755,
+            "wall_ns": 88650000
+          }
+        },
+        "unescape": {
+          "cpu_ns": [
+            66882500,
+            66446625,
+            65728917
+          ],
+          "median_cpu_ns": 66446625,
+          "allocation": {
+            "allocation_bytes_delta": 561031,
+            "cpu_ns": 67363625,
+            "object_delta": 25505,
+            "wall_ns": 67338000
+          }
+        },
+        "numbers": {
+          "cpu_ns": [
+            40507750,
+            39564208,
+            39578417
+          ],
+          "median_cpu_ns": 39578417,
+          "allocation": {
+            "allocation_bytes_delta": 302634,
+            "cpu_ns": 38265334,
+            "object_delta": 14352,
+            "wall_ns": 38119000
+          }
+        }
+      },
+      "oracle_passed": true,
+      "scope": "Independent warmed phases with prepared inputs retained; not additive attribution. Timing mode retains normal GC. Allocation mode disables automatic GC for one measured pass; its time is not the timing baseline."
+    },
+    "logue": {
+      "phases": [
+        {
+          "label": "regression",
+          "correctness_passed": true
+        },
+        {
+          "label": "quiet",
+          "config": {
+            "allocation": false,
+            "batches": 4,
+            "monsters": 0,
+            "phase": "arena",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "median_cpu_ns": 38833792.0,
+          "batch_median_cpu_ns": {
+            "1": 34199375,
+            "2": 58078500,
+            "3": 50386417,
+            "4": 38469250
+          },
+          "correctness_passed": true
+        },
+        {
+          "label": "quiet-allocation",
+          "config": {
+            "allocation": true,
+            "batches": 1,
+            "monsters": 0,
+            "phase": "arena",
+            "replace": false,
+            "samples": 1,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "median_cpu_ns": 29594000,
+          "batch_median_cpu_ns": {
+            "1": 29594000
+          },
+          "correctness_passed": true
+        },
+        {
+          "label": "crowded",
+          "config": {
+            "allocation": false,
+            "batches": 4,
+            "monsters": 8,
+            "phase": "arena",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "median_cpu_ns": 803318770.5,
+          "batch_median_cpu_ns": {
+            "1": 1046856250,
+            "2": 801919667,
+            "3": 784316625,
+            "4": 802081500
+          },
+          "correctness_passed": true
+        },
+        {
+          "label": "crowded-allocation",
+          "config": {
+            "allocation": true,
+            "batches": 1,
+            "monsters": 8,
+            "phase": "arena",
+            "replace": false,
+            "samples": 1,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "median_cpu_ns": 969108917,
+          "batch_median_cpu_ns": {
+            "1": 969108917
+          },
+          "correctness_passed": true
+        },
+        {
+          "label": "generation",
+          "config": {
+            "allocation": false,
+            "batches": 1,
+            "monsters": 2,
+            "phase": "generation",
+            "replace": false,
+            "samples": 3,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "median_cpu_ns": 2677796250,
+          "batch_median_cpu_ns": {
+            "1": 2677796250
+          },
+          "correctness_passed": true
+        },
+        {
+          "label": "generation-allocation",
+          "config": {
+            "allocation": true,
+            "batches": 1,
+            "monsters": 2,
+            "phase": "generation",
+            "replace": false,
+            "samples": 1,
+            "seed": 12345,
+            "turns": 16,
+            "width": 16
+          },
+          "median_cpu_ns": 2673425375,
+          "batch_median_cpu_ns": {
+            "1": 2673425375
+          },
+          "correctness_passed": true
+        },
+        {
+          "label": "replacement",
+          "config": {
+            "allocation": false,
+            "batches": 2,
+            "monsters": 2,
+            "phase": "arena",
+            "replace": true,
+            "samples": 1,
+            "seed": 12345,
+            "turns": 8,
+            "width": 8
+          },
+          "median_cpu_ns": 82938979.5,
+          "batch_median_cpu_ns": {
+            "1": 84104459,
+            "2": 81773500
+          },
+          "correctness_passed": true
+        }
+      ],
+      "all_requested_passed": true,
+      "scope": "Script loader path; startup/source loading, fixture setup, GC between batches, snapshots and JSON are outside phase timers. Timing keeps normal GC and Store history. Allocation mode disables automatic GC for one batch and is not a timing baseline. Live counters are process-wide and include retained harness output; charge is GC accounting, not RSS."
+    }
+  },
+  "rejected_experiments": {
+    "startup_matrix": {
+      "rows": [
+        {
+          "variant": "baseline",
+          "repeat": 0,
+          "wall_seconds": 4.861216291999998,
+          "cpu_seconds": 4.726314999999999
+        },
+        {
+          "variant": "indexes",
+          "repeat": 0,
+          "wall_seconds": 4.800164542000001,
+          "cpu_seconds": 4.722785000000002
+        },
+        {
+          "variant": "object-loading",
+          "repeat": 0,
+          "wall_seconds": 4.817192125000002,
+          "cpu_seconds": 4.6325639999999995
+        },
+        {
+          "variant": "combined",
+          "repeat": 0,
+          "wall_seconds": 4.964772292000006,
+          "cpu_seconds": 4.652567000000003
+        },
+        {
+          "variant": "indexes",
+          "repeat": 1,
+          "wall_seconds": 4.884404666999998,
+          "cpu_seconds": 4.803761999999995
+        },
+        {
+          "variant": "object-loading",
+          "repeat": 1,
+          "wall_seconds": 4.944579833999995,
+          "cpu_seconds": 4.66846
+        },
+        {
+          "variant": "combined",
+          "repeat": 1,
+          "wall_seconds": 5.040124416000005,
+          "cpu_seconds": 4.672431999999992
+        },
+        {
+          "variant": "baseline",
+          "repeat": 1,
+          "wall_seconds": 4.8436470830000005,
+          "cpu_seconds": 4.759814000000002
+        },
+        {
+          "variant": "object-loading",
+          "repeat": 2,
+          "wall_seconds": 4.765302459000004,
+          "cpu_seconds": 4.6166740000000015
+        },
+        {
+          "variant": "combined",
+          "repeat": 2,
+          "wall_seconds": 4.859599250000002,
+          "cpu_seconds": 4.632616999999996
+        },
+        {
+          "variant": "baseline",
+          "repeat": 2,
+          "wall_seconds": 4.685347042000004,
+          "cpu_seconds": 4.6073099999999965
+        },
+        {
+          "variant": "indexes",
+          "repeat": 2,
+          "wall_seconds": 5.155924459000005,
+          "cpu_seconds": 4.856749000000004
+        },
+        {
+          "variant": "combined",
+          "repeat": 3,
+          "wall_seconds": 4.795208625000001,
+          "cpu_seconds": 4.624638999999991
+        },
+        {
+          "variant": "baseline",
+          "repeat": 3,
+          "wall_seconds": 4.841260500000004,
+          "cpu_seconds": 4.741620000000005
+        },
+        {
+          "variant": "indexes",
+          "repeat": 3,
+          "wall_seconds": 4.746086042000002,
+          "cpu_seconds": 4.702062999999999
+        },
+        {
+          "variant": "object-loading",
+          "repeat": 3,
+          "wall_seconds": 4.5383066670000005,
+          "cpu_seconds": 4.3948769999999975
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 4.842453791500002,
+          "cpu_seconds": 4.733967500000002
+        },
+        "indexes": {
+          "wall_seconds": 4.8422846045,
+          "cpu_seconds": 4.763273499999999
+        },
+        "object-loading": {
+          "wall_seconds": 4.791247292000003,
+          "cpu_seconds": 4.624619000000001
+        },
+        "combined": {
+          "wall_seconds": 4.912185771000004,
+          "cpu_seconds": 4.642592
+        }
+      }
+    },
+    "gc": {
+      "rows": [
+        {
+          "variant": "baseline",
+          "repeat": 0,
+          "wall_seconds": 6.655864249999993,
+          "cpu_seconds": 6.595579000000011,
+          "stdout": "#[325302791 333120916 306718959 287489542 298176833]\nalive\n",
+          "batch_cpu_ns": [
+            325302791,
+            333120916,
+            306718959,
+            287489542,
+            298176833
+          ]
+        },
+        {
+          "variant": "combined",
+          "repeat": 1,
+          "wall_seconds": 6.635357874999997,
+          "cpu_seconds": 6.373324999999998,
+          "stdout": "#[276750709 284888250 285915208 294150000 278323708]\nalive\n",
+          "batch_cpu_ns": [
+            276750709,
+            284888250,
+            285915208,
+            294150000,
+            278323708
+          ]
+        },
+        {
+          "variant": "combined",
+          "repeat": 2,
+          "wall_seconds": 6.505484040999988,
+          "cpu_seconds": 6.348147999999998,
+          "stdout": "#[278631542 281807250 285619417 278022958 289535208]\nalive\n",
+          "batch_cpu_ns": [
+            278631542,
+            281807250,
+            285619417,
+            278022958,
+            289535208
+          ]
+        },
+        {
+          "variant": "baseline",
+          "repeat": 3,
+          "wall_seconds": 6.598686041000008,
+          "cpu_seconds": 6.537642999999999,
+          "stdout": "#[284594583 283579458 283752375 284318875 283600542]\nalive\n",
+          "batch_cpu_ns": [
+            284594583,
+            283579458,
+            283752375,
+            284318875,
+            283600542
+          ]
+        }
+      ],
+      "median_batch_cpu_ns": {
+        "baseline": 286042062.5,
+        "combined": 283347750.0
+      }
+    },
+    "application_abba": [
+      {
+        "round": 0,
+        "variant": "baseline",
+        "json_phase_cpu_ns": {
+          "empty": [
+            212167,
+            207209,
+            215166
+          ],
+          "full": [
+            298886291,
+            278946667,
+            282849375
+          ],
+          "split_trim": [
+            20940041,
+            21520917,
+            20719541
+          ],
+          "parse": [
+            158686791,
+            160108416,
+            158772958
+          ],
+          "peg": [
+            12518875,
+            11788333,
+            11797708
+          ],
+          "lower": [
+            176592250,
+            172375458,
+            175095292
+          ],
+          "validate": [
+            45517750,
+            45313209,
+            44946250
+          ],
+          "render": [
+            22522333,
+            22804041,
+            23733208
+          ],
+          "decode_strings": [
+            90874084,
+            89714708,
+            90372625
+          ],
+          "unescape": [
+            65978083,
+            67325708,
+            67250208
+          ],
+          "numbers": [
+            43476042,
+            39380084,
+            37977542
+          ]
+        },
+        "logue": [
+          {
+            "label": "quiet",
+            "cpu_ns": [
+              28409333,
+              26667583,
+              26498916,
+              26654084,
+              26311208,
+              27134209,
+              26285084,
+              26991042
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "crowded",
+            "cpu_ns": [
+              982428500,
+              766278625,
+              763131417,
+              771395791,
+              981911375,
+              759642541,
+              800094333,
+              768410666
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "generation",
+            "cpu_ns": [
+              2651667958,
+              2674362875
+            ],
+            "oracle_passed": true
+          }
+        ]
+      },
+      {
+        "round": 1,
+        "variant": "combined",
+        "json_phase_cpu_ns": {
+          "empty": [
+            242541,
+            202541,
+            201375
+          ],
+          "full": [
+            282926583,
+            283007500,
+            281464958
+          ],
+          "split_trim": [
+            20811125,
+            20697375,
+            20544000
+          ],
+          "parse": [
+            156720667,
+            158095500,
+            159156458
+          ],
+          "peg": [
+            11652916,
+            11699167,
+            12429500
+          ],
+          "lower": [
+            186076834,
+            177186291,
+            177247666
+          ],
+          "validate": [
+            45924667,
+            46360125,
+            45828084
+          ],
+          "render": [
+            23454125,
+            23638042,
+            23525375
+          ],
+          "decode_strings": [
+            90912792,
+            90865334,
+            90545875
+          ],
+          "unescape": [
+            68516333,
+            68036916,
+            68698875
+          ],
+          "numbers": [
+            41029791,
+            39915958,
+            39710667
+          ]
+        },
+        "logue": [
+          {
+            "label": "quiet",
+            "cpu_ns": [
+              26960459,
+              26879250,
+              27391500,
+              27263792,
+              26940834,
+              26820500,
+              27331875,
+              27272209
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "crowded",
+            "cpu_ns": [
+              991087917,
+              767840750,
+              770095500,
+              786863833,
+              992894125,
+              768715000,
+              774398459,
+              772577791
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "generation",
+            "cpu_ns": [
+              2705429833,
+              2699075375
+            ],
+            "oracle_passed": true
+          }
+        ]
+      },
+      {
+        "round": 2,
+        "variant": "combined",
+        "json_phase_cpu_ns": {
+          "empty": [
+            232375,
+            225208,
+            228500
+          ],
+          "full": [
+            287716333,
+            286816000,
+            285362166
+          ],
+          "split_trim": [
+            21285125,
+            20877625,
+            21090375
+          ],
+          "parse": [
+            159502750,
+            160695084,
+            158256833
+          ],
+          "peg": [
+            11746125,
+            11761000,
+            11815958
+          ],
+          "lower": [
+            178680292,
+            179094333,
+            178485875
+          ],
+          "validate": [
+            46677166,
+            46313917,
+            46611708
+          ],
+          "render": [
+            23748334,
+            23786083,
+            24021042
+          ],
+          "decode_strings": [
+            91597458,
+            92456667,
+            91787125
+          ],
+          "unescape": [
+            68782167,
+            68874166,
+            69074333
+          ],
+          "numbers": [
+            41061625,
+            42445500,
+            42592209
+          ]
+        },
+        "logue": [
+          {
+            "label": "quiet",
+            "cpu_ns": [
+              26813875,
+              27219375,
+              27398042,
+              27689667,
+              27626333,
+              27118417,
+              27380041,
+              27254458
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "crowded",
+            "cpu_ns": [
+              991794375,
+              765354209,
+              771620458,
+              803492666,
+              1036198000,
+              795119125,
+              809758209,
+              784142125
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "generation",
+            "cpu_ns": [
+              2749065833,
+              2804817084
+            ],
+            "oracle_passed": true
+          }
+        ]
+      },
+      {
+        "round": 3,
+        "variant": "baseline",
+        "json_phase_cpu_ns": {
+          "empty": [
+            223459,
+            214000,
+            204709
+          ],
+          "full": [
+            275895625,
+            271000084,
+            269104458
+          ],
+          "split_trim": [
+            21401750,
+            21262542,
+            21087166
+          ],
+          "parse": [
+            151686584,
+            151359834,
+            150797875
+          ],
+          "peg": [
+            10854541,
+            10674292,
+            10733916
+          ],
+          "lower": [
+            170369500,
+            170793167,
+            177340208
+          ],
+          "validate": [
+            44828667,
+            44278083,
+            43670083
+          ],
+          "render": [
+            22821416,
+            22626167,
+            22457875
+          ],
+          "decode_strings": [
+            88584584,
+            88842709,
+            88460000
+          ],
+          "unescape": [
+            65441084,
+            66172208,
+            65997958
+          ],
+          "numbers": [
+            39104667,
+            38506042,
+            38894333
+          ]
+        },
+        "logue": [
+          {
+            "label": "quiet",
+            "cpu_ns": [
+              28642833,
+              31274584,
+              28312084,
+              27705291,
+              28298125,
+              28102000,
+              26719042,
+              26722292
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "crowded",
+            "cpu_ns": [
+              1034629250,
+              779661375,
+              780604500,
+              774620041,
+              1006363792,
+              748165916,
+              755360417,
+              787472625
+            ],
+            "oracle_passed": true
+          },
+          {
+            "label": "generation",
+            "cpu_ns": [
+              2614681791,
+              2696489916
+            ],
+            "oracle_passed": true
+          }
+        ]
+      }
+    ],
+    "disposition": "Private address-index changes gave no reliable end-to-end improvement and were reverted. Directory-only staging reduction was superseded by the memory loader."
+  },
+  "profiles": {
+    "before-early.sample.txt": {
+      "path": "/tmp/birnam-runtime-audit-20261019/before-early.sample.txt",
+      "sha256": "c668400529e67c25b633c3f95f02af69cec24f3c808164f4c1afcd56c31dbc44",
+      "main_thread_samples": 2483,
+      "named_leaf_counts_at_least_five": [
+        {
+          "function": "birnam_id::id::id_dispatch::bind::he8d786ab893f0ed2  (in libbirnam_id.dylib)",
+          "samples": 262
+        },
+        {
+          "function": "_platform_memmove  (in libsystem_platform.dylib)",
+          "samples": 202
+        },
+        {
+          "function": "read  (in libsystem_kernel.dylib)",
+          "samples": 115
+        },
+        {
+          "function": "__open  (in libsystem_kernel.dylib)",
+          "samples": 85
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_collect.dylib)",
+          "samples": 57
+        },
+        {
+          "function": "birnam_id::id::native_id::message::h21b3b72e0f13ca99  (in libbirnam_id.dylib)",
+          "samples": 42
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::existing::h92ea70c964aeaf0e  (in libbirnam_id.dylib)",
+          "samples": 42
+        },
+        {
+          "function": "mkdir  (in libsystem_kernel.dylib)",
+          "samples": 42
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_portable_code.dylib)",
+          "samples": 41
+        },
+        {
+          "function": "stat  (in libsystem_kernel.dylib)",
+          "samples": 41
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::native_bindings_match::he6c1d0a6eca0d10f  (in libbirnam_id.dylib)",
+          "samples": 40
+        },
+        {
+          "function": "__unlink  (in libsystem_kernel.dylib)",
+          "samples": 39
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::send::h0bd8b8b2e94eb5a1  (in libbirnam_id.dylib)",
+          "samples": 37
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_codegen_runtime.dylib)",
+          "samples": 36
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_object_model.dylib)",
+          "samples": 30
+        },
+        {
+          "function": "_platform_memcmp  (in libsystem_platform.dylib)",
+          "samples": 30
+        },
+        {
+          "function": "write  (in libsystem_kernel.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "_nanov2_free  (in libsystem_malloc.dylib)",
+          "samples": 28
+        },
+        {
+          "function": "__rmdir  (in libsystem_kernel.dylib)",
+          "samples": 25
+        },
+        {
+          "function": "_platform_memset  (in libsystem_platform.dylib)",
+          "samples": 25
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h31afd2cbc9cc5189  (in libbirnam_collect.dylib)",
+          "samples": 25
+        },
+        {
+          "function": "nanov2_malloc  (in libsystem_malloc.dylib)",
+          "samples": 25
+        },
+        {
+          "function": "__open_nocancel  (in libsystem_kernel.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha3b3b75f6718052b  (in libbirnam_collect.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_execution.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "close  (in libsystem_kernel.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1d1e880d84f3ce15  (in libbirnam_object_model.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_id.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4e6a33c1fe5a7567  (in libbirnam_execution.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "__open  (in dyld)",
+          "samples": 15
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h311074f765fa5f80  (in libbirnam_root_registry.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "tlv_get_addr  (in libdyld.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::find::h18f835832ad9bc5f  (in libbirnam_execution.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "birnam_bytes::binary_hash::wyhash::hccbf4622ebb2c816  (in libbirnam_bytes.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "birnam_execution::machine::loop_drive::h0804d3d8ce1ceab9  (in libbirnam_execution.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "_malloc_zone_malloc  (in libsystem_malloc.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::hb1aea16c51dd7274  (in libbirnam_root_registry.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "madvise  (in libsystem_kernel.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "birnam_execution::names::Names::get::hb532f0449a3b24a3  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_queries_current::h7757f23d24bc1373  (in libbirnam_id.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "_$LT$alloc..vec..Vec$LT$T$GT$$u20$as$u20$alloc..vec..spec_from_iter_nested..SpecFromIterNested$LT$T$C$I$GT$$GT$::from_iter::he7167cfb6cb44f31  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "_RNvNtNtCsg55jX0GwzBC_3std6thread7current7current  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_collect::Memory::send::hafeea7481e434760  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_id::id::vtable::Vtables::record::h173c95bcb08ec057  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "_$LT$birnam_execution..machine..Op$u20$as$u20$core..cmp..PartialEq$GT$::eq::h0f6bcbfda43d797f  (in libbirnam_execution.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_collect::construction::intern::hab6b5bf025aeeaaf  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocate::h861e57c8d8a05e9e  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_object_model::native::Model::extent::h02c64bbe2c8fe269  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_object_model::native::Model::identity::hbe3934b2fe35965b  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "build_got_entries  (in libbirnam_tcc.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h0c10c4cc91de0302  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "core::slice::sort::unstable::quicksort::quicksort::ha30b5cb977d8ac0b  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h0c08d28584dec4eb  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h1f5209fc3a129d3b  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1061b3194]",
+          "samples": 8
+        },
+        {
+          "function": "__getdirentries64  (in libsystem_kernel.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_at::hfb4b47224eb66f3c  (in libbirnam_id.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "dyld3::MachOFile::trieWalk(Diagnostics&, unsigned char const*, unsigned char const*, char const*)  (in dyld)",
+          "samples": 8
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::hcbda729a95203a73  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h5ff6ba7d314a016b  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x106ed2afc]",
+          "samples": 7
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_size::h54650b4953338e9b  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::is_behavior::h9bc6a4c8e209ca41  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h837d319ffa016b29  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::slice::sort::shared::smallsort::small_sort_general::h8a07a1d0020d5570  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "dyld3::MachOFile::forEachLoadCommand(Diagnostics&, void (load_command const*, bool&) block_pointer) const  (in dyld)",
+          "samples": 7
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_bytes.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1069c1d74]",
+          "samples": 6
+        },
+        {
+          "function": "_free  (in libsystem_malloc.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "_kernelrpc_mach_vm_deallocate_trap  (in libsystem_kernel.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_collect::construction::allocate::h4b929426fec4df8a  (in libbirnam_collect.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::prepare::h372cd85dbcdb53c4  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::native_id::storage::references::h1072e3b7b20641a1  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h0a597daa6f3589fe  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "nanov2_calloc  (in libsystem_malloc.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "relocate_sections  (in libbirnam_tcc.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "__bzero  (in libsystem_platform.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "__lseek  (in libsystem_kernel.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_artifact::inspect::h80e70e27d2a493e5  (in libbirnam_artifact.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_artifact_codec::provider_source::portable_program::inspect::h9869b0ad0df1cc49  (in libbirnam_portable_code.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::Memory::trace_owner::hf154b625cc597faf  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::collection::emit::h83de9ac64dab7e62  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::construction::can_omit::h2da9ac4345944d70  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::Execution::invoke_body::hc643f34c2415b227  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::Execution::optional_query::h004d17ef54824615  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::call::hcd10ed233eafb5bc  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::references::hfbce334857b26338  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h6e8ab43e3f014ce0  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::h4c6b00dce49750ce  (in libbirnam_tcc.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::reserve_rehash::h56d39f61a1ca1651  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "put_elf_sym  (in libbirnam_tcc.dylib)",
+          "samples": 5
+        }
+      ]
+    },
+    "before-late.sample.txt": {
+      "path": "/tmp/birnam-runtime-audit-20261019/before-late.sample.txt",
+      "sha256": "8c3d084684c88a91207aa680060550b157207fb07c8404e3d47a600670f4126b",
+      "main_thread_samples": 1482,
+      "named_leaf_counts_at_least_five": [
+        {
+          "function": "birnam_id::id::id_dispatch::bind::he8d786ab893f0ed2  (in libbirnam_id.dylib)",
+          "samples": 118
+        },
+        {
+          "function": "__open  (in libsystem_kernel.dylib)",
+          "samples": 113
+        },
+        {
+          "function": "mkdir  (in libsystem_kernel.dylib)",
+          "samples": 59
+        },
+        {
+          "function": "__unlink  (in libsystem_kernel.dylib)",
+          "samples": 58
+        },
+        {
+          "function": "_platform_memmove  (in libsystem_platform.dylib)",
+          "samples": 58
+        },
+        {
+          "function": "stat  (in libsystem_kernel.dylib)",
+          "samples": 54
+        },
+        {
+          "function": "read  (in libsystem_kernel.dylib)",
+          "samples": 51
+        },
+        {
+          "function": "write  (in libsystem_kernel.dylib)",
+          "samples": 47
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_collect.dylib)",
+          "samples": 42
+        },
+        {
+          "function": "nanov2_malloc  (in libsystem_malloc.dylib)",
+          "samples": 40
+        },
+        {
+          "function": "__open_nocancel  (in libsystem_kernel.dylib)",
+          "samples": 38
+        },
+        {
+          "function": "__rmdir  (in libsystem_kernel.dylib)",
+          "samples": 32
+        },
+        {
+          "function": "birnam_id::id::native_id::message::h21b3b72e0f13ca99  (in libbirnam_id.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "close  (in libsystem_kernel.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_object_model.dylib)",
+          "samples": 28
+        },
+        {
+          "function": "birnam_collect::collection::emit::h83de9ac64dab7e62  (in libbirnam_collect.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "_nanov2_free  (in libsystem_malloc.dylib)",
+          "samples": 25
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::send::h0bd8b8b2e94eb5a1  (in libbirnam_id.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "__getdirentries64  (in libsystem_kernel.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha3b3b75f6718052b  (in libbirnam_collect.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_id.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::existing::h92ea70c964aeaf0e  (in libbirnam_id.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h311074f765fa5f80  (in libbirnam_root_registry.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "__open  (in dyld)",
+          "samples": 14
+        },
+        {
+          "function": "birnam_object_model::native::Model::extent::h02c64bbe2c8fe269  (in libbirnam_object_model.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1d1e880d84f3ce15  (in libbirnam_object_model.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "_platform_memcmp  (in libsystem_platform.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "_RNvNtNtCsg55jX0GwzBC_3std6thread7current7current  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_collect::construction::intern::hab6b5bf025aeeaaf  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocate::h861e57c8d8a05e9e  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::hb1aea16c51dd7274  (in libbirnam_root_registry.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "_malloc_zone_malloc  (in libsystem_malloc.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "_platform_memset  (in libsystem_platform.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_object_model::native::Model::identity::hbe3934b2fe35965b  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_object_model::native::image_put::h0ab0684d8658b135  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h31afd2cbc9cc5189  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "tlv_get_addr  (in libdyld.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_object_model::native::references::h142a9e200621eba2  (in libbirnam_object_model.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "__lseek  (in libsystem_kernel.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_free  (in libsystem_malloc.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::find_hashed_index::ha7b29bfa3c6aba56  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "build_got_entries  (in libbirnam_tcc.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "madvise  (in libsystem_kernel.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_image.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_platform_strcmp  (in libsystem_platform.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::native_id::storage::references::h1072e3b7b20641a1  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h6e8ab43e3f014ce0  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "dyld3::MachOFile::trieWalk(Diagnostics&, unsigned char const*, unsigned char const*, char const*)  (in dyld)",
+          "samples": 6
+        },
+        {
+          "function": "readlink  (in libsystem_kernel.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::Memory::send::hafeea7481e434760  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h0c10c4cc91de0302  (in libbirnam_object_model.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "strcmp  (in dyld)",
+          "samples": 5
+        },
+        {
+          "function": "sys_icache_invalidate  (in libsystem_platform.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "tcc_load_object_file  (in libbirnam_tcc.dylib)",
+          "samples": 5
+        }
+      ]
+    },
+    "current-early.sample.txt": {
+      "path": "/tmp/birnam-runtime-audit-20261019/current-early.sample.txt",
+      "sha256": "c5dc5e51892d3318fae1584c06b5a88ebc5e32622fbff902319d3436090cf702",
+      "main_thread_samples": 2481,
+      "named_leaf_counts_at_least_five": [
+        {
+          "function": "birnam_id::id::id_dispatch::bind::he8d786ab893f0ed2  (in libbirnam_id.dylib)",
+          "samples": 269
+        },
+        {
+          "function": "_platform_memmove  (in libsystem_platform.dylib)",
+          "samples": 245
+        },
+        {
+          "function": "read  (in libsystem_kernel.dylib)",
+          "samples": 101
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_collect.dylib)",
+          "samples": 64
+        },
+        {
+          "function": "__open  (in libsystem_kernel.dylib)",
+          "samples": 53
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_portable_code.dylib)",
+          "samples": 51
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::existing::h92ea70c964aeaf0e  (in libbirnam_id.dylib)",
+          "samples": 48
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::send::h0bd8b8b2e94eb5a1  (in libbirnam_id.dylib)",
+          "samples": 46
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::native_bindings_match::he6c1d0a6eca0d10f  (in libbirnam_id.dylib)",
+          "samples": 44
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_codegen_runtime.dylib)",
+          "samples": 44
+        },
+        {
+          "function": "birnam_id::id::native_id::message::h21b3b72e0f13ca99  (in libbirnam_id.dylib)",
+          "samples": 41
+        },
+        {
+          "function": "_platform_memcmp  (in libsystem_platform.dylib)",
+          "samples": 34
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h311074f765fa5f80  (in libbirnam_root_registry.dylib)",
+          "samples": 32
+        },
+        {
+          "function": "write  (in libsystem_kernel.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "close  (in libsystem_kernel.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h31afd2cbc9cc5189  (in libbirnam_collect.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "mkdir  (in libsystem_kernel.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "nanov2_malloc  (in libsystem_malloc.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "_nanov2_free  (in libsystem_malloc.dylib)",
+          "samples": 26
+        },
+        {
+          "function": "_platform_memset  (in libsystem_platform.dylib)",
+          "samples": 25
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_execution.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "__open_nocancel  (in libsystem_kernel.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "birnam_execution::machine::loop_drive::h0804d3d8ce1ceab9  (in libbirnam_execution.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_object_model.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocate::h861e57c8d8a05e9e  (in libbirnam_id.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha3b3b75f6718052b  (in libbirnam_collect.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "__unlink  (in libsystem_kernel.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "birnam_bytes::binary_hash::wyhash::hccbf4622ebb2c816  (in libbirnam_bytes.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4e6a33c1fe5a7567  (in libbirnam_execution.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::hb1aea16c51dd7274  (in libbirnam_root_registry.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "birnam_collect::Memory::send::hafeea7481e434760  (in libbirnam_collect.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "tlv_get_addr  (in libdyld.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12189eafc]",
+          "samples": 15
+        },
+        {
+          "function": "stat  (in libsystem_kernel.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1d1e880d84f3ce15  (in libbirnam_object_model.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "core::slice::sort::unstable::quicksort::quicksort::ha30b5cb977d8ac0b  (in libbirnam_collect.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "_free  (in libsystem_malloc.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h0c08d28584dec4eb  (in libbirnam_id.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "_$LT$birnam_execution..machine..Op$u20$as$u20$core..cmp..PartialEq$GT$::eq::h0f6bcbfda43d797f  (in libbirnam_execution.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "__rmdir  (in libsystem_kernel.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_execution::names::Names::get::hb532f0449a3b24a3  (in libbirnam_execution.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_object_model::native::Model::identity::hbe3934b2fe35965b  (in libbirnam_object_model.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h5ff6ba7d314a016b  (in libbirnam_execution.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x106bb27d8]",
+          "samples": 9
+        },
+        {
+          "function": "__open  (in dyld)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_collect::collection::emit::h83de9ac64dab7e62  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_identity::hb3e9cd790bbc1d69  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::retain::h3a3fe4b6e143b3f7  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::reserve_rehash::h56d39f61a1ca1651  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "sha2::sha256::compress256::h9ce302d36fc1f1df  (in libbirnam_bytes.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "_RNvNtNtCsg55jX0GwzBC_3std6thread7current7current  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_id.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "__lseek  (in libsystem_kernel.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_artifact_codec::provider_source::portable_program::inspect::h9869b0ad0df1cc49  (in libbirnam_portable_code.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_object_model::native::Model::extent::h02c64bbe2c8fe269  (in libbirnam_object_model.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h0c10c4cc91de0302  (in libbirnam_object_model.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::hcbda729a95203a73  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "nanov2_calloc  (in libsystem_malloc.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "__getdirentries64  (in libsystem_kernel.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_object_model.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_collect::collection::allocation::h3ae3f38780a2e872  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::prepare::h372cd85dbcdb53c4  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_at::hfb4b47224eb66f3c  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_queries_current::h7757f23d24bc1373  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_object_model::native::Model::send::h7deaa0c4f1f995fe  (in libbirnam_object_model.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_$LT$alloc..vec..Vec$LT$T$GT$$u20$as$u20$alloc..vec..spec_from_iter_nested..SpecFromIterNested$LT$T$C$I$GT$$GT$::from_iter::he7167cfb6cb44f31  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "_malloc_zone_malloc  (in libsystem_malloc.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_artifact::inspect::h80e70e27d2a493e5  (in libbirnam_artifact.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::Execution::invoke_body::hc643f34c2415b227  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::machine::operation::_$u7b$$u7b$closure$u7d$$u7d$::h582f039ca0de7266  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::identity::h5b41dae8d4c6cecb  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_namespace::native::find::h0d16fb709f110b54  (in libbirnam_namespace.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h1f5209fc3a129d3b  (in libbirnam_collect.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h0a597daa6f3589fe  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1200f9d70]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1200f9d74]",
+          "samples": 5
+        },
+        {
+          "function": "DYLD-STUB$$memcmp  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "_kernelrpc_mach_vm_deallocate_trap  (in libsystem_kernel.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_artifact_codec::provider_source::portable_inventory::Inventory::program::h1345e307ebb51cc9  (in libbirnam_portable_code.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::Memory::trace_owner::hf154b625cc597faf  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::construction::intern::hab6b5bf025aeeaaf  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::Execution::optional_query::h004d17ef54824615  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::machine::State::retire_objects::hfe6fcfabf7a8deda  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_root_registry::retain::hf10293bea38a2721  (in libbirnam_root_registry.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1b8831bd686fa21e  (in libbirnam_isolate.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4c2cfcea76eaae9b  (in libbirnam_integer.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h7e78852a3e0eeb62  (in libbirnam_store.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "dyld3::MachOFile::trieWalk(Diagnostics&, unsigned char const*, unsigned char const*, char const*)  (in dyld)",
+          "samples": 5
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h75fe1a69db3401db  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "madvise  (in libsystem_kernel.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "sys_icache_invalidate  (in libsystem_platform.dylib)",
+          "samples": 5
+        }
+      ]
+    },
+    "current-late.sample.txt": {
+      "path": "/tmp/birnam-runtime-audit-20261019/current-late.sample.txt",
+      "sha256": "f3dc125e76ad9d75da15ca07e05350b18bf5efa87f856998480e2ac71bc04176",
+      "main_thread_samples": 1712,
+      "named_leaf_counts_at_least_five": [
+        {
+          "function": "__open  (in libsystem_kernel.dylib)",
+          "samples": 162
+        },
+        {
+          "function": "__unlink  (in libsystem_kernel.dylib)",
+          "samples": 153
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::bind::he8d786ab893f0ed2  (in libbirnam_id.dylib)",
+          "samples": 97
+        },
+        {
+          "function": "mkdir  (in libsystem_kernel.dylib)",
+          "samples": 84
+        },
+        {
+          "function": "write  (in libsystem_kernel.dylib)",
+          "samples": 82
+        },
+        {
+          "function": "stat  (in libsystem_kernel.dylib)",
+          "samples": 75
+        },
+        {
+          "function": "read  (in libsystem_kernel.dylib)",
+          "samples": 70
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_collect.dylib)",
+          "samples": 60
+        },
+        {
+          "function": "close  (in libsystem_kernel.dylib)",
+          "samples": 56
+        },
+        {
+          "function": "__rmdir  (in libsystem_kernel.dylib)",
+          "samples": 52
+        },
+        {
+          "function": "_platform_memmove  (in libsystem_platform.dylib)",
+          "samples": 49
+        },
+        {
+          "function": "__open_nocancel  (in libsystem_kernel.dylib)",
+          "samples": 40
+        },
+        {
+          "function": "nanov2_malloc  (in libsystem_malloc.dylib)",
+          "samples": 32
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha3b3b75f6718052b  (in libbirnam_collect.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "birnam_id::id::native_id::message::h21b3b72e0f13ca99  (in libbirnam_id.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "__open  (in dyld)",
+          "samples": 20
+        },
+        {
+          "function": "__getdirentries64  (in libsystem_kernel.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "birnam_collect::collection::emit::h83de9ac64dab7e62  (in libbirnam_collect.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h311074f765fa5f80  (in libbirnam_root_registry.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::send::h0bd8b8b2e94eb5a1  (in libbirnam_id.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h31afd2cbc9cc5189  (in libbirnam_collect.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_object_model.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "_nanov2_free  (in libsystem_malloc.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "dyld3::MachOFile::trieWalk(Diagnostics&, unsigned char const*, unsigned char const*, char const*)  (in dyld)",
+          "samples": 16
+        },
+        {
+          "function": "__lseek  (in libsystem_kernel.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "build_got_entries  (in libbirnam_tcc.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_collect.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "_malloc_zone_malloc  (in libsystem_malloc.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "madvise  (in libsystem_kernel.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "_$LT$alloc..vec..Vec$LT$T$GT$$u20$as$u20$alloc..vec..spec_from_iter_nested..SpecFromIterNested$LT$T$C$I$GT$$GT$::from_iter::he7167cfb6cb44f31  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "_free  (in libsystem_malloc.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_id::id::native_id::storage::references::h1072e3b7b20641a1  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "put_elf_sym  (in libbirnam_tcc.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "_platform_memcmp  (in libsystem_platform.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_collect::construction::intern::hab6b5bf025aeeaaf  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_object_model::native::Model::identity::hbe3934b2fe35965b  (in libbirnam_object_model.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "dyld3::MachOFile::forEachLoadCommand(Diagnostics&, void (load_command const*, bool&) block_pointer) const  (in dyld)",
+          "samples": 9
+        },
+        {
+          "function": "sys_icache_invalidate  (in libsystem_platform.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_execution::references::hfbce334857b26338  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_object_model::native::references::h142a9e200621eba2  (in libbirnam_object_model.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "tlv_get_addr  (in libdyld.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "_kernelrpc_mach_vm_deallocate_trap  (in dyld)",
+          "samples": 7
+        },
+        {
+          "function": "_platform_memset  (in libsystem_platform.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_at::hfb4b47224eb66f3c  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::find_hashed_index::ha7b29bfa3c6aba56  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1d1e880d84f3ce15  (in libbirnam_object_model.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::slice::sort::unstable::quicksort::quicksort::ha30b5cb977d8ac0b  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "relocate_sections  (in libbirnam_tcc.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::is_behavior::h9bc6a4c8e209ca41  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_object_model::native::Model::extent::h02c64bbe2c8fe269  (in libbirnam_object_model.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_object_model::native::Model::send::h7deaa0c4f1f995fe  (in libbirnam_object_model.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "fstatfs  (in libsystem_kernel.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "readlink  (in libsystem_kernel.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::existing::h92ea70c964aeaf0e  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "small_free_list_add_ptr  (in libsystem_malloc.dylib)",
+          "samples": 5
+        }
+      ]
+    },
+    "json-full.sample.txt": {
+      "path": "/tmp/birnam-runtime-audit-20261019/json-full.sample.txt",
+      "sha256": "881d5f1f077f1d44b2b29156f855fe8e666b695e765c8f83de749a6923ee4450",
+      "main_thread_samples": 4226,
+      "named_leaf_counts_at_least_five": [
+        {
+          "function": "birnam_id::id::id_dispatch::bind::he8d786ab893f0ed2  (in libbirnam_id.dylib)",
+          "samples": 671
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_collect.dylib)",
+          "samples": 187
+        },
+        {
+          "function": "_platform_memmove  (in libsystem_platform.dylib)",
+          "samples": 179
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::existing::h92ea70c964aeaf0e  (in libbirnam_id.dylib)",
+          "samples": 133
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::native_bindings_match::he6c1d0a6eca0d10f  (in libbirnam_id.dylib)",
+          "samples": 116
+        },
+        {
+          "function": "birnam_id::id::native_id::message::h21b3b72e0f13ca99  (in libbirnam_id.dylib)",
+          "samples": 113
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::send::h0bd8b8b2e94eb5a1  (in libbirnam_id.dylib)",
+          "samples": 102
+        },
+        {
+          "function": "_platform_memcmp  (in libsystem_platform.dylib)",
+          "samples": 80
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_object_model.dylib)",
+          "samples": 60
+        },
+        {
+          "function": "_platform_memset  (in libsystem_platform.dylib)",
+          "samples": 59
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_execution.dylib)",
+          "samples": 57
+        },
+        {
+          "function": "_nanov2_free  (in libsystem_malloc.dylib)",
+          "samples": 53
+        },
+        {
+          "function": "nanov2_malloc  (in libsystem_malloc.dylib)",
+          "samples": 53
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h31afd2cbc9cc5189  (in libbirnam_collect.dylib)",
+          "samples": 48
+        },
+        {
+          "function": "birnam_collect::collection::emit::h83de9ac64dab7e62  (in libbirnam_collect.dylib)",
+          "samples": 47
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocate::h861e57c8d8a05e9e  (in libbirnam_id.dylib)",
+          "samples": 47
+        },
+        {
+          "function": "tlv_get_addr  (in libdyld.dylib)",
+          "samples": 42
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha3b3b75f6718052b  (in libbirnam_collect.dylib)",
+          "samples": 35
+        },
+        {
+          "function": "birnam_execution::names::Names::get::hb532f0449a3b24a3  (in libbirnam_execution.dylib)",
+          "samples": 33
+        },
+        {
+          "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::find::h18f835832ad9bc5f  (in libbirnam_execution.dylib)",
+          "samples": 31
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_at::hfb4b47224eb66f3c  (in libbirnam_id.dylib)",
+          "samples": 31
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::default_allocation::h391efa3454d51d90  (in libbirnam_id.dylib)",
+          "samples": 31
+        },
+        {
+          "function": "birnam_object_model::native::Model::send::h7deaa0c4f1f995fe  (in libbirnam_object_model.dylib)",
+          "samples": 31
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1d1e880d84f3ce15  (in libbirnam_object_model.dylib)",
+          "samples": 30
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_integer.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_collect.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "birnam_execution::machine::loop_drive::h0804d3d8ce1ceab9  (in libbirnam_execution.dylib)",
+          "samples": 28
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h3a4dc110ad28dd4e  (in libbirnam_object_model.dylib)",
+          "samples": 28
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h5ff6ba7d314a016b  (in libbirnam_execution.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "birnam_collect::Memory::send::hafeea7481e434760  (in libbirnam_collect.dylib)",
+          "samples": 26
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4e6a33c1fe5a7567  (in libbirnam_execution.dylib)",
+          "samples": 24
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::prepare::h372cd85dbcdb53c4  (in libbirnam_execution.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::retain::h3a3fe4b6e143b3f7  (in libbirnam_object_model.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_id.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_queries_current::h7757f23d24bc1373  (in libbirnam_id.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h837d319ffa016b29  (in libbirnam_execution.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "core::slice::sort::unstable::quicksort::quicksort::ha30b5cb977d8ac0b  (in libbirnam_collect.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h75fe1a69db3401db  (in libbirnam_execution.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1581ef4d8]",
+          "samples": 21
+        },
+        {
+          "function": "birnam_id::id::native_id::storage::references::h1072e3b7b20641a1  (in libbirnam_id.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "birnam_id::id::vtable::Vtables::record::h173c95bcb08ec057  (in libbirnam_id.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "birnam_object_model::native::Model::identity::hbe3934b2fe35965b  (in libbirnam_object_model.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "_free  (in libsystem_malloc.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "_malloc_zone_malloc  (in libsystem_malloc.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "birnam_root_registry::retain::hf10293bea38a2721  (in libbirnam_root_registry.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "birnam_object_model::native::Model::extent::h02c64bbe2c8fe269  (in libbirnam_object_model.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "birnam_collect::construction::intern::hab6b5bf025aeeaaf  (in libbirnam_collect.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "birnam_execution::machine::acquire::hdb8cc6f442b17403  (in libbirnam_execution.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x17346e1e4]",
+          "samples": 16
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4c2cfcea76eaae9b  (in libbirnam_integer.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::is_behavior::h9bc6a4c8e209ca41  (in libbirnam_id.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h0c10c4cc91de0302  (in libbirnam_object_model.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "_RNvNtNtCsg55jX0GwzBC_3std6thread7current7current  (in libbirnam_collect.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_object_model.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "birnam_integer::native::execute::hd0c46f48fc4ab557  (in libbirnam_integer.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h311074f765fa5f80  (in libbirnam_root_registry.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h3a6dda015a67f3fe  (in libbirnam_execution.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "birnam_alien::runtime::retire::h4c640df010218de4  (in libbirnam_alien.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_execution.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "birnam_collect::construction::allocate::h4b929426fec4df8a  (in libbirnam_collect.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "birnam_execution::machine::operation::_$u7b$$u7b$closure$u7d$$u7d$::h582f039ca0de7266  (in libbirnam_execution.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::bind::h18eaebbedc05baf3  (in libbirnam_id.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "birnam_object_model::native::references::h142a9e200621eba2  (in libbirnam_object_model.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h6e8ab43e3f014ce0  (in libbirnam_id.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h1f5209fc3a129d3b  (in libbirnam_collect.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "_$LT$birnam_execution..machine..Op$u20$as$u20$core..cmp..PartialEq$GT$::eq::h0f6bcbfda43d797f  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_abi::binding_guard::BindingGuard::admits::hd699746351952fe6  (in libbirnam_object_model.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_execution::Execution::invoke_body::hc643f34c2415b227  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_execution::machine::default_capture_entry::hdfa290f6cb11e316  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_execution::objects::Objects::read_payload_word::h0410a90d87f9f574  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::allocation_queries_current::h4519aff4b4f18706  (in libbirnam_id.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "birnam_integer::native::Number::matches_representation::h4ba80ec95baf4fb7  (in libbirnam_integer.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h637cb0c0e6851a0e  (in libbirnam_object_model.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::hcbda729a95203a73  (in libbirnam_collect.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::hb1aea16c51dd7274  (in libbirnam_root_registry.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1581ef4d4]",
+          "samples": 10
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x166e7ad10]",
+          "samples": 10
+        },
+        {
+          "function": "_$LT$alloc..vec..Vec$LT$T$GT$$u20$as$u20$alloc..vec..spec_from_iter_nested..SpecFromIterNested$LT$T$C$I$GT$$GT$::from_iter::he7167cfb6cb44f31  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_collect::Memory::trace_owner::hf154b625cc597faf  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_execution::execution::initialize_action::hbf1fdbd7ea182248  (in libbirnam_execution.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_identity::hb3e9cd790bbc1d69  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::symbol_bytes::h25eab42ab3ef209f  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_integer::native::can_omit_indexing::hd64a68f95c3a0623  (in libbirnam_integer.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_namespace::native::find::h0d16fb709f110b54  (in libbirnam_namespace.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::h43c1dde242a6df86  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::hba041cc011f72b66  (in libbirnam_peg.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x172ec34e0]",
+          "samples": 9
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_collect::construction::can_omit::h2da9ac4345944d70  (in libbirnam_collect.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::find_hashed_index::ha7b29bfa3c6aba56  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_integer.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_namespace.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_execution::Execution::selected::h29cd74d4eb78f420  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_execution::references::hfbce334857b26338  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::bytes_of::he15a21ca47686713  (in libbirnam_id.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "core::slice::sort::shared::smallsort::small_sort_general::h8a07a1d0020d5570  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x17346e2ec]",
+          "samples": 7
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x173476208]",
+          "samples": 7
+        },
+        {
+          "function": "birnam_abi::binding_guard::BindingGuard::admits::hd699746351952fe6  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_collect::collection::run::h397757187b98fbe6  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::Execution::optional_query::h004d17ef54824615  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::machine::State::retire_objects::hfe6fcfabf7a8deda  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::machine::cap::hf35aea6ba85d8649  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_object_model::native::Model::allocate::h924e30375554ef99  (in libbirnam_object_model.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_root_registry::release::hba515496a31a9c3b  (in libbirnam_root_registry.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h7e78852a3e0eeb62  (in libbirnam_store.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h58fc008ab965dd19  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::hbbc2406675e231d4  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1581ef4ec]",
+          "samples": 6
+        },
+        {
+          "function": "birnam_collect::collection::allocation::h3ae3f38780a2e872  (in libbirnam_collect.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::capability_for_object::h1eb4abe821f3f349  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::decode_action::h9f926acea36e0a5c  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::resolve_transfers::hb50b6edbd09f898d  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_size::h54650b4953338e9b  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::identity::h5b41dae8d4c6cecb  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_integer::native::word_of::h246e351263064d33  (in libbirnam_integer.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_portable_code::Value::edges::h6b3e648327b81894  (in libbirnam_portable_code.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1b8831bd686fa21e  (in libbirnam_isolate.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::h4c6b00dce49750ce  (in libbirnam_tcc.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "mach_msg2_trap  (in libsystem_kernel.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "madvise  (in libsystem_kernel.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1581ef51c]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1581ef5e0]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1581ef8a4]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x17347e1c0]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x17348622c]",
+          "samples": 5
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_string.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send_named::h49490851f99352dd  (in libbirnam_object_model.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::Memory::identity::hea6ffca7aae7e380  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::attach::hc9927424012e957c  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_collect::collection::visit::h52ed361184279e5f  (in libbirnam_collect.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::Execution::value_factory::h4ad79b08f392af8c  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::binding_proof::matches_all::h35064143d78c97a3  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::write_current_oop::h665a213b9cd320ab  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::execution::tail_entry::_$LT$impl$u20$birnam_execution..execution..ExecutionState$GT$::try_restart_registered_tail::he4968553fd614054  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::canonical_namespace::h67e85d70d096c38c  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::machine::refresh::hb4d04ccee73b3b71  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::native_abi::incoming::h54489c36de676d15  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::objects::Objects::payload_size::h7bcf0d4f16ce8a2e  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_integer::native::Number::send::h63dfbb1fc2bc7023  (in libbirnam_integer.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h62cfcfa45b4a3a6e  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha6448144de330f88  (in libbirnam_id.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "nanov2_calloc  (in libsystem_malloc.dylib)",
+          "samples": 5
+        }
+      ]
+    },
+    "logue-crowded.sample.txt": {
+      "path": "/tmp/birnam-runtime-audit-20261019/logue-crowded.sample.txt",
+      "sha256": "b4de74ad1c2d07c8d8ac39b4e6b5f7a8f401981335e4fd35664913a2b941f664",
+      "main_thread_samples": 4190,
+      "named_leaf_counts_at_least_five": [
+        {
+          "function": "birnam_id::id::id_dispatch::bind::he8d786ab893f0ed2  (in libbirnam_id.dylib)",
+          "samples": 555
+        },
+        {
+          "function": "_platform_memmove  (in libsystem_platform.dylib)",
+          "samples": 243
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::existing::h92ea70c964aeaf0e  (in libbirnam_id.dylib)",
+          "samples": 168
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::native_bindings_match::he6c1d0a6eca0d10f  (in libbirnam_id.dylib)",
+          "samples": 144
+        },
+        {
+          "function": "_platform_memcmp  (in libsystem_platform.dylib)",
+          "samples": 97
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_execution.dylib)",
+          "samples": 95
+        },
+        {
+          "function": "birnam_id::id::id_dispatch::send::h0bd8b8b2e94eb5a1  (in libbirnam_id.dylib)",
+          "samples": 85
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_collect.dylib)",
+          "samples": 83
+        },
+        {
+          "function": "birnam_id::id::native_id::message::h21b3b72e0f13ca99  (in libbirnam_id.dylib)",
+          "samples": 81
+        },
+        {
+          "function": "_platform_memset  (in libsystem_platform.dylib)",
+          "samples": 78
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::prepare::h372cd85dbcdb53c4  (in libbirnam_execution.dylib)",
+          "samples": 55
+        },
+        {
+          "function": "birnam_execution::names::Names::get::hb532f0449a3b24a3  (in libbirnam_execution.dylib)",
+          "samples": 52
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h0c08d28584dec4eb  (in libbirnam_id.dylib)",
+          "samples": 52
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h3a4dc110ad28dd4e  (in libbirnam_object_model.dylib)",
+          "samples": 52
+        },
+        {
+          "function": "birnam_execution::machine::loop_drive::h0804d3d8ce1ceab9  (in libbirnam_execution.dylib)",
+          "samples": 44
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_integer.dylib)",
+          "samples": 40
+        },
+        {
+          "function": "_$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::find::h18f835832ad9bc5f  (in libbirnam_execution.dylib)",
+          "samples": 38
+        },
+        {
+          "function": "_nanov2_free  (in libsystem_malloc.dylib)",
+          "samples": 37
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h31afd2cbc9cc5189  (in libbirnam_collect.dylib)",
+          "samples": 37
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_queries_current::h7757f23d24bc1373  (in libbirnam_id.dylib)",
+          "samples": 32
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4e6a33c1fe5a7567  (in libbirnam_execution.dylib)",
+          "samples": 32
+        },
+        {
+          "function": "birnam_collect::Memory::send::hafeea7481e434760  (in libbirnam_collect.dylib)",
+          "samples": 30
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_object_model.dylib)",
+          "samples": 29
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::ha3b3b75f6718052b  (in libbirnam_collect.dylib)",
+          "samples": 28
+        },
+        {
+          "function": "birnam_id::id::vtable::Vtables::record::h173c95bcb08ec057  (in libbirnam_id.dylib)",
+          "samples": 27
+        },
+        {
+          "function": "nanov2_malloc  (in libsystem_malloc.dylib)",
+          "samples": 26
+        },
+        {
+          "function": "tlv_get_addr  (in libdyld.dylib)",
+          "samples": 24
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x1559574e0]",
+          "samples": 23
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::default_allocation::h391efa3454d51d90  (in libbirnam_id.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h837d319ffa016b29  (in libbirnam_execution.dylib)",
+          "samples": 23
+        },
+        {
+          "function": "birnam_root_registry::retain::hf10293bea38a2721  (in libbirnam_root_registry.dylib)",
+          "samples": 22
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x14011ad28]",
+          "samples": 21
+        },
+        {
+          "function": "_$LT$birnam_execution..machine..Op$u20$as$u20$core..cmp..PartialEq$GT$::eq::h0f6bcbfda43d797f  (in libbirnam_execution.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "birnam_execution::Execution::invoke_body::hc643f34c2415b227  (in libbirnam_execution.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "birnam_namespace::native::find::h0d16fb709f110b54  (in libbirnam_namespace.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h0c10c4cc91de0302  (in libbirnam_object_model.dylib)",
+          "samples": 21
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h75fe1a69db3401db  (in libbirnam_execution.dylib)",
+          "samples": 20
+        },
+        {
+          "function": "birnam_execution::numeric::invoke::h4f6bc16b657da46a  (in libbirnam_execution.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "core::slice::sort::unstable::quicksort::quicksort::ha30b5cb977d8ac0b  (in libbirnam_collect.dylib)",
+          "samples": 19
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_collect.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h4c2cfcea76eaae9b  (in libbirnam_integer.dylib)",
+          "samples": 18
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e021e4]",
+          "samples": 17
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_execution.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "birnam_execution::machine::operation::_$u7b$$u7b$closure$u7d$$u7d$::h582f039ca0de7266  (in libbirnam_execution.dylib)",
+          "samples": 17
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::bind::h18eaebbedc05baf3  (in libbirnam_id.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "birnam_id::id::symbol::Symbols::bytes_of::he15a21ca47686713  (in libbirnam_id.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::hba041cc011f72b66  (in libbirnam_peg.dylib)",
+          "samples": 16
+        },
+        {
+          "function": "birnam_collect::construction::allocate::h4b929426fec4df8a  (in libbirnam_collect.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1d1e880d84f3ce15  (in libbirnam_object_model.dylib)",
+          "samples": 15
+        },
+        {
+          "function": "_free  (in libsystem_malloc.dylib)",
+          "samples": 14
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12dba6d10]",
+          "samples": 13
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e1a22c]",
+          "samples": 13
+        },
+        {
+          "function": "birnam_integer::native::can_omit_indexing::hd64a68f95c3a0623  (in libbirnam_integer.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h1f5209fc3a129d3b  (in libbirnam_collect.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "nanov2_calloc  (in libsystem_malloc.dylib)",
+          "samples": 13
+        },
+        {
+          "function": "birnam_execution::Execution::optional_query::h004d17ef54824615  (in libbirnam_execution.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::materialize_acquired_entry::ha1caa16def164429  (in libbirnam_execution.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h637cb0c0e6851a0e  (in libbirnam_object_model.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h5ff6ba7d314a016b  (in libbirnam_execution.dylib)",
+          "samples": 12
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x14011ad24]",
+          "samples": 11
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e0a208]",
+          "samples": 11
+        },
+        {
+          "function": "birnam_execution::Execution::value_factory::h4ad79b08f392af8c  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h311074f765fa5f80  (in libbirnam_root_registry.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h3a6dda015a67f3fe  (in libbirnam_execution.dylib)",
+          "samples": 11
+        },
+        {
+          "function": "_malloc_zone_malloc  (in libsystem_malloc.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_abi::binding_guard::BindingGuard::admits::hd699746351952fe6  (in libbirnam_object_model.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_namespace.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_collect::construction::can_omit::h2da9ac4345944d70  (in libbirnam_collect.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_execution::machine::default_capture_entry::hdfa290f6cb11e316  (in libbirnam_execution.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_execution::objects::Objects::read_payload_word::h0410a90d87f9f574  (in libbirnam_execution.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::representation_identity::hb3e9cd790bbc1d69  (in libbirnam_id.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_integer::native::execute::hd0c46f48fc4ab557  (in libbirnam_integer.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "birnam_object_model::native::Model::allocate::h924e30375554ef99  (in libbirnam_object_model.dylib)",
+          "samples": 10
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12dba6d0c]",
+          "samples": 9
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x14011b0e4]",
+          "samples": 9
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e02228]",
+          "samples": 9
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e0259c]",
+          "samples": 9
+        },
+        {
+          "function": "birnam_alien::runtime::retire::h4c640df010218de4  (in libbirnam_alien.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_execution::machine::frame_call::resolve_transfers::hb50b6edbd09f898d  (in libbirnam_execution.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_at::hfb4b47224eb66f3c  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h1b8831bd686fa21e  (in libbirnam_isolate.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::h0a597daa6f3589fe  (in libbirnam_id.dylib)",
+          "samples": 9
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x10686f450]",
+          "samples": 8
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12dba6d54]",
+          "samples": 8
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12dba6e18]",
+          "samples": 8
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e121c0]",
+          "samples": 8
+        },
+        {
+          "function": "birnam_collect::Memory::identity::hea6ffca7aae7e380  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::capability_for_object::h1eb4abe821f3f349  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_execution::machine::acquire::hdb8cc6f442b17403  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "birnam_execution::machine::refresh::hb4d04ccee73b3b71  (in libbirnam_execution.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::h43c1dde242a6df86  (in libbirnam_collect.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "mach_msg2_trap  (in libsystem_kernel.dylib)",
+          "samples": 8
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e021e0]",
+          "samples": 7
+        },
+        {
+          "function": "DYLD-STUB$$memcmp  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_$LT$alloc..vec..Vec$LT$T$GT$$u20$as$u20$alloc..vec..spec_from_iter_nested..SpecFromIterNested$LT$T$C$I$GT$$GT$::from_iter::he7167cfb6cb44f31  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_RNvNtNtCsg55jX0GwzBC_3std6thread7current7current  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_RNvNtNtCsg55jX0GwzBC_3std6thread7current7current  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::machine::State::retire_objects::hfe6fcfabf7a8deda  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::machine::cap::hf35aea6ba85d8649  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_execution::machine::invoke_registered::h13b7edb3991cee31  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocation_size::h54650b4953338e9b  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::identity::h5b41dae8d4c6cecb  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::symbol_bytes::h25eab42ab3ef209f  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_id::id::native_id::registries::allocation_queries_current::h4519aff4b4f18706  (in libbirnam_id.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_integer::native::Number::matches_representation::h4ba80ec95baf4fb7  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_integer::native::Number::send::h63dfbb1fc2bc7023  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "birnam_integer::native::word_of::h246e351263064d33  (in libbirnam_integer.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h62cfcfa45b4a3a6e  (in libbirnam_execution.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::hash::BuildHasher::hash_one::h7e78852a3e0eeb62  (in libbirnam_store.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "core::slice::sort::shared::smallsort::small_sort_general::h8a07a1d0020d5570  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::hcbda729a95203a73  (in libbirnam_collect.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::remove::h4c6b00dce49750ce  (in libbirnam_tcc.dylib)",
+          "samples": 7
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12dba6d2c]",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12fb97474]",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x14011ad3c]",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x14011ad6c]",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e0a204]",
+          "samples": 6
+        },
+        {
+          "function": "_platform_strcmp  (in libsystem_platform.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_abi::binding_guard::BindingGuard::admits::hd699746351952fe6  (in libbirnam_root_registry.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_collect::collection::emit::h83de9ac64dab7e62  (in libbirnam_collect.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::Execution::selected::h29cd74d4eb78f420  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::copy_send_operands::h63eb6e95b60e4736  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::decode_action::h9f926acea36e0a5c  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::execution::FrameArena::commit_v2_transition::he1738dfdfb3d9fb1  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_execution::machine::finish::h2663a8b2244e6a69  (in libbirnam_execution.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_id::id::native_id::objects::allocate::h861e57c8d8a05e9e  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_integer::native::from_word::hd354c90c071a8d09  (in libbirnam_integer.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "birnam_root_registry::Roots::release::hca8ce3a74f6ec739  (in libbirnam_root_registry.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::insert::h58fc008ab965dd19  (in libbirnam_id.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::map::HashMap$LT$K$C$V$C$S$C$A$GT$::retain::h3a3fe4b6e143b3f7  (in libbirnam_object_model.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "hashbrown::raw::RawTable$LT$T$C$A$GT$::remove_entry::hb1aea16c51dd7274  (in libbirnam_root_registry.dylib)",
+          "samples": 6
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12d067768]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x12dba6d24]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x152bab47c]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x15406f6b8]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e022ec]",
+          "samples": 5
+        },
+        {
+          "function": "???  (in <unknown binary>)  [0x155e1a228]",
+          "samples": 5
+        },
+        {
+          "function": "_RNvXs2_NtNtCsg55jX0GwzBC_3std4hash6randomNtB5_13DefaultHasherNtNtCsl8K0bEFm1U0_4core4hash6Hasher5write  (in libbirnam_map.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_abi::id_protocol::Protocol::send::h2855b552625a0d0b  (in libbirnam_object_model.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::execution::ExecutionState::publish_call_site::h6f5e61fb8c7dc3bc  (in libbirnam_execution.dylib)",
+          "samples": 5
+        },
+        {
+          "function": "birnam_execution::native_abi::incoming::h54489c36de676d15  (in libbirnam_execution.dylib)",
+          "samples": 5
+        }
+      ]
+    }
+  },
+  "qualification": {
+    "native_compiler_tests": 9,
+    "address_sanitizer": "All nine tests passed with libtcc C code instrumented. Initial implicit-runtime link failed; explicit installed Apple Clang ASan runtime linked successfully.",
+    "native_integration_targets": [
+      "compiler",
+      "artifact_activation",
+      "materialization",
+      "candidate_retirement",
+      "borrowed_read_inputs",
+      "byte_abi"
+    ],
+    "image": "image_owner_roundtrip passed with mapped/rebuilt/stripped/resaved child checks on final prefix",
+    "language_assertions": 847,
+    "compiled_startup": "passed with parser/compiler unavailable",
+    "whole_image_no_temp": "An existing-format baseline image fails on baseline with nonexistent TMPDIR and loads/runs on memory overlay and final prefix.",
+    "formal": {
+      "receipt": ".cargo-target/formal/results/rooting-0dzff8hq/summary.json",
+      "sha256": "1f60ae3e41455369e10abe107703e97b29fb84c20820a6c3418baefd72fb466d",
+      "theorems": 391,
+      "rejected_mutations": 122,
+      "tlc_outcomes": 266,
+      "model_source_hashes_match": true,
+      "scope": "Existing abstract rooting/borrow/invocation/lifetime models; no claim of formal verification of the libtcc C implementation."
+    }
+  },
+  "logs": {
+    "final-build.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/final-build.log",
+      "sha256": "1f2688e1d2bab9390b9c89fc28b48f28e8919e0444b275aaa88932c0235f52c3"
+    },
+    "native-memory-tests.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/native-memory-tests.log",
+      "sha256": "42a2dd2d2d3781af8f8cf7fd930bbb3a742c0a73af5ef9a85d70c80dad564f05"
+    },
+    "memory-loader-before.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/memory-loader-before.log",
+      "sha256": "6e333cefadf300e76a452c2a8e861b5e5c87be4e56bd73ab3fe6d7261acb58b5"
+    },
+    "memory-loader-tests.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/memory-loader-tests.log",
+      "sha256": "d62a6e914644a8f411a95e9f9a3dcc6fcd402b74815cd013583f80def74e7f9f"
+    },
+    "memory-loader-bounds.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/memory-loader-bounds.log",
+      "sha256": "a60f4b7c225ef0d0fa14009c5f5e72c2e25d48c3bd26f072bf418696d2bb7c20"
+    },
+    "memory-loader-parity.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/memory-loader-parity.log",
+      "sha256": "aaf09e7073e3f7f9fbca58c4ad107908d2a3a06a702e4ad3300c90fd80923423"
+    },
+    "memory-loader-asan-linked.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/memory-loader-asan-linked.log",
+      "sha256": "b2fd9afa18d422536fff1017105006bbb89ac016a271d44aa2f957400af96dd9"
+    },
+    "language-final.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/language-final.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "image-final.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/image-final.log",
+      "sha256": "93d13d19c7c1742dd4a4afadb224744d747b9602b590a26460d37dba25229793"
+    },
+    "startup-final.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/startup-final.log",
+      "sha256": "f2bdcce07330aed652f8d90db8922e113df969b70a9027dae7c38aeb20d1ea40"
+    },
+    "no-temp-image.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/no-temp-image.log",
+      "sha256": "215b03ade50cf01e6a3ce01bc089a40b90301f72f00060455936a99b3b9fbd63"
+    },
+    "no-temp-final.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/no-temp-final.log",
+      "sha256": "f06127814594ed31b38919397c05de9c72881f3e080f6b7578c197a0e0467375"
+    },
+    "formal.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/formal.log",
+      "sha256": "0c630fd870438df38e1bfa4a3dc4b7e08987a7a5b624a072e9c8a08e3e5a6c1f"
+    },
+    "memory-comparison.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/memory-comparison.log",
+      "sha256": "ff6f3504efeaaaf9e262f7d64d780781b2c94d73fc12f30602b41fb6ac07c6ff"
+    },
+    "comparison.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/comparison.log",
+      "sha256": "6e0d00dfdf0b67908f4d0dea9e2c7161049cfd1c92f5c44fa01777349dfa8d8a"
+    },
+    "runtime-sampling.log": {
+      "path": "/tmp/birnam-runtime-audit-20261019/runtime-sampling.log",
+      "sha256": "907251d62a7faec81d02ce8408ef48e75cdd78e76f90859ce89f3fcb37c839b7"
+    }
+  },
+  "raw_application_results": {
+    "log-summary/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/log-summary/results.json",
+      "sha256": "29ff06cd536e174aef884b268951b38fb5190f6f9e33f5a3bed8b31beb921f0c"
+    },
+    "logue/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/logue/results.json",
+      "sha256": "e24858100387bc4c65143039e38b8a0ac35e2578de533e656fb512fd4eef49f5"
+    },
+    "pair-json-0-baseline/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-json-0-baseline/results.json",
+      "sha256": "2c2746ceb1c13c5b98d2248475a60c9d07f2c5604df8996bf1cc716c07272bac"
+    },
+    "pair-logue-0-baseline/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-logue-0-baseline/results.json",
+      "sha256": "8065c45bf799feb9135fc145fe98bc114473e18f1569ff8a23490835bcea0d46"
+    },
+    "pair-json-1-combined/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-json-1-combined/results.json",
+      "sha256": "fe4a7d526384756fd7b0890dedca5e003b10b580402ffa6010ec518db3c14dd1"
+    },
+    "pair-logue-1-combined/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-logue-1-combined/results.json",
+      "sha256": "9213584df0fd07d537493a3e6034d2a4312afb45fac3e99cd32781905fdf3b41"
+    },
+    "pair-json-2-combined/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-json-2-combined/results.json",
+      "sha256": "4bf87f74eecd141acbdf63855d314cda2315c5009efb01179e0eb1ce50aa80ce"
+    },
+    "pair-logue-2-combined/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-logue-2-combined/results.json",
+      "sha256": "be57f54d7808df7dc7d6ef443215658bc3912003b3a0d3cb3d19efbda54e1490"
+    },
+    "pair-json-3-baseline/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-json-3-baseline/results.json",
+      "sha256": "06a9f9ef04ef76ed9d388e3f047b43723f7201d9e0dc208d18629fe9e3a812d0"
+    },
+    "pair-logue-3-baseline/results.json": {
+      "path": "/tmp/birnam-runtime-audit-20261019/pair-logue-3-baseline/results.json",
+      "sha256": "3af00286d8a891832f5f3f82f0c0953bb41808285e44dd1dbffabf1e634424fc"
+    }
+  },
+  "drivers": {
+    "profile_startup.py": {
+      "sha256": "99e336a70551e4bb7c51ad149f4be19e6003807fe9aa2adb5ec267a8b1bf508d",
+      "source": "import os,subprocess,time,json,hashlib\nfrom pathlib import Path\nwork=Path('/tmp/birnam-runtime-audit-20261019'); script=work/'ready.birnam';script.write_text('[System println: \"ready\"]\\n')\nenv={k:v for k,v in os.environ.items() if not k.startswith('BIRNAM_')};env['BIRNAM_GC_PRECISE']='1'\nprefixes={'before':'/tmp/birnam-image-simplification/prefix','current':'/tmp/birnam-candidate-policy/compact-prefix'}\nrows=[]\nfor name,prefix in prefixes.items():\n for phase,delay,duration in [('early',0.05,3),('late',2.4,2)]:\n  p=subprocess.Popen([prefix+'/bin/birnam',str(script)],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)\n  time.sleep(delay);path=work/(name+'-'+phase+'.sample.txt')\n  sampled=subprocess.run(['/usr/bin/sample',str(p.pid),str(duration),'1','-file',str(path)],capture_output=True,text=True,timeout=20)\n  out,err=p.communicate(timeout=30)\n  assert p.returncode==0 and out==b'ready\\n' and not err,(name,out,err)\n  assert path.exists() and path.stat().st_size,(sampled.returncode,sampled.stderr)\n  rows.append({'variant':name,'phase':phase,'delay_seconds':delay,'duration_seconds':duration,'sample_status':sampled.returncode,'path':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})\n  print(name,phase,'sampled',flush=True)\n(work/'startup-samples.json').write_text(json.dumps(rows,indent=2)+'\\n')\n"
+    },
+    "profile_runtime.py": {
+      "sha256": "07eaaeb9826939437df16db7b93a2d3a4db09dc7aa3f7dbaa57bf94d00f978b2",
+      "source": "import os,subprocess,selectors,json,sys,time\nfrom pathlib import Path\nsys.path.insert(0,str(Path.cwd()/'scripts'))\nfrom validation_support import clean_environment\nimport importlib.util\nspec=importlib.util.spec_from_file_location('logue_bench',Path.cwd()/'scripts/logue-bench.py');logue=importlib.util.module_from_spec(spec);spec.loader.exec_module(logue)\nw=Path('/tmp/birnam-runtime-audit-20261019');binary='/tmp/birnam-candidate-policy/compact-prefix/bin/birnam';env=clean_environment()\ndef profile(label,args,cwd,skip=()):\n p=subprocess.Popen(args,cwd=cwd,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)\n poll=selectors.DefaultSelector();poll.register(p.stdout,selectors.EVENT_READ)\n start=time.monotonic()\n while True:\n  if not poll.select(120-(time.monotonic()-start)):raise TimeoutError(label+' readiness')\n  line=p.stdout.readline().strip()\n  if line=='ready':break\n  assert line in skip,(label,line,p.poll())\n poll.close();dest=w/(label+'.sample.txt')\n sample=subprocess.Popen(['/usr/bin/sample',str(p.pid),'5','1','-file',str(dest)],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)\n p.stdin.write('go\\n');p.stdin.flush();out,err=p.communicate(timeout=120)\n _,samperr=sample.communicate(timeout=15)\n assert p.returncode==0 and not err,(label,p.returncode,err)\n assert sample.returncode==0 and dest.exists(),(label,samperr)\n result=json.loads(out);(w/(label+'.result.json')).write_text(json.dumps(result,indent=2)+'\\n')\n print(label,'sample completed',flush=True);return result\nproject=w/'log-summary/examples/log-summary/profile';fixture=w/'log-summary/data/small.jsonl'\nx=profile('json-full',[binary,'run',str(project),'--',str(fixture),'full','24','sample'],w/'log-summary')\nexpected=json.loads((w/'log-summary/data/small.expected.json').read_text());assert x['report']==expected and json.loads(x['rendered'])==expected\nproject=w/'logue/logue';src=(project/'logue-bench.birnam').read_text();assert 'let results :=' in src\n(project/'profile-harness.birnam').write_text(src.replace('let results :=','[System println: \"ready\"]; [System readLine];\\nlet results :=',1))\nconfig=dict(phase='arena',seed=12345,width=16,monsters=8,turns=128,batches=1,samples=1,allocation=False,replace=False)\n(project/'profile.birnam').write_text('[Globals at: #LogueBenchConfig put: '+logue.literal(config)+'];\\n[System load: \"profile-harness.birnam\"]\\n')\nx=profile('logue-crowded',[binary,'profile.birnam'],project,skip=('[logue-core] loaded',));logue.check_report(x,config)\nprint('Both sampled results passed independent oracles',flush=True)\n"
+    },
+    "compare.py": {
+      "sha256": "053c8df39bc31c2daf765d8eaeb712ab4e349ed51d315bb54a5aafd93e568d15",
+      "source": "import os,time,resource,json,statistics,subprocess,sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path.cwd()/'scripts'))\nfrom validation_support import clean_environment\nroot=Path.cwd();w=Path('/tmp/birnam-runtime-audit-20261019');base=Path('/tmp/birnam-candidate-policy/compact-prefix')\nvariants={'baseline':base,'indexes':w/'prefix-indexes','object-loading':w/'prefix-object-loading','combined':w/'prefix-combined'}\nenv=clean_environment();env['BIRNAM_GC_PRECISE']='1'\ndef run(prefix,script):\n before=resource.getrusage(resource.RUSAGE_CHILDREN);start=time.perf_counter();p=subprocess.run([str(prefix/'bin/birnam'),str(script)],env=env,capture_output=True,text=True,timeout=90);wall=time.perf_counter()-start;after=resource.getrusage(resource.RUSAGE_CHILDREN)\n assert p.returncode==0 and not p.stderr,(p.returncode,p.stderr,p.stdout)\n return dict(wall_seconds=wall,cpu_seconds=after.ru_utime+after.ru_stime-before.ru_utime-before.ru_stime,stdout=p.stdout)\nrows=[]\nfor name,prefix in variants.items():assert run(prefix,w/'ready.birnam')['stdout']=='ready\\n'\nfor i in range(4):\n names=list(variants);names=names[i:]+names[:i]\n for name in names:\n  result=run(variants[name],w/'ready.birnam');assert result.pop('stdout')=='ready\\n';rows.append(dict(variant=name,repeat=i,**result))\n (w/'startup-comparison.json').write_text(json.dumps({'rows':rows},indent=2)+'\\n')\n print('startup round',i+1,flush=True)\nmedians={n:{k:statistics.median(r[k] for r in rows if r['variant']==n) for k in ['wall_seconds','cpu_seconds']} for n in variants}\n(w/'startup-comparison.json').write_text(json.dumps({'rows':rows,'medians':medians},indent=2)+'\\n');print('STARTUP',medians,flush=True)\n# Timed region excludes startup and source loading; exact result and liveness checks.\ngc=w/'gc.birnam';gc.write_text('''[Module load: #time];\nlet keeper := [Cell with: \"alive\"];\n[System gc];\nlet results := [[1 to: 5] collect: [:i |\n let start := [16 clockNanos]; [5 timesRepeat: [| [System gc]]]; [[16 clockNanos] - start]\n]];\n[System println: results]; [System println: [keeper value]]\n''')\nrows=[]\nfor i,name in enumerate(['baseline','combined','combined','baseline']):\n r=run(variants[name],gc);assert r['stdout'].splitlines()[-1]=='alive',r\n import re\n r['batch_cpu_ns']=list(map(int,re.findall(r'\\d+',r['stdout'].splitlines()[0])));assert len(r['batch_cpu_ns'])==5,r\n rows.append(dict(variant=name,repeat=i,**r));print('GC',name,r['batch_cpu_ns'],flush=True)\n(w/'gc-comparison.json').write_text(json.dumps({'rows':rows,'median_batch_cpu_ns':{n:statistics.median(t for r in rows if r['variant']==n for t in r['batch_cpu_ns']) for n in ['baseline','combined']}},indent=2)+'\\n')\n# ABBA application comparisons use their existing independent oracles.\nfor i,name in enumerate(['baseline','combined','combined','baseline']):\n prefix=variants[name]\n for app,args in [('json',['scripts/log-summary-profile.py','--prefix',str(prefix),'--work',str(w/f'pair-json-{i}-{name}'),'--iterations','3']),('logue',['scripts/logue-bench.py','--prefix',str(prefix),'--work',str(w/f'pair-logue-{i}-{name}'),'--cases','quiet,crowded,generation','--samples','2','--skip-regression'])]:\n  with (w/f'pair-{app}-{i}-{name}.log').open('w') as log:subprocess.run([sys.executable,*args],env=env,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=450)\n  print('application',i,name,app,'passed',flush=True)\nprint('COMPARISONS COMPLETE',flush=True)\n"
+    },
+    "compare_memory.py": {
+      "sha256": "46b6aa56c51a630228301d63ef85e07c8063e9fb75e6a1fa1c03d7b59359edcc",
+      "source": "import subprocess,time,resource,statistics,json,sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path.cwd()/'scripts'))\nfrom validation_support import clean_environment\nw=Path('/tmp/birnam-runtime-audit-20261019');prefixes={'baseline':Path('/tmp/birnam-candidate-policy/compact-prefix'),'memory':w/'prefix-memory'}\nenv=clean_environment();env['BIRNAM_GC_PRECISE']='1';rows=[]\ndef run(n,script):\n before=resource.getrusage(resource.RUSAGE_CHILDREN);start=time.perf_counter();p=subprocess.run([prefixes[n]/'bin/birnam',script],env=env,capture_output=True,text=True,timeout=60);wall=time.perf_counter()-start;after=resource.getrusage(resource.RUSAGE_CHILDREN)\n assert p.returncode==0 and p.stdout=='ready\\n' and not p.stderr,(n,p)\n return dict(wall_seconds=wall,cpu_seconds=after.ru_utime+after.ru_stime-before.ru_utime-before.ru_stime)\nfor mode,script in [('startup_script',w/'ready.birnam'),('saved_image',w/'no-temp.image')]:\n for n in prefixes:run(n,script)\n for i in range(5):\n  for n in (['baseline','memory'] if i%2==0 else ['memory','baseline']):\n   rows.append(dict(mode=mode,variant=n,repeat=i,**run(n,script)))\n  (w/'memory-startup-comparison.json').write_text(json.dumps({'rows':rows},indent=2)+'\\n');print(mode,i+1,flush=True)\nmedians={m:{n:{k:statistics.median(r[k] for r in rows if r['variant']==n and r['mode']==m) for k in ['wall_seconds','cpu_seconds']} for n in prefixes} for m in ['startup_script','saved_image']}\n(w/'memory-startup-comparison.json').write_text(json.dumps({'rows':rows,'medians':medians,'scope':'Five interleaved fresh processes after one warmup per variant/workload; precise GC and identical preexisting authored artifacts/images; diagnostic native overlay only. Background user workloads active.'},indent=2)+'\\n')\nprint(json.dumps(medians,indent=2),flush=True)\n"
+    },
+    "check_no_temp_image.py": {
+      "sha256": "ea90231cc0a776fb2a0726fbe21af11df632d3a4284b7949c1af186e1de9ada4",
+      "source": "import subprocess,json,os\nfrom pathlib import Path\nw=Path('/tmp/birnam-runtime-audit-20261019');base=Path('/tmp/birnam-candidate-policy/compact-prefix');new=w/'prefix-memory';image=w/'no-temp.image';source=w/'save-no-temp.birnam'\nsource.write_text('[Globals at: #main put: [| [System println: \"ready\"]]]; [System saveImage: '+json.dumps(str(image))+']\\n')\nenv={k:v for k,v in os.environ.items() if not k.startswith(('BIRNAM_','DYLD_'))};env['BIRNAM_GC_PRECISE']='1'\np=subprocess.run([base/'bin/birnam',source],env=env,capture_output=True,text=True,timeout=180);assert p.returncode==0 and not p.stderr and image.is_file(),p\nprint('Existing-format image saved by baseline',flush=True)\nenv['TMPDIR']=str(w/'nonexistent-temp-directory')\nassert not Path(env['TMPDIR']).exists()\nrows=[]\nfor name,prefix in [('baseline',base),('memory',new)]:\n p=subprocess.run([prefix/'bin/birnam',image],env=env,capture_output=True,text=True,timeout=120)\n rows.append({'variant':name,'exit_code':p.returncode,'stdout':p.stdout,'stderr':p.stderr})\n print(name,p.returncode,p.stdout.strip(),p.stderr[:250],flush=True)\nassert rows[0]['exit_code']!=0 and rows[1]['exit_code']==0 and rows[1]['stdout']=='ready\\n' and not rows[1]['stderr']\nassert not Path(env['TMPDIR']).exists()\n(w/'no-temp-image.json').write_text(json.dumps({'rows':rows,'image':str(image),'source':source.read_text(),'temporary_directory':env['TMPDIR']},indent=2)+'\\n')\nprint('Image load requires no object staging files',flush=True)\n"
+    }
+  },
+  "limits": [
+    "macOS arm64, local warm-cache measurements, background user workloads active.",
+    "Diagnostic timing uses identical existing authored artifacts/images; changed native binaries exactly match final fresh-prefix build.",
+    "Representative CPU applications, not exhaustive performance coverage of every language API.",
+    "JSON sample includes explicit GC between passes; Logue sample includes one final arena reset/GC before its turn batch. Phase timers exclude these setup costs.",
+    "Trusted relocatable ELF objects are the memory API input. This does not turn libtcc into a sandbox for untrusted native code.",
+    "Compilation output and system-library resolution still use libtcc existing APIs. Only loading object bytes is free of temporary staging.",
+    "No user-prefix installation, push, or release qualification."
+  ]
+}

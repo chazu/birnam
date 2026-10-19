@@ -9,7 +9,7 @@ registry borrow survives a native initializer or language callback.
 |---|---|---|
 | TCC `compile:` | Trusted generated C String | Unit, or compileError. |
 | TCC `compileObject:` | Trusted generated C String | Bytes containing a relocatable object, or compileError. |
-| TCC `loadObject:` | Trusted relocatable object Bytes | Unit, or compileError; no C compilation. |
+| TCC `loadObject:` | Trusted relocatable ELF object Bytes | Unit, or compileError; no C compilation or temporary object files. |
 | Unit `initialize` | none | Captured result of the unit's existing native Module initializer. |
 | Unit `initializeWith:` | Implementation Object | Same initializer with an additional rooted operand. |
 | Unit `retain:` | Object | Same Object, traced whenever the Unit is live. Used for generated Methods and native-context references. |
@@ -24,6 +24,19 @@ No service addresses travel in Words/Bytes. A successful initializer's result an
 implementation are retained by the Unit. Repeating initialization returns the
 captured result; changing the optional implementation is rejected. Initializers
 must report other Objects retained in native contexts through Unit `retain:`.
+
+Object loading uses libtcc's bounded memory input, sharing section merging and
+relocation with its file loader. The current `bytes` message supplies a borrowed
+view; it is consumed synchronously before any further Id send. Retained code,
+data and symbols belong to the new Unit, independently of the input buffer and
+of other Units loaded from identical bytes. This changes neither artifact bytes
+nor the Id-facing protocol. General library/archive file loading remains a
+libtcc facility; `loadObject:` is the single relocatable-object route.
+
+`compileObject:` still uses libtcc's file-output API. Its output directory is
+needed because the writer unlinks/recreates its destination. Loading existing
+compiled code no longer takes that detour. See the
+[startup/runtime audit](../../docs/design/startup-runtime-audit-20261019.md).
 
 Generated code constructs Execution Methods with its Unit as opaque code owner.
 Binding → Method → Unit and entered/suspended/recovery frame edges keep actual code

@@ -39,6 +39,7 @@ unsafe extern "C" {
     pub fn tcc_add_library(state: *mut TccState, name: *const c_char) -> c_int;
     pub fn tcc_add_library_path(state: *mut TccState, path: *const c_char) -> c_int;
     pub fn tcc_add_file(state: *mut TccState, path: *const c_char) -> c_int;
+    pub fn tcc_add_object_memory(state: *mut TccState, bytes: *const c_void, length: usize) -> c_int;
     pub fn tcc_add_symbol(state: *mut TccState, name: *const c_char, value: *const c_void)
     -> c_int;
     pub fn tcc_output_file(state: *mut TccState, path: *const c_char) -> c_int;

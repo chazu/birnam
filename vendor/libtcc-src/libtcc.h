@@ -1,6 +1,8 @@
 #ifndef LIBTCC_H
 #define LIBTCC_H
 
+#include <stddef.h>
+
 #ifndef LIBTCCAPI
 # define LIBTCCAPI
 #endif
@@ -53,6 +55,10 @@ LIBTCCAPI void tcc_undefine_symbol(TCCState *s, const char *sym);
 
 /* add a file (C file, dll, object, library, ld script). Return -1 if error. */
 LIBTCCAPI int tcc_add_file(TCCState *s, const char *filename);
+
+/* Load one trusted relocatable ELF object from a bounded borrowed buffer.
+   The input is neither retained nor executed. File/archive APIs are unchanged. */
+LIBTCCAPI int tcc_add_object_memory(TCCState *s, const void *bytes, size_t length);
 
 /* compile a string containing a C source. Return -1 if error. */
 LIBTCCAPI int tcc_compile_string(TCCState *s, const char *buf);

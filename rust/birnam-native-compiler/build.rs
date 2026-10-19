@@ -1,6 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=../../vendor/libtcc-src/libtcc.c");
     println!("cargo:rerun-if-changed=../../vendor/libtcc-src/tccrun.c");
+    println!("cargo:rerun-if-changed=../../vendor/libtcc-src/tccelf.c");
     println!("cargo:rerun-if-changed=../../vendor/libtcc-src/libtcc.h");
     println!("cargo:rerun-if-changed=../../vendor/libtcc-src/config.h");
     println!("cargo:rerun-if-changed=src/resource_metrics.c");

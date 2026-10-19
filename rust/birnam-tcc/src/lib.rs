@@ -258,8 +258,15 @@ unsafe extern "C" fn load_object(c: *mut c_void, _: Oop, a: *const Operand, n: u
             tokens: RefCell::new(Vec::new()),
         };
         let bytes = scope.keep(object(*bytes)?)?;
-        let bytes = s.bytes(bytes)?;
-        let Some(native) = Unit::load_object(&bytes) else {
+        let native = {
+            let view = s.send(bytes, b"bytes", &[])?.as_bytes().ok_or_else(invalid)?;
+            let input = borrowed_bytes(view.pointer, view.length).ok_or_else(invalid)?;
+            // The current owner supplied this view. Relocation consumes it
+            // synchronously and performs no Id sends or generated-code calls.
+            // End the borrow before allocation or constructing an Error below.
+            Unit::load_object(input)
+        };
+        let Some(native) = native else {
             return s.error(&scope, b"native object relocation failed");
         };
         let unit = scope.keep(object(s.send(

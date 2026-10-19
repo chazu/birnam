@@ -60,21 +60,20 @@ impl Unit {
         unsafe { tcc_delete(raw) };
         ok.then(|| std::fs::read(&file.path).ok()).flatten()
     }
-    /// Relocate trusted object bytes without invoking the C compiler front end.
+    /// Relocate one trusted ELF object directly from memory, without staging
+    /// files or invoking the C compiler front end. No input borrow is retained.
     ///
     /// # Safety
     /// The bytes must be trusted native code for this target. Any retrieved
     /// symbol must be invoked with its declared ABI while this owner is alive.
     pub unsafe fn load_object(bytes: &[u8]) -> Option<Self> {
-        let file = ObjectFile::new()?;
-        std::fs::write(&file.path, bytes).ok()?;
         let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
         let state = NonNull::new(unsafe { tcc_new() })?;
         let raw = state.as_ptr();
         let ok = unsafe {
             tcc_set_error_func(raw, core::ptr::null_mut(), Some(discard_diagnostic));
             tcc_set_output_type(raw, 1) >= 0
-                && tcc_add_file(raw, file.name.as_ptr()) >= 0
+                && tcc_add_object_memory(raw, bytes.as_ptr().cast(), bytes.len()) >= 0
                 && tcc_relocate(raw) >= 0
         };
         if !ok {
@@ -208,6 +207,111 @@ mod tests {
 
     unsafe extern "C" fn twice(value: i64) -> i64 {
         value * 2
+    }
+
+    #[test]
+    fn object_loading_does_not_require_a_temporary_directory() {
+        const INPUT: &str = "BIRNAM_TEST_MEMORY_OBJECT";
+        if let Some(path) = std::env::var_os(INPUT) {
+            let bytes = std::fs::read(path).unwrap();
+            let owner = unsafe { Unit::load_object(&bytes) }.expect("load compiled bytes without temporary files");
+            let next: unsafe extern "C" fn() -> i64 = unsafe {
+                core::mem::transmute(owner.symbol(c"next").unwrap().as_ptr())
+            };
+            assert_eq!(unsafe { next() }, 41);
+            assert_eq!(unsafe { next() }, 42);
+            return;
+        }
+        let _test = TEST_COMPILER.lock().unwrap();
+        let bytes = Unit::compile_object(c"static long counter=40; long next(void) { return ++counter; }").unwrap();
+        let directory = std::env::temp_dir().join(format!("birnam-memory-object-test-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let path = directory.join("input.o");
+        std::fs::write(&path, bytes).unwrap();
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "unit::tests::object_loading_does_not_require_a_temporary_directory", "--nocapture"])
+            .env(INPUT, &path)
+            .env("TMPDIR", directory.join("does-not-exist"))
+            .status().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+        assert!(result.success(), "object loading attempted temporary-file I/O");
+    }
+
+    #[test]
+    fn memory_objects_copy_unaligned_inputs_and_keep_instance_data_separate() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        let bytes = Unit::compile_object(c"static long counter=40; long next(void) { return ++counter; }").unwrap();
+        let mut unaligned = vec![0];
+        unaligned.extend_from_slice(&bytes);
+        let first = unsafe { Unit::load_object(&unaligned[1..]) }.unwrap();
+        let second = unsafe { Unit::load_object(&bytes) }.unwrap();
+        unaligned.fill(0);
+        drop(unaligned);
+        drop(bytes);
+        let next: unsafe extern "C" fn() -> i64 = unsafe { core::mem::transmute(first.symbol(c"next").unwrap().as_ptr()) };
+        let other: unsafe extern "C" fn() -> i64 = unsafe { core::mem::transmute(second.symbol(c"next").unwrap().as_ptr()) };
+        assert_eq!(unsafe { next() }, 41);
+        assert_eq!(unsafe { other() }, 41);
+        drop(first);
+        assert_eq!(unsafe { other() }, 42);
+    }
+
+    #[test]
+    fn file_and_memory_inputs_share_relocation_and_symbol_resolution() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        let bytes = Unit::compile_object(c"extern unsigned long strlen(const char *); static long counter=40; long next(const char *s) { return ++counter + strlen(s); }").unwrap();
+        let file = ObjectFile::new().unwrap();
+        std::fs::write(&file.path, &bytes).unwrap();
+        struct Raw(NonNull<TccState>);
+        impl Drop for Raw {
+            fn drop(&mut self) { unsafe { tcc_delete(self.0.as_ptr()) }; }
+        }
+        let raw = Raw(NonNull::new(unsafe { tcc_new() }).unwrap());
+        unsafe {
+            tcc_set_error_func(raw.0.as_ptr(), core::ptr::null_mut(), Some(discard_diagnostic));
+            assert!(tcc_set_output_type(raw.0.as_ptr(), 1) >= 0);
+            assert!(tcc_add_file(raw.0.as_ptr(), file.name.as_ptr()) >= 0);
+            assert!(tcc_relocate(raw.0.as_ptr()) >= 0);
+        }
+        let memory = unsafe { Unit::load_object(&bytes) }.unwrap();
+        drop(file);
+        drop(bytes);
+        let next: unsafe extern "C" fn(*const c_char) -> i64 = unsafe { core::mem::transmute(tcc_get_symbol(raw.0.as_ptr(), c"next".as_ptr())) };
+        let other: unsafe extern "C" fn(*const c_char) -> i64 = unsafe { core::mem::transmute(memory.symbol(c"next").unwrap().as_ptr()) };
+        assert_eq!(unsafe { next(c"abc".as_ptr()) }, 44);
+        assert_eq!(unsafe { other(c"abc".as_ptr()) }, 44);
+        assert_eq!(unsafe { next(c"abc".as_ptr()) }, 45);
+        assert_eq!(unsafe { other(c"abc".as_ptr()) }, 45);
+    }
+
+    #[test]
+    fn truncated_and_invalid_object_ranges_release_the_failed_state() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        let bytes = Unit::compile_object(c"static long counter=40; long next(void) { return ++counter; }").unwrap();
+        #[cfg(feature = "allocation-metrics")]
+        let before = Unit::compiler_heap_totals();
+        for length in 0..bytes.len() {
+            assert!(unsafe { Unit::load_object(&bytes[..length]) }.is_none(), "accepted prefix {length}");
+            #[cfg(feature = "allocation-metrics")]
+            assert_eq!(Unit::compiler_heap_totals(), before, "leaked prefix {length}");
+        }
+        // ELF64 header and section-table fields in the compiler's own fixture.
+        let table = u64::from_le_bytes(bytes[40..48].try_into().unwrap()) as usize;
+        for (offset, replacement) in [
+            (4, vec![1]),
+            (40, u64::MAX.to_le_bytes().to_vec()),
+            (62, u16::MAX.to_le_bytes().to_vec()),
+            (table + 64, u32::MAX.to_le_bytes().to_vec()),
+            (table + 64 + 32, u64::MAX.to_le_bytes().to_vec()),
+            (table + 64 + 40, u32::MAX.to_le_bytes().to_vec()),
+        ] {
+            let mut invalid = bytes.clone();
+            invalid[offset..offset + replacement.len()].copy_from_slice(&replacement);
+            assert!(unsafe { Unit::load_object(&invalid) }.is_none(), "accepted field {offset}");
+            #[cfg(feature = "allocation-metrics")]
+            assert_eq!(Unit::compiler_heap_totals(), before, "leaked field {offset}");
+        }
     }
 
     #[test]
