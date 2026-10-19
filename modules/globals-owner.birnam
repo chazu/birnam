@@ -149,6 +149,14 @@ let bindingStorage := [existing ifTrue: [| [bindingFacade bindingOwner]] ifFalse
     ]]
   ]]
 ]];
+// The payload participates through the same protocol as any other ordinary
+// owner. Image has no special Globals projection slot or registry entry.
+[Reflect defineMethod: #imagePayload on: bindingStorage as: [:self |
+  [[self == bindingStorage] ifTrue: [|
+    let projected := [bindingFacade imageBindingProjection];
+    [[projected isError] ifTrue: [| projected] ifFalse: [| [projected at: 1]]]
+  ] ifFalse: [| self]]
+]];
 [Namespace at: #Globals put: bindingFacade];
 [Namespace at: #GlobalsVt put: [Reflect vtableOf: bindingFacade]];
 bindingFacade

@@ -2,14 +2,14 @@
 
 Bootstrap loads [ImageFormat](../../modules/image-format.birnam), then Image, after
 Source Loader. ImageFormat owns complete format encoding and structural validation;
-Image consumes it through current Id messages and retains the live restoration
-transaction. System `saveImage:` writes image-v8
+Image consumes it through current Id messages and coordinates live restoration. System `saveImage:` writes image-v8
 through a same-directory temporary file and atomic rename. `loadImage:`,
 `loadImage:rebuild:` and `loadImageBytes:rebuild:` restore through current owner
 messages. `loadImageMapped:` requires saved native code and rejects a source-only
 image before compiler entry; Host uses it for the installed bootstrap.
 Successful mapped loading answers true; rebuilding answers false.
-Compiler-produced source metadata is restored with ordinary Store facts. Both
+Compiler-produced source metadata is restored through ordinary compilation and
+SourceRegistry owners, independently of explicit Store facts. Both
 mapped activation and canonical-program rebuild use it for generation recovery;
 neither reparses module source. Images missing this metadata must be regenerated.
 Image validation/file failures answer nil with `imageSaveReport` status/detail;
@@ -21,23 +21,31 @@ The graph retains identity, shared and cyclic references, typed ordinary slots,
 boxed numbers, Strings and Bytes, persistent collections, Store Cells, CodeObjects
 and synchronous/resumable Blocks. CodeObjects retain canonical meaning and source
 provenance; Blocks retain their captures. Facts preserve the Store basis, retention
-policy and history. Source registration preserves original source objects and the
-closed-registration flag. Loading does not evaluate source or rerun initializers.
+policy and history. Source registration preserves original source and compilation objects. Loading does not evaluate source or rerun initializers.
 
 Image reads ObjectModel-owned slots using `imageSizeOf:` and `imageSlotAt:in:`;
 the owner distinguishes raw words from object edges. Restoration uses
 `restoreImageSlotAt:in:put:`. Private ordinary Object layouts are reconstructed
-from those typed fields. Store owns Cell projection/restoration and its fact
-state. Execution owns Block shells and capture restoration; unfinished shells
+from those typed fields. Authored local Cells use those ordinary slots; Store
+owns its fact/legacy CellVt projection/restoration and fact state. Execution owns Block shells and capture restoration; unfinished shells
 cannot execute. Map rebuilds address-dependent hashes through `rehashImage:`
 after method publication, preserving each restored Map's identity.
 
 Unsupported native state, including Machines and noncanonical capability objects,
-is rejected. Authored process-local handles declare a Store fact with
-`imageTransientObject = true`; Image rejects any such object reached by the saved
-graph. TaskControl marks its handles, including completed tasks. The marker's
-attribute is itself `imageTransient`, so unreferenced handles do not enter the
-saved graph through that declaration. Detached outcomes remain ordinary data.
+is rejected. Image sends current `imagePayload` to each object in the heap graph.
+The Object default answers self. False rejects the save; a different Error result
+propagates. A distinct payload is accepted only for an ordinary ObjectVt-family
+receiver: its ObjectModel-readable typed slots supply the saved body, while the
+original identity and behavior remain. Native families retain their existing
+codecs and cannot receive arbitrary replacement layouts. Canonical values and
+Namespace exports retain their existing reference encoding.
+
+Globals uses this same protocol for its transient-binding projection. TaskControl
+keeps a named `processLocal` reference slot: preparation sets it, completion leaves
+it set, and its imagePayload rejects marked handles. Unused factory clones and
+detached outcomes remain imageable. The per-object Store `imageTransientObject`
+query and Image's Globals-specific projection state are removed. Fields/facts still
+use the remaining Store transport; this is not yet complete Store-free persistence.
 Private behaviors preserve their heap owners, shared instances and
 acyclic parent chains rooted in supported native families. Ownerless private
 behaviors and additional custom Block behavior layers remain unsupported.
@@ -88,7 +96,7 @@ No prior-method journal, Globals checkpoint, inverse Store/source exchange or
 dictionary epoch admission is required by live loading. Failed application clears
 composition identity and abandons old preparation/adoption capabilities; staging
 cleanup releases temporary roots. Entered/captured code remains owned by Execution.
-Explicit Generation transactions retain their separate rollback contracts.
+Explicit candidate undo retains its separate selected-write contract.
 Future stronger loading can be an explicit facility without changing this basic
 operation or introducing a mandatory coordinator around ordinary edits.
 

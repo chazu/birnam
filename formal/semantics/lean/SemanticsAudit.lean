@@ -351,3 +351,9 @@ import Admission
 #print axioms Birnam.SharedInvocation.candidate_explicit_undo_preserves_conflict
 #print axioms Birnam.SharedInvocation.candidate_explicit_undo_restores_owned_write
 #print axioms Birnam.SharedInvocation.candidate_explicit_undo_is_idempotent
+
+#print axioms Birnam.GlobalsBinding.projected_identity_and_behavior
+#print axioms Birnam.GlobalsBinding.native_replacement_payload_refused
+#print axioms Birnam.GlobalsBinding.unchanged_payload_keeps_data
+#print axioms Birnam.GlobalsBinding.refused_payload_preserves_destination
+#print axioms Birnam.GlobalsBinding.failed_payload_preserves_destination

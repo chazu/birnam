@@ -235,7 +235,7 @@
 // Structured task policy. These ordinary methods share the selected control
 // unit so waiting never leaves a synchronous library frame on the native stack.
 [Machine prepareBlockControl];
-[Globals at: #TaskControl put: [Object clone]];
+[Globals at: #TaskControl put: [ObjectModel newSlots: #[false] parent: ObjectVt]];
 [Globals at: #TaskExecutor put: [Object clone]];
 
 [Reflect defineMethod: #attribute: on: TaskControl as: [:self :name |
@@ -252,11 +252,13 @@
     [db assert: attribute attr: #history value: false];
     [db assert: attribute attr: #imageTransient value: true]]]]];
 [TaskControl initializeStateSchema];
-// Handles are process-local even after their Machine has finished. The marker
-// itself is transient, so it does not make otherwise unreachable tasks durable.
-[db assert: #imageTransientObject attr: #cardinality value: #one];
-[db assert: #imageTransientObject attr: #history value: false];
-[db assert: #imageTransientObject attr: #imageTransient value: true];
+// This ordinary owner field replaces the Store's imageTransientObject fact.
+// A factory clone has no process capability; preparation marks a real handle.
+// The marker remains set after its Machine is released on completion.
+[Reflect defineMethod: #slotNames on: TaskControl as: [:self | #[#processLocal]]];
+[Reflect defineMethod: #imagePayload on: TaskControl as: [:self |
+  [[ObjectModel slot: 0 in: self] ifTrue: [| false] ifFalse: [| self]]
+]];
 [Reflect defineMethod: #field: on: TaskControl as: [:self :name |
   [db cellFor: self attr: [self attribute: name]]]];
 [Reflect defineMethod: #field: on: TaskExecutor as: [:self :name |
@@ -359,7 +361,7 @@
 
 [Reflect defineMethod: #prepare:parent: on: TaskControl as: [:self :body :parent |
   let task := [self clone];
-  [db assert: task attr: #imageTransientObject value: true];
+  [ObjectModel slot: 0 in: task put: true];
   [[task field: #machine] set: [Machine new]];
   [[task field: #outcome] set: nil];
   [[task field: #waitToken] set: nil];

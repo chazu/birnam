@@ -18,6 +18,7 @@ source = work / 'tasks.birnam'
 source.write_text('''
 [[|
 [System println: [Module isLoaded: #stacklessControl]];
+[Globals at: #SavedTaskFactory put: [TaskControl clone]];
 let finished := [TaskControl start: [:task |
   [task ensure: [| [task fail: #bodyFailed]] cleanup: [| [task fail: #cleanupFailed]]]]];
 [Globals at: #SavedTaskOutcome put: [finished pollOutcome]];
@@ -34,7 +35,8 @@ let waiting := [TaskControl start: [:task | [task wait]]];
   [System gc];
   [System println: SavedTaskOutcome];
   [System println: [[TaskControl start: [:task | 42]] pollOutcome]];
-  [System println: [TaskExecutor current]]]];
+  [System println: [TaskExecutor current]];
+  [System println: [[SavedTaskFactory start: [:task | 43]] pollOutcome]]]];
 [System saveImage: OUTCOME];
 [System println: [[System imageSaveReport] status]]
 ] value]
@@ -50,5 +52,5 @@ for options in ([], ['--rebuild']):
     result = subprocess.run([binary, *options, outcome], cwd=work, env=environment,
                             capture_output=True, timeout=900)
     assert result.returncode == 0 and not result.stderr, result
-    assert result.stdout == b'#[#failure #[#bodyFailed #cleanupFailed] nil #[]]\n#[#success 42]\nnil\n', result
-print('installed task Images: completed/waiting handles rejected; outcomes and fresh tasks survive mapped/rebuilt loading')
+    assert result.stdout == b'#[#failure #[#bodyFailed #cleanupFailed] nil #[]]\n#[#success 42]\nnil\n#[#success 43]\n', result
+print('installed task Images: completed/waiting handles rejected; factory clones, outcomes and fresh tasks survive mapped/rebuilt loading')

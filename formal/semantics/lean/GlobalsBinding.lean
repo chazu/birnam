@@ -91,4 +91,45 @@ theorem projection_omits_transient (bindings : Bindings) (transient : Nat → Bo
     (h : transient name = true) : projectBindings bindings transient name = none := by
   simp [projectBindings, h]
 
+/-! Owner snapshot selection does not replace the original graph identity. -/
+inductive PayloadReply where
+  | same
+  | reject
+  | failed (code : Nat)
+  | slots (payload : Nat)
+structure ImageNode where
+  identity : Nat
+  behavior : Nat
+  payload : Nat
+
+def selectPayload (original behavior : Nat) (ordinary : Bool) (reply : PayloadReply) :
+    Except Nat (Option ImageNode) :=
+  match reply with
+  | .same => .ok (some ⟨original, behavior, original⟩)
+  | .reject => .ok none
+  | .failed code => .error code
+  | .slots payload => if ordinary then .ok (some ⟨original, behavior, payload⟩) else .ok none
+
+theorem projected_identity_and_behavior (original behavior payload : Nat) :
+    selectPayload original behavior true (.slots payload) =
+      .ok (some ⟨original, behavior, payload⟩) := by rfl
+
+theorem native_replacement_payload_refused (original behavior payload : Nat) :
+    selectPayload original behavior false (.slots payload) = .ok none := by rfl
+
+theorem unchanged_payload_keeps_data (original behavior : Nat) (ordinary : Bool) :
+    selectPayload original behavior ordinary .same =
+      .ok (some ⟨original, behavior, original⟩) := by rfl
+
+def publishPayloadImage (prior : Nat) (result : Except Nat (Option ImageNode)) : Nat :=
+  match result with
+  | .ok (some node) => node.payload
+  | _ => prior
+
+theorem refused_payload_preserves_destination (prior original behavior : Nat) (ordinary : Bool) :
+    publishPayloadImage prior (selectPayload original behavior ordinary .reject) = prior := by rfl
+
+theorem failed_payload_preserves_destination (prior original behavior code : Nat) (ordinary : Bool) :
+    publishPayloadImage prior (selectPayload original behavior ordinary (.failed code)) = prior := by rfl
+
 end Birnam.GlobalsBinding

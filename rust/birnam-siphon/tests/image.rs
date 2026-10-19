@@ -987,11 +987,16 @@ fn image_owner_roundtrip() {
         assert_eq!(h.call(system, b"loadImage:", &[filename]), h.named(b"true"));
         let original_bytes = std::fs::read(&path).unwrap();
         // An ordinary source capability must not silently lose its transient
-        // state. Admission follows the Store declaration, not a prototype name.
-        h.eval(b"[db assert: #imageTransientObject attr: #history value: false]; [db assert: #imageTransientObject attr: #imageTransient value: true]; [[| let ephemeral := [Object clone]; [db assert: ephemeral attr: #imageTransientObject value: true]; [Globals at: #ImageEphemeral put: #[ephemeral]]] value]");
+        // state. Admission follows its current owner method, not Store metadata.
+        let ephemeral_roots = h.tokens.borrow().len();
+        h.eval(b"[[| let ephemeral := [Object clone]; [Reflect defineMethod: #imagePayload on: ephemeral as: [:self | false]]; [Globals at: #ImageEphemeral put: #[ephemeral]]] value]");
         assert_eq!(h.call(system, b"saveImage:", &[filename]), nil);
         assert_eq!(std::fs::read(&path).unwrap(), original_bytes);
         h.eval(b"[Globals at: #ImageEphemeral put: nil]");
+        // The fixture's eval result also retains the vector/receiver. Its live
+        // authored method is a real image root until those test roots are gone.
+        h.clear_from(ephemeral_roots);
+        h.collect();
         assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"true"));
         let original_bytes = std::fs::read(&path).unwrap();
         let machine = h.call(h.named(b"Machine"), b"new", &[]);

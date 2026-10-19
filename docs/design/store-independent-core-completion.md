@@ -1,7 +1,7 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: Globals recovery cleanup and early authored Globals implemented and qualified. Full core composition remains Store-dependent.**
+**Status: Globals cleanup/early ownership and owner image payloads implemented and qualified. Task/resource fields, optional fact persistence and production composition remain Store-dependent.**
 The next release is blocked on completing this milestone, per the user's decision.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
@@ -46,7 +46,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Task and scheduler state | [stackless-control](../../modules/stackless-control.birnam) initializes Store schema and uses `db cellFor:` for TaskControl/TaskExecutor fields. Candidate policy and other ordinary modules use its transitions. | Ordinary per-object state with preserved field aliases, queue order, cancellation, shielding, transitions and suspension. Remove schema initialization and fact-backed field ownership. |
 | Workers and outcomes | The same module stores Worker fields and RemoteFailure outcomes in facts; [isolate policy](../../modules/isolate.birnam) stores Concurrency fields in db and marks them transient. | Owned state and explicit resource lifecycle; worker preparation, copied messages, failure reporting, cancellation and cleanup run without Store. |
 | REPL and sockets | [REPL](../../modules/repl.birnam) stores `cin`, `cerr`, `cbuf` plus transient declarations; [socket](../../modules/socket.birnam) stores connection descriptors/buffers in db. These are included in prepared startup. | Resource-bearing ordinary owners; preserve acquisition, close-once behavior, failed construction, repeated sessions and buffer safety. Define reconstruction/rejection before moving fields. |
-| Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) queries Store's `imageTransientObject` for every heap object. Tasks and resource owners use Store schema to omit transient fields. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
+| Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) now sends current `imagePayload`; Globals projection and task-handle rejection use this owner protocol. TaskControl's process-local marker is an ordinary slot. Task/resource field omission still uses Store schema until those fields move. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
 | Alien wrappers | [Alien runtime](../../rust/birnam-alien/src/runtime.rs) keeps recipes under `__aliens__`, reuses code by reading those facts, and publishes wrapper Methods through Store. | Imageable owned recipe data with discoverable inspection/editing; native addresses/handles remain process-local. Construct/publish through the existing Method/dictionary owners. Preserve wrapper identity, signature distinctions, live replacement and Unit lifetime. |
 | Alien restoration | [Image::foreign_publication](../../rust/birnam-image/src/native.rs) finds recipes by inspecting staged `__aliens__` facts. | Restore from the actual recipe owner via Id; resolve foreign addresses in the destination process and preserve partial-load failure reporting. |
 | Image facts and Store Cells | Image unconditionally reads Store basis/retention metadata, exports facts, creates a staging Store, swaps Store state, and special-cases Store-owned CellVt. [ImageFormat](../../modules/image-format.birnam) admits that locator family. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
@@ -273,3 +273,69 @@ Store/Relational loads. Removing those loads prematurely would only hide the tas
 resource, Alien and Image dependencies. Next: define the minimal owner image
 projection/admission contract, then migrate task/resource fields; remove the
 remaining duplicate local-Cell variant alongside Cell/image cleanup.
+
+## Owner image payload contract (2026-10-19, implemented)
+
+For each identity in the image heap graph, Image sends current `imagePayload`
+once while retaining the receiver and result across callbacks. Canonical
+nil/Boolean/Symbol values and Namespace exports keep their existing reference
+encoding. The ordinary Object default
+returns `self`. `false` rejects the save without replacing its destination; an
+Error result other than `self` propagates as an owner failure. Returning `self`
+keeps ordinary Error objects imageable. No hook result or method is cached across
+objects, and a failed callback is not replayed.
+
+A distinct payload is supported for ordinary objects whose representation family
+is ObjectVt. The payload must be readable through ObjectModel's typed-slot protocol;
+returning it does not transport any separate native context it may own. Image reads
+those slots through ObjectModel but keeps
+the original identity and behavior. Thus aliases of the original remain aliases;
+references inside the payload still name their actual original identities. This
+is payload projection, not arbitrary graph identity substitution. Native families
+retain their existing owner-specific codecs and reject replacement payloads, so
+an arbitrary slot layout cannot be restored as native collection/code storage.
+Native process handles continue to fail their existing representation admission.
+
+Globals installs the hook on its actual storage owner and delegates to its existing
+binding projection. Cloned ordinary snapshots are not silently filtered. TaskControl
+keeps its existing process-local marker in an ordinary named reference slot.
+Preparation sets it, completion preserves it, and ordinary cloning copies it.
+Thus factory clones remain imageable, while prepared/completed handles remain
+rejected even after their Machine is released. Explicit task outcomes
+remain ordinary durable data. Deliberately replacing these methods changes policy;
+there is no mutation observer, protection against user replacement, or registry.
+
+This removes Image's Globals-only projection table and the per-object Store
+`imageTransientObject` read. It does not yet remove Store fact transport or task
+field storage. Subsequent task/resource owners use this same contract for rejection
+or an explicit reset payload, with retained field handles tested through their
+actual owner references. Existing image stamps still reject an intervening owner
+or method change; live-load failure continues to preserve applied effects.
+
+### Qualification of owner payloads
+
+The native snapshot test verifies a fresh payload and child survive collection in
+an outgoing ObjectModel call, then become collectible when the save scope ends.
+The source fixture verifies original identity/alias/cycle preservation, unchanged
+live fields, a retained unfiltered clone of Globals storage, ordinary Error values,
+current replacement/rejection, native-layout refusal, and mapped/rebuilt/resaved
+images. The rejection fixture releases its own retained result before expecting
+an authored rejecting capability to disappear. No production retention is weakened.
+
+The existing 21-generation image-resave chain passes with a fixed live set. Native
+roundtrip/recovery tests, all 177 task-control checks, and completed/waiting-handle
+rejection plus imageable task-factory clones pass. Formal qualification passes
+396 Lean theorems, 125 rejected mutations and 272 expected TLC outcomes. A formal
+run exhausted local scratch space; only the successful rerun is acceptance evidence.
+
+Three paired image-save CPU medians are 31.397 → 31.328 seconds (-0.22%). Repeated
+Logue quiet-turn medians are 26.912 → 26.739 ms (-0.64%). The first application run
+showed machine-load drift and is retained as such. Startup wall medians are
+2.827 → 2.906 seconds while CPU medians differ by +0.9%; paired results vary in
+both directions. No material steady-state regression or general speedup is claimed.
+The saved benchmark image grows about 0.56 MiB (0.23%). See the
+[receipt](../measurements/image-owner-policy-20261019.json).
+
+Next is ordinary TaskControl/TaskExecutor field ownership using this image
+contract, with actual field aliases, scheduling transitions and task retention
+preserved. Store fact transport and production optional composition remain pending.

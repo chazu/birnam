@@ -347,7 +347,6 @@ struct Graph<'a, 'b> {
     objects: Vec<Oop>,
     indices: HashMap<usize, u32>,
     nodes: Vec<Node>,
-    projection: Option<(Oop, Oop)>,
     behaviors: Vec<super::behavior_links::Link>,
 }
 impl Graph<'_, '_> {
@@ -391,24 +390,12 @@ impl Graph<'_, '_> {
             let mut i = 0;
             while i < self.objects.len() {
                 let o = self.objects[i];
-                let payload = self.projection.filter(|(original,_)| *original==o).map_or(o,|(_,projected)|projected);
-                // Authored capabilities can have an ordinary Object layout but
-                // process-local state. Store owns the declaration; omitted facts
-                // alone must never turn a retained handle into an empty snapshot.
-                let marker = self
-                    .q
-                    .keep(self.s.id.intern_name(b"imageTransientObject")?)?;
-                let transient = self.s.call(
-                    self.q,
-                    self.s.named(b"Store")?,
-                    b"currentValue:attr:",
-                    &[o, marker],
-                )?;
-                if transient == self.s.named(b"true")? {
-                    return Err(bad());
-                }
-                if self.s.is_error(transient)? {
-                    return Err(Outcome::loaded(Operand::object(transient)));
+                // Current owner policy selects an unpublished payload or refuses
+                // persistence. Returning self preserves ordinary Error values too.
+                let payload = self.s.call(self.q, o, b"imagePayload", &[])?;
+                if payload == self.s.named(b"false")? { return Err(bad()); }
+                if payload != o && self.s.is_error(payload)? {
+                    return Err(Outcome::loaded(Operand::object(payload)));
                 }
                 let first = self.q.keep(self.s.behavior(o)?)?;
                 let mut vt = first;
@@ -426,6 +413,9 @@ impl Graph<'_, '_> {
                         &[Operand::object(vt)],
                     )?)?)?;
                 };
+                // Projection changes plain object slots, never a native family's
+                // representation. Their existing owner-specific codecs remain.
+                if payload != o && name != b"ObjectVt" { return Err(bad()); }
                 if name == b"BlockVt" {
                     // Execution reconstructs its intrinsic per-Method behavior.
                     // Additional user-defined Block behavior layers remain inadmissible.
@@ -672,20 +662,12 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         let facts = s.facts.borrow().clone();
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let rows = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
-        let projected = s.call(q, s.named(b"Globals")?, b"imageBindingProjection", &[])?;
-        let projection = if projected == s.named(b"nil")? { None } else {
-            if s.is_error(projected)? { return Err(Outcome::loaded(Operand::object(projected))); }
-            let values=s.sequence(q,projected)?;
-            let [original, replacement]=values.as_slice() else { return Err(bad()) };
-            Some((*original,*replacement))
-        };
         let mut graph = Graph {
             s,
             q,
             objects: Vec::new(),
             indices: HashMap::new(),
             nodes: Vec::new(),
-            projection,
             behaviors: Vec::new(),
         };
         let mut fact_values = Vec::new();

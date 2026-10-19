@@ -1,0 +1,551 @@
+{
+  "baseline_commit": "d6189d76",
+  "scope": "Owner-driven heap image admission/projection; remove per-object Store transient markers and Globals-only projection state. Task process-local marker moves to an ordinary slot. Other task/resource fields and Store fact persistence remain pending.",
+  "sources": {
+    "modules/globals-owner.birnam": "f71412998a12eb477ec63db933b91a25202f2233d7020f89923861a994a42005",
+    "modules/image-format.birnam": "ec66d8bcedb126ca032d908897ca8f76fabe9f984e9a5fe8bcb2f9316a1ac5f8",
+    "modules/stackless-control.birnam": "8f2df45312e392f419200a133a59741ac064bdede9cb97063efd8bb1e4dd8f5b",
+    "rust/birnam-image/src/native.rs": "a4dc6901bf677ff593f626aacee299627f40b2befd6975598292a97edc10927d",
+    "rust/birnam-siphon/tests/image.rs": "626abb3c93504eb825e9c8223fd0e1e01b793e501f7a91da01c7bddfe8a0bd59",
+    "rust/birnam-siphon/tests/image_snapshot_stamp.rs": "9a3e0701f68bcf660c347ea35046c9a3475fb5186131b2d312a069ff884c2100",
+    "scripts/image-owner-test.py": "d78ceebf8d7cf06661d8b77a23d9dfd4d5827432be3316a44a0e3d7a7a3c1aa4",
+    "scripts/task-image-test.py": "8139357e547a153c1b6de033c605307498e12a40309d7a31cef95a8e0b3d5a0f"
+  },
+  "qualification": {
+    "lean_theorems": 396,
+    "lean_rejected_mutations": 125,
+    "tla_outcomes": 272,
+    "formal_receipt": ".cargo-target/formal/results/rooting-vr75u6c9/summary.json",
+    "formal_sha256": "a797bcb3368f473b742b746e6ebbd4b2200309425a867306101ecadc9169fcb2",
+    "fresh_payload_gc": "image_snapshot_stamp passed, including fresh payload/child retention across an outgoing collecting call and release after save.",
+    "owner_roundtrips": {
+      "passed": true,
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-owners-lft2mrws/results.json",
+      "sha256": "5e2ca7d95e79a148cc1a0266c3e69dc095919913f5892e4f5982be8653a9235f",
+      "runs": [
+        {
+          "name": "save",
+          "exit_code": 0,
+          "stdout": "#saved\ntrue\ntrue\n#rejected\n#projectionFailure\n#rejected\n#rejected\n",
+          "wall_ns": 56007061167
+        },
+        {
+          "name": "mapped",
+          "exit_code": 0,
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n",
+          "wall_ns": 37998855625
+        },
+        {
+          "name": "resaved",
+          "exit_code": 0,
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n",
+          "wall_ns": 41086997583
+        },
+        {
+          "name": "rebuilt",
+          "exit_code": 0,
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n",
+          "wall_ns": 38113488375
+        }
+      ]
+    },
+    "native_suites": [
+      "image_owner_roundtrip",
+      "image_recovery_conflict",
+      "image_recovery_owners",
+      "image_snapshot_stamp",
+      "task_control"
+    ],
+    "native_resave_chain": {
+      "epochs": 21,
+      "passed": true,
+      "note": "The chain passed in the combined native run. Its separate owner-roundtrip test initially retained the rejecting object in fixture roots; that fixture was corrected and the roundtrip case rerun successfully. The chain was not redundantly repeated."
+    },
+    "task_checks": 177,
+    "task_images": "Completed/waiting handles reject; factory clones, copied outcomes and fresh tasks survive mapped/rebuilt images.",
+    "globals_initializer_absence": "Actual early Globals initializer still passes with Store/Relational absent, including late explicit optional loading.",
+    "artifact_equivalence": {
+      "libbirnam_image.dylib": "ebd7e0f5e022e4061cc34603026f8253b5aa0a3e14a73f7a49365ac1510aa977",
+      "libbirnam_imageFormat.dylib": "67aaab96b47a3c997eb66a5a788b38c955359685c8fe4ee4cc3145a4175234d7",
+      "libbirnam_globalsOwner.dylib": "560a224debee5ef96a159ae0d7c2d5b88c12888f1739dc810e3bf2ae77bf87c4"
+    },
+    "configuration": "Generic image/native checks used the first prefix; its Image native module, ImageFormat and Globals artifacts are byte-identical to the final prefix. Task/factory-clone checks use the final prefix. Native lifetime checks overlay the unchanged TCC resource-metrics library; installed and performance checks use standard builds.",
+    "formal_retry": "An earlier formal run exhausted local scratch disk space. Generated caches/superseded test artifacts were removed; only the successful complete rerun is qualification evidence."
+  },
+  "performance": {
+    "image_save": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "save_cpu_ns": 31663946666,
+          "process_wall_seconds": 35.61551145790145,
+          "image_bytes": 249906887
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "save_cpu_ns": 31328087250,
+          "process_wall_seconds": 34.989511208143085,
+          "image_bytes": 250490756
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "save_cpu_ns": 31018447667,
+          "process_wall_seconds": 35.388680750038475,
+          "image_bytes": 250490756
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "save_cpu_ns": 31397366375,
+          "process_wall_seconds": 35.11633654171601,
+          "image_bytes": 249906887
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "save_cpu_ns": 31051357375,
+          "process_wall_seconds": 34.769026750233024,
+          "image_bytes": 249906887
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "save_cpu_ns": 31529361167,
+          "process_wall_seconds": 35.28840124979615,
+          "image_bytes": 250490756
+        }
+      ],
+      "median_save_cpu_ns": {
+        "baseline": 31397366375,
+        "candidate": 31328087250
+      },
+      "candidate_over_baseline": 0.997793473370583,
+      "source": "[Module load: #time]; [System gc]; [[| let started := [16 clockNanos]; [System saveImage: \"/tmp/birnam-store-independent/03-image-owners/measured.image\"]; let elapsed := [[16 clockNanos] - started]; [System println: elapsed]; [System println: [[System imageSaveReport] status]] ] value]\n",
+      "prefixes": {
+        "baseline": "/tmp/birnam-store-independent/02-globals-bootstrap/qualified-prefix",
+        "candidate": "/tmp/birnam-store-independent/03-image-owners/qualified-prefix"
+      }
+    },
+    "startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 3.038174459245056,
+          "cpu_seconds": 2.889371
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 2.931466500274837,
+          "cpu_seconds": 2.8478989999999995
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.905739957932383,
+          "cpu_seconds": 2.8797470000000005
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.8265153327956796,
+          "cpu_seconds": 2.822482
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.8260642499662936,
+          "cpu_seconds": 2.817759000000001
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.806324750185013,
+          "cpu_seconds": 2.7972770000000002
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.8265153327956796,
+          "cpu_seconds": 2.822482
+        },
+        "candidate": {
+          "wall_seconds": 2.905739957932383,
+          "cpu_seconds": 2.8478989999999995
+        }
+      }
+    },
+    "logue_quiet": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "median_cpu_ns": 29227958.5,
+          "samples": [
+            28898667,
+            29267167,
+            36369583,
+            29410000,
+            29738084,
+            40977291,
+            28494041,
+            28734041,
+            28903834,
+            28576875,
+            29188750,
+            29339625
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 8.234255709219724
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "median_cpu_ns": 27090062.0,
+          "samples": [
+            27888334,
+            28805583,
+            27947042,
+            26955292,
+            27167041,
+            27013083,
+            27381625,
+            26950250,
+            27297583,
+            26389042,
+            26661625,
+            26881708
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 12.344161666929722
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "median_cpu_ns": 26738979.0,
+          "samples": [
+            26621584,
+            26818958,
+            28126791,
+            28445208,
+            27202833,
+            26567417,
+            26317500,
+            26555042,
+            27019875,
+            26659000,
+            26968583,
+            26517084
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.284858375322074
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "median_cpu_ns": 26911542.0,
+          "samples": [
+            27102084,
+            26578458,
+            26938125,
+            26745666,
+            26904209,
+            26423250,
+            26918875,
+            26774750,
+            28642417,
+            28586375,
+            27430167,
+            26138083
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.355731457937509
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "median_cpu_ns": 26447833.5,
+          "samples": [
+            26686458,
+            26432459,
+            26865250,
+            26209208,
+            25962666,
+            27105958,
+            26463208,
+            26072083,
+            26721958,
+            26164209,
+            26311416,
+            27822166
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.141075666993856
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "median_cpu_ns": 26498500.0,
+          "samples": [
+            26328208,
+            27076958,
+            26969084,
+            26329958,
+            26436375,
+            26511625,
+            27023542,
+            27018417,
+            26485375,
+            26295708,
+            26783167,
+            26199042
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.254239958245307
+        }
+      ],
+      "median_process_cpu_ns": {
+        "baseline": 26911542.0,
+        "candidate": 26738979.0
+      },
+      "candidate_over_baseline": 0.9935877698869875
+    },
+    "logue_initial_with_load_drift": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "median_cpu_ns": 26521146.0,
+          "samples": [
+            27006250,
+            26591292,
+            26253541,
+            26390458,
+            26781584,
+            26617875,
+            26346000,
+            26451000,
+            26351334,
+            26079209,
+            26605041,
+            26943708
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.173168417066336
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "median_cpu_ns": 26674729.0,
+          "samples": [
+            27772333,
+            27878083,
+            27605042,
+            27206542,
+            26744166,
+            26170708,
+            26605292,
+            26391584,
+            26007750,
+            26766750,
+            26490459,
+            26338375
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.172099458985031
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "median_cpu_ns": 27427687.5,
+          "samples": [
+            26468917,
+            26666083,
+            26313625,
+            26284916,
+            26185500,
+            27736917,
+            27118458,
+            28210042,
+            28329709,
+            29123167,
+            29083458,
+            28143167
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.3208894999697804
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "median_cpu_ns": 27670688.0,
+          "samples": [
+            27071792,
+            28376708,
+            26583125,
+            27052833,
+            26824334,
+            26776750,
+            27597542,
+            27743834,
+            27904334,
+            41027917,
+            35419667,
+            30449875
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 10.473410749807954
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "median_cpu_ns": 28188125.0,
+          "samples": [
+            27299625,
+            28122875,
+            28467417,
+            27833541,
+            28528708,
+            27565709,
+            28253375,
+            28269667,
+            27987250,
+            29161584,
+            28066500,
+            28861375
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 9.483877415768802
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "median_cpu_ns": 30177062.5,
+          "samples": [
+            39575209,
+            30181167,
+            29284000,
+            29106333,
+            28870083,
+            28723250,
+            28454458,
+            30366250,
+            30472375,
+            30187375,
+            30172958,
+            30975917
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 8.126317250076681
+        },
+        {
+          "trial": 3,
+          "label": "candidate",
+          "median_cpu_ns": 37803291.0,
+          "samples": [
+            38617208,
+            39151667,
+            36421208,
+            36530417,
+            38211791,
+            43626041,
+            44152333,
+            36127125,
+            37394791,
+            44549709,
+            36065458,
+            34849083
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 11.287107542157173
+        },
+        {
+          "trial": 3,
+          "label": "baseline",
+          "median_cpu_ns": 40078146.0,
+          "samples": [
+            38858042,
+            41153833,
+            45563584,
+            49312167,
+            49628000,
+            47187000,
+            38895166,
+            35806167,
+            43505541,
+            39002459,
+            37236250,
+            36927416
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 24.002184458076954
+        }
+      ],
+      "median_process_cpu_ns": {
+        "baseline": 27929406.5,
+        "candidate": 28802375.0
+      },
+      "candidate_over_baseline": 1.0312562495733664
+    },
+    "assessment": "Image-save CPU -0.22%; repeat quiet-turn CPU -0.64%. Startup wall median +2.8%, CPU +0.9%, with paired observations varying in both directions. Initial quiet-turn times drifted from about 26 to 40 ms; repeat results are near baseline. No material steady-state regression and no general speedup claim. Default GC policy unchanged."
+  },
+  "remaining": "Full core absence, task/resource field ownership, Alien recipes, optional fact/Cell persistence, tool/composition separation and release remain incomplete.",
+  "logs": {
+    "build-qualified.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/build-qualified.log",
+      "sha256": "a5681c3dfd5a77e5091e31749e867b7a3c76dcb5d08378130ea2c4f557aeeab5"
+    },
+    "snapshot.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/snapshot.log",
+      "sha256": "451e82ba7bcd36056e10a91b7532bd0c87bf6e294cd56c0fd2735a529c0295b3"
+    },
+    "owners.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/owners.log",
+      "sha256": "4642ee6d2e1015eeb2197fc80cc8b0583578e0b4000b3aedd84d16519dd6936b"
+    },
+    "native.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/native.log",
+      "sha256": "ea8087f313d1934d9f6d5860373e30cb9ae7233c22229a5fc72a5fe6c1461bf4"
+    },
+    "image-qualified.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/image-qualified.log",
+      "sha256": "bb6ada50eff32320fd41a026168fd92a548f6b714eb61182b2422dcbca018f9a"
+    },
+    "task-native-qualified.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/task-native-qualified.log",
+      "sha256": "31cdeba94b3b07c571db3b86cc3e2ba5787ed1377bc260468888ada8c7a5dbe4"
+    },
+    "task-image-qualified.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/task-image-qualified.log",
+      "sha256": "303e582a210ac7984d24fa36ba2af32ac72a020cd76365b3c5e5aa4cbc5df5a6"
+    },
+    "globals-floor.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/globals-floor.log",
+      "sha256": "8073835bf20851ba61376eb54b3733c1464bb7f9a4d20f356fbcadfd2ed6fe28"
+    },
+    "formal-accepted.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/formal-accepted.log",
+      "sha256": "098e439b15cff18455173009d9bc28d47a9718ba0ceaa9ed20de3ee893fb5b3d"
+    },
+    "image-performance.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/image-performance.log",
+      "sha256": "fdd7055b845678350c3fe38ce0da4841963fe2241e03035b5118eca91cd5dbe6"
+    },
+    "startup.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/startup.log",
+      "sha256": "77fc2191eb66744a674e6cba539023d0820f6791f919689d844a2588fd0d309d"
+    },
+    "quiet-initial.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/quiet-initial.log",
+      "sha256": "72e95716b13df61446fa82999fae4ce30c50c7beffa7bed9d178a1a46f8d6494"
+    },
+    "quiet-paired.log": {
+      "path": "/tmp/birnam-store-independent/03-image-owners/quiet-paired.log",
+      "sha256": "e221da60fa992a44e61bff299baba9b272d853e6bcfa798ca914809071f3c78d"
+    }
+  }
+}

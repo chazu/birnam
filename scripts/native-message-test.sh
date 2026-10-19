@@ -76,3 +76,5 @@ python3 scripts/cell-without-store-test.py "$prefix" --registry
 python3 scripts/globals-without-store-test.py "$prefix"
 
 python3 scripts/compiled-source-image-test.py "$prefix"
+
+python3 scripts/image-owner-test.py "$prefix"

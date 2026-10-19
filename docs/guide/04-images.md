@@ -33,6 +33,22 @@ Portable Blocks and CodeObjects retain their code and captures in the image.
 Source-backed global restoration uses the saved compiled generation. Process-local
 native resources need an explicit restoration recipe.
 
+Ordinary owners can customize their saved body with `imagePayload`. The default
+returns `self`; returning `false` refuses persistence:
+
+```text
+[Reflect defineMethod: #imagePayload on: resource as: [:self | false]]
+```
+
+An ordinary slot object can instead return a separate ObjectModel-readable payload.
+Its slots are serialized under the original object's identity and behavior, so
+aliases remain aliases and the live object need not change. This does not persist
+any separate native context owned by the returned payload. Native representations
+reject replacement payloads. A different Error result propagates; ordinary Error
+objects remain imageable through the default `self` result. Task handles reject
+persistence even after completion; factory clones and copied outcomes can be saved.
+These are current owner messages, not declarations in a global Store schema.
+
 `System saveImage:` is deliberately the only image-save workflow. It persists the
 current runtime state through the low-level atomic full-save primitive; source
 editing and candidate acceptance are intentionally not hidden behind another
@@ -104,11 +120,12 @@ resolves runtime dylibs from `<exe>/../lib` or `$BIRNAM_LIB_DIR`.
 
 ## AOT modules and source fallback
 
-The Rust installer compiles the boot modules ahead of time. These artifacts
-stage their exact canonical documents for G0; embedded source remains the floor.
-The Rust workspace tests prove both routes publish the same G0 digest.
+The Rust installer builds compiled bootstrap modules and prepared startup images
+from source. Its grammar seed is build-only and is excluded from the installed
+runtime. Compiled artifacts carry the programs and source metadata needed for
+activation without reparsing their source.
 
-Ordinary AOT `Module load:` is a bootstrap operation. After G0 it answers
-`#moduleIntroductionNotAvailable`; existing modules evolve through checked
-`CompiledUnit` successors. Later phases add module introduction and top-level
-migration without changing the universal module representation.
+`Module load:` follows the current module dependencies and artifact admission
+protocols. New module introduction is an ordinary loading operation. Explicit
+`CompiledUnit` candidate/revision workflows remain available; they are not a
+mandatory coordinator around module loading or ordinary method edits.

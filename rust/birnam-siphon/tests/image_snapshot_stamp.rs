@@ -1,7 +1,7 @@
 //! Image save must reject an intervening dictionary edit without replay or file replacement.
 mod support;
 use birnam_abi::{
-    Oop,
+    Oop, borrowed_slice,
     id_protocol::{NativeEntry, Operand, Outcome, Protocol},
 };
 use std::{
@@ -135,6 +135,57 @@ unsafe extern "C" fn change(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         result
     }
 }
+
+struct Projection<'a> {
+    h: &'a H,
+    original_size: NativeEntry,
+    last: Cell<Oop>,
+    child: Cell<Oop>,
+    collections: Cell<usize>,
+}
+unsafe extern "C" fn note_projection(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<Projection<'_>>();
+        let [payload] = borrowed_slice(a,n).unwrap() else { panic!("payload") };
+        p.last.set(object(*payload)); // Deliberately weak: Image must own this result.
+        let child = send(p.h.id,p.h.named(b"ObjectModel"),b"imageSlotAt:in:",
+            &[Operand::word(0),*payload]);
+        p.child.set(object(child));
+        Outcome::loaded(*payload)
+    }
+}
+unsafe extern "C" fn collect_projection(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<Projection<'_>>();
+        if borrowed_slice(a,n).unwrap()[0].as_object()==Some(p.last.get()) {
+            collect(p.h.id,p.h.named(b"GC"));
+            assert!(present(p.h.id,p.last.get()),"Image must root a fresh projection before further sends");
+            assert!(present(p.h.id,p.child.get()),"projection fields must survive collecting callbacks");
+            p.collections.set(p.collections.get()+1);
+        }
+        p.original_size.method.unwrap()(p.original_size.context,r,a,n)
+    }
+}
+unsafe fn projection_roots(h: &H, filename: Oop) {
+    unsafe {
+        let model=h.named(b"ObjectModel");
+        let size=lookup(h,model,b"imageSizeOf:");
+        let mut p=Box::new(Projection {h, original_size:size, last:Cell::new(std::ptr::null_mut()),child:Cell::new(std::ptr::null_mut()),collections:Cell::new(0)});
+        let context=(&mut *p as *mut Projection<'_>).cast();
+        replace(h,model,b"imageSizeOf:",NativeEntry::new(collect_projection,context));
+        replace(h,model,b"noteImageProjection:",NativeEntry::new(note_projection,context));
+        h.eval(b"let projectionRootProbe := [ObjectModel newSlots: #[nil] parent: ObjectVt]; [Reflect defineMethod: #imagePayload on: projectionRootProbe as: [:self | [ObjectModel noteImageProjection: [ObjectModel newSlots: #[[Object clone]] parent: ObjectVt]]]]; true");
+        assert_eq!(h.call(h.named(b"System"),b"saveImage:",&[filename]),h.named(b"true"));
+        assert_eq!(p.collections.get(),1,"projection is visited once without replay");
+        replace(h,model,b"imageSizeOf:",size);
+        let vt=h.call(h.id.receiver,b"behaviorOf:",&[model]);
+        send(h.id,vt,b"removeMethod:",&[Operand::object(h.id.intern_name(b"noteImageProjection:").unwrap())]);
+        h.eval(b"[Globals remove: #projectionRootProbe]; true");
+        collect(h.id,h.named(b"GC"));
+        assert!(!present(h.id,p.last.get())&&!present(h.id,p.child.get()),"temporary projection roots drain after saving");
+    }
+}
+
 #[test]
 #[ignore = "production modules"]
 fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
@@ -200,6 +251,7 @@ fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
             b"removeMethod:",
             &[Operand::object(p.selector)],
         );
+        projection_roots(&h,filename);
         std::fs::remove_file(path).unwrap();
         h.clear(0);
     }

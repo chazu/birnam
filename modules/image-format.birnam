@@ -4,6 +4,12 @@
 [Module named: #imageFormat requires: #[]];
 [Globals at: #ImageFormat put: [Cell with: nil]];
 
+// Ordinary snapshot admission. Return self for the live payload, false to reject,
+// or an unpublished ordinary slot-object payload. Image preserves the original
+// identity and behavior; native representations cannot be replaced by slot data.
+[Reflect defineMethod: #imagePayload on: Object as: [:self | self]];
+
+
 // Validation labels are also immutable; avoid creating Strings per field.
 let sliceContext := "slice:from:to:";
 let advanceContext := "advance:by:";
