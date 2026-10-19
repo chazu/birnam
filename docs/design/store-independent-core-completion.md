@@ -546,3 +546,49 @@ See the [report](repl-owner-migration-performance.md) and
 [receipt](../measurements/repl-owned-resources-20261019.json). Alien recipes and
 publication are next, followed by optional Image/Store contributions, duplicate
 Store local-Cell removal, optional tool composition, full absence gates and release.
+
+
+## Qualified direct Alien publication (2026-10-19)
+
+Alien now installs its constructed Method through the behavior's current
+`addMethod:as:` protocol, matching direct Image/Reflect publication. It no longer
+routes the installation through `Store addMethod:on:with:` or creates a second
+method-description fact. Result/error propagation and the target-return contract
+are preserved. Recipe recording still uses Store; this is a completed deletion
+within the Alien slice, not completion of recipe ownership.
+
+Eighteen direct-publication checks cover Store-authorizer independence, explicit
+Store authorizer behavior, snapshots that remain unchanged without subscription,
+explicit Id observation/invalidation, current replaced publishers, collecting
+callbacks, publisher failure and a reentrant replacement that survives publication.
+The initial added test wrongly expected automatic mirror invalidation; it was
+corrected against the existing opt-in-observation decision, not by adding a hook.
+Native FFI marshalling, callbacks, collection and exact wrapper-Unit reclamation
+pass, as do mapped/rebuilt/baked wrapper images and no-compilation console startup.
+
+Three paired normal-release observations show 20 repeated wraps at 654.5 to
+656.3 ms CPU (+0.3%) and source-file startup at 2.538 to 2.500 s wall (-1.5%).
+This is an architectural simplification, not a qualified runtime speedup. See the
+[receipt](../measurements/alien-direct-publication-20261019.json).
+
+### Next: ordinary recipe ownership and snapshot authority
+
+Keep function/signature object-code reuse separate from target/selector registration.
+The existing recipe facts cannot serve as method authority: authored replacement
+was already reproduced and fixed; repeated foreign replacement and removal need
+explicit coverage. Normal dispatch must not check recipes or repair user edits.
+
+Use ordinary authored data and current owner messages. Do not retain native Methods
+solely to recognize registrations: that would keep retired executable Units alive.
+Id already provides non-reused allocation identities, and Execution exposes direct
+Method observations; an ordinary process-local identity stamp can recognize a
+registration during explicit snapshot construction without retaining its Method.
+Projection must omit obsolete registrations and strip those process-local stamps;
+restoration must establish new stamps for newly created destination Methods.
+
+Image should consume the restored recipe owner after ordinary bindings are applied,
+when restored Globals is authoritative. Investigate this existing path before
+adding another format section, native registry or cross-owner layout decoder.
+Failures in that phase must follow the selected partial-load contract. Source and
+compiled bootstrap, no-Store wrapping, code reuse, reentrant publication, removal,
+aliasing, GC and successive mapped/rebuilt images are the acceptance boundaries.

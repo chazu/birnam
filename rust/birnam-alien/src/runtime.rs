@@ -556,17 +556,12 @@ unsafe fn install_wrapper(s: &State, q: &Scope<'_>, recipe: &[Oop; 5]) -> Answer
             b"ensurePrivateVtableFor:",
             &[Operand::object(recipe[3])],
         )?;
-        let store = q.named(b"Store")?;
         let result = q.call(
-            store,
-            b"addMethod:on:with:",
-            &[
-                Operand::object(recipe[2]),
-                Operand::object(behavior),
-                Operand::object(method),
-            ],
+            behavior,
+            b"addMethod:as:",
+            &[Operand::object(method), Operand::object(recipe[2])],
         )?;
-        if result.as_object() == Some(store) {
+        if result.as_object() == Some(method) {
             Ok(Operand::object(recipe[3]))
         } else {
             Ok(result)
