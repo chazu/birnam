@@ -1,0 +1,361 @@
+{
+  "baseline_commit": "5cbb91fa",
+  "scope": "Remove unused Globals recovery APIs and bank storage. Bootstrap still loads Store; this is not complete Store independence.",
+  "sources": {
+    "modules/globals.birnam": "bba5fe60de8f35bc597a10dd10543161108f5296c7c437ce649b876beb9bf604",
+    "rust/birnam-store/src/native.rs": "eafa25570e9d271076317234dbb597e9dd35c7b5fe71b75c6d17b9e8accca01a",
+    "rust/birnam-image/src/native.rs": "443f0b18e5955de1e77cb09783e571f1d895df1a467f4b88defa92dfeb474e31"
+  },
+  "qualification": {
+    "language_assertions": 847,
+    "lean_theorems": 388,
+    "lean_rejected_mutations": 122,
+    "tla_outcomes": 265,
+    "formal_receipt": ".cargo-target/formal/results/rooting-zley2n23/summary.json",
+    "formal_receipt_sha256": "a35ffcfe7dfa38f95817757fa2ca76f33d821a72f0a521534da92779fb13c6f5",
+    "native_suites": [
+      "owned_globals",
+      "generation_transaction",
+      "image_recovery_conflict",
+      "image_recovery_owners",
+      "image_snapshot_stamp",
+      "candidate_retirement",
+      "store",
+      "store_compensation"
+    ],
+    "host_tests": [
+      "discard_cancels_preparation_and_keeps_bindings_and_files"
+    ],
+    "other_checks": [
+      "Globals primitive floor without Store/Relational",
+      "owned binding alias/retention + mapped/rebuilt images",
+      "source Globals fixture",
+      "Logue state oracle and regression suite"
+    ]
+  },
+  "performance": {
+    "globals": {
+      "read": {
+        "candidate_over_baseline": 0.9920836012828498,
+        "median_cpu_ns": {
+          "baseline": 1934755000,
+          "candidate": 1919438708
+        }
+      },
+      "source-read": {
+        "candidate_over_baseline": 0.9821028405575727,
+        "median_cpu_ns": {
+          "baseline": 1958159959,
+          "candidate": 1923114458
+        }
+      },
+      "write": {
+        "candidate_over_baseline": 1.0373717031656198,
+        "median_cpu_ns": {
+          "baseline": 790426459,
+          "candidate": 819966042
+        }
+      }
+    },
+    "globals_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-8adcwflt/results.json",
+    "logue_observations_cpu_ns": {
+      "logue-before": {
+        "quiet": 51761271.0,
+        "generation": 4568200167,
+        "replacement": 140341249.5
+      },
+      "logue-after": {
+        "quiet": 28977375.5,
+        "generation": 2648813125,
+        "replacement": 81666749.5
+      },
+      "logue-before-repeat": {
+        "quiet": 26318374.5,
+        "generation": 2645852834,
+        "replacement": 84578145.5
+      }
+    },
+    "paired_quiet": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "median_cpu_ns": 26459979.0,
+          "samples": [
+            26442833,
+            26477125,
+            26439291,
+            26592542,
+            26422459,
+            26741750,
+            26325125,
+            28076917,
+            26761042,
+            26293542,
+            26752875,
+            26249334
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.6023965841159225
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "median_cpu_ns": 27505124.5,
+          "samples": [
+            26777208,
+            28365709,
+            29471583,
+            28173834,
+            28714959,
+            26878875,
+            27396416,
+            26908708,
+            27676291,
+            27613833,
+            27345042,
+            27150334
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.561572582926601
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "median_cpu_ns": 27021104.0,
+          "samples": [
+            26908292,
+            26696167,
+            27023416,
+            27087000,
+            26705458,
+            26461667,
+            26410208,
+            27193500,
+            28257292,
+            29501667,
+            27966208,
+            27018792
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.257053290959448
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "median_cpu_ns": 26719979.0,
+          "samples": [
+            27291875,
+            27541375,
+            26714625,
+            26884875,
+            26915875,
+            26594667,
+            26699625,
+            26597000,
+            26991791,
+            26717583,
+            26722375,
+            26461583
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.325115125160664
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "median_cpu_ns": 26356812.5,
+          "samples": [
+            26259708,
+            25867167,
+            26084417,
+            26424875,
+            26586375,
+            26355958,
+            26357667,
+            26585583,
+            26826292,
+            26185750,
+            26228250,
+            26542500
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.218050541821867
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "median_cpu_ns": 26304833.5,
+          "samples": [
+            26840667,
+            26187167,
+            25804250,
+            26688875,
+            27243959,
+            26169209,
+            26422500,
+            26608583,
+            25704500,
+            25998750,
+            26573250,
+            26065750
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.161844165995717
+        },
+        {
+          "trial": 3,
+          "label": "candidate",
+          "median_cpu_ns": 26428959.0,
+          "samples": [
+            26799917,
+            27161000,
+            26481375,
+            26728375,
+            26201625,
+            26217708,
+            26423709,
+            26132708,
+            26060167,
+            26700958,
+            26434209,
+            26169042
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.156884666997939
+        },
+        {
+          "trial": 3,
+          "label": "baseline",
+          "median_cpu_ns": 26704583.5,
+          "samples": [
+            26305167,
+            26126875,
+            26199875,
+            26390916,
+            27505375,
+            27639417,
+            28150500,
+            28023667,
+            26872208,
+            26227083,
+            26536959,
+            27607750
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.224791000131518
+        }
+      ],
+      "median_process_cpu_ns": {
+        "baseline": 26582281.25,
+        "candidate": 26725031.5
+      },
+      "candidate_over_baseline": 1.0053701278929927
+    },
+    "startup": {
+      "rows": [
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.727931375,
+          "cpu_seconds": 2.725634000000001
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.8290056670000006,
+          "cpu_seconds": 2.823630999999999
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.8157787919999997,
+          "cpu_seconds": 2.811811
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.764838707999999,
+          "cpu_seconds": 2.756363999999999
+        },
+        {
+          "trial": 3,
+          "label": "candidate",
+          "wall_seconds": 2.7549287500000013,
+          "cpu_seconds": 2.748077000000001
+        },
+        {
+          "trial": 3,
+          "label": "baseline",
+          "wall_seconds": 2.8124777499999993,
+          "cpu_seconds": 2.807227000000002
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.8157787919999997,
+          "cpu_seconds": 2.811811
+        },
+        "candidate": {
+          "wall_seconds": 2.7549287500000013,
+          "cpu_seconds": 2.748077000000001
+        }
+      }
+    },
+    "assessment": "No significant measured regression. Paired quiet application CPU +0.54%; generation essentially unchanged in repeat baseline; initial application baseline was inflated by machine-load drift. Read loops -0.8%/-1.8%; write loop +3.7% in three pairs. No general speedup claim."
+  },
+  "bootstrap_image_bytes": {
+    "baseline": 255999814,
+    "candidate": 249632635
+  },
+  "logs": {
+    "build.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/build.log",
+      "sha256": "74eb08bea71f2651d34c91b5df39382d918d00be3e0e456f180a48382d1d6f59"
+    },
+    "native.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/native.log",
+      "sha256": "7b5311977a123f966f4e0da73f07ef7c65dbaa1e463cfd3d230b17fe78e88b83"
+    },
+    "store.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/store.log",
+      "sha256": "b3e1ddfef896ba752e841f6b837f50ba619990de962a8bbfc686e71b342612c5"
+    },
+    "owned.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/owned.log",
+      "sha256": "fdebb3e106e0301170196d28e5149a15a462b4d0ec2127bd0c9fa517cf76c5d7"
+    },
+    "floor.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/floor.log",
+      "sha256": "d28814bf61c38e818e8a9225f1dd3c643865be961573b73d7cbbf3876265eff7"
+    },
+    "host-discard.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/host-discard.log",
+      "sha256": "002e8e96baf17854819411d1b08f9623349a93115a7ad2da039ef8372a64f5bd"
+    },
+    "globals-owner.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/globals-owner.log",
+      "sha256": "78cd7aa89658be56822dc6c91dc945e861159a4ab17ca3b40f83d5706ea7064b"
+    },
+    "language.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/language.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "formal-qualified.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/formal-qualified.log",
+      "sha256": "74375224049152bbd6303649fc55b34549a3f23a3afbf329e63457fd4fd6ecdc"
+    },
+    "performance.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/performance.log",
+      "sha256": "b6e5188c116e77f59ab88c239c357154b8d0ae457dd27fae73d123708bf4be4c"
+    },
+    "quiet-paired.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/quiet-paired.log",
+      "sha256": "36147161c91f36bbffd4d0c8c37bb4a34f05147d5a8dd1bd10183f3533871964"
+    },
+    "startup.log": {
+      "path": "/tmp/birnam-store-independent/01-globals-recovery/startup.log",
+      "sha256": "38d5e36f9592a537c053fb70ab190ad6c59b5196b3aa2294f8c12d6e76edf52b"
+    }
+  }
+}

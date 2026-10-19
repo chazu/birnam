@@ -2,7 +2,7 @@ import PrivateScratch
 
 /-! Binding-owner protocol model. Nat values are identities (0 may denote nil);
     absence is Option.none. This does not prove the Rust adapters, callbacks,
-    capacity reservations, GC, or image recovery. Those retain executable gates. -/
+    GC or image recovery. Those retain executable gates. -/
 namespace Birnam.GlobalsBinding
 open Birnam.PrivateScratch
 
@@ -25,20 +25,15 @@ theorem malformed_snapshot_rejected (a b : Nat) (rest : List Nat) :
 
 abbrev Bindings := Nat → Option Nat
 
-def restore (bindings : Bindings) (name : Nat) (expected previous : Option Nat) :=
-  if bindings name = expected then put bindings name previous else bindings
+def write (bindings : Bindings) (name : Nat) (value : Option Nat) :=
+  put bindings name value
 
-theorem conflict_preserves_world (bindings : Bindings) (name : Nat)
-    (expected previous : Option Nat) (conflict : bindings name ≠ expected) :
-    restore bindings name expected previous = bindings := by simp [restore, conflict]
-
-theorem exact_inverse (bindings : Bindings) (name : Nat) (previous : Option Nat) :
-    restore bindings name (bindings name) previous name = previous := by simp [restore, put]
+theorem write_installs_value (bindings : Bindings) (name : Nat) (value : Option Nat) :
+    write bindings name value name = value := by simp [write, put]
 
 theorem foreign_binding_preserved (bindings : Bindings) (name other : Nat)
-    (expected previous : Option Nat) (different : other ≠ name) :
-    restore bindings name expected previous other = bindings other := by
-  by_cases equal : bindings name = expected <;> simp [restore, equal, put, different]
+    (value : Option Nat) (different : other ≠ name) :
+    write bindings name value other = bindings other := by simp [write, put, different]
 
 /-! Ordinary owner roots and unpublished dictionary construction. -/
 def compareSwap (current expected replacement : Nat) :=
@@ -49,19 +44,6 @@ theorem stale_root_not_overwritten (current expected replacement : Nat) (h : cur
 
 theorem matched_root_published (current replacement : Nat) :
     compareSwap current current replacement = replacement := by simp [compareSwap]
-
-structure Owner where
-  bindings : Bindings
-  revision : Nat
-  credits : Nat → Nat
-
-def imageRecover (owner : Owner) : Owner := { owner with credits := fun _ => 0 }
-
-theorem image_preserves_bindings (owner : Owner) :
-    (imageRecover owner).bindings = owner.bindings := by rfl
-
-theorem image_drops_reservations (owner : Owner) (token : Nat) :
-    (imageRecover owner).credits token = 0 := by rfl
 
 structure DictionaryWorld where
   dictionaries : Nat → Option Nat

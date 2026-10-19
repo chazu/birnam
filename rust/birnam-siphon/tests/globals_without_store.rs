@@ -1,5 +1,5 @@
 //! Run the production authored Globals method bodies on a floor with no Store.
-//! Programs are exported from the installed Cell artifact, never rewritten here.
+//! Programs are exported from the installed Globals artifact, never rewritten here.
 mod support;
 use birnam_abi::{Oop, id_protocol::{Operand, Protocol}};
 use std::{cell::RefCell, path::PathBuf};
@@ -66,7 +66,7 @@ fn authored_bindings_work_without_store_or_relational() { unsafe {
     let model=h.named(b"ObjectModel");let nil=h.named(b"nil");
     let vector=|values:&[Oop]| { let mut v=h.call(h.named(b"Vector"),b"new",&[]);for &value in values {v=h.call(v,b"add:",&[value]);}v };
     let empty=vector(&[]);let map=h.call(h.named(b"Map"),b"new",&[]);
-    let state=vector(&[map,empty,h.integer(0),map,map]);
+    let state=vector(&[map,empty,h.integer(0),map]);
     let storage=h.call(model,b"newSlots:parent:",&[vector(&[state]),vt]);
     let globals=h.call(model,b"newSlots:parent:",&[empty,vt]);
     let key_prototype=h.call(model,b"newSlots:parent:",&[vector(&[nil]),vt]);
@@ -104,29 +104,26 @@ fn authored_bindings_work_without_store_or_relational() { unsafe {
     h.call(globals,b"at:put:",&[name,nil]);
     assert_eq!(h.call(globals,b"includes:",&[name]),h.named(b"true"));
     let before=h.call(globals,b"bindingAt:",&[name]);assert_eq!(h.number(h.call(before,b"size",&[])),1);
-    let value=h.call(prototype,b"clone",&[]);let token=h.call(prototype,b"clone",&[]);
-    h.call(globals,b"reserveBindingCompensationFor:count:",&[token,h.integer(3)]);
-    assert_eq!(h.call(globals,b"restoreBinding:expected:previous:reservation:",&[name,before,vector(&[value]),token]),globals);
+    let value=h.call(prototype,b"clone",&[]);
+    h.call(globals,b"at:put:",&[name,value]);
     collect(id,gc);assert_eq!(h.call(globals,b"at:",&[name]),value);
+    assert_eq!(h.call(before,b"at:",&[h.integer(0)]),nil,"snapshot changed");
     let foreign=id.intern_name(b"foreign").unwrap();h.call(globals,b"at:put:",&[foreign,value]);
-    h.call(globals,b"restoreBinding:expected:previous:reservation:",&[name,vector(&[value]),empty,token]);
+    h.call(globals,b"remove:",&[name]);
     assert_eq!(h.call(globals,b"includes:",&[name]),h.named(b"false"));
     assert_eq!(h.call(globals,b"at:",&[foreign]),value);
-    h.call(globals,b"releaseBindingCompensationFor:",&[token]);
-    let failure=h.call(globals,b"restoreBinding:expected:previous:reservation:",&[name,empty,before,token]);
-    assert_eq!(h.call(failure,b"kind",&[]),id.intern_name(b"compensationConflict").unwrap());
     let a=h.keep(object(send(id,h.named(b"String"),b"fromBytes:",&[Operand::bytes(b"same")])));
     let b=h.keep(object(send(id,h.named(b"String"),b"fromBytes:",&[Operand::bytes(b"same")])));
     assert_ne!(a,b);h.call(globals,b"at:put:",&[a,name]);h.call(globals,b"at:put:",&[b,foreign]);
     assert_eq!(h.call(globals,b"at:",&[a]),name);assert_eq!(h.call(globals,b"at:",&[b]),foreign);
     h.call(globals,b"remove:",&[a]);assert_eq!(h.call(globals,b"includes:",&[a]),h.named(b"false"));
     assert_eq!(h.call(globals,b"at:",&[b]),foreign);
-    let checkpoint=h.call(globals,b"imageBindingCheckpoint",&[]);
-    h.call(globals,b"remove:",&[b]);h.call(globals,b"restoreImageBindings:",&[checkpoint]);
-    assert_eq!(h.call(globals,b"at:",&[b]),foreign);
-    h.call(globals,b"reserveBindingCompensationFor:count:",&[token,h.integer(2)]);
-    h.call(globals,b"releaseImageReservations",&[]);
-    assert_eq!(h.number(h.call(globals,b"reservedBindingCompensationFor:",&[token])),0);
+    let snapshot=h.call(globals,b"bindingState",&[]);
+    h.call(globals,b"remove:",&[b]);
+    let bindings=h.call(snapshot,b"at:",&[h.integer(0)]);
+    let key=h.call(b,b"bindingKey",&[]);
+    assert_eq!(h.call(bindings,b"at:",&[key]),foreign);
+    assert_eq!(h.number(h.call(snapshot,b"size",&[])),4);
     let floor=h.tokens.borrow().len();
     let key=h.call(prototype,b"clone",&[]);let transient=h.call(prototype,b"clone",&[]);
     h.call(globals,b"at:put:",&[key,transient]);h.clear_from(floor);collect(id,gc);

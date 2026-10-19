@@ -60,6 +60,35 @@ The primary references above contain the live code at the baseline. Existing
 [Globals](../../rust/birnam-siphon/tests/globals_without_store.rs) floor tests remain
 useful component evidence, but explicitly exclude the full bootstrap/Host path.
 
+## Simplification review: delete before translating
+
+2026-10-19 follow-up, against `5cbb91fa`. These are recommendations from source
+and call-site inspection, not implemented removals or measured speedups. The
+migration should shrink the machinery rather than reproduce its fact-shaped APIs
+in new private maps.
+
+| Priority | Candidate | Evidence and recommended reduction | Boundary to retain |
+| --- | --- | --- | --- |
+| First | Globals compensation banks and image recovery checkpoints | `reserveBindingCompensationFor:count:`, credit queries/releases and conditional restoration remain in authored Globals and its native seed. Current candidate policy no longer calls them; a Generation regression explicitly checks that activation makes zero reservation calls. `imageBindingCheckpoint` / `restoreImageBindings:` have no current production callers in the repository. Image still calls `releaseImageReservations` to clear otherwise obsolete banks. Remove this capability family, its state slot/order snapshots, and its cleanup hook unless a concrete current requirement is selected. Update tests and the old ownership documentation accordingly. | Ordinary binding coherence, absent versus nil, alias order and identity; explicit candidate undo already has its own selected-write protocol. This deliberately removes public APIs, not their names alone. |
+| First | Dual Globals implementations and seed conversion | Store creates a native Globals facade; authored Globals imports its state, changes behavior, retracts automatic facts and compacts. Aim for one authored binding owner through bootstrap. Delete the Store-owned facade and transfer/cleanup path once any genuinely necessary minimal bootstrap interface is established. This also removes the late-Store-load clobber hazard. | Globals and Namespace have distinct responsibilities; do not merge them merely to remove a seed. Keep public binding behavior and early compilation working. |
+| With task/resource migration | Database-shaped field access | Task/Worker/Concurrency fields repeatedly manufacture prefixed attribute Symbols, obtain fact-backed Cells, then read/write their values. They also maintain schema/history/transient declarations for ordinary private state. Replace that layer with ordinary owned fields/collections; retain actual Cells where field handles escape and aliases require shared mutation. | Queue order, transitions, cancellation/shielding, field alias semantics and resource cleanup. A field migration is not permission to simplify the scheduler's semantics. |
+| With Alien migration | Fact encoding and Store-mediated method installation | Recipes are encoded as `__aliens__` attributes with synthetic `__alien_N` keys, enumerated back into vectors, searched, and converted again for Image. Wrapper installation also detours through Store's method-publication API. Use one owned recipe collection and the established Method/dictionary publication protocols. | Function/signature code reuse and target/selector registration are distinct matching purposes. Preserve both, current reads across reentrant callbacks, native-handle ownership and Method/Unit lifetimes. |
+| With Image migration | Mandatory database staging and global transient schema | Even a fact-free image currently queries Store metadata, creates a staging Store and swaps Store state. Every heap object gets a Store transient-marker query. Remove these from the core path; integrate projection/admission into actual owner snapshot protocols and keep facts/history as an explicit optional contribution. | Reject unsupported resources and captured transient handles; preserve explicit facts/history and the selected partial-application contract. Staging optional fact data can still be useful—only its mandatory role is redundant. |
+| With tool split | Optional catalog knowledge embedded in core code | stdlib's documented-method helper knows Doc's fact layout, while Cli requires Doc for unrelated commands. Forward documentation to its owner and load the catalog only for features requiring it. Use existing module dependencies/precompiled artifacts; avoid a second dependency planner. | Doc's relational catalog is intentional useful data. Keep that facility, its explicit APIs and self-description rather than rewriting it to erase every `db` occurrence. |
+
+In particular, do not replace these paths with a universal persistence registry,
+new compensation engine, mandatory live mirror, or a permanent native owner for
+what can be ordinary Birnam data. Select the smallest owner-message protocol that
+covers the actual resource and optional-data cases. Automatic rollback and policing
+of arbitrary replaced setters are outside the chosen contract.
+
+The strongest first deletion is the Globals bank/checkpoint family, paired with
+the seed work in slice 1. Keep `imageBindingProjection` and its transient-binding
+policy: unlike the abandoned rollback checkpoints, Image actively uses that
+projection to exclude process-local values without changing live bindings.
+Likewise, necessary ownership, failure propagation and code retirement must survive
+all these removals. Their cost is not evidence that they are redundant.
+
 ## Ordered implementation slices
 
 Each slice should have its own implementation, focused negative/positive tests,
@@ -177,3 +206,29 @@ Globals ownership. It gives a concrete dependency failure to eliminate and remov
 an early hidden seed dependency before later migrations try to use core bindings.
 The next design check is Image's Store-owned transient policy, so task/resource
 field moves cannot accidentally make native capabilities durable.
+
+
+## Progress: Globals recovery cleanup (2026-10-19)
+
+The first deletion slice is implemented and qualified. Authored Globals now keeps
+four state fields; compensation banks, saved inverse ordering and image checkpoint/
+rollback selectors are removed, together with the native seed adapters and Image's
+reservation-cleanup call. Binding identity/alias order, nil/absence, coherent state
+publication and transient projection remain. Explicit candidate undo and Store's
+own optional fact-compensation API still pass their tests.
+
+The Globals-specific Lean/TLA+ model now describes writes/removal and image
+preservation without banks. Qualification passes 388 Lean theorems, 122 rejected
+mutations, 265 expected TLC outcomes, 847 language assertions, native binding/image/
+Store/candidate tests, the authored Globals absent-Store floor, and mapped/rebuilt
+owner images. An old Globals image fixture still expected automatic rollback;
+it now exercises the selected partial-load contract and preservation of callback
+writes. See the [receipt](../measurements/globals-recovery-removal-20261019.json).
+
+No significant performance regression was found: interleaved Logue quiet-turn
+process medians differ by +0.54%; generation is effectively unchanged against the
+repeated baseline. Initial application timings drifted with machine load and are
+not a speedup claim. Three paired Globals loops measured reads -0.8%/-1.8% and
+writes +3.7%. Startup medians were 2.816 → 2.755 seconds; the bootstrap image is
+about 6 MiB smaller. Remaining seed ownership and the complete absence gate are
+next; this slice does not establish Store-independent startup.

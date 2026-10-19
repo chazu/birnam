@@ -663,18 +663,10 @@ fn discard_cancels_preparation_and_keeps_bindings_and_files() {
     host.send(tcc_vt,b"addMethod",&[Operand::object(diagnostic_key),diagnostic]).unwrap();
     eval(b"let activeUnit := [CompiledUnit open: discardPath]; [activeUnit map]");
     let globals=host.named(b"Globals").unwrap();
-    let vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(globals)]).unwrap();
     let key=unsafe{host.context.id.intern_name(b"releaseBindingCompensationFor:")}.unwrap();
-    q.call(globals,b"methodFor:",&[Operand::object(key)]).unwrap();
-    let original=host.send(host.context.id.receiver,b"bind:to:",&[Operand::object(key),Operand::object(globals)]).unwrap().as_entry().unwrap();
-    let error=q.call(host.named(b"Error").unwrap(),b"kind:",&[Operand::object(unsafe{host.context.id.intern_name(b"releaseDenied")}.unwrap())]).unwrap();
-    let mut fault=ReturnedFailure{error,calls:0};
+    assert_eq!(host.send(host.context.id.receiver,b"bind:to:",&[Operand::object(key),Operand::object(globals)]).unwrap().kind(),native::UNIT);
     expect(b"[[activeUnit activate] == activeUnit]");
-    host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(native::NativeEntry::new(returned_failure,(&mut fault as *mut ReturnedFailure).cast()))]).unwrap();
-    // Candidate policy no longer reserves/releases Globals compensation banks.
     expect(b"[[activeUnit discard] == activeUnit]");
-    assert_eq!(fault.calls,0);
-    host.send(vt,b"addMethod",&[Operand::object(key),Operand::entry(original)]).unwrap();
     expect(b"[[activeUnit state] = #discarded]");
     expect(b"[[activeUnit rollbackAvailable] = false]");
     expect(b"[[3 discardScope] = 2]");

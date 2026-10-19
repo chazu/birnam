@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove unused Globals compensation banks and image rollback/checkpoint APIs,
+  including their native seed adapters and Image cleanup call. Keep ordinary
+  binding ownership, transient projections and explicit candidate undo.
+
 - Avoid repeated macOS SDK and runtime-library setup for native Units whose
   imports are already provided by the running process. Preserve ordinary
   library/compiler-helper fallback and explicit library failures; cache no

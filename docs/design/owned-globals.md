@@ -1,5 +1,33 @@
 # Globals owns its bindings
 
+## Current contract after recovery cleanup (2026-10-19)
+
+Globals now owns a four-element state: binding Map, live insertion order, binding
+revision and transient-binding policy. The compensation-credit Map, saved inverse
+ordering, `restoreBinding:expected:previous:reservation:`, reservation APIs,
+`imageBindingCheckpoint`, `restoreImageBindings:` and `releaseImageReservations`
+are removed from both authored Globals and its native bootstrap facade. The Image
+loader no longer invokes reservation cleanup. Ordinary reentry-safe state
+publication, identity keys, absent versus nil, ordered lookup and unpublished
+`imageBindingProjection` remain. Reinserted removed names append normally.
+
+Candidate explicit undo uses its own observed-write policy; it does not need a
+Globals credit bank. A failed live image load keeps applied writes, including
+callback writes, and reports partial load. It does not restore the old Globals
+root. Native and authored tests now exercise that current contract. Store's own
+explicit fact-compensation facilities are a separate API and are unchanged.
+
+The Store-backed bootstrap seed/import is still present; removing it is the next
+[core-independence slice](store-independent-core-completion.md). The remainder of
+this document records the original 2026-10-14 implementation and measurements;
+its reservation, automatic image inverse and legacy-compatibility passages are
+historical, not current requirements.
+
+Qualification: [recovery-removal receipt](../measurements/globals-recovery-removal-20261019.json).
+
+## Historical migration report
+
+
 2026-10-14. Follows [LSP and the binding-owner protocol](lsp-and-globals-owners.md).
 This slice changes the default binding backend to authored Birnam. Store and
 Relational remain available and keep their self-description.

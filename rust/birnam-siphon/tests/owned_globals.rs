@@ -1,4 +1,4 @@
-//! Owned binding roots, conditional slot publication and transactional images.
+//! Owned binding roots, conditional slot publication and partial image application.
 mod support;
 use birnam_abi::{Oop, borrowed_slice, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
 use std::{cell::{Cell, RefCell}, ffi::c_void, os::unix::ffi::OsStrExt};
@@ -67,8 +67,9 @@ fn conditional_slots_and_image_failure_preserve_binding_owners() { unsafe {
     h.put(b"ImageOwnedMarker",h.key(b"saved")); h.put(b"ImageNil",h.named(b"nil"));
     h.put(b"ImageAliasA",old); h.put(b"ImageAliasB",old);
     h.put(b"ImageStorageAlias",h.call(globals,b"bindingOwner",&[]));
-    let bank=h.call(old,b"clone",&[]); h.put(b"ImageBank",bank);
-    h.call(globals,b"reserveBindingCompensationFor:count:",&[bank,h.int(5)]);
+    for selector in [b"reserveBindingCompensationFor:count:".as_slice(), b"restoreBinding:expected:previous:reservation:", b"imageBindingCheckpoint", b"restoreImageBindings:", b"releaseImageReservations"] {
+        assert_eq!(send(id,id.receiver,b"bind:to:",&[Operand::object(h.key(selector)),Operand::object(globals)]).kind(),birnam_abi::id_protocol::UNIT,"obsolete Globals API");
+    }
     let store=h.named(b"Store");
     h.call(store,b"assert:attr:value:",&[h.key(b"__globals__"),h.key(b"ImageOwnedMarker"),h.key(b"described")]);
     let path=std::env::temp_dir().join(format!("birnam-owned-globals-{}.image",std::process::id()));
@@ -77,17 +78,18 @@ fn conditional_slots_and_image_failure_preserve_binding_owners() { unsafe {
     h.put(b"ImageOwnedMarker",h.key(b"resident"));
     h.eval(b"[Reflect defineMethod: #ownedImageTransient on: System as: [:self | #transient]]");
     let before=h.call(globals,b"bindingState",&[]);
-    let original=h.entry(store,b"removeMethod:on:");
+    let original=h.entry(id.receiver,b"removeMethod:");
     let mut failure=ImageProbe{id,globals,key:h.key(b"ImageOwnedMarker"),value:h.key(b"callback"),selector:h.key(b"ownedImageTransient"),original,fired:Cell::new(false)};
-    let vt=h.call(id.receiver,b"behaviorOf:",&[store]);
-    install(id,vt,b"removeMethod:on:",fail_removal,core::ptr::from_mut(&mut failure).cast());
+    let vt=h.call(id.receiver,b"behaviorOf:",&[id.receiver]);
+    install(id,vt,b"removeMethod:",fail_removal,core::ptr::from_mut(&mut failure).cast());
     let error=id.send_named(system,b"loadImage:",&[Operand::object(filename)]).unwrap_err();
     assert_eq!((error.status,error.detail),(882,73)); assert!(failure.fired.get());
-    h.restore(store,b"removeMethod:on:",original);
-    assert_eq!(h.binding(b"ImageOwnedMarker"),h.key(b"resident"));
-    assert_eq!(h.call(globals,b"bindingState",&[]),before,"failed load must restore the exact resident root");
-    assert_eq!(h.call(system,b"ownedImageTransient",&[]),h.key(b"transient"));
-    assert_eq!(h.number(h.call(globals,b"reservedBindingCompensationFor:",&[bank])),5);
+    h.restore(id.receiver,b"removeMethod:",original);
+    assert_eq!(h.binding(b"ImageOwnedMarker"),h.key(b"callback"));
+    assert_ne!(h.call(globals,b"bindingState",&[]),before,"failed live load must retain the callback's state");
+    let system_behavior=h.call(id.receiver,b"behaviorOf:",&[system]);
+    assert_eq!(send(id,id.receiver,b"bindingOf:in:",&[Operand::object(h.key(b"ownedImageTransient")),Operand::object(system_behavior)]).kind(),birnam_abi::id_protocol::UNIT);
+    assert_eq!(h.call(h.call(system,b"imageSaveReport",&[]),b"status",&[]),h.key(b"partialLoad"));
     for rebuild in [false,true] {
         h.call(system,b"loadImage:rebuild:",&[filename,h.named(if rebuild {b"true"} else {b"false"})]);
         assert_eq!(h.binding(b"ImageOwnedMarker"),h.key(b"saved"));
@@ -96,7 +98,7 @@ fn conditional_slots_and_image_failure_preserve_binding_owners() { unsafe {
         assert_eq!(h.call(globals,b"includes:",&[h.key(b"ImageNil")]),h.named(b"true"));
         assert_eq!(h.call(globals,b"at:",&[h.binding(b"ImageNameA")]),h.key(b"left"));
         assert_eq!(h.call(globals,b"at:",&[h.binding(b"ImageNameB")]),h.key(b"right"));
-        assert_eq!(h.number(h.call(globals,b"reservedBindingCompensationFor:",&[h.binding(b"ImageBank")])),0);
+        assert_eq!(h.number(h.call(h.call(globals,b"bindingState",&[]),b"size",&[])),4);
         assert_eq!(h.call(store,b"currentValue:attr:",&[h.key(b"__globals__"),h.key(b"ImageOwnedMarker")]),h.key(b"described"));
     }
     let mark=h.tokens.borrow().len();

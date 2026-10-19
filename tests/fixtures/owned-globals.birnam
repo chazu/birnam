@@ -1,7 +1,7 @@
 [Module load: #os];
 [[|
 let check := [:condition :message | [condition ifFalse: [| [System printErrorText: [message , "\n"]]; [OS exit: 1]]]];
-let name := #ownedBinding; let token := [Object clone];
+let name := #ownedBinding;
 let facts := [db retainedFactCount]; let basis := [db basis];
 [Globals at: name put: nil];
 [check value: [Globals includes: name] value: "nil absent"];
@@ -10,46 +10,40 @@ let facts := [db retainedFactCount]; let basis := [db basis];
 [check value: [[Globals bindingAt: name] = #[nil]] value: "snapshot nil"];
 [check value: [[db retainedFactCount] = facts] value: "binding facts"];
 [check value: [[db basis] = basis] value: "binding changes Store revision"];
-[Globals reserveBindingCompensationFor: token count: 5];
-[check value: [[Globals reservedBindingCompensationFor: token] = 5] value: "reservation"];
-let old := [Globals bindingAt: name]; let new := #[[Object clone]];
-[check value: [[Globals restoreBinding: name expected: old previous: new reservation: token] == Globals] value: "forward"];
-[Globals at: #unrelatedBinding put: #foreign];
-[check value: [[Globals restoreBinding: name expected: new previous: old reservation: token] == Globals] value: "inverse"];
+let snapshot := [Globals bindingAt: name];
+[Globals at: name put: 17]; [Globals at: #unrelatedBinding put: #foreign];
+[check value: [snapshot = #[nil]] value: "binding snapshot changed"];
+[Globals remove: name];
 [check value: [[Globals at: #unrelatedBinding] == #foreign] value: "foreign lost"];
-[Globals releaseBindingCompensationFor: token];
-[check value: [[Globals reservedBindingCompensationFor: token] = 0] value: "release"];
-[check value: [[[Globals restoreBinding: name expected: old previous: #[] reservation: token] kind] == #compensationConflict] value: "unreserved"];
-[Globals remove: name]; [Globals remove: #unrelatedBinding];
+[Globals remove: #unrelatedBinding];
 [check value: [[Globals includes: name] not] value: "remove"];
-[check value: [[db retainedFactCount] = facts] value: "reservation facts"];
-[check value: [[db basis] = basis] value: "reservation changes Store revision"];
+[check value: [[db retainedFactCount] = facts] value: "binding facts"];
+[check value: [[db basis] = basis] value: "binding changes Store revision"];
+[check value: [[[Globals bindingState] size] = 4] value: "obsolete bank slot retained"];
+[#[#reserveBindingCompensationFor:count: #reservedBindingCompensationFor:
+   #releaseBindingCompensationFor: #restoreBinding:expected:previous:reservation:
+   #imageBindingCheckpoint #restoreImageBindings: #releaseImageReservations] do: [:selector |
+  [check value: [[Globals methodFor: selector] isNil] value: "obsolete recovery API retained"]
+]];
 
-// Value-equal names and reservation owners still have distinct identities.
+// Value-equal names still have distinct identities.
 let left := ["equal" , " name"]; let right := ["equal " , "name"];
 [check value: [[left = right] & [[left == right] not]] value: "identity fixture"];
 [Globals at: left put: #left]; [Globals at: right put: #right];
 [check value: [[Globals at: left] == #left] value: "identity left"];
 [check value: [[Globals at: right] == #right] value: "identity right"];
-[Globals reserveBindingCompensationFor: left count: 2];
-[Globals reserveBindingCompensationFor: right count: 3];
-[Globals releaseBindingCompensationFor: left];
-[check value: [[Globals reservedBindingCompensationFor: right] = 3] value: "equal owners shared credits"];
-[Globals releaseBindingCompensationFor: right];
 [Globals remove: left]; [check value: [[Globals at: right] == #right] value: "identity removal"];
 [Globals remove: right];
 let alias := [Object clone];
 [Globals at: #ownedAliasFirst put: alias]; [Globals at: #ownedAliasSecond put: alias];
 let snapshot := [Globals bindings];
-[Globals reserveBindingCompensationFor: token count: 2];
 [Globals remove: #ownedAliasFirst];
 [check value: [[Globals nameOf: alias] == #ownedAliasSecond] value: "first live alias"];
 [Globals at: #ownedForeignOrder put: #foreign];
-[Globals restoreBinding: #ownedAliasFirst expected: #[] previous: #[alias] reservation: token];
-[check value: [[Globals nameOf: alias] == #ownedAliasFirst] value: "inverse lost alias order"];
+[Globals at: #ownedAliasFirst put: alias];
+[check value: [[Globals nameOf: alias] == #ownedAliasSecond] value: "reinsertion did not append"];
 [check value: [[snapshot at: #ownedAliasFirst] == alias] value: "snapshot changed"];
-[check value: [[Globals at: #ownedForeignOrder] == #foreign] value: "inverse reset foreign order"];
-[Globals releaseBindingCompensationFor: token];
+[check value: [[Globals at: #ownedForeignOrder] == #foreign] value: "reinsertion reset foreign order"];
 [Globals remove: #ownedAliasFirst]; [Globals remove: #ownedAliasSecond]; [Globals remove: #ownedForeignOrder];
 [check value: [[db basis] = basis] value: "owned identity operations wrote Store"];
 
@@ -61,7 +55,7 @@ let imageState := [Reflect slot: #state in: [projected at: 1]];
 [check value: [[Globals bindingState] == live] value: "projection mutated live bindings"];
 [check value: [Globals includes: #ownedTransient] value: "projection removed live transient"];
 [check value: [[[imageState at: 0] includesKey: #ownedTransient] not] value: "projection kept transient"];
-[check value: [[[imageState at: 3] size] = 0] value: "projection retained banks"];
+[check value: [[imageState size] = 4] value: "projection retained obsolete state"];
 [Globals transientBinding: #ownedTransient put: false]; [Globals remove: #ownedTransient];
 
 // Two actual scheduled writers survive one-step executor budgets.
@@ -98,15 +92,13 @@ let conflict := [Globals at: #ownedMustNotCommit put: #lost];
 [check value: [[Globals includes: #ownedMustNotCommit] not] value: "failed write published"];
 [Globals remove: #ownedReentry];
 
-// Retain only current bindings and live reservation banks, not dead key wrappers.
+// Retain only current bindings, not removed identities or dead key wrappers.
 let batch := [:count |
   let facts := [db retainedFactCount];
   [[1 to: count] do: [:i |
-    let key := [Object clone]; let value := [Object clone]; let bank := [Object clone];
+    let key := [Object clone]; let value := [Object clone];
     [Globals at: key put: value];
-    [Globals reserveBindingCompensationFor: bank count: 2];
-    [Globals restoreBinding: key expected: #[value] previous: #[] reservation: bank];
-    [Globals releaseBindingCompensationFor: bank]
+    [Globals remove: key]
   ]];
   [[db retainedFactCount] - facts]
 ];

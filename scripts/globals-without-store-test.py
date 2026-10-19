@@ -9,7 +9,7 @@ from validation_support import ROOT, clean_environment, command, save_json, sha
 
 prefix=Path(sys.argv[1]).resolve();work=Path(tempfile.mkdtemp(prefix='birnam-globals-floor-'))
 programs=work/'programs';programs.mkdir();floor=work/'floor';floor.mkdir()
-selectors=[('bindingOwner',0),('bindingState',0),('publishBindingState:from:',2),('at:',1),('includes:',1),('at:ifAbsent:',2),('bindings',0),('bindingNames',0),('bindingBasis',0),('bindingAt:',1),('bindingMutation:',1),('at:put:',2),('map:without:',2),('order:without:',2),('remove:',1),('liveBindingsDo:',1),('nameOf:',1),('reservedBindingCompensationFor:',1),('reserveBindingCompensationFor:count:',2),('releaseBindingCompensationFor:',1),('restoreName:in:from:',3),('restoreBinding:expected:previous:reservation:',4),('imageBindingCheckpoint',0),('restoreImageBindings:',1),('releaseImageReservations',0),('transientBinding:put:',2),('bindingIsTransient:',1),('imageBindingProjection',0)]
+selectors=[('bindingOwner',0),('bindingState',0),('publishBindingState:from:',2),('at:',1),('includes:',1),('at:ifAbsent:',2),('bindings',0),('bindingNames',0),('bindingBasis',0),('bindingAt:',1),('bindingMutation:',1),('at:put:',2),('map:without:',2),('order:without:',2),('remove:',1),('liveBindingsDo:',1),('nameOf:',1),('transientBinding:put:',2),('bindingIsTransient:',1),('imageBindingProjection',0)]
 requests=[('Globals','globals',s,n) for s,n in selectors]+[
  ('Object','object','isError',0),('Object','object','bindingIdentity',0),('Object','object','bindingKey',0),
  ('SymbolVt','symbolBehavior','bindingKey',0),('keyPrototype','keyPrototype','bindingIdentity',0),

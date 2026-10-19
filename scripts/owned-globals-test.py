@@ -19,12 +19,11 @@ if not a.skip_images:
   src=work/(name+'.birnam');image=work/(name+'.image')
   src.write_text('''[[|
 let left := ["same" , " key"]; let right := ["same " , "key"];
-let shared := [Object clone]; let bank := [Object clone];
+let shared := [Object clone];
 [Globals at: left put: #left]; [Globals at: right put: #right];
 [Globals at: #savedAliasA put: shared]; [Globals at: #savedAliasB put: shared];
 [Globals at: #savedNil put: nil]; [Globals at: #savedValue put: 41];
 [db assert: #__globals__ attr: #savedValue value: 99];
-RESERVE
 [Globals at: #main put: [|
  [System gc];
  [System println: [Globals at: #savedValue]];
@@ -33,16 +32,15 @@ RESERVE
  [System println: [[Globals at: #savedNil ifAbsent: [| #bad]] isNil]];
  [System println: [Globals at: left]]; [System println: [Globals at: right]];
  [System println: [db currentValue: #__globals__ attr: #savedValue]];
- VERIFY
  [Globals at: #savedValue put: 42]; [System gc];
  [System println: [Globals at: #savedValue]];
  [System println: [db currentValue: #__globals__ attr: #savedValue]]
 ]];
 [System saveImage: IMAGE]; [System println: [[System imageSaveReport] status]]
 ] value]
-'''.replace('IMAGE',json.dumps(str(image))).replace('RESERVE','[Globals reserveBindingCompensationFor: bank count: 4];' if name=='new' else '').replace('VERIFY','[System println: [Globals reservedBindingCompensationFor: bank]];' if name=='new' else ''))
+'''.replace('IMAGE',json.dumps(str(image))))
   receipt[name+'_source']=src.read_text();run(name+'-save',[writer/'bin/birnam',src],'#saved\n');src.unlink()
-  expected=('41' if name=='new' else '99')+'\ntrue\ntrue\ntrue\n#left\n#right\n99\n'+('0\n42\n99\n' if name=='new' else '42\n42\n')
+  expected=('41' if name=='new' else '99')+'\ntrue\ntrue\ntrue\n#left\n#right\n99\n'+('42\n99\n' if name=='new' else '42\n42\n')
   for label,flags in [('mapped',[]),('rebuilt',['--rebuild'])]:run(name+'-'+label,[prefix/'bin/birnam',*flags,image],expected)
   receipt[name+'_image_sha256']=sha(image)
 receipt['passed']=True;save_json(work/'results.json',receipt);print('owned-globals: passed; '+str(work/'results.json'))

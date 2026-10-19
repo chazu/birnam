@@ -185,11 +185,8 @@ fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
             assert_eq!(v.call(v.named(b"db"),b"currentValue:attr:",&[unit,v.sym(b"state")]),v.sym(b"explicitUserFact"));
             // The retained construction can be activated again; no reservation
             // or global-basis service participates in this explicit policy.
-            let global_vt=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(globals)]));
-            let reserve=entry(&v,global_vt,b"reserveBindingCompensationFor:count:");
-            let mut unused=Fault{id,ns,original:reserve,key:core::ptr::null_mut(),error,armed:Cell::new(true),calls:Cell::new(0),after:false,extra:false};
-            replace(&v,global_vt,b"reserveBindingCompensationFor:count:",NativeEntry::new(fault,core::ptr::from_mut(&mut unused).cast()));
-            assert_eq!(v.call(unit,b"activate",&[]),unit);assert_eq!(unused.calls.get(),0);replace(&v,global_vt,b"reserveBindingCompensationFor:count:",reserve);
+            assert_eq!(send(id,id.receiver,b"bind:to:",&[Operand::object(v.sym(b"reserveBindingCompensationFor:count:")),Operand::object(globals)]).kind(),birnam_abi::id_protocol::UNIT);
+            assert_eq!(v.call(unit,b"activate",&[]),unit);
             assert_eq!(v.number(v.call(v.integer(2),b"txAdded",&[])),40);assert_eq!(v.direct(b"txRemove").kind(),birnam_abi::id_protocol::UNIT);
             let removal=entry(&v,id.receiver,b"removeMethod:");
             let mut f=Fault{id,ns,original:removal,key:v.sym(b"txAdded"),error,armed:Cell::new(true),calls:Cell::new(0),after:true,extra:false};

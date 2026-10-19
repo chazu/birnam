@@ -179,14 +179,11 @@ import Admission
 #print axioms Birnam.GlobalsBinding.snapshot_roundtrip
 #print axioms Birnam.GlobalsBinding.nil_is_not_absence
 #print axioms Birnam.GlobalsBinding.malformed_snapshot_rejected
-#print axioms Birnam.GlobalsBinding.conflict_preserves_world
-#print axioms Birnam.GlobalsBinding.exact_inverse
+#print axioms Birnam.GlobalsBinding.write_installs_value
 #print axioms Birnam.GlobalsBinding.foreign_binding_preserved
 
 #print axioms Birnam.GlobalsBinding.stale_root_not_overwritten
 #print axioms Birnam.GlobalsBinding.matched_root_published
-#print axioms Birnam.GlobalsBinding.image_preserves_bindings
-#print axioms Birnam.GlobalsBinding.image_drops_reservations
 #print axioms Birnam.GlobalsBinding.construction_preserves_old_lookup
 #print axioms Birnam.GlobalsBinding.construction_preserves_epoch
 #print axioms Birnam.GlobalsBinding.aba_advances_epoch

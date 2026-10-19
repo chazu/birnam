@@ -1481,10 +1481,6 @@ unsafe fn load(
                     return Err(if s.is_error(checked)? { Outcome::loaded(Operand::object(checked)) } else { bad() });
                 }
             }
-            let globals = q.keep(s.named(b"Globals")?)?;
-            if s.call(q, globals, b"releaseImageReservations", &[])? != globals {
-                return Err(bad());
-            }
             Ok(())
         })();
         if let Err(error) = result {
