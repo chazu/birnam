@@ -1,8 +1,8 @@
-# Socket ownership migration: performance hold
+# Socket ownership migration: regression and qualified remediation
 
-2026-10-19. Baseline `857b57e8`. Runtime, fixture and formal-model changes are
-uncommitted pending performance approval. The user's migration goal requires
-holding after significant performance regressions.
+2026-10-19. Baseline `857b57e8`. The initial draft was held under the user's performance-regression rule.
+The user approved the Cell remediation, which is now qualified. The failed
+measurements below remain diagnostic history.
 
 ## Implemented draft and correctness evidence
 
@@ -61,7 +61,7 @@ Three interleaved observations per variant, ordinary release runtimes, normal GC
 | Facts added by wrap/close batch | 200 | 0 | Removed |
 
 The ownership and retention improvements do not by themselves qualify the CPU
-regression. No runtime change from this slice has been committed.
+regression. This regression prevented committing the initial runtime draft.
 
 An untimed census of the actual installed policies shows where work grows:
 
@@ -80,7 +80,7 @@ and rooting dominate the extra message counts. The new Cell allocation and
 conditional retirement also have real costs; the census is not a CPU profile and
 does not prove that accessor changes alone will recover every nanosecond.
 
-## Proposed remediation, awaiting approval
+## Approved remediation
 
 1. Capture the ObjectModel receiver and immutable slot index when the authored
    Cell prototype is initialized, as already done in Globals, Trace and task
@@ -100,8 +100,46 @@ does not prove that accessor changes alone will recover every nanosecond.
    Commit the runtime slice only when performance is qualified; report any
    significant remaining cost before proceeding further.
 
-This targets shared access overhead without duplicating Cell as a socket-specific
-native or authored storage type. It is a proposal, not a delivered speedup.
+The user approved this remediation. It targets shared access overhead without
+duplicating Cell as a socket-specific native or authored storage type. The
+implementation captures the receiver/index and retains live dispatch; its
+qualification is recorded below. The regression measurements above describe the
+initial draft, not the approved remediation.
 
 Raw timing, census, source hashes and acceptance references are in the
 [receipt](../measurements/socket-owner-regression-20261019.json).
+
+
+## Qualified remediation
+
+Cell now captures ObjectModel and its immutable value-slot index. `with:` still
+sends current `clone` and `set:`; accessors still send to current methods on the
+captured receiver. A warmed getter observed a collecting replacement of that
+receiver's `slot:in:` method, and constructor probes observed replaced clone/set
+methods. No primitive layout is exposed to Socket.
+
+The Cell isolation fixture now loads actual Error/Globals/Cell initializers,
+including real lexical captures. Its base and combined reflection/record/registry/
+harness modes pass, retaining their former behavioral and reclamation checks.
+
+Final paired measurements against the pre-socket baseline:
+
+| Batch | Before | Qualified | Change |
+| --- | ---: | ---: | ---: |
+| 500 fd reads | 138.44 ms | 130.27 ms | -5.9% |
+| 100 wraps/closes | 56.63 ms | 60.31 ms | +6.5% |
+| Facts added by wraps/closes | 200 | 0 | Removed |
+| Startup wall median | 2.908 s | 2.510 s | -13.7% |
+| Logue quiet-turn CPU median | 26.285 ms | 26.032 ms | -1.0% |
+
+The initial 25% regression is reduced to a small remaining ownership cost.
+Creating the extra shared owner still has a cost: the untimed wrap census is
+2,956 sends versus 2,350 before. Close is now 1,620 versus 1,638; Cell value falls
+from 620 to 165 and Cell with: from 872 to 417. These counts are explanatory,
+not CPU timings. No general speedup or changed GC/scheduling policy is claimed.
+
+All 847 language checks, 177 task checks, interaction/TCP checks, socket resource
+and image tests, actual-initializer absence modes, and local Cell retention/image
+checks pass. The resource/slot/rooting formal suite remains 405 proofs, 128 rejected
+mutations and 277 expected TLC outcomes. See the
+[qualified receipt](../measurements/socket-owned-resources-20261019.json).

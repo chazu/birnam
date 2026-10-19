@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export actual Cell CodeObjects; exercise them in a floor where Store cannot load."""
+"""Load actual Cell initializers; retain exported ancillary owner/registry probes."""
 import argparse
 import json
 from pathlib import Path
@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from validation_support import ROOT, clean_environment, command, save_json, sha
 
-MODULES = 'id root_registry namespace boolean nil collect object_model word bytes execution portable_code string integer vector map tcc native_backend codegen_runtime'.split()
+MODULES = 'id root_registry namespace boolean nil collect object_model word bytes execution portable_code string integer float prelude file_io vector map artifact tcc native_backend codegen_runtime error globalsOwner cell'.split()
 
 HARNESS = [
  ('TestContext', ['runner'], ['slotNames','runner','for:']),
@@ -44,8 +44,8 @@ let requests := REQUESTS;
 ]]
 ] value]
 '''.replace('DIRECTORY',json.dumps(str(programs)+'/')).replace('REQUESTS',
-      '#[#[Cell #with:] #[Cell #value] #[Cell #set:] #[Cell #history] #[Cell #inc] #[Cell #dec]' +
-      (' #[Cell #slotNames] #[Object #slotNames] #[Object #isError] #[Reflect #isSymbol:]'
+      '#[' +
+      (' #[Object #slotNames] #[Object #isError] #[Reflect #isSymbol:]'
        ' #[Reflect #slotsOf:] #[Reflect #slotIndex:in:] #[Reflect #slot:in:] #[Reflect #slot:in:put:]'
        ' #[Module #slotNames] #[Module #libDir] #[Module #libDir:]' if args.slots else '') +
       (' #[Module #registry] #[Module #registry:] #[Module #recordNames] #[Module #recordOf:]'
@@ -60,7 +60,7 @@ let requests := REQUESTS;
     env=clean_environment()
     export=command([prefix/'bin/birnam',source],env=env,timeout=120)
     (work/'export.log').write_text(export['output'])
-    assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*((36 if args.registry else 17 if args.slots else 6) + (22 if args.records else 0) + (sum(len(methods) for name,fields,methods in HARNESS)+len(HARNESS_HELPERS) if args.harness else 0)),(work,export)
+    assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*((29 if args.registry else 10 if args.slots else 0) + (22 if args.records else 0) + (sum(len(methods) for name,fields,methods in HARNESS)+len(HARNESS_HELPERS) if args.harness else 0)),(work,export)
     for module in MODULES: shutil.copy2(prefix/'lib'/f'libbirnam_{module}.dylib',floor)
     assert not (floor/'libbirnam_store.dylib').exists()
     env.update(BIRNAM_CELL_PROGRAMS=str(programs), BIRNAM_TEST_MODULE_DIRECTORY=str(floor),
@@ -76,7 +76,7 @@ let requests := REQUESTS;
       'source_sha256':{str(f.relative_to(ROOT)):sha(f) for f in [ROOT/'modules/cell.birnam', ROOT/'modules/stdlib.birnam', ROOT/'modules/modules.birnam',ROOT/'rust/birnam-siphon/tests/cell_without_store.rs',Path(__file__).resolve()]+([ROOT/'modules'/f'{m}.birnam' for m in ['log','config','http','process','app-config']] if args.records else [])+([ROOT/'modules/test.birnam',ROOT/'modules/bench.birnam'] if args.harness else [])},
       'program_sha256':{f.name:sha(f) for f in programs.glob('*.bin')},
       'floor_sha256':{f.name:sha(f) for f in floor.iterdir()},
-      'scope':'Production method bodies, with a Namespace binding owner and raw bootstrap publication; not a Store-free full application bootstrap.'}
+      'scope':'Actual Error/Globals/Cell initializers without Store/Relational/Bootstrap/Lang/Generation, plus exported unchanged ancillary slot/record/registry/harness bodies. No synthetic Cell or Globals alias. Not a Store-free full application bootstrap.'}
     save_json(work/'results.json',receipt)
     assert receipt['passed'],work
     print('cell-without-store: passed; '+str(work/'results.json'))

@@ -85,6 +85,7 @@ if selected image; then
   # those diagnostic counters disabled. Do not duplicate that gate here.
 fi
 if selected interaction; then
+  run_check socket-owner-test.py python3 scripts/socket-owner-test.py "$scratch/relocated"
   host_test startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse
   run_check interaction-cli-test.py python3 scripts/interaction-cli-test.py "$scratch/relocated"
   run_check repl-golden.sh bash scripts/repl-golden.sh

@@ -25,6 +25,7 @@ run = command(['mise', 'exec', '--', 'cargo', 'test', '--offline', '--locked',
 receipt = {'passed': run['exit_code'] == 0, 'run': run,
            'source_sha256': {str(p.relative_to(ROOT)): sha(p) for p in [
                ROOT / 'modules/stackless-control.birnam',
+               ROOT / 'modules/cell.birnam',
                ROOT / 'modules/isolate.birnam',
                ROOT / 'rust/birnam-siphon/tests/task_without_store.rs',
                Path(__file__).resolve()]},

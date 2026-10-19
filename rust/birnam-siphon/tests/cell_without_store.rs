@@ -1,8 +1,8 @@
-//! Run the production authored Cell method bodies on a floor with no Store.
-//! Programs are exported from the installed Cell artifact, never rewritten here.
+//! Run actual Error/Globals/Cell initializers on a floor with no Store.
+//! Ancillary record/registry/harness programs remain unchanged exported bodies.
 mod support;
-use birnam_abi::{Oop, id_protocol::{Operand, Protocol}};
-use std::{cell::RefCell, path::PathBuf};
+use birnam_abi::{Oop, borrowed_slice, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
+use std::{cell::{Cell, RefCell}, ffi::c_void, path::PathBuf};
 use std::os::unix::ffi::OsStrExt;
 use support::*;
 
@@ -17,7 +17,7 @@ impl H {
         self.tokens.borrow_mut().push(unsafe { retain(self.id,self.roots,o) }); o
     }
     unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe { object(send(self.id,self.ns,b"at:",&[Operand::object(self.id.intern_name(name).unwrap())])) }
+        unsafe { object(send(self.id,self.ns,b"resolveGlobal:",&[Operand::object(self.id.intern_name(name).unwrap())])) }
     }
     unsafe fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Oop {
         unsafe { self.keep(object(send(self.id,r,name,&args.iter().copied().map(Operand::object).collect::<Vec<_>>()))) }
@@ -36,8 +36,53 @@ impl H {
     }
 }
 
+struct ReadProbe { id: Protocol, gc: Oop, target: Oop, result: Oop, prior: NativeEntry, calls: Cell<usize> }
+unsafe extern "C" fn current_read(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome { unsafe {
+    let p=&*c.cast::<ReadProbe>();
+    let args=borrowed_slice(a,n).unwrap();
+    if args.get(1).and_then(|v|v.as_object())==Some(p.target) {
+        p.calls.set(p.calls.get()+1); collect(p.id,p.gc);
+        Outcome::loaded(Operand::object(p.result))
+    } else { p.prior.method.unwrap()(p.prior.context,r,a,n) }
+} }
+struct ConstructionProbe { target: Oop, value: Cell<Oop>, clones: Cell<usize>, sets: Cell<usize> }
+unsafe extern "C" fn current_clone(c:*mut c_void,_:Oop,_:*const Operand,n:usize)->Outcome { unsafe {
+    assert_eq!(n,0); let p=&*c.cast::<ConstructionProbe>(); p.clones.set(p.clones.get()+1);
+    Outcome::loaded(Operand::object(p.target))
+} }
+unsafe extern "C" fn current_set(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome { unsafe {
+    let p=&*c.cast::<ConstructionProbe>(); let args=borrowed_slice(a,n).unwrap(); assert_eq!(args.len(),1);
+    p.value.set(object(args[0])); p.sets.set(p.sets.get()+1); Outcome::loaded(Operand::object(r))
+} }
+unsafe fn current_accessor_dispatch(h:&H,cell:Oop,model:Oop,gc:Oop) { unsafe {
+    let nil=h.named(b"nil"); let watched=h.call(cell,b"with:",&[nil]); let result=h.integer(93);
+    let vt=h.call(h.id.receiver,b"behaviorOf:",&[model]); let selector=h.id.intern_name(b"slot:in:").unwrap();
+    h.call(model,b"methodFor:",&[selector]);
+    let prior=send(h.id,h.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(vt)]).as_entry().unwrap();
+    let probe=ReadProbe{id:h.id,gc,target:watched,result,prior,calls:Cell::new(0)};
+    // Warm the ordinary getter, then change the receiver's live method binding.
+    for _ in 0..128 {assert_eq!(h.call(watched,b"value",&[]),nil);}
+    install(h.id,vt,b"slot:in:",current_read,(&probe as *const ReadProbe).cast_mut().cast());
+    assert_eq!(h.call(watched,b"value",&[]),result); assert_eq!(probe.calls.get(),1);
+    install(h.id,vt,b"slot:in:",prior.method.unwrap(),prior.context);
+    assert_eq!(h.call(watched,b"value",&[]),nil);
+
+    let factory=h.call(cell,b"clone",&[]); let target=h.call(cell,b"clone",&[]);
+    let factory_vt=h.call(h.id.receiver,b"ensurePrivateVtableFor:",&[factory]);
+    let target_vt=h.call(h.id.receiver,b"ensurePrivateVtableFor:",&[target]);
+    let clone_sel=h.id.intern_name(b"clone").unwrap(); let set_sel=h.id.intern_name(b"set:").unwrap();
+    h.call(factory,b"methodFor:",&[clone_sel]); h.call(target,b"methodFor:",&[set_sel]);
+    let probe=ConstructionProbe{target,value:Cell::new(nil),clones:Cell::new(0),sets:Cell::new(0)};
+    let context=(&probe as *const ConstructionProbe).cast_mut().cast();
+    install(h.id,factory_vt,b"clone",current_clone,context); install(h.id,target_vt,b"set:",current_set,context);
+    assert_eq!(h.call(factory,b"with:",&[result]),target);
+    assert_eq!(probe.value.get(),result); assert_eq!(probe.clones.get(),1); assert_eq!(probe.sets.get(),1);
+    send(h.id,factory_vt,b"removeMethod:",&[Operand::object(clone_sel)]);
+    send(h.id,target_vt,b"removeMethod:",&[Operand::object(set_sel)]);
+} }
+
 #[test]
-#[ignore = "scripts/cell-without-store-test.py exports production programs and selects a Store-free prefix"]
+#[ignore = "scripts/cell-without-store-test.py selects actual initializers and ancillary programs without Store"]
 fn authored_cells_mutate_and_collect_without_store() { unsafe {
     let programs=PathBuf::from(std::env::var_os("BIRNAM_CELL_PROGRAMS").expect("exported Cell programs"));
     assert!(!directory().join("libbirnam_store.dylib").exists());
@@ -50,23 +95,30 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     h.publish(b"Object",prototype); h.publish(b"ObjectVt",vt);
     for module in ["boolean","nil"] { mount(id,module,ns); }
     let gc=load(id,"collect",&[Operand::object(roots)]); h.publish(b"GC",gc); send(id,gc,b"activate",&[]);
-    for module in ["object_model","word","bytes","execution","portable_code","string","integer"] {
+    for module in ["object_model","word","bytes","execution","portable_code","string","integer","float","prelude","file_io"] {
         mount(id,module,ns);
     }
     let collection=h.keep(object(send(id,vt,b"delegated",&[])));
     h.publish(b"Collection",collection); h.publish(b"CollectionVt",collection);
     let symbol=id.intern_name(b"Symbol").unwrap();
     h.publish(b"SymbolVt",object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(symbol)])));
-    for module in ["vector","map","tcc","native_backend","codegen_runtime"] {
+    for module in ["vector","map","artifact","tcc","native_backend","codegen_runtime"] {
         mount(id,module,ns);
     }
-    // Namespace is a real binding owner, not a fake database. Only the compiler's
-    // existing Globals-first read convention needs this alias in the small floor.
-    h.publish(b"Globals",ns);
+    let artifact=|name: &str| {
+        let path=directory().join(format!("libbirnam_{name}.dylib"));
+        let path=h.keep(object(send(id,h.named(b"String"),b"fromBytes:",&[Operand::bytes(path.as_os_str().as_bytes())])));
+        let result=h.call(h.named(b"Codegen"),b"load:",&[path]);
+        assert_ne!(result,h.named(b"nil"),"nil initializer: {name}");
+        assert_eq!(h.call(result,b"isError",&[]),h.named(b"false"),"failed initializer: {name}");
+        result
+    };
+    artifact("error"); let globals=artifact("globalsOwner"); let cell=artifact("cell");
+    assert_eq!(h.call(globals,b"at:",&[id.intern_name(b"Cell").unwrap()]),cell);
+    assert_eq!(artifact("cell"),cell,"repeat initialization preserves the Cell prototype");
     let model=h.named(b"ObjectModel"); let nil=h.named(b"nil");
     let values=h.call(h.named(b"Vector"),b"new",&[]);
     let values=h.call(values,b"add:",&[nil]);
-    let cell=h.call(model,b"newSlots:parent:",&[values,vt]); h.publish(b"Cell",cell);
     let captures=h.call(h.named(b"Vector"),b"new",&[]);
     let with_slots=std::env::var_os("BIRNAM_CELL_SLOTS").is_some();
     let with_registry=std::env::var_os("BIRNAM_MODULE_REGISTRY").is_some();
@@ -75,20 +127,15 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
         let manager=h.call(model,b"newSlots:parent:",&[fields,vt]); h.publish(b"Module",manager);
         h.publish(b"SymbolExemplarVt",h.named(b"SymbolVt")); manager
     } else { nil };
-    let mut requests=vec![(cell,b"with:".as_slice(),1),(cell,b"value",0),(cell,b"set:",1),
-        (cell,b"history",0),(cell,b"inc",0),(cell,b"dec",0)];
+    let mut requests=Vec::new();
     if with_slots {
         let reflect=h.named(b"Reflect");
-        requests.extend([(cell,b"slotNames".as_slice(),0),(prototype,b"slotNames",0),(prototype,b"isError",0),
+        requests.extend([(prototype,b"slotNames".as_slice(),0),(prototype,b"isError",0),
             (reflect,b"isSymbol:",1),(reflect,b"slotsOf:",1),(reflect,b"slotIndex:in:",2),
             (reflect,b"slot:in:",2),(reflect,b"slot:in:put:",3),
             (manager,b"slotNames",0),(manager,b"libDir",0),(manager,b"libDir:",1)]);
     }
     if with_registry {
-        // Real Globals reads missing names as nil; this small floor aliases
-        // Namespace, whose at: exposes native Unit for absence. Bind the absent
-        // optional executor to nil rather than supplying a scheduler or Store.
-        h.publish(b"TaskExecutor",nil);
         requests.extend([(manager,b"registry".as_slice(),0),(manager,b"registry:",1),(manager,b"recordNames",0),
             (manager,b"recordOf:",1),(manager,b"registryMutation:",1),(manager,b"record:put:",2),
             (manager,b"field:of:",2),(manager,b"field:of:put:",3),(manager,b"removeRecord:",1),
@@ -258,6 +305,7 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
         h.clear_from(start); collect(id,gc);
         assert!(!present(id,private) && !present(id,record));
     }
+    current_accessor_dispatch(&h,cell,model,gc);
     let floor=h.tokens.borrow().len();
     let value=h.call(prototype,b"clone",&[]);
     let local=h.call(cell,b"with:",&[value]);
@@ -265,6 +313,10 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     h.clear_from(floor); collect(id,gc);
     assert!(present(id,local) && present(id,value));
     assert_eq!(h.call(local,b"value",&[]),value);
+    assert_eq!(h.call(local,b"replace:with:",&[nil,nil]),h.named(b"false"));
+    assert_eq!(h.call(local,b"value",&[]),value);
+    assert_eq!(h.call(local,b"replace:with:",&[value,nil]),h.named(b"true"));
+    assert_eq!(h.call(local,b"value",&[]),nil);
     h.call(local,b"set:",&[h.integer(41)]);
     assert_eq!(h.number(h.call(local,b"inc",&[])),42);
     assert_eq!(h.number(h.call(local,b"dec",&[])),41);

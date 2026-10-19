@@ -1,0 +1,661 @@
+{
+  "baseline_runtime_commit": "857b57e8",
+  "scope": "Store-independent socket resource state with shared owner Cells, conditional retirement before cleanup, live-image refusal and closed-image aliases. Approved captured receiver/index optimization in Cell; dynamic clone/set and method dispatch preserved.",
+  "source_sha256": {
+    "modules/cell.birnam": "5e87302547dec928672144bb78627120ae219687b41f86641905864ba1564c3b",
+    "modules/socket.birnam": "ac9c29005484e5f48110763b7e4550cadb9de25b501258950c874b08189d74c4",
+    "rust/birnam-siphon/tests/cell_without_store.rs": "49a027104199345431736c5bb1d9107406989e8637d8bde87ff410dd777633ce",
+    "rust/birnam-siphon/tests/task_without_store.rs": "0da3e9613fc3ec01a70bf9f59de1b22cc497378ddffcaad63f4bd0550741258a",
+    "scripts/cell-without-store-test.py": "fb6cb8db296722aeb43c3995ccbecd44764aa5551c41121b66d7e30619d70345",
+    "scripts/task-without-store-test.py": "61dc325ecdc74c344283594cc2328225504d5140304f9373229ebd91be63fc71",
+    "scripts/socket-owner-test.py": "b2496570579b59403bd9c7d494d48d16fc2f2dddd992511ec5035f03561d4c92",
+    "scripts/host-cli-test.sh": "651536655bc9d5adfc2f265642732a425a3010c6e9d7cf9e3f8b2fc7d60cecb2"
+  },
+  "prefix": "/tmp/birnam-store-independent/08-cell-accessors/prefix",
+  "install_receipt_sha256": "2b8464514db831009417e1fde2faafcb629567a9b982c1592ea59bbb659542da",
+  "qualification": {
+    "cell_initializer_base": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-cell-without-store-mcjdfsjz/results.json",
+      "sha256": "1be12faef163143f55f538554dacce6f38ef8137f28bedbb3528355ed78ddb0a",
+      "runs": {
+        "argv": [
+          "mise",
+          "exec",
+          "--",
+          "cargo",
+          "test",
+          "--offline",
+          "--locked",
+          "-p",
+          "birnam-siphon",
+          "--test",
+          "cell_without_store",
+          "--",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest authored_cells_mutate_and_collect_without_store ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running tests/cell_without_store.rs (.cargo-target/native-message-tests/debug/deps/cell_without_store-c44346257a4813ab)\n",
+        "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running tests/cell_without_store.rs (.cargo-target/native-message-tests/debug/deps/cell_without_store-c44346257a4813ab)\n",
+        "stdout": "\nrunning 1 test\ntest authored_cells_mutate_and_collect_without_store ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n",
+        "wall_ns": 87064250
+      },
+      "scope": "Actual Error/Globals/Cell initializers without Store/Relational/Bootstrap/Lang/Generation, plus exported unchanged ancillary slot/record/registry/harness bodies. No synthetic Cell or Globals alias. Not a Store-free full application bootstrap."
+    },
+    "cell_initializer_all_ancillary_modes": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-cell-without-store-d9m9ux2y/results.json",
+      "sha256": "c181b696c15d4a736520c30bfc1af5d6d948a7bcbed2b63c5e18e30cc3f478fb",
+      "runs": {
+        "argv": [
+          "mise",
+          "exec",
+          "--",
+          "cargo",
+          "test",
+          "--offline",
+          "--locked",
+          "-p",
+          "birnam-siphon",
+          "--test",
+          "cell_without_store",
+          "--",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest authored_cells_mutate_and_collect_without_store ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s\n\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.59s\n     Running tests/cell_without_store.rs (.cargo-target/native-message-tests/debug/deps/cell_without_store-c44346257a4813ab)\n",
+        "stderr": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.59s\n     Running tests/cell_without_store.rs (.cargo-target/native-message-tests/debug/deps/cell_without_store-c44346257a4813ab)\n",
+        "stdout": "\nrunning 1 test\ntest authored_cells_mutate_and_collect_without_store ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s\n\n",
+        "wall_ns": 1330141291
+      },
+      "scope": "Actual Error/Globals/Cell initializers without Store/Relational/Bootstrap/Lang/Generation, plus exported unchanged ancillary slot/record/registry/harness bodies. No synthetic Cell or Globals alias. Not a Store-free full application bootstrap."
+    },
+    "socket": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-cpz5mwxq/results.json",
+      "sha256": "6da7941b240d0c1489074de9131435f499492f08804c1e3e6a7bc50bc02c0fea",
+      "runs": [
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-cpz5mwxq/owners.birnam"
+          ],
+          "exit_code": 0,
+          "name": "source",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n#rejected\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n#rejected\n",
+          "wall_ns": 36061611208
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-cpz5mwxq/closed.image"
+          ],
+          "exit_code": 0,
+          "name": "mapped",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 2691863500
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "--rebuild",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-cpz5mwxq/closed.image"
+          ],
+          "exit_code": 0,
+          "name": "rebuilt",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 5636688958
+        }
+      ],
+      "scope": null
+    },
+    "local_cell_retention_and_images": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-_fbmpj2m/results.json",
+      "sha256": "82ff4141a60a76c859a4d64510e173b18755014e5168151da1d692624e4555a6",
+      "runs": [
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "/Users/chazu/dev/zig/birnam/tests/fixtures/local-cells.birnam"
+          ],
+          "exit_code": 0,
+          "name": "local-cells",
+          "output": "{\"batches\":[{\"fact_delta\":0,\"object_delta\":29,\"calls\":0},{\"fact_delta\":0,\"object_delta\":29,\"calls\":1},{\"fact_delta\":0,\"object_delta\":29,\"calls\":50},{\"fact_delta\":0,\"object_delta\":29,\"calls\":200}],\"passed\":true}\n",
+          "stderr": "",
+          "stdout": "{\"batches\":[{\"fact_delta\":0,\"object_delta\":29,\"calls\":0},{\"fact_delta\":0,\"object_delta\":29,\"calls\":1},{\"fact_delta\":0,\"object_delta\":29,\"calls\":50},{\"fact_delta\":0,\"object_delta\":29,\"calls\":200}],\"passed\":true}\n",
+          "wall_ns": 4857496209
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-_fbmpj2m/save.birnam"
+          ],
+          "exit_code": 0,
+          "name": "save",
+          "output": "#saved\n",
+          "stderr": "",
+          "stdout": "#saved\n",
+          "wall_ns": 33935421417
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-_fbmpj2m/cells.image"
+          ],
+          "exit_code": 0,
+          "name": "mapped",
+          "output": "true\n17\n19\n0\n24\n23\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\n17\n19\n0\n24\n23\ntrue\ntrue\n",
+          "wall_ns": 2688351042
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/08-cell-accessors/prefix/bin/birnam",
+            "--rebuild",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-_fbmpj2m/cells.image"
+          ],
+          "exit_code": 0,
+          "name": "rebuilt",
+          "output": "true\n17\n19\n0\n24\n23\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\n17\n19\n0\n24\n23\ntrue\ntrue\n",
+          "wall_ns": 5607359917
+        }
+      ],
+      "scope": null
+    },
+    "language_checks": 847,
+    "task_checks": 177,
+    "interaction": "Tooling, image rebuild/executable recovery, persistent TCP sessions, bind failure, project tty/socket and main-once passed.",
+    "live_dispatch": "Warmed Cell value observes a replaced ObjectModel slot:in: method that collects; restoring the binding restores the result. Cell with: invokes replaced clone and set: methods.",
+    "formal": {
+      "path": ".cargo-target/formal/results/rooting-hjpw0y_w/summary.json",
+      "sha256": "83af04b94efa535a9cf054d9c210af4cf91e569aed606d1abb1a7ad7b326010a",
+      "theorems": 405,
+      "rejected_mutations": 128,
+      "tla_outcomes": 277,
+      "scope": "The unchanged resource/slot/rooting/capture contracts qualified with the socket draft. Runtime acceptance verifies the approved Cell implementation; no new formal run was needed after changing only authored captures and test setup."
+    },
+    "fixture_repair": "The new construction-dispatch probe initially queried a private vtable for inherited bindings. It now removes its own temporary overrides to reveal those inherited methods. All original ancillary assertions remain."
+  },
+  "performance": {
+    "socket": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "read_cpu_ns": 139016541,
+          "wrap_close_cpu_ns": 56629583,
+          "fact_delta": 200
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "read_cpu_ns": 130265584,
+          "wrap_close_cpu_ns": 60310375,
+          "fact_delta": 0
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "read_cpu_ns": 137607208,
+          "wrap_close_cpu_ns": 63848666,
+          "fact_delta": 0
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "read_cpu_ns": 138359584,
+          "wrap_close_cpu_ns": 56689000,
+          "fact_delta": 200
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "read_cpu_ns": 138440792,
+          "wrap_close_cpu_ns": 56433167,
+          "fact_delta": 200
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "read_cpu_ns": 130050959,
+          "wrap_close_cpu_ns": 60090417,
+          "fact_delta": 0
+        }
+      ],
+      "medians": {
+        "read_cpu_ns": {
+          "baseline": 138440792,
+          "candidate": 130265584
+        },
+        "wrap_close_cpu_ns": {
+          "baseline": 56629583,
+          "candidate": 60310375
+        }
+      },
+      "source": "[Module load: #socket]; [Module load: #time];\n[Alien wrap: \"dup\" signature: \"i i\" as: #benchDuplicate on: Integer];\n[[|\nlet conn := [Socket wrapFd: [1 benchDuplicate]];\n[System gc]; let start := [16 clockNanos];\n[1 to: 500 do: [:i | [conn fd]]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[conn fd] > 2]]; [conn close];\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let start := [16 clockNanos];\n[1 to: 100 do: [:i |\n  let each := [Socket wrapFd: [1 benchDuplicate]];\n  [[[each close] = 0] ifFalse: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+    },
+    "startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 3.07431120891124,
+          "cpu_seconds": 2.9326679999999996
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 2.6003280840814114,
+          "cpu_seconds": 2.4709440000000003
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.509609875269234,
+          "cpu_seconds": 2.50481
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.879883040674031,
+          "cpu_seconds": 2.8730339999999988
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.9084508339874446,
+          "cpu_seconds": 2.8898620000000017
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.506407666951418,
+          "cpu_seconds": 2.502673
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.9084508339874446,
+          "cpu_seconds": 2.8898620000000017
+        },
+        "candidate": {
+          "wall_seconds": 2.509609875269234,
+          "cpu_seconds": 2.502673
+        }
+      }
+    },
+    "logue": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "median_cpu_ns": 26284645.5,
+          "samples": [
+            26069167,
+            26365208,
+            26569084,
+            26720458,
+            26326834,
+            26157208,
+            26359041,
+            26121583,
+            26136708,
+            26322458,
+            26246833,
+            26240292
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.202702917158604
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "median_cpu_ns": 26031958.5,
+          "samples": [
+            26003334,
+            26307709,
+            25904333,
+            25973542,
+            26245750,
+            26121583,
+            26060583,
+            26194750,
+            25911917,
+            27645500,
+            25874167,
+            25677625
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 6.610825915820897
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "median_cpu_ns": 26263187.5,
+          "samples": [
+            26542250,
+            26250541,
+            26275834,
+            26394417,
+            26006125,
+            26069583,
+            26540167,
+            26681333,
+            26192334,
+            25889625,
+            26515792,
+            26154750
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 6.7239173338748515
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "median_cpu_ns": 26491146.0,
+          "samples": [
+            27897875,
+            27797209,
+            27947000,
+            26600542,
+            26672042,
+            26195125,
+            26121416,
+            26177625,
+            26259625,
+            26166417,
+            26437167,
+            26545125
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.386748665943742
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "median_cpu_ns": 26282167.0,
+          "samples": [
+            26326459,
+            25725834,
+            25891250,
+            26132875,
+            26413542,
+            26315084,
+            28001625,
+            27321041,
+            25958625,
+            26018416,
+            26561500,
+            26249250
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.270013167057186
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "median_cpu_ns": 26028041.5,
+          "samples": [
+            26183542,
+            25909542,
+            25796292,
+            25857583,
+            26260958,
+            26288584,
+            26146541,
+            25742792,
+            25762625,
+            25527250,
+            26245750,
+            26309459
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 6.628011958207935
+        }
+      ],
+      "median_process_cpu_ns": {
+        "baseline": 26284645.5,
+        "candidate": 26031958.5
+      },
+      "candidate_over_baseline": 0.9903865167213307
+    },
+    "untimed_send_counts": [
+      {
+        "case": "fd",
+        "selectors": {
+          "allocate": 19,
+          "allocate:bytes:": 27,
+          "allocationAt:": 2,
+          "allocationChargeFor:": 19,
+          "allocationSizeOf:": 29,
+          "at:": 51,
+          "behaviorEpoch": 48,
+          "behaviorOf:": 10,
+          "bind:to:": 57,
+          "canOmitAllocationFor:": 16,
+          "fd": 1,
+          "fromWord:": 8,
+          "identityOf:": 4,
+          "intern:": 2,
+          "nativeBindingsMatch:": 32,
+          "prepareAllocation": 1,
+          "release:": 2,
+          "releaseMany:protecting:batch:": 8,
+          "retain:": 34,
+          "slotAt:in:": 2,
+          "symbolBytesOf:": 51,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 8,
+          "tryRepresentationIdentityOf:behavior:bytes:": 27,
+          "usesDefaultAllocation": 16,
+          "usesDefaultLookup:": 16,
+          "wordOf:": 11
+        },
+        "total_sends": 503
+      },
+      {
+        "case": "cell-value",
+        "selectors": {
+          "allocate": 13,
+          "allocate:bytes:": 15,
+          "allocationAt:": 1,
+          "allocationChargeFor:": 13,
+          "allocationSizeOf:": 15,
+          "at:": 13,
+          "behaviorEpoch": 12,
+          "behaviorOf:": 3,
+          "bind:to:": 14,
+          "canOmitAllocationFor:": 4,
+          "fromWord:": 2,
+          "identityOf:": 2,
+          "intern:": 2,
+          "nativeBindingsMatch:": 8,
+          "prepareAllocation": 1,
+          "releaseMany:protecting:batch:": 2,
+          "retain:": 8,
+          "slotAt:in:": 1,
+          "symbolBytesOf:": 13,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 2,
+          "tryRepresentationIdentityOf:behavior:bytes:": 7,
+          "usesDefaultAllocation": 4,
+          "usesDefaultLookup:": 4,
+          "value": 1,
+          "wordOf:": 3
+        },
+        "total_sends": 165
+      },
+      {
+        "case": "cell-with",
+        "selectors": {
+          "allocate": 21,
+          "allocate:bytes:": 30,
+          "allocationChargeFor:": 21,
+          "allocationSizeOf:": 30,
+          "at:": 39,
+          "behaviorEpoch": 30,
+          "behaviorOf:": 11,
+          "bind:to:": 35,
+          "canOmitAllocationFor:": 10,
+          "fromWord:": 9,
+          "identityOf:": 4,
+          "intern:": 2,
+          "nativeBindingsMatch:": 22,
+          "prepareAllocation": 5,
+          "releaseMany:protecting:batch:": 7,
+          "retain:": 32,
+          "returnAt:": 2,
+          "slotAt:in:put:": 1,
+          "symbolBytesOf:": 39,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 1,
+          "tryPrepareCall:slots:selector:in:tail:": 4,
+          "tryRepresentationIdentityOf:behavior:bytes:": 29,
+          "usesDefaultAllocation": 10,
+          "usesDefaultLookup:": 10,
+          "with:": 1,
+          "wordOf:": 10
+        },
+        "total_sends": 417
+      },
+      {
+        "case": "wrap",
+        "selectors": {
+          "allocate": 84,
+          "allocate:bytes:": 155,
+          "allocationAt:": 4,
+          "allocationChargeFor:": 84,
+          "allocationSizeOf:": 177,
+          "at:": 312,
+          "behaviorEpoch": 234,
+          "behaviorOf:": 77,
+          "bind:to:": 283,
+          "canOmitAllocationFor:": 78,
+          "collectionHash": 4,
+          "fromWord:": 63,
+          "identityOf:": 16,
+          "intern:": 16,
+          "nativeBindingsMatch:": 164,
+          "oopAt:": 1,
+          "oopAt:put:": 6,
+          "prepareAllocation": 24,
+          "release:": 34,
+          "releaseMany:protecting:batch:": 47,
+          "resolveGlobal:": 4,
+          "retain:": 269,
+          "returnAt:": 8,
+          "slotAt:in:": 4,
+          "slotAt:in:put:": 2,
+          "symbolBytesOf:": 312,
+          "symbolNamed:": 16,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 1,
+          "tryPrepareCall:slots:selector:in:tail:": 38,
+          "tryRepresentationIdentityOf:behavior:bytes:": 209,
+          "usesDefaultAllocation": 78,
+          "usesDefaultLookup:": 78,
+          "wordOf:": 73,
+          "wrapFd:": 1
+        },
+        "total_sends": 2956
+      },
+      {
+        "case": "close",
+        "selectors": {
+          "allocate": 49,
+          "allocate:bytes:": 83,
+          "allocationAt:": 2,
+          "allocationChargeFor:": 53,
+          "allocationSizeOf:": 90,
+          "at:": 165,
+          "behaviorEpoch": 126,
+          "behaviorOf:": 36,
+          "bind:to:": 149,
+          "canOmitAllocationFor:": 42,
+          "checkThread": 1,
+          "close": 1,
+          "delegatedWith:as:": 4,
+          "fromMethod:captureOperands:": 4,
+          "fromWord:": 34,
+          "identityOf:": 8,
+          "intern:": 31,
+          "nativeBindingsMatch:": 84,
+          "newBehaviorWithParent:method:as:": 4,
+          "oopAt:": 8,
+          "oopAt:put:": 4,
+          "prepareAllocation": 18,
+          "release:": 13,
+          "releaseMany:protecting:batch:": 21,
+          "retain:": 141,
+          "slotAt:in:": 2,
+          "symbolBytesOf:": 165,
+          "symbolNamed:": 31,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 3,
+          "tryPrepareCall:slots:selector:in:tail:": 18,
+          "tryRepresentationIdentityOf:behavior:bytes:": 107,
+          "usesDefaultAllocation": 42,
+          "usesDefaultLookup:": 42,
+          "wordOf:": 39
+        },
+        "total_sends": 1620
+      }
+    ]
+  },
+  "assessment": "Compared with the pre-socket baseline: fd reads -5.9%, 100 wraps/closes +6.5% (60.31 versus 56.63 ms), zero added facts versus 200. The significant initial +25% wrap/close regression is reduced to a small ownership cost. Startup wall -13.7%, CPU -13.4%; Logue quiet CPU -1.0%. No blanket speedup claim. GC/quantum/calling-mode policy unchanged.",
+  "limits": "Socket initialization still needs Alien, whose recipe storage is pending migration; full Store-free socket/Host/Image acceptance is not claimed.",
+  "logs": {
+    "install.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/install.log",
+      "sha256": "46f4a1c79d0378aa9d7409897d1f7c3f1c06f6c6760c4a21002a864fe4e13c80"
+    },
+    "cell-floor-base.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/cell-floor-base.log",
+      "sha256": "18cf9f9e52b6c97b443b9f93051a653036587b95c5145c29fb0178fa541ea23c"
+    },
+    "cell-floor-final.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/cell-floor-final.log",
+      "sha256": "c68846fcad6332c6e85f809a9b885cddeaccdab8c21b983bf441ae9eb912b0b5"
+    },
+    "socket-owner.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/socket-owner.log",
+      "sha256": "48a9c91bf597bd457b8ba396d0b23122ea35fc91f94cfa70abef5d9e7972bdf7"
+    },
+    "local-cell.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/local-cell.log",
+      "sha256": "d1f748adb444157d81c4ec097e46395d1914140d7ea6558e48e53d6b09cdcaf3"
+    },
+    "language.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/language.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "tasks.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/tasks.log",
+      "sha256": "b30725ae616344949fe86e8e23bda1a790aac985f24c10a4708883e02fd2264b"
+    },
+    "interaction.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/interaction.log",
+      "sha256": "cd1be49f595eb6ec490607e9d9d3dde2e96b556f7d25427302e3d3665313846e"
+    },
+    "socket-performance.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/socket-performance.log",
+      "sha256": "c0c848a2de703d0ad82bd109ac14c9ed983f98193d0002e472fdef498c715792"
+    },
+    "startup.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/startup.log",
+      "sha256": "18293dee3e65bf5f9f79109d8b023ba4aefd07fcdff40e72baa9334792b66ffa"
+    },
+    "quiet.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/quiet.log",
+      "sha256": "709b8491cb49b416b464eda5a2efc56f5ec62aa4841311c7f31d34a2dbba9c8c"
+    },
+    "counts.log": {
+      "path": "/tmp/birnam-store-independent/08-cell-accessors/counts.log",
+      "sha256": "397134a94cbf9d0e395294c24f815c92b108a0de7a8474b33c5445f51f412fa5"
+    }
+  }
+}

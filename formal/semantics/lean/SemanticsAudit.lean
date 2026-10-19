@@ -1,3 +1,4 @@
+import ResourceOwner
 import SharedInvocation
 import PublicationFailure
 import GlobalsBinding
@@ -357,3 +358,13 @@ import Admission
 #print axioms Birnam.GlobalsBinding.unchanged_payload_keeps_data
 #print axioms Birnam.GlobalsBinding.refused_payload_preserves_destination
 #print axioms Birnam.GlobalsBinding.failed_payload_preserves_destination
+
+#print axioms Birnam.ResourceOwner.claim_detaches
+#print axioms Birnam.ResourceOwner.claim_retains_cleanup_input
+#print axioms Birnam.ResourceOwner.reentry_cannot_reclaim
+#print axioms Birnam.ResourceOwner.stale_observation_preserves_owner
+#print axioms Birnam.ResourceOwner.cleanup_preserves_replacement
+#print axioms Birnam.ResourceOwner.cleanup_attempts_once_even_on_error
+#print axioms Birnam.ResourceOwner.cleanup_preserves_status
+#print axioms Birnam.ResourceOwner.live_owner_refuses_image
+#print axioms Birnam.ResourceOwner.closed_owner_allows_image

@@ -438,21 +438,50 @@ intervening replacements and actual cleanup errors; do not add a general resourc
 registry, rollback system or method-identity policing.
 
 
-## Performance hold: socket ownership (2026-10-19)
+## Initial socket ownership regression (resolved below)
 
 The socket draft removes Store-owned fd/buffer fields and uses one ordinary shared
 Cell per connection. It fixes the now-reproduced repeated-close/descriptor-reuse
 bug, preserves clone aliases and cleanup replacements, and adds owner image
 admission. Its runtime, GC/image, interaction and expanded formal checks pass.
 However, 100 wraps/closes rose from 57.0 to 71.2 ms (**25% more CPU**). The runtime
-change remains uncommitted and implementation is held per the user's performance
-condition.
+change was held uncommitted. The user approved the Cell remediation; its completed
+qualification is recorded in the following section.
 
 The measured extra work includes existing Cell accessors repeatedly resolving
 ObjectModel. The proposed next step is captured receiver/index values inside Cell,
 keeping current clone/set and method dispatch, plus actual-initializer Cell absence
 coverage instead of its old zero-capture export assumption. See the
 [decision report](socket-owner-migration-performance.md) and
-[receipt](../measurements/socket-owner-regression-20261019.json). This remediation
-requires user approval before implementation. REPL resource ownership, Alien,
+[receipt](../measurements/socket-owner-regression-20261019.json). The user has approved this remediation. REPL resource ownership, Alien,
 Image, optional composition and release remain pending.
+
+
+## Qualified socket ownership and Cell accessors (2026-10-19)
+
+The approved remediation is complete. SockConn holds a shared ordinary Cell with
+one descriptor/buffer pair. Clones alias that owner; new connections get fresh
+owners. Close conditionally retires the observed pair before invoking cleanup,
+so reentry/aliases cannot close it twice and cleanup replacements survive. This
+fixes the reproduced descriptor-reuse defect. Live connections refuse image
+saving; closed connections and factory clones restore with their owner aliases.
+
+`Cell replace:with:` is an identity-based conditional write through its owner's
+ObjectModel protocol. Socket uses that message, not Cell's private slot layout.
+Cell's accessors capture ObjectModel/index values while retaining current method
+dispatch; clone/set dispatch in construction remains unchanged. The actual Cell
+initializer now replaces the old zero-capture export assumption in its absence
+fixture, preserving all ancillary record/registry/reflection/harness checks.
+
+The 25% wrap/close regression is reduced to 6.5% (60.31 versus 56.63 ms per 100),
+with zero facts added versus 200. Reads are 5.9% faster; startup wall is 13.7%
+faster and Logue quiet turns differ by about -1%. All 847 language checks, 177
+task checks, Cell/socket GC/image/absence checks and interaction/TCP checks pass.
+The expanded formal contracts pass 405 Lean proofs, 128 mutation rejections and
+277 expected TLC outcomes. Details and limits are in the
+[report](socket-owner-migration-performance.md) and
+[receipt](../measurements/socket-owned-resources-20261019.json).
+
+The performance hold is resolved. REPL stdio ownership is next. Alien's recipe
+storage still prevents complete Store-free socket initialization; Alien, Image,
+optional composition and release remain unfinished.

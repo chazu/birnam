@@ -74,6 +74,15 @@ fn tasks_work_without_store_or_relational() { unsafe {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
     }
     let eval=|source: &[u8]| h.call(h.named(b"Codegen"), b"evalPersisting:", &[text(source)]);
+    assert_eq!(eval(br#"[[|
+let first := ["same" , " value"]; let other := ["same" , " value"];
+let cell := [Cell with: first];
+let refused := [cell replace: other with: nil];
+let unchanged := [[cell value] == first];
+let accepted := [cell replace: first with: nil]; [System gc];
+[[[[first = other] & [[first == other] not]] & [refused == false]] &
+ [unchanged & [accepted & [[cell value] isNil]]]]
+] value]"#),h.named(b"true"));
     // Production loads this authored module from source into the startup image.
     // Run its actual initializer; its resource methods still require Alien/Image
     // when called, but owned preparation fields do not require Store.

@@ -21,7 +21,7 @@
 //  - `fcntl` is wrapped (and `SockConn setNonBlocking` exposed) but UNUSED by the
 //    blocking path — it is the switch the reactor will need.
 //  - Per-connection state (fd + recv buffer) lives on a `SockConn` object via
-//    cells, not in a shared module singleton, so N concurrent connections slot in
+//    an owned descriptor/buffer pair, so N concurrent connections slot in
 //    without a rewrite.
 //  - SIGPIPE is ignored process-wide at load (see `ignoreSigpipe`): a write to a
 //    peer that hung up would otherwise kill the process — this bites even the
@@ -166,8 +166,7 @@
 // Wrap a connected fd in a SockConn, minting its per-connection recv buffer.
 [Reflect defineMethod: #wrapFd: on: Socket as: [:self :cfd |
   let conn := [SockConn clone];
-  [[db cellFor: conn attr: #fd]  set: cfd];
-  [[db cellFor: conn attr: #buf] set: [Alien alloc: 65536]];
+  [conn connectionOwner: [Cell with: #[cfd [Alien alloc: 65536]]]];
   conn] doc:
   "Wrap connected fd `cfd` in a SockConn, minting its 64 KB per-connection recv buffer."];
 
@@ -217,12 +216,41 @@
 
 // -- SockConn: one live connection --------------------------------------------
 
-[Globals at: #SockConn put: [Object clone]];
-
-[Reflect defineMethod: #fd     on: SockConn as: [:self | [[db cellFor: self attr: #fd] value]] doc:
-  "The connection's file descriptor (an Integer), read from its state cell."];
-[Reflect defineMethod: #buffer on: SockConn as: [:self | [[db cellFor: self attr: #buf] value]] doc:
-  "Answers the connection's per-connection recv buffer (an Alien)."];
+// One Cell owns the descriptor/buffer pair. Ordinary clones share this owner;
+// wrapFd: gives each new connection its own Cell. Detach the pair before cleanup,
+// so reentry cannot release it twice and callbacks can install a replacement.
+[[|
+let model := ObjectModel; let stateSlot := 0; let fdSlot := 0; let bufferSlot := 1;
+let empty := #[nil nil];
+let prototype := [model newSlots: #[[Cell with: empty]] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: prototype as: [:self | #[#connectionOwner]]];
+[Reflect defineMethod: #connectionOwner on: prototype as: [:self |
+  [model slot: stateSlot in: self]
+]];
+[Reflect defineMethod: #connectionOwner: on: prototype as: [:self :state |
+  [model slot: stateSlot in: self put: state]; self
+]];
+[Reflect defineMethod: #fd on: prototype as: [:self |
+  [[[self connectionOwner] value] at: fdSlot]
+] doc: "The connection's descriptor, or nil after close."];
+[Reflect defineMethod: #buffer on: prototype as: [:self |
+  [[[self connectionOwner] value] at: bufferSlot]
+] doc: "The connection's receive buffer, or nil after close."];
+[Reflect defineMethod: #imagePayload on: prototype as: [:self |
+  [[[self fd] isNil] ifTrue: [| self] ifFalse: [| false]]
+]];
+[Reflect defineMethod: #close on: prototype as: [:self |
+  let owner := [self connectionOwner];
+  let observed := [owner value];
+  let descriptor := [observed at: fdSlot];
+  [[descriptor isNil] ifTrue: [| 0] ifFalse: [|
+    [[owner replace: observed with: empty]
+      ifTrue: [| [[observed at: bufferSlot] free]; [descriptor closeFd]]
+      ifFalse: [| 0]]
+  ]]
+] doc: "Retire the observed connection before freeing its buffer and closing its descriptor. Repeated close answers zero; cleanup replacements survive. Answers the close status without retrying errors."];
+[Globals at: #SockConn put: prototype]
+] value];
 
 // Read one chunk of up to 64 KB. Answers the bytes as a String ("" on EOF/error).
 // The bytes are NUL-terminated in the buffer before reading them back, so this is
@@ -253,12 +281,6 @@
   [[[failed value] isNil] ifTrue: [| [total value]] ifFalse: [| [failed value]]]
   ] doc:
   "Send the whole String `s`, looping over any partial writes."];
-
-// Free the recv buffer (libc malloc, not GC'd) and close the fd.
-[Reflect defineMethod: #close on: SockConn as: [:self |
-  [[self buffer] free];
-  [[self fd] closeFd]] doc:
-  "Free the recv buffer and close the connection's fd."];
 
 // Reactor stub (Layer 3 will use this; the blocking path does not).
 // macOS: F_SETFL = 4, O_NONBLOCK = 4. A real reactor should F_GETFL first and OR

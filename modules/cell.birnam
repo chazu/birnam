@@ -2,15 +2,23 @@
 // Keep the prototype in Globals, not as a new native image family. Its ordinary
 // slots, private vtable and authored methods use existing object/image protocols.
 [[Globals includes: #Cell] ifTrue: [| [Globals at: #Cell]] ifFalse: [|
-let cellPrototype := [ObjectModel newSlots: #[nil] parent: ObjectVt];
+// Capture the storage owner and immutable index, not its method entries.
+// The receiver still handles every operation through current Id dispatch.
+let cellModel := ObjectModel; let valueSlot := 0;
+let cellPrototype := [cellModel newSlots: #[nil] parent: ObjectVt];
 [Reflect defineMethod: #with: on: cellPrototype as: [:self :value |
   let result := [self clone];
   [result set: value]; result
 ]];
 [Reflect defineMethod: #slotNames on: cellPrototype as: [:self | #[#value]]];
-[Reflect defineMethod: #value on: cellPrototype as: [:self | [ObjectModel slot: 0 in: self]]];
+[Reflect defineMethod: #value on: cellPrototype as: [:self | [cellModel slot: valueSlot in: self]]];
 [Reflect defineMethod: #set: on: cellPrototype as: [:self :value |
-  [ObjectModel slot: 0 in: self put: value]; self
+  [cellModel slot: valueSlot in: self put: value]; self
+]];
+// Conditional ownership transfer; identity comparison is the explicit primitive
+// contract. Callers use this message without knowing the Cell's slot layout.
+[Reflect defineMethod: #replace:with: on: cellPrototype as: [:self :expected :value |
+  [cellModel replaceSlot: valueSlot in: self expected: expected with: value]
 ]];
 [Reflect defineMethod: #history on: cellPrototype as: [:self | 0]];
 [Reflect defineMethod: #inc on: cellPrototype as: [:self |
