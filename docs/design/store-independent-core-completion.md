@@ -436,3 +436,23 @@ These concerns come from existing code, not a demonstrated regression in the
 Concurrency migration. Keep resource retirement local to its owner, preserving
 intervening replacements and actual cleanup errors; do not add a general resource
 registry, rollback system or method-identity policing.
+
+
+## Performance hold: socket ownership (2026-10-19)
+
+The socket draft removes Store-owned fd/buffer fields and uses one ordinary shared
+Cell per connection. It fixes the now-reproduced repeated-close/descriptor-reuse
+bug, preserves clone aliases and cleanup replacements, and adds owner image
+admission. Its runtime, GC/image, interaction and expanded formal checks pass.
+However, 100 wraps/closes rose from 57.0 to 71.2 ms (**25% more CPU**). The runtime
+change remains uncommitted and implementation is held per the user's performance
+condition.
+
+The measured extra work includes existing Cell accessors repeatedly resolving
+ObjectModel. The proposed next step is captured receiver/index values inside Cell,
+keeping current clone/set and method dispatch, plus actual-initializer Cell absence
+coverage instead of its old zero-capture export assumption. See the
+[decision report](socket-owner-migration-performance.md) and
+[receipt](../measurements/socket-owner-regression-20261019.json). This remediation
+requires user approval before implementation. REPL resource ownership, Alien,
+Image, optional composition and release remain pending.

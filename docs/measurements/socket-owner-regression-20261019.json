@@ -1,0 +1,588 @@
+{
+  "baseline_commit": "857b57e8",
+  "runtime_status": "Uncommitted draft held for performance approval. Correctness gates pass; the wrap/close CPU regression prevents qualification.",
+  "source_sha256": {
+    "modules/cell.birnam": "067c87ffa3cc2254c7ec282b3b8d404d2dc345457f3fb014b211ebba0fd59a4c",
+    "modules/socket.birnam": "ac9c29005484e5f48110763b7e4550cadb9de25b501258950c874b08189d74c4",
+    "scripts/socket-owner-test.py": "b2496570579b59403bd9c7d494d48d16fc2f2dddd992511ec5035f03561d4c92",
+    "rust/birnam-siphon/tests/task_without_store.rs": "0da3e9613fc3ec01a70bf9f59de1b22cc497378ddffcaad63f4bd0550741258a",
+    "scripts/task-without-store-test.py": "61dc325ecdc74c344283594cc2328225504d5140304f9373229ebd91be63fc71",
+    "rust/birnam-siphon/examples/socket_owner_profile.rs": "c4864f58ad04be40a3be3a96f652cd423ad0fcdbe37ba710d71d18532c03702d"
+  },
+  "performance": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "read_cpu_ns": 141115125,
+        "wrap_close_cpu_ns": 58434917,
+        "fact_delta": 200
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "read_cpu_ns": 147044750,
+        "wrap_close_cpu_ns": 71222000,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "read_cpu_ns": 148209084,
+        "wrap_close_cpu_ns": 71415000,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "read_cpu_ns": 137496417,
+        "wrap_close_cpu_ns": 56648666,
+        "fact_delta": 200
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "read_cpu_ns": 138091750,
+        "wrap_close_cpu_ns": 56998292,
+        "fact_delta": 200
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "read_cpu_ns": 146419208,
+        "wrap_close_cpu_ns": 70319459,
+        "fact_delta": 0
+      }
+    ],
+    "medians": {
+      "read_cpu_ns": {
+        "baseline": 138091750,
+        "candidate": 147044750
+      },
+      "wrap_close_cpu_ns": {
+        "baseline": 56998292,
+        "candidate": 71222000
+      }
+    },
+    "source": "[Module load: #socket]; [Module load: #time];\n[Alien wrap: \"dup\" signature: \"i i\" as: #benchDuplicate on: Integer];\n[[|\nlet conn := [Socket wrapFd: [1 benchDuplicate]];\n[System gc]; let start := [16 clockNanos];\n[1 to: 500 do: [:i | [conn fd]]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[conn fd] > 2]]; [conn close];\nlet failures := [0 asCell];\n[System gc]; let facts := [db retainedFactCount]; let start := [16 clockNanos];\n[1 to: 100 do: [:i |\n  let each := [Socket wrapFd: [1 benchDuplicate]];\n  [[[each close] = 0] ifFalse: [| [failures inc]]]\n]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[failures value] = 0]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "counts": {
+    "baseline": [
+      {
+        "case": "fd",
+        "selectors": {
+          "allocate": 25,
+          "allocate:bytes:": 38,
+          "allocationAt:": 1,
+          "allocationChargeFor:": 25,
+          "allocationSizeOf:": 44,
+          "at:": 69,
+          "behaviorEpoch": 54,
+          "behaviorOf:": 15,
+          "bind:to:": 65,
+          "canOmitAllocationFor:": 18,
+          "collectionEquals:": 1,
+          "collectionHash": 1,
+          "currentValue:attr:": 1,
+          "fd": 1,
+          "fromWord:": 13,
+          "identityOf:": 2,
+          "intern:": 3,
+          "nativeBindingsMatch:": 37,
+          "oopAt:put:": 2,
+          "prepareAllocation": 6,
+          "release:": 3,
+          "releaseMany:protecting:batch:": 10,
+          "resolveGlobal:": 1,
+          "retain:": 54,
+          "returnAt:": 1,
+          "slotAt:in:": 1,
+          "symbolBytesOf:": 69,
+          "symbolNamed:": 3,
+          "tryPrepareCall:slots:selector:in:tail:": 9,
+          "tryRepresentationIdentityOf:behavior:bytes:": 41,
+          "usesDefaultAllocation": 18,
+          "usesDefaultLookup:": 18,
+          "wordOf:": 15
+        },
+        "total_sends": 664
+      },
+      {
+        "case": "cell-value",
+        "selectors": {
+          "allocate": 24,
+          "allocate:bytes:": 37,
+          "allocationAt:": 2,
+          "allocationChargeFor:": 24,
+          "allocationSizeOf:": 41,
+          "at:": 65,
+          "behaviorEpoch": 48,
+          "behaviorOf:": 14,
+          "bind:to:": 58,
+          "canOmitAllocationFor:": 16,
+          "collectionHash": 1,
+          "fromWord:": 13,
+          "identityOf:": 4,
+          "intern:": 2,
+          "nativeBindingsMatch:": 33,
+          "oopAt:put:": 2,
+          "prepareAllocation": 5,
+          "release:": 3,
+          "releaseMany:protecting:batch:": 9,
+          "resolveGlobal:": 1,
+          "retain:": 51,
+          "returnAt:": 1,
+          "slotAt:in:": 2,
+          "symbolBytesOf:": 65,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 8,
+          "tryRepresentationIdentityOf:behavior:bytes:": 41,
+          "usesDefaultAllocation": 16,
+          "usesDefaultLookup:": 16,
+          "value": 1,
+          "wordOf:": 15
+        },
+        "total_sends": 620
+      },
+      {
+        "case": "cell-with",
+        "selectors": {
+          "allocate": 32,
+          "allocate:bytes:": 52,
+          "allocationAt:": 1,
+          "allocationChargeFor:": 32,
+          "allocationSizeOf:": 56,
+          "at:": 91,
+          "behaviorEpoch": 66,
+          "behaviorOf:": 22,
+          "bind:to:": 79,
+          "canOmitAllocationFor:": 22,
+          "collectionHash": 1,
+          "fromWord:": 20,
+          "identityOf:": 6,
+          "intern:": 2,
+          "nativeBindingsMatch:": 47,
+          "oopAt:put:": 2,
+          "prepareAllocation": 9,
+          "release:": 3,
+          "releaseMany:protecting:batch:": 14,
+          "resolveGlobal:": 1,
+          "retain:": 75,
+          "returnAt:": 3,
+          "slotAt:in:": 1,
+          "slotAt:in:put:": 1,
+          "symbolBytesOf:": 91,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 1,
+          "tryPrepareCall:slots:selector:in:tail:": 10,
+          "tryRepresentationIdentityOf:behavior:bytes:": 63,
+          "usesDefaultAllocation": 22,
+          "usesDefaultLookup:": 22,
+          "with:": 1,
+          "wordOf:": 22
+        },
+        "total_sends": 872
+      },
+      {
+        "case": "wrap",
+        "selectors": {
+          "allocate": 66,
+          "allocate:bytes:": 118,
+          "allocationAt:": 4,
+          "allocationChargeFor:": 66,
+          "allocationSizeOf:": 138,
+          "assert:attr:value:": 2,
+          "at:": 253,
+          "behaviorEpoch": 186,
+          "behaviorOf:": 57,
+          "bind:to:": 225,
+          "canOmitAllocationFor:": 62,
+          "collectionEquals:": 2,
+          "collectionHash": 4,
+          "fromWord:": 51,
+          "identityOf:": 9,
+          "intern:": 18,
+          "nativeBindingsMatch:": 129,
+          "oopAt:": 1,
+          "oopAt:put:": 8,
+          "prepareAllocation": 26,
+          "release:": 17,
+          "releaseMany:protecting:batch:": 36,
+          "resolveGlobal:": 4,
+          "retain:": 210,
+          "returnAt:": 5,
+          "slotAt:in:": 4,
+          "symbolBytesOf:": 253,
+          "symbolNamed:": 18,
+          "tryPrepareCall:slots:selector:in:tail:": 31,
+          "tryRepresentationIdentityOf:behavior:bytes:": 163,
+          "usesDefaultAllocation": 62,
+          "usesDefaultLookup:": 62,
+          "wordOf:": 59,
+          "wrapFd:": 1
+        },
+        "total_sends": 2350
+      },
+      {
+        "case": "close",
+        "selectors": {
+          "allocate": 45,
+          "allocate:bytes:": 77,
+          "allocationAt:": 2,
+          "allocationChargeFor:": 45,
+          "allocationSizeOf:": 88,
+          "at:": 172,
+          "behaviorEpoch": 138,
+          "behaviorOf:": 35,
+          "bind:to:": 165,
+          "canOmitAllocationFor:": 46,
+          "checkThread": 1,
+          "close": 1,
+          "collectionEquals:": 2,
+          "collectionHash": 2,
+          "currentValue:attr:": 2,
+          "fromWord:": 32,
+          "identityOf:": 4,
+          "intern:": 33,
+          "nativeBindingsMatch:": 94,
+          "oopAt:put:": 4,
+          "prepareAllocation": 11,
+          "release:": 15,
+          "releaseMany:protecting:batch:": 25,
+          "resolveGlobal:": 2,
+          "retain:": 137,
+          "returnAt:": 2,
+          "slotAt:in:": 2,
+          "symbolBytesOf:": 172,
+          "symbolNamed:": 33,
+          "tryPrepareCall:slots:selector:in:tail:": 23,
+          "tryRepresentationIdentityOf:behavior:bytes:": 100,
+          "usesDefaultAllocation": 46,
+          "usesDefaultLookup:": 46,
+          "wordOf:": 36
+        },
+        "total_sends": 1638
+      }
+    ],
+    "candidate": [
+      {
+        "case": "fd",
+        "selectors": {
+          "allocate": 30,
+          "allocate:bytes:": 49,
+          "allocationAt:": 3,
+          "allocationChargeFor:": 30,
+          "allocationSizeOf:": 55,
+          "at:": 103,
+          "behaviorEpoch": 84,
+          "behaviorOf:": 21,
+          "bind:to:": 101,
+          "canOmitAllocationFor:": 28,
+          "collectionHash": 1,
+          "fd": 1,
+          "fromWord:": 19,
+          "identityOf:": 6,
+          "intern:": 2,
+          "nativeBindingsMatch:": 57,
+          "oopAt:put:": 2,
+          "prepareAllocation": 5,
+          "release:": 5,
+          "releaseMany:protecting:batch:": 15,
+          "resolveGlobal:": 1,
+          "retain:": 77,
+          "returnAt:": 1,
+          "slotAt:in:": 3,
+          "symbolBytesOf:": 103,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 14,
+          "tryRepresentationIdentityOf:behavior:bytes:": 61,
+          "usesDefaultAllocation": 28,
+          "usesDefaultLookup:": 28,
+          "wordOf:": 23
+        },
+        "total_sends": 958
+      },
+      {
+        "case": "cell-value",
+        "selectors": {
+          "allocate": 24,
+          "allocate:bytes:": 37,
+          "allocationAt:": 2,
+          "allocationChargeFor:": 24,
+          "allocationSizeOf:": 41,
+          "at:": 65,
+          "behaviorEpoch": 48,
+          "behaviorOf:": 14,
+          "bind:to:": 58,
+          "canOmitAllocationFor:": 16,
+          "collectionHash": 1,
+          "fromWord:": 13,
+          "identityOf:": 4,
+          "intern:": 2,
+          "nativeBindingsMatch:": 33,
+          "oopAt:put:": 2,
+          "prepareAllocation": 5,
+          "release:": 3,
+          "releaseMany:protecting:batch:": 9,
+          "resolveGlobal:": 1,
+          "retain:": 51,
+          "returnAt:": 1,
+          "slotAt:in:": 2,
+          "symbolBytesOf:": 65,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:selector:in:tail:": 8,
+          "tryRepresentationIdentityOf:behavior:bytes:": 41,
+          "usesDefaultAllocation": 16,
+          "usesDefaultLookup:": 16,
+          "value": 1,
+          "wordOf:": 15
+        },
+        "total_sends": 620
+      },
+      {
+        "case": "cell-with",
+        "selectors": {
+          "allocate": 32,
+          "allocate:bytes:": 52,
+          "allocationAt:": 1,
+          "allocationChargeFor:": 32,
+          "allocationSizeOf:": 56,
+          "at:": 91,
+          "behaviorEpoch": 66,
+          "behaviorOf:": 22,
+          "bind:to:": 79,
+          "canOmitAllocationFor:": 22,
+          "collectionHash": 1,
+          "fromWord:": 20,
+          "identityOf:": 6,
+          "intern:": 2,
+          "nativeBindingsMatch:": 47,
+          "oopAt:put:": 2,
+          "prepareAllocation": 9,
+          "release:": 3,
+          "releaseMany:protecting:batch:": 14,
+          "resolveGlobal:": 1,
+          "retain:": 75,
+          "returnAt:": 3,
+          "slotAt:in:": 1,
+          "slotAt:in:put:": 1,
+          "symbolBytesOf:": 91,
+          "symbolNamed:": 2,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 1,
+          "tryPrepareCall:slots:selector:in:tail:": 10,
+          "tryRepresentationIdentityOf:behavior:bytes:": 63,
+          "usesDefaultAllocation": 22,
+          "usesDefaultLookup:": 22,
+          "with:": 1,
+          "wordOf:": 22
+        },
+        "total_sends": 872
+      },
+      {
+        "case": "wrap",
+        "selectors": {
+          "allocate": 95,
+          "allocate:bytes:": 177,
+          "allocationAt:": 5,
+          "allocationChargeFor:": 95,
+          "allocationSizeOf:": 203,
+          "at:": 364,
+          "behaviorEpoch": 270,
+          "behaviorOf:": 88,
+          "bind:to:": 327,
+          "canOmitAllocationFor:": 90,
+          "collectionHash": 5,
+          "fromWord:": 74,
+          "identityOf:": 18,
+          "intern:": 16,
+          "nativeBindingsMatch:": 189,
+          "oopAt:": 1,
+          "oopAt:put:": 8,
+          "prepareAllocation": 28,
+          "release:": 37,
+          "releaseMany:protecting:batch:": 54,
+          "resolveGlobal:": 5,
+          "retain:": 312,
+          "returnAt:": 9,
+          "slotAt:in:": 5,
+          "slotAt:in:put:": 2,
+          "symbolBytesOf:": 364,
+          "symbolNamed:": 16,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 1,
+          "tryPrepareCall:slots:selector:in:tail:": 44,
+          "tryRepresentationIdentityOf:behavior:bytes:": 243,
+          "usesDefaultAllocation": 90,
+          "usesDefaultLookup:": 90,
+          "wordOf:": 85,
+          "wrapFd:": 1
+        },
+        "total_sends": 3411
+      },
+      {
+        "case": "close",
+        "selectors": {
+          "allocate": 71,
+          "allocate:bytes:": 127,
+          "allocationAt:": 4,
+          "allocationChargeFor:": 75,
+          "allocationSizeOf:": 142,
+          "at:": 269,
+          "behaviorEpoch": 198,
+          "behaviorOf:": 58,
+          "bind:to:": 237,
+          "canOmitAllocationFor:": 66,
+          "checkThread": 1,
+          "close": 1,
+          "collectionHash": 2,
+          "delegatedWith:as:": 4,
+          "fromMethod:captureOperands:": 4,
+          "fromWord:": 56,
+          "identityOf:": 12,
+          "intern:": 31,
+          "nativeBindingsMatch:": 134,
+          "newBehaviorWithParent:method:as:": 4,
+          "oopAt:": 8,
+          "oopAt:put:": 8,
+          "prepareAllocation": 26,
+          "release:": 19,
+          "releaseMany:protecting:batch:": 35,
+          "resolveGlobal:": 2,
+          "retain:": 227,
+          "returnAt:": 2,
+          "slotAt:in:": 4,
+          "symbolBytesOf:": 269,
+          "symbolNamed:": 31,
+          "tryPrepareCall:slots:copies:selector:in:tail:": 3,
+          "tryPrepareCall:slots:selector:in:tail:": 30,
+          "tryRepresentationIdentityOf:behavior:bytes:": 175,
+          "usesDefaultAllocation": 66,
+          "usesDefaultLookup:": 66,
+          "wordOf:": 63
+        },
+        "total_sends": 2530
+      }
+    ]
+  },
+  "qualification": {
+    "socket": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-dgzkdol3/results.json",
+      "sha256": "4325baa8d078bd9006cf1f7beddcb40d9459bfb4c268c218beb02dc22412185d",
+      "runs": [
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/07-resource-owners/final-socket-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-dgzkdol3/owners.birnam"
+          ],
+          "exit_code": 0,
+          "name": "source",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n#rejected\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n#rejected\n",
+          "wall_ns": 40080836917
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/07-resource-owners/final-socket-prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-dgzkdol3/closed.image"
+          ],
+          "exit_code": 0,
+          "name": "mapped",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 3142173959
+        },
+        {
+          "argv": [
+            "/private/tmp/birnam-store-independent/07-resource-owners/final-socket-prefix/bin/birnam",
+            "--rebuild",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-socket-owner-dgzkdol3/closed.image"
+          ],
+          "exit_code": 0,
+          "name": "rebuilt",
+          "output": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 6058502375
+        }
+      ]
+    },
+    "cell_absence": {
+      "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-floor-gzu7c_lo/results.json",
+      "sha256": "dc106cfb6597ea0e8b3ff635b068fdf2daf35bfb1e671618e94e62037a57ab15",
+      "runs": {
+        "argv": [
+          "mise",
+          "exec",
+          "--",
+          "cargo",
+          "test",
+          "--offline",
+          "--locked",
+          "-p",
+          "birnam-siphon",
+          "--test",
+          "task_without_store",
+          "--",
+          "--include-ignored",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.94s\n\n   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.62s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stderr": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-siphon)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.62s\n     Running tests/task_without_store.rs (.cargo-target/native-message-tests/debug/deps/task_without_store-f101aea5ca322c82)\nloading actual initializer: error\nloading actual initializer: globalsOwner\nloading actual initializer: sourceRegistry\nloading actual initializer: cell\nloading actual initializer: modules\nloading actual initializer: lang\nloading actual initializer: nativeValues\nloading actual initializer: booleanValues\nloading actual initializer: integerValues\nloading actual initializer: blockLoopControl\nloading actual initializer: blockLoop\nloading actual initializer: range\nloading actual initializer: systemGc\nloading actual initializer: printing\nloading actual initializer: sourceLoader\nloading actual initializer: nativeLoader\nloading actual initializer: alienCompiler\nloading actual initializer: imageFormat\nloading actual initializer: trace\nloading actual initializer: globals\nloading actual initializer: methodInvocation\nloading actual initializer: stdlib\nloading actual initializer: stacklessControl\n",
+        "stdout": "\nrunning 1 test\ntest tasks_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.94s\n\n",
+        "wall_ns": 2602592000
+      }
+    },
+    "interaction_log": "/tmp/birnam-store-independent/07-resource-owners/interaction.log",
+    "interaction_sha256": "cd1be49f595eb6ec490607e9d9d3dde2e96b556f7d25427302e3d3665313846e",
+    "formal": {
+      "path": ".cargo-target/formal/results/rooting-hjpw0y_w/summary.json",
+      "sha256": "83af04b94efa535a9cf054d9c210af4cf91e569aed606d1abb1a7ad7b326010a",
+      "theorems": 405,
+      "rejected_mutations": 128,
+      "tla_outcomes": 277
+    }
+  },
+  "original_defect": {
+    "probe": "[Module load: #socket];\n[Alien wrap: \"dup\" signature: \"i i\" as: #probeDuplicate on: Integer];\n[[|\nlet first := [1 probeDuplicate];\nlet old := [Socket wrapFd: first];\nlet firstClose := [old close];\nlet replacement := [1 probeDuplicate];\nlet repeated := [old close];\nlet alive := [replacement probeDuplicate];\n[System println: [first > 2]];\n[System println: [firstClose = 0]];\n[System println: [replacement = first]];\n[System println: repeated];\n[System println: [alive >= 0]];\n[[alive >= 0] ifTrue: [| [alive closeFd]]];\n[replacement closeFd]\n] value]\n",
+    "output": "true\ntrue\ntrue\n0\nfalse\n",
+    "meaning": "The repeated old close returned 0 and the reused descriptor was no longer open."
+  },
+  "census_scope": "Separate diagnostic Id dispatch-metrics build; real installed methods, checks outside the counted window, no dispatch replacement. Counts are not CPU timings.",
+  "proposal": "Capture ObjectModel/index in authored Cell accessors, preserving current clone/set and receiver-method dispatch. Replace zero-capture Cell export assumptions with actual initializer loading while retaining existing fixture coverage. Await approval before implementation.",
+  "logs": {
+    "final-socket-install.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/final-socket-install.log",
+      "sha256": "28fe35cf8207f6dba2eda9d3fe432f41d122f2dc9314989b8481c80dd0ef452f"
+    },
+    "socket-performance.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/socket-performance.log",
+      "sha256": "621a07e35565909ac96383060af400e5ef3613a685c99e7f0acd94255f6319d8"
+    },
+    "baseline-counts.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/baseline-counts.log",
+      "sha256": "cdace50c9301f83d7ae4d96d87bac4c07c851944dc7669e6b12426a77dea9687"
+    },
+    "candidate-counts.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/candidate-counts.log",
+      "sha256": "6c518147417e172c19135e83b4aee044a18b9036889214abb1fade73127e82e9"
+    },
+    "socket-owner.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/socket-owner.log",
+      "sha256": "ef7613df01ac241e9335873de57e836ccfe30dcc3d0e561ac8be2eb84004da82"
+    },
+    "absence.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/absence.log",
+      "sha256": "9a37cf7acfeede28408e868a487a6545ee4a403caac713931d29dcf5b6955654"
+    },
+    "interaction.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/interaction.log",
+      "sha256": "cd1be49f595eb6ec490607e9d9d3dde2e96b556f7d25427302e3d3665313846e"
+    },
+    "formal-final.log": {
+      "path": "/tmp/birnam-store-independent/07-resource-owners/formal-final.log",
+      "sha256": "79d128ed8e0ec6be3444e7048e591b443b408e5b821587ce3edc6e477a340f92"
+    }
+  }
+}
