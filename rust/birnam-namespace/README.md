@@ -20,3 +20,8 @@ read, and an export fallback using the fetched nil identity. Nested owner scopes
 report those temporary values through `rootsDo:` while getters may rebind or
 collect. The compiler delegates this pipeline through Id; exports/getter entries
 remain live. See [contract and tests](../../docs/design/operation-dispatch-and-global-resolution.md).
+
+Before authored Globals is installed, an absent Namespace `Globals` entry (native
+Unit) goes directly to the Namespace export fallback. This permits the actual
+Globals initializer to construct itself from core exports. A present owner whose
+lookup fails or returns a malformed operand still fails; it is not absence.

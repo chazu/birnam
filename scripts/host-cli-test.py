@@ -9,7 +9,7 @@ from install_contract import verify
 prefix = Path(sys.argv[1]).resolve()
 receipt = verify(prefix)
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
-assert receipt['bootstrap_modules'] == ['error', 'sourceRegistry', 'cell', 'modules', 'lang', 'nativeValues', 'booleanValues', 'integerValues', 'blockLoopControl', 'blockLoop', 'range', 'systemGc', 'printing', 'sourceLoader', 'nativeLoader', 'alienCompiler', 'imageFormat', 'trace', 'globals', 'methodInvocation']
+assert receipt['bootstrap_modules'] == ['error', 'globalsOwner', 'sourceRegistry', 'cell', 'modules', 'lang', 'nativeValues', 'booleanValues', 'integerValues', 'blockLoopControl', 'blockLoop', 'range', 'systemGc', 'printing', 'sourceLoader', 'nativeLoader', 'alienCompiler', 'imageFormat', 'trace', 'globals', 'methodInvocation']
 assert receipt['build_seed'] == {'grammar': 'birnam-lang-seed', 'published': False}
 assert 'libbirnam_lang.dylib' not in receipt['dynamic_libraries']
 assert (prefix / 'lib/libbirnam_lang.dylib').read_bytes().startswith(b'\x7fELF')

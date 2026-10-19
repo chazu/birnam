@@ -1,0 +1,403 @@
+{
+  "baseline_commit": "b1fe7200",
+  "scope": "Early authored Globals construction without a native Store seed. Full Store-independent Bootstrap/Host/Image remains incomplete.",
+  "sources": {
+    "modules/globals-owner.birnam": "56657617a25da87357609361e81770c968346611a173361b593d32498cb583e7",
+    "modules/globals.birnam": "a21b1029cd1dde8d3f8e70e04ad2ad015447f2cf04218cd97adb40249070be14",
+    "rust/birnam-bootstrap/src/lib.rs": "1e660436d5dc90587766fdea38671534485ed1c349b0848d2a7366e17995cfce",
+    "rust/birnam-build/src/main.rs": "3d4c7c5722561a5dc73ff52aa8a3da4f3d2d0e3c35579fd694a08215e74ebb8e",
+    "rust/birnam-namespace/src/native.rs": "74077f7f59773b7ca0353d2f6a76a60e0309c236e387b15e05fa5f84994328c6",
+    "rust/birnam-store/src/native.rs": "309f4476334205feb29d31c5519aa0a180d2391fe1553aa62065585b5c78a34d",
+    "rust/birnam-siphon/tests/global_resolution.rs": "264ca125457c44555fe1243394799ad95a64724016fabb12e24dde60f6dba72d",
+    "rust/birnam-siphon/tests/globals_without_store.rs": "af59e4ec8e1e3041d01146c28d49ed83c1794cc0ab86cd36750190944ca9a5c9",
+    "scripts/core-without-store-test.py": "b3f9da8d5f869ddf966f5086699672279326fe1d9209b4ca85b4eb2b6289a5b6"
+  },
+  "qualification": {
+    "language_assertions": 847,
+    "lean_theorems": 391,
+    "lean_rejected_mutations": 122,
+    "tla_outcomes": 265,
+    "formal_receipt": ".cargo-target/formal/results/rooting-xv7clykb/summary.json",
+    "formal_receipt_sha256": "6ee0868fe972e1e76f6d843c4f67fa60d7241e00ec5822bba1adb7c440582ce4",
+    "native_suites": [
+      "candidate_retirement",
+      "generation_transaction",
+      "global_resolution",
+      "image_recovery_conflict",
+      "image_recovery_owners",
+      "image_snapshot_stamp",
+      "owned_globals",
+      "relational",
+      "store",
+      "modules",
+      "module_registry_retention",
+      "source_inspection"
+    ],
+    "initializer_absence_passed": true,
+    "initializer_scope": "Actual compiled initializer and core dependencies, no Globals seed, Store/Relational/Bootstrap/Generation/Lang unavailable in the floor. Optional libraries are loaded explicitly only after independent binding checks. This does not prove the complete Store-free Host or Image path.",
+    "initializer_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-floor-3gpaq4n8/results.json",
+    "initializer_receipt_sha256": "fbbd4501b84d7a2b54462cfa643304456f4198696837a7ab36a2f0a1864ebbad",
+    "owned_images_passed": true,
+    "owned_images_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-owned-globals-ocmmhx53/results.json",
+    "owned_images_receipt_sha256": "4b3202dce8214b603cf747fd1bb858d41e12143b7b11ae7de40bb518f49dda2f",
+    "installed_host": "Standard build receipt, relocation, source, diagnostics, GC, stdlib and early-mode checks passed.",
+    "build_scope": "Fresh authored artifacts and prepared images from source, using an existing Rust Cargo build cache. This is not the final independent cold-source archive gate.",
+    "configuration": {
+      "runtime_equivalence_note": "Probe prefix and standard qualified prefix contain the same early Globals runtime implementation. The final Store additionally removes two unused interned selector inventory entries. Probe and baseline enable TCC resource metrics for matched performance and retention checks; standard prefix disables them. Native qualified tests use the final native libraries with only TCC metrics overlaid from the probe.",
+      "artifacts": {
+        "prefix/lib/libbirnam_tcc.dylib": "f99684de06e47e3cafce19bf8b597511d2dd88e6151e563be6a4d538a7f587d6",
+        "qualified-prefix/lib/libbirnam_tcc.dylib": "39404141e5a06c96207ea1ce279231d36ef2396291b343fb26b7e70dc6d169d5",
+        "prefix/lib/libbirnam_store.dylib": "f6ff92001d5b3d57ee789b9bf818537860af56f320a0e2db669f2f1938723ffe",
+        "qualified-prefix/lib/libbirnam_store.dylib": "6ddb0af4b2cd4b8de71c9419ad4a44077bfa69d12956d6d9eb102592bba443e9"
+      }
+    }
+  },
+  "full_core_absence": {
+    "passed": false,
+    "expected_blocker": "Bootstrap still unconditionally loads Store and Relational. This is a deliberately failing diagnostic, not a qualified core-independence claim.",
+    "runs": [
+      {
+        "argv": [
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/prefix/bin/birnam",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/probe.birnam"
+        ],
+        "exit_code": 1,
+        "name": "early-bootstrap",
+        "output": "birnam: load /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/prefix/lib/libbirnam_bootstrap.dylib: native status=2 detail=0\n",
+        "passed": false,
+        "stderr": "birnam: load /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/prefix/lib/libbirnam_bootstrap.dylib: native status=2 detail=0\n",
+        "stdout": "",
+        "wall_ns": 49801750
+      },
+      {
+        "argv": [
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/prefix/bin/birnam",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/probe.birnam"
+        ],
+        "exit_code": 1,
+        "name": "source-startup",
+        "output": "birnam: load /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/prefix/lib/libbirnam_bootstrap.dylib: native status=2 detail=0\n",
+        "passed": false,
+        "stderr": "birnam: load /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/prefix/lib/libbirnam_bootstrap.dylib: native status=2 detail=0\n",
+        "stdout": "",
+        "wall_ns": 11255250
+      }
+    ],
+    "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-core-without-store-czlchv14/results.json",
+    "receipt_sha256": "f67fddfa86fb4cd7a32a291b58171a905dc6e7668b2b0af1fdeaaddeec875fdb"
+  },
+  "performance": {
+    "globals": {
+      "read": {
+        "candidate_over_baseline": 1.0129921575683192,
+        "median_cpu_ns": {
+          "baseline": 1880682625,
+          "candidate": 1905116750
+        }
+      },
+      "source-read": {
+        "candidate_over_baseline": 1.0074745150178506,
+        "median_cpu_ns": {
+          "baseline": 1871119125,
+          "candidate": 1885104833
+        }
+      },
+      "write": {
+        "candidate_over_baseline": 0.9988822068726697,
+        "median_cpu_ns": {
+          "baseline": 776045208,
+          "candidate": 775177750
+        }
+      }
+    },
+    "globals_raw_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-bench-l3ptfe79/results.json",
+    "globals_raw_sha256": "a5ea397999ee060a4061210a66d3c847217be0dd065e76ad66b9d6e286492e8d",
+    "logue_quiet": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "median_cpu_ns": 26251812.0,
+          "samples": [
+            26443250,
+            26343500,
+            26211333,
+            26229667,
+            26175917,
+            26312334,
+            26893250,
+            26255958,
+            25938750,
+            26337042,
+            25761250,
+            26247666
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.048389915842563
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "median_cpu_ns": 26341000.0,
+          "samples": [
+            26414958,
+            26107542,
+            25684375,
+            25641875,
+            27572584,
+            28103041,
+            28106625,
+            26221042,
+            26230166,
+            27424250,
+            26522417,
+            26267042
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.1962313749827445
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "median_cpu_ns": 26124583.5,
+          "samples": [
+            25841375,
+            25620459,
+            25669458,
+            26438666,
+            26108417,
+            26140750,
+            26166625,
+            26240416,
+            26382500,
+            26456250,
+            25804375,
+            25918625
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.048857707995921
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "median_cpu_ns": 25948270.5,
+          "samples": [
+            25948000,
+            25541417,
+            26671500,
+            26130125,
+            26359458,
+            25933875,
+            27407708,
+            25946958,
+            26498542,
+            25948541,
+            25810625,
+            25943667
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.12328933365643
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "median_cpu_ns": 25936417.0,
+          "samples": [
+            25963542,
+            25909292,
+            25547250,
+            25788667,
+            26426542,
+            26317208,
+            26154000,
+            25906542,
+            26892000,
+            25875084,
+            25763208,
+            26054458
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.008977209217846
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "median_cpu_ns": 26162250.0,
+          "samples": [
+            25986083,
+            26490750,
+            26070459,
+            26011792,
+            26254000,
+            26183792,
+            26215584,
+            26222708,
+            26140708,
+            26294042,
+            26045667,
+            26125584
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.001987583003938
+        },
+        {
+          "trial": 3,
+          "label": "candidate",
+          "median_cpu_ns": 26583312.5,
+          "samples": [
+            26066916,
+            25985000,
+            25755042,
+            27341292,
+            27222292,
+            25665125,
+            26401000,
+            26235500,
+            27408917,
+            26765625,
+            26838041,
+            27868834
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.098522458225489
+        },
+        {
+          "trial": 3,
+          "label": "baseline",
+          "median_cpu_ns": 26163583.0,
+          "samples": [
+            26071625,
+            25738000,
+            26198375,
+            26128791,
+            26304625,
+            25804583,
+            25629833,
+            26350000,
+            27641125,
+            25946333,
+            27777583,
+            27346500
+          ],
+          "oracle_passed": true,
+          "wall_seconds": 7.088999749626964
+        }
+      ],
+      "median_process_cpu_ns": {
+        "baseline": 26055926.75,
+        "candidate": 26251625.0
+      },
+      "candidate_over_baseline": 1.0075107000367969
+    },
+    "startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 2.712093833833933,
+          "cpu_seconds": 2.700491
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 2.773219124879688,
+          "cpu_seconds": 2.7641180000000003
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.79689612518996,
+          "cpu_seconds": 2.787776
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.712348542176187,
+          "cpu_seconds": 2.704851999999999
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.7236709580756724,
+          "cpu_seconds": 2.722135000000001
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.7817722503095865,
+          "cpu_seconds": 2.7752739999999996
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.712348542176187,
+          "cpu_seconds": 2.704851999999999
+        },
+        "candidate": {
+          "wall_seconds": 2.7817722503095865,
+          "cpu_seconds": 2.7752739999999996
+        }
+      }
+    },
+    "assessment": "No material steady-state regression: paired Globals reads +1.30%, source reads +0.75%, writes -0.11%; paired quiet Logue +0.75%. Startup adds about 69 ms (+2.56%) in three matched pairs. This is a simplification and ownership change, not a demonstrated speedup. No GC policy changes.",
+    "prefixes": {
+      "baseline": "/tmp/birnam-store-independent/01-globals-recovery/prefix",
+      "candidate": "/tmp/birnam-store-independent/02-globals-bootstrap/prefix"
+    },
+    "matched_configuration": "Both performance prefixes enable TCC resource metrics. The standard qualified prefix is validated separately; only final unused Store selector inventory cleanup and diagnostic configuration differ."
+  },
+  "bootstrap_image_bytes": {
+    "baseline": 249632635,
+    "candidate": 249589024
+  },
+  "logs": {
+    "build-probe.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/build-probe.log",
+      "sha256": "3454144b9c3bf6c7ddb8c39f15cb6830a311d4063fb96d81419e3373addefc2c"
+    },
+    "build-final.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/build-final.log",
+      "sha256": "b28c8ecf75559861c49be324a6bd1b18252b6b7ff139df311a85995af56d3aa8"
+    },
+    "native.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/native.log",
+      "sha256": "d1581f2806c65af370c8e1ce952f13e53011359f1ec99172265a2b720630fcc9"
+    },
+    "native-qualified-metrics.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/native-qualified-metrics.log",
+      "sha256": "c50e44770ccc223b9a15922b7815e2d22c513d61612f61ea3efb7b98708a4367"
+    },
+    "floor-final.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/floor-final.log",
+      "sha256": "06bea34a3f72c56aa6ad7ea0d630d85ab07ad62a318d232b8f5297205a43df8c"
+    },
+    "owned.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/owned.log",
+      "sha256": "95db350a175179dd5ae642c79586cca9f6531008ae5c6390f54c6cd2d312179a"
+    },
+    "language.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/language.log",
+      "sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+    },
+    "host.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/host.log",
+      "sha256": "0b90f67b6a18f161a156ffac52449ca7998f9f639c3cbafa729d68aa6282f5ae"
+    },
+    "formal-qualified.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/formal-qualified.log",
+      "sha256": "86239e9d0efcd4eea867eeac182765b0fbbefe5783485ca35ec091b8103fed0f"
+    },
+    "globals-performance.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/globals-performance.log",
+      "sha256": "e215a83dbaab2d99ddc629162ba46713257ead30d2a1046dcd4a8b396e9051f8"
+    },
+    "quiet-paired.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/quiet-paired.log",
+      "sha256": "0ba1d93385ef06a5c60a3a0fc7f67c97aa7fb0dcf72307d60085dda1aa4935de"
+    },
+    "startup.log": {
+      "path": "/tmp/birnam-store-independent/02-globals-bootstrap/startup.log",
+      "sha256": "871bc8bd3e783039d70f0fb1912a6766b6e1f2012a1653ce0786d12618a98642"
+    }
+  }
+}

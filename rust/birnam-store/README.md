@@ -7,8 +7,9 @@ no longer use them. `CellVt` here is the Store-owned legacy/fact-handle family.
 
 Bootstrap loads `libbirnam_store.dylib` with Namespace after the value and
 collection owners, before Execution and the compiler. Store depends only on the
-common Id ABI. It publishes completed `Store`, `StoreVt`, `CellVt`, `db`, `Globals`
-and `GlobalsVt` objects. `db` initially names Store; repeated loading in the same
+common Id ABI. It publishes completed `Store`, `StoreVt`, `CellVt` and `db` objects.
+Globals is constructed separately by its authored owner; Store never publishes or
+replaces it. `db` initially names Store; repeated loading in the same
 Namespace returns the published Store.
 
 Store retains the existing fact-log, cardinality, prospective history, retention,
@@ -50,33 +51,14 @@ send. Integer conversion and Error construction therefore observe replacement.
 retention floor. Exhaustion returns `historyResourceLimit` without committing the
 requested fact or advancing the basis. Physical compaction may already have run.
 
-## Globals and method hooks
+## Independent bindings and optional method descriptions
 
-The standard bootstrap now installs [authored Globals](../../modules/globals.birnam).
-Its bindings and reservations are ordinary owned state; automatic global facts
-are disabled. The native facade described below remains the seed and legacy-image
-backend. Explicit facts retain their normal independent history/query behavior.
+[Authored Globals](../../modules/globals-owner.birnam) owns bindings independently
+of Store. The native Globals seed/facade, import and automatic-fact cleanup are
+removed. Explicit `#__globals__` facts are ordinary independent data; they do not
+change bindings, and binding writes do not change Store's basis. Loading Store
+after Globals preserves the binding facade, storage owner and existing values.
 See [the ownership contract](../../docs/design/owned-globals.md).
-
-Globals now also answers `liveBindingsDo:` and `nameOf:`. `liveBindingsDo:` takes
-a visitor Object receiving `binding:value:` and snapshots the owner's current
-bindings in existing attribute order, retaining names and values across collecting
-or reentrant callbacks. It excludes absent values and includes bound nil. This
-enumerates owned storage, rather than calling a potentially customized `at:` for
-each row. Callback native failures propagate; ordinary callback return values are
-ignored. No fact is created by inspection. `nameOf:` returns the first identity
-alias or native Unit for absence, through the existing replaceable Store
-attribute/read methods. These interfaces hide the `__globals__` representation
-from Reflect and tools while retaining the current fact-backed storage.
-
-Globals retains its Store-backed `__globals__` facts. `at:`, `at:put:`,
-`at:ifAbsent:` and `includes:` send to Store's current read/assert/presence methods.
-Global values participate in ordinary Store queries, prospective history and image
-transfer. Missing reads answer nil; bound nil suppresses the fallback. The source
-compiler publishes top-level bindings through this same `at:put:` protocol. Its
-reads use `at:` and preserve the historical Namespace fallback when the answer is
-nil. This source fallback is separate from `at:ifAbsent:`, which still distinguishes
-a bound nil from absence.
 
 The existing MOP responsibilities are preserved through messages:
 
@@ -140,8 +122,8 @@ The existing language transfer protocol is migrated:
   nonnegative/range/Boolean constraints before applying it.
 
 [Relational](../birnam-relational/README.md) consumes these Store messages.
-Image recovery, authored task policy, candidate publication and Host/CLI now use
-this Store through owner messages. Their end-to-end checks run in the native
+Image recovery and authored task/resource policy still use this Store through
+owner messages; removing their mandatory dependency is remaining work. Their end-to-end checks run in the native
 message and installed Host groups; the transfer tests here isolate Store behavior.
 
 ## Validation
@@ -161,7 +143,7 @@ production prefix. The Store binary covers schema/history/retention, errors,
 Cells across precise GC, reclamation, live replacement of Store and Integer
 methods, collection during initializer validation, destructive collecting snapshot
 callbacks (success and failure), image row transfer, phase rejection and bounded
-resource refusal/recovery. It also checks Store-backed Globals history, MOP
+resource refusal/recovery. It also checks independent Globals and explicit fact history, MOP
 permission/notification and mirror invalidation, rooted hook receivers, live
 replacement of Id's notification target method, and compiled Store/Cell/Globals
 consumers.

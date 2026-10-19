@@ -374,6 +374,33 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             let result = object(result?)?;
             if result != object(named(b"Error")?)? { return Err(invalid()); }
         }
+        // Globals is authored before the source registry and named-module
+        // manager. Its initializer has only lexical locals and namespace writes.
+        #[cfg(feature = "lang-seed")]
+        {
+            let path = module_path(directory, "globalsOwner");
+            if !Path::new(std::ffi::OsStr::from_bytes(&path)).is_file() {
+                let source = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(include_bytes!("../../../modules/globals-owner.birnam"))])?)?;
+                let source_token = retain(id, roots, source)?;
+                let output = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(&path)])?)?;
+                let output_token = retain(id, roots, output)?;
+                let filename = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(b"modules/globals-owner.birnam")])?)?;
+                let filename_token = retain(id, roots, filename)?;
+                let answer = id.send_named(object(named(b"Codegen")?)?, b"compile:output:from:", &[Operand::object(source), Operand::object(output), Operand::object(filename)]);
+                release(id, roots, filename_token)?;
+                release(id, roots, output_token)?;
+                release(id, roots, source_token)?;
+                answer?;
+            }
+        }
+        {
+            let path = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(&module_path(directory, "globalsOwner"))])?)?;
+            let token = retain(id, roots, path)?;
+            let result = id.send_named(object(named(b"Codegen")?)?, b"load:", &[Operand::object(path)]);
+            release(id, roots, token)?;
+            let result = object(result?)?;
+            if result != object(named(b"Globals")?)? { return Err(invalid()); }
+        }
         // The registry is authored even in the cold compiler process. Its
         // installation unit has no named-module declaration: admission of the
         // first named artifact can therefore use the owner it installs.

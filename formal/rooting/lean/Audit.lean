@@ -127,3 +127,7 @@ import HelperEmission
 
 #print axioms Birnam.SymbolNames.cached_digest_uses_current_inventory
 #print axioms Birnam.SymbolNames.cached_digest_observes_retirement_and_reinterning
+
+#print axioms Birnam.Branches.bootstrap_present_preserves_lookup
+#print axioms Birnam.Branches.bootstrap_absence_uses_namespace
+#print axioms Birnam.Branches.bootstrap_failure_does_not_fallback

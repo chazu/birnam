@@ -1,6 +1,6 @@
 # Globals owns its bindings
 
-## Current contract after recovery cleanup (2026-10-19)
+## Current contract (2026-10-19)
 
 Globals now owns a four-element state: binding Map, live insertion order, binding
 revision and transient-binding policy. The compensation-credit Map, saved inverse
@@ -17,13 +17,25 @@ callback writes, and reports partial load. It does not restore the old Globals
 root. Native and authored tests now exercise that current contract. Store's own
 explicit fact-compensation facilities are a separate API and are unchanged.
 
-The Store-backed bootstrap seed/import is still present; removing it is the next
-[core-independence slice](store-independent-core-completion.md). The remainder of
+The Store-backed seed/import is removed. `modules/globals-owner.birnam` constructs
+the ordinary binding facade and storage before SourceRegistry and named Module
+admission. `modules/globals.birnam` only registers the named module; it does not
+contain a second implementation. The owner's source is shipped as a foundation
+artifact, like Error and SourceRegistry. Reloading that artifact installs current
+policy while retaining the facade, storage and state identities.
+
+Before this owner exists, source global lookup uses Namespace exports. Once it
+exists, the current Globals-first protocol and nil-to-Namespace fallback apply.
+Failures or malformed results from a present owner propagate. Store no longer
+publishes Globals or GlobalsVt, and loading it later cannot reseed bindings.
+Full Store-free startup remains pending the other
+[core-independence slices](store-independent-core-completion.md). The remainder of
 this document records the original 2026-10-14 implementation and measurements;
 its reservation, automatic image inverse and legacy-compatibility passages are
 historical, not current requirements.
 
-Qualification: [recovery-removal receipt](../measurements/globals-recovery-removal-20261019.json).
+Qualification: [recovery-removal receipt](../measurements/globals-recovery-removal-20261019.json)
+and [early-owner receipt](../measurements/globals-bootstrap-owner-20261019.json).
 
 ## Historical migration report
 

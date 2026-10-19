@@ -320,7 +320,7 @@ pub unsafe fn clear_source_bindings(id: Protocol, ns: Oop) {
         // captured state across image loads would keep an entire obsolete world
         // alive and serialize it again on every resave.
         let path = object(send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(
-            directory().join("libbirnam_globals.dylib").as_os_str().as_bytes()
+            directory().join("libbirnam_globalsOwner.dylib").as_os_str().as_bytes()
         )]));
         let path_token = retain(id, roots, path);
         let result = object(send(id, named(b"Codegen"), b"load:", &[Operand::object(path)]));

@@ -7,7 +7,7 @@ import tempfile
 from validation_support import ROOT, clean_environment, command, save_json, sha
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('prefix',type=Path);p.add_argument('--legacy-prefix',type=Path);p.add_argument('--skip-images',action='store_true');a=p.parse_args()
 prefix=a.prefix.resolve();work=Path(tempfile.mkdtemp(prefix='birnam-owned-globals-'));env=clean_environment();env['BIRNAM_GC_PRECISE']='1'
-receipt={'passed':False,'prefix':str(prefix),'runs':[],'sources':{str(f.relative_to(ROOT)):sha(f) for f in [ROOT/'modules/globals.birnam',ROOT/'tests/fixtures/owned-globals.birnam',Path(__file__).resolve()]}}
+receipt={'passed':False,'prefix':str(prefix),'runs':[],'sources':{str(f.relative_to(ROOT)):sha(f) for f in [ROOT/'modules/globals.birnam',ROOT/'modules/globals-owner.birnam',ROOT/'tests/fixtures/owned-globals.birnam',Path(__file__).resolve()]}}
 def run(name,args,expected=None):
  r=command(args,cwd=work,env=env,timeout=300);(work/(name+'.log')).write_text(r['output']);receipt['runs'].append(dict(name=name,**r));save_json(work/'results.json',receipt)
  assert r['exit_code']==0 and not r['stderr'],(work,name,r)

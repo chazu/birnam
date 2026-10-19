@@ -1,5 +1,5 @@
-//! Run the production authored Globals method bodies on a floor with no Store.
-//! Programs are exported from the installed Globals artifact, never rewritten here.
+//! Run the production authored Globals initializer on a floor with no Store.
+//! Load its real compiled initializer; no exported-body substitute or Globals seed.
 mod support;
 use birnam_abi::{Oop, id_protocol::{Operand, Protocol}};
 use std::{cell::RefCell, path::PathBuf};
@@ -37,9 +37,8 @@ impl H {
 }
 
 #[test]
-#[ignore = "scripts/globals-without-store-test.py exports actual production programs"]
+#[ignore = "scripts/globals-without-store-test.py supplies an actual Store-absent artifact floor"]
 fn authored_bindings_work_without_store_or_relational() { unsafe {
-    let programs=PathBuf::from(std::env::var_os("BIRNAM_GLOBAL_PROGRAMS").expect("exported programs"));
     for name in ["store","relational","bootstrap","generation","lang"] { assert!(!directory().join(format!("libbirnam_{name}.dylib")).exists()); }
     let id=id(); let roots=load(id,"root_registry",&[]);
     let ns=load(id,"namespace",&[Operand::object(roots)]);
@@ -49,53 +48,29 @@ fn authored_bindings_work_without_store_or_relational() { unsafe {
     h.publish(b"Object",prototype); h.publish(b"ObjectVt",vt);
     for module in ["boolean","nil"] { mount(id,module,ns); }
     let gc=load(id,"collect",&[Operand::object(roots)]); h.publish(b"GC",gc); send(id,gc,b"activate",&[]);
-    for module in ["object_model","word","bytes","execution","portable_code","string","integer"] {
+    for module in ["object_model","word","bytes","execution","portable_code","string","integer","float","prelude","file_io"] {
         mount(id,module,ns);
     }
     let collection=h.keep(object(send(id,vt,b"delegated",&[])));
     h.publish(b"Collection",collection); h.publish(b"CollectionVt",collection);
     let symbol=id.intern_name(b"Symbol").unwrap();
     h.publish(b"SymbolVt",object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(symbol)])));
-    for module in ["vector","map","tcc","native_backend","codegen_runtime"] {
+    for module in ["vector","map","artifact","tcc","native_backend","codegen_runtime"] {
         mount(id,module,ns);
     }
-    // Namespace is a real binding owner, not a fake database. Only the compiler's
-    // existing Globals-first read convention needs this alias in the small floor.
-    h.publish(b"Globals",ns);
-
-    let model=h.named(b"ObjectModel");let nil=h.named(b"nil");
-    let vector=|values:&[Oop]| { let mut v=h.call(h.named(b"Vector"),b"new",&[]);for &value in values {v=h.call(v,b"add:",&[value]);}v };
-    let empty=vector(&[]);let map=h.call(h.named(b"Map"),b"new",&[]);
-    let state=vector(&[map,empty,h.integer(0),map]);
-    let storage=h.call(model,b"newSlots:parent:",&[vector(&[state]),vt]);
-    let globals=h.call(model,b"newSlots:parent:",&[empty,vt]);
-    let key_prototype=h.call(model,b"newSlots:parent:",&[vector(&[nil]),vt]);
-    let error=h.call(model,b"newSlots:parent:",&[empty,vt]);
-    let error_prototype=h.call(model,b"newSlots:parent:",&[vector(&[nil,nil]),vt]);
-    let zero=h.keep(object(send(id,h.named(b"Word"),b"fromBits:",&[Operand::word(0)])));
-    let owners=std::collections::HashMap::from([
-        ("globals",globals),("storage",storage),("keyPrototype",key_prototype),("model",model),
-        ("object",prototype),("symbolBehavior",h.named(b"SymbolVt")),("nil",nil),("map",h.named(b"Map")),
-        ("reflect",h.named(b"Reflect")),("error",error),("errorPrototype",error_prototype),("word0",zero),("index0",h.integer(0)),("index1",h.integer(1)),("index2",h.integer(2)),("index3",h.integer(3)),("index4",h.integer(4))]);
-    let plan:serde_json::Value=serde_json::from_slice(&std::fs::read(programs.join("plan.json")).unwrap()).unwrap();
-    for (index,row) in plan.as_array().unwrap().iter().enumerate() {
-        let target=owners[row["target"].as_str().unwrap()];
-        let behavior=if row["target"]=="symbolBehavior" {target} else {object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(target)]))};
-        let captures=vector(&row["captures"].as_array().unwrap().iter().map(|name|owners[name.as_str().unwrap()]).collect::<Vec<_>>());
-        let bytes=std::fs::read(programs.join(format!("{index}.bin"))).unwrap();
-        let bytes=h.keep(object(send(id,h.named(b"Bytes"),b"fromBytes:",&[Operand::bytes(&bytes)])));
-        let mut code=h.call(h.named(b"CodeObject"),b"fromCanonicalBytes:",&[bytes]);
-        if let Some(signature)=row["signature"].as_str().filter(|s|!s.is_empty()) {
-            let signature=h.keep(object(send(id,h.named(b"Bytes"),b"fromBytes:",&[Operand::bytes(signature.as_bytes())])));
-            code=h.call(code,b"withNativeSignature:",&[signature]);
-        }
-        let block=h.call(h.named(b"Codegen"),b"materializeResumable:captures:",&[code,captures]);
-        let source=h.call(h.named(b"NativeBackend"),b"named:synchronous:",&[h.integer(row["arity"].as_u64().unwrap() as usize),h.named(b"true")]);
-        let unit=h.call(h.named(b"TCC"),b"compile:",&[source]);let method=h.call(unit,b"initializeWith:",&[block]);
-        h.call(behavior,b"addMethod:as:",&[method,id.intern_name(row["selector"].as_str().unwrap().as_bytes()).unwrap()]);
-    }
-    h.publish(b"Globals",globals);
-    h.publish(b"Error",error);h.publish(b"ErrorPrototype",error_prototype);
+    let nil=h.named(b"nil");
+    assert_eq!(send(id,ns,b"at:",&[Operand::object(id.intern_name(b"Globals").unwrap())]).kind(),birnam_abi::id_protocol::UNIT);
+    assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(id.intern_name(b"Object").unwrap())])),prototype);
+    assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(id.intern_name(b"missingBeforeGlobals").unwrap())])),nil);
+    let load_artifact=|name:&str| {
+        let path=directory().join(format!("libbirnam_{name}.dylib"));
+        let path=h.keep(object(send(id,h.named(b"String"),b"fromBytes:",&[Operand::bytes(path.as_os_str().as_bytes())])));
+        h.call(h.named(b"Codegen"),b"load:",&[path])
+    };
+    load_artifact("error");
+    let globals=load_artifact("globalsOwner");
+    assert_eq!(globals,h.named(b"Globals"));
+    assert_ne!(globals,nil);
     for name in [b"Store".as_slice(),b"db",b"Relational",b"Lang",b"Generation"] {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
     }
@@ -130,5 +105,42 @@ fn authored_bindings_work_without_store_or_relational() { unsafe {
     assert!(present(id,key)&&present(id,transient));
     h.call(globals,b"remove:",&[key]);h.clear_from(floor);collect(id,gc);
     assert!(!present(id,key)&&!present(id,transient));
+    h.call(globals,b"at:put:",&[a,name]);
+    let owner=h.call(globals,b"bindingOwner",&[]);
+    let state=h.call(globals,b"bindingState",&[]);
+    assert_eq!(load_artifact("globalsOwner"),globals);
+    assert_eq!(h.call(globals,b"bindingOwner",&[]),owner);
+    assert_eq!(h.call(globals,b"bindingState",&[]),state);
+    assert_eq!(h.call(globals,b"at:",&[a]),name);
+    assert_eq!(h.call(globals,b"includes:",&[b]),h.named(b"false"));
+    assert_eq!(h.call(globals,b"at:",&[foreign]),value);
+
+    // Optional loading is deliberately a second phase, from a separate input
+    // directory. It must not overwrite the binding owner or seed global facts.
+    let optional=PathBuf::from(std::env::var_os("BIRNAM_OPTIONAL_MODULE_DIRECTORY").unwrap());
+    for name in ["store","relational"] {
+        let path=optional.join(format!("libbirnam_{name}.dylib"));
+        id.send(id.receiver,id.load,&[Operand::bytes(path.as_os_str().as_bytes()),Operand::object(ns)]).unwrap();
+        assert_eq!(h.named(b"Globals"),globals);
+        assert_eq!(h.call(globals,b"bindingOwner",&[]),owner);
+        assert_eq!(h.call(globals,b"at:",&[foreign]),value);
+    }
+    let store=h.named(b"Store");
+    let entity=id.intern_name(b"__globals__").unwrap();
+    assert_eq!(h.call(store,b"hasValue:attr:",&[entity,foreign]),h.named(b"false"));
+    h.call(store,b"assert:attr:value:",&[entity,foreign,nil]);
+    assert_eq!(h.call(globals,b"at:",&[foreign]),value);
+    let basis=h.call(store,b"basis",&[]);
+    h.call(globals,b"at:put:",&[name,value]);
+    assert_eq!(h.number(h.call(store,b"basis",&[])),h.number(basis));
+    // Repeated opt-in keeps the same Store and its explicit data as well.
+    for module in ["store","relational"] {
+        let path=optional.join(format!("libbirnam_{module}.dylib"));
+        id.send(id.receiver,id.load,&[Operand::bytes(path.as_os_str().as_bytes()),Operand::object(ns)]).unwrap();
+    }
+    assert_eq!(h.named(b"Store"),store);
+    assert_eq!(h.call(store,b"hasValue:attr:",&[entity,foreign]),h.named(b"true"));
+    assert_eq!(h.call(globals,b"bindingOwner",&[]),owner);
+    assert_eq!(h.call(globals,b"at:",&[foreign]),value);
     h.clear_from(0);
 } }

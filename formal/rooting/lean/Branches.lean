@@ -127,4 +127,28 @@ theorem scoped_global_resolution_preserves_order_and_value (c : LookupInputs) :
   by_cases same : c.globalValue = c.nilValue <;>
     simp [scopedGlobalResolution, oldGlobalResolution, same]
 
+-- An absent owner is a bootstrap state, distinct from a present owner's failure.
+inductive GlobalsReply where
+  | absent
+  | present (inputs : LookupInputs)
+  | failed (code : Nat)
+
+def bootstrapGlobalResolution (nil : Nat) (exported : Option Nat)
+    (owner : GlobalsReply) : Except Nat (List LookupEvent × Nat) :=
+  match owner with
+  | .absent => .ok ([.nil, .globals, .export], exported.getD nil)
+  | .present c => .ok (scopedGlobalResolution c)
+  | .failed code => .error code
+
+theorem bootstrap_present_preserves_lookup (nil : Nat) (exported : Option Nat) (c : LookupInputs) :
+    bootstrapGlobalResolution nil exported (.present c) = .ok (oldGlobalResolution c) := by
+  simp [bootstrapGlobalResolution, scoped_global_resolution_preserves_order_and_value]
+
+theorem bootstrap_absence_uses_namespace (nil : Nat) (exported : Option Nat) :
+    bootstrapGlobalResolution nil exported .absent =
+      .ok ([.nil, .globals, .export], exported.getD nil) := by rfl
+
+theorem bootstrap_failure_does_not_fallback (nil : Nat) (exported : Option Nat) (code : Nat) :
+    bootstrapGlobalResolution nil exported (.failed code) = .error code := by rfl
+
 end Birnam.Branches

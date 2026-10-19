@@ -623,7 +623,7 @@ unsafe fn source(h: &H) {
     }
 }
 
-unsafe fn globals_are_facts(h: &H) {
+unsafe fn globals_are_independent(h: &H) {
     unsafe {
         let globals = h.named(b"Globals");
         let store = h.named(b"Store");
@@ -633,21 +633,21 @@ unsafe fn globals_are_facts(h: &H) {
         let a = h.i(11);
         let b = h.i(22);
         h.call(globals, b"at:put:", &[key, a]);
-        let basis = h.call(store, b"basis", &[]);
-        h.call(store, b"retainSince:", &[basis]);
-        h.call(globals, b"at:put:", &[key, b]);
-        assert_eq!(h.read(store, entity, key), b);
-        assert_eq!(
-            h.call(store, b"valueOf:attr:asOf:", &[entity, key, basis]),
-            a
-        );
-        h.assert(store, entity, key, a);
-        assert_eq!(h.call(globals, b"at:", &[key]), a);
+        assert_eq!(h.read(store, entity, key),h.named(b"nil"));
+        h.assert(store,entity,key,a);
+        let basis=h.call(store,b"basis",&[]);
+        h.call(store,b"retainSince:",&[basis]);
+        h.call(globals,b"at:put:",&[key,b]);
+        assert_eq!(h.read(store,entity,key),a);
+        h.assert(store,entity,key,b);
+        assert_eq!(h.call(store,b"valueOf:attr:asOf:",&[entity,key,basis]),a);
+        h.assert(store,entity,key,a);
+        assert_eq!(h.call(globals,b"at:",&[key]),b);
         let missing = h.symbol(b"absent-global");
         assert_eq!(h.call(globals, b"includes:", &[missing]), h.named(b"false"));
         h.call(globals, b"at:put:", &[missing, h.named(b"nil")]);
         assert_eq!(h.call(globals, b"includes:", &[missing]), h.named(b"true"));
-        // A replaced Store reader is observed by Globals, not bypassed via Namespace.
+        // Explicit Store reads remain replaceable; ordinary Globals does not read facts.
         let vt = h.named(b"StoreVt");
         let read = h.symbol(b"currentValue:attr:");
         let entry = send(
@@ -670,7 +670,9 @@ unsafe fn globals_are_facts(h: &H) {
             replacement,
             (&mut c as *mut Replacement).cast(),
         );
-        assert_eq!(h.call(globals, b"at:", &[key]), a);
+        assert_eq!(h.call(globals, b"at:", &[key]), b);
+        assert_eq!(c.calls.get(), 0);
+        assert_eq!(h.read(store,entity,key),a);
         assert_eq!(c.calls.get(), 1);
         send(
             h.id,
@@ -1014,13 +1016,7 @@ fn store_history_cells_snapshots_and_source_use_id_messages() {
         image_transfer(&h);
         phase_safety(&h);
         source(&h);
-        // Old images retain this same native fact-backed adapter. Test it
-        // explicitly; default Globals no longer aliases the fact database.
-        let globals = h.named(b"Globals");
-        let owned = h.call(h.id.receiver, b"behaviorOf:", &[globals]);
-        h.call(h.id.receiver, b"reassociateBehaviorOf:with:", &[globals, h.named(b"GlobalsVt")]);
-        globals_are_facts(&h);
-        h.call(h.id.receiver, b"reassociateBehaviorOf:with:", &[globals, owned]);
+        globals_are_independent(&h);
         mop_hooks(&h);
         h.clear();
         collect(h.id, h.gc);

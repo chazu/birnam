@@ -5,7 +5,7 @@ ASSUME Bug \in {"none","nil-root","globals-root","new-nil","early-exit","getter-
 VARIABLES phase, heap, scope, nilNow, globalsNow, found, returned, seen
 vars == <<phase,heap,scope,nilNow,globalsNow,found,returned,seen>>
 Init == /\ phase = "nil" /\ heap = {1,2,3,4,6,7} /\ scope = {}
-        /\ nilNow = 1 /\ globalsNow = 2 /\ found = 0 /\ returned = 0 /\ seen = <<>>
+        /\ nilNow = 1 /\ globalsNow \in {0,2} /\ found = 0 /\ returned = 0 /\ seen = <<>>
 (* 1 fetched nil, 2 fetched Globals, 3 export, 4 global hit, 6/7 rebound bindings. *)
 Roots == {nilNow,globalsNow,3,4,6,7} \cup scope \cup (IF returned # 0 THEN {returned} ELSE {})
 Needed == CASE phase = "global" -> {1,2}
@@ -15,8 +15,8 @@ Needed == CASE phase = "global" -> {1,2}
 Nil == /\ phase = "nil" /\ phase' = "globals" /\ seen' = <<"nil">>
        /\ scope' = IF Bug = "nil-root" THEN {} ELSE {1}
        /\ UNCHANGED <<heap,nilNow,globalsNow,found,returned>>
-Globals == /\ phase = "globals" /\ phase' = "global" /\ seen' = Append(seen,"globals")
-           /\ scope' = IF Bug = "globals-root" THEN scope ELSE scope \cup {2}
+Globals == /\ phase = "globals" /\ phase' = (IF globalsNow = 0 THEN "export" ELSE "global") /\ seen' = Append(seen,"globals")
+           /\ scope' = IF Bug = "globals-root" \/ globalsNow = 0 THEN scope ELSE scope \cup {2}
            /\ UNCHANGED <<heap,nilNow,globalsNow,found,returned>>
 Rebind == /\ phase = "global" /\ nilNow' = 6 /\ globalsNow' = 7
           /\ UNCHANGED <<phase,heap,scope,found,returned,seen>>
@@ -36,5 +36,5 @@ Collect == /\ heap' = heap \cap Roots
 Next == Nil \/ Globals \/ Rebind \/ Read \/ Export \/ EarlyExit \/ Collect
 Spec == Init /\ [][Next]_vars
 NeededAlive == Needed \subseteq heap
-GetterOrder == phase = "done" => seen = (IF found = 1 THEN <<"nil","globals","value","export">> ELSE <<"nil","globals","value">>)
+GetterOrder == phase = "done" => seen = (IF found = 0 THEN <<"nil","globals","export">> ELSE IF found = 1 THEN <<"nil","globals","value","export">> ELSE <<"nil","globals","value">>)
 ======================================================================

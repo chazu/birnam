@@ -91,10 +91,16 @@ unsafe extern "C" fn resolve_global(c: *mut c_void, r: Oop, a: *const Operand, n
         scope.keep(r); scope.keep(key);
         let nil = scope.keep(object(namespace.id.send(r, namespace.at_selector,
             &[Operand::object(namespace.names[b"nil".as_slice()])])?)?);
-        let globals = scope.keep(object(namespace.id.send(r, namespace.at_selector,
-            &[Operand::object(namespace.names[b"Globals".as_slice()])])?)?);
-        let found = object(namespace.id.send(globals, namespace.at_selector, &[Operand::object(key)])?)?;
-        if found != nil { return Ok(Operand::object(found)); }
+        let globals = namespace.id.send(r, namespace.at_selector,
+            &[Operand::object(namespace.names[b"Globals".as_slice()])])?;
+        // Before the authored binding owner exists, source can still construct
+        // it from namespace exports. A present owner retains the ordinary live
+        // Globals-first protocol; malformed replies are not treated as absence.
+        if globals.kind() != native::UNIT {
+            let globals = scope.keep(object(globals)?);
+            let found = object(namespace.id.send(globals, namespace.at_selector, &[Operand::object(key)])?)?;
+            if found != nil { return Ok(Operand::object(found)); }
+        }
         let fallback = namespace.id.send(r, namespace.at_selector, &[Operand::object(key)])?;
         if fallback.kind() == native::UNIT { Ok(Operand::object(nil)) }
         else { object(fallback).map(Operand::object) }

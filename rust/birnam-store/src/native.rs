@@ -18,9 +18,7 @@ struct State {
     gc: Oop,
     store_vt: Oop,
     cell_vt: Oop,
-    globals_vt: Oop,
     receiver: Cell<Oop>,
-    globals: Cell<Oop>,
     method_observer: Cell<Oop>,
     method_authorizer: Cell<Oop>,
     policy: Runtime,
@@ -239,9 +237,7 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.gc,
             s.store_vt,
             s.cell_vt,
-            s.globals_vt,
             s.receiver.get(),
-            s.globals.get(),
             s.method_observer.get(),
             s.method_authorizer.get(),
         ];
@@ -356,12 +352,6 @@ enum OpCode {
     ImageAdd,
     ImageEnd,
     ImageSwap,
-    GlobalRead,
-    GlobalElse,
-    GlobalPut,
-    GlobalHas,
-    GlobalBindings,
-    GlobalName,
     SetObserver,
     SetAuthorizer,
     AddMethod,
@@ -450,77 +440,6 @@ unsafe extern "C" fn restore_value(c: *mut c_void, r: Oop, a: *const Operand, n:
     })())
 }
 
-// Bootstrap binding observation; ordinary Globals replaces this seed.
-unsafe extern "C" fn global_binding(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let s = state(c)?;
-        let Some([name]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let name = object(*name)?;
-        if r != s.globals.get() {
-            return Err(invalid());
-        }
-        let scope = Scope::new(s, vec![r, name]);
-        let value = s.send(
-            s.receiver.get(),
-            b"rawCurrentValue:attr:",
-            &[
-                Operand::object(s.names[b"__globals__".as_slice()]),
-                Operand::object(name),
-            ],
-        )?;
-        if let Some(value) = value.as_object() {
-            scope.keep(value);
-        } else if value.kind() != native::UNIT {
-            return Err(invalid());
-        }
-        let vector = scope.keep(object(s.id.send_named(
-            s.namespace,
-            b"at:",
-            &[Operand::object(s.id.intern_name(b"Vector")?)],
-        )?)?);
-        let row = scope.keep(object(s.send(vector, b"new", &[])?)?);
-        if value.kind() == native::UNIT {
-            Ok(Operand::object(row))
-        } else {
-            s.id.send_named(row, b"add:", &[value])
-        }
-    })())
-}
-unsafe extern "C" fn global_basis(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let s = state(c)?;
-        if n != 0 || r != s.globals.get() {
-            return Err(invalid());
-        }
-        let _scope = Scope::new(s, vec![r]);
-        s.send(s.receiver.get(), b"basis", &[])
-    })())
-}
-unsafe extern "C" fn global_projection(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let s = state(c)?;
-        if n != 0 || r != s.globals.get() { return Err(invalid()) }
-        Ok(Operand::object(s.nil()))
-    })())
-}
-unsafe extern "C" fn global_transient(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let s=state(c)?;
-        let Some([name, flag])=borrowed_slice(a,n) else { return Err(invalid()) };
-        let (name,flag)=(object(*name)?,object(*flag)?);
-        if r != s.globals.get() { return Err(invalid()) }
-        let _scope=Scope::new(s,vec![r,name,flag]);
-        let result=s.send(s.receiver.get(),b"assert:attr:value:",&[Operand::object(name),Operand::object(s.names[b"imageTransient".as_slice()]),Operand::object(flag)])?;
-        Ok(if result.as_object()==Some(s.receiver.get()) {Operand::object(r)} else {result})
-    })())
-}
 unsafe fn execute(
     s: &State,
     scope: &Scope<'_>,
@@ -552,7 +471,6 @@ unsafe fn execute(
                 | ImageBegin
                 | ImageAdd
                 | ImageEnd
-                | GlobalPut
                 | SetObserver
                 | SetAuthorizer
                 | AddMethod
@@ -563,39 +481,6 @@ unsafe fn execute(
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op {
-            GlobalBindings => {
-                if r != s.globals.get() { return Err(invalid()); }
-                let entity = s.names[b"__globals__".as_slice()];
-                // Snapshot only this owner's bindings, in existing attribute order.
-                // No borrow crosses a visitor send; nil is a real bound value.
-                let rows = s.read(s.receiver.get(), |st| {
-                    live_attributes(st, entity, p).into_iter().filter_map(|name| {
-                        let value = current_value_raw(st, entity, name);
-                        (!value.is_null()).then_some((name, value))
-                    }).collect::<Vec<_>>()
-                })?;
-                scope.keep_all(rows.iter().flat_map(|&(name, value)| [name, value]));
-                for (name, value) in rows {
-                    s.send(a[0], b"binding:value:", &[Operand::object(name), Operand::object(value)])?;
-                }
-                return Ok(Operand::object(r));
-            }
-            GlobalName => {
-                if r != s.globals.get() { return Err(invalid()); }
-                let store = s.receiver.get();
-                let entity = s.names[b"__globals__".as_slice()];
-                // Preserve the previous reflection naming path's replaceable reads.
-                let count = scope.keep(object(s.send(store, b"attrCount:", &[Operand::object(entity)])?)?);
-                let count = s.number(count)?;
-                for index in 0..count {
-                    let index = scope.keep(object(s.integer(index as usize)?)?);
-                    let Some(name) = s.send(store, b"attrAt:index:", &[Operand::object(entity), Operand::object(index)])?.as_object() else { break };
-                    scope.keep(name);
-                    let value = s.send(store, b"rawCurrentValue:attr:", &[Operand::object(entity), Operand::object(name)])?;
-                    if value.as_object() == Some(a[0]) { return Ok(Operand::object(name)); }
-                }
-                return Ok(Operand::unit());
-            }
             New => return Ok(Operand::object(s.fresh(scope)?)),
             LocalCell | LocalCellPrototype => {
                 s.read(r, |_| ())?;
@@ -650,33 +535,6 @@ unsafe fn execute(
                         result
                     },
                 );
-            }
-            GlobalRead | GlobalElse | GlobalPut | GlobalHas => {
-                if r != s.globals.get() {
-                    return Err(invalid());
-                }
-                let store = s.receiver.get();
-                let mut args = vec![
-                    Operand::object(s.names[b"__globals__".as_slice()]),
-                    Operand::object(a[0]),
-                ];
-                let name = match op {
-                    GlobalRead => b"currentValue:attr:".as_slice(),
-                    GlobalHas => b"hasValue:attr:",
-                    GlobalElse => b"rawCurrentValue:attr:",
-                    _ => {
-                        args.push(Operand::object(a[1]));
-                        b"assert:attr:value:"
-                    }
-                };
-                let value = s.send(store, name, &args)?;
-                return if matches!(op, GlobalPut) && value.as_object() == Some(store) {
-                    Ok(Operand::object(a[1]))
-                } else if matches!(op, GlobalElse) && value.kind() == native::UNIT {
-                    s.send(a[1], b"value", &[])
-                } else {
-                    Ok(value)
-                };
             }
             _ => {
                 s.read(r, |_| ())?;
@@ -1246,12 +1104,6 @@ entry!(cell_set, CellSet, 1);
 entry!(cell_history, CellHistory, 0);
 entry!(cell_image_field, CellImageField, 1);
 entry!(cell_image_restore, CellImageRestore, 3);
-entry!(global_read, GlobalRead, 1);
-entry!(global_else, GlobalElse, 2);
-entry!(global_put, GlobalPut, 2);
-entry!(global_has, GlobalHas, 1);
-entry!(global_bindings, GlobalBindings, 1);
-entry!(global_name, GlobalName, 1);
 entry!(set_observer, SetObserver, 1);
 entry!(set_authorizer, SetAuthorizer, 1);
 entry!(tracked_add_method, AddMethod, 3);
@@ -1323,39 +1175,18 @@ const CELL_METHODS: &[(&[u8], Method)] = &[
     (b"set:", cell_set),
     (b"history", cell_history),
 ];
-const GLOBAL_METHODS: &[(&[u8], Method)] = &[
-    (b"imageBindingProjection", global_projection),
-    (b"transientBinding:put:", global_transient),
-    (b"bindingAt:", global_binding),
-    (b"bindingBasis", global_basis),
-    (b"liveBindingsDo:", global_bindings),
-    (b"nameOf:", global_name),
-    (b"at:", global_read),
-    (b"at:ifAbsent:", global_else),
-    (b"at:put:", global_put),
-    (b"includes:", global_has),
-];
 const NAMES: &[&[u8]] = &[
-    b"imageBindingProjection",
-    b"transientBinding:put:",
-    b"bindingAt:",
-    b"bindingBasis",
-    b"liveBindingsDo:",
-    b"binding:value:",
     b"imageFieldAt:",
     b"restoreImageStore:entity:attr:",
     b"visit:",
     b"CellVt",
     b"Error",
     b"GC",
-    b"Globals",
-    b"GlobalsVt",
     b"Integer",
     b"ObjectVt",
     b"Roots",
     b"Store",
     b"StoreVt",
-    b"__globals__",
     b"addMethod",
     b"addMethod:as:",
     b"addMethod:on:with:",
@@ -1363,7 +1194,6 @@ const NAMES: &[&[u8]] = &[
     b"allocationSizeOf:",
     b"assert:attr:value:",
     b"at:",
-    b"at:ifAbsent:",
     b"at:put:",
     b"attrAt:index:",
     b"attrCount:",
@@ -1407,7 +1237,6 @@ const NAMES: &[&[u8]] = &[
     b"swapImageStateWith:atRevision:stagedRevision:",
     b"imageLoadEnd:raw:oldest:policy:argument:",
     b"imageTransient",
-    b"includes:",
     b"kind:",
     b"liveTriplesAsOf:do:",
     b"liveTriplesBetween:and:do:",
@@ -1505,7 +1334,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             let parent = named(b"ObjectVt")?;
             let store_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
             let cell_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-            let globals_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
             let policy = Runtime {
                 cardinality: names[b"cardinality".as_slice()] as usize,
                 one: names[b"one".as_slice()] as usize,
@@ -1531,9 +1359,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 gc: named(b"GC")?,
                 store_vt,
                 cell_vt,
-                globals_vt,
                 receiver: Cell::new(ptr::null_mut()),
-                globals: Cell::new(ptr::null_mut()),
                 method_observer: Cell::new(ptr::null_mut()),
                 method_authorizer: Cell::new(ptr::null_mut()),
                 policy,
@@ -1556,7 +1382,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 (store_vt, STORE_METHODS),
                 (store_vt, owner_methods.as_slice()),
                 (cell_vt, CELL_METHODS),
-                (globals_vt, GLOBAL_METHODS),
             ] {
                 for &(name, method) in methods {
                     s.send(
@@ -1588,13 +1413,9 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 )?;
             }
             s.send(s.gc, b"registerRetirement:", &[Operand::object(receiver)])?;
-            let scope = Scope::new(s, vec![]);
-            let globals = s.allocate(&scope, globals_vt)?;
-            s.globals.set(globals);
             for (vt, owner) in [
                 (store_vt, receiver),
                 (cell_vt, receiver),
-                (globals_vt, globals),
             ] {
                 s.send(
                     id.receiver,
@@ -1607,8 +1428,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 (b"db", receiver),
                 (b"StoreVt", store_vt),
                 (b"CellVt", cell_vt),
-                (b"Globals", globals),
-                (b"GlobalsVt", globals_vt),
             ] {
                 s.send(
                     ns,

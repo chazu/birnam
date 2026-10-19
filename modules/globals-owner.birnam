@@ -1,0 +1,155 @@
+// Foundational binding policy, installed before named module admission.
+// One ordinary owner; no native Globals facade, seed transfer or database.
+// Dependency operations remain current sends through Id.
+[[|
+// Reinstallation replaces policy while retaining the actual binding owner.
+let existing := [Namespace includesKey: #Globals];
+let bindingFacade := [existing ifTrue: [| [Namespace valueAt: #Globals]] ifFalse: [| [Object clone]]];
+let bindingModel := ObjectModel;
+let bindingMap := Map;
+let bindingError := Error;
+let bindingNil := nil;
+// Immutable indices are ordinary captured values, as in Trace. Reading a binding
+// does not reconstruct index Integers on every lookup.
+let bindingSlot0 := 0; let bindingSlot1 := 1; let bindingSlot2 := 2; let bindingSlot3 := 3;
+let bindingReflect := Reflect;
+let bindingKeyPrototype := [bindingModel newSlots: #[nil] parent: ObjectVt];
+let bindingHashZero := [Execution wordResultOf: 0 selector: #word];
+// Identity-preserving keys above ordinary Map. Symbols already have canonical
+// identity; other keys use ordinary wrappers. Constant hashing is intentional:
+// these uncommon keys collide, then compare their original identities. No
+// address-derived index or native identity registry needs image repair.
+[Reflect defineMethod: #bindingIdentity on: Object as: [:self | self]];
+[Reflect defineMethod: #bindingKey on: Object as: [:self |
+  [bindingModel newSlots: #[self] parent: [bindingReflect vtableOf: bindingKeyPrototype]]
+]];
+[Reflect defineMethod: #bindingKey on: SymbolVt as: [:self | self]];
+[Reflect defineMethod: #bindingIdentity on: bindingKeyPrototype as: [:self |
+  [bindingModel slot: bindingSlot0 in: self]
+]];
+[Reflect defineMethod: #slotNames on: bindingKeyPrototype as: [:self | #[#key]]];
+[Reflect defineMethod: #collectionHash on: bindingKeyPrototype as:
+  [Execution block: [:self | bindingHashZero] withNativeSignature: "w"]];
+[Reflect defineMethod: #collectionEquals: on: bindingKeyPrototype as: [:self :other |
+  [[self bindingIdentity] == [other bindingIdentity]]
+]];
+
+let bindingStorage := [existing ifTrue: [| [bindingFacade bindingOwner]] ifFalse: [| [bindingModel newSlots: #[#[[bindingMap new] #[] 0 [bindingMap new]]] parent: ObjectVt]]];
+[Reflect defineMethod: #slotNames on: bindingStorage as: [:self | #[#state]]];
+// State = #[binding Map, live insertion order, revision, transient policy].
+[Reflect defineMethod: #bindingOwner on: bindingFacade as: [:self | bindingStorage]];
+[Reflect defineMethod: #bindingState on: bindingFacade as: [:self |
+  [bindingModel slot: bindingSlot0 in: bindingStorage]
+]];
+[Reflect defineMethod: #publishBindingState:from: on: bindingFacade as: [:self :next :expected |
+  [[[next at: bindingSlot2] isError] ifTrue: [| [next at: bindingSlot2]] ifFalse: [|
+    [[bindingModel replaceSlot: bindingSlot0 in: bindingStorage expected: expected with: next]
+      ifTrue: [| self] ifFalse: [| [bindingError kind: #compensationConflict]]]
+  ]]
+]];
+// Reads need no constructor, fact handle, version check, or mutation guard.
+[Reflect defineMethod: #at: on: bindingFacade as: [:self :name |
+  [[[bindingModel slot: bindingSlot0 in: bindingStorage] at: bindingSlot0] at: [name bindingKey]]
+]];
+[Reflect defineMethod: #includes: on: bindingFacade as: [:self :name |
+  [[[self bindingState] at: bindingSlot0] includesKey: [name bindingKey]]
+]];
+[Reflect defineMethod: #at:ifAbsent: on: bindingFacade as: [:self :name :absent |
+  [[[self bindingState] at: bindingSlot0] at: [name bindingKey] ifAbsent: absent]
+]];
+[Reflect defineMethod: #bindings on: bindingFacade as: [:self | [[self bindingState] at: bindingSlot0]]];
+[Reflect defineMethod: #bindingNames on: bindingFacade as: [:self | [[self bindingState] at: bindingSlot1]]];
+[Reflect defineMethod: #bindingBasis on: bindingFacade as: [:self | [[self bindingState] at: bindingSlot2]]];
+[Reflect defineMethod: #bindingAt: on: bindingFacade as: [:self :name |
+  let bindings := [[self bindingState] at: bindingSlot0];
+  [[bindings includesKey: [name bindingKey]] ifTrue: [| #[[bindings at: [name bindingKey]]]] ifFalse: [| #[]]]
+]];
+[Reflect defineMethod: #bindingMutation: on: bindingFacade as: [:self :body |
+  let executor := [self at: #TaskExecutor];
+  [[executor isNil] ifTrue: [| [body value]] ifFalse: [| [executor transition: body]]]
+]];
+[Reflect defineMethod: #at:put: on: bindingFacade as: [:self :name :value |
+  [self bindingMutation: [|
+    let old := [self bindingState]; let bindings := [old at: bindingSlot0];
+    let exists := [bindings includesKey: [name bindingKey]];
+    [[exists & [[bindings at: [name bindingKey]] == value]] ifTrue: [| value] ifFalse: [|
+      let next := [bindings at: [name bindingKey] put: value];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        let order := [exists ifTrue: [| [old at: bindingSlot1]] ifFalse: [| [[old at: bindingSlot1] add: name]]];
+        let result := [self publishBindingState: #[next order [[old at: bindingSlot2] + 1] [old at: bindingSlot3]] from: old];
+        [[result isError] ifTrue: [| result] ifFalse: [| value]]
+      ]]
+    ]]
+  ]]
+]];
+// Explicit removal rebuilds the persistent Map and releases removed values.
+// There is no permanent tombstone table. Remaining names keep their order.
+[Reflect defineMethod: #map:without: on: bindingFacade as: [:self :map :name |
+  [[map keys] inject: [bindingMap new] into: [:out :key |
+    [[out isError] ifTrue: [| out] ifFalse: [|
+      [[[key bindingIdentity] == name] ifTrue: [| out] ifFalse: [| [out at: key put: [map at: key]]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #order:without: on: bindingFacade as: [:self :order :name |
+  [order inject: #[] into: [:out :key | [[key == name] ifTrue: [| out] ifFalse: [| [out add: key]]]]]
+]];
+[Reflect defineMethod: #remove: on: bindingFacade as: [:self :name |
+  [self bindingMutation: [|
+    let old := [self bindingState];
+    [[[[old at: bindingSlot0] includesKey: [name bindingKey]] not] ifTrue: [| self] ifFalse: [|
+      let next := [self map: [old at: bindingSlot0] without: name];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        [self publishBindingState: #[next [self order: [old at: bindingSlot1] without: name] [[old at: bindingSlot2] + 1] [old at: bindingSlot3]] from: old]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #liveBindingsDo: on: bindingFacade as: [:self :visitor |
+  let snapshot := [self bindingState]; let bindings := [snapshot at: bindingSlot0];
+  [[snapshot at: bindingSlot1] inject: self into: [:result :name |
+    [visitor binding: name value: [bindings at: [name bindingKey]]]; self
+  ]]
+]];
+[Reflect defineMethod: #nameOf: on: bindingFacade as: [:self :value |
+  let snapshot := [self bindingState]; let bindings := [snapshot at: bindingSlot0];
+  [[snapshot at: bindingSlot1] inject: bindingNil into: [:found :name |
+    [[found isNil] ifTrue: [|
+      [[[bindings at: [name bindingKey]] == value] ifTrue: [| name] ifFalse: [| bindingNil]]
+    ] ifFalse: [| found]]
+  ]]
+]];
+// Persistence policy belongs to the binding owner, independently of Store schema.
+[Reflect defineMethod: #transientBinding:put: on: bindingFacade as: [:self :name :flag |
+  [self bindingMutation: [|
+    let old := [self bindingState]; let policy := [old at: bindingSlot3];
+    let next := [[flag == true] ifTrue: [| [policy at: [name bindingKey] put: true]] ifFalse: [| [self map: policy without: name]]];
+    [[next isError] ifTrue: [| next] ifFalse: [|
+      [self publishBindingState: #[[old at: bindingSlot0] [old at: bindingSlot1] [[old at: bindingSlot2] + 1] next] from: old]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #bindingIsTransient: on: bindingFacade as: [:self :name |
+  [[[[self bindingState] at: bindingSlot3] at: [name bindingKey]] == true]
+]];
+// Project the owner payload without changing the live world. Aliases of the
+// storage object keep one image identity; only its serialized fields differ.
+[Reflect defineMethod: #imageBindingProjection on: bindingFacade as: [:self |
+  let old := [self bindingState]; let bindings := [old at: bindingSlot0]; let policy := [old at: bindingSlot3];
+  let kept := [[old at: bindingSlot1] inject: #[[bindingMap new] #[]] into: [:out :name |
+    [[[policy at: [name bindingKey]] == true] ifTrue: [| out] ifFalse: [|
+      #[[[out at: bindingSlot0] at: [name bindingKey] put: [bindings at: [name bindingKey]]] [[out at: bindingSlot1] add: name]]
+    ]]
+  ]];
+  [[[kept at: bindingSlot0] isError] ifTrue: [| [kept at: bindingSlot0]] ifFalse: [|
+    let copy := [bindingStorage clone];
+    [[copy isError] ifTrue: [| copy] ifFalse: [|
+      [bindingModel slot: bindingSlot0 in: copy put: #[[kept at: bindingSlot0] [kept at: bindingSlot1] [old at: bindingSlot2] policy]];
+      #[bindingStorage copy]
+    ]]
+  ]]
+]];
+[Namespace at: #Globals put: bindingFacade];
+[Namespace at: #GlobalsVt put: [Reflect vtableOf: bindingFacade]];
+bindingFacade
+] value]

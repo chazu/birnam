@@ -1,7 +1,7 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: dependency audit and implementation plan; runtime cutover not implemented.**
+**Status: Globals recovery cleanup and early authored Globals implemented and qualified. Full core composition remains Store-dependent.**
 The next release is blocked on completing this milestone, per the user's decision.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
@@ -42,7 +42,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 
 | Area | Current edge and evidence | Required destination / proof |
 | --- | --- | --- |
-| Bootstrap bindings | [Store initialization](../../rust/birnam-store/src/native.rs) publishes `Globals`/`GlobalsVt` as well as Store/db/CellVt. [authored Globals](../../modules/globals.birnam) imports the seed's bindings and unconditionally retracts/compacts its automatic facts. The existing Store-absent test exports method bodies, not the complete initializer. | Establish Globals through an existing core owner and ordinary state without a fact-backed seed. Preserve absent versus nil, binding order/identity, Namespace fallback and early artifact/source-registry admission. Late Store loading must not replace the live Globals owner. |
+| Bootstrap bindings | [authored Globals](../../modules/globals-owner.birnam) now constructs its own facade and state before SourceRegistry/named modules. Store's facade, seed conversion and fact cleanup are removed. | The real compiled initializer passes on a floor without Store/Relational, followed by explicit late loading without owner replacement. Slice qualification passes; full Bootstrap absence still awaits other owners. |
 | Task and scheduler state | [stackless-control](../../modules/stackless-control.birnam) initializes Store schema and uses `db cellFor:` for TaskControl/TaskExecutor fields. Candidate policy and other ordinary modules use its transitions. | Ordinary per-object state with preserved field aliases, queue order, cancellation, shielding, transitions and suspension. Remove schema initialization and fact-backed field ownership. |
 | Workers and outcomes | The same module stores Worker fields and RemoteFailure outcomes in facts; [isolate policy](../../modules/isolate.birnam) stores Concurrency fields in db and marks them transient. | Owned state and explicit resource lifecycle; worker preparation, copied messages, failure reporting, cancellation and cleanup run without Store. |
 | REPL and sockets | [REPL](../../modules/repl.birnam) stores `cin`, `cerr`, `cbuf` plus transient declarations; [socket](../../modules/socket.birnam) stores connection descriptors/buffers in db. These are included in prepared startup. | Resource-bearing ordinary owners; preserve acquisition, close-once behavior, failed construction, repeated sessions and buffer safety. Define reconstruction/rejection before moving fields. |
@@ -53,7 +53,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Standard-library optional hooks | [stdlib](../../modules/stdlib.birnam) directly writes Doc's facts from documented method definitions and provides `Reflect factsOf:` through global db. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
 | Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares only html; [Cli](../../modules/cli.birnam) requires Doc globally, and its LSP path populates the catalog. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
 | Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) loads store/relational unconditionally; [Host source startup](../../rust/birnam-host-entry/src/startup.rs) marks both as kernel modules. [Build](../../rust/birnam-build/src/main.rs) has one canonical native closure, builds startup with REPL/socket state, then loads all tools into a second image. | Core and optional dependency closures are explicit in build inputs, initialization, prepared images and receipts. A tooling image containing Doc is an explicitly optional composition, not the only way to run unrelated tools. |
-| Late optional initialization | Store currently publishes a Globals seed; Relational attaches its query behavior to Store. Both were written for early bootstrap order. | Load after live globals/methods/tasks exist without replacing core authority, changing local Cell defaults or installing mandatory mutation hooks. Preserve self-description, repeat-load behavior and existing explicit data. |
+| Late optional initialization | Store no longer publishes a Globals seed; explicit loading after the actual Globals initializer passes. Relational attaches its query behavior to Store. Full-world late optional activation still needs qualification. | Load after live globals/methods/tasks exist without replacing core authority, changing local Cell defaults or installing mandatory mutation hooks. Preserve self-description, repeat-load behavior and existing explicit data. |
 
 The primary references above contain the live code at the baseline. Existing
 [Cell](../../rust/birnam-siphon/tests/cell_without_store.rs) and
@@ -62,15 +62,17 @@ useful component evidence, but explicitly exclude the full bootstrap/Host path.
 
 ## Simplification review: delete before translating
 
-2026-10-19 follow-up, against `5cbb91fa`. These are recommendations from source
-and call-site inspection, not implemented removals or measured speedups. The
+2026-10-19 follow-up, against `5cbb91fa`. These candidates come from source
+and call-site inspection. Row status and the progress entries below distinguish
+completed work from remaining recommendations; deletion alone is not a speedup. The
 migration should shrink the machinery rather than reproduce its fact-shaped APIs
 in new private maps.
 
 | Priority | Candidate | Evidence and recommended reduction | Boundary to retain |
 | --- | --- | --- | --- |
-| First | Globals compensation banks and image recovery checkpoints | `reserveBindingCompensationFor:count:`, credit queries/releases and conditional restoration remain in authored Globals and its native seed. Current candidate policy no longer calls them; a Generation regression explicitly checks that activation makes zero reservation calls. `imageBindingCheckpoint` / `restoreImageBindings:` have no current production callers in the repository. Image still calls `releaseImageReservations` to clear otherwise obsolete banks. Remove this capability family, its state slot/order snapshots, and its cleanup hook unless a concrete current requirement is selected. Update tests and the old ownership documentation accordingly. | Ordinary binding coherence, absent versus nil, alias order and identity; explicit candidate undo already has its own selected-write protocol. This deliberately removes public APIs, not their names alone. |
-| First | Dual Globals implementations and seed conversion | Store creates a native Globals facade; authored Globals imports its state, changes behavior, retracts automatic facts and compacts. Aim for one authored binding owner through bootstrap. Delete the Store-owned facade and transfer/cleanup path once any genuinely necessary minimal bootstrap interface is established. This also removes the late-Store-load clobber hazard. | Globals and Namespace have distinct responsibilities; do not merge them merely to remove a seed. Keep public binding behavior and early compilation working. |
+| Completed `b1fe7200` | Globals compensation banks and image recovery checkpoints | `reserveBindingCompensationFor:count:`, credit queries/releases and conditional restoration remain in authored Globals and its native seed. Current candidate policy no longer calls them; a Generation regression explicitly checks that activation makes zero reservation calls. `imageBindingCheckpoint` / `restoreImageBindings:` have no current production callers in the repository. Image still calls `releaseImageReservations` to clear otherwise obsolete banks. Remove this capability family, its state slot/order snapshots, and its cleanup hook unless a concrete current requirement is selected. Update tests and the old ownership documentation accordingly. | Ordinary binding coherence, absent versus nil, alias order and identity; explicit candidate undo already has its own selected-write protocol. This deliberately removes public APIs, not their names alone. |
+| Completed; see qualification below | Dual Globals implementations and seed conversion | Store creates a native Globals facade; authored Globals imports its state, changes behavior, retracts automatic facts and compacts. Aim for one authored binding owner through bootstrap. Delete the Store-owned facade and transfer/cleanup path once any genuinely necessary minimal bootstrap interface is established. This also removes the late-Store-load clobber hazard. | Globals and Namespace have distinct responsibilities; do not merge them merely to remove a seed. Keep public binding behavior and early compilation working. |
+| With Cell/image cleanup | Duplicate local-Cell implementation inside Store | `Store localCell:` and `localCell:prototype:` still maintain tagged native local values alongside the authored Cell owner. No core Birnam module calls them; remaining uses are examples, fixtures and the image-format test generator. Convert those local scratch callers to authored Cell, then remove the native local variant and its legacy image branch. | Keep actual fact-backed Store Cells and their explicit history. Preserve local value/alias/clone behavior through the authored owner; do not keep a second native representation solely for old-image compatibility. |
 | With task/resource migration | Database-shaped field access | Task/Worker/Concurrency fields repeatedly manufacture prefixed attribute Symbols, obtain fact-backed Cells, then read/write their values. They also maintain schema/history/transient declarations for ordinary private state. Replace that layer with ordinary owned fields/collections; retain actual Cells where field handles escape and aliases require shared mutation. | Queue order, transitions, cancellation/shielding, field alias semantics and resource cleanup. A field migration is not permission to simplify the scheduler's semantics. |
 | With Alien migration | Fact encoding and Store-mediated method installation | Recipes are encoded as `__aliens__` attributes with synthetic `__alien_N` keys, enumerated back into vectors, searched, and converted again for Image. Wrapper installation also detours through Store's method-publication API. Use one owned recipe collection and the established Method/dictionary publication protocols. | Function/signature code reuse and target/selector registration are distinct matching purposes. Preserve both, current reads across reentrant callbacks, native-handle ownership and Method/Unit lifetimes. |
 | With Image migration | Mandatory database staging and global transient schema | Even a fact-free image currently queries Store metadata, creates a staging Store and swaps Store state. Every heap object gets a Store transient-marker query. Remove these from the core path; integrate projection/admission into actual owner snapshot protocols and keep facts/history as an explicit optional contribution. | Reject unsupported resources and captured transient handles; preserve explicit facts/history and the selected partial-application contract. Staging optional fact data can still be useful—only its mandatory role is redundant. |
@@ -124,7 +126,9 @@ removing dependencies. The final release gate cannot pass on partial progress.
    Exit: compile/load/reuse/replacement, cloned/retained recipes, fresh-process
    restoration, missing libraries/symbols, callback failures and code reclamation
    preserve the chosen behavior. No opaque native recipe registry replaces db.
-5. **Complete Store-free Image and optional Store persistence.** Remove mandatory
+5. **Complete Store-free Image and optional Store persistence.** Retire Store's
+   duplicate native local-Cell variants after moving the remaining examples and
+   fixtures to the authored Cell owner; keep real fact-backed Cells. Remove mandatory
    Store stamps, staging and swaps from the heap/code path. Keep fact/history/Cell
    transport as an explicit Store contribution. Choose the concrete protocol and
    any image version/rebuild transition before editing the format; reject unsupported
@@ -201,11 +205,14 @@ savings, without changing the GC threshold or weakening ownership to improve a s
 
 ## Start here
 
-The first implementation slice is the genuine absence harness plus bootstrap
-Globals ownership. It gives a concrete dependency failure to eliminate and removes
-an early hidden seed dependency before later migrations try to use core bindings.
 The next design check is Image's Store-owned transient policy, so task/resource
-field moves cannot accidentally make native capabilities durable.
+field moves cannot accidentally make native capabilities durable. The early
+Globals owner and initializer floor are implemented; qualification is recorded
+below. `scripts/core-without-store-test.py PREFIX` copies a real installed prefix
+with Store/Relational excluded and runs early bootstrap and full source startup.
+It deliberately returns failure while the production composition still requires
+those libraries. It does not stand in for the separate cold-build, image and Host
+acceptance matrix.
 
 
 ## Progress: Globals recovery cleanup (2026-10-19)
@@ -232,3 +239,37 @@ not a speedup claim. Three paired Globals loops measured reads -0.8%/-1.8% and
 writes +3.7%. Startup medians were 2.816 → 2.755 seconds; the bootstrap image is
 about 6 MiB smaller. Remaining seed ownership and the complete absence gate are
 next; this slice does not establish Store-independent startup.
+
+## Progress: early authored Globals (2026-10-19)
+
+Globals now constructs itself through the existing Object/Map/ObjectModel owners,
+before SourceRegistry and named Module admission. Store's native facade, seed
+transfer and automatic-fact cleanup are deleted. The named `globals` module is
+only a registration wrapper; policy lives once in `globals-owner.birnam`. Existing
+owner/state identities and non-Symbol identity keys survive explicit policy reload.
+Namespace permits its normal export fallback before Globals exists; a present
+owner's failure or malformed result still propagates.
+
+The initializer test loads the actual production artifact with Store and Relational
+unavailable, exercises binding identity, nil/absence, snapshots, GC and reload,
+then explicitly loads/reloads those optional libraries and checks independent facts
+and unchanged core owners. Native binding, Store/Relational, source-registry,
+candidate and image failure/lifetime checks pass. Also passing: 847 language
+assertions, mapped/rebuilt Globals images, installed/relocated Host acceptance,
+391 Lean theorems, 122 rejected mutations and 265 expected TLC outcomes. The build
+creates fresh authored artifacts using a Rust Cargo cache; final cold-source
+archive acceptance is still required for the whole milestone.
+
+Paired steady-state measurements are near baseline: Globals reads +1.30%, source
+reads +0.75%, writes -0.11%, and Logue quiet turns +0.75%. Three paired startup
+runs measure 2.712 → 2.782 seconds (+69 ms, +2.56%). The bootstrap image shrinks by
+43,611 bytes. This is an ownership simplification, not a demonstrated performance
+improvement. See the [qualification receipt](../measurements/globals-bootstrap-owner-20261019.json),
+including the instrumentation distinction between native lifetime tests and the
+standard installed prefix.
+
+The whole-core absence diagnostic still fails at Bootstrap's unconditional
+Store/Relational loads. Removing those loads prematurely would only hide the task,
+resource, Alien and Image dependencies. Next: define the minimal owner image
+projection/admission contract, then migrate task/resource fields; remove the
+remaining duplicate local-Cell variant alongside Cell/image cleanup.

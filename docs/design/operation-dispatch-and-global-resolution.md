@@ -41,7 +41,10 @@ fetch Namespace `nil`, fetch Namespace `Globals`, read that Globals receiver's
 `at:` for the requested Symbol, and fall back to Namespace `at:` only when the
 result is the previously fetched nil. Native Unit from the final export lookup
 maps to that nil. The getters are not bypassed, cached, or assumed canonical.
-Their failures and malformed result handling are retained.
+Their failures and malformed result handling are retained. During early bootstrap,
+a missing Globals export (native Unit) skips the Globals read and goes directly to
+the export fallback. This is the only new absence case; a present owner's failure
+never becomes an export fallback.
 
 A nested owner scope roots fetched nil and Globals before further callbacks.
 Namespace's registered `rootsDo:` reports those temporary references. Rebinding
