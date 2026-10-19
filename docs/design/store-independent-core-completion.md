@@ -339,3 +339,22 @@ The saved benchmark image grows about 0.56 MiB (0.23%). See the
 Next is ordinary TaskControl/TaskExecutor field ownership using this image
 contract, with actual field aliases, scheduling transitions and task retention
 preserved. Store fact transport and production optional composition remain pending.
+
+## Current hold: task/worker field prototype (2026-10-19)
+
+The working prototype moves TaskControl, TaskExecutor, Worker and RemoteFailure
+state out of Store, eliminating all db calls from stackless-control initialization.
+It builds, but task completion is 3.14× slower and field loops are about 39% slower.
+The runtime change is **uncommitted and unqualified**. Per the user's explicit
+performance condition, implementation is held for approval. The investigation
+identifies disposable field views and their helper dispatch as the main cause;
+ordinary direct owner accessors are the proposed next step. See the
+[report](task-field-migration-performance.md) for measurements, protocol tradeoffs
+and the acceptance requirements. The overall core-independence/release goal is
+not complete or reduced by this hold.
+
+A further source-backed cleanup found during this investigation is
+`Machine prepareBlockControl`: its native `Op::Prepare` now only returns the
+receiver, and adapter installation already occurs during Execution loading.
+Remove the obsolete call/selector/operation after the performance hold is resolved;
+retain meaningful adapter/repeated-loading coverage instead of testing a no-op.
