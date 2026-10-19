@@ -35,3 +35,56 @@ cutover. Ordinary message dispatch, Id-only module interoperability, deoptimizat
 and independently owned executable lifetimes remain language invariants. Automatic
 compensation after candidate failure is a separate feature choice, not a condition
 of native memory safety or of explicit conditional undo.
+
+The selected contract retains conditional preflight and explicit undo, and removes
+**automatic compensation on activation or undo failure**. Successful coordinated
+edits remain useful; automatic repair is not needed to retain executable code or
+make the undo conditional. Its reservation banks, inverse-on-failed-inverse paths,
+and repeated global/lifecycle postconditions were substantially larger than that
+requirement. They also could not promise arbitrary callback atomicity.
+
+- Preparation observes the selected source, targets, Methods and Globals without
+  executing the candidate factory. A prepared request is consumed once.
+- Activation constructs its supplied factory once, checks the selected values,
+  records each intended write before calling its current setter, and stops on
+  Error. It does not replay setters or run an automatic inverse.
+- A failed application may have changed code/data. Its attempted writes remain
+  available for explicitly requested undo while the carrier is retained.
+- Undo uses the recorded owner and before/after values. Already-restored values
+  are skipped; a differing later write is preserved and reported as conflict.
+  Undo itself can fail after partial progress and can be requested again.
+- Description fields are history, not transaction authorization. No-op or replaced
+  setters are not policed by postchecks. Ordinary Error values propagate; native
+  failures follow ordinary authored-message result conversion.
+- Constructor failures do not authorize replay. A caller can discard/reopen a
+  carrier deliberately. Ordinary method edits acquire none of this policy.
+
+This is an explicit change to the candidate API's failure contract, aligned with
+the selected responsibility boundary for image application. It is not a change to
+Id dispatch, GC/code ownership, calling conventions or deoptimization.
+
+## 3. Authored policy boundary
+
+The planned port puts preparation, construction sequencing, activation, explicit
+undo, active-unit queries and discard policy in `candidate-policy.birnam`.
+Native Generation retains artifact admission/mapping, optional certification and
+an opaque ordinary policy Cell rooted by each existing process-local artifact
+carrier. Native code never interprets the Cell's contents. The Cell and its data
+are inspectable through the carrier's Id protocol; there is no second native
+policy representation or new registry service. This bridge is tied to the remaining
+artifact implementation, not a permanent bootstrap dependency.
+
+Durable CompiledUnit records and preparation descriptors do not point back to that
+process-local state. Image application releases carriers and their policy roots;
+restored descriptions therefore cannot recreate authority. Explicitly retaining a
+policy Cell also retains its code/resource references and need not be imageable.
+Execution/TCC remain the physical code owners.
+
+A small generic Execution binding-observation surface returns the actual installed
+Method, or a captured foreign native binding that retains its code. Exact binding
+comparison and restoration use Id's existing dictionary messages. Foreign native
+bindings must retain their original raw ABI on restoration; ordinary methodFor:
+capture behavior is unchanged. This is owner-level representation conversion, not
+Generation inspecting foreign layouts or guarding ordinary sends against replacement.
+
+Implementation and qualification of this boundary are in progress.
