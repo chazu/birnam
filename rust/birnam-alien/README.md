@@ -21,10 +21,20 @@ unreleased owned buffers. Raw peek/poke operations retain the existing caller-ow
 C memory bounds contract. Borrowed pointer values never free their pointees.
 `dlclose:` refuses while any wrapper Unit remains live, matching the existing
 conservative library policy; collecting obsolete Methods releases that restriction.
-Store retains `__aliens__` recipes with function/signature, selector, target and
-relocatable object bytes. `restoreWrapper:` maps those objects and binds the
-current process address without compiling. Repeating a wrap reuses recorded
-object bytes. Callback addresses and foreign memory remain process-local.
+The authored `AlienRecipes` owner keeps ordinary Maps for function/signature
+object bytes and target/selector registrations. Registration stamps come from Id;
+they do not retain native Methods or executable Units. Snapshots consult current
+bindings, omit removed/replaced wrappers and discard process-local index keys.
+
+`installRecipe:` maps saved object bytes, resolves the destination process address,
+publishes through the current Method dictionary and returns the constructed Method.
+It performs no cache recording. Image retains those Methods only for its current
+operation, repairs Maps after all foreign bindings exist, and then asks the authored
+owner to index registrations. Independently edited cache bytes remain unchanged.
+Normal `wrap:signature:as:on:` uses the current authored cache and recording methods;
+no Store service or mirror is involved. Callback addresses and foreign memory remain
+process-local. Error predicates remain current messages, including private Error
+behavior.
 
 `mise run native-messages` includes the production Alien test, covering actual
 scalar, unsigned, aggregate and callback calls, unaligned buffers, collecting

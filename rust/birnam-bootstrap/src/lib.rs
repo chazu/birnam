@@ -431,7 +431,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             if result != owner || owner == object(named(b"nil")?)? { return Err(invalid()); }
         }
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "imageFormat", "trace", "globals", "methodInvocation"] {
+        for name in ["cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "alienRecipes", "imageFormat", "trace", "globals", "methodInvocation"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],

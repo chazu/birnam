@@ -1,3 +1,4 @@
+import AlienRecipes
 import ResourceOwner
 import SharedInvocation
 import PublicationFailure
@@ -368,3 +369,16 @@ import Admission
 #print axioms Birnam.ResourceOwner.cleanup_preserves_status
 #print axioms Birnam.ResourceOwner.live_owner_refuses_image
 #print axioms Birnam.ResourceOwner.closed_owner_allows_image
+
+#print axioms Birnam.AlienRecipes.project_current
+#print axioms Birnam.AlienRecipes.project_obsolete
+#print axioms Birnam.AlienRecipes.registration_current
+#print axioms Birnam.AlienRecipes.reentrant_registration_preserved
+#print axioms Birnam.AlienRecipes.stamp_not_root
+#print axioms Birnam.AlienRecipes.restored_stamp_is_destination
+#print axioms Birnam.AlienRecipes.restored_stamp_projects
+#print axioms Birnam.AlienRecipes.stamp_preserves_held_roots
+#print axioms Birnam.AlienRecipes.replay_preserves_cache
+#print axioms Birnam.AlienRecipes.replay_renews_registration
+#print axioms Birnam.AlienRecipes.image_index_preserves_callback
+#print axioms Birnam.AlienRecipes.image_index_fills_missing

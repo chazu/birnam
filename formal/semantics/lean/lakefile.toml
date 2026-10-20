@@ -35,3 +35,6 @@ name = "PrivateScratch"
 
 [[lean_lib]]
 name = "PrivateIndex"
+
+[[lean_lib]]
+name = "AlienRecipes"

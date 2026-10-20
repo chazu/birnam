@@ -694,8 +694,16 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         }
         let sources = s.call(q, codegen, b"portableImageSources", &[])?;
         if s.is_error(sources)? { return Err(Outcome::loaded(Operand::object(sources))); }
+        // Explicit owner roots avoid rediscovery through half-restored Globals.
+        let tag = q.keep(s.id.intern_name(b"imageOwnersV1")?)?;
+        let name = q.keep(s.id.intern_name(b"AlienRecipes")?)?;
+        let foreign = s.call(q, s.named(b"Globals")?, b"at:", &[name])?;
+        let mut owners = s.call(q, s.named(b"Vector")?, b"new", &[])?;
+        for value in [tag, sources, foreign] {
+            owners = s.call(q, owners, b"add:", &[value])?;
+        }
         let mut sources_bytes = Vec::new();
-        graph.reference(sources)?.encode(&mut sources_bytes);
+        graph.reference(owners)?.encode(&mut sources_bytes);
         let programs = graph.finish()?;
         let specs = binding_values
             .iter()
@@ -1232,36 +1240,6 @@ unsafe fn restore_facts(
         Ok(staged)
     }
 }
-// Alien wrappers are ordinary method publications in the Image transaction.
-// Validate recipe shape before applying the image. No prior bindings are retained:
-// live loading leaves applied changes in place on failure, just like other sends.
-unsafe fn foreign_publication(
-    s: &State,
-    q: &Scope<'_>,
-    staged: Oop,
-) -> Result<Vec<(Oop, Oop, Oop)>, Outcome> {
-    unsafe {
-        let entity = q.keep(s.id.intern_name(b"__aliens__")?)?;
-        let count = s.call(q, staged, b"attrCount:", &[entity])?;
-        let count = s
-            .send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(count)])?
-            .as_word()
-            .ok_or_else(bad)?;
-        let mut publication = Vec::new();
-        for i in 0..count {
-            let index = s.integer(q, i)?;
-            let key = s.call(q, staged, b"attrAt:index:", &[entity, index])?;
-            let recipe = s.call(q, staged, b"currentValue:attr:", &[entity, key])?;
-            let fields = s.sequence(q, recipe)?;
-            let [_, _, selector, target, _] = fields.as_slice() else {
-                return Err(bad());
-            };
-            publication.push((recipe, *target, *selector));
-        }
-        Ok(publication)
-    }
-}
-
 unsafe fn load(
     s: &State,
     q: &Scope<'_>,
@@ -1340,15 +1318,19 @@ unsafe fn load(
         }
         let _stage = Stage { s, codegen };
         let objects = restore_heap(s, q, &decoded)?;
-        if let Some(sources) = decoded.sources {
+        let foreign_owner = {
+            let roots = decoded.sources.ok_or_else(bad)?;
             let mut offset = 0;
-            let sources = resolve(s, q, &Value::decode(sources, &mut offset)?, &objects)?;
-            if s.call(q, codegen, b"preparePortableImageSources:", &[sources])? != yes {
+            let roots = resolve(s, q, &Value::decode(roots, &mut offset)?, &objects)?;
+            let fields = s.sequence(q, roots)?;
+            let [tag, sources, foreign] = fields.as_slice() else { return Err(bad()); };
+            if *tag != s.id.intern_name(b"imageOwnersV1")? { return Err(bad()); }
+            if s.call(q, codegen, b"preparePortableImageSources:", &[*sources])? != yes {
                 return Err(bad());
             }
-        }
+            *foreign
+        };
         let staged = restore_facts(s, q, &decoded, &objects)?;
-        let mut foreign = foreign_publication(s, q, staged)?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1372,35 +1354,38 @@ unsafe fn load(
             q.keep(behavior)?;
             publication.push((index, target, selector, provenance, behavior));
         }
-        // Recipes cache foreign code, but a saved authored replacement is the
-        // definition to restore. Do not replay an older wrapper over that binding.
-        foreign.retain(|&(_, target, selector)| !publication.iter().any(
-            |&(_, t, n, _, _)| t == target && n == selector,
-        ));
         // A restored snapshot must also remove later source-defined bindings on
         // resident exports. Old heap objects held by callers keep their methods.
-        let current = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
+        // Only resident binding keys are needed here. Query their actual owners;
+        // constructing a full code/provenance report creates avoidable heap work.
+        let count = s.send(s.id.receiver, b"behaviorCount", &[])?.as_word().ok_or_else(bad)?;
+        let mut behaviors = Vec::with_capacity(count);
+        for index in 0..count {
+            behaviors.push(q.keep(object(s.send(s.id.receiver, b"behaviorAt:", &[Operand::word(index)])?)?)?);
+        }
         let mut removals = Vec::new();
-        for row in current {
-            let fields = s.sequence(q, row)?;
-            let [target, selector, _, _] = fields.as_slice() else {
-                return Err(bad());
-            };
-            if s.export(*target)?.is_none()
-                || publication
-                    .iter()
-                    .any(|&(_, t, n, _, _)| t == *target && n == *selector)
-            {
-                continue;
+        for behavior in behaviors {
+            let owner = s.send(s.id.receiver, b"ownerOf:", &[Operand::object(behavior)])?.as_object();
+            let target = if let Some(owner) = owner {
+                q.keep(owner)?;
+                if s.behavior(owner)? == behavior { owner }
+                else if s.export(behavior)?.is_some() { behavior }
+                else { continue; }
+            } else if s.export(behavior)?.is_some() { behavior }
+            else { continue; };
+            if s.export(target)?.is_none() { continue; }
+            q.keep(target)?;
+            for index in 0..1_048_576usize {
+                let Some(selector) = s.send(s.id.receiver, b"selectorAt:in:",
+                    &[Operand::word(index), Operand::object(behavior)])?.as_object() else { break; };
+                q.keep(selector)?;
+                if publication.iter().any(|&(_, t, n, _, _)| t == target && n == selector) { continue; }
+                let entry = s.send(s.id.receiver, b"bindingOf:in:",
+                    &[Operand::object(selector), Operand::object(behavior)])?;
+                if entry.as_entry().is_none() { continue; }
+                if s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[entry])?.as_object().is_none() { continue; }
+                removals.push((ptr::null_mut(), target, selector, s.named(b"nil")?, behavior));
             }
-            let behavior = q.keep(s.method_behavior(*target)?)?;
-            removals.push((
-                ptr::null_mut(),
-                *target,
-                *selector,
-                s.named(b"nil")?,
-                behavior,
-            ));
         }
         removals.extend(publication);
         let publication = removals;
@@ -1447,18 +1432,36 @@ unsafe fn load(
                 });
                 if published? != target { return Err(bad()); }
             }
-            for &(recipe, target, _) in &foreign {
-                let restored = s.call(q, s.named(b"Alien")?, b"restoreWrapper:", &[recipe])?;
-                if restored != target {
-                    return Err(if s.is_error(restored)? {
-                        Outcome::loaded(Operand::object(restored))
-                    } else {
-                        bad()
-                    });
+            // Only captured-receiver preparation runs before hashes are repaired.
+            // Keep newly installed Methods as temporary image-operation roots;
+            // the authored index stores identity stamps, never these Methods.
+            let mut pending = Vec::new();
+            if foreign_owner != s.named(b"nil")? {
+                let rows = s.call(q, foreign_owner, b"prepareImageRecipes", &[])?;
+                if s.is_error(rows)? { return Err(Outcome::loaded(Operand::object(rows))); }
+                for recipe in s.sequence(q, rows)? {
+                    let method = s.call(q, s.named(b"Alien")?, b"installRecipe:", &[recipe])?;
+                    if s.is_error(method)? { return Err(Outcome::loaded(Operand::object(method))); }
+                    pending.push((recipe, method));
                 }
             }
             for &o in &maps {
                 s.call(q, s.named(b"Map")?, b"rehashImage:", &[o])?;
+            }
+            if foreign_owner != s.named(b"nil")? {
+                let mut rows = s.call(q, s.named(b"Vector")?, b"new", &[])?;
+                for (recipe, method) in pending {
+                    let mut row = s.call(q, s.named(b"Vector")?, b"new", &[])?;
+                    row = s.call(q, row, b"add:", &[recipe])?;
+                    row = s.call(q, row, b"add:", &[method])?;
+                    rows = s.call(q, rows, b"add:", &[row])?;
+                }
+                let indexed = s.call(q, foreign_owner, b"indexRestoredRecipes:", &[rows])?;
+                if indexed != foreign_owner {
+                    return Err(if s.is_error(indexed)? {
+                        Outcome::loaded(Operand::object(indexed))
+                    } else { bad() });
+                }
             }
             // Globals and private Methods now refer to the restored ordinary
             // source owner. Validate it; never install a second native registry.

@@ -177,8 +177,21 @@ is attempted, failures are conservatively reported as partial application, inclu
 a replaced begin method that invalidates capabilities and then returns an Error.
 The image format still validates its code/inventory checksums independently.
 
-Source ownership uses `#[#sourceRegistryV2 owner]`. This references the same ordinary
-object restored through Globals and any user aliases; there is no second registry
-inventory to install. Older/source-less images must be rebuilt. Snapshot admission
-also observes the current source owner and its content revision, so a registration
-during save cannot silently publish mixed source state. No Method identity is guarded.
+The owner-root payload in the existing Sources section is
+`#[#imageOwnersV1 #[#sourceRegistryV2 sourceOwner] foreignOwnerOrNil]`.
+It references the same ordinary owners restored through Globals and user aliases;
+there is no second registry inventory or hashed-name rediscovery during application.
+The previous direct source-only payload is rejected before application and must be
+rebuilt with the new owner envelope.
+
+After ordinary bindings are installed, Image asks the foreign owner for its projected
+recipe rows using captured-receiver preparation, installs foreign bindings through
+Alien's public Id protocol, repairs Map hashes, and finally invokes authored indexing.
+This order supports hashes based on destination identities or foreign functions.
+New Methods are temporary operation roots until indexing; persistent registration
+metadata contains only Id stamps. Foundational Error predicates capture canonical
+boolean values so the default checks do not resolve Globals during this interval.
+
+Snapshot admission still observes the source owner and its content revision, so
+registration during saving cannot silently publish mixed source state. No ordinary
+invocation is guarded by recipe or Method identity checks.

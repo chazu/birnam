@@ -1,6 +1,6 @@
 {
   "baseline_commit": "7ec21979",
-  "status": "Functional and formal qualification passed. Repeated wrapping recovered; remaining startup CPU increase requires a performance-gate decision before runtime commit.",
+  "status": "Functional and formal qualification passed. User accepted the remaining startup cost on 2026-10-20 and authorized continuation and commit.",
   "source_sha256": {
     "modules/alien-recipes.birnam": "579fe0229f2f612cf431dcb57b22928c585f47af899a9736e883e0d046e5285a",
     "modules/error.birnam": "a15e406699eee5c7095e1fe6cd561a0102ca5037dd328d498003cd88beba5f17",

@@ -140,13 +140,9 @@ impl Scope<'_> {
         }
     }
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Outcome> {
-        unsafe {
-            Ok(self
-                .call(self.s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?
-                .as_object()
-                == Some(self.named(b"ErrorVt")?))
-        }
+        unsafe { Ok(self.obj(o, b"isError", &[])? == self.named(b"true")?) }
     }
+
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
@@ -185,7 +181,7 @@ enum Op {
     Open,
     Close,
     Wrap,
-    RestoreWrapper,
+    InstallRecipe,
     Callback,
     ReleaseCallback,
     Alloc,
@@ -307,9 +303,9 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     scope.string(format!("ForeignAddress(0x{p:x})").as_bytes())?,
                 ))
             }
-            RestoreWrapper => {
+            InstallRecipe => {
                 let recipe = recipe_values(scope, a[0])?;
-                install_wrapper(s, scope, &recipe)
+                install_wrapper(s, scope, &recipe, false)
             }
             Wrap | Callback => {
                 let (_resolved_function, signature, block) = if matches!(op, Wrap) {
@@ -370,11 +366,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                         }
                     };
                     let recipe = [a[0], a[1], a[2], a[3], bytes];
-                    let result = install_wrapper(s, scope, &recipe)?;
-                    if result.as_object() == Some(a[3]) {
-                        record_wrap(scope, &recipe)?;
-                    }
-                    Ok(result)
+                    install_wrapper(s, scope, &recipe, true)
                 } else {
                     let unit = scope.obj(
                         scope.named(b"TCC")?,
@@ -488,49 +480,21 @@ unsafe fn recipe_values(q: &Scope<'_>, recipe: Oop) -> Result<[Oop; 5], Outcome>
         Ok(values)
     }
 }
-unsafe fn recipes(q: &Scope<'_>) -> Result<Vec<(Oop, [Oop; 5])>, Outcome> {
+unsafe fn recipe_owner(q: &Scope<'_>) -> Result<Oop, Outcome> {
     unsafe {
-        let store = q.named(b"Store")?;
-        let entity = q.keep(q.s.id.intern_name(b"__aliens__")?)?;
-        let count = q.obj(store, b"attrCount:", &[Operand::object(entity)])?;
-        let count = q.word(count)?.ok_or_else(invalid)?;
-        let mut values = Vec::new();
-        for i in 0..count {
-            let index = q.integer(i)?;
-            let key = q.obj(
-                store,
-                b"attrAt:index:",
-                &[Operand::object(entity), Operand::object(index)],
-            )?;
-            let value = q.obj(
-                store,
-                b"currentValue:attr:",
-                &[Operand::object(entity), Operand::object(key)],
-            )?;
-            values.push((key, recipe_values(q, value)?));
-        }
-        Ok(values)
+        let name = q.keep(q.s.id.intern_name(b"AlienRecipes")?)?;
+        q.obj(q.named(b"Globals")?, b"at:", &[Operand::object(name)])
     }
 }
-unsafe fn recorded_object(
-    q: &Scope<'_>,
-    function: Oop,
-    signature: Oop,
-) -> Result<Option<Oop>, Outcome> {
+unsafe fn recorded_object(q: &Scope<'_>, function: Oop, signature: Oop) -> Result<Option<Oop>, Outcome> {
     unsafe {
-        let name = q.bytes(function)?.ok_or_else(invalid)?;
-        let signature = q.bytes(signature)?.ok_or_else(invalid)?;
-        for (_, recipe) in recipes(q)? {
-            if q.bytes(recipe[0])?.as_deref() == Some(name.as_slice())
-                && q.bytes(recipe[1])?.as_deref() == Some(signature.as_slice())
-            {
-                return Ok(Some(recipe[4]));
-            }
-        }
-        Ok(None)
+        let value = q.obj(recipe_owner(q)?, b"objectFor:signature:",
+            &[Operand::object(function), Operand::object(signature)])?;
+        if q.is_error(value)? { return Err(Outcome::loaded(Operand::object(value))); }
+        Ok((value != q.named(b"nil")?).then_some(value))
     }
 }
-unsafe fn install_wrapper(s: &State, q: &Scope<'_>, recipe: &[Oop; 5]) -> Answer {
+unsafe fn install_wrapper(s: &State, q: &Scope<'_>, recipe: &[Oop; 5], record: bool) -> Answer {
     unsafe {
         let name = q.bytes(recipe[0])?.ok_or_else(invalid)?;
         let address = match s.libraries.borrow().symbol_default(&name) {
@@ -562,47 +526,20 @@ unsafe fn install_wrapper(s: &State, q: &Scope<'_>, recipe: &[Oop; 5]) -> Answer
             &[Operand::object(method), Operand::object(recipe[2])],
         )?;
         if result.as_object() == Some(method) {
+            if !record { return Ok(Operand::object(method)); }
+            let mut row = q.obj(q.named(b"Vector")?, b"new", &[])?;
+            for value in recipe {
+                row = q.obj(row, b"add:", &[Operand::object(*value)])?;
+            }
+            let recorded = q.obj(recipe_owner(q)?, b"record:method:",
+                &[Operand::object(row), Operand::object(method)])?;
+            if q.is_error(recorded)? { return Ok(Operand::object(recorded)); }
             Ok(Operand::object(recipe[3]))
+        } else if !record && !result.as_object().map(|v| q.is_error(v)).transpose()?.unwrap_or(false) {
+            q.error(b"invalidForeignRestoration", b"method publication did not return the constructed Method")
         } else {
             Ok(result)
         }
-    }
-}
-unsafe fn record_wrap(q: &Scope<'_>, a: &[Oop; 5]) -> Result<(), Outcome> {
-    unsafe {
-        let existing = recipes(q)?;
-        let mut key = None;
-        for (candidate, recipe) in &existing {
-            if q.bytes(recipe[0])? == q.bytes(a[0])?
-                && q.bytes(recipe[1])? == q.bytes(a[1])?
-                && recipe[2..4] == a[2..4]
-            {
-                key = Some(*candidate);
-                break;
-            }
-        }
-        let key = match key {
-            Some(key) => key,
-            None => q.keep(
-                q.s.id
-                    .intern_name(format!("__alien_{}", existing.len()).as_bytes())?,
-            )?,
-        };
-        let mut recipe = q.obj(q.named(b"Vector")?, b"new", &[])?;
-        for value in a {
-            recipe = q.obj(recipe, b"add:", &[Operand::object(*value)])?;
-        }
-        let entity = q.keep(q.s.id.intern_name(b"__aliens__")?)?;
-        q.call(
-            q.named(b"Store")?,
-            b"assert:attr:value:",
-            &[
-                Operand::object(entity),
-                Operand::object(key),
-                Operand::object(recipe),
-            ],
-        )?;
-        Ok(())
     }
 }
 macro_rules! methods{($(($f:ident,$op:ident)),*$(,)?)=>{$(unsafe extern "C" fn $f(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome{done((||unsafe{let s=&*c.cast::<State>();if s.thread!=std::thread::current().id(){return Err(invalid())}let q=Scope{s,tokens:RefCell::new(Vec::new())};q.keep(r)?;let a=borrowed_slice(a,n).ok_or_else(invalid)?.iter().map(|a|q.keep(object(*a)?)).collect::<Result<Vec<_>,_>>()?;run(s,&q,r,&a,Op::$op)})())})*};}
@@ -611,7 +548,7 @@ methods!(
     (open, Open),
     (close, Close),
     (wrap, Wrap),
-    (restore_wrapper, RestoreWrapper),
+    (install_recipe, InstallRecipe),
     (callback, Callback),
     (release_callback, ReleaseCallback),
     (alloc, Alloc),
@@ -775,7 +712,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Answer {
             (vt, b"dlopen:", open),
             (vt, b"dlclose:", close),
             (vt, b"wrap:signature:as:on:", wrap),
-            (vt, b"restoreWrapper:", restore_wrapper),
+            (vt, b"installRecipe:", install_recipe),
             (vt, b"callback:signature:", callback),
             (vt, b"releaseCallback:", release_callback),
             (vt, b"alloc:", alloc),

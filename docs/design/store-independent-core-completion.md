@@ -1,7 +1,7 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: Globals, owner image payloads, task/worker/Concurrency state and socket ownership are qualified. REPL ownership and one-time setup are qualified. Alien recipes, optional fact persistence and production composition remain Store-dependent.**
+**Status: Globals, owner image payloads, task/worker/Concurrency state and socket ownership are qualified. REPL ownership and one-time setup are qualified. Alien recipes are qualified and their remaining startup cost accepted. Optional fact persistence and production composition remain Store-dependent.**
 The next release is blocked on completing this milestone, per the user's decision.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
@@ -608,7 +608,7 @@ edited cache data and finish the owner-discovery/Map-rehash ordering probe befor
 qualification. See the [report](alien-recipes-migration-performance.md) and
 [receipt](../measurements/alien-recipes-regression-20261019.json).
 
-## Indexed Alien owner: final startup-cost decision pending
+## Qualified indexed Alien owner (accepted 2026-10-20)
 
 The approved indexed owner passes functional/formal qualification, including real
 Store-absent wrapping, current-definition image restoration, callback reentry, code
@@ -619,9 +619,9 @@ mutations and 287 expected TLC outcomes.
 
 Repeated wrapping is back to baseline (648.2 versus 653.9 ms per 20). Fresh startup
 still uses 0.241 s more CPU (+9.8%). Removing the temporary current-method report
-reduced image allocation work but did not erase that overall difference. Runtime
-changes are held uncommitted under the performance gate. Recommendation: accept
-that temporary cost and proceed to optional Image/Store contributions and tool
-composition; do not claim the later work has already recovered it. See the
+reduced image allocation work but did not erase that overall difference. The user
+accepted that remaining cost and authorized continuation on 2026-10-20. Proceed
+to optional Image/Store contributions and tool composition; do not claim later
+work has already recovered it. See the
 [decision report](alien-recipes-migration-performance.md) and
 [receipt](../measurements/alien-recipes-indexed-20261019.json).

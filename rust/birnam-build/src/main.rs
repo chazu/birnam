@@ -29,6 +29,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("sourceLoader", "modules/source-loader.birnam"),
     ("nativeLoader", "modules/native-loader.birnam"),
     ("alienCompiler", "modules/alien-compiler.birnam"),
+    ("alienRecipes", "modules/alien-recipes.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
     ("trace", "modules/trace.birnam"),
     ("globals", "modules/globals.birnam"),

@@ -3,9 +3,10 @@
 [[Namespace includesKey: #Error] ifTrue: [| [Namespace valueAt: #Error]] ifFalse: [|
 let errorPrototype := [ObjectModel newSlots: #[nil nil] parent: ObjectVt];
 let errorFactory := [Object clone];
+let errorFalse := false; let errorTrue := true;
 let errorPrefix := ["does not understand #" asBytes];
 
-[Reflect defineMethod: #isError on: ObjectVt as: [:self | false]];
+[Reflect defineMethod: #isError on: ObjectVt as: [:self | errorFalse]];
 [Reflect defineMethod: #kind:message: on: errorFactory as: [:self :kind :message |
   let result := [errorPrototype clone];
   [ObjectModel slot: 0 in: result put: kind];
@@ -17,7 +18,7 @@ let errorPrefix := ["does not understand #" asBytes];
 [Reflect defineMethod: #message: on: errorFactory as: [:self :message |
   [self kind: #error message: message]
 ]];
-[Reflect defineMethod: #isError on: errorPrototype as: [:self | true]];
+[Reflect defineMethod: #isError on: errorPrototype as: [:self | errorTrue]];
 [Reflect defineMethod: #kind on: errorPrototype as: [:self | [ObjectModel slot: 0 in: self]]];
 [Reflect defineMethod: #message on: errorPrototype as: [:self | [ObjectModel slot: 1 in: self]]];
 [Reflect defineMethod: #doesNotUnderstand: on: errorPrototype as: [:self :selector | self]];

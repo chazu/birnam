@@ -79,6 +79,10 @@ if selected image; then
   run_check system-image-test.py python3 scripts/system-image-test.py "$scratch/relocated"
   run_check alien-image-test.py python3 scripts/alien-image-test.py "$scratch/relocated"
   run_check alien-publication-test.py python3 scripts/alien-publication-test.py "$scratch/relocated"
+  run_check alien-recipes-test.py python3 scripts/alien-recipes-test.py "$scratch/relocated"
+  run_check alien-recipes-reentry-test.py python3 scripts/alien-recipes-reentry-test.py "$scratch/relocated"
+  run_check alien-recipes-hash-test.py python3 scripts/alien-recipes-hash-test.py "$scratch/relocated"
+  run_check alien-image-reentry-test.py python3 scripts/alien-image-reentry-test.py "$scratch/relocated"
   BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
     host_test startup::tests::image_entry_uses_saved_code_and_roots
   # Native image lifetime/resave tests run in native-message-test.sh with the

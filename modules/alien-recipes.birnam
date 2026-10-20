@@ -1,0 +1,138 @@
+// Durable foreign code and registration descriptions. Native Alien owns resources;
+// dictionaries own installed Methods. No facts, native entries, or private layouts.
+[Module named: #alienRecipes requires: #[]];
+[[|
+let model := ObjectModel; let execution := Execution; let id := Vtable;
+let maps := Map; let words := Word; let reflection := Reflect;
+let codeSlot := 0; let registrationsSlot := 1;
+let functionIndex := 0; let signatureIndex := 1; let selectorIndex := 2;
+let targetIndex := 3; let bytesIndex := 4; let recipeIndex := 0; let stampIndex := 1;
+let one := [execution wordResultOf: 1 selector: #word];
+let owner := [[Globals includes: #AlienRecipes]
+  ifTrue: [| [Globals at: #AlienRecipes]]
+  ifFalse: [| [model newSlots: #[[maps new] [maps new]] parent: ObjectVt]]];
+[Reflect defineMethod: #slotNames on: owner as: [:self | #[#objectCode #registrations]]];
+[Reflect defineMethod: #objectCode on: owner as: [:self | [model slot: codeSlot in: self]]];
+[Reflect defineMethod: #objectCode: on: owner as: [:self :rows | [model slot: codeSlot in: self put: rows]; self]];
+[Reflect defineMethod: #registrations on: owner as: [:self | [model slot: registrationsSlot in: self]]];
+[Reflect defineMethod: #registrations: on: owner as: [:self :rows | [model slot: registrationsSlot in: self put: rows]; self]];
+// function -> signature -> object bytes. Cache edits do not change existing Methods.
+[Reflect defineMethod: #objectFor:signature: on: owner as: [:self :function :signature |
+  let signatures := [[self objectCode] at: function];
+  [[[signatures isNil] | [signatures isError]] ifTrue: [| signatures] ifFalse: [| [signatures at: signature]]]
+]];
+[Reflect defineMethod: #rememberObject: on: owner as: [:self :recipe |
+  let function := [recipe at: functionIndex]; let signature := [recipe at: signatureIndex];
+  let bytes := [recipe at: bytesIndex]; let objects := [self objectCode];
+  let prior := [objects at: function];
+  [[prior isError] ifTrue: [| prior] ifFalse: [|
+    let signatures := [[prior isNil] ifTrue: [| [maps new]] ifFalse: [| prior]];
+    [[[signatures at: signature] == bytes] ifTrue: [| self] ifFalse: [|
+      let next := [signatures at: signature put: bytes];
+      [[next isError] ifTrue: [| next] ifFalse: [|
+        let updated := [objects at: function put: next];
+        [[updated isError] ifTrue: [| updated] ifFalse: [| [self objectCode: updated]]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #identityOf: on: owner as: [:self :value |
+  [execution optionalWordResultOf: id selector: #identityOf: argument: value resultFactory: words]
+]];
+[Reflect defineMethod: #bindingIdentityFor:as: on: owner as: [:self :target :selector |
+  let isBehavior := [execution optionalWordResultOf: id selector: #isBehavior: argument: target resultFactory: words];
+  let behavior := [[isBehavior = one] ifTrue: [| target] ifFalse: [| [reflection vtableOf: target]]];
+  let method := [execution directMethodFor: selector in: behavior];
+  [[method isError] ifTrue: [| method] ifFalse: [|
+    [[method isNil] ifTrue: [| nil] ifFalse: [| [self identityOf: method]]]
+  ]]
+]];
+// target identity -> selector -> #[recipe, Method identity]. Id allocation IDs
+// fit Integer exactly. They key ordinary data and never retain executable code.
+[Reflect defineMethod: #register:stamp: on: owner as: [:self :recipe :token |
+  let selector := [recipe at: selectorIndex]; let target := [recipe at: targetIndex];
+  let current := [self bindingIdentityFor: target as: selector];
+  [[current isError] ifTrue: [| current] ifFalse: [|
+    [[current isNil] ifTrue: [| self] ifFalse: [|
+      [[current = token] ifTrue: [|
+        // Read state after publication callbacks; retain a nested registration.
+        let key := [[self identityOf: target] asInteger]; let targets := [self registrations];
+        let prior := [targets at: key];
+        [[prior isError] ifTrue: [| prior] ifFalse: [|
+          let selectors := [[prior isNil] ifTrue: [| [maps new]] ifFalse: [| prior]];
+          let next := [selectors at: selector put: #[recipe token]];
+          [[next isError] ifTrue: [| next] ifFalse: [|
+            let updated := [targets at: key put: next];
+            [[updated isError] ifTrue: [| updated] ifFalse: [| [self registrations: updated]]]
+          ]]
+        ]]
+      ] ifFalse: [| self]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #register:method: on: owner as: [:self :recipe :method |
+  [self register: recipe stamp: [self identityOf: method]]
+]];
+[Reflect defineMethod: #record:method: on: owner as: [:self :recipe :method |
+  let remembered := [self rememberObject: recipe];
+  [[remembered isError] ifTrue: [| remembered] ifFalse: [| [self register: recipe method: method]]]
+]];
+// Snapshot only current registrations. Flat durable rows have no process stamps
+// or index keys; ordinary lookup never consults a registration identity.
+[Reflect defineMethod: #snapshotRegistrations on: owner as: [:self |
+  [[self registrations] inject: #[] into: [:out :selectors |
+    [[out isError] ifTrue: [| out] ifFalse: [|
+      [selectors inject: out into: [:rows :row |
+        [[rows isError] ifTrue: [| rows] ifFalse: [|
+          let recipe := [row at: recipeIndex];
+          let current := [self bindingIdentityFor: [recipe at: targetIndex] as: [recipe at: selectorIndex]];
+          [[current isError] ifTrue: [| current] ifFalse: [|
+            [[current isNil] ifTrue: [| rows] ifFalse: [|
+              [[current = [row at: stampIndex]] ifTrue: [| [rows add: recipe]] ifFalse: [| rows]]
+            ]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #imagePayload on: owner as: [:self |
+  let rows := [self snapshotRegistrations];
+  [[rows isError] ifTrue: [| rows] ifFalse: [|
+    [model newSlots: #[[self objectCode] rows] parent: ObjectVt]
+  ]]
+]];
+// Image carries this owner explicitly. Preparation uses only captured receivers
+// and slot indices: Globals may still have hashes from the saving process.
+[Reflect defineMethod: #prepareImageRecipes on: owner as: [:self |
+  let rows := [self registrations];
+  [self registrations: [maps new]];
+  rows
+]];
+// All foreign methods and Map hashes are ready before ordinary indexing. Preserve
+// any reentrant registration made while native bindings were being installed.
+[Reflect defineMethod: #indexRestoredRecipes: on: owner as: [:self :rows |
+  [rows inject: self into: [:status :row |
+    [[status isError] ifTrue: [| status] ifFalse: [|
+      let recipe := [row at: recipeIndex]; let method := [row at: stampIndex];
+      let selector := [recipe at: selectorIndex];
+      let key := [[self identityOf: [recipe at: targetIndex]] asInteger];
+      let targets := [self registrations]; let prior := [targets at: key];
+      [[prior isError] ifTrue: [| prior] ifFalse: [|
+        let selectors := [[prior isNil] ifTrue: [| [maps new]] ifFalse: [| prior]];
+        // Existing rows were recorded by callbacks after this image's bindings.
+        // Keep them. Missing rows need no second dictionary observation: snapshot
+        // selection will omit a subsequently replaced or removed Method.
+        [[selectors includesKey: selector] ifTrue: [| self] ifFalse: [|
+          let next := [selectors at: selector put: #[recipe [self identityOf: method]]];
+          [[next isError] ifTrue: [| next] ifFalse: [|
+            let updated := [targets at: key put: next];
+            [[updated isError] ifTrue: [| updated] ifFalse: [| [self registrations: updated]]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Globals at: #AlienRecipes put: owner]
+] value]

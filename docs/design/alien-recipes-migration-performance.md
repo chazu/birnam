@@ -144,7 +144,7 @@ That removes temporary allocation, but did not remove the end-to-end startup del
 the collection cost and additional image work still matter. GC thresholds and
 scaling were not changed.
 
-### Decision requested
+### Decision accepted (2026-10-20)
 
 Recommend accepting this **temporary 0.24 s startup cost**, committing the now
 functionally qualified owner migration, and proceeding to the already planned
@@ -153,6 +153,7 @@ Those changes should be measured independently; this report does not promise the
 will recover the cost. The alternative is to hold this runtime slice uncommitted
 and continue profiling image reconstruction before advancing.
 
-Per the user's performance gate, runtime changes remain uncommitted pending that
-decision. Exact measurements and check receipts are in the
+The user approved continuing even if this remaining time cannot be recovered.
+The qualified runtime migration is accepted with the measured cost recorded;
+future slices retain independent correctness and performance qualification. Exact measurements and check receipts are in the
 [indexed-owner receipt](../measurements/alien-recipes-indexed-20261019.json).

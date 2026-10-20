@@ -291,3 +291,26 @@ on kernel registration. `ModuleRegistry.tla` checks the protected read/publish
 sequence; unprotected or wrong-field publication must violate completed edits.
 This is a two-task bounded scheduling model, not a proof of arbitrary replacement
 callbacks, the existing executor implementation, or image recovery.
+
+
+## Foreign recipe registrations
+
+`AlienRecipes.lean` and `AlienRecipes.tla` describe a cache of foreign code plus
+non-rooting registration stamps. Dictionaries remain method authority. Recording
+a wrapper after a callback preserves a newer nested registration; snapshots omit
+replaced/removed wrappers; destination Methods get destination stamps. Metadata
+alone cannot keep retired executable code alive, while independently held/entered
+Methods keep their ordinary ownership. Mutants exercise stale replay, nested-write
+erasure, extra code roots and persisted old stamps. The models abstract Id's
+non-reused allocation identities and do not verify generated foreign C or the
+whole Image loader. Runtime absence, callback, collection and successive-image
+checks supply separate implementation evidence.
+
+
+`ImageRecipeOrder.tla` checks explicit owner discovery, foreign-method restoration
+before key hashing, and index reconstruction after hash repair. Its counterexamples
+cover discovery through stale hashes and premature hashing/indexing. The runtime
+uses an explicit `imageOwnersV1` root envelope; temporary Method roots remain alive
+through image application and are released afterward. Cache preservation is checked
+separately from stamp renewal. These contracts do not promise that arbitrary user
+replacements of foundational protocols form a bootstrappable world.
