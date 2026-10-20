@@ -8,6 +8,8 @@ loader ports are complete.
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-10-20
+
 - Make Store and Relational optional facilities. Core source/compiled startup,
   projects, console/socket sessions, workers, reflection and image roundtrips run
   with both providers absent. `Module load: #store` and `Module load: #relational`
