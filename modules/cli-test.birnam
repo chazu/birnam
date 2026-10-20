@@ -14,6 +14,11 @@
 
 let s := [TestSuite named: "Cli" module: #cli];
 
+[s test: "LSP startup selects only its own dependency closure" do: [:t |
+  [t assert: [System load: "tests/fixtures/cli-lsp-boundary.birnam"]
+     describes: "LSP startup does not load the documentation catalog or unrelated libraries"]]];
+
+
 [s test: "validPort: accepts in-range integers, rejects nil and out-of-range" do: [:t |
   [t expect: [Cli validPort: 8080]  equals: true  describes: "8080 valid"];
   [t expect: [Cli validPort: 0]     equals: true  describes: "0 valid"];

@@ -67,7 +67,7 @@ fn image_roundtrips_without_store_or_relational() { unsafe {
         assert_ne!(result,h.named(b"nil"), "nil initializer: {name}");
         assert_eq!(h.call(result,b"isError",&[]),h.named(b"false"),"error initializer: {name}");
     };
-    for name in ["error", "globalsOwner", "sourceRegistry", "cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "alienRecipes", "imageFormat", "trace", "globals", "methodInvocation", "stdlib"] { artifact(name); }
+    for name in ["error", "globalsOwner", "sourceRegistry", "cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "alienRecipes", "imageFormat", "trace", "globals", "methodInvocation", "stdlib", "cli"] { artifact(name); }
     mount(id,"alien",ns);
     let eval=|source: &[u8]| h.call(h.named(b"Codegen"), b"evalPersisting:", &[text(source)]);
     mount(id,"image",ns);
@@ -79,6 +79,7 @@ fn image_roundtrips_without_store_or_relational() { unsafe {
     let reflect_behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(reflect)]));
     assert!(send(id,id.receiver,b"bindingOf:in:",&[Operand::object(id.intern_name(b"factsOf:").unwrap()),Operand::object(reflect_behavior)]).as_entry().is_none());
     assert_eq!(eval(include_bytes!("../../../tests/fixtures/documentation-hooks.birnam")),h.named(b"true"));
+    assert_eq!(eval(include_bytes!("../../../tests/fixtures/cli-lsp-boundary.birnam")),h.named(b"true"));
     collect(id,gc);
 
     let path=std::env::var("BIRNAM_IMAGE_FLOOR_PATH").unwrap();

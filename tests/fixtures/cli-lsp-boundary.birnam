@@ -1,0 +1,18 @@
+// Observe CLI's dependency choice without entering a blocking server loop.
+[[|
+let previousLoad := [Module methodFor: #load:];
+let hadLsp := [Globals includes: #Lsp]; let previousLsp := [Globals at: #Lsp];
+let loads := [Cell with: #[]]; let serves := [Cell with: 0];
+let server := [Object clone]; let client := [Cli clone];
+[Reflect defineMethod: #serveStdio on: server as: [:self | [System gc]; [serves inc]; self]];
+[Reflect defineMethod: #statusQuiet on: client as: [:self | 0]];
+[Globals at: #Lsp put: server];
+[Reflect defineMethod: #load: on: Module as: [:self :name |
+  [loads set: [[loads value] add: name]];
+  [[name == #lsp] ifTrue: [| self] ifFalse: [| [Error kind: #unexpectedCatalogDependency]]]
+]];
+let status := [client lsp: #[]];
+[[Reflect vtableOf: Module] addMethod: previousLoad as: #load:];
+[hadLsp ifTrue: [| [Globals at: #Lsp put: previousLsp]] ifFalse: [| [Globals remove: #Lsp]]];
+[[[[status = 0] & [[loads value] = #[#lsp]]] & [[serves value] = 1]] & [[Module requiresOf: #cli] = #[]]]
+] value]

@@ -1,0 +1,118 @@
+{
+  "baseline_commit": "2a899b38",
+  "status": "Qualified CLI catalog boundary; Host production composition still includes optional providers until cutover.",
+  "prefix": "/tmp/birnam-store-independent/20-cli-catalog/prefix",
+  "source_sha256": {
+    "modules/cli.birnam": "29acfb14ea57d848a3d25ffb2122f58c7b4d03a2c716f855798f7e491c5a548e",
+    "modules/cli-test.birnam": "94d601450b7116b43982cfdc267317625d9afe4da6fbd0eac6c965761ef33896",
+    "tests/fixtures/cli-lsp-boundary.birnam": "f58267c57e5408ee6e38ad5a0414d823535d4d8facaca07d8fcb6d5c031c1eeb",
+    "rust/birnam-siphon/tests/image_without_store.rs": "8218b0f6b52b0a795cabef6dc7ba1bee530475a20efbe175455f9325700764c5",
+    "scripts/image-without-store-test.py": "64c2320468985125269687e31a862694d51c6eeb552d5d4f70e17cd01a5fc798"
+  },
+  "checks": {
+    "language": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/language.log",
+      "sha256": "4c1162f16ce86cc65b235f0e4ad42313e467474a17122f75e46af14c61957611",
+      "receipts": []
+    },
+    "absence": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/absence.log",
+      "sha256": "95061938880928be570ba19204ca8e09fc7d34343bed0641569209afca90480f",
+      "receipts": [
+        {
+          "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-floor-8mf7ojss/results.json",
+          "sha256": "41ce00e0252cd6e50a4c16a1de85c2e59e8c488f91371236f17c0491933d2538"
+        }
+      ]
+    },
+    "lsp-project": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/lsp-project.log",
+      "sha256": "6f4cfeade9bd4c4265c6c3d0befff136195b6d0229272146a75d557475c610cb",
+      "receipts": []
+    },
+    "lsp-source": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/lsp-source.log",
+      "sha256": "6f4cfeade9bd4c4265c6c3d0befff136195b6d0229272146a75d557475c610cb",
+      "receipts": []
+    },
+    "doc-render": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/doc-render.log",
+      "sha256": "bc7ddd344b1c2481628c3d056a1c815fa6d3ad122fcc192cb34d322f12b9036d",
+      "receipts": []
+    },
+    "doc-source": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/doc-source.log",
+      "sha256": "8437fb1de03b05b8c81af7f18ee3ff661a103d650fc26ea9dafa53263a61b46f",
+      "receipts": []
+    },
+    "docgen-source": {
+      "path": "/tmp/birnam-store-independent/20-cli-catalog/docgen-source.log",
+      "sha256": "70ac24424d82811e04522afbac3bc86b9f0f3ef2f5ffeb32d53a4343f2d5b04c",
+      "receipts": []
+    }
+  },
+  "generated_docs": {
+    "path": "/tmp/birnam-store-independent/20-cli-catalog/docs.html",
+    "sha256": "be1ddf1e6726799391f55c24b9190b92aeee9bb99b3387ff5db580759230ad74",
+    "sections": 257
+  },
+  "lsp_exchange": {
+    "rows": [
+      {
+        "label": "baseline",
+        "trial": 0,
+        "cpu_seconds": 4.1414990000000005,
+        "wall_seconds": 4.421296874992549
+      },
+      {
+        "label": "candidate",
+        "trial": 0,
+        "cpu_seconds": 3.937227,
+        "wall_seconds": 4.22018991690129
+      },
+      {
+        "label": "candidate",
+        "trial": 1,
+        "cpu_seconds": 3.638785,
+        "wall_seconds": 3.6476594577543437
+      },
+      {
+        "label": "baseline",
+        "trial": 1,
+        "cpu_seconds": 4.073093999999999,
+        "wall_seconds": 4.183534916024655
+      },
+      {
+        "label": "baseline",
+        "trial": 2,
+        "cpu_seconds": 3.897887999999998,
+        "wall_seconds": 3.9067746247164905
+      },
+      {
+        "label": "candidate",
+        "trial": 2,
+        "cpu_seconds": 3.6325630000000033,
+        "wall_seconds": 3.6424379581585526
+      }
+    ],
+    "medians": {
+      "baseline": {
+        "cpu_seconds": 4.073093999999999,
+        "wall_seconds": 4.183534916024655
+      },
+      "candidate": {
+        "cpu_seconds": 3.638785,
+        "wall_seconds": 3.6476594577543437
+      }
+    },
+    "scope": "Fresh processes; real initialize/shutdown/exit LSP exchange; normal GC."
+  },
+  "notes": [
+    "Cli has no blanket Doc dependency. doc/docgen explicitly load Doc; LSP selects only its own module closure and preserves optional catalog use when already enabled.",
+    "All 854 language checks passed. The real LSP project smoke passed in compiled-image and source-bootstrap modes, including workspace diagnostics, navigation, completion, UTF-16 and lifecycle behavior.",
+    "The physically Store-absent floor now loads the actual compiled Cli initializer. A focused fake server/loader observes its LSP dependency choice without blocking; it is not a substitute for the separate real-server checks.",
+    "Source-bootstrap doc and full docgen passed. HTML contains Doc and StoreSupport sections; no catalog was required before dispatching those commands.",
+    "Three interleaved fresh-process initialize/shutdown/exit exchanges: CPU 4.073 to 3.639 seconds (-10.7 percent), wall 4.184 to 3.648 seconds (-12.8 percent). This is an LSP startup/composition result, not a general VM speedup.",
+    "No native algorithm, format, GC policy or formal model changed. Full Store-independent Host/worker composition and release remain pending."
+  ]
+}

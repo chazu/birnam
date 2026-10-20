@@ -16,7 +16,7 @@
 // failure; the driver exits with it. args[0] is the subcommand token as typed
 // (so the --serve alias arrives as "--serve").
 
-[Module named: #cli requires: #[#doc]];
+[Module named: #cli requires: #[]];
 [Globals at: #Cli put: [Object clone]];
 [Reflect docModule: #cli is: "The CLI subcommand dispatcher (doc/docgen/init/wrap/--lsp/--listen) — one more client of the module APIs."];
 
@@ -57,7 +57,7 @@
 
 // Resolve the module from the compiled production closure.
 [Reflect defineMethod: #docNamed:sel: on: Cli as: [:self :mod :sel |
-  let floor := [#[#compiledUnitDocs #concurrencyDocs] inject: self into: [:answer :name |
+  let floor := [#[#doc #compiledUnitDocs #concurrencyDocs] inject: self into: [:answer :name |
     [[answer isError] ifTrue: [| answer] ifFalse: [| [Module load: name]]]]];
   [[floor isError]
     ifTrue: [| [self fail: [floor printString]]]
@@ -71,25 +71,27 @@
 // -- docgen: `birnam docgen [out.html]` -----------------------------------------
 
 [Reflect defineMethod: #docgen:rustWorkspace:guides: on: Cli as: [:self :args :rwork :gdir |
-  let outPath := [args at: 1 ifAbsent: [| "birnam-docs.html"]];
-  let built := [Doc buildSite: outPath rustWorkspace: rwork guides: gdir];
-  [[built isError]
-    ifTrue: [| [self fail: [built printString]]]
-    ifFalse: [|
+  let loaded := [Module load: #doc];
+  [[loaded isError] ifTrue: [| [self fail: [loaded printString]]] ifFalse: [|
+    let outPath := [args at: 1 ifAbsent: [| "birnam-docs.html"]];
+    let built := [Doc buildSite: outPath rustWorkspace: rwork guides: gdir];
+    [[built isError] ifTrue: [| [self fail: [built printString]]] ifFalse: [|
       let status := [self status];
-      [[status = 0]
-        ifTrue:  [| [self say: ["wrote " , outPath]]]
-        ifFalse: [| 1]]]]] doc:
-  "`birnam docgen [out.html]` — build the full HTML reference from compiled modules, the installed Rust workspace, and guides."];
+      [[status = 0] ifTrue: [| [self say: ["wrote " , outPath]]] ifFalse: [| 1]]
+    ]]
+  ]]
+] doc:
+  "`birnam docgen [out.html]` — explicitly load the catalog and build the full HTML reference."];
 
 // -- lsp: `birnam --lsp` --------------------------------------------------------
 
-// Load Doc + every library module (populating the hover facts), then serve.
+// Load only LSP and its declared dependencies. An already enabled Doc catalog
+// remains available to hover; starting a server does not populate one.
 // [Lsp serveStdio] owns stdin/stdout and exits the process on `exit`/EOF, so
 // reaching the status check at all means startup failed — stay QUIET on stdout
 // (it is protocol-only); the driver reports the failure on stderr.
 [Reflect defineMethod: #lsp: on: Cli as: [:self :args |
-  let loaded := [Doc loadAllModules];
+  let loaded := [Module load: #lsp];
   [[loaded isError]
     ifTrue: [| 1]
     ifFalse: [| [Lsp serveStdio]; [self statusQuiet]]]] doc:

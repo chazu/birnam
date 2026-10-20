@@ -51,7 +51,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Alien restoration | Completed in `9aa4843d`: Image retains the explicit recipe-owner root, restores foreign methods before Map rehash, then builds ordinary registration indexes. | Current-definition selection, hash-dependent recovery, reentrant publication, independent cache aliases and mapped/rebuilt/resaved images pass. Partial-load failure reporting is preserved. |
 | Image facts and Store Cells | Completed component: Image selects its fact owner through current `System imageStore`; nil omits facts and all Store metadata/staging/exchange. Fact Cells use their recorded selected owner. The current distribution still opts in. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
 | Standard-library optional hooks | Completed boundary: stdlib forwards documentation to current `Doc recordMethod:on:text:` and has no db accesses. Optional `storeSupport` installs `Reflect factsOf:` with its original fact semantics. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
-| Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares only html; [Cli](../../modules/cli.birnam) requires Doc globally, and its LSP path populates the catalog. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
+| Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares html and storeSupport; its native Relational dependency still needs the late-provider composition. Cli has no blanket catalog dependency, and LSP no longer populates it. The Host still selects the current tool image until production cutover. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
 | Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) loads store/relational unconditionally; [Host source startup](../../rust/birnam-host-entry/src/startup.rs) marks both as kernel modules. [Build](../../rust/birnam-build/src/main.rs) has one canonical native closure, builds startup with REPL/socket state, then loads all tools into a second image. | Core and optional dependency closures are explicit in build inputs, initialization, prepared images and receipts. A tooling image containing Doc is an explicitly optional composition, not the only way to run unrelated tools. |
 | Late optional initialization | Store no longer publishes a Globals seed; explicit loading after the actual Globals initializer passes. Relational attaches its query behavior to Store. Full-world late optional activation still needs qualification. | Load after live globals/methods/tasks exist without replacing core authority, changing local Cell defaults or installing mandatory mutation hooks. Preserve self-description, repeat-load behavior and existing explicit data. |
 
@@ -751,3 +751,28 @@ Next is CLI/LSP catalog separation, then actual late native Store/Relational
 activation and the production input-closure/packaging cutover. Merely installing
 these optional boundaries in today's Store-loaded bootstrap does not close the
 full absence or release gates.
+
+
+## Qualified CLI catalog boundary (2026-10-20)
+
+Cli has no static Doc dependency. `docNamed:sel:` and `docgen:rustWorkspace:guides:`
+load Doc explicitly; `lsp:` loads only LSP and its declared dependencies. An already
+enabled catalog remains available to LSP hover, while semantic/project navigation
+works without one. Starting a language server no longer loads every library merely
+to populate documentation.
+
+All 854 language checks pass. The Store-absent floor loads the actual compiled Cli
+initializer and verifies its dependency selection. Separate real LSP project tests
+pass in compiled-image and source-bootstrap modes; source bootstrap exercises the
+Doc-absent path. Explicit source-bootstrap doc and full HTML docgen also pass.
+Three paired initialize/shutdown/exit exchanges improve from 4.073 to 3.639 seconds
+CPU (-10.7%) and 4.184 to 3.648 seconds wall (-12.8%). This is a measured LSP
+composition saving, not a language-wide speedup. See the
+[receipt](../measurements/cli-optional-catalog-20261020.json).
+
+The remaining production boundary is explicit in the
+[provider-loading/cutover contract](optional-provider-loading.md): authored public
+Store/Relational entries over the existing native loader, separate optional native
+library paths, core-first build/image preparation, explicit catalog composition,
+late-load preservation tests, and full Host/worker/absence/release gates. These
+changes are planned, not delivered by the CLI dependency edit.
