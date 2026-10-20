@@ -13,9 +13,9 @@ let records := [lines collect: [:line | [Json parse: line]]];
 let report := [LogSummary summarize: text];
 [[report isError] ifTrue: [| [LogSummary die: [report message]]]];
 let rendered := [Json stringify: report];
-let strings := [db localCell: #[]];
-let numbers := [db localCell: #[]];
-let visit := [db localCell: nil];
+let strings := [Cell with: #[]];
+let numbers := [Cell with: #[]];
+let visit := [Cell with: nil];
 [visit set: [:node :line |
   [[[node ruleName] = "string"] ifTrue: [| [strings set: [[strings value] add: [node jsonText: line]]]]];
   [[[node ruleName] = "number"] ifTrue: [| [numbers set: [[numbers value] add: #[node line]]]]];

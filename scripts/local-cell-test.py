@@ -11,8 +11,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('prefix', type=Path)
     parser.add_argument('--skip-images', action='store_true')
-    parser.add_argument('--legacy-prefix', type=Path, help='old asCell runtime used to save a compatibility image')
-    parser.add_argument('--legacy-local', action='store_true', help='legacy runtime uses Store-owned local Cells')
     args = parser.parse_args()
     prefix = args.prefix.resolve()
     work = Path(tempfile.mkdtemp(prefix='birnam-local-cells-'))
@@ -71,32 +69,6 @@ let entity := [Object clone]; let fact := [store cellFor: entity attr: #amount];
         for name, flags in [('mapped', []), ('rebuilt', ['--rebuild'])]:
             run(name, [prefix/'bin/birnam',*flags,image], 'true\n17\n19\n0\n24\n23\ntrue\ntrue\n')
         receipt['image_sha256'] = sha(image)
-        if args.legacy_prefix:
-            legacy_image = work/'legacy.image'; legacy_source = work/'legacy.birnam'
-            legacy_source.write_text('''
-[db assert: #value attr: #history value: true];
-[[|
-let cell := [17 asCell]; let alias := cell;
-[Globals at: #main put: [|
-  [System gc]; [System println: [cell == alias]];
-  [System println: [cell value]];
-  [alias set: 19]; [System println: [cell value]];
-  [System println: [cell history]];
-  let before := [db retainedFactCount]; let fresh := [0 asCell];
-  [System println: [[db retainedFactCount] > before]];
-  [System println: [fresh value]]
-]];
-[System saveImage: IMAGE]; [System println: [[System imageSaveReport] status]]
-] value]
-'''.replace('IMAGE',json.dumps(str(legacy_image))))
-            receipt['legacy_prefix'] = str(args.legacy_prefix.resolve())
-            receipt['legacy_source_sha256'] = sha(legacy_source)
-            run('legacy-save', [args.legacy_prefix.resolve()/'bin/birnam',legacy_source], '#saved\n')
-            legacy_source.unlink()
-            for name, flags in [('legacy-mapped', []), ('legacy-rebuilt', ['--rebuild'])]:
-                expected = 'true\n17\n19\n0\nfalse\n0\n' if args.legacy_local else 'true\n17\n19\n2\ntrue\n0\n'
-                run(name, [prefix/'bin/birnam',*flags,legacy_image], expected)
-            receipt['legacy_image_sha256'] = sha(legacy_image)
     receipt['passed'] = True; receipt['images_checked'] = not args.skip_images
     save_json(work/'results.json',receipt)
     print('local-cells: passed; '+str(work/'results.json'))

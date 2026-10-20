@@ -47,8 +47,8 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Workers and outcomes | Completed owned fields for Worker, RemoteFailure and [Concurrency](../../modules/isolate.birnam), with explicit image projection/refusal. | Aliases, reset, worker execution and image checks pass. Full Store-free worker execution still awaits Alien/Image composition. |
 | REPL and sockets | Socket and REPL ownership are qualified; REPL uses ordinary session/readiness Cells and borrowed process stdio. | Preserve conditional retirement, aliasing, failed setup and image reset/refusal. Actual REPL initializer/cleanup passes without Store; real I/O still requires Alien. |
 | Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) now sends current `imagePayload`; Globals projection and task-handle rejection use this owner protocol. TaskControl's process-local marker is an ordinary slot. Task/resource projection now lives with the ordinary owners; no Store transient schema is needed for those fields. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
-| Alien wrappers | [Alien runtime](../../rust/birnam-alien/src/runtime.rs) keeps recipes under `__aliens__`, reuses code by reading those facts, and publishes wrapper Methods through Store. | Imageable owned recipe data with discoverable inspection/editing; native addresses/handles remain process-local. Construct/publish through the existing Method/dictionary owners. Preserve wrapper identity, signature distinctions, live replacement and Unit lifetime. |
-| Alien restoration | [Image::foreign_publication](../../rust/birnam-image/src/native.rs) finds recipes by inspecting staged `__aliens__` facts. | Restore from the actual recipe owner via Id; resolve foreign addresses in the destination process and preserve partial-load failure reporting. |
+| Alien wrappers | Completed in `9aa4843d`: [AlienRecipes](../../modules/alien-recipes.birnam) owns indexed cache/registration data; native Alien publishes through current Method/dictionary messages. No Store calls or facts remain. | Store-absent wrapping, identity/signature distinctions, live replacement, reentry and exact Unit reclamation pass. The accepted startup cost remains recorded below. |
+| Alien restoration | Completed in `9aa4843d`: Image retains the explicit recipe-owner root, restores foreign methods before Map rehash, then builds ordinary registration indexes. | Current-definition selection, hash-dependent recovery, reentrant publication, independent cache aliases and mapped/rebuilt/resaved images pass. Partial-load failure reporting is preserved. |
 | Image facts and Store Cells | Image unconditionally reads Store basis/retention metadata, exports facts, creates a staging Store, swaps Store state, and special-cases Store-owned CellVt. [ImageFormat](../../modules/image-format.birnam) admits that locator family. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
 | Standard-library optional hooks | [stdlib](../../modules/stdlib.birnam) directly writes Doc's facts from documented method definitions and provides `Reflect factsOf:` through global db. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
 | Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares only html; [Cli](../../modules/cli.birnam) requires Doc globally, and its LSP path populates the catalog. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
@@ -72,7 +72,7 @@ in new private maps.
 | --- | --- | --- | --- |
 | Completed `b1fe7200` | Globals compensation banks and image recovery checkpoints | `reserveBindingCompensationFor:count:`, credit queries/releases and conditional restoration remain in authored Globals and its native seed. Current candidate policy no longer calls them; a Generation regression explicitly checks that activation makes zero reservation calls. `imageBindingCheckpoint` / `restoreImageBindings:` have no current production callers in the repository. Image still calls `releaseImageReservations` to clear otherwise obsolete banks. Remove this capability family, its state slot/order snapshots, and its cleanup hook unless a concrete current requirement is selected. Update tests and the old ownership documentation accordingly. | Ordinary binding coherence, absent versus nil, alias order and identity; explicit candidate undo already has its own selected-write protocol. This deliberately removes public APIs, not their names alone. |
 | Completed; see qualification below | Dual Globals implementations and seed conversion | Store creates a native Globals facade; authored Globals imports its state, changes behavior, retracts automatic facts and compacts. Aim for one authored binding owner through bootstrap. Delete the Store-owned facade and transfer/cleanup path once any genuinely necessary minimal bootstrap interface is established. This also removes the late-Store-load clobber hazard. | Globals and Namespace have distinct responsibilities; do not merge them merely to remove a seed. Keep public binding behavior and early compilation working. |
-| With Cell/image cleanup | Duplicate local-Cell implementation inside Store | `Store localCell:` and `localCell:prototype:` still maintain tagged native local values alongside the authored Cell owner. No core Birnam module calls them; remaining uses are examples, fixtures and the image-format test generator. Convert those local scratch callers to authored Cell, then remove the native local variant and its legacy image branch. | Keep actual fact-backed Store Cells and their explicit history. Preserve local value/alias/clone behavior through the authored owner; do not keep a second native representation solely for old-image compatibility. |
+| Completed; qualified 2026-10-20 | Duplicate local-Cell implementation inside Store | Removed `Store localCell:` / `localCell:prototype:`, their native opcodes and tagged restoration. Remaining examples, scratch fixtures and the image-format generator use authored Cell; obsolete compatibility runner options are removed. | Keep actual fact-backed Store Cells and their explicit history. Preserve local value/alias/clone behavior through the authored owner; do not keep a second native representation solely for old-image compatibility. |
 | With task/resource migration | Database-shaped field access | Task/Worker/Concurrency fields repeatedly manufacture prefixed attribute Symbols, obtain fact-backed Cells, then read/write their values. They also maintain schema/history/transient declarations for ordinary private state. Replace that layer with ordinary owned fields/collections; retain actual Cells where field handles escape and aliases require shared mutation. | Queue order, transitions, cancellation/shielding, field alias semantics and resource cleanup. A field migration is not permission to simplify the scheduler's semantics. |
 | With Alien migration | Fact encoding and Store-mediated method installation | Recipes are encoded as `__aliens__` attributes with synthetic `__alien_N` keys, enumerated back into vectors, searched, and converted again for Image. Wrapper installation also detours through Store's method-publication API. Use one owned recipe collection and the established Method/dictionary publication protocols. | Function/signature code reuse and target/selector registration are distinct matching purposes. Preserve both, current reads across reentrant callbacks, native-handle ownership and Method/Unit lifetimes. |
 | With Image migration | Mandatory database staging and global transient schema | Even a fact-free image currently queries Store metadata, creates a staging Store and swaps Store state. Every heap object gets a Store transient-marker query. Remove these from the core path; integrate projection/admission into actual owner snapshot protocols and keep facts/history as an explicit optional contribution. | Reject unsupported resources and captured transient handles; preserve explicit facts/history and the selected partial-application contract. Staging optional fact data can still be useful—only its mandatory role is redundant. |
@@ -625,3 +625,43 @@ to optional Image/Store contributions and tool composition; do not claim later
 work has already recovered it. See the
 [decision report](alien-recipes-migration-performance.md) and
 [receipt](../measurements/alien-recipes-indexed-20261019.json).
+
+
+## Removed duplicate native local Cells (2026-10-20)
+
+Store's `localCell:` and `localCell:prototype:` constructors, native operation
+variants, tagged value/history branches and tagged restoration are removed.
+Only explicit fact-backed handles retain the native `CellVt` representation.
+Remaining planner/profile examples, scratch fixtures and the ImageFormat test
+generator construct ordinary `Cell with:` values. The legacy-image compatibility
+runner options are removed; images containing native local Cells require rebuilding.
+
+There is no new Cell policy or constructor shortcut: the existing authored owner
+retains current clone/set sends, ordinary reference slots, shallow-clone behavior,
+shared aliases and suspension. The native regression checks restored fact handles
+sharing their Store/entity/attribute, GC, writes through aliases, absent removed
+constructors and rejection of the former local tag without changing the handle.
+
+All 847 language checks pass, as do native Store/compensation/Relational checks,
+Cell replacement/suspension and actual-initializer absence, exact post-return Cell
+reclamation, ordinary/fact Cell mapped and rebuilt images, scratch reentry, and
+132 ImageFormat admission cases with 16 byte-identical oracle round trips.
+Both planner backends pass all twelve revisions on chain/wide/shared fixtures;
+all log-analysis profiling phases match the independent oracle. Existing formal
+contracts pass 417 Lean theorems, 134 mutation rejections and 287 expected TLC
+outcomes. These models are not a proof of the production compiler or image codec.
+
+Three interleaved startup observations show 2.725 to 2.764 seconds CPU (+1.4%)
+and 2.742 to 2.806 seconds wall (+2.3%). The previously unmigrated planner example
+pays for ordinary authored Cell dispatch: measured phases rise 9–14% across two
+three-pair observations, or 27–62 ms over twelve revisions. The follow-up
+whole-program CPU medians rise 2.5–2.9% (about 180–205 ms); wall medians rise
+about 1.2%. These are modest additional caller-migration costs, not a runtime
+speedup. The authored Cell implementation and GC configuration are unchanged.
+See the [source-bound receipt](../measurements/remove-store-local-cells-20261020.json).
+
+Next is explicit optional Image fact participation: remove mandatory Store stamps,
+staging and swaps while preserving deliberately retained facts/history and Store
+Cells, declared provider requirements, and the existing partial-load boundary.
+Choose that concrete protocol before changing the format. Optional tool loading,
+production core composition, full absence gates and release qualification remain.

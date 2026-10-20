@@ -1126,32 +1126,37 @@ unsafe fn history_plateaus(h: &H) {
 
 #[test]
 #[ignore = "requires production modules"]
-fn local_cells_keep_values_without_facts_and_restore_their_image_fields() {
-    if isolated_case("local_cells_keep_values_without_facts_and_restore_their_image_fields") { return; }
+fn fact_cells_restore_owner_aliases_and_reject_removed_local_representation() {
+    if isolated_case("fact_cells_restore_owner_aliases_and_reject_removed_local_representation") { return; }
     unsafe {
         let h = H::new();
         let _floor = CompiledFloor::pin(h.id, h.ns, h.roots);
         let store = h.call(h.named(b"Store"), b"new", &[]);
         let one = h.i(1); let two = h.i(2); let nil = h.named(b"nil");
-        let basis = h.metric(store, b"basis");
-        let facts = h.metric(store, b"retainedFactCount");
-        let cell = h.call(store, b"localCell:", &[one]);
-        for _ in 0..100 { assert_eq!(h.call(cell, b"set:", &[two]), cell); }
-        assert_eq!(h.call(cell, b"value", &[]), two);
-        assert_eq!(h.metric(cell, b"history"), 0);
-        assert_eq!(h.metric(store, b"basis"), basis);
-        assert_eq!(h.metric(store, b"retainedFactCount"), facts);
-        collect(h.id, h.gc);
-        assert_eq!(h.call(cell, b"value", &[]), two);
+        let entity = h.fresh(); let attr = h.symbol(b"cellAmount");
+        let cell = h.call(store, b"cellFor:attr:", &[entity, attr]);
+        assert_eq!(h.call(cell, b"set:", &[one]), cell);
         let fields = [h.call(cell, b"imageFieldAt:", &[h.i(0)]),
                       h.call(cell, b"imageFieldAt:", &[h.i(1)]),
                       h.call(cell, b"imageFieldAt:", &[h.i(2)])];
-        let restored = h.call(store, b"localCell:", &[nil]);
+        assert_eq!(fields, [store, entity, attr]);
+        let restored = h.call(store, b"cellFor:attr:", &[nil, nil]);
         h.call(restored, b"restoreImageStore:entity:attr:", &fields);
-        assert_eq!(h.call(restored, b"value", &[]), two);
-        h.call(restored, b"set:", &[one]);
+        collect(h.id, h.gc);
         assert_eq!(h.call(restored, b"value", &[]), one);
-        assert_eq!(h.metric(store, b"basis"), basis);
+        assert_eq!(h.call(restored, b"set:", &[two]), restored);
+        assert_eq!(h.call(cell, b"value", &[]), two);
+        // The removed tag must fail without changing the live handle.
+        assert!(h.id.send_named(restored, b"restoreImageStore:entity:attr:", &[
+            Operand::object(h.symbol(b"localCell")), Operand::object(one), Operand::object(nil)
+        ]).is_err());
+        assert_eq!(h.call(restored, b"value", &[]), two);
+        let behavior = object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(store)]));
+        for selector in [b"localCell:".as_slice(), b"localCell:prototype:"] {
+            assert!(send(h.id, h.id.receiver, b"bindingOf:in:", &[
+                Operand::object(h.symbol(selector)), Operand::object(behavior)
+            ]).as_entry().is_none());
+        }
         h.clear();
     }
 }

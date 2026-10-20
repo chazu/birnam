@@ -13,9 +13,9 @@
 [Reflect defineMethod: #plan:ids: on: BuildPlanner as: [:self :world :ids |
   let sources := [world at: #sources]; let artifacts := [world at: #artifacts];
   let active := [ids select: [:id | [[[sources at: id] == nil] not]]];
-  let counts := [db localCell: {}]; let users := [db localCell: {}];
-  let dirty := [db localCell: {}]; let changed := [db localCell: #[]];
-  let missing := [db localCell: #[]];
+  let counts := [Cell with: {}]; let users := [Cell with: {}];
+  let dirty := [Cell with: {}]; let changed := [Cell with: #[]];
+  let missing := [Cell with: #[]];
   [active do: [:id |
     let row := [sources at: id]; let artifact := [artifacts at: id];
     let old := [[artifact == nil] ifTrue: [| nil] ifFalse: [| [artifact at: #source]]];
@@ -26,7 +26,7 @@
       [dirty set: [[dirty value] at: id put: true]];
       [changed set: [[changed value] add: #[id reason]]]
     ]];
-    let count := [db localCell: 0];
+    let count := [Cell with: 0];
     [[row at: #deps] do: [:dep |
       [[[sources at: dep] == nil] ifTrue: [|
         [missing set: [[missing value] add: #[id dep]]]
@@ -38,8 +38,8 @@
     ]];
     [counts set: [[counts value] at: id put: [count value]]]
   ]];
-  let queue := [db localCell: [active select: [:id | [[[counts value] at: id] = 0]]]];
-  let cursor := [db localCell: 0]; let visited := [db localCell: {}]; let order := [db localCell: #[]];
+  let queue := [Cell with: [active select: [:id | [[[counts value] at: id] = 0]]]];
+  let cursor := [Cell with: 0]; let visited := [Cell with: {}]; let order := [Cell with: #[]];
   [[| [[cursor value] < [[queue value] size]]] whileTrue: [|
     let id := [[queue value] at: [cursor value]];
     [cursor set: [[cursor value] + 1]];

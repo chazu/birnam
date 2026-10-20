@@ -1,9 +1,9 @@
 # Store and Cells over Id messages
 
 Local mutation now defaults to the authored [Cell owner](../../modules/cell.birnam)
-over ObjectModel slots. Store's `localCell:` variants and tagged local records
-remain for explicit legacy callers and image compatibility; core authored modules
-no longer use them. `CellVt` here is the Store-owned legacy/fact-handle family.
+over ObjectModel slots. Store's duplicate `localCell:` variants and tagged local
+records have been removed. `CellVt` here contains only explicit fact-backed handles.
+Images containing the removed local representation must be rebuilt.
 
 Bootstrap loads `libbirnam_store.dylib` with Namespace after the value and
 collection owners, before Execution and the compiler. Store depends only on the
@@ -43,7 +43,6 @@ send. Integer conversion and Error construction therefore observe replacement.
 | `reservedCompensationFactCount`, `reservedCompensationFactBytes` | Outstanding candidate compensation reservations; consumed or released through the owner messages described below. |
 | `liveTriplesDo:`, `liveTriplesAsOf:do:`, `liveTriplesSince:do:`, `liveTriplesBetween:and:do:` | Snapshot current/as-of triples, then send the block `value:value:value:`. Bounds preserve the existing inclusive-lower/exclusive-upper semantics. |
 | `cellFor:attr:` | New Cell retaining this Store and the exact entity/attribute. |
-| `localCell:`, `localCell:prototype:` | Transient Cell without fact transitions; the optional Cell prototype supplies behavior. Its three image fields retain a tagged value, with zero history. |
 | Cell `value`, `set:`, `history` | Fresh sends to its Store. `set:` returns the Cell on successful assertion and otherwise propagates the Store result. |
 
 `BIRNAM_STORE_COMPACTION_TRANSITIONS` retains its default of 4096;

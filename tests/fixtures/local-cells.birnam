@@ -50,8 +50,8 @@ let batches := [#[0 1 50 200] collect: [:calls |
 // Their deltas are diagnostic. local_cell_retention.rs measures the same
 // operation after return using Id's counter and requires exactly zero objects.
 
-// Module is available before stdlib: its traversal uses the native localCell:
-// protocol directly. A nested traversal must not replace the outer order.
+// Module is available before stdlib and uses the authored Cell owner directly.
+// A nested traversal must not replace the outer order.
 [Module named: #cellOuter requires: #[#cellOuterB #cellOuterC]];
 [Module named: #cellOuterB requires: #[]]; [Module named: #cellOuterC requires: #[]];
 [Module named: #cellInner requires: #[#cellLeaf]]; [Module named: #cellLeaf requires: #[]];

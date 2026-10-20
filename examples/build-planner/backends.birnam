@@ -1,7 +1,7 @@
 // Same source rows and artifact records in both backends. Deletion is nil.
 // Store holds graph edges as #many facts; Map holds persistent adjacency vectors.
 [Reflect defineMethod: #mapBackend on: BuildPlanner as: [:self |
-  let state := [db localCell: {#sources -> {} #artifacts -> {}}];
+  let state := [Cell with: {#sources -> {} #artifacts -> {}}];
   {#read -> [:checkpoint | [[checkpoint == nil] ifTrue: [| [state value]] ifFalse: [| checkpoint]]]
    #replace -> [:id :old :row |
      [state set: [[state value] at: #sources put: [[[state value] at: #sources] at: id put: row]]]]
@@ -35,7 +35,7 @@
 
    ];
   {#read -> [:checkpoint |
-     let digests := [db localCell: {}]; let edges := [db localCell: {}]; let artifacts := [db localCell: {}];
+     let digests := [Cell with: {}]; let edges := [Cell with: {}]; let artifacts := [Cell with: {}];
      let visit := [:entity :attr :value |
        [[attr == #digest] ifTrue: [| [digests set: [[digests value] at: entity put: value]]]];
        [[attr == #dependency] ifTrue: [|

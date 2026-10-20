@@ -21,7 +21,7 @@
   ]]
 ]];
 [Reflect defineMethod: #revision:backend:ids:history:index: on: BuildPlanner as: [:self :revision :backend :ids :history :index |
-  let times := [db localCell: {}];
+  let times := [Cell with: {}];
   let timed := [:name :body |
     let measured := [self timed: body];
     [times set: [[times value] at: name put: {"cpu_ns" -> [measured at: 1] "wall_ns" -> [measured at: 2]}]];
@@ -80,7 +80,7 @@ let revisions := [[fixture at: "revisions"] collect: [:rev |
      ]]]
    ]]}
 ]];
-let history := [db localCell: #[]];
+let history := [Cell with: #[]];
 let backend := [[[config at: #backend] = "store"] ifTrue: [| [BuildPlanner storeBackend: ids]] ifFalse: [| [BuildPlanner mapBackend]]];
 [System gc];
 let memory := [:index |

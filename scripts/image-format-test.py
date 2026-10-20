@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-image-format-') as temporary:
              f'  let answer := [{receiver} inspect: bytes architecture: 1 abi: -3623637935742366395];',
              '  [System println: [[answer isError] ifTrue: [| [[[answer kind] == #imageRejected] ifTrue: [| "err"] ifFalse: [| "wrongError"]]] ifFalse: [| "ok"]]];',
              '  [[answer isError] ifFalse: [|',
-             '    let all := [db localCell: nil];',
+             '    let all := [Cell with: nil];',
              '    [all set: #[1 [bytes readU64At: 20]]];',
              f'    [{receiver} each: answer do: [:field :j |',
              '      let value := [[[j = 5] & [field notNil]] ifTrue: [| [field copyFrom: 72 to: [field size]]] ifFalse: [| field]];',

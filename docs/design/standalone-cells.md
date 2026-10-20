@@ -2,6 +2,20 @@
 
 2026-10-14. Follow-up to [local Cells by default](local-cells-by-default.md).
 
+**2026-10-20 update:** the completion slice removes Store's duplicate native
+`localCell:` / `localCell:prototype:` implementation and tagged-local restoration.
+Only explicit fact-backed handles use `CellVt`. Remaining examples and fixtures
+use the authored owner. Old images containing native local Cells must be rebuilt;
+the old compatibility runner options have been removed. The earlier qualification
+and measurements below describe the original migration, not current compatibility.
+
+The current absence runner loads the actual compiled Cell initializer, including
+its captured receiver/index values; the original exported-zero-capture method
+assembly described below was replaced during the socket/Cell accessor slice.
+Globals and Method publication are now independent of Store. Full Store-free
+Image and production composition are still pending in the
+[completion plan](store-independent-core-completion.md).
+
 ## Delivered boundary
 
 `Cell` is an ordinary Birnam prototype with one ObjectModel reference slot.

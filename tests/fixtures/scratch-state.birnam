@@ -64,7 +64,7 @@ let factCell := [db cellFor: [Object clone] attr: #value];
 // Collect and reenter during ordinary replaceable helper sends. Inner scanners
 // must not overwrite the outer invocation's state. These overrides are last so
 // they cannot weaken the output/retention checks above.
-let nestedHtml := [db localCell: nil];
+let nestedHtml := [Cell with: nil];
 [Reflect defineMethod: #inlineHtml: on: Markdown as: [:self :text |
   [System gc];
   [[text = "outer"] ifTrue: [| [nestedHtml set: [self toHtml: "inner"]]]];
@@ -72,7 +72,7 @@ let nestedHtml := [db localCell: nil];
 ]];
 [check value: [[Markdown toHtml: "outer\n\nlast"] = "<p>outer</p><p>last</p>"] value: "reentrant Markdown corrupted outer scanner"];
 [check value: [[nestedHtml value] = "<p>inner</p>"] value: "reentrant Markdown failed"];
-let nestedSignature := [db localCell: nil]; let inside := [db localCell: false];
+let nestedSignature := [Cell with: nil]; let inside := [Cell with: false];
 [Reflect defineMethod: #advance: on: AlienCompiler as: [:self :parser |
   [System gc];
   [[inside value] ifFalse: [|
@@ -82,7 +82,7 @@ let nestedSignature := [db localCell: nil]; let inside := [db localCell: false];
 ]];
 [check value: [[AlienCompiler parse: "i i"] = #[#[#scalar "i"] #[#[#scalar "i"]] #[]]] value: "reentrant parse corrupted outer parser"];
 [check value: [[nestedSignature value] = #[#[#scalar "f"] #[#[#scalar "f"]] #[]]] value: "reentrant parse failed"];
-let nestedScan := [db localCell: false];
+let nestedScan := [Cell with: false];
 [Reflect defineMethod: #after:mark: on: NativeDoc as: [:self :line :mark |
   [System gc];
   [[nestedScan value] ifFalse: [|

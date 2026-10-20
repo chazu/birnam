@@ -43,8 +43,8 @@ let constructor := [Cell methodFor: #with:]; let constructions := [Cell with: 0]
 [check value: [[[7 asCell] value] = 7] value: "asCell value"];
 [check value: [[constructions value] = 1] value: "asCell bypassed current Cell factory"];
 
-// Core users must no longer ask Store to allocate local state. Legacy explicit
-// Store cells remain a separate API, covered by old-image and native Store tests.
+// A user-added obsolete constructor must not become an implicit core dependency.
+// Fact-backed Store Cells remain a separate explicit API.
 [Reflect defineMethod: #localCell: on: Store as: [:self :value |
   [Error kind: #unexpectedStoreCell]
 ]];

@@ -1,10 +1,10 @@
-# Alien recipe ownership: approved performance remediation
+# Alien recipe ownership: qualification and accepted startup cost
 
-2026-10-19, baseline `7ec21979`. The ordinary-owner draft passes its current
-functional and formal checks, but remains uncommitted after a significant
-performance regression. The user approved indexed ordinary-Map remediation.
+2026-10-19, baseline `7ec21979`. Completed in `9aa4843d` after the user
+accepted the remaining startup cost on 2026-10-20. The initial vector regression
+and its approved remediation are retained below as measurement history.
 
-## Delivered versus draft
+## Initial delivered versus draft boundary
 
 Direct Method publication is committed (`7ec21979`): Alien no longer calls Store
 for method installation. The next draft removes `__aliens__` facts, synthetic
