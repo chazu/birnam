@@ -1,0 +1,461 @@
+{
+  "baseline_commit": "7ec21979",
+  "status": "Functional and formal qualification passed. Repeated wrapping recovered; remaining startup CPU increase requires a performance-gate decision before runtime commit.",
+  "source_sha256": {
+    "modules/alien-recipes.birnam": "579fe0229f2f612cf431dcb57b22928c585f47af899a9736e883e0d046e5285a",
+    "modules/error.birnam": "a15e406699eee5c7095e1fe6cd561a0102ca5037dd328d498003cd88beba5f17",
+    "rust/birnam-alien/src/runtime.rs": "52e87f0e901f43fcc72d3ac3da0c73373b076cfa82989fa774b8e6c36f276b61",
+    "rust/birnam-image/src/native.rs": "6a96f8fbe7d0430f6de273c5ad77991a3805c33cb309ced243c4ffae50708016",
+    "rust/birnam-build/src/main.rs": "449209dfe83ce7bed1b273c5482a4fc8e411983636c3f9bb81f7fdc9ad917b57",
+    "rust/birnam-bootstrap/src/lib.rs": "151e891280adfcddc27ab6f0511715897be561a560ac6b85b2c1f1d68c60aa81",
+    "rust/birnam-siphon/tests/alien_without_store.rs": "ceba1b38e97664a1ec4949185accd97ae461a4a55f225f51d45859b8c70e8425",
+    "scripts/alien-recipes-test.py": "75c74e299dafbadd0ca2c9793211e92d70d8cc772b7943ce47ec6e3aae0b3ec7",
+    "scripts/alien-recipes-reentry-test.py": "2ea356ca6ce0dcdc048969ed274cf22478cca2928bca4faf4e99a97847218409",
+    "scripts/alien-image-reentry-test.py": "7d9d408397ef01f27f39d0bd8fd13fbd38896603dd7f8f31af980c4c84f16130",
+    "scripts/alien-recipes-hash-test.py": "108e5911b1b73f6c7e09f4c737f163dcf6e7f7d4de9eb0ad580eb91882c149eb",
+    "scripts/alien-without-store-test.py": "ddcdf319778177e3bff786d1501903072464197821476f780fd2e464118272a5",
+    "scripts/check-rooting-model.py": "38590a4b88c7d536246cd8d0673e5c31d79da43931bbfaf42e6578e87ec924ea"
+  },
+  "prefix": "/tmp/birnam-store-independent/15-alien-final/prefix",
+  "manifest_sha256": "29a152c53a9612e5497162e530cdd18b40b038c03f70e56dedad047235883e3f",
+  "performance": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "cpu_ns": 654231708,
+        "fact_delta": 0
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "cpu_ns": 651722833,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "cpu_ns": 648191458,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "cpu_ns": 653565917,
+        "fact_delta": 0
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "cpu_ns": 653899417,
+        "fact_delta": 0
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "cpu_ns": 647741459,
+        "fact_delta": 0
+      }
+    ],
+    "medians": {
+      "baseline": 653899417,
+      "candidate": 648191458
+    },
+    "source": "[Module load: #time];\n[Alien wrap: \"labs\" signature: \"l l\" as: #publicationBench on: Integer];\n[[|\n[System gc]; let facts := [db retainedFactCount]; let start := [16 clockNanos];\n[1 to: 20 do: [:i | [Alien wrap: \"labs\" signature: \"l l\" as: #publicationBench on: Integer]]];\n[System println: [[16 clockNanos] - start]];\n[System println: [[-42 publicationBench] = 42]];\n[System println: [[db retainedFactCount] - facts]]\n] value]\n"
+  },
+  "startup": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "wall_seconds": 2.4780240836553276,
+        "cpu_seconds": 2.47024
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "wall_seconds": 2.6734329583123326,
+        "cpu_seconds": 2.6672050000000005
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "wall_seconds": 2.714411834254861,
+        "cpu_seconds": 2.7112900000000004
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "wall_seconds": 2.491391666699201,
+        "cpu_seconds": 2.487553000000001
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "wall_seconds": 2.4773375843651593,
+        "cpu_seconds": 2.469122999999999
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "wall_seconds": 2.7415134580805898,
+        "cpu_seconds": 2.737909
+      }
+    ],
+    "medians": {
+      "baseline": {
+        "wall_seconds": 2.4780240836553276,
+        "cpu_seconds": 2.47024
+      },
+      "candidate": {
+        "wall_seconds": 2.714411834254861,
+        "cpu_seconds": 2.7112900000000004
+      }
+    }
+  },
+  "checks": {
+    "alien-without-store-test.log": {
+      "log": "alien-without-store: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-floor-v5fl8gb5/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-floor-v5fl8gb5/results.json",
+      "sha256": "a8e31b680ed94db7e0081beeb1e3c370536d533f66dbc27a242277cac0090a57",
+      "passed": true
+    },
+    "alien-publication-test.log": {
+      "log": "Alien direct publication: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-publication-t77k_e51/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-publication-t77k_e51/results.json",
+      "sha256": "8b61b901339f00d136a24afc65ad0c5bac07744b43a345f38799a6e336e46aa8",
+      "passed": true
+    },
+    "alien-recipes-reentry-test.log": {
+      "log": "Alien recipe reentry: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-reentry-vq0gve13/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-reentry-vq0gve13/results.json",
+      "sha256": "0bc7707e85da4c52bb3397550305eb13a3b64434c9e5a0b0d269834f252eb0eb",
+      "passed": true
+    },
+    "alien-recipes-test.log": {
+      "log": "Alien recipes: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-recipes-ou9py2ei/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-recipes-ou9py2ei/results.json",
+      "sha256": "46abaa088ee372a83245f6e6a1b9bc7c0f07bddcaf04906f2537b9f940304ffe",
+      "passed": true
+    },
+    "alien-recipes-hash-test.log": {
+      "log": "Alien image hashing: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-hash-bd94t0dc/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-hash-bd94t0dc/results.json",
+      "sha256": "cce97d426b756939d323dab3713195f383672b31791284e60d24be27f197f54b",
+      "passed": true
+    },
+    "repl-owner-test.log": {
+      "log": "repl owner: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-repl-owner-lnmduj28/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-repl-owner-lnmduj28/results.json",
+      "sha256": "256dd83f3c185075138b45c2873bab8cd38703944ae82685eb11b99ef42bcf41",
+      "passed": true
+    },
+    "globals-without-store-test.log": {
+      "log": "globals-without-store: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-floor-zjn9uohc/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-floor-zjn9uohc/results.json",
+      "sha256": "20c47fb327dc7e54d1f0d8dd9fd27cd416df133c497028bcd14f78a14842f627",
+      "passed": true
+    },
+    "image-reentry.log": {
+      "log": "Alien image reentry: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-image-reentry-bs9fyrrf/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-image-reentry-bs9fyrrf/results.json",
+      "sha256": "464cc855a021f50566613eea8a6d49c93adecc813961e50f496f0f4526bc7368",
+      "passed": true
+    },
+    "task-fields.log": {
+      "log": "task fields: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-4dnz09cn/results.json\n",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-fields-4dnz09cn/results.json",
+      "sha256": "0909d5b89f2e1099406eb4e28d7fd863265575769335b01ef8adb32660e96190",
+      "passed": true
+    }
+  },
+  "pipeline": [
+    {
+      "script": "alien-without-store-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "alien-publication-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "alien-recipes-reentry-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "alien-recipes-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "alien-recipes-hash-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "repl-owner-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "globals-without-store-test.py",
+      "exit_code": 0
+    },
+    {
+      "script": "host-no-compilation",
+      "exit_code": 0
+    }
+  ],
+  "logs": {
+    "native.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s\n     Running tests/alien.rs (.cargo-target/native-message-tests/debug/deps/alien-f202d9ae15a3550c)\n\nrunning 1 test\ntest alien_calls_callbacks_and_owned_memory has been running for over 60 seconds\ntest alien_calls_callbacks_and_owned_memory ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 60.96s\n\n     Running tests/image.rs (.cargo-target/native-message-tests/debug/deps/image-0b8e9ae2809216fd)\n\nrunning 2 tests\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.84s\n\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 21.35s\n\n\nrunning 1 test\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 22.48s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 29.69s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 24.66s\n\n\nrunning 1 test\ntest image_owner_roundtrip has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.54s\n\n\nrunning 1 test\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 20.83s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 20.95s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 27.74s\n\n\nrunning 1 test\ntest image_owner_roundtrip has been running for over 60 seconds\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.09s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 25.22s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 79.09s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 23.98s\n\n\nrunning 1 test\n\nrunning 1 test\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 28.68s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 23.58s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 32.63s\n\ntest image_owner_roundtrip has been running for over 60 seconds\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 24.22s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 25.27s\n\ntest image_owner_roundtrip ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 86.69s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 26.32s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.79s\n\n\nrunning 1 test\ntest image_owner_roundtrip ... ok\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.77s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.03s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.17s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.01s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.09s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.71s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 19.91s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.75s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 21.24s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.70s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.85s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.08s\n\n\nrunning 1 test\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.45s\n\ntest repeated_image_resaves_keep_a_fixed_live_set ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 471.69s\n\n     Running tests/image_recovery_conflict.rs (.cargo-target/native-message-tests/debug/deps/image_recovery_conflict-6c7d20f521e2f7b1)\n\nrunning 1 test\ntest image_compensation_characterizes_intervening_dictionary_write ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.61s\n\n     Running tests/image_snapshot_stamp.rs (.cargo-target/native-message-tests/debug/deps/image_snapshot_stamp-6f930399cb799551)\n\nrunning 1 test\ntest snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 36.75s\n\n",
+    "no-compilation.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s\n     Running unittests src/lib.rs (.cargo-target/native-message-tests/debug/deps/birnam_host-ae1905f6c16f2591)\n\nrunning 1 test\nbirnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n\ntest startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 8.95s\n\n"
+  },
+  "language": {
+    "summary": "TOTAL: 847 passed, 0 failed",
+    "log_sha256": "2be92466bb80fcc67efe9a3830829277ebbf2bd7053b450259a6f34dba1b7fe9"
+  },
+  "formal": {
+    "receipt": ".cargo-target/formal/results/rooting-6u0sz3q9/summary.json",
+    "sha256": "53563d0a803a08ddf48e5a2b103e0414de4cf6f85a484b27e1c53fbc72e327ff",
+    "theorems": 417,
+    "rejected_mutations": 134,
+    "tlc_outcomes": 287,
+    "scope": "Abstract rooting and costed behavioral semantics; no production compiler verification"
+  },
+  "diagnostics": {
+    "image-phases.json": {
+      "instrumented": true,
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "phases": {
+            "inspect-and-admit": 1.645022,
+            "heap": 0.529776,
+            "facts-and-source": 0.000175,
+            "prepare-bindings": 0.022592,
+            "publish-bindings": 0.002308,
+            "foreign": 0.002143,
+            "rehash-and-index": 0.000762
+          }
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "phases": {
+            "inspect-and-admit": 1.606013,
+            "heap": 0.55066,
+            "facts-and-source": 6.7e-05,
+            "prepare-bindings": 0.127978,
+            "publish-bindings": 0.002373,
+            "foreign": 0.00364,
+            "rehash-and-index": 0.018243
+          }
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "phases": {
+            "inspect-and-admit": 1.59035,
+            "heap": 0.576566,
+            "facts-and-source": 7.2e-05,
+            "prepare-bindings": 0.129523,
+            "publish-bindings": 0.002232,
+            "foreign": 0.003528,
+            "rehash-and-index": 0.018185
+          }
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "phases": {
+            "inspect-and-admit": 1.525011,
+            "heap": 0.522752,
+            "facts-and-source": 0.000173,
+            "prepare-bindings": 0.021993,
+            "publish-bindings": 0.002279,
+            "foreign": 0.002123,
+            "rehash-and-index": 0.000774
+          }
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "phases": {
+            "inspect-and-admit": 1.519773,
+            "heap": 0.528821,
+            "facts-and-source": 0.000174,
+            "prepare-bindings": 0.023306,
+            "publish-bindings": 0.00242,
+            "foreign": 0.002165,
+            "rehash-and-index": 0.000719
+          }
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "phases": {
+            "inspect-and-admit": 1.630733,
+            "heap": 0.545475,
+            "facts-and-source": 6.2e-05,
+            "prepare-bindings": 0.130092,
+            "publish-bindings": 0.002313,
+            "foreign": 0.003676,
+            "rehash-and-index": 0.017844
+          }
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "inspect-and-admit": 1.525011,
+          "heap": 0.528821,
+          "facts-and-source": 0.000174,
+          "prepare-bindings": 0.022592,
+          "publish-bindings": 0.002308,
+          "foreign": 0.002143,
+          "rehash-and-index": 0.000762
+        },
+        "candidate": {
+          "inspect-and-admit": 1.606013,
+          "heap": 0.55066,
+          "facts-and-source": 6.7e-05,
+          "prepare-bindings": 0.129523,
+          "publish-bindings": 0.002313,
+          "foreign": 0.00364,
+          "rehash-and-index": 0.018185
+        }
+      }
+    },
+    "binding-phases.json": {
+      "instrumented": true,
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "phases": {
+            "construct-methods": 0.006687,
+            "inventory-current": 0.005316,
+            "select-removals": 0.002324
+          }
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "phases": {
+            "construct-methods": 0.00758,
+            "inventory-current": 0.112486,
+            "select-removals": 0.00267
+          }
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "phases": {
+            "construct-methods": 0.007201,
+            "inventory-current": 0.110341,
+            "select-removals": 0.002513
+          }
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "phases": {
+            "construct-methods": 0.006772,
+            "inventory-current": 0.005168,
+            "select-removals": 0.002403
+          }
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "phases": {
+            "construct-methods": 0.006536,
+            "inventory-current": 0.005166,
+            "select-removals": 0.002408
+          }
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "phases": {
+            "construct-methods": 0.007014,
+            "inventory-current": 0.109499,
+            "select-removals": 0.002535
+          }
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "construct-methods": 0.006687,
+          "inventory-current": 0.005168,
+          "select-removals": 0.002403
+        },
+        "candidate": {
+          "construct-methods": 0.007201,
+          "inventory-current": 0.110341,
+          "select-removals": 0.002535
+        }
+      }
+    },
+    "native-floor-startup.json": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 1.0462693748995662,
+          "cpu_seconds": 0.939361
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 0.950766374822706,
+          "cpu_seconds": 0.8590559999999999
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 1.089382582809776,
+          "cpu_seconds": 1.0824579999999997
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 0.9209499172866344,
+          "cpu_seconds": 0.9170230000000003
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 0.9483841247856617,
+          "cpu_seconds": 0.9434429999999994
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 0.9438527501188219,
+          "cpu_seconds": 0.9370980000000003
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 0.9483841247856617,
+          "cpu_seconds": 0.939361
+        },
+        "candidate": {
+          "wall_seconds": 0.950766374822706,
+          "cpu_seconds": 0.9370980000000003
+        }
+      }
+    }
+  },
+  "gc_inventory_diagnostic": {
+    "baseline": "#ready\nINVENTORY_BEFORE charged=Some(15064935) objects=Some(74682) behaviors=Some(1384)\nINVENTORY_AFTER charged=Some(15735023) objects=Some(79035) rows=310\n",
+    "candidate": "#ready\nINVENTORY_BEFORE charged=Some(16471678) objects=Some(77349) behaviors=Some(1418)\nINVENTORY_AFTER charged=Some(399024) objects=Some(79440) rows=326\n"
+  },
+  "notes": [
+    "No GC threshold or scaling changes.",
+    "Full-report construction for removal planning was deleted, but the final end-to-end startup cost remains about 0.24 seconds CPU higher.",
+    "All diagnostic instrumentation was removed from production source and confined to disposable prefixes.",
+    "Explicit image-owner roots and boot-independent Error predicates fixed the reproduced hash-restoration failures.",
+    "The old direct source-owner payload is rejected before image application; images need rebuilding for imageOwnersV1.",
+    "Native lifetime checks used an isolated resource-metrics TCC overlay; timing and host checks used the standard release build.",
+    "Full Store-free Image/Host/worker composition is not yet complete."
+  ]
+}

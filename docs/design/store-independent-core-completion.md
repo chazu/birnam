@@ -607,3 +607,21 @@ reconstructing process-local registration keys on restoration. Preserve independ
 edited cache data and finish the owner-discovery/Map-rehash ordering probe before
 qualification. See the [report](alien-recipes-migration-performance.md) and
 [receipt](../measurements/alien-recipes-regression-20261019.json).
+
+## Indexed Alien owner: final startup-cost decision pending
+
+The approved indexed owner passes functional/formal qualification, including real
+Store-absent wrapping, current-definition image restoration, callback reentry, code
+reclamation and 847 language checks. Explicit image-owner roots resolve the proven
+hash-bootstrap dependency; no new Globals lookup mode, native recipe registry or
+Map-entry workaround remains. The formal gate passes 417 theorems, 134 rejected
+mutations and 287 expected TLC outcomes.
+
+Repeated wrapping is back to baseline (648.2 versus 653.9 ms per 20). Fresh startup
+still uses 0.241 s more CPU (+9.8%). Removing the temporary current-method report
+reduced image allocation work but did not erase that overall difference. Runtime
+changes are held uncommitted under the performance gate. Recommendation: accept
+that temporary cost and proceed to optional Image/Store contributions and tool
+composition; do not claim the later work has already recovered it. See the
+[decision report](alien-recipes-migration-performance.md) and
+[receipt](../measurements/alien-recipes-indexed-20261019.json).

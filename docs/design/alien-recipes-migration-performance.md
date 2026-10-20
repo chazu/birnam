@@ -92,3 +92,67 @@ lookup or break foreign methods used by key hashing.
 The complete Store-independent Host/worker/image composition and release remain
 unfinished. Exact measurements, source hashes and evidence are in the
 [receipt](../measurements/alien-recipes-regression-20261019.json).
+
+## Indexed owner: functional qualification and remaining startup decision
+
+The approved Map remediation is implemented. Native Alien has no Store calls.
+Code reuse and registration descriptions are ordinary, inspectable/mutable Maps;
+image projection produces plain active recipe rows and strips process-local keys.
+Registration stamps do not retain native Methods. Snapshot selection remains the
+point where current dictionaries decide which descriptions are active.
+
+The image checks exposed a real initialization-order defect: a changed Symbol hash
+could make a restored Globals lookup miss the recipe owner, dropping wrappers.
+The source key/value iterator also performed hidden hashed lookups. The final
+implementation removes those workarounds and uses an explicit owner envelope:
+`#[#imageOwnersV1 #[#sourceRegistryV2 sourceOwner] foreignOwnerOrNil]` in the existing
+Sources payload. It restores foreign bindings before repairing hashes, then builds
+ordinary registration indexes. Both identity-dependent and foreign-function-backed
+hashes now pass mapped and rebuilt recovery. The prior direct source-owner payload
+is rejected before application; rebuilding images is required.
+
+Foundational Error predicates capture their boolean values, so default checks can
+run without resolving a half-restored Globals Map. Error messages remain current
+sends, including on instances with private behavior. Temporary image-operation
+roots retain newly constructed Methods until indexing; the persistent owner retains
+only identity stamps. Indexing fills missing entries without overwriting registrations
+made by callbacks. Independent edits/aliases in cached byte objects survive recovery.
+
+All 847 language checks pass. Real Store-absent wrapping, publication and private
+Errors, reentrant registration, image reentry/resave, code-cache aliases, both hashing
+cases, REPL lifecycle/images, Globals absence, task/worker fields and no-compilation
+startup pass. Native FFI/callback/reclamation checks, image round trips, 20 chained
+mapped/rebuilt resaves, partial-load conflicts and snapshot mutation pass. The formal
+gate passes **417 theorems, 134 mutation rejections and 287 expected TLC outcomes**.
+These remain abstract-contract proofs plus separate implementation evidence.
+
+Final three-pair normal-release observations:
+
+| Measurement | Committed baseline | Final draft | Change |
+| --- | ---: | ---: | ---: |
+| 20 repeated wraps, CPU | 653.90 ms | 648.19 ms | -0.9% |
+| Fresh source-file startup, CPU | 2.470 s | 2.711 s | +9.8% / 241 ms |
+| Fresh source-file startup, wall | 2.478 s | 2.714 s | +9.5% / 236 ms |
+
+The repeated-wrap regression is resolved. The remaining startup increase is real
+enough to report separately, rather than declare the migration performance-qualified.
+Native-only startup is unchanged in the diagnostic, locating the extra work in
+image reconstruction. A phase probe found a current-method report allocation crossing
+the unchanged 16 MiB GC threshold. Image now queries resident binding keys directly
+through Id/Execution instead of constructing unused implementation/provenance rows.
+That removes temporary allocation, but did not remove the end-to-end startup delta;
+the collection cost and additional image work still matter. GC thresholds and
+scaling were not changed.
+
+### Decision requested
+
+Recommend accepting this **temporary 0.24 s startup cost**, committing the now
+functionally qualified owner migration, and proceeding to the already planned
+removal of mandatory Store/Image staging and optional-tool bootstrap dependencies.
+Those changes should be measured independently; this report does not promise they
+will recover the cost. The alternative is to hold this runtime slice uncommitted
+and continue profiling image reconstruction before advancing.
+
+Per the user's performance gate, runtime changes remain uncommitted pending that
+decision. Exact measurements and check receipts are in the
+[indexed-owner receipt](../measurements/alien-recipes-indexed-20261019.json).
