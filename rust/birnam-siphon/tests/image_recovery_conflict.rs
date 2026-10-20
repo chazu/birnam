@@ -177,6 +177,7 @@ fn image_compensation_characterizes_intervening_dictionary_write() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,

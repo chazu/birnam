@@ -11,7 +11,7 @@ fn main() {
                     architecture: 1, runtime_abi: 0xcdb6_41f9_7854_0d45,
                     programs: v.programs, bindings: v.bindings, selection: v.selection,
                     heaps: &v.heaps, facts: &v.facts, sources: v.sources,
-                    behaviors: v.behaviors, code: v.code.map(|b| &b[72..]),
+                    behaviors: v.behaviors, providers: v.providers, code: v.code.map(|b| &b[72..]),
                 }).unwrap();
                 println!("ok\t{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>());
             }

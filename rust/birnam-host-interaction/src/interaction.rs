@@ -22,7 +22,12 @@ impl HostRuntime<'_> {
     pub fn run_repl(&self, apply_config: bool) -> Result<(), HostError> {
         // Module and Lang are present even on the minimal compiled floor.
         // REPL entry requires the authored bootstrap, but does not adopt a baseline.
-        if self.global(&self.scope(), b"Module")? == self.named(b"nil")?
+        let q = self.scope();
+        let module = self.global(&q, b"Module")?;
+        let stdlib = unsafe { self.id.intern_name(b"stdlib") }
+            .map_err(|e| native_error("stdlib name", e))?;
+        if module == self.named(b"nil")?
+            || q.call(module, b"isLoaded:", &[Operand::object(stdlib)])? != self.named(b"true")?
         {
             if !StartupPolicy::from_environment().source_bootstrap {
                 return Err(HostError("image lacks an authored bootstrap; regenerate it with the current Birnam or use BIRNAM_FORCE_SOURCE=1 for explicit source recovery".into()));

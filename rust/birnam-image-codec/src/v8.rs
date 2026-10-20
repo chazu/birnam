@@ -26,6 +26,7 @@ pub struct ImageSpec<'a> {
     pub code: Option<&'a [u8]>,
     pub sources: Option<&'a [u8]>,
     pub behaviors: Option<&'a [u8]>,
+    pub providers: Option<&'a [u8]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +47,7 @@ pub struct DecodedImage<'a> {
     pub code: Option<&'a [u8]>,
     pub sources: Option<&'a [u8]>,
     pub behaviors: Option<&'a [u8]>,
+    pub providers: Option<&'a [u8]>,
 }
 
 #[derive(Debug, Clone, Copy)]

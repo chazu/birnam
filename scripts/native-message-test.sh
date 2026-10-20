@@ -45,7 +45,7 @@ import sys
 modules = "id root-registry namespace boolean nil bootstrap collect object-model word bytes string integer float vector map execution peg tcc codegen-runtime native-backend generation store relational prelude system-output system-input environment file-io storage artifact portable-code image alien isolate host-entry host-project project-build host-interaction".split()
 directory = Path(sys.argv[1])
 for module in modules:
-    library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")
+    library = directory / ("native" if module in {"store", "relational"} else "") / ("libbirnam_" + module.replace("-", "_") + ".dylib")
     manifest = json.loads(Path(f"rust/birnam-{module}/exports.json").read_text())
     actual = set(subprocess.check_output(["nm", "-gjU", library], text=True).splitlines())
     assert actual == {"_" + symbol for symbol in manifest["exported_symbols"]}, (module, actual)

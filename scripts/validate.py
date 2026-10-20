@@ -48,7 +48,9 @@ def plan(suite, prefix, output, *, candidate=False):
                        ('scripts/install-contract-test.py', 'scripts/install_contract.py')))
     result.append(step('archive-test', ['python3', 'scripts/measurement-archive-test.py'], ('scripts/measurement*.py',)))
     result.append(step('native', ['bash', 'scripts/native-message-test.sh'],
-                       PRODUCTION + ('scripts/native-message-test.sh', 'tests/fixtures/**/*'), timeout=900))
+                       # Collecting loader hooks and full image/resave lifetimes
+                       # exceed 20 minutes before build and owner-image checks.
+                       PRODUCTION + ('scripts/native-message-test.sh', 'tests/fixtures/**/*'), timeout=2700))
     result.append(step('install', ['bash', 'scripts/rust-install.sh', 'install', '--root', ROOT,
                        '--prefix', prefix, '--profile', 'release'] + ([] if candidate else
                        ['--build-cache', ROOT / '.cargo-target/install']),

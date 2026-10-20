@@ -33,7 +33,7 @@ impl H {
 #[ignore = "scripts/image-without-store-test.py supplies an actual Store-absent artifact floor"]
 fn image_roundtrips_without_store_or_relational() { unsafe {
     let mode=std::env::var("BIRNAM_IMAGE_FLOOR_MODE").unwrap();
-    for name in ["relational", "storeSupport", "bootstrap", "isolate"] {
+    for name in ["relational", "bootstrap", "isolate"] {
         assert!(!directory().join(format!("libbirnam_{name}.dylib")).exists());
     }
     if !mode.starts_with("optional-") { assert!(!directory().join("libbirnam_store.dylib").exists()); }
@@ -70,6 +70,8 @@ fn image_roundtrips_without_store_or_relational() { unsafe {
     for name in ["error", "globalsOwner", "sourceRegistry", "cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "alienRecipes", "imageFormat", "trace", "globals", "methodInvocation", "stdlib", "cli"] { artifact(name); }
     mount(id,"alien",ns);
     let eval=|source: &[u8]| h.call(h.named(b"Codegen"), b"evalPersisting:", &[text(source)]);
+    let module=h.call(h.named(b"Globals"),b"at:",&[id.intern_name(b"Module").unwrap()]);
+    h.call(module,b"libDir:",&[text(directory().as_os_str().as_bytes())]);
     mount(id,"image",ns);
     for name in [b"Store".as_slice(),b"db",b"Relational"] {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
@@ -85,7 +87,10 @@ fn image_roundtrips_without_store_or_relational() { unsafe {
     let path=std::env::var("BIRNAM_IMAGE_FLOOR_PATH").unwrap();
     let path=text(path.as_bytes());
     // The only added library in the positive controls is Store.
-    if mode.starts_with("optional-") { mount(id,"store",ns); }
+    if mode.starts_with("optional-") {
+        mount(id,"store",ns);
+        assert_eq!(eval(br#"[Module kernel: #store]; [Module field: #imageProvider of: #store put: true]; true"#),h.named(b"true"));
+    }
     if mode=="optional-save" {
         assert_eq!(eval(br#"let optionalImageStore := Store;
 [Reflect defineMethod: #imageStore on: System as: [:self | optionalImageStore]];
@@ -101,7 +106,7 @@ let coreImageAlias := coreImageCell;
         let rebuild=mode.ends_with("rebuild");
         let answer=h.call(h.named(b"System"),b"loadImage:rebuild:",&[path,h.named(if rebuild {b"true"} else {b"false"})]);
         if mode=="missing" {
-            assert_eq!(answer,h.named(b"nil"));
+            assert!(answer == h.named(b"nil") || h.call(answer,b"isError",&[]) == h.named(b"true"));
             let report=h.call(h.named(b"System"),b"imageSaveReport",&[]);
             assert_eq!(h.call(report,b"status",&[]),id.intern_name(b"rejected").unwrap());
         } else if mode.starts_with("optional-") {

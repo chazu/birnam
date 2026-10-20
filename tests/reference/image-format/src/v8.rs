@@ -32,6 +32,7 @@ pub struct ImageSpec<'a> {
     pub code: Option<&'a [u8]>,
     pub sources: Option<&'a [u8]>,
     pub behaviors: Option<&'a [u8]>,
+    pub providers: Option<&'a [u8]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,9 +53,23 @@ pub struct DecodedImage<'a> {
     pub code: Option<&'a [u8]>,
     pub sources: Option<&'a [u8]>,
     pub behaviors: Option<&'a [u8]>,
+    pub providers: Option<&'a [u8]>,
 }
 
 #[allow(dead_code)]
+fn validate_providers(bytes: &[u8]) -> Result<(), Error> {
+    let count = read_u32(bytes, 0).ok_or(Error::Record)?;
+    if count > 4096 { return Err(Error::Quantity); }
+    let mut position = 4;
+    let mut names = std::collections::BTreeSet::new();
+    for _ in 0..count {
+        let field = parse_field(bytes, &mut position)?;
+        if field.tag != 5 || !names.insert(field.data.ok_or(Error::Record)?) { return Err(Error::Record); }
+    }
+    if position != bytes.len() { return Err(Error::Record); }
+    Ok(())
+}
+
 pub fn decode(
     bytes: &[u8],
     architecture: u32,
@@ -71,8 +86,14 @@ pub fn decode(
     let mut code = None;
     let mut sources = None;
     let mut behaviors = None;
+    let mut providers = None;
     while offset < bytes.len() {
         match read_u32(bytes, offset).ok_or(Error::Record)? {
+            12 if heaps.is_empty() && facts.is_empty() && code.is_none() && sources.is_none() && behaviors.is_none() && providers.is_none() => {
+                let payload = next_record(bytes, &mut offset, 12)?;
+                validate_providers(payload)?;
+                providers = Some(payload);
+            }
             10 if heaps.is_empty()
                 && facts.is_empty()
                 && code.is_none()
@@ -101,6 +122,7 @@ pub fn decode(
         code,
         sources,
         behaviors,
+        providers,
     })
 }
 
@@ -121,6 +143,7 @@ pub fn compose_stripped(
         facts: &[],
         sources: None,
         behaviors: None,
+        providers: None,
         code: None,
     })
 }
@@ -151,7 +174,7 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
             .and_then(|value| value.checked_add(payload.len()))
             .ok_or(Error::Quantity)?;
     }
-    for sources in spec.sources.iter().chain(spec.behaviors.iter()) {
+    for sources in spec.providers.iter().chain(spec.sources.iter()).chain(spec.behaviors.iter()) {
         total = total
             .checked_add(12)
             .and_then(|n| n.checked_add(sources.len()))
@@ -180,6 +203,10 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
     push_hashed_record(&mut output, 7, spec.programs)?;
     push_hashed_record(&mut output, 8, spec.bindings)?;
     push_hashed_record(&mut output, 9, spec.selection)?;
+    if let Some(providers) = spec.providers {
+        validate_providers(providers)?;
+        push_record(&mut output, 12, providers)?;
+    }
     if let Some(sources) = spec.sources {
         push_record(&mut output, 10, sources)?;
     }
@@ -251,9 +278,15 @@ pub fn structural_preflight(
     let mut code = None;
     let mut sources = None;
     let mut behaviors = None;
+    let mut providers = None;
     while offset < bytes.len() {
         let kind = read_u32(bytes, offset).ok_or(Error::Record)?;
         match kind {
+            12 if heaps.is_empty() && facts.is_empty() && code.is_none() && sources.is_none() && behaviors.is_none() && providers.is_none() => {
+                let payload = next_record(bytes, &mut offset, 12)?;
+                validate_providers(payload)?;
+                providers = Some(payload);
+            }
             10 if heaps.is_empty()
                 && facts.is_empty()
                 && code.is_none()
@@ -928,6 +961,7 @@ mod tests {
             facts: &[],
             sources: None,
             behaviors: Some(&behaviors),
+            providers: None,
             code: None,
         })
         .unwrap();
@@ -962,6 +996,7 @@ mod tests {
                 facts: &[],
                 sources: None,
                 behaviors: None,
+                providers: None,
                 code: None,
             });
             if words == 0 {
@@ -1029,6 +1064,7 @@ mod tests {
             facts: &[],
             sources: None,
             behaviors: None,
+            providers: None,
             code: None,
         })
         .unwrap();
@@ -1079,6 +1115,7 @@ mod tests {
             facts: &[],
             sources: None,
             behaviors: None,
+            providers: None,
             code: Some(b"\x7fELFbirnam-v8-fixture"),
         })
         .unwrap();
@@ -1144,6 +1181,7 @@ mod tests {
             facts: &fact_sets,
             sources: None,
             behaviors: None,
+            providers: None,
             code: None,
         })
         .unwrap();
@@ -1197,6 +1235,7 @@ mod tests {
             facts: &[],
             sources: None,
             behaviors: None,
+            providers: None,
             code: None,
         })
         .unwrap();
@@ -1241,6 +1280,7 @@ mod tests {
             facts: &[],
             sources: None,
             behaviors: None,
+            providers: None,
             code: None,
         })
         .unwrap();
@@ -1350,6 +1390,7 @@ mod tests {
                 facts: &[],
                 sources: None,
                 behaviors: None,
+                providers: None,
                 code: Some(&unit),
             })
             .unwrap();
@@ -1400,6 +1441,7 @@ mod tests {
             code: None,
             sources: Some(&source),
             behaviors: None,
+            providers: None,
         };
         let image = super::compose(spec).unwrap();
         assert_eq!(
@@ -1413,6 +1455,7 @@ mod tests {
             super::compose(super::ImageSpec {
                 sources: Some(&invalid),
                 behaviors: None,
+                providers: None,
                 ..spec
             })
             .is_err()
@@ -1424,6 +1467,7 @@ mod tests {
                 heaps: &[&damaged],
                 sources: None,
                 behaviors: None,
+                providers: None,
                 ..spec
             })
             .is_err()

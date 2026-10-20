@@ -352,9 +352,9 @@ fn bootstrap_loops_use_live_sends_and_preserve_control_boundaries() {
 }
 unsafe fn compiled(h: &H) {
     unsafe {
-        let value = h.eval(b"let n := [db cellFor: [Object clone] attr: #counter]; [n set: 0]; [[| [[n value] < 100]] whileTrue: [| [n set: [[n value] + 1]]]]; [n value]");
+        let value = h.eval(b"let n := [Cell with: 0]; [n set: 0]; [[| [[n value] < 100]] whileTrue: [| [n set: [[n value] + 1]]]]; [n value]");
         assert_eq!(h.number(value), 100);
-        let value = h.eval(b"let m := [db cellFor: [Object clone] attr: #counter]; [m set: 0]; [[| [[m value] >= 7]] whileFalse: [| [System gc]; [m set: [[m value] + 1]]]]; [m value]");
+        let value = h.eval(b"let m := [Cell with: 0]; [m set: 0]; [[| [[m value] >= 7]] whileFalse: [| [System gc]; [m set: [[m value] + 1]]]]; [m value]");
         assert_eq!(h.number(value), 7);
         let error = h.eval(b"[[| 42] whileTrue: [| nil]]");
         assert_eq!(
@@ -595,7 +595,7 @@ unsafe fn control(h: &H) {
         );
         let machine = h.call(h.named(b"Machine"), b"new", &[]);
         h.bind(b"LoopMachine", machine);
-        let block = h.eval(b"[| let state := [db cellFor: [Object clone] attr: #loopState]; [state set: 0]; [[| [[state value] < 2]] whileTrue: [| [LoopMachine park]; [state set: [[state value] + 1]]]]; [state value]]");
+        let block = h.eval(b"[| let state := [Cell with: 0]; [state set: 0]; [[| [[state value] < 2]] whileTrue: [| [LoopMachine park]; [state set: [[state value] + 1]]]]; [state value]]");
         assert_eq!(h.call(machine, b"runBlock:", &[block]), machine);
         collect(id, h.gc);
         assert_eq!(h.call(machine, b"resumeWith:", &[h.named(b"nil")]), machine);

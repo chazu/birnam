@@ -219,48 +219,29 @@ fn block_parameter_count(node: &OwnedCst) -> Option<usize> {
     )
 }
 
-/// Top-level declarative method definitions, retained verbatim for documentation.
+/// Syntactic literal method declarations, including initializer blocks, retained
+/// verbatim for documentation. This does not infer execution or lexical shadowing;
+/// runtime dictionaries remain authoritative and revision recognition is separate.
 pub fn method_sources(tree: &OwnedCst, source: &[u8]) -> Vec<Vec<u8>> {
     let mut result = Vec::new();
-    let Some(program) = skip_cst_wrappers(tree) else {
-        return result;
-    };
-    let Some(statements) = program.child(0) else {
-        return result;
-    };
-    if program.rule() != b"program" || statements.rule() != b"statements" {
-        return result;
-    }
-    for index in 0..statements.child_count() {
-        let Some(node) = statements
-            .child(index)
-            .and_then(|s| s.child(0))
-            .and_then(skip_cst_wrappers)
-        else {
-            continue;
-        };
-        if node.rule() != b"send" {
-            continue;
-        }
-        let Some(receiver) = node.child(0).and_then(skip_cst_wrappers) else {
-            continue;
-        };
-        if receiver.rule() != b"ident" || source_span(receiver, source) != Some(b"Reflect") {
-            continue;
-        }
-        let Some((selector, args)) = node
-            .child(1)
-            .and_then(skip_cst_wrappers)
-            .and_then(|m| keyword_selector_args(m, source))
-        else {
-            continue;
-        };
-        if (selector == b"defineMethod:on:as:" && args.len() == 3)
-            || (selector == b"defineMethod:on:as:doc:" && args.len() == 4)
+    let mut pending = vec![(tree, 0)];
+    while let Some((node, depth)) = pending.pop() {
+        if depth >= MAX_CST_DEPTH { continue; }
+        if node.rule() == b"send"
+            && let Some(receiver) = node.child(0).and_then(skip_cst_wrappers)
+            && receiver.rule() == b"ident"
+            && source_span(receiver, source) == Some(b"Reflect")
+            && let Some((selector, args)) = node.child(1).and_then(skip_cst_wrappers)
+                .and_then(|message| keyword_selector_args(message, source))
+            && ((selector == b"defineMethod:on:as:" && args.len() == 3)
+                || (selector == b"defineMethod:on:as:doc:" && args.len() == 4))
+            && symbol_literal(args[0], source).is_some()
+            && let Some(bytes) = source_span(node, source)
         {
-            if let Some(bytes) = source_span(node, source) {
-                result.push(bytes.to_vec());
-            }
+            result.push(bytes.to_vec());
+        }
+        for index in (0..node.child_count()).rev() {
+            if let Some(child) = node.child(index) { pending.push((child, depth + 1)); }
         }
     }
     result

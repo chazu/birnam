@@ -169,6 +169,7 @@ fn source_compiles_and_runs_on_production_execution() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store", "relational"]);
         let roots = object(send(
             id,
             ns,

@@ -309,7 +309,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             &[named(b"StringVt")?, Operand::object(collection)],
         )?;
         release(id, roots, collection_root)?;
-        for name in ["vector", "map", "store", "relational"] {
+        for name in ["vector", "map"] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -431,7 +431,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             if result != owner || owner == object(named(b"nil")?)? { return Err(invalid()); }
         }
         #[cfg(not(feature = "lang-seed"))]
-        for name in ["cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "alienRecipes", "imageFormat", "storeSupport", "trace", "globals", "methodInvocation"] {
+        for name in ["cell", "modules", "lang", "nativeValues", "booleanValues", "integerValues", "blockLoopControl", "blockLoop", "range", "systemGc", "printing", "sourceLoader", "nativeLoader", "alienCompiler", "alienRecipes", "imageFormat", "trace", "globals", "methodInvocation"] {
             let path = object(id.send_named(
                 object(string)?, b"fromBytes:",
                 &[Operand::bytes(&module_path(directory, name))],
@@ -452,6 +452,18 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             })();
             release(id, roots, path_token)?;
             result?;
+        }
+        {
+            let globals = object(named(b"Globals")?)?;
+            let module = id.send_named(globals, b"at:", &[Operand::object(id.intern_name(b"Module")?)])?;
+            let nil = object(named(b"nil")?)?;
+            if let Some(module) = module.as_object().filter(|o| *o != nil) {
+                let path = object(id.send_named(object(string)?, b"fromBytes:", &[Operand::bytes(directory)])?)?;
+                let token = retain(id, roots, path)?;
+                let result = id.send_named(module, b"libDir:", &[Operand::object(path)]);
+                release(id, roots, token)?;
+                result?;
+            }
         }
         for name in ["image", "alien", "isolate"] {
             id.send_named(

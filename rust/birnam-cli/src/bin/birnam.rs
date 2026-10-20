@@ -101,7 +101,7 @@ fn run() -> Result<(), String> {
                 &resolve().map_err(|e| e.to_string())?,
                 StartupPolicy {
                     skip_stdlib: false,
-                    tool_bootstrap: true,
+                    tool_bootstrap: matches!(classify_command(&args), Ok(CommandKind::Doc | CommandKind::Docgen)),
                     ..StartupPolicy::from_environment()
                 },
             )

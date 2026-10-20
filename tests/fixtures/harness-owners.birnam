@@ -1,3 +1,4 @@
+[Module load: #store];
 [Module load: #os];
 [System load: "modules/test.birnam"]; [System load: "modules/bench.birnam"];
 [[|

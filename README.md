@@ -378,11 +378,12 @@ as the working directory.
 ## Images and Executables
 
 An image makes a live system durable. The current image-v8 format preserves the
-Store and its history, globals, object identity, accepted method bindings,
+explicitly selected Store facts/history, globals, object identity, method bindings,
 canonical programs, Block captures and source provenance. Compatible boot loads
 the saved relocatable native objects through TCC. `--rebuild` compiles the saved
-canonical programs to restore the same accepted generation. Neither path
-evaluates the saved source or reruns its initializers.
+canonical programs to restore recorded code. Neither path evaluates saved source
+or replays saved program initializers. Declared native providers activate through
+their module entries before heap restoration; a core image declares none.
 
 ### Save an image
 
@@ -785,9 +786,11 @@ use their messages without decoding another owner's payload.
 [GC](rust/birnam-collect/README.md) owns tracing and reclamation;
 [ObjectModel](rust/birnam-object-model/README.md) owns ordinary slots, cloning and
 private behaviors. Value and collection owners implement their own representation,
-equality and hashing. [Store](rust/birnam-store/README.md) owns facts, history,
-Cells and method-publication rules, while
-[Relational](rust/birnam-relational/README.md) supplies queries, rules and aggregates.
+equality and hashing. Ordinary Cells and reflection need no database. Optional
+[Store](rust/birnam-store/README.md) owns explicit facts, history, fact-backed Cells
+and opt-in publication protocols; [Relational](rust/birnam-relational/README.md)
+supplies queries, rules and aggregates. Select them with `Module load: #store` or
+`Module load: #relational`; they are not part of core bootstrap.
 
 [Execution](rust/birnam-execution/README.md) owns Methods, Blocks, frames, bounded
 Machines and continuations. [Codegen](rust/birnam-codegen-runtime/README.md) connects
@@ -811,11 +814,13 @@ that Rust grammar seed from the published runtime. PEG matching and Codegen
 remain Rust implementations.
 
 The installer prepares `lib/birnam-bootstrap.image` for ordinary and console
-startup, plus `lib/birnam-tools.image` for CLI tooling. Both include the required
+startup and basic CLI/LSP use, plus `lib/birnam-tools.image` for the explicit
+documentation catalog. Both include the required
 authored methods and foreign-function wrappers. Normal startup maps compiled code
 without recompiling the bootstrap or tool adapters. Compilation also records
-source metadata in Store; compiled startup restores these facts rather than
-parsing source or traversing syntax trees. A missing or incompatible image is an
+source metadata with its ordinary source owner; startup restores those objects
+without parsing source or traversing syntax trees. The core is prepared and
+probed before optional providers are installed. A missing or incompatible image is an
 error; reinstall to regenerate it. `BIRNAM_FORCE_SOURCE=1 birnam ...` explicitly
 requests source bootstrap for development or recovery and can be slow.
 
@@ -874,7 +879,7 @@ The active design documents describe contracts and remaining work:
 - [Object authority](docs/design/42-object-canonical-relational-derived.md) and
   [relational semantics](docs/design/37-the-relational-reading.md) define the
   relationship between objects, Store facts and queries.
-  The [optional Store and Relational draft](docs/design/optional-store-and-relational.md)
+  The [optional Store and Relational decision](docs/design/optional-store-and-relational.md)
   records the agreed direction to retain their self-description while removing
   mandatory core dependence and making relational code description opt-in.
 - [Compiled units](docs/design/45-compiled-units.md) and

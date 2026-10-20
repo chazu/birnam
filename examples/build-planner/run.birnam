@@ -1,3 +1,4 @@
+[Module load: #relational];
 // Invoked by scripts/build-planner.py in an isolated source copy.
 [Module load: #json]; [Module load: #time]; [Module load: #os];
 [System load: "planner.birnam"]; [System load: "backends.birnam"];

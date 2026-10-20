@@ -33,6 +33,7 @@ const ASSETS:&[u8]=b"[System embedFile: \"a.bin\"]; [| [System embedFile: \"b.bi
 #[ignore="requires production modules"]
 fn temporary_source_inspection_does_not_publish_or_retain() {unsafe{
     let id=id();let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
+        optional_modules(id, ns, &["store"]);
     let roots=object(send(id,ns,b"at:",&[Operand::object(id.intern_name(b"Roots").unwrap())]));
     let h=H{id,ns,roots,tokens:RefCell::new(vec![])};
     let cg=h.named(b"Codegen");let store=h.named(b"Store");let gc=h.named(b"GC");let nil=h.named(b"nil");

@@ -188,6 +188,7 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,

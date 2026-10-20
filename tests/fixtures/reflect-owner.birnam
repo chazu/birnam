@@ -1,3 +1,4 @@
+[Module load: #store];
 // Binding snapshots remain valid if a visitor replaces later values and collects.
 [Module load: #os];
 [[|

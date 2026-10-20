@@ -1,3 +1,4 @@
+[Module load: #store];
 // Default mutation is local. Database handles remain an explicit choice.
 [Module load: #os]; [Module load: #json];
 [[|

@@ -1,0 +1,30 @@
+// Explicit Store activation through the same public Id loader as any native module.
+[Module named: #store requires: #[#nativeLoader]];
+[[|
+let loaded := [System loadModule: [[Module libDir] , "/native/libbirnam_store.dylib"] arguments: #[Namespace]];
+[[loaded isError] ifTrue: [| loaded] ifFalse: [|
+let imageFactOwner := Store;
+[Reflect defineMethod: #imageStore on: System as: [:self | imageFactOwner]];
+
+// Fact reflection composes Store's rooted live snapshot with ordinary Blocks.
+// It does not inspect Store payloads or change collection settings.
+[Reflect defineMethod: #factsOf: on: Reflect as: [:self :entity |
+  let result := [#[] asCell];
+  let observed := [db liveTriplesDo: [:e :a :v |
+    [[e == entity] ifTrue: [|
+      [result set: [[result value] add: {#entity -> e #attribute -> a #value -> v}]]]]]];
+  [[observed isError] ifTrue: [| observed] ifFalse: [| [result value]]]]];
+
+// The optional fact-backed Cell family owns these conveniences. Ordinary Cell
+// already supplies its own methods and does not require this native family.
+[Reflect defineMethod: #inc on: CellVt as: [:self |
+  [self set: [[self value] + 1]]; [self value]
+]];
+[Reflect defineMethod: #dec on: CellVt as: [:self |
+  [self set: [[self value] - 1]]; [self value]
+]];
+
+[Module field: #imageProvider of: #store put: true];
+imageFactOwner
+]]
+] value]

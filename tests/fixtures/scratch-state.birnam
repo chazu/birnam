@@ -1,3 +1,4 @@
+[Module load: #store];
 // Run by scripts/scratch-state-test.py, after optional development source loads.
 [Module load: #json]; [Module load: #time]; [Module load: #os];
 [Module load: #markdown]; [Module load: #nativedoc]; [Module load: #alienCompiler];

@@ -59,6 +59,8 @@ if selected cli; then
   run_check artifact-cli-test.py python3 scripts/artifact-cli-test.py "$scratch/relocated"
   run_check lang-migration-test.py python3 scripts/lang-migration-test.py "$scratch/relocated"
   run_check alien-compiler-test.py python3 scripts/alien-compiler-test.py "$scratch/relocated"
+  run_check core-without-store-test.py python3 scripts/core-without-store-test.py "$scratch/relocated" --services
+  run_check optional-store-test.py python3 scripts/optional-store-test.py "$scratch/relocated"
   run_check image-format-test.py python3 scripts/image-format-test.py "$scratch/relocated"
   run_check doc-render-test.py python3 scripts/doc-render-test.py "$scratch/relocated"
   run_check portable-execution-test.py python3 scripts/portable-execution-test.py "$scratch/relocated"
@@ -70,6 +72,7 @@ if selected cli; then
   run_check project-query-test.py python3 scripts/project-query-test.py --prefix "$scratch/relocated" --output "$scratch/project-query.json" --prepared-binaries "$prepared"
 fi
 if selected image; then
+  run_check optional-store-image-test.py python3 scripts/optional-store-image-test.py "$scratch/relocated"
   run_check host-image-test.py python3 scripts/host-image-test.py "$scratch/relocated"
   run_check native-loader-image-smoke.sh bash scripts/native-loader-image-smoke.sh "$scratch/relocated"
   run_check trace-image-smoke.py python3 scripts/trace-image-smoke.py "$scratch/relocated"

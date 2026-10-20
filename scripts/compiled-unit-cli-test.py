@@ -11,7 +11,7 @@ env = {k: v for k, v in os.environ.items() if not k.startswith('BIRNAM_')}
 env['BIRNAM_GC_PRECISE'] = '1'
 with tempfile.TemporaryDirectory(prefix='birnam-compiled-unit-') as temporary:
     work = Path(temporary)
-    forms = ['[Module load: #repl]']
+    forms = ['[Module load: #store]', '[Module load: #repl]']
     checks = []
 
     def check(expression, label):

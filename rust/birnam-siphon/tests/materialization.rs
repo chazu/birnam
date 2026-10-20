@@ -756,7 +756,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
                 let source = h.eval(b"[:held | [| held]]");
                 let co = h.call(source, b"codeObject", &[]);
                 let outer = h.materialize(co, &[], resumable);
-                let cell = h.eval(b"[db cellFor: [Object clone] attr: #retainedMutableCapture]");
+                let cell = h.eval(b"[Cell with: nil]");
                 h.call(cell, b"set:", &[h.int(87)]);
                 let inner = h.call(outer, b"value:", &[cell]);
                 let alias = h.call(inner, b"clone", &[]);

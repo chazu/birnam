@@ -117,6 +117,7 @@ struct Change<'a> {
     value: Oop,
     selector: Oop,
     retention_only: Cell<bool>,
+    provider_only: Cell<bool>,
 }
 unsafe extern "C" fn value(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::object(c.cast()))
@@ -130,7 +131,10 @@ unsafe extern "C" fn change(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         }
         p.h.keep(object(result.value));
         p.calls.set(p.calls.get() + 1);
-        if p.retention_only.get() {
+        if p.provider_only.get() {
+            let module = p.h.call(p.h.named(b"Globals"), b"at:", &[p.h.id.intern_name(b"Module").unwrap()]);
+            p.h.call(module, b"field:of:put:", &[p.h.id.intern_name(b"imageProvider").unwrap(), p.h.id.intern_name(b"store").unwrap(), p.h.named(b"false")]);
+        } else if p.retention_only.get() {
             p.h.call(p.h.named(b"Store"), b"retainLast:", &[p.h.integer(1)]);
         } else {
             let vt = p.h.named(b"IntegerVt");
@@ -201,6 +205,7 @@ fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,
@@ -233,6 +238,7 @@ fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
             value: answer,
             selector,
             retention_only: Cell::new(false),
+            provider_only: Cell::new(false),
         });
         replace(
             &h,
@@ -271,6 +277,20 @@ fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
         assert_eq!(word(h.call(store, b"basis", &[])), word(basis));
         assert_eq!(word(h.call(store, b"retentionPolicyCode", &[])), 2);
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        // Provider declarations and the restored Module registry must describe
+        // the same snapshot. A later marker edit is preserved, not replayed.
+        p.provider_only.set(true);
+        replace(&h, codegen, b"compilePortableImageCode:bindings:selection:",
+            NativeEntry::new(change, (&mut *p as *mut Change<'_>).cast()));
+        assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"nil"));
+        replace(&h, codegen, b"compilePortableImageCode:bindings:selection:", original);
+        assert_eq!(p.calls.get(), 3);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let module = h.call(h.named(b"Globals"), b"at:", &[id.intern_name(b"Module").unwrap()]);
+        let field = id.intern_name(b"imageProvider").unwrap();
+        let provider = id.intern_name(b"store").unwrap();
+        assert_eq!(h.call(module, b"field:of:", &[field,provider]), h.named(b"false"));
+        h.call(module, b"field:of:put:", &[field,provider,h.named(b"true")]);
         projection_roots(&h,filename);
         std::fs::remove_file(path).unwrap();
         h.clear(0);

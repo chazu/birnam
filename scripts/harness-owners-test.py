@@ -43,7 +43,8 @@ def main():
     assert case['ops']==2 and case['ns_per_op']>=0 and case['ns_per_op_raw']>=0 and case['median_us']>=case['min_us']>=0
     if not args.skip_images:
         source=work/'save.birnam';image=work/'harness.image'
-        source.write_text('''[Module load: #os]; [System load: TEST]; [System load: BENCH];
+        source.write_text('''[Module load: #store];
+[Module load: #os]; [System load: TEST]; [System load: BENCH];
 [[|
 let check := [:ok | [ok ifFalse: [| [System printErrorText: "harness image failure\\n"]; [OS exit: 1]]]];
 let count := [0 asCell]; let alias := count;

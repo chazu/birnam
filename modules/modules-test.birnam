@@ -29,16 +29,16 @@ let s := [TestSuite named: "Modules" module: #modules];
   [t expect: [r kind] equals: #circularDependency describes: "the kinded cycle error"]]];
 
 [s test: "kernel modules are represented (registered, kind #kernel), not managed" do: [:t |
-  [t expect: [Module isRegistered: #store] equals: true describes: "boot registered the kernel set"];
-  [t expect: [Module kindOf: #store] equals: #kernel describes: "kind #kernel"];
-  [t expect: [Module isLoaded: #store] equals: true describes: "kernel modules are already up"];
+  [t expect: [Module isRegistered: #storage] equals: true describes: "boot registered the kernel set"];
+  [t expect: [Module kindOf: #storage] equals: #kernel describes: "kind #kernel"];
+  [t expect: [Module isLoaded: #storage] equals: true describes: "kernel modules are already up"];
   [t expect: [Module isRegistered: #ttghost] equals: false describes: "an unregistered name"];
   [t expect: [[Module requiresOf: #ttghost] size] equals: 0 describes: "unregistered = a leaf (empty requires)"];
   // A self-hosted module that requires a kernel one sorts after it (kernel = leaf).
-  [Module named: #ttapp requires: #[#store]];
+  [Module named: #ttapp requires: #[#storage]];
   let order := [Module loadOrder: #[#ttapp]];
   [t expect: [order size] equals: 2 describes: "app + its kernel dep"];
-  [t expect: [order at: 0] equals: #store describes: "the kernel dep is a satisfied leaf"];
+  [t expect: [order at: 0] equals: #storage describes: "the kernel dep is a satisfied leaf"];
   [t expect: [order at: 1] equals: #ttapp describes: "the app after it"]]];
 
 [s test: "the manager itself is a self-hosted module (Phase 5b)" do: [:t |

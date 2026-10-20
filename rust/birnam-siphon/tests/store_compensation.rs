@@ -19,6 +19,7 @@ fn reserved_compensation_survives_capacity_exhaustion_and_preserves_other_facts(
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let named = |name: &[u8]| {
             object(send(
                 id,

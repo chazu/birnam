@@ -1,10 +1,10 @@
 # Store and Relational as optional language facilities
 
-2026-10-13; implementation status and release scope reviewed 2026-10-19.
-**Status: agreed direction; migration in progress and a prerequisite for the next release.**
+2026-10-13; implementation status reviewed 2026-10-20.
+**Status: core independence and optional providers are implemented and qualified; clean release acceptance and publication remain.**
 The user selected completion of the Store-independent core before releasing.
 The [source-backed completion plan](store-independent-core-completion.md) defines
-remaining dependencies, ordered implementation slices and the required core-absent
+completed boundaries, qualification status and the required core-absent
 and optional-facility acceptance matrix. Native implementation language alone is
 not a dependency failure: further artifact/certification ports remain separate
 self-hosting work unless this acceptance exposes a concrete Store dependency.
@@ -12,8 +12,8 @@ self-hosting work unless this acceptance exposes a concrete Store dependency.
 The direction is:
 retain Store and Relational, including their self-describing bootstrap, and
 remove their mandatory role in core language operations. The migration contracts
-and sequence below guide the migration; the current implementation has completed
-several slices, but not the whole transition.
+and sequence below record the migration. The completion plan is authoritative for
+current qualification and release status.
 
 The delivered slices provide owner-based reflection, local Cells, owned Module,
 LSP and Globals state, and [ordinary record fields](ordinary-record-owners.md).
@@ -21,8 +21,9 @@ LSP and Globals state, and [ordinary record fields](ordinary-record-owners.md).
 separate contracts: ordinary edits need no Store observer or Generation handshake;
 fresh startup and advanced live loading are distinct. Live loading now leaves
 applied changes in place on failure; the user owns the recovery snapshot. Retained compiler metadata now uses compilation records;
-recipes, lifecycle/task state, remaining tool state and bootstrap dependencies
-still require owner migrations. Backwards compatibility is not a requirement;
+recipes, lifecycle/task/worker/REPL state and bootstrap bindings also have
+independent owners. Core startup and unrelated tools omit Store and Relational;
+Doc explicitly selects them. Backwards compatibility is not a requirement;
 useful reflection, late binding, owner lifetimes and explicit user facts remain
 required.
 
@@ -204,10 +205,12 @@ descriptions. Keep whatever bounded initialization is needed to establish the
 modules' own descriptive data; it must not make unrelated core facilities depend
 on a global fact world.
 
-The present bootstrap loads Execution before Store, but still loads Store and
-Relational unconditionally before the compiler and Generation.
-Removing isolated callers is insufficient to change that order. Inventory and
-remove the actual dependencies before claiming either module is optional.
+The production bootstrap excludes Store and Relational. The builder prepares and
+probes the core before building/installing those optional providers. Authored
+`store` and `relational` entries load their native providers explicitly; Doc
+declares both. Saved images carry an ordered provider declaration, empty for the
+core, and activate required local providers before heap restoration. There is no
+ambient database discovery or automatic package download.
 
 Preserve clean-checkout cold bootstrap and the eventual ability to build Birnam
 entirely in Birnam. Necessary Rust seeds may remain during migration; this
@@ -259,7 +262,11 @@ reinterpreted as ordinary fields during loading.
 Small migrations should implement this common design. They should not invent
 different answers about authority, history or inspection in each module.
 
-## Progress as of 2026-10-19
+## Historical progress as of 2026-10-19
+
+This dated table precedes the final owner migrations and production cutover. See
+the [current completion ledger](store-independent-core-completion.md#remaining-dependency-ledger)
+for present status; the remaining work below is historical.
 
 The five ordinary-object field migrations are committed as `e41c4f35`; Bench/Test
 ownership is committed as `5c70fe4c`. The basic
@@ -400,11 +407,11 @@ unobservable representation optimization, and does not copy or delete user facts
   suite registry and explicitly describes suites into a caller-selected Store;
   intentional discovery remains available without facts. See
   [the implementation report](test-and-bench-owners.md).
-- [ ] For each field migration, document and test clone/reference sharing,
+- [x] For each field migration, document and test clone/reference sharing,
   identity versus value equality, aliases, absent versus nil, reflective edits,
   reentry/collection and explicit same-name facts. Preserve explicit facts and
   intentional discovery; do not add method-identity guards around ordinary sends.
-- [ ] Audit REPL input/error handles and buffers with socket/task/worker state.
+- [x] Audit REPL input/error handles and buffers with socket/task/worker state.
   Replace the current `imageTransient` fact policy explicitly; specify cleanup,
   ownership and recreation/rejection on load before moving resources into slots.
   Test failed construction, shutdown, image restoration and retention.
@@ -451,37 +458,36 @@ unobservable representation optimization, and does not copy or delete user facts
   carrier bridge with the artifact implementation. Do not make it permanent. This
   port is not itself a Store-independence release gate; the absence tests must prove
   its current owner operations have no Store dependency.
-- [ ] Before migrating each coordinated owner, record which operations actually
+- [x] Before migrating each coordinated owner, record which operations actually
   promise rollback and why. Keep basic live Image loading free of inverse machinery; add stronger recovery
   only as an explicitly selected feature with a demonstrated requirement. Preserve
   applied/callback writes, truthful partial-load reports and stale-capability
   invalidation, including collecting/reentrant failure paths.
-- [ ] Specify Alien recipe durability separately from process-local addresses and
+- [x] Specify Alien recipe durability separately from process-local addresses and
   resources. Preserve reconstruction, reflection and code ownership without a
   permanent opaque native registry or a replacement global fact service.
-- [ ] Audit persistence of independent Store instances as an optional-facility
-  follow-up. The Bench/Test qualification reproduced rejection of an image capturing
-  `Store new` on the pre-migration runtime; canonical `db` descriptions persist.
-  Document that boundary rather than implying every runtime snapshot is imageable.
-- [ ] Define any artifact/image version or rebuild transition before changing its
+- [x] Audit persistence of independent Store instances. Images capturing `Store new`
+  remain explicitly rejected; selected canonical Store history and Cells persist.
+  Per-instance persistence is a separate optional capability, not required for core
+  independence. Keep the rejection test; do not silently omit those facts.
+- [x] Define any artifact/image version or rebuild transition before changing its
   representation. Keep explicit facts and retained history independent; reject an
   unsupported format rather than silently dropping data. Compatibility adapters
   are not required.
-- [ ] Establish the final Store/Relational-absent core acceptance path and companion
+- [x] Establish the final Store/Relational-absent core acceptance path and companion
   optional-module/self-description path. Isolated exported-method floor tests are
   useful evidence but do not prove cold bootstrap, compile/run or complete loading.
-- [ ] Keep this status table authoritative. Mark historical probes and superseded
+- [x] Keep this status table authoritative. Mark historical probes and superseded
   proposals at their source; distinguish implemented/qualified, committed, released
   and installed state. Review owner boundaries before accepting a new registry,
   mirror, transaction framework or native service as a dependency replacement.
 
-Bench/Test is committed and non-publishing project inspection is qualified. The
-retained compiler metadata ownership is now qualified; the remaining structural
-work includes bootstrap Globals, resource persistence policy, Alien recipes,
-optional Image fact participation, task/worker/REPL/socket state and production
-composition. Native artifact/certification self-hosting remains separate. The
-selected live-load change is stated above; these tasks do not authorize changing
-GC policy or resuming the paused Relational rewrite.
+The completion plan records qualification for bootstrap Globals, resource image
+policy, Alien recipes, optional Image participation, task/worker/REPL/socket state
+and actual core/optional composition. Host edge-case and timing checks pass; the consolidated receipt records the
+qualified cutover. Clean candidate release acceptance is separate.
+Native artifact/certification self-hosting remains a follow-up. These changes do
+not alter GC policy or resume the paused Relational rewrite.
 
 ## Acceptance and remaining decisions
 
@@ -501,14 +507,18 @@ Completion requires an automated path that boots the core, compiles/runs code,
 reflects on and changes definitions, and saves/restores a core image without
 Store or Relational. A companion path must load the optional modules, exercise
 their self-description, opt into code description and verify its declared
-mutation/history/lifetime behavior. Exact prefix composition and test commands
-will follow the dependency migration.
+mutation/history/lifetime behavior. The required runners are
+`core-without-store-test.py PREFIX --services`, `optional-store-test.py PREFIX`
+and `optional-store-image-test.py PREFIX`, together with the cold build and
+installed release gates. The production receipt records both closures.
 
 The local Cell default is implemented and the first code-description experiment
-uses explicit snapshots. Remaining decisions include whether to add live code-description
-mechanisms, explicit opt-in description/write contracts, image/version transitions,
-and default module-loading policy. Legacy writable fact aliases need not be preserved. These are bounded API
-and delivery decisions; the destination is fixed: **relational facilities remain
+uses explicit snapshots. Default loading is core-only; `Module load: #store` or
+`#relational` opts into data facilities. Images now require provider declarations
+and the current owner envelope; rebuild older executable images. Generic live
+code-description and per-instance Store persistence remain optional future work,
+not release blockers. Legacy writable fact aliases are not preserved. The
+destination is implemented: **relational facilities remain
 available and self-describing, while ordinary language operation is independent
 of them.**
 

@@ -69,7 +69,6 @@ impl HostRuntime<'_> {
         let module = scope.call(globals, b"at:", &[Operand::object(name)])?;
         for name in [
             "artifact",
-            "store",
             "storage",
             "peg",
             "tcc",
@@ -77,7 +76,6 @@ impl HostRuntime<'_> {
             "prelude",
             "collection",
             "error",
-            "relational",
             "image",
             "alien",
             "isolate",

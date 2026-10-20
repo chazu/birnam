@@ -13,7 +13,8 @@ def run(name,argv,expected):
 for managed in ([False,True] if a.mode=='both' else [a.mode=='managed']):
  tag='managed' if managed else 'unmanaged';module=work/(tag+'-module.birnam');writer=work/(tag+'-writer.birnam');initial=work/(tag+'-initial.image');edited=work/(tag+'-edited.image')
  module.write_text('[Module named: #ordinaryEditFixture requires: #[]]; [Reflect defineMethod: #editableValue on: Integer as: [:self | 41]]\n')
- writer.write_text('''
+ writer.write_text('''[Module load: #store];
+
 [System load: MODULE];
 ADOPT
 [Globals at: #main put: [|

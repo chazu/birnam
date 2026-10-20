@@ -142,7 +142,8 @@ unsafe fn replace(v:&Vm,owner:Oop,name:&[u8],e:NativeEntry) {
 #[ignore = "requires production native modules"]
 fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
     unsafe {
-        let id=id();let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);lifecycle_records(id,ns);let v=Vm{id,ns};
+        let id=id();let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
+        optional_modules(id, ns, &["store"]);lifecycle_records(id,ns);let v=Vm{id,ns};
         let cg=v.named(b"Codegen");let generation=v.named(b"Generation");let globals=v.named(b"Globals");let nil=v.named(b"nil");let yes=v.named(b"true");
         let eval=|text:&[u8]|v.call(cg,b"evalPersisting:",&[v.text(text)]);
         let before=v.text(b"[Module named: #txFixture requires: #[]]; let txHelper := [| 10]; [Reflect defineMethod: #txReplace on: Integer as: [:self | [txHelper value]]]; [Reflect defineMethod: #txRemove on: Integer as: [:self | 30]]");

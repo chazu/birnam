@@ -96,6 +96,7 @@ fn ledger_validation_preserves_state_and_reports_current_agreement() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         lifecycle_records(id, ns);
         let named = |name: &[u8]| {
             object(send(

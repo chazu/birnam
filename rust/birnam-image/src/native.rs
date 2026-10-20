@@ -215,6 +215,10 @@ fn composition_identity(decoded: &v8::DecodedImage<'_>) -> Vec<u8> {
         }
     }
 
+    if let Some(providers) = decoded.providers {
+        digest.update((providers.len() as u64).to_le_bytes());
+        digest.update(providers);
+    }
     digest
         .finalize()
         .iter()
@@ -624,7 +628,7 @@ impl Graph<'_, '_> {
 }
 // Snapshot consistency is about owner data, not optional certification or
 // method identities. Monotonic epochs may conservatively reject a no-op edit.
-unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>, store: Option<Oop>) -> Result<(Option<(Oop, usize)>, Oop, Oop, usize, usize, usize), Outcome> {
+unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>, store: Option<Oop>) -> Result<(Option<(Oop, usize)>, Oop, Oop, Oop, Oop, usize, usize, usize), Outcome> {
     unsafe {
         let facts = store.map(|owner| {
             s.send(owner, b"imageStateRevision", &[])?.as_word().map(|revision| (owner, revision)).ok_or_else(bad)
@@ -635,7 +639,9 @@ unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>, store: Option<Oop>) -> Result
         let name = q.keep(s.id.intern_name(b"SourceRegistry")?)?;
         let sources = s.call(q, globals, b"at:", &[name])?;
         let revision = s.number(s.call(q, sources, b"revision", &[])?)?;
-        Ok((facts, globals, sources, bindings, methods, revision))
+        let manager = s.call(q, globals, b"at:", &[q.keep(s.id.intern_name(b"Module")?)?])?;
+        let registry = s.call(q, manager, b"registry", &[])?;
+        Ok((facts, globals, sources, manager, registry, bindings, methods, revision))
     }
 }
 unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Operand, Outcome> {
@@ -658,6 +664,12 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
         // Native Store identities are resident exports, not copied slot payloads.
         if store.is_some() && s.export(selected)?.is_none() { return Err(bad()); }
         let stamp = snapshot_stamp(s, q, store)?;
+        let manager = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"Module")?)?])?;
+        let names = s.call(q, manager, b"imageProviders", &[])?;
+        if s.is_error(names)? { return Ok(Operand::object(names)); }
+        let names = s.sequence(q, names)?;
+        let mut providers = (u32::try_from(names.len()).map_err(|_| bad())?).to_le_bytes().to_vec();
+        for name in names { Value::Symbol(s.symbol(name)?).encode(&mut providers); }
         s.facts.borrow_mut().clear();
         let metadata = if let Some(store) = store {
             let metadata = [
@@ -773,6 +785,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
             v8::ImageSpec {
                 sources: Some(&sources_bytes),
                 behaviors: Some(&behaviors),
+                providers: Some(&providers),
                 architecture: support::IMAGE_ARCH_TAG,
                 runtime_abi: runtime_abi(),
                 programs: &programs,
@@ -803,6 +816,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
             v8::ImageSpec {
                 sources: Some(&sources_bytes),
                 behaviors: Some(&behaviors),
+                providers: Some(&providers),
                 architecture: support::IMAGE_ARCH_TAG,
                 runtime_abi: runtime_abi(),
                 programs: &programs,
@@ -1272,6 +1286,21 @@ unsafe fn load(
         let mut owned = format::inspect(s, &bytes)?;
         // Validation returned independent snapshots; the file buffer is dead.
         drop(bytes);
+        // Activation follows declared metadata, never ambient Store discovery.
+        let providers = owned.providers.as_deref().ok_or_else(bad)?;
+        let count = u32::from_le_bytes(providers.get(..4).ok_or_else(bad)?.try_into().map_err(|_| bad())?);
+        let mut offset = 4;
+        let mut names = Vec::new();
+        for _ in 0..count {
+            let Value::Symbol(name) = Value::decode(providers, &mut offset)? else { return Err(bad()); };
+            names.push(q.keep(s.id.intern_name(&name)?)?);
+        }
+        if offset != providers.len() { return Err(bad()); }
+        let manager = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"Module")?)?])?;
+        let names = s.vector(q, &names)?;
+        let ready = s.call(q, manager, b"loadImageProviders:", &[names])?;
+        if s.is_error(ready)? { return Err(Outcome::loaded(Operand::object(ready))); }
+        if ready != manager { return Err(bad()); }
         let composition = composition_identity(&owned.view());
         let native_code = owned.code.take();
         let decoded = owned.view();

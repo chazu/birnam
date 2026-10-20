@@ -279,6 +279,7 @@ fn authored_boundaries_do_not_silently_change_native_failure_or_callback_handlin
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,

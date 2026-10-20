@@ -13,7 +13,7 @@ optional=work/'optional';optional.mkdir()
 for name in 'id root_registry namespace boolean nil collect object_model word bytes execution portable_code string integer float prelude file_io vector map artifact tcc native_backend codegen_runtime error globalsOwner'.split():
  shutil.copy2(prefix/'lib'/f'libbirnam_{name}.dylib',floor)
 for name in ['store','relational']:
- shutil.copy2(prefix/'lib'/f'libbirnam_{name}.dylib',optional)
+ shutil.copy2(prefix/'lib/native'/f'libbirnam_{name}.dylib',optional)
 env=clean_environment();env.update(BIRNAM_TEST_MODULE_DIRECTORY=str(floor),BIRNAM_OPTIONAL_MODULE_DIRECTORY=str(optional),CARGO_TARGET_DIR=str(ROOT/'.cargo-target/native-message-tests'),CARGO_PROFILE_DEV_PANIC='unwind')
 run=command(['mise','exec','--','cargo','test','--offline','--locked','-p','birnam-siphon','--test','globals_without_store','--','--include-ignored'],env=env,timeout=240)
 (work/'run.log').write_text(run['output'])

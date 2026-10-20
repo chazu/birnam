@@ -45,7 +45,7 @@ let requests := REQUESTS;
 ] value]
 '''.replace('DIRECTORY',json.dumps(str(programs)+'/')).replace('REQUESTS',
       '#[' +
-      (' #[Object #slotNames] #[Object #isError] #[Reflect #isSymbol:]'
+      (' #[Object #slotNames] #[Reflect #isSymbol:]'
        ' #[Reflect #slotsOf:] #[Reflect #slotIndex:in:] #[Reflect #slot:in:] #[Reflect #slot:in:put:]'
        ' #[Module #slotNames] #[Module #libDir] #[Module #libDir:]' if args.slots else '') +
       (' #[Module #registry] #[Module #registry:] #[Module #recordNames] #[Module #recordOf:]'
@@ -60,7 +60,7 @@ let requests := REQUESTS;
     env=clean_environment()
     export=command([prefix/'bin/birnam',source],env=env,timeout=120)
     (work/'export.log').write_text(export['output'])
-    assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*((29 if args.registry else 10 if args.slots else 0) + (22 if args.records else 0) + (sum(len(methods) for name,fields,methods in HARNESS)+len(HARNESS_HELPERS) if args.harness else 0)),(work,export)
+    assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*((28 if args.registry else 9 if args.slots else 0) + (22 if args.records else 0) + (sum(len(methods) for name,fields,methods in HARNESS)+len(HARNESS_HELPERS) if args.harness else 0)),(work,export)
     for module in MODULES: shutil.copy2(prefix/'lib'/f'libbirnam_{module}.dylib',floor)
     assert not (floor/'libbirnam_store.dylib').exists()
     env.update(BIRNAM_CELL_PROGRAMS=str(programs), BIRNAM_TEST_MODULE_DIRECTORY=str(floor),

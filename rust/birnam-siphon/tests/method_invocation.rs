@@ -200,6 +200,7 @@ fn default_construction_shares_templates_and_observes_current_policy() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,

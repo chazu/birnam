@@ -1,8 +1,8 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: Globals, owner image payloads, task/worker/Concurrency state and socket ownership are qualified. REPL ownership and one-time setup are qualified. Alien recipes are qualified and their remaining startup cost accepted. Optional Image fact participation is qualified. Optional tools and production composition still require completion.**
-The next release is blocked on completing this milestone, per the user's decision.
+**Status: Store-independent core completion is implemented and qualified. Core-absence, optional-provider, Host/worker, format, formal, cold-archive and timing checks pass. Clean-candidate release qualification and publication remain separate.**
+This closes the implementation milestone selected as a prerequisite for the next release.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
 ## Completion contract
@@ -36,26 +36,26 @@ outside this completion sequence.
 
 ## Remaining dependency ledger
 
-These are source-backed blockers or intentional optional consumers, not raw grep
+These are source-backed completed boundaries or intentional optional consumers, not raw grep
 counts. Comments, test assertions, TOML example keys named `db`, and CandidatePolicy's
 ordinary `cellFor:` helper are not Store dependencies.
 
 | Area | Current edge and evidence | Required destination / proof |
 | --- | --- | --- |
-| Bootstrap bindings | [authored Globals](../../modules/globals-owner.birnam) now constructs its own facade and state before SourceRegistry/named modules. Store's facade, seed conversion and fact cleanup are removed. | The real compiled initializer passes on a floor without Store/Relational, followed by explicit late loading without owner replacement. Slice qualification passes; full Bootstrap absence still awaits other owners. |
-| Task and scheduler state | Completed: [stackless-control](../../modules/stackless-control.birnam) owns ordinary slots, with explicit aliased TaskField views. | Actual initializer, task transitions/cancellation and GC pass without Store. Full Host/worker/image absence awaits the remaining composition. |
-| Workers and outcomes | Completed owned fields for Worker, RemoteFailure and [Concurrency](../../modules/isolate.birnam), with explicit image projection/refusal. | Aliases, reset, worker execution and image checks pass. Full Store-free worker execution still awaits Alien/Image composition. |
-| REPL and sockets | Socket and REPL ownership are qualified; REPL uses ordinary session/readiness Cells and borrowed process stdio. | Preserve conditional retirement, aliasing, failed setup and image reset/refusal. Actual REPL initializer/cleanup passes without Store; real I/O still requires Alien. |
+| Bootstrap bindings | [authored Globals](../../modules/globals-owner.birnam) constructs its own facade and state before SourceRegistry/named modules. Store's facade, seed conversion and fact cleanup are removed. | Real source and compiled core bootstrap pass without Store/Relational; late loading preserves the existing owner. |
+| Task and scheduler state | Completed: [stackless-control](../../modules/stackless-control.birnam) owns ordinary slots, with explicit aliased TaskField views. | Actual initializer, task transitions/cancellation, GC and full provider-absent Host/worker execution pass. |
+| Workers and outcomes | Completed owned fields for Worker, RemoteFailure and [Concurrency](../../modules/isolate.birnam), with explicit image projection/refusal. | Aliases, reset, images and full provider-absent worker/service execution pass. Optional worker images activate their declared providers without loading them in the parent. |
+| REPL and sockets | Socket and REPL ownership are qualified; REPL uses ordinary session/readiness Cells and borrowed process stdio. | Conditional retirement, aliases, failed setup, image reset/refusal and real provider-absent console/TCP/project execution pass. |
 | Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) now sends current `imagePayload`; Globals projection and task-handle rejection use this owner protocol. TaskControl's process-local marker is an ordinary slot. Task/resource projection now lives with the ordinary owners; no Store transient schema is needed for those fields. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
 | Alien wrappers | Completed in `9aa4843d`: [AlienRecipes](../../modules/alien-recipes.birnam) owns indexed cache/registration data; native Alien publishes through current Method/dictionary messages. No Store calls or facts remain. | Store-absent wrapping, identity/signature distinctions, live replacement, reentry and exact Unit reclamation pass. The accepted startup cost remains recorded below. |
 | Alien restoration | Completed in `9aa4843d`: Image retains the explicit recipe-owner root, restores foreign methods before Map rehash, then builds ordinary registration indexes. | Current-definition selection, hash-dependent recovery, reentrant publication, independent cache aliases and mapped/rebuilt/resaved images pass. Partial-load failure reporting is preserved. |
-| Image facts and Store Cells | Completed component: Image selects its fact owner through current `System imageStore`; nil omits facts and all Store metadata/staging/exchange. Fact Cells use their recorded selected owner. The current distribution still opts in. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
-| Standard-library optional hooks | Completed boundary: stdlib forwards documentation to current `Doc recordMethod:on:text:` and has no db accesses. Optional `storeSupport` installs `Reflect factsOf:` with its original fact semantics. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
-| Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares html and storeSupport; its native Relational dependency still needs the late-provider composition. Cli has no blanket catalog dependency, and LSP no longer populates it. The Host still selects the current tool image until production cutover. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
-| Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) loads store/relational unconditionally; [Host source startup](../../rust/birnam-host-entry/src/startup.rs) marks both as kernel modules. [Build](../../rust/birnam-build/src/main.rs) has one canonical native closure, builds startup with REPL/socket state, then loads all tools into a second image. | Core and optional dependency closures are explicit in build inputs, initialization, prepared images and receipts. A tooling image containing Doc is an explicitly optional composition, not the only way to run unrelated tools. |
-| Late optional initialization | Store no longer publishes a Globals seed; explicit loading after the actual Globals initializer passes. Relational attaches its query behavior to Store. Full-world late optional activation still needs qualification. | Load after live globals/methods/tasks exist without replacing core authority, changing local Cell defaults or installing mandatory mutation hooks. Preserve self-description, repeat-load behavior and existing explicit data. |
+| Image facts and Store Cells | Image selects its fact owner through current `System imageStore`; nil omits facts and all Store metadata/staging/exchange. Fact Cells use their recorded selected owner. Only explicit Store activation selects a participant. | Core mapped/rebuilt/resaved images pass with providers physically absent. Explicit facts/history/Cells and fresh optional-provider workers also pass. |
+| Standard-library optional hooks | stdlib forwards documentation to current `Doc recordMethod:on:text:` and has no db accesses. Authored `store` installs `Reflect factsOf:` and fact-Cell conveniences. The intermediate `storeSupport` module is removed. | Ordinary Reflect construction/descriptions remain independent. Missing Doc means no documentation recording; fact queries require explicit Store. No empty database is fabricated. |
+| Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares html, Store and Relational. CLI doc/docgen explicitly select that composition. | Basic CLI commands and LSP use the core; documentation retains its useful relational catalog. Direct Doc loading propagates dependency failures before construction. |
+| Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) and [Host source startup](../../rust/birnam-host-entry/src/startup.rs) omit Store/Relational. [Build](../../rust/birnam-build/src/main.rs) prepares and probes the core before optional providers are built/installed; raw providers live under `lib/native/`. | Explicit core/optional closures are recorded in receipts. Installed/relocated and two independent fixture-free cold archive builds pass. Release-candidate acceptance is separate. |
+| Late optional initialization | Authored `store`/`relational` entries use the current native loader and ordinary Module registry. Store no longer publishes a Globals seed. | Full-world late activation, self-description, queries/history, repeated loading, existing aliases and user replacements pass. Ordinary edits create no facts before or after activation. |
 
-The primary references above contain the live code at the baseline. Existing
+The primary references above point to the current implementation. Existing
 [Cell](../../rust/birnam-siphon/tests/cell_without_store.rs) and
 [Globals](../../rust/birnam-siphon/tests/globals_without_store.rs) floor tests remain
 useful component evidence, but explicitly exclude the full bootstrap/Host path.
@@ -203,16 +203,15 @@ savings, without changing the GC threshold or weakening ownership to improve a s
   core and unrelated commands stay independent; catalog-dependent features explicitly
   select Store/Relational. Update declarations and saved-image contents, not only docs.
 
-## Start here
+## Current next step
 
-The next design check is Image's Store-owned transient policy, so task/resource
-field moves cannot accidentally make native capabilities durable. The early
-Globals owner and initializer floor are implemented; qualification is recorded
-below. `scripts/core-without-store-test.py PREFIX` copies a real installed prefix
-with Store/Relational excluded and runs early bootstrap and full source startup.
-It deliberately returns failure while the production composition still requires
-those libraries. It does not stand in for the separate cold-build, image and Host
-acceptance matrix.
+Commit the qualified production cutover, then qualify and publish a clean release
+candidate through the existing release workflow. `scripts/core-without-store-test.py PREFIX
+--services` physically removes both optional native libraries and authored entry
+artifacts before exercising real startup, images, console, LSP, projects, sockets
+and workers. The companion optional-provider tests cover late activation and
+fresh-process optional images. Earlier progress entries below are chronological
+slice records; their “next” statements describe that point in the migration.
 
 
 ## Progress: Globals recovery cleanup (2026-10-19)
@@ -776,3 +775,70 @@ Store/Relational entries over the existing native loader, separate optional nati
 library paths, core-first build/image preparation, explicit catalog composition,
 late-load preservation tests, and full Host/worker/absence/release gates. These
 changes are planned, not delivered by the CLI dependency edit.
+
+## Qualified production cutover (2026-10-20)
+
+The working implementation now builds/probes the core before installing optional
+providers. Store/Relational are authored `Module load:` entries over native
+libraries in `lib/native/`; they are absent from core bootstrap and ordinary
+CLI/LSP composition. Native image requirements are described by Module and carried
+in v8 record 12, so fresh images and workers activate their declared local providers
+before heap reconstruction. Core declarations are empty. See the refined
+[provider contract](optional-provider-loading.md).
+
+The installed Host absence gate passes early, source, compiled, console, LSP,
+mapped/rebuilt/resaved image paths with provider libraries and entry artifacts
+physically excluded. Late Store/Relational activation preserves live bindings,
+Cells, methods and data; repeated loading preserves user replacements. Fresh
+optional-data images and workers preserve history/query behavior without loading
+providers in the parent. The independent format gate passes 142 admission cases
+and 18 byte-identical round trips. The expanded formal gate passes 424 theorems,
+135 mutation rejections and 295 expected TLC outcomes.
+
+Broad native qualification found and addressed two leftover core couplings:
+stdlib still installed fact-Cell `inc`/`dec` on an unavailable `CellVt`, and the
+optional `imageStore` override conflicted with ImageFormat's declarative source
+certificate. Fact-Cell conveniences now belong to Store; the fallback image hook
+is initialization policy, still inspectable through source descriptions. Source
+descriptions now include nested literal method declarations without changing
+revision recognition, method lookup or inferring that the declarations executed.
+Generation adoption/ledger/retirement, compiler and source-loader checks pass with
+these changes. Candidate tests now preserve the selected ordinary-token and
+mutable-description contracts instead of demanding obsolete integer tokens or
+forgery guards on descriptive fields.
+
+The native loader's collecting-hook stress test passes unchanged in 288 seconds:
+its deliberately collecting Integer hooks perform thousands of full collections.
+No hook or assertion was weakened. The final language run passes 854 checks;
+ancillary ownership/retention, full provider-absent services, installed relocation
+and two independent fixture-free cold archive builds pass. Host lifecycle checks
+pass when run in their required isolated processes. Disk-pressure failures were
+rerun after reclaiming superseded test artifacts, with passing results.
+
+The final image CLI check exposed a genuine stale bootstrap assumption: Module
+now exists in the minimal core, so its presence cannot imply that stdlib is loaded.
+Host now consults current `Module isLoaded: #stdlib`, retaining the missing-Module
+case, rather than policing any method identity. Minimal images again report the
+useful bootstrap diagnostic; explicit source recovery preserves saved state.
+The complete image CLI suite passes, including deleted source/assets, main
+dispatch, recovery, invalid versions and corrupt images.
+
+The release native gate's timeout is 45 minutes: measured native tests already
+exceed the previous 15-minute limit before build and owner-image checks. This is
+a qualification budget change, not a runtime optimization or removed coverage.
+Three serial, interleaved normal-GC pairs show startup CPU 2.695 → 2.686 s
+(-0.3%) and LSP CPU 3.536 → 3.151 s (-10.9%). Image-save CPU is 32.728 →
+33.218 s (+1.5%); the benchmark image grows 3,916,987 bytes (1.45%). No material
+new runtime regression is identified, and the previously accepted Alien startup
+cost is not claimed recovered. This is a composition improvement for LSP, not a
+general VM speedup. GC policy is unchanged.
+
+The [consolidated receipt](../measurements/store-independent-core-20261020.json)
+records source hashes, the passing union of all 85 native targets, corrected
+failure reruns, 854 language checks, 424 Lean theorems/135 rejected mutations,
+295 expected TLC outcomes, actual provider-absent services, optional images and
+worker behavior, installation/archive checks and raw timing samples. These are
+implementation qualification; only the clean release workflow establishes
+release acceptance and publication. The remaining artifact/certification ports,
+generic live mirrors and per-instance Store persistence are separate follow-ups,
+not unfinished parts of this core-independence milestone.

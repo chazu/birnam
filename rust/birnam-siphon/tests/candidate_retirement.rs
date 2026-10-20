@@ -208,6 +208,7 @@ fn discard_preserves_replaced_files_and_live_methods_then_reclaims_mappings() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         lifecycle_records(id, ns);
         let v = Vm {
             id,

@@ -11,21 +11,26 @@ let count := [0 asCell];
 [count history]                 // 0
 ```
 
-These Cells follow ordinary object reachability, preserve shared aliases and
-create no facts. Store-backed Cells are explicit handles to an entity/attribute,
-as shown below. Globals and several language facilities still use Store during
-the [optional Store migration](../design/optional-store-and-relational.md).
+These Cells preserve ordinary reachability and shared aliases without facts.
+Globals, method dictionaries, source metadata and runtime state do not use Store
+as their authority. Database Cells are explicit entity/attribute handles.
 
-The [Store and Cell protocol](../../rust/birnam-store/README.md) remains available
-through Bootstrap, including history and retention. Globals still retains its
-`__globals__` facts: top-level binding writes are currently visible to fact queries
-and opted-in history. [Relational queries](../../rust/birnam-relational/README.md)
-run through owner messages. Changing the default Cell does not yet make Store
-optional during core bootstrap.
+Load the optional providers deliberately:
+
+```birnam
+[Module load: #store];       // facts, history and explicit fact-backed Cells
+[Module load: #relational];  // queries; depends on Store
+```
+
+The examples below use Relational. Late loading preserves existing bindings and
+objects; it does not make ordinary edits create facts. Store and Relational retain
+their self-description. `Reflect factsOf:` is an optional extension for actual
+asserted facts; other reflection does not require either provider.
 
 ## Asserting facts
 
 ```
+[Module load: #relational];
 let alice := [db entity];                       // a fresh entity
 [db assert: alice attr: #name value: "Alice"];
 [db assert: alice attr: #city value: #Boston];

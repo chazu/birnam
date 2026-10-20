@@ -8,6 +8,27 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Make Store and Relational optional facilities. Core source/compiled startup,
+  projects, console/socket sessions, workers, reflection and image roundtrips run
+  with both providers absent. `Module load: #store` and `Module load: #relational`
+  explicitly activate them without replacing existing Globals, local Cells or
+  methods. Their facts, schema, history, queries and self-description remain.
+- Finish moving bootstrap Globals, task/worker/REPL state and Alien recipes into
+  ordinary owners. Remove Store's duplicate native local-Cell implementation,
+  mandatory image fact staging and unused conditional image exchange. Preserve
+  aliases, resource projection/refusal, code lifetimes and partial-load failures.
+- Separate the intentional documentation catalog from basic CLI and LSP startup.
+  Doc explicitly loads Store/Relational; ordinary method definitions create no
+  facts. `Reflect factsOf:` and fact-backed Cell conveniences belong to Store.
+- Declare required image providers in v8 record 12 and restore them before heap
+  reconstruction, including in fresh workers. Core images declare none. Rebuild
+  older executable images lacking this declaration or the current owner envelope.
+  Missing providers reject without ambient Store discovery or automatic rollback.
+- Build and probe the core before optional providers, package native Store and
+  Relational under `lib/native/`, and require real provider-absent and opt-in
+  acceptance in the release gates. Fix explicit source recovery of minimal
+  images to consult Module's load state rather than its mere presence.
+
 - Remove unused Globals compensation banks and image rollback/checkpoint APIs,
   including their native seed adapters and Image cleanup call. Keep ordinary
   binding ownership, transient projections and explicit candidate undo.

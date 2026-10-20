@@ -54,7 +54,9 @@ impl H {
                 send(id,roots,b"retain:",&[Operand::object(factory)]);
                 ns
             } else {
-                load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())])
+                let ns = load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
+                optional_modules(id, ns, &["store"]);
+                ns
             };
             let named = |n: &[u8]| {
                 object(send(

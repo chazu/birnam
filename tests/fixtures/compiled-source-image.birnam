@@ -1,3 +1,4 @@
+[Module load: #store];
 // Caller-held compilation values survive independently of the source registry.
 [Module load: #os];
 [[|

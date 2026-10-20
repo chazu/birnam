@@ -55,6 +55,16 @@ for basis in [2**53, 2**63 - 1, 2**63, 2**63 + 42, 2**64 - 2]:
     for floor, policy, argument in [(basis+1, 0, 0), (basis, 1, basis+1), (basis-1, 0, 0)]:
         payload = struct.pack('<QQB7xQI', basis, floor, policy, argument, 0)
         cases.append(empty + record(2, payload))
+# Provider declarations: empty/core, valid optional closure, duplicates, bad
+# types/counts/framing, and out-of-order or repeated records.
+def symbol(name):
+    b=name.encode();return b'\x05'+struct.pack('<I',len(b))+b
+for payload in [struct.pack('<I',0), struct.pack('<I',2)+symbol('store')+symbol('relational'),
+                struct.pack('<I',2)+symbol('store')*2,struct.pack('<I',1)+export('Store'),
+                b'',struct.pack('<I',4097),struct.pack('<I',1),struct.pack('<I',0)+b'x']:
+    cases.append(empty+record(12,payload))
+providers=record(12,struct.pack('<I',0))
+cases += [empty+providers+providers,empty+objects+providers]
 with tempfile.TemporaryDirectory(prefix='birnam-image-format-') as temporary:
     work = Path(temporary)
     paths = []

@@ -10,6 +10,7 @@ pub(super) struct Decoded {
     pub code: Option<Vec<u8>>,
     pub sources: Option<Vec<u8>>,
     pub behaviors: Option<Vec<u8>>,
+    pub providers: Option<Vec<u8>>,
 }
 impl Decoded {
     pub fn view(&self) -> v8::DecodedImage<'_> {
@@ -22,6 +23,7 @@ impl Decoded {
             code: self.code.as_deref(),
             sources: self.sources.as_deref(),
             behaviors: self.behaviors.as_deref(),
+            providers: self.providers.as_deref(),
         }
     }
 }
@@ -70,6 +72,7 @@ pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Outcome
             code,
             sources,
             behaviors,
+            providers,
         ] = fields.as_slice()
         else {
             return Err(bad());
@@ -90,6 +93,7 @@ pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Outcome
             code,
             sources: optional(s, q, *sources)?,
             behaviors: optional(s, q, *behaviors)?,
+            providers: optional(s, q, *providers)?,
         })
     }
 }
@@ -128,6 +132,7 @@ pub(super) unsafe fn compose(
             opt(spec.code)?,
             opt(spec.sources)?,
             opt(spec.behaviors)?,
+            opt(spec.providers)?,
         ];
         let input = s.vector(q, &values)?;
         let result = s.call(q, owner, b"compose:", &[input])?;

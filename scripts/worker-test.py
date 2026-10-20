@@ -59,7 +59,7 @@ let w := {start('fail:')};let e := [w request: 1];
     run('async', f'''
 let w := {start('echo:')};let id := [w submit: nil timeout: 10000];
 [System println: [[w submit: 1 timeout: 10000] class]];
-let answer := [db cellFor: [Object clone] attr: #reply];[answer set: nil];
+let answer := [Cell with: nil];[answer set: nil];
 [[| [[answer value] isNil]] whileTrue: [| [answer set: [w pollRequest: id]]; [Isolate idleFor: 1]]];
 [System println: [[answer value] size]];[System println: [[answer value] at: 0]];
 [System println: [[w pollRequest: id] kind]];[w stop];
@@ -73,7 +73,7 @@ let w := {start('echo:')};
 [System println: [w state]];
 let id := [w submit: 7 timeout: 10000];
 [System println: id];
-let answer := [db cellFor: [Object clone] attr: #reply]; [answer set: nil];
+let answer := [Cell with: nil]; [answer set: nil];
 [[| [[answer value] isNil]] whileTrue: [| [answer set: [w pollRequest: id]]; [Isolate idleFor: 1]]];
 [System println: [[answer value] at: 0]]; [w stop];
 ''', b'#timeout\n#ready\n42\n#timeout\n#ready\n2\n7\n')
@@ -169,7 +169,7 @@ let w := [Isolate startService: #ServiceProbe image: {service_path}];
 let id := [w submit: #[#{mode} {marker_path}] timeout: 30000];
 [[| [[System readFile: {marker_path}] isError]] whileTrue: [| [w pollRequest: id]; [Isolate idleFor: 1]]];
 [System println: [w cancelRequest: id]];
-let answer := [db cellFor: [Object clone] attr: #reply];[answer set: nil];
+let answer := [Cell with: nil];[answer set: nil];
 [[| [[answer value] isNil]] whileTrue: [| [answer set: [w pollRequest: id]]; [Isolate idleFor: 1]]];
 [System println: [[[answer value] at: 0] at: 0]];
 [System println: [System readFile: [{marker_path} , \".done\"]]];

@@ -55,7 +55,8 @@ def main():
         receipt['runtime_sha256'][label] = {str(p.relative_to(prefix)):sha(p) for p in paths}
     for case,(count,expected,operation) in CASES.items():
         source = work/(case+'.birnam')
-        source.write_text('''[Module load: #json]; [Module load: #time];
+        source.write_text('''[Module load: #store];
+[Module load: #json]; [Module load: #time];
 [[|
 let operation := OPERATION;
 [operation value: 10]; [System gc];

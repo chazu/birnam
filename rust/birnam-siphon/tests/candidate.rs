@@ -56,6 +56,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         lifecycle_records(id, ns);
         let named = |name: &[u8]| {
             object(send(
@@ -268,16 +269,13 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                     &[Operand::object(key), entry],
                 );
             }
+            // The editable description is not artifact authority. Preparation
+            // uses the owned artifact's identity and must not police this field.
             call(named(b"Reflect"), b"slot:in:put:", &[symbol(b"unitName"), unit, symbol(b"forgedModule")]);
-            let mismatch = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, publication()],
-            );
-            assert_eq!(
-                call(mismatch, b"kind", &[]),
-                symbol(b"candidatePreparationFailed")
-            );
+            let described = call(named(b"Generation"), b"prepareActivation:plan:", &[unit, publication()]);
+            assert_eq!(call(described, b"isError", &[]), no);
+            assert_eq!(call(named(b"Reflect"), b"slot:in:", &[symbol(b"unitName"), unit]), symbol(b"forgedModule"));
+            call(named(b"Generation"), b"discardPrepared:", &[described]);
             call(named(b"Reflect"), b"slot:in:put:", &[symbol(b"unitName"), unit, name]);
             let plan = publication();
             let token = call(
@@ -329,7 +327,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
                 b"prepareActivation:plan:",
                 &[unit, publication()],
             );
-            assert!(value(second) > value(token));
+            assert_ne!(second, token, "preparation creates a fresh ordinary token identity");
             assert_eq!(
                 call(named(b"Generation"), b"discardPrepared:", &[second]),
                 unit

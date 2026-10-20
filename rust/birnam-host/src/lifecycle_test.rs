@@ -377,6 +377,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
     .unwrap();
     expect(b"[[2 imageGenerationValue] = 20]");
     expect(b"[[imageGenerationClosure value] = 21]");
+    eval(b"[Module load: #store]");
     eval(b"let savedOriginGeneration := [DispatchGeneration current]; let savedOriginPredecessor := [savedOriginGeneration predecessor]; [db assert: savedOriginGeneration attr: #userAnnotation value: 77]; [db assert: savedOriginPredecessor attr: #sourceMap value: 88]");
     let path = dir.join("active.image");
     let filename = q.string(path.as_os_str().as_bytes()).unwrap();
@@ -473,6 +474,7 @@ fn image_restores_descriptions_and_explicit_adoption() {
     q.evaluate(b"[scopedCandidate activate]", Path::new("<scoped-activation>"), None).unwrap();
     expect(b"[[2 imageGenerationValue] = 30]");
     expect(b"[[2 imageOutsideValue] = 9]");
+    eval(b"[Module load: #store]");
     eval(b"let savedOriginGeneration := [DispatchGeneration current]; let savedOriginPredecessor := [savedOriginGeneration predecessor]; let imageCandidate := scopedCandidate; [db assert: savedOriginGeneration attr: #userAnnotation value: 77]; [db assert: savedOriginPredecessor attr: #sourceMap value: 88]");
     let drift_path = dir.join("scoped-drift.image");
     let filename = q.string(drift_path.as_os_str().as_bytes()).unwrap();
@@ -516,6 +518,7 @@ fn lifecycle_fields_preserve_explicit_facts_and_status_reads() {
         q.check_result(result).unwrap(); result
     };
     let expect = |source: &[u8]| { assert_eq!(eval(source), host.named(b"true").unwrap(), "{}", String::from_utf8_lossy(source)); };
+    eval(b"[Module load: #store]");
     eval(b"let ownedUnit := [CompiledUnit clone]; [ownedUnit setState: #candidate]; [db assert: ownedUnit attr: #state value: #annotation]; let unitAlias := ownedUnit; let unitClone := [ownedUnit clone]");
     expect(b"[[ownedUnit state] = #candidate]");
     expect(b"[[[Reflect slotsOf: ownedUnit] size] = 13]");

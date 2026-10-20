@@ -505,6 +505,7 @@ fn shared_forwarding_preserves_live_invocation_and_method_ownership() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,

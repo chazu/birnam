@@ -27,6 +27,7 @@ impl H {
                 "bootstrap",
                 &[Operand::bytes(directory().as_os_str().as_bytes())],
             );
+        optional_modules(id, ns, &["store", "relational"]);
             let named = |n: &[u8]| {
                 object(send(
                     id,

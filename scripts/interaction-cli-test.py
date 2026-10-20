@@ -1,5 +1,6 @@
 """Exercise installed interactive modes, image tools and scaffolding from another cwd."""
 import json
+import argparse
 import os
 from pathlib import Path
 import socket
@@ -8,7 +9,11 @@ import sys
 import tempfile
 import time
 
-prefix = Path(sys.argv[1]).resolve()
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('prefix', type=Path)
+parser.add_argument('--core-only', action='store_true', help='exclude deliberately optional catalog commands')
+options = parser.parse_args()
+prefix = options.prefix.resolve()
 binary = prefix / 'bin/birnam'
 env = {k: v for k, v in os.environ.items() if not k.startswith('BIRNAM_')}
 env['BIRNAM_GC_PRECISE'] = '1'
@@ -33,11 +38,15 @@ with tempfile.TemporaryDirectory(prefix='birnam-interaction-') as directory:
     wrapper.write_text('// preserved\n')
     run(['wrap', 'sample'])
     assert wrapper.read_text() == '// preserved\n'
-    assert b'String' in run(['doc', 'stdlib']).stdout
-    html = work / 'reference.html'
-    run(['docgen', html], timeout=int(os.environ.get('BIRNAM_DOCGEN_TEST_TIMEOUT', '1800')))
-    assert '<html' in html.read_text().lower() and 'println:' in html.read_text()
-    print('tooling: init/wrap preservation, doc and docgen passed', flush=True)
+    if not options.core_only:
+        assert b'String' in run(['doc', 'stdlib']).stdout
+        html = work / 'reference.html'
+        run(['docgen', html], timeout=int(os.environ.get('BIRNAM_DOCGEN_TEST_TIMEOUT', '1800')))
+        assert '<html' in html.read_text().lower() and 'println:' in html.read_text()
+        print('tooling: init/wrap preservation, doc and docgen passed', flush=True)
+
+    else:
+        print('core tooling: init/wrap preservation passed', flush=True)
 
     # Baked entry must recover its main after the source and image are deleted.
     source = work / 'bake.birnam'

@@ -1,8 +1,10 @@
 # Optional provider loading and production cutover
 
-2026-10-20. Next implementation contract; the following packaging and production
-changes are not yet delivered. Image and documentation boundaries are already
-qualified in the Store-independent core completion plan.
+2026-10-20. Implemented production contract. Core absence, late provider
+activation, optional images/workers and cold archive checks pass. Host
+edge-case and timing qualification also pass and are recorded in the
+[completion plan](store-independent-core-completion.md); release qualification
+remains separate.
 
 Use ordinary compiled Birnam modules as the public entries for `#store` and
 `#relational`. Their initialization sends the existing `System loadModule:arguments:`
@@ -32,8 +34,8 @@ Ordinary source, project, console, socket, worker and LSP paths use the core
 composition. Documentation commands may select a prebuilt catalog composition,
 but its required providers must be explicitly loaded before image application.
 A core image must never trigger a Store probe or manufacture an empty database.
-A user image whose provider is unavailable can reject, as the current image
-contract allows; automatic provider acquisition is not required by this cutover.
+Image declarations activate their required local modules before heap restoration.
+Unavailable providers reject; automatic package download is outside this cutover.
 
 Late activation must preserve the live Globals facade, Cells, current methods,
 existing aliases and source metadata. Ordinary edits before and after loading
@@ -50,3 +52,39 @@ self-description tests; core and optional mapped/rebuilt/resaved images; real
 Host/CLI/LSP/socket/worker operation; installed relocation/archive validation.
 Only after these gates pass is the full absence gate promoted to mandatory and
 a new release qualified through the existing release workflow.
+
+## Image closure refinement (2026-10-20)
+
+The first cutover passes real core absence and late activation. It also exposes
+an incomplete image contract: a Store owner reference alone does not restore
+optional native behavior (notably Relational's methods) in a fresh worker. Manual
+provider setup is insufficient for ordinary saved-image/worker execution.
+
+Use the existing Module registry to describe successfully activated native
+providers with an ordinary `imageProvider` field. Store and Relational set this
+field in their authored initializers. Module supplies a dependency-ordered list;
+there is no parallel native registry or ambient Store probe. Native embedding
+callers may explicitly register their already-loaded provider in the same owner.
+
+Add one optional v8 framing record, kind 12, before Sources/Behaviors/heap data.
+Its payload is a u32 count followed by canonical Symbol fields naming providers,
+with a limit of 4096 and no duplicate names. New runtime images always include it,
+including an empty record for the core. The format reader may inspect older
+framing fixtures, but live loading requires the declaration; older executable
+images must be rebuilt. The provider declaration contributes to composition
+identity. Update the independent reader and malformed-input oracle separately.
+
+Before heap restoration, Image sends the declared list to current
+`Module loadImageProviders:`. That early protocol validates each artifact through
+Artifact, activates it through Codegen, and marks it loaded in the existing
+registry; it does not require stdlib or run a second dependency planner. The
+saved list is already dependency-ordered, and artifact admission verifies its
+requirements. Missing providers reject before image application. Prior provider
+activation effects are not rolled back if a later provider fails. This is local
+activation of declared code, never package download or implicit discovery.
+
+This also removes the temporary Host-specific catalog-provider loop: all image
+entry paths, including workers, use the same declared closure. Core declarations
+are empty and therefore cause no optional module activation. Fresh-process
+optional images/worker programs must be tested, alongside provider absence,
+activation failures, reentry/collection and the existing partial-load boundary.

@@ -29,7 +29,8 @@ def main():
         return result
     run('semantics',[binary,ROOT/'tests/fixtures/ordinary-records.birnam'],'ordinary-records: passed\n',cwd=ROOT)
     io=work/'io.birnam'
-    io.write_text('''[Module load: #log]; [Module load: #process];
+    io.write_text('''[Module load: #store];
+[Module load: #log]; [Module load: #process];
 [Reflect defineMethod: #nowMillis on: Time as: [:self | 123]];
 let logger := [Log named: "io"]; [logger level: #warn]; [logger toFile: "record.log"];
 [logger info: "filtered"]; [logger warn: "emitted"];
@@ -64,7 +65,8 @@ let result := [Process run: "printf 'record-output'; exit 7"];
     run('retention',['mise','exec','--','cargo','test','--offline','--locked','-p','birnam-siphon','--test','ordinary_record_retention','--','--include-ignored','--nocapture'],cwd=ROOT,native=True)
     if not args.skip_images:
         source=work/'save.birnam';image=work/'records.image'
-        source.write_text('''[Module load: #log]; [Module load: #config]; [Module load: #http]; [Module load: #process]; [System load: APP_CONFIG];
+        source.write_text('''[Module load: #store];
+[Module load: #log]; [Module load: #config]; [Module load: #http]; [Module load: #process]; [System load: APP_CONFIG];
 [[|
 let logger := [Log named: "saved"]; let alias := logger; let clone := [logger clone]; [logger level: #warn];
 let config := [Config clone]; [Reflect slot: #configPath in: config put: "../../birnam.toml"];

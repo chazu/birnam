@@ -198,6 +198,7 @@ fn alien_calls_callbacks_and_owned_memory() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let named = |n: &[u8]| {
             object(send(
                 id,

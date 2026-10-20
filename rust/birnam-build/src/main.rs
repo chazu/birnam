@@ -31,14 +31,13 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("alienCompiler", "modules/alien-compiler.birnam"),
     ("alienRecipes", "modules/alien-recipes.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
-    ("storeSupport", "modules/store-support.birnam"),
     ("trace", "modules/trace.birnam"),
     ("globals", "modules/globals.birnam"),
     ("methodInvocation", "modules/method-invocation.birnam"),
 ];
 
 // Migration candidates installed for explicit loading, outside startup images.
-const OPTIONAL_MODULES: &[(&str, &str)] = &[];
+const OPTIONAL_MODULES: &[(&str, &str)] = &[("store", "modules/store.birnam"), ("relational", "modules/relational.birnam")];
 
 // Authored production tools, compiled through the installed Id artifact path.
 const TOOL_MODULES: &[(&str, &str)] = &[
@@ -94,8 +93,8 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_codegen_runtime.dylib",
     "libbirnam_native_backend.dylib",
     "libbirnam_generation.dylib",
-    "libbirnam_store.dylib",
-    "libbirnam_relational.dylib",
+    "native/libbirnam_store.dylib",
+    "native/libbirnam_relational.dylib",
     "libbirnam_prelude.dylib",
     "libbirnam_system_output.dylib",
     "libbirnam_system_input.dylib",
@@ -540,7 +539,7 @@ fn run_status(command: &mut Command, label: &str) -> Result<(), String> {
 
 fn native_packages() -> impl Iterator<Item = String> {
     CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| {
-        name.strip_prefix("lib")
+        Path::new(name).file_name().unwrap().to_str().unwrap().strip_prefix("lib")
             .unwrap()
             .strip_suffix(".dylib")
             .unwrap()
@@ -659,7 +658,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "--offline".to_owned(),
     ];
     cargo_arguments.extend(cargo_profile.iter().map(|value| (*value).to_owned()));
-    for package in native_packages() {
+    for package in native_packages().filter(|p| p != "birnam-store" && p != "birnam-relational") {
         cargo_arguments.extend(["-p".to_owned(), package]);
     }
     if let Some(features) = &cargo_features {
@@ -680,7 +679,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     let host_destination = stage.join("bin/birnam");
     copy_file(&host_source, &host_destination)?;
     let lib_dir = stage.join("lib");
-    for canonical in CANONICAL_DYNAMIC_LIBRARIES {
+    for canonical in CANONICAL_DYNAMIC_LIBRARIES.iter().filter(|name| !name.starts_with("native/")) {
         let source = profile_dir.join(canonical);
         copy_file(&source, &lib_dir.join(canonical))?;
     }
@@ -694,7 +693,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     // without evaluating source bootstrap, then remove the seed from the prefix.
     let seed = lib_dir.join("libbirnam_lang_seed.dylib");
     copy_file(&profile_dir.join("libbirnam_lang_seed.dylib"), &seed)?;
-    for (name, source) in BOOTSTRAP_MODULES.iter().chain(OPTIONAL_MODULES) {
+    for (name, source) in BOOTSTRAP_MODULES {
         let mut compile = Command::new(&host_destination);
         compile.current_dir(&root);
         for (key, _) in env::vars_os() {
@@ -729,7 +728,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     run_status(&mut production, "build bootstrap without the grammar seed")?;
     copy_file(&profile_dir.join("libbirnam_bootstrap.dylib"), &lib_dir.join("libbirnam_bootstrap.dylib"))?;
     fs::remove_file(&seed).map_err(|e| format!("remove build-only Lang seed: {e}"))?;
-    for (name, source) in TOOL_MODULES {
+    for (name, source) in TOOL_MODULES.iter().filter(|(name, _)| !matches!(*name, "doc" | "nativedoc" | "compiledUnitDocs" | "concurrencyDocs")) {
         let mut compile = Command::new(&host_destination);
         compile
             .current_dir(&root)
@@ -750,14 +749,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             "[[:result | [[result isError] ifTrue: [| result] ifFalse: [| {next}]]] value: {operation}]"
         )
     };
-    let mut bootstrap_source = String::from("[System saveImage: \"lib/birnam-tools.image\"]");
-    for (name, _) in TOOL_MODULES.iter().rev() {
-        bootstrap_source = checked(&format!("[Module load: #{name}]"), bootstrap_source);
-    }
-    bootstrap_source = checked(
-        "[System saveImage: \"lib/birnam-bootstrap.image\"]",
-        bootstrap_source,
-    );
+    let mut bootstrap_source = String::from("[[[Namespace includesKey: #Store] | [Namespace includesKey: #Relational]] ifTrue: [| [Error kind: #unexpectedCoreProvider]] ifFalse: [| [System saveImage: \"lib/birnam-bootstrap.image\"]]]");
     bootstrap_source = checked("[Repl wrapStdio]", bootstrap_source);
     for name in ["file", "toml", "config", "repl", "socket"].iter().rev() {
         bootstrap_source = checked(&format!("[Module load: #{name}]"), bootstrap_source);
@@ -777,6 +769,50 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     run_status(&mut prepare, "prepare compiled startup image")?;
     fs::remove_file(&bootstrap_script)
         .map_err(|error| format!("remove bootstrap script: {error}"))?;
+    if !lib_dir.join("birnam-bootstrap.image").is_file() {
+        return Err("core image was not published without optional providers".into());
+    }
+    for name in ["store", "relational"] {
+        if lib_dir.join(format!("native/libbirnam_{name}.dylib")).exists()
+            || lib_dir.join(format!("libbirnam_{name}.dylib")).exists() {
+            return Err(format!("optional provider {name} entered the core build closure"));
+        }
+    }
+    let mut core_probe = Command::new(&host_destination);
+    core_probe.current_dir(&stage).arg("--repl")
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+    for (key, _) in std::env::vars_os() { if key.as_encoded_bytes().starts_with(b"BIRNAM_") { core_probe.env_remove(key); } }
+    run_status(&mut core_probe, "verify core image with optional providers physically absent")?;
+    // Optional code is built and installed only after core preparation succeeded.
+    let mut optional = Command::new("cargo");
+    optional.current_dir(&root).env("CARGO_TARGET_DIR", &target_dir)
+        .args(["build", "--offline", "--locked", "-p", "birnam-store", "-p", "birnam-relational"])
+        .args(&cargo_profile);
+    // Diagnostic features such as TCC metrics belong to the core build above.
+    run_status(&mut optional, "build optional native providers")?;
+    for relative in CANONICAL_DYNAMIC_LIBRARIES.iter().filter(|name| name.starts_with("native/")) {
+        copy_file(&profile_dir.join(Path::new(relative).file_name().unwrap()), &lib_dir.join(relative))?;
+    }
+    for (name, source) in OPTIONAL_MODULES.iter().chain(TOOL_MODULES.iter().filter(|(name, _)| matches!(*name, "doc" | "nativedoc" | "compiledUnitDocs" | "concurrencyDocs"))) {
+        let mut compile = Command::new(&host_destination);
+        compile.current_dir(&root).env("BIRNAM_FORCE_SOURCE", "1")
+            .args(["--compile-module"]).arg(root.join(source))
+            .arg(lib_dir.join(format!("libbirnam_{name}.dylib")));
+        for (key, _) in std::env::vars_os() {
+            if key.as_encoded_bytes().starts_with(b"BIRNAM_") && key != "BIRNAM_FORCE_SOURCE" { compile.env_remove(key); }
+        }
+        run_status(&mut compile, &format!("compile optional module {name}"))?;
+    }
+    let mut catalog_source = String::from("[System saveImage: \"lib/birnam-tools.image\"]");
+    for (name, _) in TOOL_MODULES.iter().rev() {
+        catalog_source = checked(&format!("[Module load: #{name}]"), catalog_source);
+    }
+    fs::write(&bootstrap_script, catalog_source).map_err(|e| format!("write catalog preparation: {e}"))?;
+    let mut catalog = Command::new(&host_destination);
+    catalog.current_dir(&stage).arg(&bootstrap_script);
+    for (key, _) in std::env::vars_os() { if key.as_encoded_bytes().starts_with(b"BIRNAM_") { catalog.env_remove(key); } }
+    run_status(&mut catalog, "prepare explicit catalog image")?;
+    fs::remove_file(&bootstrap_script).map_err(|e| format!("remove catalog preparation: {e}"))?;
     for name in ["birnam-bootstrap.image", "birnam-tools.image"] {
         if !lib_dir.join(name).is_file() {
             return Err(format!("bootstrap image was not published: {name}"));
@@ -906,6 +942,10 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         },
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
+        "core_dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES.iter().filter(|n| !n.starts_with("native/")).collect::<Vec<_>>(),
+        "optional_dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES.iter().filter(|n| n.starts_with("native/")).collect::<Vec<_>>(),
+        "image_providers": { "birnam-bootstrap.image": [], "birnam-tools.image": ["store", "relational"] },
+        "core_prepared_before_optional_providers": true,
         "bootstrap_modules": BOOTSTRAP_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "optional_modules": OPTIONAL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "build_seed": { "grammar": "birnam-lang-seed", "published": false },

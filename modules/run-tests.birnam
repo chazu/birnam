@@ -11,6 +11,8 @@
 // *-test file here.
 
 [System load: "modules/os.birnam"];
+// This aggregate gate deliberately includes optional database/query suites.
+[Module load: #store]; [Module load: #relational];
 
 // Do not turn a failed suite load into an apparently passing smaller run.
 let loadTestSource := [:path |
@@ -27,7 +29,7 @@ let loadTestSource := [:path |
 [loadTestSource value: "modules/doc-test.birnam"];
 [loadTestSource value: "modules/cli-test.birnam"];
 [loadTestSource value: "modules/stdlib-test.birnam"];
-[loadTestSource value: "modules/store-support-test.birnam"];
+[loadTestSource value: "modules/store-test.birnam"];
 [loadTestSource value: "modules/reflect-slots-test.birnam"];
 [loadTestSource value: "modules/string-order-test.birnam"];
 [loadTestSource value: "modules/collection-search-test.birnam"];

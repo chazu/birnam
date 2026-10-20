@@ -25,7 +25,7 @@ policy and history. Source registration preserves original source and compilatio
 
 Image reads ObjectModel-owned slots using `imageSizeOf:` and `imageSlotAt:in:`;
 the owner distinguishes raw words from object edges. Restoration uses
-`restoreSupportSlotAt:in:put:`. Private ordinary Object layouts are reconstructed
+`restoreImageSlotAt:in:put:`. Private ordinary Object layouts are reconstructed
 from those typed fields. Authored local Cells use those ordinary slots; Store
 owns its explicit fact-backed CellVt projection/restoration and fact state. Execution owns Block shells and capture restoration; unfinished shells
 cannot execute. Map rebuilds address-dependent hashes through `rehashImage:`
@@ -45,7 +45,7 @@ keeps a named `processLocal` reference slot: preparation sets it, completion lea
 it set, and its imagePayload rejects marked handles. Unused factory clones and
 detached outcomes remain imageable. The per-object Store `imageTransientObject`
 query and Image's Globals-specific projection state are removed. Fact participation is explicit through the current `System imageStore` message.
-Core answers nil; the optional authored `storeSupport` integration answers its
+Core answers nil; the optional authored `store` entry answers its
 Store receiver. Nil creates no fact section and performs no Store metadata reads,
 staging or exchange. The selected owner is retained in the image, and loading
 requires that exported provider to be present. Store Cells must refer to that
@@ -186,7 +186,10 @@ The owner-root payload in the existing Sources section is
 It references the same ordinary owners restored through Globals and user aliases;
 there is no second registry inventory or hashed-name rediscovery during application.
 Previous owner envelopes are rejected before application and must be rebuilt.
-The outer v8 framing and retained-facts codec are unchanged. See the
+New executable images include v8 record 12, an ordered native-provider declaration.
+Module activates that declared closure before heap restoration; core declarations
+are empty. Older executable images require rebuilding. The retained-facts codec
+is unchanged. See the
 [optional participation contract](../../docs/design/optional-store-image.md).
 
 After ordinary bindings are installed, Image asks the foreign owner for its projected

@@ -294,3 +294,35 @@ let earlyModuleManager := Module;
 [earlyModuleManager named: #cell requires: #[]];
 [earlyModuleManager markLoaded: #cell];
 [Module markLoaded: #modules]
+
+
+// Native providers are explicit loader state, not a Store mirror. Preserve their
+// dependency order for fresh images; ordinary core modules have no such marker.
+[Reflect defineMethod: #imageProviders on: Module as: [:self |
+  let selected := [[self recordNames] inject: #[] into: [:names :name |
+    [[[self field: #imageProvider of: name] == true] ifTrue: [| [names add: name]] ifFalse: [| names]]
+  ]];
+  let order := [self loadOrder: selected];
+  [[order isError] ifTrue: [| order] ifFalse: [|
+    [order inject: #[] into: [:names :name |
+      [[[self field: #imageProvider of: name] == true] ifTrue: [| [names add: name]] ifFalse: [| names]]
+    ]]
+  ]]
+]];
+// Runs before image methods are available. Validate and activate the declared
+// ordered artifacts using the same owners as normal loading, without stdlib.
+[Reflect defineMethod: #loadImageProviders: on: Module as: [:self :names |
+  [names inject: self into: [:prior :name |
+    [[prior isError] ifTrue: [| prior] ifFalse: [|
+      [[self isLoaded: name] ifTrue: [| self] ifFalse: [|
+        let descriptor := [self descriptionOf: name path: [self dylibPathFor: name]];
+        [[descriptor isError] ifTrue: [| descriptor] ifFalse: [|
+          let result := [Codegen load: [descriptor path]];
+          [[result isError] ifTrue: [| result] ifFalse: [|
+            [[result isNil] ifTrue: [| [Error kind: #imageProviderUnavailable]] ifFalse: [| [self markLoaded: name]]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];

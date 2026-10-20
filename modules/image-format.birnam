@@ -5,8 +5,12 @@
 [Globals at: #ImageFormat put: [Cell with: nil]];
 
 // Optional persistence is selected by the composition, never by probing Globals.
+// This overridable initialization hook is not a generation-owned declaration:
+// enabling a provider must not invalidate the format module's source certificate.
+[[|
 let imageNoStore := nil;
-[Reflect defineMethod: #imageStore on: System as: [:self | imageNoStore]];
+[Reflect defineMethod: #imageStore on: System as: [:self | imageNoStore]]
+] value];
 
 // Ordinary snapshot admission. Return self for the live payload, false to reject,
 // or an unpublished ordinary slot-object payload. Image preserves the original
@@ -47,7 +51,7 @@ let forbiddenSlotTags := {4 -> true, 6 -> true, 11 -> true, 13 -> true, 14 -> tr
 let provenanceTags := {0 -> true, 7 -> true, 9 -> true};
 let factTags := {0 -> true, 1 -> true, 2 -> true, 5 -> true, 7 -> true, 8 -> true, 9 -> true, 12 -> true};
 let booleanTags := {0 -> true, 1 -> true};
-let recordTags := {10 -> true, 11 -> true, 3 -> true, 2 -> true, 4 -> true};
+let recordTags := {12 -> true, 10 -> true, 11 -> true, 3 -> true, 2 -> true, 4 -> true};
 let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
 
 // Generic row projections use masks; the admission policy stays here.
@@ -218,6 +222,26 @@ let blockMask := "0000000000001000001";
   let tag := [field at: 0];
   [[[blockTags at: tag] notNil] ifTrue: [|
     [self require: [[[codes at: [field at: 1]] isNil] not] context: blockReferenceContext]]]; self
+]];
+// Declared native provider identities, in dependency order. This is metadata
+// only; validation never loads a module or consults ambient provider bindings.
+[Reflect defineMethod: #providers: on: ImageFormat as: [:self :bytes |
+  [self checked: [|
+    let p := [self parser: bytes offset: 0]; let count := [self u32: p];
+    [self require: [count <= 4096] context: inspectContext];
+    [self checked: [|
+      let names := [self cell: [Map new]];
+      [self repeat: count do: [:i |
+        let field := [self field: p];
+        [self require: [[field at: 0] = 5] context: inspectContext];
+        [self checked: [|
+          let name := [[field at: 2] asString];
+          [self require: [[[names value] at: name] isNil] context: inspectContext];
+          [names set: [[names value] at: name put: true]]
+        ]]
+      ]]; [self finished: p]
+    ]]
+  ]]
 ]];
 // Heap objects are #[locator vectorOfFields]. All loops are bounded by bytes.
 [Reflect defineMethod: #heap:into: on: ImageFormat as: [:self :payload :objects |
@@ -475,10 +499,20 @@ let blockMask := "0000000000001000001";
   [self require: [self bytesEqual: authority with: [self authority: [programs at: 0] binding: [inventory at: 1] selection: [selection at: 0]]] context: inspectContext];
   [self checked: [|
   let heaps := [self cell: #[]]; let facts := [self cell: #[]]; let code := [self cell: nil];
-  let sources := [self cell: nil]; let behaviors := [self cell: nil];
+  let sources := [self cell: nil]; let behaviors := [self cell: nil]; let providers := [self cell: nil];
   [[| [[[self position: p] < [bytes size]] & [[self failure] isNil]]] whileTrue: [|
     let kind := [bytes readU32At: [self position: p]];
     [self require: [kind notNil] context: inspectContext]; [self require: [[recordTags at: kind] notNil] context: inspectContext];
+    [[kind = 12] ifTrue: [|
+      [self require: [[[heaps value] size] = 0] context: inspectContext];
+      [self require: [[[facts value] size] = 0] context: inspectContext];
+      [self require: [[code value] isNil] context: inspectContext];
+      [self require: [[sources value] isNil] context: inspectContext];
+      [self require: [[behaviors value] isNil] context: inspectContext];
+      [self require: [[providers value] isNil] context: inspectContext];
+      [providers set: [self record: p kind: 12]];
+      [self providers: [providers value]]
+    ]];
     [[kind = 10] ifTrue: [|
       [self require: [[[heaps value] size] = 0] context: inspectContext]; [self require: [[[facts value] size] = 0] context: inspectContext];
       [self require: [[code value] isNil] context: inspectContext]; [self require: [[sources value] isNil] context: inspectContext]; [self require: [[behaviors value] isNil] context: inspectContext];
@@ -506,7 +540,7 @@ let blockMask := "0000000000001000001";
   ]];
   [self each: [facts value] do: [:payload :i | [self facts: payload count: [heapInfo at: 0] codes: [heapInfo at: 1]]]];
   [[[code value] notNil] ifTrue: [| [self nativeCode: [code value] authority: authority]]];
-  #[[programs at: 1] [bindings at: 1] [selection at: 1] [heaps value] [facts value] [code value] [sources value] [behaviors value]]
+  #[[programs at: 1] [bindings at: 1] [selection at: 1] [heaps value] [facts value] [code value] [sources value] [behaviors value] [providers value]]
   ]]
   ]]
   ]]
@@ -520,7 +554,7 @@ let blockMask := "0000000000001000001";
   [self checked: [|
   [self argument: [self isVector: fields]];
   [self checked: [|
-  [self argument: [[fields size] = 10]];
+  [self argument: [[fields size] = 11]];
   [self checked: [|
   let arch := [fields at: 0]; let abi := [fields at: 1];
   [self argument: [[[Vtable behaviorOf: arch] == IntegerVt] & [[Vtable behaviorOf: abi] == IntegerVt]]];
@@ -532,15 +566,15 @@ let blockMask := "0000000000001000001";
   [self each: #[heaps facts] do: [:values :i |
     [self argument: [self isVector: values]]; [self argument: [[values size] <= 1000000]];
     [self each: values do: [:bytes :j | [self argument: [self isBytes: bytes]]]]]];
-  let code := [fields at: 7]; let sources := [fields at: 8]; let behaviors := [fields at: 9];
-  [self each: #[code sources behaviors] do: [:bytes :i |
+  let code := [fields at: 7]; let sources := [fields at: 8]; let behaviors := [fields at: 9]; let providers := [fields at: 10];
+  [self each: #[code sources behaviors providers] do: [:bytes :i |
     [[bytes notNil] ifTrue: [| [self argument: [self isBytes: bytes]]]]]];
   let total := [self cell: [260 + [[programs size] + [[bindings size] + [selection size]]]]];
   [self each: #[heaps facts] do: [:parts :i |
     [self each: parts do: [:payload :j |
       [total set: [[total value] + [12 + [payload size]]]];
       [self require: [[total value] <= 1073741824] context: composeContext]]]]];
-  [self each: #[sources behaviors] do: [:payload :i |
+  [self each: #[providers sources behaviors] do: [:payload :i |
     [[payload notNil] ifTrue: [| [total set: [[total value] + [12 + [payload size]]]]]]]];
   [[code notNil] ifTrue: [| [total set: [[total value] + [84 + [code size]]]]]];
   [self require: [[total value] <= 1073741824] context: composeContext];
@@ -555,6 +589,7 @@ let blockMask := "0000000000001000001";
   [self appendRecord: authority kind: 5 on: builder];
   [self appendHashed: programs kind: 7 on: builder]; [self appendHashed: bindings kind: 8 on: builder];
   [self appendHashed: selection kind: 9 on: builder];
+  [[providers notNil] ifTrue: [| [self providers: providers]; [self appendRecord: providers kind: 12 on: builder]]];
   [[sources notNil] ifTrue: [| [self appendRecord: sources kind: 10 on: builder]]];
   [[behaviors notNil] ifTrue: [| [self appendRecord: behaviors kind: 11 on: builder]]];
   [self each: heaps do: [:bytes :i | [self appendRecord: bytes kind: 3 on: builder]]];

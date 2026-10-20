@@ -17,7 +17,8 @@ rows=json.loads(run('retention',[prefix/'bin/birnam',ROOT/'tests/fixtures/owned-
 if not a.skip_images:
  for name,writer in [('new',prefix)]+([('legacy',a.legacy_prefix.resolve())] if a.legacy_prefix else []):
   src=work/(name+'.birnam');image=work/(name+'.image')
-  src.write_text('''[[|
+  src.write_text('''[Module load: #store];
+[[|
 let left := ["same" , " key"]; let right := ["same " , "key"];
 let shared := [Object clone];
 [Globals at: left put: #left]; [Globals at: right put: #right];

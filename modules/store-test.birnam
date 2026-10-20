@@ -1,7 +1,7 @@
 // Explicit Store integration tests; these are not core stdlib requirements.
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
-[Module load: #storeSupport];
-let s := [TestSuite named: "StoreSupport" module: #storeSupport];
+[Module load: #store];
+let s := [TestSuite named: "Store" module: #store];
 
 [s test: "fact reflection preserves current values and identities" do: [:t |
   let person := [Object clone];

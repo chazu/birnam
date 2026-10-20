@@ -119,6 +119,7 @@ fn ordinary_results_keep_failure_visible_and_description_optional() {
             "bootstrap",
             &[Operand::bytes(directory().as_os_str().as_bytes())],
         );
+        optional_modules(id, ns, &["store"]);
         let roots = object(send(
             id,
             ns,

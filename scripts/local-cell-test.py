@@ -41,7 +41,8 @@ def main():
         image = work/'cells.image'; source = work/'save.birnam'
         # Save both modes and shared aliases. main creates another default Cell
         # after restoration, so the restored asCell definition is also exercised.
-        source.write_text('''
+        source.write_text('''[Module load: #store];
+
 [[|
 let local := [17 asCell]; let alias := local;
 let store := db; [store assert: #amount attr: #history value: true];

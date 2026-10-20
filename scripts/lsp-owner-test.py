@@ -29,7 +29,8 @@ def main():
     if not args.skip_images:
         for label,writer in [('new',prefix)]+([('legacy',args.legacy_prefix.resolve())] if args.legacy_prefix else []):
             image=work/(label+'.image');source=work/(label+'.birnam')
-            source.write_text('''
+            source.write_text('''[Module load: #store];
+
 [Module load: #lsp];
 [[|
 let server := SERVER; let alias := server;

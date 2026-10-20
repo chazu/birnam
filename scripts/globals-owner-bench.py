@@ -13,7 +13,8 @@ cases={'read':(2000,14000,'[:count | [[1 to: count] inject: 0 into: [:sum :i | [
  'write':(500,500,'[:count | [[1 to: count] do: [:i | [owner at: #globalsBenchWrite put: i]]]; [owner at: #globalsBenchWrite]]')}
 receipt={'passed':False,'prefixes':{k:str(v) for k,v in prefixes.items()},'runs':[],'sources':{},'runner_sha256':sha(Path(__file__).resolve()),'scope':'Darwin thread CPU clock 16. Normal GC. Startup, setup and explicit final GC excluded. These are operation microbenchmarks, not whole-language speedups.'}
 for name,(count,_,operation) in cases.items():
- source=work/(name+'.birnam');source.write_text('''[Module load: #time]; [Module load: #json];
+ source=work/(name+'.birnam');source.write_text('''[Module load: #store];
+[Module load: #time]; [Module load: #json];
 [[|
 let owner := Globals; [owner at: #globalsBenchValue put: 7];
 let operation := OPERATION; [operation value: 10]; [System gc];

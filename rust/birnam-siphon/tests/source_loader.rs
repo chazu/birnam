@@ -216,6 +216,21 @@ fn source_loading_uses_live_owners() {
             h.bytes(h.at(docs, 0))
                 .starts_with(b"[Reflect defineMethod: #named:requires:")
         );
+        // Descriptions include declarations inside initializer blocks, without
+        // executing them or treating quoted examples as declarations.
+        let nested = h.string(br#"[Module named: #nestedDocumentation requires: #[]];
+[[| [Reflect defineMethod: #nestedDocumentationProbe on: Object as: [:self | 17]] ] value];
+let quoted := "[Reflect defineMethod: #quotedDocumentationProbe on: Object as: [:self | 23]]";
+let dynamic := [:selector | [Reflect defineMethod: selector on: Object as: [:self | 31]]];"#);
+        h.call(codegen, b"recordModuleSource:named:", &[nested, id.intern_name(b"nestedDocumentation").unwrap()]);
+        let descriptions = h.call(codegen, b"recordedMethodSources", &[]);
+        let count = h.number(h.call(descriptions, b"size", &[]));
+        let rows = (0..count).map(|i| h.bytes(h.at(descriptions, i as usize))).collect::<Vec<_>>();
+        assert_eq!(rows.iter().filter(|s| s.starts_with(b"[Reflect defineMethod: #nestedDocumentationProbe ")).count(), 1);
+        assert!(!rows.iter().any(|s| s.starts_with(b"[Reflect defineMethod: #quotedDocumentationProbe ")));
+        assert!(!rows.iter().any(|s| s.starts_with(b"[Reflect defineMethod: selector ")));
+        assert_eq!(h.call(h.named(b"Object"), b"methodFor:", &[id.intern_name(b"nestedDocumentationProbe").unwrap()]), nil);
+
         let equal = h.string(b"[Module named: #gold requires: #[#dep]]");
         assert_ne!(equal, gold);
         assert_eq!(

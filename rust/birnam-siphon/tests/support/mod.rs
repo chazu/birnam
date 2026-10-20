@@ -27,10 +27,37 @@ pub fn object(value: Operand) -> Oop {
     value.as_object().unwrap()
 }
 pub unsafe fn load(id: Protocol, name: &str, args: &[Operand]) -> Oop {
-    let path = directory().join(format!("libbirnam_{name}.dylib"));
+    // Native tests invoke the native ABI, never the authored entry artifact.
+    let optional = directory().join("native").join(format!("libbirnam_{name}.dylib"));
+    let path = if optional.is_file() { optional } else { directory().join(format!("libbirnam_{name}.dylib")) };
     let mut request = vec![Operand::bytes(path.as_os_str().as_bytes())];
     request.extend_from_slice(args);
     object(unsafe { id.send(id.receiver, id.load, &request) }.unwrap())
+}
+/// Explicit optional composition for tests which inspect or mutate actual facts.
+/// Core tests continue to use plain bootstrap; this never runs implicitly.
+pub unsafe fn optional_modules(id: Protocol, ns: Oop, names: &[&str]) {
+    unsafe {
+        let named = |name: &[u8]| object(send(id, ns, b"at:", &[Operand::object(id.intern_name(name).unwrap())]));
+        let roots = named(b"Roots");
+        let mut tokens = Vec::new();
+        let mut keep = |value| { tokens.push(retain(id, roots, value)); value };
+        let globals = named(b"Globals");
+        let module = keep(object(send(id, globals, b"at:", &[Operand::object(id.intern_name(b"Module").unwrap())])));
+        let text = keep(object(send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(directory().as_os_str().as_bytes())])));
+        send(id, module, b"libDir:", &[Operand::object(text)]);
+        for name in names {
+            let symbol = keep(id.intern_name(name.as_bytes()).unwrap());
+            if send(id, module, b"isLoaded:", &[Operand::object(symbol)]).as_object() == Some(named(b"true")) { continue; }
+            let path = directory().join(format!("libbirnam_{name}.dylib"));
+            let path = keep(object(send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(path.as_os_str().as_bytes())])));
+            let value = keep(object(send(id, named(b"Codegen"), b"load:", &[Operand::object(path)])));
+            assert_ne!(value, named(b"nil"), "optional {name}");
+            assert_eq!(send(id, value, b"isError", &[]).as_object(), Some(named(b"false")), "optional {name}");
+            send(id, module, b"markLoaded:", &[Operand::object(symbol)]);
+        }
+        for token in tokens.into_iter().rev() { release(id, roots, token); }
+    }
 }
 pub unsafe fn behavior(id: Protocol) -> Oop {
     object(unsafe { send(id, id.receiver, b"delegated", &[]) })

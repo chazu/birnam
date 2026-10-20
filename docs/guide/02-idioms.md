@@ -11,17 +11,16 @@ Every well-known name — `Integer`, `String`, `Vector`, `Html` — is a
 hierarchy to design; you clone an object and teach it methods.
 
 ```
-let counter := [Object clone];
-[db assert: counter attr: #n value: 0];
+let counter := [ObjectModel newSlots: #[0] parent: ObjectVt];
+[Reflect defineMethod: #slotNames on: counter as: [:self | #[#n]]];
 [Reflect defineMethod: #bump on: counter as: [:self |
-  let c := [db cellFor: self attr: #n];
-  [c set: [[c value] + 1]];
-  [c value]]];
+  let next := [[Reflect slot: #n in: self] + 1];
+  [Reflect slot: #n in: self put: next]; next]];
 ```
 
-This example deliberately stores its count as a fact. `clone` is the ordinary
-object creation verb (`new` is an alias). The block's first
-parameter is always the receiver — name it `self`.
+The count is an ordinary owned slot, with no database dependency. `clone` makes
+a shallow copy. The block's first parameter is the receiver — name it `self`.
+Use explicit Store facts when the data needs queries or retained history.
 
 ## The module pattern
 
@@ -229,9 +228,8 @@ Loading a `*-test.birnam` file only registers the suite;
 
 ## Know where the floor is
 
-One send costs roughly 1.5–2µs. Idiomatic birnam happily spends sends on
-surface logic — delegation, composition, one-send-per-line methods — but
-per-byte and per-row inner loops belong to the native floor (`split:`,
-`trimmed`, `indexOf:`, `bracketDepth`, `sortBy:` are all native for exactly
-this reason). Lift surfaces into birnam; keep scanners native; measure before
-moving a boundary.
+Use bulk operations where repeated per-byte sends dominate a measured workload.
+The current native primitives provide efficient building blocks, but they are not
+a permanent implementation-language boundary. Birnam policies and compiler
+lowering can replace them while preserving late binding, deoptimization and Id
+interoperability. Measure before changing a boundary.

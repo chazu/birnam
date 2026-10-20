@@ -9,7 +9,10 @@ from install_contract import verify
 prefix = Path(sys.argv[1]).resolve()
 receipt = verify(prefix)
 assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
-assert receipt['bootstrap_modules'] == ['error', 'globalsOwner', 'sourceRegistry', 'cell', 'modules', 'lang', 'nativeValues', 'booleanValues', 'integerValues', 'blockLoopControl', 'blockLoop', 'range', 'systemGc', 'printing', 'sourceLoader', 'nativeLoader', 'alienCompiler', 'alienRecipes', 'imageFormat', 'storeSupport', 'trace', 'globals', 'methodInvocation']
+assert receipt['bootstrap_modules'] == ['error', 'globalsOwner', 'sourceRegistry', 'cell', 'modules', 'lang', 'nativeValues', 'booleanValues', 'integerValues', 'blockLoopControl', 'blockLoop', 'range', 'systemGc', 'printing', 'sourceLoader', 'nativeLoader', 'alienCompiler', 'alienRecipes', 'imageFormat', 'trace', 'globals', 'methodInvocation']
+assert receipt['optional_modules'] == ['store', 'relational']
+assert receipt['core_prepared_before_optional_providers']
+assert receipt['image_providers'] == {'birnam-bootstrap.image': [], 'birnam-tools.image': ['store', 'relational']}
 assert receipt['build_seed'] == {'grammar': 'birnam-lang-seed', 'published': False}
 assert 'libbirnam_lang.dylib' not in receipt['dynamic_libraries']
 assert (prefix / 'lib/libbirnam_lang.dylib').read_bytes().startswith(b'\x7fELF')

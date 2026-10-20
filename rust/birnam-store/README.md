@@ -5,8 +5,9 @@ over ObjectModel slots. Store's duplicate `localCell:` variants and tagged local
 records have been removed. `CellVt` here contains only explicit fact-backed handles.
 Images containing the removed local representation must be rebuilt.
 
-Bootstrap loads `libbirnam_store.dylib` with Namespace after the value and
-collection owners, before Execution and the compiler. Store depends only on the
+`Module load: #store` activates an authored entry, which loads
+`lib/native/libbirnam_store.dylib` with Namespace through current Id messages.
+Store is absent from the core bootstrap/compiler closure. Store depends only on the
 common Id ABI. It publishes completed `Store`, `StoreVt`, `CellVt` and `db` objects.
 Globals is constructed separately by its authored owner; Store never publishes or
 replaces it. `db` initially names Store; repeated loading in the same

@@ -53,9 +53,9 @@ mod tests {
             let result = q.call(host.named(b"Codegen").unwrap(), b"compile:output:", &[Operand::object(source), Operand::object(fixture_path)]).unwrap();
             q.check_result(result).unwrap();
             assert_eq!(result, fixture_path);
-            let key = unsafe { host.context.id.intern_name(b"compiledSourceMetadata") }.unwrap();
-            let metadata = q.call(host.named(b"Store").unwrap(), b"currentValue:attr:", &[Operand::object(source), Operand::object(key)]).unwrap();
-            assert_eq!(metadata, host.named(b"nil").unwrap(), "artifact compilation created a metadata fact");
+            let key = unsafe { host.context.id.intern_name(b"Store") }.unwrap();
+            let present = q.call(host.named(b"Namespace").unwrap(), b"includesKey:", &[Operand::object(key)]).unwrap();
+            assert_eq!(present, host.named(b"false").unwrap(), "artifact compilation activated Store");
         }
         let calls = Box::new(Cell::new(0usize));
         let mut original_method_tokens = Vec::new();

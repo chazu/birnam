@@ -51,7 +51,14 @@ for receipt in (first, second):
     assert receipt["authority"] == "rust"
     assert receipt["build_mode"] == "cold"
     assert receipt["profile"] == "release"
+    assert receipt["core_prepared_before_optional_providers"] is True
+    assert receipt["optional_modules"] == ["store", "relational"]
+    assert not {"store", "relational"}.intersection(receipt["bootstrap_modules"])
+    assert receipt["image_providers"] == {"birnam-bootstrap.image": [], "birnam-tools.image": ["store", "relational"]}
+    assert set(receipt["optional_dynamic_libraries"]) == {"native/libbirnam_store.dylib", "native/libbirnam_relational.dylib"}
+    assert all(not name.startswith("native/") for name in receipt["core_dynamic_libraries"])
     invocation = receipt["cargo_invocation"]
+    assert "birnam-store" not in invocation and "birnam-relational" not in invocation
     assert invocation.count("--features") == 1
     feature_index = invocation.index("--features")
     assert invocation[feature_index + 1] == "birnam-bootstrap/lang-seed"

@@ -33,7 +33,8 @@ def main():
     if not args.skip_images:
         for label,writer in [('new',prefix)]+([('legacy',args.legacy_prefix.resolve())] if args.legacy_prefix else []):
             source=work/(label+'.birnam');image=work/(label+'.image')
-            source.write_text('''
+            source.write_text('''[Module load: #store];
+
 [[|
 let manager := [Module clone]; [manager libDir: "/captured"];
 let alias := manager;

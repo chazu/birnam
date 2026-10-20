@@ -1,0 +1,847 @@
+{
+  "status": "Store-independent core cutover qualified; clean release acceptance remains separate.",
+  "baseline_commit": "3d92f014",
+  "source_sha256": {
+    "formal/semantics/tla/ImageProviders.tla": "4c2e388c6388c5b6af465b85181306663f5f28262148b7f3cd27d9afcdc0d9eb",
+    "formal/semantics/tla/ImageProvidersAmbient.cfg": "f4d164516ccf5786900d64ee64e89879925e434f474d59146b272e96803f9eb5",
+    "formal/semantics/tla/ImageProvidersLate.cfg": "1a2c712eb70f01d3052c45d667ee19698579c8a771e53f44534f7161ddd9ebe3",
+    "formal/semantics/tla/ImageProvidersMissing.cfg": "99a637500f3133c0da02229dd6377d31546db60e5edc09006f0fe166a38f15ea",
+    "formal/semantics/tla/ImageProvidersSafe.cfg": "56df14cd7c2573e53bdcd5d6542f6c356e3ef4517ac960ea28bdcea05a3c215f",
+    "modules/doc.birnam": "844adfaa15fcceab25b7568b34fc8a6ba824cc0e448c2653587b9b0ec5a6997f",
+    "modules/image-format.birnam": "701a3450f5f1a2b57f4d1e5dbd7b2749d55bb6b310c60461abdf9d6689d43356",
+    "modules/modules-test.birnam": "3dc7c91e4f789c2be1852974acea243dc3ef0c7f49e34c7eb3d3205f4973523c",
+    "modules/modules.birnam": "8de6e2e85073651aaa65a2dca75d3d8d8f8a34eceb70c2d88d6c37e493596c35",
+    "modules/relational.birnam": "e116eed9228ca7956c04f8fb59e42825eecccc6e0ccd027530aef028eb97dc70",
+    "modules/run-tests.birnam": "e570874a0496b5fa406d7e32ed28e5acaf4b177079d1a9ebf8b7233ebb86428f",
+    "modules/stdlib.birnam": "3f4835745d4474b514919f12b056101e8238a4d997fbfe72996a38c4c719ec4c",
+    "modules/store-test.birnam": "f26a796c8c3e993b83211320aae9ffc93040063823b444a703380ac63ebf5697",
+    "modules/store.birnam": "afcba8ef20ddd33a212f9083c6a722006d4483c3e39e142121c0d2c0749fe094",
+    "rust/birnam-bootstrap/src/lib.rs": "4dc0530201820ee1273be86afc9580fed6838ecac3611e571b22c2301f285d21",
+    "rust/birnam-build/src/main.rs": "12809964aeb448fa839cfa4f169a101196c846303b1a763785df2f58cd9cc7ca",
+    "rust/birnam-cli/src/bin/birnam.rs": "a98271a1175c332d4282e00f1f3d520a47a5225de015bf5a81472b6c94d7b07e",
+    "rust/birnam-codegen/src/source_revision.rs": "de7a0885221decba518ce3f0163b865565dddb659f9357a2370fcd18850eb0c4",
+    "rust/birnam-host-entry/src/startup.rs": "6ccfda4e1a09f58dec1d8704630e74f0cffcef3ff9789e40bba6d17a6e7381d7",
+    "rust/birnam-host-interaction/src/interaction.rs": "9b11fb58d530c2d68d6c7eb264c0dbc8d9074ff7f0185a110e94ef280c0cc830",
+    "rust/birnam-host/src/lifecycle_test.rs": "7896b9ef52b163d5944a6d7a69e2ea2785f6cc2a3c524907a3c1c5191511552b",
+    "rust/birnam-host/src/startup.rs": "5199be40ce12d64f5b9e69348a6e01694d555ef8ec3a6dce5f5dcafe4c9feef8",
+    "rust/birnam-image-codec/src/v8.rs": "3739af95edc5e5f981da1609271124faec62cb876256262f5ada1da68ebc9b51",
+    "rust/birnam-image/README.md": "7968b2f7d5f50b7ba50f08effe005e4f1cc73fc2c0991655829535b57ad6b8d3",
+    "rust/birnam-image/src/format.rs": "5fffa243290d9de417a16db9f1dc5469a4570229cad4bc36b2f45896d53a962d",
+    "rust/birnam-image/src/native.rs": "a3a95b3e0195c9f9af6ac339a12afe7ccd87d2b0da4540b103b45571673a2998",
+    "rust/birnam-siphon/tests/alien.rs": "984187b7b3bc0138feb61490fd99ad619ec09e5eefdf1441cf614c1a253b4dce",
+    "rust/birnam-siphon/tests/block_loop.rs": "11c2fd836462a0c008cb027460ad3da11ddb38d55a41b4a8dea7d6c80a378e1e",
+    "rust/birnam-siphon/tests/candidate.rs": "d2ebc7b6d66a593c566853d108c0de8eae1084bb562f2ca325a729296d8cd4da",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "6bdb52abf027186ba65875845c285ac7335d6b34ba36526dbcd849ea03e926c4",
+    "rust/birnam-siphon/tests/cell_without_store.rs": "af8b4ab2acc9009fcd8837efd648fda86319d925cce6c628786388ba2b7ac3e4",
+    "rust/birnam-siphon/tests/compiler.rs": "c10e7f5dfd6413b7897416f89a0767b8bf9cef65a17702751a8e0ebbe99ac8d0",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "3afff9471b5ba677f623e0f55ceec4bb1692aac1faa7a72b107aecd01828a65b",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "96813d0c018feea079e21e2d9d43046a4ada777c64ce413732b08fdf69976437",
+    "rust/birnam-siphon/tests/image.rs": "f9ff228333014177077d8c9c5e3d7a6d447bb305a3d2ff16815086ebaef0919c",
+    "rust/birnam-siphon/tests/image_recovery_conflict.rs": "38ead5e103844d1f5178dca0bfb7a2393ce7ad526d8644cd3de425652130e114",
+    "rust/birnam-siphon/tests/image_snapshot_stamp.rs": "d46c27064eadbb00f7bbc48fc85b85ba7af89ae70958c00e3fcd59c44315c32a",
+    "rust/birnam-siphon/tests/image_without_store.rs": "e53f5c6211fce0a2059e00a719509c4578b59818ce218c4aca8445cf2bdfbc66",
+    "rust/birnam-siphon/tests/materialization.rs": "0cbf211e66795c85f34ad1e3224e3c3e1a5314f326bab515fdae4dd500f258b2",
+    "rust/birnam-siphon/tests/method_invocation.rs": "d41ec61640969528c7fc75a245e24dcb12b4f9ece184f31c0d5f78d413ee6281",
+    "rust/birnam-siphon/tests/owned_globals.rs": "4a4a9eb945e792d6f529cd5d72cc32a3ca302d8e0f1de1cf018a4e577b50581b",
+    "rust/birnam-siphon/tests/publication_contract.rs": "172cd4d70ca54e130fd7fe18ccc6bb6b873c1190e8763f04d88ce6fcc943c07c",
+    "rust/birnam-siphon/tests/publication_failure_boundary.rs": "cb0c0e5ef1925f686474bdceceb3fb765757a8876236dad224b78fea1edf67f8",
+    "rust/birnam-siphon/tests/publication_result_proposal.rs": "806bc91fef5c97fb5bc3242374ad48ee4d1ec77e1f36a0a82f3952e20192261f",
+    "rust/birnam-siphon/tests/relational.rs": "7863be075f15aecd604c2d9b9a2081186e77bf66f46e00cd854c3d7339afd282",
+    "rust/birnam-siphon/tests/relational_authored.rs": "d49d7379e5d86ada3b06fa7b43d4743ec43549d87bd04357e63a84f4e8743f0c",
+    "rust/birnam-siphon/tests/shared_invocation_probe.rs": "d7e54c516e57253dafa3b0ee3140049e4a960d6772f295c75d168330c6599b26",
+    "rust/birnam-siphon/tests/source_inspection.rs": "94be003b9140fbfe6a621849003d04958805684bb9eb514bb3f0021cb3b24e48",
+    "rust/birnam-siphon/tests/source_loader.rs": "754540e94427f52030e1c82f5b3cfb58e03c7896c933b429454a50d2d3cfb694",
+    "rust/birnam-siphon/tests/store.rs": "01a778da9aee95828d4a6d96ca9a8dfa2977ffb9c8df45073844651fb29ef613",
+    "rust/birnam-siphon/tests/store_compensation.rs": "f848a652602ea42b12ace30fdba5bdb19243017fa1c0a296c6848b84a23099e0",
+    "rust/birnam-siphon/tests/support/mod.rs": "adc9c2402c08f0b0a81c61e8cbdd5e6ec8c94a15ea8ee54cc4d324df060f6fab",
+    "rust/birnam-store/README.md": "2ad163ec0644b20f691c3f094afd802482be470f0a78ffb730612bbd65e7e8f4",
+    "scripts/cell-without-store-test.py": "cff7868c406d05f3a4e33d4c8abb5edace1fd649dcde6cc1a6a6c490a1eec2c3",
+    "scripts/check-rooting-model.py": "84628c5bdc565607e153ba3911f61313dce942665b176b22463c6482443ed935",
+    "scripts/compiled-unit-cli-test.py": "51d5f3b71872c7f7a44964deabf6e8d37975b0c157a82b9f6032a6d238084607",
+    "scripts/core-without-store-test.py": "88cf10ea7a56357d6939ff1d7fa1e203933bb7d9b5fb676b2fa1e40f816e1791",
+    "scripts/globals-owner-bench.py": "9911e44a4011d093c731291dce95b5e72829ae14fe3aaf47b72eb1e2e3edd250",
+    "scripts/globals-without-store-test.py": "f41d9dbc5e183d2ddb68478f4edd8dd88714904c1a411adff951175b5dc5a506",
+    "scripts/harness-owners-test.py": "1f17b69fbb0e30b6d9bcebb6c2dc7c971b0f0fee495c3b7ef3d03855a574ac7f",
+    "scripts/host-cli-test.py": "429e2775aec847299efe57cc8b23e2a973f7da92377b2c349623d41df280b604",
+    "scripts/host-cli-test.sh": "2956e1a704e25028ef84af9d13225a29b7cc124fd7d38f97e3edd06839dd3268",
+    "scripts/image-format-test.py": "8332d13991cbf77faa3e4e9c8e45206193e3557c2446b8d421610e131a1cf648",
+    "scripts/image-store-participation-test.py": "1739b30e55f9dd7d5f8ca021864ba565de08378ce7e03d6a7b104e1355ed9ef9",
+    "scripts/image-without-store-test.py": "ded291725b50277c106a0a8d0c2f8f33b2e859b87e469ea1315149228cf7b685",
+    "scripts/interaction-cli-test.py": "514dae510e65efe4d2b8bbefe086c2203e04bc4b227227c290a9e4589f4aea28",
+    "scripts/lang-migration-test.py": "1644608ca0543442e7b8568e56782483b9825d626d19bd7d0265aed77be7cd8d",
+    "scripts/local-cell-bench.py": "c9dba4652043cf5397d902a0d2dc8d36cd1447a70fb0300cff098b32fe977cec",
+    "scripts/local-cell-test.py": "39395e5c514bdf35c4e98d87e58da0290a7cb577fb358aef7a8b8ed2b65d9144",
+    "scripts/lsp-owner-test.py": "cd9919585f46ad7cf0211a8c6b0c5d4d58644cd80cd27395835728d13d9f1ed8",
+    "scripts/module-registry-test.py": "fbfbbe5fe1549bb3542b44307e1d8f980df499a0e854df557d1317b30f92fbd5",
+    "scripts/native-message-test.sh": "f2d26e2d64c7941d8415ba20c89a05054d4fa1261beb439d817e460b10d9833b",
+    "scripts/optional-store-image-test.py": "1a89b4a0d2c9fd6833b54d7ec87c915795993476091e68b8915a2f4b298fdd32",
+    "scripts/optional-store-test.py": "76630a6b69c4f392c751bef7ea80265c1f05003f6076a4edb6a172ea3770feb3",
+    "scripts/ordinary-edit-image-test.py": "81ca86063e55b7414c6150f0dcb5a90a92d3a2e097c047c0f38d7a66f04213b6",
+    "scripts/ordinary-records-test.py": "d05a52db022cef7448474e2d0355a77dc8ceffb7dd71c54e767ba05a3b6860cc",
+    "scripts/owned-globals-test.py": "3534b2a456a9f7355149f5be89eb421638c314b08840ac86548f7846c37335c3",
+    "scripts/reflect-slots-test.py": "503688faa869f1bc8fefa4032990a2f9a82f4695735a1748bad7cc31127474a8",
+    "scripts/rust-driver-cold-archive-smoke.sh": "c5c69b082cf103c731bf48686e3ae1b49c674bdb5871e0c04415b60d2fdc78f7",
+    "scripts/validate.py": "458f1d39c3db12c3d37d97996bc83acd4c3e5dc3db35011194e1d2fa36581181",
+    "scripts/worker-test.py": "7a634b5e85ac4d4c6f5800d6785227db27c64438a6b0b6493e44be79dee1bb63",
+    "tests/fixtures/cell-owner.birnam": "3e0aaa35aac21f5cf11524a703579c1f6ae75eeb5e38efff84ef457b9224cfe0",
+    "tests/fixtures/compiled-source-image.birnam": "611805138ede6c3672e1f3fe469a2554774ad13963e575888c2e0b6b0bc3ff21",
+    "tests/fixtures/globals-owner.birnam": "34fd0e7da2b7b0e51a71c6ec80b7b8c7f4ad5dd9ebeb8f6658de59c612a6982d",
+    "tests/fixtures/harness-owners.birnam": "7a5aad9142887204a7abd5acf53eb19982ab32bc1e39a1e580d8a686113bca4a",
+    "tests/fixtures/lifecycle-record-image.birnam": "4deb445a8064d099a1fa8329cb6df942ec44a6c9203383ca8ee0d3eb97d6c2ce",
+    "tests/fixtures/local-cells.birnam": "2c0023d266b947157aa2206be284eb5ad0a277c25c6d768ec846cab7f0068b68",
+    "tests/fixtures/lsp-owner.birnam": "82910c6a98052bdabc57e5494043e79d364ed1ac83bb34e7bf2eb0fab06177d5",
+    "tests/fixtures/module-registry.birnam": "de809e8355d5a18b89c42ff331e972a0940d607f16aadc6c3dc38332903c0cbe",
+    "tests/fixtures/ordinary-records.birnam": "30939ae75a40e8faa235e7b285f31bffeb045cfb1b5eeb326d0a0dded3781302",
+    "tests/fixtures/owned-globals.birnam": "05a5f61e9f121e980d36b3042087a6432b105750cf32dcaafb416fa1701c8eef",
+    "tests/fixtures/reflect-owner.birnam": "107208c3f9e1869ae12871806b6e86ac90ca85dd38af3a58d0d033b244378c4a",
+    "tests/fixtures/reflect-slots.birnam": "feaf62c2e6d93f6d53289911e9c1452b42af5435596030c1b0b21162bda393dc",
+    "tests/fixtures/scratch-state.birnam": "389014a3c5e54400c16fc9aa9e13fa8204e6aaf53d01d0b00034fb9a04e2da6b",
+    "tests/reference/image-format/src/main.rs": "40c5891a182edb7879ec45b4d1d333eac6a78d2aa32591621c36c650b9a398e2",
+    "tests/reference/image-format/src/v8.rs": "d5c52bcde547b6b05a3076b32a5ef264bc8aed1916ef32c5f9ee127fb7562a3d"
+  },
+  "prefix": "/tmp/birnam-store-independent/26-qualified-core/prefix",
+  "install": {
+    "path": "/tmp/birnam-store-independent/26-qualified-core/prefix/share/birnam/rust-install.json",
+    "sha256": "56eeffc2ba44575c9848c91c2cc7e83f4ceca7415450f03d0eb6eb1d558f6506"
+  },
+  "composition": {
+    "build_mode": "development-cache",
+    "profile": "release",
+    "core_dynamic_libraries": [
+      "libbirnam_id.dylib",
+      "libbirnam_root_registry.dylib",
+      "libbirnam_namespace.dylib",
+      "libbirnam_boolean.dylib",
+      "libbirnam_nil.dylib",
+      "libbirnam_bootstrap.dylib",
+      "libbirnam_host_entry.dylib",
+      "libbirnam_host_interaction.dylib",
+      "libbirnam_host_project.dylib",
+      "libbirnam_project_build.dylib",
+      "libbirnam_collect.dylib",
+      "libbirnam_object_model.dylib",
+      "libbirnam_string.dylib",
+      "libbirnam_bytes.dylib",
+      "libbirnam_integer.dylib",
+      "libbirnam_float.dylib",
+      "libbirnam_word.dylib",
+      "libbirnam_vector.dylib",
+      "libbirnam_map.dylib",
+      "libbirnam_execution.dylib",
+      "libbirnam_peg.dylib",
+      "libbirnam_tcc.dylib",
+      "libbirnam_codegen_runtime.dylib",
+      "libbirnam_native_backend.dylib",
+      "libbirnam_generation.dylib",
+      "libbirnam_prelude.dylib",
+      "libbirnam_system_output.dylib",
+      "libbirnam_system_input.dylib",
+      "libbirnam_environment.dylib",
+      "libbirnam_file_io.dylib",
+      "libbirnam_storage.dylib",
+      "libbirnam_artifact.dylib",
+      "libbirnam_portable_code.dylib",
+      "libbirnam_image.dylib",
+      "libbirnam_alien.dylib",
+      "libbirnam_isolate.dylib"
+    ],
+    "optional_dynamic_libraries": [
+      "native/libbirnam_store.dylib",
+      "native/libbirnam_relational.dylib"
+    ],
+    "optional_modules": [
+      "store",
+      "relational"
+    ],
+    "image_providers": {
+      "birnam-bootstrap.image": [],
+      "birnam-tools.image": [
+        "store",
+        "relational"
+      ]
+    },
+    "core_prepared_before_optional_providers": true
+  },
+  "checks": {
+    "22-provider-images/format.log": {
+      "path": "/tmp/birnam-store-independent/22-provider-images/format.log",
+      "sha256": "952f8f01905e6f69bfa9fe1f3941bdb10eb37b7d23d11153d63081bc9b8d098d"
+    },
+    "22-provider-images/formal.log": {
+      "path": "/tmp/birnam-store-independent/22-provider-images/formal.log",
+      "sha256": "035778f722584aff61982d5cdd74a02d883646d81b84c95fb3b0f23996130f3a"
+    },
+    "22-provider-images/optional-images.log": {
+      "path": "/tmp/birnam-store-independent/22-provider-images/optional-images.log",
+      "sha256": "00f6a790b06f7f5994dfdd8f5dc5e445694b288fc8c5165f83210140b967e7b2"
+    },
+    "22-provider-images/native.log": {
+      "path": "/tmp/birnam-store-independent/22-provider-images/native.log",
+      "sha256": "c07461f770feff2e52a91ccee0b6d571472f9ebf8b1669d3a4524c979a613eb4"
+    },
+    "22-provider-images/native-remaining.log": {
+      "path": "/tmp/birnam-store-independent/22-provider-images/native-remaining.log",
+      "sha256": "120839883410d27bfbbaf9c7341c2afc53b25254ac806c80e70f5804878c7255"
+    },
+    "24-core-final/language.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/language.log",
+      "sha256": "57455144368e5289da3467ff49e03b94210aab22b669a8d557a72844cb60f4c6"
+    },
+    "24-core-final/absence.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/absence.log",
+      "sha256": "9a492ad52728fb4dd10c50392dc149395a09b72a6c8839e59ada730cc7541eb2"
+    },
+    "24-core-final/late.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/late.log",
+      "sha256": "516c27b0f4a12f2d96d54aca91c3764f2d60eec07c2622c7a2b53365398072db"
+    },
+    "24-core-final/candidate.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/candidate.log",
+      "sha256": "f293e3034b6afabb97c91e358ad15fc3f8a1d8ac42fb1e34aadb4c7dd6df6ffb"
+    },
+    "24-core-final/native-fixes.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/native-fixes.log",
+      "sha256": "5f6a3ac48b6e7dd777cbabe56579d94f5724e3b32d797027ab22b708549315b8"
+    },
+    "24-core-final/provider-snapshot.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/provider-snapshot.log",
+      "sha256": "18cf5dab919532bb2f2c7b210bbc8e3438f24e732b93a65ddd08d198bcaf75b6"
+    },
+    "24-core-final/native-loader-full.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/native-loader-full.log",
+      "sha256": "96ed526971062eeaa0f8679182ef0cd1faea7f594f1fb697562611102ea717d7"
+    },
+    "24-core-final/ancillary.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/ancillary.log",
+      "sha256": "9ebebf22ed421fa71ab3967fa4af3c0eda47c217f7df2aa13b8548356d6be007"
+    },
+    "24-core-final/native-tail-rest.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/native-tail-rest.log",
+      "sha256": "cecfa9e47dd3ae39cac85859866f1e74e2ecc4c566fba2b26d7331eaf82cb704"
+    },
+    "24-core-final/image-owner-rerun.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/image-owner-rerun.log",
+      "sha256": "cd4d10c5abf7e9f1cabe3d7e80be406a3e680079265f502056ba9e63044297e3"
+    },
+    "24-core-final/core-services.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/core-services.log",
+      "sha256": "4c9a484cc3abc871ad7e93668f0f7d21beb5eb660d88b7be41dbade0665a9aec"
+    },
+    "24-core-final/host-contract.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-contract.log",
+      "sha256": "0b90f67b6a18f161a156ffac52449ca7998f9f639c3cbafa729d68aa6282f5ae"
+    },
+    "24-core-final/host-isolated.json": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-isolated.json",
+      "sha256": "a670d2c22d42ebfc448fea2b6f2f2ef180fbf325e77283b4f81f36e5f1fb8d5e"
+    },
+    "24-core-final/host-image-entry.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-image-entry.log",
+      "sha256": "80e916ea56325a5d1c46488e56730d075a340a29f1a006dffb4fbbd55e9153de"
+    },
+    "24-core-final/cold-archive.log": {
+      "path": "/tmp/birnam-store-independent/24-core-final/cold-archive.log",
+      "sha256": "c20da58fda5ff94da10e004aeae17069f6496331c513da62a9ea920195ca74b3"
+    },
+    "25-host-floor/host-images.log": {
+      "path": "/tmp/birnam-store-independent/25-host-floor/host-images.log",
+      "sha256": "7893a0627bb4f5c37d67eb44cd0e1316bc6557a30b79dc85e9ad4342e77028b5"
+    },
+    "25-host-floor/minimal-image-recovery.json": {
+      "path": "/tmp/birnam-store-independent/25-host-floor/minimal-image-recovery.json",
+      "sha256": "9388cde0c373c5827b5ba87082d4aff44b26aeb4a5af87abdf90b0b2c94580ed"
+    },
+    "25-host-floor/validation-tools.log": {
+      "path": "/tmp/birnam-store-independent/25-host-floor/validation-tools.log",
+      "sha256": "289c14f8f1a04099dc2fc9cff6ff3e4056eb013d280a5552af16429a2cb73e4a"
+    },
+    "26-qualified-core/final-host-floor.log": {
+      "path": "/tmp/birnam-store-independent/26-qualified-core/final-host-floor.log",
+      "sha256": "7185b68baa4c08b4f8a345e58a11ada7e97ed5e00702616259ca8a1c12f5a88a"
+    },
+    "host-isolated-0": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-0.log",
+      "sha256": "257e4272c322d006f532ee7b15c526a532dd789fd084f7fe667d6b9677f5ae2d"
+    },
+    "host-isolated-1": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-1.log",
+      "sha256": "9582405d9d337557162d84f581a16680906f314f9bab7b3db366c3a7522dffb9"
+    },
+    "host-isolated-2": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-2.log",
+      "sha256": "c46cbf6a2a2bcd7796c44a7c1c04d12cebc4dfa9dda4634adffe0821a054f499"
+    },
+    "host-isolated-3": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-3.log",
+      "sha256": "59da6ac9e8eef668a3272b22b80eec32be31a3da310d15789b5152bf2376dca6"
+    },
+    "host-isolated-4": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-4.log",
+      "sha256": "448d600aca2eb0079ce06fbbd50d9de7463b18eb386f08a92bd1a4e662dafd6b"
+    },
+    "host-isolated-5": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-5.log",
+      "sha256": "7b2b972948628e1eb7d4c6b167461da4d14103318947f2105ec7fec0a40adc74"
+    },
+    "host-isolated-6": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-6.log",
+      "sha256": "e816ab36fe9dbe76688440179a87e7859fb1568b825236f388e8bcde65ca3fc0"
+    },
+    "host-isolated-7": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-7.log",
+      "sha256": "5853e2d1a59fe6839dfed8a078894a99e044ea76ccc7b7dff9a16f61b35ddd2e"
+    },
+    "host-isolated-8": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-8.log",
+      "sha256": "3115a5acd082d1a396edbb40e89fcd4b41d8c7b78b98173e4cf1e72a641213a4"
+    },
+    "host-isolated-9": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-9.log",
+      "sha256": "ed43238c57cddf35543939933bf33305fd7e201e6f239879f7d56bfebbf163d2"
+    },
+    "host-isolated-10": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-10.log",
+      "sha256": "52cf24d4543ed6ee3384fdcfcfad57d083ab58c896ac432b4e09902a6843ef90"
+    },
+    "host-isolated-11": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-11.log",
+      "sha256": "25d7a14e637ab71ec9bbe05d88f43b93ab3ce8ffeedf99bb635e4ef1627c6c34"
+    },
+    "host-isolated-12": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-12.log",
+      "sha256": "adf894f0512120b903e670dff77ac7e767d70eed2d2d99a2facb1cdcbc43471c"
+    },
+    "host-isolated-13": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-13.log",
+      "sha256": "0c7333ee9567f801e6a2b89669b69105867d02b763c0245e6d33a37eb331a2aa"
+    },
+    "host-isolated-14": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-14.log",
+      "sha256": "c10d357ff720d4c6bc119eedaee646a1ed1134f94f1d8e337d0c3bce839787db"
+    },
+    "host-isolated-15": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-15.log",
+      "sha256": "6ca48588b8b58d3f50179a2aaecf1227d578ba8a3cbe41be3125abc1989dfa90"
+    },
+    "host-isolated-17": {
+      "path": "/tmp/birnam-store-independent/24-core-final/host-17.log",
+      "sha256": "ae557a01ed97f148d6a589948fb4e71bdf9de1c97817a25e2b872c67e955911c"
+    }
+  },
+  "native_target_coverage": {
+    "alien": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "allocation_accounting": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "artifact": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "artifact_activation": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "artifact_templates": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "binding_proof": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "binding_undo": {
+      "passed": true,
+      "log": "22-provider-images/native.log"
+    },
+    "block_loop": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "boolean_values": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "borrowed_read_inputs": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "byte_abi": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "candidate": {
+      "passed": true,
+      "log": "24-core-final/candidate.log"
+    },
+    "candidate_retirement": {
+      "passed": true,
+      "log": "24-core-final/native-fixes.log"
+    },
+    "capture_access": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "capture_dependencies": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "closure_construction": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "collections": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "compiler": {
+      "passed": true,
+      "log": "24-core-final/native-fixes.log"
+    },
+    "embedding": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "execution_machines": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "execution_methods": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "external_allocation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "fixed_abi": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "generation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "generation_ledger": {
+      "passed": true,
+      "log": "24-core-final/native-fixes.log"
+    },
+    "generation_transaction": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "global_resolution": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "guard_batch": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "harness_retention": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "image": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "image_recovery_conflict": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "image_snapshot_stamp": {
+      "passed": true,
+      "log": "24-core-final/provider-snapshot.log"
+    },
+    "integer_box_observability": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "integer_operation_objects": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "integer_values": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "invocation_inputs": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "isolate": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "local_cell_retention": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "materialization": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "memory": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "memory_activation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "method_binding": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "method_invocation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "method_observation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "module_registry_retention": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "modules": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "native_incoming": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "native_numeric_inputs": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "native_values": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "numbers": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "numbers_loading": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "object_model": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "object_model_scopes": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "object_model_slots": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "ordinary_record_retention": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "owned_globals": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "portable_code": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "publication_contract": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "publication_failure_boundary": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "publication_failure_image": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "relational": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "representation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "representation_batch": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "representation_fallback": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "result_cleanup": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "root_batches": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "root_reuse": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "roots": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "shared_invocation_probe": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "source_inspection": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "source_loader": {
+      "passed": true,
+      "log": "24-core-final/native-fixes.log"
+    },
+    "storage_trace": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "store": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "store_compensation": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "system_gc": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "system_output": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "system_services": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "tagged_rows": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "text_error": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "trace_graphs": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "trace_heap": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "word_expression": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "word_helper": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "word_representation_order": {
+      "passed": true,
+      "log": "22-provider-images/native-remaining.log"
+    },
+    "native_loader": {
+      "passed": true,
+      "log": "24-core-final/native-loader-full.log"
+    }
+  },
+  "formal": {
+    "receipt": {
+      "path": ".cargo-target/formal/results/rooting-m3a0b940/summary.json",
+      "sha256": "8b0315e741755e050d3686e3d9af516bae2a647737d37836aeb2f5e0574b83ba"
+    },
+    "theorems": 424,
+    "mutations": 135,
+    "expected_tlc_outcomes": 295
+  },
+  "measurements": {
+    "startup": {
+      "rows": [
+        {
+          "trial": 0,
+          "label": "baseline",
+          "wall_seconds": 2.8754054587334394,
+          "cpu_seconds": 2.739545999999998
+        },
+        {
+          "trial": 0,
+          "label": "candidate",
+          "wall_seconds": 2.7205863329581916,
+          "cpu_seconds": 2.716889000000001
+        },
+        {
+          "trial": 1,
+          "label": "candidate",
+          "wall_seconds": 2.658508624881506,
+          "cpu_seconds": 2.6525940000000006
+        },
+        {
+          "trial": 1,
+          "label": "baseline",
+          "wall_seconds": 2.6917836661450565,
+          "cpu_seconds": 2.6851770000000013
+        },
+        {
+          "trial": 2,
+          "label": "baseline",
+          "wall_seconds": 2.701832292135805,
+          "cpu_seconds": 2.6948670000000017
+        },
+        {
+          "trial": 2,
+          "label": "candidate",
+          "wall_seconds": 2.6954445000737906,
+          "cpu_seconds": 2.686029999999997
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.701832292135805,
+          "cpu_seconds": 2.6948670000000017
+        },
+        "candidate": {
+          "wall_seconds": 2.6954445000737906,
+          "cpu_seconds": 2.686029999999997
+        }
+      }
+    },
+    "lsp-bench": {
+      "rows": [
+        {
+          "label": "baseline",
+          "trial": 0,
+          "cpu_seconds": 3.535538999999998,
+          "wall_seconds": 3.6135198334231973
+        },
+        {
+          "label": "candidate",
+          "trial": 0,
+          "cpu_seconds": 3.185166999999998,
+          "wall_seconds": 3.18899383302778
+        },
+        {
+          "label": "candidate",
+          "trial": 1,
+          "cpu_seconds": 3.1296269999999957,
+          "wall_seconds": 3.1368012498132885
+        },
+        {
+          "label": "baseline",
+          "trial": 1,
+          "cpu_seconds": 3.531370999999997,
+          "wall_seconds": 3.536130915861577
+        },
+        {
+          "label": "baseline",
+          "trial": 2,
+          "cpu_seconds": 3.546268000000005,
+          "wall_seconds": 3.552917250432074
+        },
+        {
+          "label": "candidate",
+          "trial": 2,
+          "cpu_seconds": 3.1510689999999935,
+          "wall_seconds": 3.153380624949932
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "cpu_seconds": 3.535538999999998,
+          "wall_seconds": 3.552917250432074
+        },
+        "candidate": {
+          "cpu_seconds": 3.1510689999999935,
+          "wall_seconds": 3.153380624949932
+        }
+      },
+      "scope": "Fresh processes; real initialize/shutdown/exit LSP exchange; normal GC."
+    },
+    "snapshot-bench": {
+      "rows": [
+        {
+          "label": "baseline",
+          "trial": 0,
+          "cpu_ns": 32727672667,
+          "bytes": 269325076,
+          "image_sha256": "76d3897921a7a45db767998c4b787525923e1e363ad5b76b8e33c6af94118812"
+        },
+        {
+          "label": "candidate",
+          "trial": 0,
+          "cpu_ns": 33217818875,
+          "bytes": 273242063,
+          "image_sha256": "bb1eccc9b40ab4e30e2a79d070504e7729cb831e5ce8fe0dbe83d56d91f7a398"
+        },
+        {
+          "label": "candidate",
+          "trial": 1,
+          "cpu_ns": 32942031417,
+          "bytes": 273242063,
+          "image_sha256": "bb1eccc9b40ab4e30e2a79d070504e7729cb831e5ce8fe0dbe83d56d91f7a398"
+        },
+        {
+          "label": "baseline",
+          "trial": 1,
+          "cpu_ns": 32788446791,
+          "bytes": 269325076,
+          "image_sha256": "76d3897921a7a45db767998c4b787525923e1e363ad5b76b8e33c6af94118812"
+        },
+        {
+          "label": "baseline",
+          "trial": 2,
+          "cpu_ns": 32653386167,
+          "bytes": 269325076,
+          "image_sha256": "76d3897921a7a45db767998c4b787525923e1e363ad5b76b8e33c6af94118812"
+        },
+        {
+          "label": "candidate",
+          "trial": 2,
+          "cpu_ns": 33303029625,
+          "bytes": 273242063,
+          "image_sha256": "bb1eccc9b40ab4e30e2a79d070504e7729cb831e5ce8fe0dbe83d56d91f7a398"
+        }
+      ],
+      "medians": {
+        "baseline": 32727672667,
+        "candidate": 33217818875
+      },
+      "source": "[Module load: #time];\n[[|\n[System gc]; let before := [16 clockNanos];\nlet result := [System saveImage: \"/tmp/birnam-store-independent/26-qualified-core/benchmark.image\"];\nlet elapsed := [[16 clockNanos] - before];\n[System println: elapsed]; [System println: result];\n[System println: [[System imageSaveReport] status]]\n] value]\n"
+    }
+  },
+  "notes": [
+    "Evidence is accumulated across qualified fixes, not a claim that the earlier failed batch commands passed. Native targets are resolved by their last recorded result; the clean release candidate is rerun independently.",
+    "The initial native-fixes candidate failure was a stale integer-token/descriptive-name assumption, superseded by candidate.log. Collecting native-loader stress passed unchanged in 288 seconds.",
+    "Native-tail owner-image and isolated Host lifecycle image failures under disk pressure were rerun successfully; image-owner-rerun.log and host-8.log are the passing evidence.",
+    "The isolated Host entry test needed BIRNAM_TEST_IMAGE; host-image-entry.log supersedes the fixture-less index16 run. Running all ignored Host tests in one VM was invalid and is excluded.",
+    "Full installed image CLI passes on prefix25. Prefix26 only retains the prior missing-Module short circuit in addition to the current isLoaded query; its focused Host checks and manifest pass separately.",
+    "Core absence includes real projects, TCP/console sessions, LSP and workers with both native providers and authored entry artifacts removed. Optional images declare providers before heap restoration; parent workers remain Store-free.",
+    "The native release deadline increases from 900 to 2700 seconds because measured tests exceed the old limit, with no coverage or assertion removed.",
+    "GC policy is unchanged. Normal-GC timings are serial, three interleaved fresh-process samples against prefix20; these are composition measurements, not a language-wide speedup.",
+    "Older executable images must be rebuilt. Independent Store instances remain explicitly unsupported for persistence. Native artifact/certification self-hosting and generic live mirrors are separate follow-ups."
+  ]
+}

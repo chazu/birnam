@@ -179,40 +179,35 @@ recorded Birnam definition span, or nil for a native or undocumented method:
 ```
 
 The source lookup is lazy, so enumerating a large protocol does not rescan every
-module once per method. It searches the active generation's recorded method
-sources, which makes it useful for understanding a method's implementation as
+module once per method. It searches recorded compiler/source metadata, which makes it useful for understanding a method's implementation as
 well as its dispatch shape.
 
-The fact store still exposes the lower-level direct mirror when you need to
-inspect exactly one vtable. `attrCount:` and `attrAt:index:` enumerate direct
-selectors; use an index from `0` through `count - 1`:
+Use the actual dictionary owner for direct methods, without Store:
 
 ```birnam
-let vt := [Reflect vtableOf: String];
-let count := [db attrCount: vt];
-[0 to: [count - 1] do: [:i |
-  let selector := [db attrAt: vt index: i];
-  [System println: [Reflect nameOf: selector]]]]
+[Reflect directMethodsOf: String]
 ```
 
-The same question can be phrased as a relational query. The value in the third
-position is usually `#primitive` for a native method or a method representation
-for a Birnam-defined method:
+An optional relational description is separate data:
 
 ```birnam
+[Module load: #relational];
+[db backfillMirror];
 let vt := [Reflect vtableOf: String];
 [db findAll: ?selector where: #[ #[vt ?selector ?method] ]]
 ```
 
-Only use `attrAt:index:` with an index from `0` through `count - 1`; the count
-is the boundary.
+This is a descriptive snapshot, not method authority. Ordinary edits do not
+maintain it automatically. Use current Reflect inspection for live methods; see
+the [Store protocol](../../rust/birnam-store/README.md) for explicit observation.
 
 ## Inspect facts attached to an object
 
-An ordinary object can be an entity in the same store. Its application data is
-not discovered through a class's fields; it is found by querying its facts:
+An ordinary object can also be an entity in an explicitly loaded Store. Facts
+are additional data; ordinary slots remain discoverable through Reflect:
 
 ```birnam
+[Module load: #relational];
 let person := [Object clone];
 [db assert: person attr: #name value: "Ada"];
 [db assert: person attr: #city value: #Boston];
@@ -242,8 +237,9 @@ transaction-window reads.
 There is an important distinction:
 
 - `db attrCount: person` enumerates facts attached to that object.
-- `db attrCount: [Reflect vtableOf: person]` enumerates the direct method mirror
-  for the object's prototype.
+- `Reflect directMethodsOf: person` inspects its direct dictionary.
+- Facts on a vtable exist only when explicitly described; their count is not the
+  live method count.
 
 A freshly cloned object may have no application facts even though it inherits a
 large protocol from its prototype.

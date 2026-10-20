@@ -130,7 +130,7 @@ fn authored_cells_mutate_and_collect_without_store() { unsafe {
     let mut requests=Vec::new();
     if with_slots {
         let reflect=h.named(b"Reflect");
-        requests.extend([(prototype,b"slotNames".as_slice(),0),(prototype,b"isError",0),
+        requests.extend([(prototype,b"slotNames".as_slice(),0),
             (reflect,b"isSymbol:",1),(reflect,b"slotsOf:",1),(reflect,b"slotIndex:in:",2),
             (reflect,b"slot:in:",2),(reflect,b"slot:in:put:",3),
             (manager,b"slotNames",0),(manager,b"libDir",0),(manager,b"libDir:",1)]);

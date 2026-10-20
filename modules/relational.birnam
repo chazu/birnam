@@ -1,0 +1,8 @@
+// Query behavior is optional and attaches to the explicitly selected Store.
+[Module named: #relational requires: #[#nativeLoader #store]];
+[[|
+let loaded := [System loadModule: [[Module libDir] , "/native/libbirnam_relational.dylib"] arguments: #[Namespace]];
+[[loaded isError] ifTrue: [| loaded] ifFalse: [|
+  [Module field: #imageProvider of: #relational put: true]; loaded
+]]
+] value]

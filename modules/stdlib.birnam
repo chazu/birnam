@@ -215,15 +215,6 @@
 [Reflect defineMethod: #asCell on: Object as: [:self |
   [Cell with: self]] doc:
   "A fresh local mutable Cell holding self. value/set: share its state through aliases; no facts or implicit history (history answers zero). Use cellFor:attr: on a Store for fact-backed state."];
-[Reflect defineMethod: #inc on: CellVt as: [:self |
-  [self set: [[self value] + 1]];
-  [self value]] doc:
-  "Bump a numeric cell by one; answers the new value."];
-[Reflect defineMethod: #dec on: CellVt as: [:self |
-  [self set: [[self value] - 1]];
-  [self value]] doc:
-  "Drop a numeric cell by one; answers the new value."];
-
 // -- StringBuilder sugar + the byte transforms it unlocks (docs/44 Phase 5) -------
 // The builder itself is native: add:/addByte: are bulk/byte
 // appends into a mutable buffer, asString materializes once. These are the

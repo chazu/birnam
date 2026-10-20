@@ -42,6 +42,7 @@ unsafe extern "C" fn fail_removal(c:*mut c_void,r:Oop,a:*const Operand,n:usize)-
 #[ignore="production owned Globals prefix required"]
 fn conditional_slots_and_image_failure_preserve_binding_owners() { unsafe {
     let id=id(); let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
+        optional_modules(id, ns, &["store"]);
     let roots=object(send(id,ns,b"at:",&[Operand::object(id.intern_name(b"Roots").unwrap())]));
     let h=H{id,ns,roots,tokens:RefCell::new(Vec::new())};
     let model=h.named(b"ObjectModel"); let gc=h.named(b"GC"); let globals=h.named(b"Globals");

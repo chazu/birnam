@@ -24,9 +24,13 @@
 // module:is: seeds each summary and ordered method list. Registration methods
 // assume the selected module was documented first. Nil means no current module.
 
-[Module named: #doc requires: #[#html #storeSupport]];
-// System load: also supports this file directly, outside dependency planning.
-[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [Module load: #html]]];
+[Module named: #doc requires: #[#html #store #relational]];
+// Direct source loading, like Module loading, requires the actual providers.
+[[|
+let dependencies := [#[#html #store #relational] inject: Module into: [:prior :name |
+  [[prior isError] ifTrue: [| prior] ifFalse: [| [Module load: name]]]
+]];
+[[dependencies isError] ifTrue: [| dependencies] ifFalse: [|
 
 // Construct the hooks used by stdlib before publishing their optional owner.
 // Reloading Doc leaves the previous owner current until this one is ready.
@@ -65,9 +69,12 @@ let documentationOwner := [Object clone];
 
 // Register optional reflection without replaying its initializer (which would
 // also reselect an image participant). No code definition is changed here.
-[Doc module: #storeSupport is: "Explicit Store integration for images and fact reflection."];
+[Doc module: #store is: "Explicit Store integration for images and fact reflection."];
 [Doc recordMethod: #factsOf: on: Reflect text:
   "Current live facts of an entity as Maps with entity, attribute and value keys."];
+
+[Doc recordMethod: #inc on: CellVt text: "Bump a numeric fact-backed Cell by one; answers the new value."];
+[Doc recordMethod: #dec on: CellVt text: "Drop a numeric fact-backed Cell by one; answers the new value."];
 
 // Doc documents itself — from here down, doc: definitions record under #doc.
 [Doc module: #doc is: "Docstrings + documentation generation — the registry, its queries, and the plaintext/Markdown/HTML renderers."];
@@ -166,7 +173,7 @@ let documentationOwner := [Object clone];
 // Every recorded method-source string, across all loaded modules.
 [Reflect defineMethod: #methodSources on: Doc as: [:self |
   [Codegen recordedMethodSources]] doc:
-  "Every declarative method definition in the recorded authored modules."];
+  "Every syntactic literal method declaration in recorded sources, including initializer blocks; not a claim that it executed."];
 
 // The recorded source(s) of every method whose selector prints as `name` (a String).
 [Reflect defineMethod: #sourcesForSelector: on: Doc as: [:self :name |
@@ -612,3 +619,6 @@ let documentationOwner := [Object clone];
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:
 [Doc for: #module:is: in: #doc says: "Register `mod` with a one-line `summary`: marks it documented, seeds its cells, and makes it the CURRENT module for doc: definitions. Call once, first — calling again resets the method list."]
+
+]]
+] value]

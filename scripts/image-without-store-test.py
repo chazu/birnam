@@ -18,7 +18,7 @@ def run(name,args,environment):
 # out rejection caused by another service from the full Host composition.
 optional=work/'optional.image';optional_floor=work/'optional-floor'
 shutil.copytree(floor,optional_floor)
-shutil.copy2(prefix/'lib/libbirnam_store.dylib',optional_floor/'libbirnam_store.dylib')
+shutil.copy2(prefix/'lib/native/libbirnam_store.dylib',optional_floor/'libbirnam_store.dylib')
 for mode in ['optional-save','optional-mapped','optional-rebuild']:
  e=dict(env,BIRNAM_TEST_MODULE_DIRECTORY=str(optional_floor),BIRNAM_IMAGE_FLOOR_MODE=mode,BIRNAM_IMAGE_FLOOR_PATH=str(optional))
  run(mode,['mise','exec','--','cargo','test','--offline','--locked','-p','birnam-siphon','--test','image_without_store','--','--include-ignored','--nocapture'],e)

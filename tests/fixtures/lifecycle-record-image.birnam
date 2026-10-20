@@ -1,3 +1,4 @@
+[Module load: #store];
 // Retained lifecycle descriptions are data, independent of explicit facts.
 [Module load: #os];
 [[|
