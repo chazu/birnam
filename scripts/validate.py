@@ -71,7 +71,9 @@ def plan(suite, prefix, output, *, candidate=False):
                             '--timings', output / 'timings' / (group + '.json')],
                            PRODUCTION + ('tests/**/*', 'examples/**/*') + SCRIPT_INPUTS,
                            depends=('install', 'host-test-binaries'),
-                           artifacts=(str(output / 'timings' / (group + '.json')),), timeout={'cli': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}.get(group, 1200)))
+                           # Optional-provider and owner-image coverage exceeds
+                           # 20 minutes before the final reentry/Host cases.
+                           artifacts=(str(output / 'timings' / (group + '.json')),), timeout={'cli': 2400, 'image': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}[group]))
     if suite == 'release':
         result.append(step('dylib-audit', ['bash', 'scripts/rust-dylib-audit.sh'],
                            PRODUCTION + ('scripts/rust-dylib-audit.sh', 'rust/birnam-id/exports.json'), timeout=300))

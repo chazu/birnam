@@ -8,7 +8,8 @@ from validation_support import clean_environment, command, save_json, sha
 
 prefix = Path(sys.argv[1]).resolve(); work = Path(tempfile.mkdtemp(prefix='birnam-alien-recipes-'))
 source = work/'recipes.birnam'; first = work/'first.image'; next_image = work/'next.image'
-source.write_text('''[[|
+source.write_text('''[Module load: #store];
+[[|
 let before := [[AlienRecipes objectCode] size];
 [Alien wrap: "labs" signature: "l l" as: #ownerAbsolute on: Integer];
 let code := [AlienRecipes objectFor: "labs" signature: "l l"];

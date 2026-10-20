@@ -182,7 +182,8 @@ fn native_compilers_are_live_value_seams() {
     for v in [arch, abi] {
         input = q.call(input, b"add:", &[Operand::object(v)]).unwrap();
     }
-    for i in 0..8 {
+    assert_eq!(q.vector_size(fields).unwrap(), 9);
+    for i in 0..9 {
         let index = q
             .call(
                 h.named(b"Integer").unwrap(),
@@ -196,6 +197,7 @@ fn native_compilers_are_live_value_seams() {
     let encoded = q
         .call(format, b"compose:", &[Operand::object(input)])
         .unwrap();
+    q.check_result(encoded).unwrap();
     let borrowed = h.send(encoded, b"bytes", &[]).unwrap().as_bytes().unwrap();
     assert_eq!(
         unsafe { birnam_abi::borrowed_bytes(borrowed.pointer, borrowed.length) }.unwrap(),

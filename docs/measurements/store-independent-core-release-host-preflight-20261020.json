@@ -1,0 +1,86 @@
+{
+  "status": "Remaining Host preflight checks passed after fixture corrections; not clean-candidate release acceptance.",
+  "runtime_prefix": "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/8598dc5140b08949818ecd21a56c1466f2816348/prefix",
+  "source_sha256": {
+    "rust/birnam-host/tests/native_compilers.rs": "fcd8a328e4c0c5ffc799229cba3ff7918fc9882735a98e1d58a50dc3f42598de",
+    "scripts/alien-publication-test.py": "8aac5840ed2dcfdd67b886fcbefbff698a3cf6146a552e760469a5cae3427762",
+    "scripts/alien-recipes-test.py": "3ce5ace8a70384b82c26217c141c7098bdeddcacc3b7b6a5c5d29bc155bd5d61",
+    "scripts/validate.py": "984f14676224d350c6e446881840b6f80b675d3c1840a65605f370147ff6d50a"
+  },
+  "prepared_tests": {
+    "path": "/tmp/birnam-store-independent/27-host-completion/test-binaries/manifest.json",
+    "sha256": "3651c3f10d2febc69c90e24cba4c6db7d81fc1ece17dd6a86d460faa028163c5"
+  },
+  "checks": {
+    "native-compilers.log": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/native-compilers.log",
+      "sha256": "2c345fe456bd05b986b9aff2d797cc7431be96cc6d2f9fa12e25ebb7e59f7a5d"
+    },
+    "cli-result.json": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/cli-result.json",
+      "sha256": "f04d35bc38684da274c44ff3149fdbd1278c08df59906809fef284effbc51112"
+    },
+    "cli.log": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/cli.log",
+      "sha256": "12b773447e0a83fbeee66b1fd41dda07b4039d7401b2c86b70c1cfb0d6327662"
+    },
+    "generation-result.json": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/generation-result.json",
+      "sha256": "ebb17e0557c32a82900b83acf0bf16142add94bbecf3468ac30873464655801f"
+    },
+    "generation.log": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/generation.log",
+      "sha256": "2ffe0171d80d915b2b9aefd967fca8c88ba227f382e6af7efa6f208d8f1dd4bb"
+    },
+    "image-timings.json": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/image-timings.json",
+      "sha256": "64b8d243a1163e39215aab177f7ce2f2885218b2431c0d295a0ca1b23244aeff"
+    },
+    "image.log": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/image.log",
+      "sha256": "d3a1e86d160c8c88650a1cf2043b211eaed53cef5ae2a4475f60c4692e30c4c8"
+    },
+    "image-tail-results.json": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/image-tail-results.json",
+      "sha256": "b05a283548599aecf1818b13a66ff85ad524414ae8f3c91ba8c9c74fccd465a2"
+    },
+    "image-tail.log": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/image-tail.log",
+      "sha256": "3cb14b2a765534a651ce15a4e097c6f0e5df7f8676eaf72083684e3cbba8e043"
+    },
+    "validation-tools.log": {
+      "path": "/tmp/birnam-store-independent/27-host-completion/validation-tools.log",
+      "sha256": "31496131b7a67877d56c01d9de6ca7effeb22e49a6914932ff206f0a7177f1de"
+    }
+  },
+  "image_coverage_seconds": {
+    "optional-store-image-test.py": 173.005102416,
+    "host-image-test.py": 189.069564875,
+    "native-loader-image-smoke.sh": 74.084305583,
+    "trace-image-smoke.py": 18.455439458,
+    "frame-call-image-smoke.py": 18.005142542,
+    "collection-search-image-test.py": 56.89753675,
+    "string-builder-image-smoke.sh": 72.926253417,
+    "system-image-test.py": 121.080469,
+    "alien-image-test.py": 71.82384675,
+    "alien-publication-test.py": 3.781097625,
+    "image-store-participation-test.py": 71.525373625,
+    "alien-recipes-test.py": 244.325444958,
+    "alien-recipes-reentry-test.py": 4.239915042,
+    "alien-recipes-hash-test.py": 115.279096417,
+    "alien-image-reentry-test.py": 100.050566333,
+    "startup::tests::image_entry_uses_saved_code_and_roots": 2.420497291
+  },
+  "image_checks": 16,
+  "image_combined_seconds": 1336.969652082,
+  "cli_seconds": 933.47001675,
+  "generation_seconds": 798.0559575,
+  "notes": [
+    "Native compiler fixture now includes the appended provider field (9 inspected fields, 11 composition arguments) and checks the result before borrowing bytes. Runtime code is unchanged.",
+    "Alien publication and recipe tests explicitly load Store to test optional facts/policy; Store-absent Alien behavior remains covered separately.",
+    "The first image group stopped at the missing-import fixture. Its earlier passed checks and the corrected tail cover every image-group requirement; they are local diagnostic evidence, not a claim that that failed group passed.",
+    "Fresh native Host entry uses a recreated saved-main fixture with source and embedded asset deleted before loading.",
+    "Image group deadline rises from 1200 to 2400 seconds because measured passing checks exceed 20 minutes. No checks or assertions are removed. All 12 validation-tool tests pass.",
+    "The final clean release workflow must qualify the committed candidate and publish its immutable archive before release completion."
+  ]
+}

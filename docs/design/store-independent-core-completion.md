@@ -865,3 +865,17 @@ values, Logue passes all 34 headless checks, and Minesweeper accepts a scripted
 quit. See the [follow-up receipt](../measurements/store-independent-core-release-fixtures-20261020.json).
 These are fixture/application dependency corrections, not runtime policy changes.
 The renewed release candidate must finish its affected Host and archive gates.
+
+The remaining Host preflight found a native format fixture still composing the
+old eight-field inspection result. It now includes the provider field and checks
+the result before borrowing its bytes. Alien publication/recipe fixtures also
+load Store explicitly for their optional fact-policy assertions. No runtime
+algorithm changes were needed.
+
+CLI and generation preflight pass, and the corrected image checks cover all 16
+requirements in that group. Their combined measured time is 1,337 seconds, so the
+image-group deadline is 40 minutes instead of 20, without reduced coverage.
+All 12 validation-tool tests pass. The
+[Host preflight receipt](../measurements/store-independent-core-release-host-preflight-20261020.json)
+distinguishes the initial failed image group from its successful corrected tail;
+it is not a substitute for clean-candidate release acceptance.

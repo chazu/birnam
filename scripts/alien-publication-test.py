@@ -8,7 +8,8 @@ from validation_support import clean_environment, command, save_json, sha
 prefix = Path(sys.argv[1]).resolve()
 work = Path(tempfile.mkdtemp(prefix='birnam-alien-publication-'))
 source = work / 'publication.birnam'
-source.write_text('''[[|
+source.write_text('''[Module load: #store];
+[[|
 let denied := [Error kind: #optionalStoreDenied]; let permit := [false asCell];
 [Store setMethodMutationAuthorizer: [| [[permit value] ifTrue: [| true] ifFalse: [| denied]]]];
 [System println: [[Alien wrap: "labs" signature: "l l" as: #publicationAbsolute on: Integer] == Integer]];
