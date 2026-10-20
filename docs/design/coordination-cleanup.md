@@ -9,6 +9,9 @@ conditional-compensation implementation. The user subsequently selected
 recovery is needed, retain applied changes on failure, report partial application,
 and abandon stale capabilities. Sections 1–3's ordinary-edit/startup boundaries
 remain; maximal selective rollback is not pending work for basic loading.
+The unused conditional Store-exchange API described in that historical section
+was removed in the 2026-10-20 optional-Store cleanup. Explicit Id method undo
+and Store snapshot revision observations remain in use.
 
 ## 1. Opt-in dictionary observation
 

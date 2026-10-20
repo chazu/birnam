@@ -151,16 +151,14 @@ consumers.
 algorithm tests, including the independent scan oracle across 64 histories and
 before/after compaction. Two manual timing investigations remain ignored.
 
-## Conditional image exchange
+## Optional image state
 
-Native `imageStateRevision` returns the process-local owner revision as a Word.
-`swapImageStateWith:atRevision:stagedRevision:` takes the staging Store and both
-observed Word revisions. After the allocation boundary it compares and exchanges
-both states without a callback window, returning Word 1 on success or 0 on conflict.
-Each identity's revision advances; revision values are not swapped or persisted.
-Policy/reservation changes also invalidate the observation even without fact-basis
-changes. The inverse needs no fact allocation or callback replay. This conditional API
-has no production caller after the basic live-loader simplification and is
-scheduled for removal. Optional Image participation uses the unconditional
-exchange, retains partial effects on failure, and uses `imageStateRevision` only
-to detect changes during saving. Core images perform neither operation.
+Native `imageStateRevision` returns the process-local data revision as a Word.
+Optional image saving observes it to detect fact, policy, compaction or reservation
+changes, including changes that do not advance the durable fact basis. Revisions
+remain attached to Store identities and are not persisted as image data.
+
+`swapImageStateWith:` is the selected forward exchange for explicit Store image
+participation. Failed live loading retains partial effects; it does not invoke an
+inverse. The unused conditional-exchange variant has been removed. Core images
+perform neither Store revision reads nor exchanges.

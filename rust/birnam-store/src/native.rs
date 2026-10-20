@@ -193,33 +193,6 @@ unsafe extern "C" fn image_revision(c: *mut c_void, r: Oop, _: *const Operand, n
         Ok(Operand::word(state(c)?.read(r, |st| st.revision)?))
     })())
 }
-unsafe extern "C" fn conditional_image_swap(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let s = state(c)?;
-        let Some([other, left, right]) = borrowed_slice(a,n) else { return Err(invalid()); };
-        let other = object(*other)?;
-        let left = left.as_word().ok_or_else(invalid)?;
-        let right = right.as_word().ok_or_else(invalid)?;
-        if r == other { return Err(invalid()); }
-        let _scope = Scope::new(s, vec![r,other]);
-        s.send(s.gc, b"prepareAllocation", &[])?;
-        let mut stores = s.stores.borrow_mut();
-        if stores.get(&r).ok_or_else(invalid)?.revision != left
-            || stores.get(&other).ok_or_else(invalid)?.revision != right {
-            return Ok(Operand::word(0));
-        }
-        let next_left = left.checked_add(1).ok_or_else(invalid)?;
-        let next_right = right.checked_add(1).ok_or_else(invalid)?;
-        let mut staged = stores.remove(&other).ok_or_else(invalid)?;
-        let current = stores.get_mut(&r).ok_or_else(invalid)?;
-        std::mem::swap(current, &mut staged);
-        current.revision = next_left;
-        staged.revision = next_right;
-        stores.insert(other, staged);
-        Ok(Operand::word(1))
-    })())
-}
-
 unsafe fn visit(s: &State, visitor: Oop, o: Oop) -> Result<(), Outcome> {
     unsafe { s.send(visitor, b"visit:", &[Operand::object(o)]) }?;
     Ok(())
@@ -1137,7 +1110,6 @@ const STORE_METHODS: &[(&[u8], Method)] = &[
     (b"imageLoadBegin", image_begin),
     (b"swapImageStateWith:", image_swap),
     (b"imageStateRevision", image_revision),
-    (b"swapImageStateWith:atRevision:stagedRevision:", conditional_image_swap),
     (b"imageAddFact:attr:value:tx:op:historied:", image_add),
     (b"imageLoadEnd:raw:oldest:policy:argument:", image_end),
     (b"new", new_store),
@@ -1206,7 +1178,6 @@ const NAMES: &[&[u8]] = &[
     b"imageLoadBegin",
     b"swapImageStateWith:",
     b"imageStateRevision",
-    b"swapImageStateWith:atRevision:stagedRevision:",
     b"imageLoadEnd:raw:oldest:policy:argument:",
     b"imageTransient",
     b"kind:",

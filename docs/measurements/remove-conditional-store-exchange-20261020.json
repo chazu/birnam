@@ -1,0 +1,96 @@
+{
+  "baseline_commit": "dc0bd721",
+  "status": "Qualified deletion of unused conditional Store image exchange. Explicit Id binding undo and optional snapshot revisions remain.",
+  "prefix": "/tmp/birnam-store-independent/18-store-exchange/prefix",
+  "source_sha256": {
+    "rust/birnam-store/src/native.rs": "1acbdb397ea65ac0f998668554529919f7c6ae1fa4386d5ce866bcf38fe0ec64",
+    "rust/birnam-siphon/tests/store.rs": "46414ddab28646cd95c0106274f87da1ffdeabcd9f1e3414032504f40a20b7cc",
+    "rust/birnam-siphon/tests/binding_undo.rs": "9a85ca1628f9fc9440368f5323682fe55bb960bc0094d6e3ab106fa83a6664ae",
+    "scripts/native-message-test.sh": "34cc74948e56a4ab60ec39bdddac23ead71dcd4484d284ebcdf249b12a7cce58"
+  },
+  "checks": {
+    "native": {
+      "path": "/tmp/birnam-store-independent/18-store-exchange/native.log",
+      "sha256": "681fd96359ec889817995f072818780a6255e4e5e887a9f96619ae4abf7776e3",
+      "receipts": []
+    },
+    "participation": {
+      "path": "/tmp/birnam-store-independent/18-store-exchange/participation.log",
+      "sha256": "eb590cd84cab0e94994a75d91dd8105b44d14563477abdd6bbad745f5cefa53e",
+      "receipts": [
+        {
+          "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-al1fpio3/results.json",
+          "sha256": "cfb512ee3ce97f21744afa157673a354640d375896e505c14d98f50e07cb2560"
+        }
+      ]
+    },
+    "cells": {
+      "path": "/tmp/birnam-store-independent/18-store-exchange/cells.log",
+      "sha256": "9230fcdbd040a6f9a5ce6ce7fe9309c139963f0e7a10a492dad88aba84b8f534",
+      "receipts": [
+        {
+          "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-yq3rpc3o/results.json",
+          "sha256": "f06df05a407a4aea0f8326ea5e91a24091fe528024dec20e6c7b2180bf6454bb"
+        }
+      ]
+    }
+  },
+  "startup": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "wall_seconds": 3.003584624733776,
+        "cpu_seconds": 2.84888
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "wall_seconds": 2.9926122091710567,
+        "cpu_seconds": 2.814169
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "wall_seconds": 2.7845224579796195,
+        "cpu_seconds": 2.755708
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "wall_seconds": 2.7775965416803956,
+        "cpu_seconds": 2.753657
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "wall_seconds": 2.774616917129606,
+        "cpu_seconds": 2.736753999999999
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "wall_seconds": 2.7407263750210404,
+        "cpu_seconds": 2.727583000000001
+      }
+    ],
+    "medians": {
+      "baseline": {
+        "wall_seconds": 2.7775965416803956,
+        "cpu_seconds": 2.753657
+      },
+      "candidate": {
+        "wall_seconds": 2.7845224579796195,
+        "cpu_seconds": 2.755708
+      }
+    }
+  },
+  "notes": [
+    "The removed selector had no production callers; only its old recovery-owner test and documentation referenced it.",
+    "Retained Id undo coverage now lives in binding_undo.rs; stale owner, ABA, absence and notification reentry checks are unchanged.",
+    "Native Store tests check the removed selector is unbound and preserve fact-Cell aliases, history and owner validation. Optional Image retains its forward exchange and data-revision observation.",
+    "Targeted native binding/Store/compensation/snapshot tests and mapped/rebuilt Cell and participation checks passed. The preceding Image slice supplied full language and formal qualification; those unchanged gates were not repeated for this unused-API deletion.",
+    "Native checks used the existing isolated TCC resource-metrics overlay. Startup used normal release binaries, three interleaved pairs; CPU +0.07 percent and wall +0.25 percent are effectively unchanged.",
+    "Full Store-independent bootstrap/tool composition and release remain incomplete."
+  ]
+}

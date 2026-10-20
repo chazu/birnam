@@ -1,4 +1,4 @@
-//! Owner conditions used by advanced live-image compensation.
+//! Explicit conditional method undo preserves later writes and callback edits.
 mod support;
 use birnam_abi::{Oop, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
 use std::{ffi::c_void, os::unix::ffi::OsStrExt, cell::Cell};
@@ -19,7 +19,7 @@ unsafe extern "C" fn changed(c: *mut c_void, _: Oop, _: *const Operand, _: usize
 }
 #[test]
 #[ignore = "production native modules"]
-fn conditional_inverse_owners_preserve_reentry_aba_and_policy_changes() {
+fn conditional_binding_undo_preserves_reentry_and_aba() {
     unsafe {
         let id=id(); let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
         let named=|n:&[u8]| object(send(id,ns,b"at:",&[Operand::object(id.intern_name(n).unwrap())]));
@@ -59,24 +59,5 @@ fn conditional_inverse_owners_preserve_reentry_aba_and_policy_changes() {
         assert!(restore(next,two,one,committed).as_word().is_none(),"inverse callback must invalidate next inverse");
         assert_eq!(send(id,target,b"nextInverse",&[]).as_word(),Some(3));
         send(id,id.receiver,b"methodChangesTo:",&[Operand::unit()]);
-        let store=named(b"Store"); let stage=keep(object(send(id,store,b"new",&[])));
-        let rev=|o| send(id,o,b"imageStateRevision",&[]).as_word().unwrap();
-        let swap=|l,r| send(id,store,b"swapImageStateWith:atRevision:stagedRevision:",
-            &[Operand::object(stage),Operand::word(l),Operand::word(r)]).as_word().unwrap();
-        let (left,right)=(rev(store),rev(stage)); assert_eq!(swap(left,right),1);
-        let (left,right)=(rev(store),rev(stage));
-        // A policy-only change need not alter fact basis; owner revision catches it.
-        send(id,store,b"retainCurrentOnly",&[]);
-        assert_eq!(swap(left,right),0);
-        let value=keep(id.intern_name(b"explicitAfterImage").unwrap());
-        let (left,right)=(rev(store),rev(stage));
-        send(id,store,b"assert:attr:value:",&[Operand::object(key),Operand::object(next),Operand::object(value)]);
-        assert_eq!(swap(left,right),0);
-        assert_eq!(send(id,store,b"currentValue:attr:",&[Operand::object(key),Operand::object(next)]).as_object(),Some(value));
-        // A stale forward publication also cannot erase the resident callback write.
-        assert_eq!(swap(left,right),0);
-        assert_eq!(swap(rev(store),rev(stage)),1);
-        assert_eq!(swap(rev(store),rev(stage)),1);
-        assert_eq!(send(id,store,b"currentValue:attr:",&[Operand::object(key),Operand::object(next)]).as_object(),Some(value));
     }
 }

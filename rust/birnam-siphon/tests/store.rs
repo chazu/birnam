@@ -1126,8 +1126,8 @@ unsafe fn history_plateaus(h: &H) {
 
 #[test]
 #[ignore = "requires production modules"]
-fn fact_cells_restore_owner_aliases_and_reject_removed_local_representation() {
-    if isolated_case("fact_cells_restore_owner_aliases_and_reject_removed_local_representation") { return; }
+fn fact_cells_restore_owner_aliases_and_reject_removed_store_apis() {
+    if isolated_case("fact_cells_restore_owner_aliases_and_reject_removed_store_apis") { return; }
     unsafe {
         let h = H::new();
         let _floor = CompiledFloor::pin(h.id, h.ns, h.roots);
@@ -1152,7 +1152,7 @@ fn fact_cells_restore_owner_aliases_and_reject_removed_local_representation() {
         ]).is_err());
         assert_eq!(h.call(restored, b"value", &[]), two);
         let behavior = object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(store)]));
-        for selector in [b"localCell:".as_slice(), b"localCell:prototype:"] {
+        for selector in [b"localCell:".as_slice(), b"localCell:prototype:", b"swapImageStateWith:atRevision:stagedRevision:"] {
             assert!(send(h.id, h.id.receiver, b"bindingOf:in:", &[
                 Operand::object(h.symbol(selector)), Operand::object(behavior)
             ]).as_entry().is_none());

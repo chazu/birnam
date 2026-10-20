@@ -698,3 +698,27 @@ outcomes. Three paired observations show image-save CPU +0.4% and startup CPU
 Next: delete the unused conditional Store exchange, then finish optional Doc and
 fact-reflection hooks, late loading, CLI/LSP boundaries and production composition.
 The actual full-core absence gate and release qualification are still open.
+
+
+## Removed unused conditional Store exchange (2026-10-20)
+
+`swapImageStateWith:atRevision:stagedRevision:` and its native implementation,
+registration and interned name are removed. It had no production caller after
+the basic live-loader simplification. The old recovery-owner fixture now retains
+only the active Id binding-undo checks, under `binding_undo.rs`; explicit undo
+still protects against ABA, changed owners and intervening notification writes.
+
+Store's `imageStateRevision` remains the selected optional snapshot observation.
+`swapImageStateWith:` remains the forward exchange for explicitly included facts.
+Core images use neither. Store tests now assert the removed selector is unbound.
+Binding undo, Store/history/compensation, snapshot mutation and mapped/rebuilt
+Cell/optional-participation checks pass. Three paired startup observations differ
+by +0.07% CPU and +0.25% wall, effectively unchanged. See the
+[receipt](../measurements/remove-conditional-store-exchange-20261020.json).
+
+This closes the extra deletion identified during Image separation. The next slice
+moves stdlib's conditional documentation writes into Doc and explicit fact
+reflection into its Store integration. Documentation already defaults to no-op
+when Doc is absent; preserve that behavior and current receiver dispatch. Then
+finish optional late loading, CLI/LSP dependencies, production core composition,
+full absence and release qualification.
