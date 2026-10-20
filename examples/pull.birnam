@@ -9,6 +9,8 @@
 // `[db assert: #attr attr: #cardinality value: #many]`.
 
 // A pet is many-valued; an owner has a name, a city, and some pets.
+[Module load: #relational];
+
 [db assert: #pet attr: #cardinality value: #many];
 
 let alice := [db entity];

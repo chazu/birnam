@@ -842,3 +842,20 @@ implementation qualification; only the clean release workflow establishes
 release acceptance and publication. The remaining artifact/certification ports,
 generic live mirrors and per-instance Store persistence are separate follow-ups,
 not unfinished parts of this core-independence milestone.
+
+### Release fixture follow-up
+
+Clean release qualification passed all 85 native targets and the owner/absence
+image scripts. It exposed two stale fixtures outside that matrix: the candidate
+ABI rejection test wrote the now-supported value 5, and the Host task-control
+smoke test still kept seven private handle Cells in db. The ABI test now rejects
+both 4 and 6; task scratch uses ordinary Cells. All 177 task-control assertions
+pass at scheduling quanta 128 and 1, with native barrier checks intact.
+
+Fact-backed examples now explicitly load Store or Relational instead of assuming
+bootstrap activated them. Their existing application data policy is preserved.
+Fact/query output matches the previous composition, GC preserves the same live
+values, Logue passes all 34 headless checks, and Minesweeper accepts a scripted
+quit. See the [follow-up receipt](../measurements/store-independent-core-release-fixtures-20261020.json).
+These are fixture/application dependency corrections, not runtime policy changes.
+The renewed release candidate must finish its affected Host and archive gates.

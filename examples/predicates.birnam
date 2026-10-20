@@ -11,6 +11,8 @@
 // `?a` bound by the preceding `#[?p #age ?a]`.
 
 // Each person is an entity carrying one `:age` fact.
+[Module load: #relational];
+
 let person := [:age |
   let p := [db entity];
   [db assert: p attr: #age value: age];

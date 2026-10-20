@@ -19,6 +19,8 @@
 // display them, never query by them.
 
 // Add a person: mint the entity, assert its facts, hand the entity back.
+[Module load: #relational];
+
 let person := [:name :city |
   let p := [db entity];
   [db assert: p attr: #name value: name];

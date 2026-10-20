@@ -2,8 +2,6 @@
 [Globals at: #TaskChecks put: [0 asCell]];
 [Globals at: #TaskCheckFailures put: [0 asCell]];
 [Globals at: #TaskCheck put: [Object clone]];
-[db assert: #taskControlSmokeHandles attr: #history value: false];
-[db assert: #taskControlSmokeHandles attr: #imageTransient value: true];
 [Globals at: #TaskCleanup put: [Object clone]];
 [Reflect defineMethod: #mark on: TaskCleanup as: [:self | #old]];
 [Reflect defineMethod: #that:label: on: TaskCheck as: [:self :condition :label |
@@ -127,7 +125,7 @@ let failedBody := [TaskControl start: [:task |
 
 // Fork enqueues work; automatic joining owns children beyond the body return.
 let events := [#[] asCell];
-let handles := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let handles := [nil asCell];
 let owner := [TaskControl start: [:parent |
   let a := [parent fork: [:child |
     [events set: [[events value] add: #a]];
@@ -153,7 +151,7 @@ let b := [[handles value] at: 1];
 [TaskCheck that: [[[owner fork: [:child | 1]] kind] = #taskClosed] label: #closedScopeRejectsAdmission];
 
 // Terminal child failure, not its first fail:, triggers sibling cancellation.
-let peers := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let peers := [nil asCell];
 let parentCleaned := [false asCell];
 let failingOwner := [TaskControl start: [:parent |
   [parent ensure: [|
@@ -211,7 +209,7 @@ let another := [TaskControl start: [:task | [target await]]];
 [TaskCheck that: [[observer pollOutcome] = #[#cancelled #observerOnly]] label: #staleCompletionCannotReviveObserver];
 [TaskCheck that: [[[target field: #waiters] value] = #[]] label: #completedTargetReleasesWaiters];
 
-let cleanupChild := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let cleanupChild := [nil asCell];
 let cleanupOwner := [TaskControl start: [:parent |
   [parent ensure: [| [parent wait]] cleanup: [|
     [cleanupChild set: [parent fork: [:child | [child wait]]]];
@@ -237,7 +235,7 @@ let bodyFailureOwner := [TaskControl start: [:parent |
 [TaskCheck that: [failureCleanup value] label: #cleanupCanJoinCancelledDescendants];
 [TaskCheck that: [[bodyFailureOwner failures] = #[#bodyScopeFailed]] label: #bodyScopeFailurePreserved];
 
-let nestedHandles := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let nestedHandles := [nil asCell];
 let ancestor := [TaskControl start: [:parent |
   [parent fork: [:child |
     let grandchild := [child fork: [:grandchild | [grandchild wait]]];
@@ -280,7 +278,7 @@ let yielding := [TaskControl start: [:parent |
   #joined]];
 [TaskCheck that: [[interleaving value] = #[#left1 #right1 #left2 #right2]] label: #yieldSharesOwnerWithoutRecursiveDrive];
 [TaskCheck that: [[yielding pollOutcome] = #[#success #joined]] label: #yieldingChildrenJoined];
-let contextualChild := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let contextualChild := [nil asCell];
 let contextualOwner := [TaskControl start: [:parent |
   [contextualChild set: [parent fork: [:child |
     [child ensure: [| [child wait]] cleanup: [| [child fail: #releaseFailed]]]]]];
@@ -396,7 +394,7 @@ let rangeTask := [TaskControl start: [:task |
 let entered := [false asCell];
 let cleaned := [0 asCell];
 let cleanupFinished := [0 asCell];
-let worker := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let worker := [nil asCell];
 let owner := [TaskControl start: [:parent |
   [TaskExecutor transition: [|
     [worker set: [parent fork: [:child |
@@ -471,7 +469,7 @@ let rejected := [TaskControl start: [:task |
 // across budget stops. The driver's guard makes the wake/cancel ordering exact.
 let continued := [false asCell];
 let observed := [0 asCell];
-let raced := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let raced := [nil asCell];
 let raceOwner := [TaskControl start: [:parent |
   [TaskExecutor transition: [|
     [raced set: [parent fork: [:child | [child wait]; [continued set: true]]]];

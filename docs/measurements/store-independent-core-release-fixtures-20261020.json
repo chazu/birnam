@@ -1,0 +1,50 @@
+{
+  "status": "Release fixture and example follow-up qualified; full release acceptance remains pending.",
+  "runtime_prefix": "/tmp/birnam-store-independent/26-qualified-core/prefix",
+  "source_sha256": {
+    "examples/address-book.birnam": "e0657266d289fe5914caed360467f062c772f6263262767c340be633d3392c8a",
+    "examples/ancestors.birnam": "e20c4e0b0def26552e99388d5de45f725e4da5ed469b27d6a3276d0c423fe53e",
+    "examples/bank-ledger.birnam": "4e90bdf0fee2277708aba9f5e0037e2df2516a5838dc4728a61fde9ed2d6e8c3",
+    "examples/gc.birnam": "16b1600bf64de6040fc8bbbc287ea6ca0b3d558a847c8469e24f7d56e929db6a",
+    "examples/logue/logue-core.birnam": "f7c06cc7a0dd2561d003c3806a58b5338c6e166154d3298e29d3cfdfcb7526ca",
+    "examples/minesweeper/minesweeper.birnam": "f2beb6893938964a31f79a0f4b13d218cf681ed7cb5cadf0ee2bd13f1c92da63",
+    "examples/predicates.birnam": "e6bfb600f18acbf983c809f22f23041fed11d28c4364a64965b6ce99d3e81867",
+    "examples/pull.birnam": "ee42a7b0ed297326ff07d5ed29e29a6c308a411afcd0070e568623e832a0ee57",
+    "examples/time-travel.birnam": "7b9ddd8421b79f670b5615d72bceff1c0a434d5b4915e7d062dcd2539efcaf26",
+    "scripts/task-control-smoke.birnam": "fecdd64dd7e260e333527fa5e20b213b04b0dbe0cdb65b263477093a141419fe"
+  },
+  "task_control": {
+    "checks": 177,
+    "failures": 0,
+    "scheduling_quanta": [
+      128,
+      1
+    ],
+    "log": {
+      "path": "/tmp/birnam-store-independent/task-control-core.log",
+      "sha256": "09827dc16ec365413ecb61e8476089a7c2240b53f7a61ae467d72857f0104d1d"
+    }
+  },
+  "examples": {
+    "receipt": {
+      "path": "/tmp/birnam-store-independent/example-opt-in/results.json",
+      "sha256": "ae65120c2c1cff23d17145acdb8e0ae76168e2efd3a797df5520f4b733352144"
+    },
+    "equivalent_outputs": [
+      "time-travel",
+      "pull",
+      "address-book",
+      "predicates",
+      "bank-ledger",
+      "ancestors"
+    ],
+    "gc": "Retained-value output matches; allocation counts deliberately excluded.",
+    "logue": "Headless regression passes with zero failures.",
+    "minesweeper": "Scripted q input exits successfully."
+  },
+  "notes": [
+    "The task-control fixture used seven fact-backed scratch Cells and two obsolete schema writes. Ordinary Cells preserve its handle aliases without restoring an implicit provider dependency.",
+    "The fact-backed examples retain their existing Store behavior and explicitly opt in. No game-state or relational runtime algorithms changed.",
+    "The full native gate passed all 85 targets and owner-image scripts before this test/example-only follow-up. The release runner reuses matching evidence and rebuilds the clean candidate and affected Host checks."
+  ]
+}

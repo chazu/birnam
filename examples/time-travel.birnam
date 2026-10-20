@@ -8,6 +8,8 @@
 // (As-of sees prior VALUES of a `:one` attribute only if that attribute opted into
 // history; new entities/facts appearing over time are always visible to as-of.)
 
+[Module load: #relational];
+
 let join := [:city |
   let p := [db entity];
   [db assert: p attr: #city value: city];

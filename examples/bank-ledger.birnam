@@ -13,6 +13,8 @@
 // ledger is just the balance attribute's past.
 
 // Opt the balance attribute into history before its first value is written.
+[Module load: #store];
+
 [db assert: #balance attr: #history value: true];
 
 let acct := [db cellFor: #account attr: #balance];

@@ -10,6 +10,8 @@
 // special base-case ordering is needed.
 
 // A parent fact: parent then child. Build the chain tom → bob → ann → kim.
+[Module load: #relational];
+
 let parent := [:p :c | [db assert: p attr: #parent value: c]];
 let tom := [db entity];
 let bob := [db entity];

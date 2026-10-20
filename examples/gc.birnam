@@ -12,6 +12,8 @@
 // Disable automatic collection so the manual numbers below are deterministic
 // (otherwise auto-gc would reclaim mid-churn). See examples/auto-gc.birnam for the
 // automatic collector left to its own devices.
+[Module load: #relational];
+
 [System autoGc: false];
 
 // --- Live, reachable data that MUST survive every collection. ----------------

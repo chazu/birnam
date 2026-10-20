@@ -16,6 +16,8 @@
 // Config + tiny helpers
 // ===========================================================================
 
+[Module load: #store];
+
 let MAP_W := 60;
 let MAP_H := 18;
 let DEPTH_MAX := 5;
