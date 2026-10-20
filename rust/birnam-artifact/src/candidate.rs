@@ -456,8 +456,10 @@ mod tests {
             .windows(b"candidate=5".len())
             .position(|window| window == b"candidate=5")
             .unwrap();
-        bytes[candidate + b"candidate=".len()] = b'5';
-        assert_eq!(inspect(&bytes), Err(Error::CandidateAbiMismatch));
+        for unsupported in [b'4', b'6'] {
+            bytes[candidate + b"candidate=".len()] = unsupported;
+            assert_eq!(inspect(&bytes), Err(Error::CandidateAbiMismatch));
+        }
 
         let mut bytes = fixture(b"source");
         let predecessor = bytes
