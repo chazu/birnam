@@ -116,6 +116,7 @@ struct Change<'a> {
     calls: Cell<usize>,
     value: Oop,
     selector: Oop,
+    retention_only: Cell<bool>,
 }
 unsafe extern "C" fn value(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::object(c.cast()))
@@ -129,8 +130,12 @@ unsafe extern "C" fn change(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         }
         p.h.keep(object(result.value));
         p.calls.set(p.calls.get() + 1);
-        let vt = p.h.named(b"IntegerVt");
-        install(p.h.id, vt, b"snapshotIntervened", value, p.value.cast());
+        if p.retention_only.get() {
+            p.h.call(p.h.named(b"Store"), b"retainLast:", &[p.h.integer(1)]);
+        } else {
+            let vt = p.h.named(b"IntegerVt");
+            install(p.h.id, vt, b"snapshotIntervened", value, p.value.cast());
+        }
         collect(p.h.id, p.h.named(b"GC"));
         result
     }
@@ -227,6 +232,7 @@ fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
             calls: Cell::new(0),
             value: answer,
             selector,
+            retention_only: Cell::new(false),
         });
         replace(
             &h,
@@ -251,6 +257,20 @@ fn snapshot_does_not_publish_stale_code_or_erase_the_intervening_edit() {
             b"removeMethod:",
             &[Operand::object(p.selector)],
         );
+        // Retention edits do not advance the fact basis, but do change the
+        // optional snapshot's meaning. Observe the owner's data revision.
+        let store = h.named(b"Store");
+        let basis = h.call(store, b"basis", &[]);
+        p.retention_only.set(true);
+        replace(&h, codegen, b"compilePortableImageCode:bindings:selection:",
+            NativeEntry::new(change, (&mut *p as *mut Change<'_>).cast()));
+        assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"nil"));
+        replace(&h, codegen, b"compilePortableImageCode:bindings:selection:", original);
+        assert_eq!(p.calls.get(), 2);
+        let word = |value| send(id, h.named(b"Integer"), b"wordOf:", &[Operand::object(value)]).as_word().unwrap();
+        assert_eq!(word(h.call(store, b"basis", &[])), word(basis));
+        assert_eq!(word(h.call(store, b"retentionPolicyCode", &[])), 2);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
         projection_roots(&h,filename);
         std::fs::remove_file(path).unwrap();
         h.clear(0);

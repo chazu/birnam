@@ -159,5 +159,8 @@ observed Word revisions. After the allocation boundary it compares and exchanges
 both states without a callback window, returning Word 1 on success or 0 on conflict.
 Each identity's revision advances; revision values are not swapped or persisted.
 Policy/reservation changes also invalidate the observation even without fact-basis
-changes. The inverse needs no fact allocation or callback replay. The unconditional
-exchange remains available explicitly; live Image uses the conditional form.
+changes. The inverse needs no fact allocation or callback replay. This conditional API
+has no production caller after the basic live-loader simplification and is
+scheduled for removal. Optional Image participation uses the unconditional
+exchange, retains partial effects on failure, and uses `imageStateRevision` only
+to detect changes during saving. Core images perform neither operation.

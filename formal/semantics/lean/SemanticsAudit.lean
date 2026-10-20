@@ -1,3 +1,4 @@
+import OptionalImage
 import AlienRecipes
 import ResourceOwner
 import SharedInvocation
@@ -382,3 +383,11 @@ import Admission
 #print axioms Birnam.AlienRecipes.replay_renews_registration
 #print axioms Birnam.AlienRecipes.image_index_preserves_callback
 #print axioms Birnam.AlienRecipes.image_index_fills_missing
+
+#print axioms Birnam.OptionalImage.core_reads_no_owner
+#print axioms Birnam.OptionalImage.selected_owner_only
+#print axioms Birnam.OptionalImage.core_preserves_optional_data
+#print axioms Birnam.OptionalImage.selected_data_restored
+#print axioms Birnam.OptionalImage.other_owner_preserved
+#print axioms Birnam.OptionalImage.missing_provider_refused
+#print axioms Birnam.OptionalImage.core_cannot_hide_facts

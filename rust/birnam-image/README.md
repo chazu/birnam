@@ -27,7 +27,7 @@ Image reads ObjectModel-owned slots using `imageSizeOf:` and `imageSlotAt:in:`;
 the owner distinguishes raw words from object edges. Restoration uses
 `restoreImageSlotAt:in:put:`. Private ordinary Object layouts are reconstructed
 from those typed fields. Authored local Cells use those ordinary slots; Store
-owns its fact/legacy CellVt projection/restoration and fact state. Execution owns Block shells and capture restoration; unfinished shells
+owns its explicit fact-backed CellVt projection/restoration and fact state. Execution owns Block shells and capture restoration; unfinished shells
 cannot execute. Map rebuilds address-dependent hashes through `rehashImage:`
 after method publication, preserving each restored Map's identity.
 
@@ -44,8 +44,12 @@ Globals uses this same protocol for its transient-binding projection. TaskContro
 keeps a named `processLocal` reference slot: preparation sets it, completion leaves
 it set, and its imagePayload rejects marked handles. Unused factory clones and
 detached outcomes remain imageable. The per-object Store `imageTransientObject`
-query and Image's Globals-specific projection state are removed. Fields/facts still
-use the remaining Store transport; this is not yet complete Store-free persistence.
+query and Image's Globals-specific projection state are removed. Fact participation is explicit through the current `System imageStore` message.
+Core answers nil; the optional authored `storeImage` integration answers its
+Store receiver. Nil creates no fact section and performs no Store metadata reads,
+staging or exchange. The selected owner is retained in the image, and loading
+requires that exported provider to be present. Store Cells must refer to that
+owner; mismatches are rejected. A fact-free image leaves destination facts alone.
 Private behaviors preserve their heap owners, shared instances and
 acyclic parent chains rooted in supported native families. Ownerless private
 behaviors and additional custom Block behavior layers remain unsupported.
@@ -78,7 +82,7 @@ image-v8 additionally checksums the bundle. Compatible loading uses TCC
 These are trusted native artifacts, with the same ABI and code-ownership contract
 as generated in-memory code.
 
-Image builds facts in an independent Store and stages executable code before
+When facts participate, Image builds them in an independent Store; it stages executable code before
 applying the image. Fresh startup requires discarding the world on failure.
 Advanced live loading deliberately has no automatic rollback: application failure
 leaves applied changes and callback writes in place. It retains the original
@@ -178,11 +182,12 @@ a replaced begin method that invalidates capabilities and then returns an Error.
 The image format still validates its code/inventory checksums independently.
 
 The owner-root payload in the existing Sources section is
-`#[#imageOwnersV1 #[#sourceRegistryV2 sourceOwner] foreignOwnerOrNil]`.
+`#[#imageOwnersV2 #[#sourceRegistryV2 sourceOwner] foreignOwnerOrNil factOwnerOrNil]`.
 It references the same ordinary owners restored through Globals and user aliases;
 there is no second registry inventory or hashed-name rediscovery during application.
-The previous direct source-only payload is rejected before application and must be
-rebuilt with the new owner envelope.
+Previous owner envelopes are rejected before application and must be rebuilt.
+The outer v8 framing and retained-facts codec are unchanged. See the
+[optional participation contract](../../docs/design/optional-store-image.md).
 
 After ordinary bindings are installed, Image asks the foreign owner for its projected
 recipe rows using captured-receiver preparation, installs foreign bindings through

@@ -79,6 +79,7 @@ if selected image; then
   run_check system-image-test.py python3 scripts/system-image-test.py "$scratch/relocated"
   run_check alien-image-test.py python3 scripts/alien-image-test.py "$scratch/relocated"
   run_check alien-publication-test.py python3 scripts/alien-publication-test.py "$scratch/relocated"
+  run_check image-store-participation-test.py python3 scripts/image-store-participation-test.py "$scratch/relocated"
   run_check alien-recipes-test.py python3 scripts/alien-recipes-test.py "$scratch/relocated"
   run_check alien-recipes-reentry-test.py python3 scripts/alien-recipes-reentry-test.py "$scratch/relocated"
   run_check alien-recipes-hash-test.py python3 scripts/alien-recipes-hash-test.py "$scratch/relocated"

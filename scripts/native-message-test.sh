@@ -77,6 +77,8 @@ python3 scripts/globals-without-store-test.py "$prefix"
 
 python3 scripts/task-without-store-test.py "$prefix"
 python3 scripts/alien-without-store-test.py "$prefix"
+python3 scripts/image-without-store-test.py "$prefix"
+python3 scripts/image-store-participation-test.py "$prefix"
 
 python3 scripts/compiled-source-image-test.py "$prefix"
 

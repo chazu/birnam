@@ -38,3 +38,6 @@ name = "PrivateIndex"
 
 [[lean_lib]]
 name = "AlienRecipes"
+
+[[lean_lib]]
+name = "OptionalImage"

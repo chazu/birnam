@@ -4,6 +4,10 @@
 [Module named: #imageFormat requires: #[]];
 [Globals at: #ImageFormat put: [Cell with: nil]];
 
+// Optional persistence is selected by the composition, never by probing Globals.
+let imageNoStore := nil;
+[Reflect defineMethod: #imageStore on: System as: [:self | imageNoStore]];
+
 // Ordinary snapshot admission. Return self for the live payload, false to reject,
 // or an unpublished ordinary slot-object payload. Image preserves the original
 // identity and behavior; native representations cannot be replaced by slot data.

@@ -310,7 +310,16 @@ checks supply separate implementation evidence.
 `ImageRecipeOrder.tla` checks explicit owner discovery, foreign-method restoration
 before key hashing, and index reconstruction after hash repair. Its counterexamples
 cover discovery through stale hashes and premature hashing/indexing. The runtime
-uses an explicit `imageOwnersV1` root envelope; temporary Method roots remain alive
+uses an explicit `imageOwnersV2` root envelope; temporary Method roots remain alive
 through image application and are released afterward. Cache preservation is checked
 separately from stamp renewal. These contracts do not promise that arbitrary user
 replacements of foundational protocols form a bootstrappable world.
+
+
+`OptionalImage.lean` and `OptionalImage.tla` check that core snapshots perform no
+optional-owner reads, preserve destination optional data, and refuse missing
+providers or uncovered Cell owners. Only the selected owner's data is applied.
+Mutants add an ambient owner call, accept a missing provider, admit an unrelated
+Cell, or overwrite facts on a core load. These are admission/selected-write
+abstractions; actual missing-library, collection, partial-load and image tests
+remain required. There is no rollback or arbitrary-callback safety theorem.

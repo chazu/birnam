@@ -1,7 +1,7 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: Globals, owner image payloads, task/worker/Concurrency state and socket ownership are qualified. REPL ownership and one-time setup are qualified. Alien recipes are qualified and their remaining startup cost accepted. Optional fact persistence and production composition remain Store-dependent.**
+**Status: Globals, owner image payloads, task/worker/Concurrency state and socket ownership are qualified. REPL ownership and one-time setup are qualified. Alien recipes are qualified and their remaining startup cost accepted. Optional Image fact participation is qualified. Optional tools and production composition still require completion.**
 The next release is blocked on completing this milestone, per the user's decision.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
@@ -49,7 +49,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Image resource policy | [Graph::finish](../../rust/birnam-image/src/native.rs) now sends current `imagePayload`; Globals projection and task-handle rejection use this owner protocol. TaskControl's process-local marker is an ordinary slot. Task/resource projection now lives with the ordinary owners; no Store transient schema is needed for those fields. | Owner-level image projection/admission through Id. Keep raw handles and captured process-local capabilities out of durable images, independently of facts. Ordinary persistent state must not be dropped to make an image save. |
 | Alien wrappers | Completed in `9aa4843d`: [AlienRecipes](../../modules/alien-recipes.birnam) owns indexed cache/registration data; native Alien publishes through current Method/dictionary messages. No Store calls or facts remain. | Store-absent wrapping, identity/signature distinctions, live replacement, reentry and exact Unit reclamation pass. The accepted startup cost remains recorded below. |
 | Alien restoration | Completed in `9aa4843d`: Image retains the explicit recipe-owner root, restores foreign methods before Map rehash, then builds ordinary registration indexes. | Current-definition selection, hash-dependent recovery, reentrant publication, independent cache aliases and mapped/rebuilt/resaved images pass. Partial-load failure reporting is preserved. |
-| Image facts and Store Cells | Image unconditionally reads Store basis/retention metadata, exports facts, creates a staging Store, swaps Store state, and special-cases Store-owned CellVt. [ImageFormat](../../modules/image-format.birnam) admits that locator family. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
+| Image facts and Store Cells | Completed component: Image selects its fact owner through current `System imageStore`; nil omits facts and all Store metadata/staging/exchange. Fact Cells use their recorded selected owner. The current distribution still opts in. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
 | Standard-library optional hooks | [stdlib](../../modules/stdlib.birnam) directly writes Doc's facts from documented method definitions and provides `Reflect factsOf:` through global db. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
 | Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares only html; [Cli](../../modules/cli.birnam) requires Doc globally, and its LSP path populates the catalog. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
 | Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) loads store/relational unconditionally; [Host source startup](../../rust/birnam-host-entry/src/startup.rs) marks both as kernel modules. [Build](../../rust/birnam-build/src/main.rs) has one canonical native closure, builds startup with REPL/socket state, then loads all tools into a second image. | Core and optional dependency closures are explicit in build inputs, initialization, prepared images and receipts. A tooling image containing Doc is an explicitly optional composition, not the only way to run unrelated tools. |
@@ -665,3 +665,36 @@ staging and swaps while preserving deliberately retained facts/history and Store
 Cells, declared provider requirements, and the existing partial-load boundary.
 Choose that concrete protocol before changing the format. Optional tool loading,
 production core composition, full absence gates and release qualification remain.
+
+
+### Qualified optional Image participation (2026-10-20)
+
+The [concrete contract](optional-store-image.md) selects one optional owner through
+current `System imageStore`, with nil as the core default and an authored
+`storeImage` integration as the explicit opt-in. Image no longer resolves a default
+Store. Facts, snapshot revision, Cell shells, staging and exchange all use the
+selected/recorded owner. The `imageOwnersV2` payload declares that provider; old
+envelopes require rebuilding. No new outer wire section or general registry is
+introduced. The current distribution still selects the integration until the
+production-composition cutover; this alone does not close the full absence gate.
+
+Source review also found `Store swapImageStateWith:atRevision:stagedRevision:`
+remaining only in an old recovery-owner test and documentation. Basic Image uses
+ordinary optional state exchange and retains partial effects. Remove that unused
+conditional exchange in a separate qualified deletion after this slice. Keep
+`imageStateRevision`: optional save consistency now needs it to detect retention
+and compaction edits that do not advance the fact basis.
+
+
+Optional Image qualification passes actual Store-absent mapped/rebuilt/resaved
+images and a controlled missing-provider test with Store as the only differing
+library. Explicit history/Cells, foreign hashes, reentry, partial failure, mutation
+(including retention changes), code lifetime and all 847 language checks pass.
+Formal gates pass 424 theorems, 135 mutation rejections and 291 expected TLC
+outcomes. Three paired observations show image-save CPU +0.4% and startup CPU
++1.5%; no material regression or speedup is claimed. See the
+[contract and evidence](optional-store-image.md).
+
+Next: delete the unused conditional Store exchange, then finish optional Doc and
+fact-reflection hooks, late loading, CLI/LSP boundaries and production composition.
+The actual full-core absence gate and release qualification are still open.

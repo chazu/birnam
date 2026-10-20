@@ -348,6 +348,7 @@ struct Graph<'a, 'b> {
     indices: HashMap<usize, u32>,
     nodes: Vec<Node>,
     behaviors: Vec<super::behavior_links::Link>,
+    fact_owner: Option<Oop>,
 }
 impl Graph<'_, '_> {
     unsafe fn reference(&mut self, o: Oop) -> Result<Value, Outcome> {
@@ -499,6 +500,7 @@ impl Graph<'_, '_> {
                                 b"imageFieldAt:",
                                 &[self.s.integer(self.q, i)?],
                             )?;
+                            if i == 0 && self.fact_owner != Some(v) { return Err(bad()); }
                             node.fields.push(self.reference(v)?);
                         }
                     }
@@ -622,20 +624,21 @@ impl Graph<'_, '_> {
 }
 // Snapshot consistency is about owner data, not optional certification or
 // method identities. Monotonic epochs may conservatively reject a no-op edit.
-unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>) -> Result<(Oop, Oop, Oop, usize, usize, usize, usize), Outcome> {
+unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>, store: Option<Oop>) -> Result<(Option<(Oop, usize)>, Oop, Oop, usize, usize, usize), Outcome> {
     unsafe {
-        let store = q.keep(s.named(b"Store")?)?;
+        let facts = store.map(|owner| {
+            s.send(owner, b"imageStateRevision", &[])?.as_word().map(|revision| (owner, revision)).ok_or_else(bad)
+        }).transpose()?;
         let globals = q.keep(s.named(b"Globals")?)?;
-        let facts = s.number(s.call(q, store, b"basis", &[])?)?;
         let bindings = s.number(s.call(q, globals, b"bindingBasis", &[])?)?;
         let methods = s.send(s.id.receiver, b"bindingEpoch", &[])?.as_word().ok_or_else(bad)?;
         let name = q.keep(s.id.intern_name(b"SourceRegistry")?)?;
         let sources = s.call(q, globals, b"at:", &[name])?;
         let revision = s.number(s.call(q, sources, b"revision", &[])?)?;
-        Ok((store, globals, sources, facts, bindings, methods, revision))
+        Ok((facts, globals, sources, bindings, methods, revision))
     }
 }
-unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome> {
+unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Operand, Outcome> {
     unsafe {
         let admitted = s.call(q, s.named(b"Generation")?, b"prepareImageSnapshot", &[])?;
         if admitted != s.named(b"true")? {
@@ -646,19 +649,29 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
                 Err(bad())
             };
         }
-        let stamp = snapshot_stamp(s, q)?;
+        let selected = s.call(q, system, b"imageStore", &[])?;
+        if s.is_error(selected)? {
+            s.reject(b"Image fact participant selection failed");
+            return Ok(Operand::object(selected));
+        }
+        let store = (selected != s.named(b"nil")?).then_some(selected);
+        // Native Store identities are resident exports, not copied slot payloads.
+        if store.is_some() && s.export(selected)?.is_none() { return Err(bad()); }
+        let stamp = snapshot_stamp(s, q, store)?;
         s.facts.borrow_mut().clear();
-        let store = q.keep(s.named(b"Store")?)?;
-        let metadata = [
-            b"basis".as_slice(),
-            b"oldestRetainedBasis",
-            b"retentionPolicyCode",
-            b"retentionPolicyArgument",
-        ]
-        .map(|n| s.call(q, store, n, &[]).and_then(|o| s.number(o)));
-        let [basis, oldest, policy, argument] = metadata;
-        let (basis, oldest, policy, argument) = (basis?, oldest?, policy?, argument?);
-        s.send(store, b"imageFactsInto:", &[Operand::object(s.receiver)])?;
+        let metadata = if let Some(store) = store {
+            let metadata = [
+                b"basis".as_slice(),
+                b"oldestRetainedBasis",
+                b"retentionPolicyCode",
+                b"retentionPolicyArgument",
+            ]
+            .map(|n| s.call(q, store, n, &[]).and_then(|o| s.number(o)));
+            let [basis, oldest, policy, argument] = metadata;
+            let metadata = (basis?, oldest?, policy?, argument?);
+            s.send(store, b"imageFactsInto:", &[Operand::object(s.receiver)])?;
+            Some(metadata)
+        } else { None };
         let facts = s.facts.borrow().clone();
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let rows = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
@@ -669,6 +682,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
             indices: HashMap::new(),
             nodes: Vec::new(),
             behaviors: Vec::new(),
+            fact_owner: store,
         };
         let mut fact_values = Vec::new();
         for fact in &facts {
@@ -695,11 +709,11 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         let sources = s.call(q, codegen, b"portableImageSources", &[])?;
         if s.is_error(sources)? { return Err(Outcome::loaded(Operand::object(sources))); }
         // Explicit owner roots avoid rediscovery through half-restored Globals.
-        let tag = q.keep(s.id.intern_name(b"imageOwnersV1")?)?;
+        let tag = q.keep(s.id.intern_name(b"imageOwnersV2")?)?;
         let name = q.keep(s.id.intern_name(b"AlienRecipes")?)?;
         let foreign = s.call(q, s.named(b"Globals")?, b"at:", &[name])?;
         let mut owners = s.call(q, s.named(b"Vector")?, b"new", &[])?;
-        for value in [tag, sources, foreign] {
+        for value in [tag, sources, foreign, selected] {
             owners = s.call(q, owners, b"add:", &[value])?;
         }
         let mut sources_bytes = Vec::new();
@@ -730,25 +744,28 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
         .map_err(|_| bad())?;
         let heap = graph.encode();
         let behaviors = super::behavior_links::encode(&graph.behaviors);
-        let retention = match policy {
-            0 => super::retained_facts::RetentionPolicy::CurrentOnly,
-            1 => super::retained_facts::RetentionPolicy::KeepSince(argument as u64),
-            2 => super::retained_facts::RetentionPolicy::KeepLast(argument as u64),
-            _ => return Err(bad()),
-        };
-        let mut writer =
-            super::retained_facts::FactsWriter::new(basis as u64, oldest as u64, retention)
-                .map_err(|_| bad())?;
-        for (fact, values) in facts.iter().zip(fact_values) {
-            let mut encoded = Vec::new();
-            for v in values {
-                v.encode(&mut encoded);
+        let facts_bytes = if let Some((basis, oldest, policy, argument)) = metadata {
+            let retention = match policy {
+                0 => super::retained_facts::RetentionPolicy::CurrentOnly,
+                1 => super::retained_facts::RetentionPolicy::KeepSince(argument as u64),
+                2 => super::retained_facts::RetentionPolicy::KeepLast(argument as u64),
+                _ => return Err(bad()),
+            };
+            let mut writer =
+                super::retained_facts::FactsWriter::new(basis as u64, oldest as u64, retention)
+                    .map_err(|_| bad())?;
+            for (fact, values) in facts.iter().zip(fact_values) {
+                let mut encoded = Vec::new();
+                for v in values {
+                    v.encode(&mut encoded);
+                }
+                writer
+                    .fact_encoded(fact.history, fact.op, fact.tx, &encoded)
+                    .map_err(|_| bad())?;
             }
-            writer
-                .fact_encoded(fact.history, fact.op, fact.tx, &encoded)
-                .map_err(|_| bad())?;
-        }
-        let facts_bytes = writer.finish();
+            Some(writer.finish())
+        } else { None };
+        let fact_sections = facts_bytes.as_deref().into_iter().collect::<Vec<_>>();
         // Structural checks precede the native compiler and any file publication.
         format::compose(
             s,
@@ -762,7 +779,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
                 bindings: &bindings,
                 selection: &selection,
                 heaps: &[&heap],
-                facts: &[&facts_bytes],
+                facts: &fact_sections,
                 code: None,
             },
         )?;
@@ -792,7 +809,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
                 bindings: &bindings,
                 selection: &selection,
                 heaps: &[&heap],
-                facts: &[&facts_bytes],
+                facts: &fact_sections,
                 code: Some(&code),
             },
         )?;
@@ -805,7 +822,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, path: &Path) -> Result<Operand, Outcome
                 Err(bad())
             };
         }
-        if snapshot_stamp(s, q)? != stamp {
+        if snapshot_stamp(s, q, store)? != stamp {
             s.reject(b"World changed during image snapshot");
             return Ok(Operand::object(s.named(b"nil")?));
         }
@@ -907,8 +924,10 @@ unsafe fn restore_heap(
                     if node.fields.len() != 3 {
                         return Err(bad());
                     }
+                    let Value::Export(_) = &node.fields[0] else { return Err(bad()); };
+                    let store = resolve(s, q, &node.fields[0], &[])?;
                     let nil = s.named(b"nil")?;
-                    s.call(q, s.named(b"Store")?, b"cellFor:attr:", &[nil, nil])?
+                    s.call(q, store, b"cellFor:attr:", &[nil, nil])?
                 }
                 Value::Export(n) if n != b"CodeObjectVt" => {
                     if !matches!(
@@ -1163,12 +1182,13 @@ unsafe fn restore_heap(
 unsafe fn restore_facts(
     s: &State,
     q: &Scope<'_>,
+    store: Oop,
     decoded: &v8::DecodedImage<'_>,
     objects: &[Oop],
 ) -> Result<Oop, Outcome> {
     unsafe {
         // All fact decoding and fallible construction happen in a separate Store.
-        let staged = s.call(q, s.named(b"Store")?, b"new", &[])?;
+        let staged = s.call(q, store, b"new", &[])?;
         s.call(q, staged, b"imageLoadBegin", &[])?;
         if decoded.facts.len() > 1 {
             return Err(bad());
@@ -1318,19 +1338,26 @@ unsafe fn load(
         }
         let _stage = Stage { s, codegen };
         let objects = restore_heap(s, q, &decoded)?;
-        let foreign_owner = {
+        let (foreign_owner, fact_owner) = {
             let roots = decoded.sources.ok_or_else(bad)?;
             let mut offset = 0;
             let roots = resolve(s, q, &Value::decode(roots, &mut offset)?, &objects)?;
             let fields = s.sequence(q, roots)?;
-            let [tag, sources, foreign] = fields.as_slice() else { return Err(bad()); };
-            if *tag != s.id.intern_name(b"imageOwnersV1")? { return Err(bad()); }
+            let [tag, sources, foreign, store] = fields.as_slice() else { return Err(bad()); };
+            if *tag != s.id.intern_name(b"imageOwnersV2")? { return Err(bad()); }
             if s.call(q, codegen, b"preparePortableImageSources:", &[*sources])? != yes {
                 return Err(bad());
             }
-            *foreign
+            (*foreign, (*store != s.named(b"nil")?).then_some(*store))
         };
-        let staged = restore_facts(s, q, &decoded, &objects)?;
+        if decoded.facts.len() != usize::from(fact_owner.is_some()) { return Err(bad()); }
+        // Admission of malformed input is separate from ordinary Cell dispatch.
+        for node in heap_nodes(&decoded)? {
+            if matches!(&node.locator, Value::Export(name) if name == b"CellVt") {
+                if fact_owner != Some(resolve(s, q, &node.fields[0], &objects)?) { return Err(bad()); }
+            }
+        }
+        let staged = fact_owner.map(|store| restore_facts(s, q, store, &decoded, &objects)).transpose()?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1401,7 +1428,6 @@ unsafe fn load(
                 matches!(&node.locator, Value::Export(name) if name == b"MapVt").then_some(o)
             })
             .collect::<Vec<_>>();
-        let store = q.keep(s.named(b"Store")?)?;
         // A replaced begin operation can invalidate capabilities before returning
         // failure. Include that call in the partial-application boundary itself.
         // Earlier staging failures leave the old capabilities in service.
@@ -1410,8 +1436,10 @@ unsafe fn load(
             if admitted != yes {
                 return Err(if s.is_error(admitted)? { Outcome::loaded(Operand::object(admitted)) } else { bad() });
             }
-            if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
-                return Err(bad());
+            if let (Some(store), Some(staged)) = (fact_owner, staged) {
+                if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
+                    return Err(bad());
+                }
             }
             for &(index, target, selector, provenance, behavior) in &publication {
                 let published = (|| {
@@ -1594,7 +1622,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 if s.behavior(object(args[0])?)? != s.named(b"StringVt")? {
                     return Err(bad());
                 }
-                return save(s, &q, Path::new(std::ffi::OsStr::from_bytes(&bytes)));
+                return save(s, &q, r, Path::new(std::ffi::OsStr::from_bytes(&bytes)));
             }
             let bytes = if matches!(e.op, Op::LoadBytes | Op::StartBytes) {
                 bytes
