@@ -11,7 +11,9 @@
     "examples/predicates.birnam": "e6bfb600f18acbf983c809f22f23041fed11d28c4364a64965b6ce99d3e81867",
     "examples/pull.birnam": "ee42a7b0ed297326ff07d5ed29e29a6c308a411afcd0070e568623e832a0ee57",
     "examples/time-travel.birnam": "7b9ddd8421b79f670b5615d72bceff1c0a434d5b4915e7d062dcd2539efcaf26",
-    "scripts/task-control-smoke.birnam": "fecdd64dd7e260e333527fa5e20b213b04b0dbe0cdb65b263477093a141419fe"
+    "scripts/task-control-smoke.birnam": "fecdd64dd7e260e333527fa5e20b213b04b0dbe0cdb65b263477093a141419fe",
+    "scripts/repl-golden.sh": "955ca8e1f11e198728075f8dc9fe624a1b0999e2a90c2a895ec958f64131efd8",
+    "scripts/stackless-control-smoke.sh": "5e5aacfca6d791fb0fd922681014e2694577bf68b8914c46980b7b4c91537f30"
   },
   "task_control": {
     "checks": 177,
@@ -45,6 +47,24 @@
   "notes": [
     "The task-control fixture used seven fact-backed scratch Cells and two obsolete schema writes. Ordinary Cells preserve its handle aliases without restoring an implicit provider dependency.",
     "The fact-backed examples retain their existing Store behavior and explicitly opt in. No game-state or relational runtime algorithms changed.",
-    "The full native gate passed all 85 targets and owner-image scripts before this test/example-only follow-up. The release runner reuses matching evidence and rebuilds the clean candidate and affected Host checks."
-  ]
+    "The full native gate passed all 85 targets and owner-image scripts before this test/example-only follow-up. The release runner reuses matching evidence and rebuilds the clean candidate and affected Host checks.",
+    "The REPL golden fixture still expected the removed G0 module-introduction restriction and implicit Store startup. Expected transcripts now describe the selected existing runtime semantics; all 26 pass."
+  ],
+  "repl_golden": {
+    "checks": 26,
+    "failures": 0,
+    "log": {
+      "path": "/tmp/birnam-store-independent/repl-golden-core.log",
+      "sha256": "7d80a00dca4497e678a38c46433241376fb562dc75a16e6cb968f211b92da863"
+    },
+    "contract": "Ordinary fresh module loading after image restore succeeds; Store is explicitly activated for fact-surface checks."
+  },
+  "stackless_smoke": {
+    "passed": true,
+    "log": {
+      "path": "/tmp/birnam-store-independent/stackless-core.log",
+      "sha256": "396268578cd055846ab3542c9e53b2402f768b1484c3f20b31d453ef1d11a6a9"
+    },
+    "contract": "Ordinary counter Cells; unchanged exact output for 100k loops/search, collection callbacks, explicit GC and error boundaries."
+  }
 }

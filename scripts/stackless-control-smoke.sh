@@ -22,14 +22,11 @@ cat >"$run_script" <<'EOF'
 [System println: [true ifTrue: [| 11] ifFalse: [| 22]]];
 [System println: [false ifTrue: [| 11] ifFalse: [| 22]]];
 [System println: [[| false] whileTrue: [| nil]]];
-let owner := [Object clone];
-let counter := [db cellFor: owner attr: #counter];
-[counter set: 0];
+let counter := [0 asCell];
 let loopResult := [[| [[counter value] < 100000]] whileTrue: [| [counter set: [[counter value] + 1]]]];
 [System println: [counter value]];
 [System println: [loopResult isNil]];
-let falseCounter := [db cellFor: owner attr: #falseCounter];
-[falseCounter set: 0];
+let falseCounter := [0 asCell];
 [[| [[falseCounter value] >= 7]] whileFalse: [| [falseCounter set: [[falseCounter value] + 1]]]];
 [System println: [falseCounter value]];
 let bad := [[| 42] whileTrue: [| nil]];

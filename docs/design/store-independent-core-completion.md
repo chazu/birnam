@@ -846,11 +846,17 @@ not unfinished parts of this core-independence milestone.
 ### Release fixture follow-up
 
 Clean release qualification passed all 85 native targets and the owner/absence
-image scripts. It exposed two stale fixtures outside that matrix: the candidate
+image scripts. It exposed stale fixtures outside that matrix: the candidate
 ABI rejection test wrote the now-supported value 5, and the Host task-control
 smoke test still kept seven private handle Cells in db. The ABI test now rejects
 both 4 and 6; task scratch uses ordinary Cells. All 177 task-control assertions
 pass at scheduling quanta 128 and 1, with native barrier checks intact.
+
+The REPL golden suite also expected the removed G0 module-introduction restriction
+and implicit Store startup. Its transcripts now verify ordinary fresh module
+loading after image restoration and explicit Store activation; all 26 cases pass.
+The small stackless smoke fixture uses ordinary counter Cells as well, retaining
+its exact 100,000-iteration loop/search, collection, GC and error-boundary outputs.
 
 Fact-backed examples now explicitly load Store or Relational instead of assuming
 bootstrap activated them. Their existing application data policy is preserved.

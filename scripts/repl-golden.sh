@@ -172,8 +172,7 @@ check "image boot: REPL over a mapped image sees its bindings" "$expected" "$act
 
 # ---- booted-image stdlib: doc'd stdlib methods survive the save/boot round-trip.
 # startsWith:/endsWith:/words are defined with `defineMethod:…doc:` and their
-# guards compare against the memoized StringExemplarVt global (a vtable fact) —
-# this locks BOTH the doc'd-define source recording and the exportref fact codec.
+# protocol and referenced runtime objects must survive together.
 actual=$(printf '["hello" startsWith: "he"]\n["hello" endsWith: "lo"]\n["hello" startsWith: 42]\n["a b  c" words]\n:quit\n' | "$BIN" "$tdir/t.image" 2>&1)
 expected="$BANNER
 birnam> true
@@ -184,10 +183,9 @@ birnam> "
 check "image boot: doc'd stdlib string protocol survives (incl. guards)" "$expected" "$actual"
 rm -rf "$tdir"
 
-# ---- booted-image modules: a G0 module singleton + its Alien wraps survive.
-# Shipped modules loaded by project configuration run before G0 is sealed. Time
-# therefore participates in the same generation source map as every other live
-# module, using the production compiled unit from the runtime closure.
+# ---- booted-image modules: a configured singleton + its Alien wraps survive.
+# Time uses the production compiled unit from the runtime closure. Ordinary
+# loading does not require a sealed generation or automatic certification.
 tdir=$(mktemp -d)
 printf 'load = ["time"]\n' > "$tdir/birnam.toml"
 (cd "$tdir" && printf '[System saveImage: "%s/mod.image"]\n:quit\n' "$tdir" | "$BIN_ABS" --repl >/dev/null 2>&1)
@@ -199,9 +197,8 @@ birnam> "
 check "image boot: a module singleton and its Alien wraps survive" "$expected" "$actual"
 rm -rf "$tdir"
 
-# ---- module manager: G0 modules survive; post-G0 introduction is explicit error.
-# Candidate lifecycle edits retain an existing source-map entry.
-# Introducing a new module after G0 remains outside this narrow mechanism.
+# ---- module manager: saved modules survive and fresh modules can be loaded.
+# Image restoration does not seal the world or impose a generation handshake.
 tdir=$(mktemp -d)
 libdir="$(cd "$(dirname "$BIN_ABS")/../lib" && pwd)"
 printf '[Module named: #ttg requires: #[]];\n[Reflect defineMethod: #ttgProbe on: Integer as: [:x | [x + 41]]]\n' > "$tdir/ttg.birnam"
@@ -215,10 +212,10 @@ expected="$BANNER
 birnam> 42
 birnam> true
 birnam> #selfHosted
-birnam> error(#moduleIntroductionNotAvailable)
-birnam> error(#doesNotUnderstand: does not understand #tthProbe)
+birnam> anObject
+birnam> 102
 birnam> "
-check "image boot: G0 module survives and post-G0 introduction is rejected" "$expected" "$actual"
+check "image boot: saved module survives and a fresh module loads" "$expected" "$actual"
 rm -f "$libdir/libbirnam_ttg.dylib" "$libdir/libbirnam_tth.dylib"
 rm -rf "$tdir"
 
@@ -227,8 +224,9 @@ rm -rf "$tdir"
 # Null absence — the next send to it panicked the whole VM. The surface now
 # normalises to nil; the distinction rides hasValue:attr: / currentValue:attr:ifAbsent:
 # (§G6, the no-NULL lock). An unset cell's `value` rode the same null.
-actual=$(printf '[db currentValue: #absent attr: #x]\n[db hasValue: #absent attr: #x]\n[db currentValue: #absent attr: #x ifAbsent: [| #missing]]\n[[db cellFor: #fresh attr: #slot] value]\n:quit\n' | "$BIN" --repl 2>&1)
+actual=$(printf '[Module load: #store]; [Module isLoaded: #store]\n[db currentValue: #absent attr: #x]\n[db hasValue: #absent attr: #x]\n[db currentValue: #absent attr: #x ifAbsent: [| #missing]]\n[[db cellFor: #fresh attr: #slot] value]\n:quit\n' | "$BIN" --repl 2>&1)
 expected="$BANNER
+birnam> true
 birnam> nil
 birnam> false
 birnam> #missing
