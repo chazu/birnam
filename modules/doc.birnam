@@ -21,39 +21,55 @@
 //   [Doc modules]                    "=> every documented module symbol (a query)"
 //   [Doc markdownAll]                "=> every module's Markdown, concatenated"
 //
-// GOTCHA that shaped this: an UNSET store cell's `value` is a raw sentinel that
-// answers neither isNil nor printString — so nothing here reads a cell before it
-// is written. module:is: seeds the summary and method-list cells; the other
-// methods assume the module was documented first (their stated precondition).
+// module:is: seeds each summary and ordered method list. Registration methods
+// assume the selected module was documented first. Nil means no current module.
 
-[Module named: #doc requires: #[#html]];
+[Module named: #doc requires: #[#html #storeSupport]];
 // System load: also supports this file directly, outside dependency planning.
 [[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [Module load: #html]]];
 
-[Globals at: #Doc put: [Object clone]];
-// Seed the current-module cell (a VALUE — nil means "none"): the stdlib's
-// Doc-aware `defineMethod:on:as:doc:` reads it the moment #Doc exists, and an
-// unset cell's sentinel answers nothing. Guides seed empty for the same reason
-// (htmlIndex reads the cell whether or not loadGuides: ever ran).
-[[db cellFor: Doc attr: #currentModule] set: nil];
-[[db cellFor: Doc attr: #guides] set: #[]];
+// Construct the hooks used by stdlib before publishing their optional owner.
+// Reloading Doc leaves the previous owner current until this one is ready.
+[[|
+let documentationOwner := [Object clone];
+[[db cellFor: documentationOwner attr: #currentModule] set: nil];
+[[db cellFor: documentationOwner attr: #guides] set: #[]];
 
 // -- registration -------------------------------------------------------------
 
 // A module's one-line summary. Marks the module documented (a fact, so the doc
 // set is queryable) and seeds its summary + ordered method-list cells. Call once,
 // first — calling it again resets the method list.
-[Reflect defineMethod: #module:is: on: Doc as: [:self :mod :summary |
+[Reflect defineMethod: #module:is: on: documentationOwner as: [:self :mod :summary |
   [db assert: mod attr: #isDocumented value: #true];
   [[db cellFor: mod attr: #docSummary] set: summary];
   [[db cellFor: mod attr: #docMethods] set: #[]];
   [[db cellFor: Doc attr: #currentModule] set: mod];
   self]];
 
-// Doc documents itself — from here down, `doc:` definitions record under #doc.
-// (The `defineMethod:on:as:doc:` and `docModule:is:` funnels live in the STDLIB
-// now, Doc-aware via a send-time Globals check — loading this module is what
-// switches them from install-and-drop to install-and-record.)
+// The fact layout belongs to Doc. Callers select the current Doc receiver;
+// operations inside the selected owner retain their ordinary send order.
+[Reflect defineMethod: #recordMethod:on:text: on: documentationOwner as: [:self :sel :proto :text |
+  let mod := [[db cellFor: self attr: #currentModule] value];
+  [[mod isNil] ifTrue: [| nil] ifFalse: [|
+    let e := [Object clone];
+    [[db cellFor: e attr: #sel] set: sel];
+    [[db cellFor: e attr: #proto] set: proto];
+    [[db cellFor: e attr: #text] set: text];
+    let cur := [[db cellFor: mod attr: #docMethods] value];
+    [[db cellFor: mod attr: #docMethods] set: [cur add: e]]]];
+  self
+]];
+[Globals at: #Doc put: documentationOwner]
+] value];
+
+// Register optional reflection without replaying its initializer (which would
+// also reselect an image participant). No code definition is changed here.
+[Doc module: #storeSupport is: "Explicit Store integration for images and fact reflection."];
+[Doc recordMethod: #factsOf: on: Reflect text:
+  "Current live facts of an entity as Maps with entity, attribute and value keys."];
+
+// Doc documents itself — from here down, doc: definitions record under #doc.
 [Doc module: #doc is: "Docstrings + documentation generation — the registry, its queries, and the plaintext/Markdown/HTML renderers."];
 
 // A docstring for one selector in a module (which must already be documented).
@@ -69,6 +85,9 @@
   [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
   self] doc:
   "Record a docstring for `sel` in the (already documented) module `mod`, appended to its ordered entry list; receiver unknown (proto nil)."];
+
+[Doc recordMethod: #recordMethod:on:text: on: Doc text:
+  "Record a method description in the current documentation module, or do nothing when no module is current. Does not install a method."];
 
 // -- queries ------------------------------------------------------------------
 

@@ -1,0 +1,230 @@
+{
+  "baseline_commit": "3fcb587e",
+  "status": "Qualified documentation owner protocol and optional fact-reflection boundary; full optional loading and production composition remain pending.",
+  "prefix": "/tmp/birnam-store-independent/19-store-hooks/final-prefix",
+  "source_sha256": {
+    "modules/doc-test.birnam": "e2f02443692a9291721c94cbf542c7e5b65c22c938fdac379ad5c43aa3c0d13f",
+    "modules/doc.birnam": "234eb95977089110040d6b43eb8eb9fdad6027d5529b049fac675d0c624d5b75",
+    "modules/run-tests.birnam": "1515efd7f81f4a4fb2386032b59adfd49d42b7d5c1613b0d2a4f2eaaaf9e44d9",
+    "modules/stdlib-test.birnam": "49068e80bc0e89cbf93380940c24c106d278328ae6819140b1669f9c723252fa",
+    "modules/stdlib.birnam": "d52f19c20be46c8f24afdb8b3347064cd2a4f7ddcaa76c6637697dc84eda26b9",
+    "rust/birnam-bootstrap/src/lib.rs": "a42fbb342ba5a70d84261839836aae581b5be937e2c83519db99495e1162a0a3",
+    "rust/birnam-build/src/main.rs": "166c349733b05942802129c49d98b2aff9df17e3184fb3cc70e181bcdc3fd7ed",
+    "rust/birnam-siphon/tests/image_without_store.rs": "b064e5ddce9c5e9f80bb5118bf97dee2b42ec4a8ad9fe103ef3390a14c31c08c",
+    "scripts/host-cli-test.py": "2ea07881984d475274228b4a48b29b51ac717e1d3062740b057e226f5dc1cc23",
+    "scripts/image-store-participation-test.py": "cdaf9ba131d3411af5b3a832184bbb0d770abaaac16cca4994b802674a22d819",
+    "scripts/image-without-store-test.py": "d61f624ffff104a0e1a3543ca8d2ab15e332baa1e7e2a6fd640b93becad8ab4a",
+    "scripts/lang-migration-test.py": "dd3582fefc23b9e9d15d7fc95fd52b63da1e163b3cb7a703d757ff1c6acecd44",
+    "modules/store-support-test.birnam": "f6de3905c53ce91d28e953ec80f1f537777b5bd166fe7a1da6db66ccc545af63",
+    "modules/store-support.birnam": "37fdc7abbd4eb6768adba32a59f860489a4202e44e5a5a30c632ebe94649d197",
+    "tests/fixtures/documentation-hooks.birnam": "eb988ff1d829deb2c73368ef52df5eb3a5db23e261ac6bd74c38ab89f16e6278"
+  },
+  "checks": {
+    "language-final": {
+      "path": "/tmp/birnam-store-independent/19-store-hooks/language-final.log",
+      "sha256": "fc725bb2f49641319902389521cda1a6c37f64b52ee70387c6c0fa456971b55f",
+      "receipts": []
+    },
+    "participation": {
+      "path": "/tmp/birnam-store-independent/19-store-hooks/participation.log",
+      "sha256": "ed7cd641284f463fe9125f335d1884b7814576af728e9fee7076dfca2fa397ad",
+      "receipts": [
+        {
+          "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-wyasv0x_/results.json",
+          "sha256": "1cf4e7d434f8830274ae4a28658e847394f3f75770d5827a3240cb40b892224b"
+        }
+      ]
+    },
+    "cells": {
+      "path": "/tmp/birnam-store-independent/19-store-hooks/cells.log",
+      "sha256": "b2be735a442ee07a57dfea794d811834c310a5073a980a0fdc6ccf831bc1e504",
+      "receipts": [
+        {
+          "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-local-cells-65ovyw_p/results.json",
+          "sha256": "93b2693df15938fe3af03360221045cff6c442ecc7a4bf6e0bfddb2bc4c1d950"
+        }
+      ]
+    },
+    "no-compilation": {
+      "path": "/tmp/birnam-store-independent/19-store-hooks/no-compilation.log",
+      "sha256": "9087069e3c6a6e9d8b7ddf9e93857a15c4db6a89e9556e20600f5a5584537aad",
+      "receipts": []
+    },
+    "doc-cli": {
+      "path": "/tmp/birnam-store-independent/19-store-hooks/doc-cli.log",
+      "sha256": "d853f5970d4743ba9cddf61e3d955261e97048b0cc034c71b4d202d4c058d121",
+      "receipts": []
+    },
+    "recorder-cli": {
+      "path": "/tmp/birnam-store-independent/19-store-hooks/recorder-cli.log",
+      "sha256": "8437fb1de03b05b8c81af7f18ee3ff661a103d650fc26ea9dafa53263a61b46f",
+      "receipts": []
+    }
+  },
+  "store_absence": {
+    "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-floor-ed0lygrk/results.json",
+    "receipt_sha256": "6f9cbab9f79408b2c7101c566b8f269401323614b875e0698de1992e9ae90212",
+    "changed": []
+  },
+  "startup": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "wall_seconds": 3.1286804997362196,
+        "cpu_seconds": 2.9194449999999996
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "wall_seconds": 2.9312950833700597,
+        "cpu_seconds": 2.793539000000001
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "wall_seconds": 2.797164666932076,
+        "cpu_seconds": 2.7811619999999984
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "wall_seconds": 2.8338915407657623,
+        "cpu_seconds": 2.816942
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "wall_seconds": 2.7833018749952316,
+        "cpu_seconds": 2.7800759999999993
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "wall_seconds": 2.766635083127767,
+        "cpu_seconds": 2.758185
+      }
+    ],
+    "medians": {
+      "baseline": {
+        "wall_seconds": 2.8338915407657623,
+        "cpu_seconds": 2.816942
+      },
+      "candidate": {
+        "wall_seconds": 2.797164666932076,
+        "cpu_seconds": 2.7811619999999984
+      }
+    }
+  },
+  "documentation": {
+    "rows": [
+      {
+        "trial": 0,
+        "label": "baseline",
+        "case": "absent",
+        "cpu_ns": 52931375,
+        "fact_delta": 0
+      },
+      {
+        "trial": 0,
+        "label": "baseline",
+        "case": "recording",
+        "cpu_ns": 85526542,
+        "fact_delta": 300
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "case": "absent",
+        "cpu_ns": 52152042,
+        "fact_delta": 0
+      },
+      {
+        "trial": 0,
+        "label": "candidate",
+        "case": "recording",
+        "cpu_ns": 87566333,
+        "fact_delta": 300
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "case": "absent",
+        "cpu_ns": 52768750,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "candidate",
+        "case": "recording",
+        "cpu_ns": 86886458,
+        "fact_delta": 300
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "case": "absent",
+        "cpu_ns": 53644000,
+        "fact_delta": 0
+      },
+      {
+        "trial": 1,
+        "label": "baseline",
+        "case": "recording",
+        "cpu_ns": 85628750,
+        "fact_delta": 300
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "case": "absent",
+        "cpu_ns": 52591834,
+        "fact_delta": 0
+      },
+      {
+        "trial": 2,
+        "label": "baseline",
+        "case": "recording",
+        "cpu_ns": 86522458,
+        "fact_delta": 300
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "case": "absent",
+        "cpu_ns": 53645917,
+        "fact_delta": 0
+      },
+      {
+        "trial": 2,
+        "label": "candidate",
+        "case": "recording",
+        "cpu_ns": 86705375,
+        "fact_delta": 300
+      }
+    ],
+    "medians": {
+      "absent": {
+        "baseline": 52931375,
+        "candidate": 52768750
+      },
+      "recording": {
+        "baseline": 85628750,
+        "candidate": 86886458
+      }
+    },
+    "sources": {
+      "absent": "[Module load: #time]; \n[[|\nlet target := [Object clone]; let body := [:self | 7];\n[Reflect defineMethod: #documentedBench on: target as: body doc: \"benchmark\"];\n[System gc]; let facts := [db retainedFactCount]; let before := [16 clockNanos];\n[1 to: 100 do: [:i | [Reflect defineMethod: #documentedBench on: target as: body doc: \"benchmark\"]]];\nlet elapsed := [[16 clockNanos] - before];\n[System println: elapsed]; [System println: [target documentedBench]];\n[System println: [[Globals includes: #Doc] ifTrue: [| -1] ifFalse: [| 0]]]; [System println: [[db retainedFactCount] - facts]]\n] value]\n",
+      "recording": "[Module load: #time]; [Module load: #doc]; [Doc module: #recordBench is: \"recording benchmark\"];\n[[|\nlet target := [Object clone]; let body := [:self | 7];\n[Reflect defineMethod: #documentedBench on: target as: body doc: \"benchmark\"];\n[System gc]; let facts := [db retainedFactCount]; let before := [16 clockNanos];\n[1 to: 100 do: [:i | [Reflect defineMethod: #documentedBench on: target as: body doc: \"benchmark\"]]];\nlet elapsed := [[16 clockNanos] - before];\n[System println: elapsed]; [System println: [target documentedBench]];\n[System println: [[Doc methodsOf: #recordBench] size]]; [System println: [[db retainedFactCount] - facts]]\n] value]\n"
+    }
+  },
+  "notes": [
+    "Core stdlib has no db reads or writes and no Doc fact-layout knowledge. Its existing Doc-absent no-op and Reflect return contract remain.",
+    "Doc recording follows the current named receiver and current recordMethod:on:text: implementation. Runtime tests cover collection, replacement, module selection, stored text/prototype identity and rebinding to schema-free receivers.",
+    "Reflect factsOf: is installed only by the optional Store integration, renamed storeSupport; its body and db replacement behavior are unchanged. Fact tests moved out of the core stdlib suite.",
+    "Construction variables are lexical; no documentationOwner or imageFactOwner global alias is introduced. The initial Doc alias changed rendering; the qualified build fixes it and passes the original rendering test.",
+    "The actual Store-absent image floor was tested before the Doc-only fix. Every included library in the final prefix is byte-identical to that tested floor; the receipt and equivalence check are recorded.",
+    "No native algorithm, format or formal model changed in this slice. The existing formal contracts were not expanded or rerun for these owner-message moves.",
+    "Three interleaved normal-release pairs: absent-Doc definitions -0.3 percent CPU, recording +1.5 percent, startup -1.3 percent. No general speedup claim or GC policy change."
+  ]
+}

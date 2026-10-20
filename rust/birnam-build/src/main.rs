@@ -31,7 +31,7 @@ const BOOTSTRAP_MODULES: &[(&str, &str)] = &[
     ("alienCompiler", "modules/alien-compiler.birnam"),
     ("alienRecipes", "modules/alien-recipes.birnam"),
     ("imageFormat", "modules/image-format.birnam"),
-    ("storeImage", "modules/store-image.birnam"),
+    ("storeSupport", "modules/store-support.birnam"),
     ("trace", "modules/trace.birnam"),
     ("globals", "modules/globals.birnam"),
     ("methodInvocation", "modules/method-invocation.birnam"),

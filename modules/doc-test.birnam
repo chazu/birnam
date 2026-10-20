@@ -13,6 +13,28 @@
 
 let s := [TestSuite named: "Doc" module: #doc];
 
+[s test: "documentation recording is an ordinary owner protocol" do: [:t |
+  let proto := [Object clone];
+  [[db cellFor: Doc attr: #currentModule] set: nil];
+  let before := [db retainedFactCount];
+  [Doc recordMethod: #unselectedDocProbe on: proto text: "not registered"];
+  [t expect: [db retainedFactCount] equals: before describes: "no current module creates no description"];
+  [Doc module: #ownerDocProbe is: "owner protocol"];
+  let original := [Doc methodFor: #recordMethod:on:text:]; let calls := [0 asCell];
+  [Reflect defineMethod: #recordMethod:on:text: on: Doc as: [:self :sel :target :text |
+    [System gc]; [calls inc]; [original invokeOn: self arguments: #[sel target text]]
+  ]];
+  [Reflect defineMethod: #ownerDocProbe on: proto as: [:self | 17] doc: "owned text"];
+  [[Reflect vtableOf: Doc] addMethod: original as: #recordMethod:on:text:];
+  let rows := [Doc methodsOf: #ownerDocProbe];
+  [t expect: [calls value] equals: 1 describes: "current recorder is invoked once"];
+  [t expect: [rows size] equals: 1 describes: "one ordered entry"];
+  let entry := [rows at: 0];
+  [t assert: [[[db cellFor: entry attr: #proto] value] == proto] describes: "prototype identity retained"];
+  [t expect: [[db cellFor: entry attr: #text] value] equals: "owned text" describes: "text retained"];
+  [t expect: [proto ownerDocProbe] equals: 17 describes: "method installation unchanged"]]];
+
+
 [s test: "native scanner extracts attributed Rust declarations" do: [:t |
   let path := "/tmp/birnam-doc-test-native.rs";
   [File write: path contents: "//! Rust fixture summary.\n/// Documented structure.\n#[repr(C)]\npub(crate) struct NativeThing {\n}\n"];

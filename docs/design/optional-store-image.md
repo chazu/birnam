@@ -4,7 +4,7 @@
 composition remains a later gate. The duplicate native local-Cell representation is already removed.
 
 Core Image asks the current `System imageStore` once per save. The core definition
-answers nil. The optional authored `storeImage` integration captures a Store
+answers nil. The optional authored `storeSupport` integration captures a Store
 receiver and defines that message to answer it. Loading that integration is the
 explicit opt-in after its native Store provider is loaded; no ambient Globals/Namespace search decides whether facts exist.
 The current distribution will select this integration until the production

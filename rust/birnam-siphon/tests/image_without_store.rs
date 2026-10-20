@@ -33,7 +33,7 @@ impl H {
 #[ignore = "scripts/image-without-store-test.py supplies an actual Store-absent artifact floor"]
 fn image_roundtrips_without_store_or_relational() { unsafe {
     let mode=std::env::var("BIRNAM_IMAGE_FLOOR_MODE").unwrap();
-    for name in ["relational", "storeImage", "bootstrap", "isolate"] {
+    for name in ["relational", "storeSupport", "bootstrap", "isolate"] {
         assert!(!directory().join(format!("libbirnam_{name}.dylib")).exists());
     }
     if !mode.starts_with("optional-") { assert!(!directory().join("libbirnam_store.dylib").exists()); }
@@ -75,6 +75,12 @@ fn image_roundtrips_without_store_or_relational() { unsafe {
         assert!(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]).as_object().is_none());
     }
     assert_eq!(h.call(h.named(b"System"),b"imageStore",&[]),h.named(b"nil"));
+    let reflect=h.named(b"Reflect");
+    let reflect_behavior=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(reflect)]));
+    assert!(send(id,id.receiver,b"bindingOf:in:",&[Operand::object(id.intern_name(b"factsOf:").unwrap()),Operand::object(reflect_behavior)]).as_entry().is_none());
+    assert_eq!(eval(include_bytes!("../../../tests/fixtures/documentation-hooks.birnam")),h.named(b"true"));
+    collect(id,gc);
+
     let path=std::env::var("BIRNAM_IMAGE_FLOOR_PATH").unwrap();
     let path=text(path.as_bytes());
     // The only added library in the positive controls is Store.

@@ -155,7 +155,11 @@ This does not claim that every such operation already has a complete Reflect API
 as an explicit Store-dependent extension or equivalent database-facing API; do
 not silently reinterpret it as ordinary slots. Documentation helpers may likewise
 compose with a deliberately enabled catalog. The core reflection operations must
-work when neither extension is installed.
+work when neither extension is installed. The implemented `storeSupport`
+integration installs `Reflect factsOf:`; core stdlib does not define it. Core
+documentation helpers select the current Doc receiver and send
+`recordMethod:on:text:` without knowing its fact layout. Without Doc, method
+installation still works and documentation recording remains a no-op.
 
 Optional relational code descriptions consume Reflect and other owner protocols;
 Reflect does not depend on those descriptions. See

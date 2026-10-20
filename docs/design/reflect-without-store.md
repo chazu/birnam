@@ -338,3 +338,24 @@ and `slot:in:put:` in Birnam over ObjectModel's owned reference inventory. Optio
 Module's directory moves to an ordinary slot while keeping a named generic edit
 path. Registry facts, binding/publication ownership and native-family logical
 inspection remain separate work. Existing images retain their saved old methods.
+
+
+## Qualified optional extensions (2026-10-20)
+
+`factsOf:` is now installed by `storeSupport`, alongside explicit image fact
+participation, rather than core stdlib. Its current-db/live-snapshot meaning,
+identity retention, current method replacement and error propagation remain.
+Core Reflect has no fact-query binding until the optional integration is loaded;
+slot/method/source inspection remains independent.
+
+`defineMethod:on:as:doc:` retains its method-installation and Reflect-return
+contract. If Doc is present it sends that current receiver
+`recordMethod:on:text:`; otherwise it drops documentation as before. Doc owns the
+entry layout and ordered catalog. Its hooks are constructed before the new owner
+is published, in a lexical scope that introduces no extra global naming alias.
+Doc records the optional reflection description without replaying Store's
+initializer or changing an existing image-participation choice.
+
+All 853 language checks and actual Store-absent documentation/image checks pass.
+See the [receipt](../measurements/optional-store-hooks-20261020.json). This is not
+completion of Store-free Host/tool composition or late optional loading.

@@ -1,7 +1,0 @@
-// Explicit optional integration for a composition which has loaded native Store.
-// Native dependencies belong to that composition; the early Module registry has
-// not yet registered native kernel names. Core Image defaults to no fact owner.
-[Module named: #storeImage requires: #[]];
-let imageFactOwner := Store;
-[Reflect defineMethod: #imageStore on: System as: [:self | imageFactOwner]];
-imageFactOwner

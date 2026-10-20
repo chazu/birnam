@@ -19,28 +19,19 @@
   ifFalse: [| nil]];
 [Module named: #stdlib requires: #[]];
 
-// -- documentation hooks (baseline no-ops; Doc overrides them) ----------------
+// -- optional documentation owner --------------------------------------------
 // A method's docstring can ride its definition (`… as: block doc: "…"`) and a
 // module can declare a one-line summary (`[Reflect docModule: #x is: "…"]`) with
 // ZERO static dependency on the Doc system: `Doc` resolves at SEND time, so
 // before modules/doc.birnam loads both just install / do nothing, and once Doc
-// exists the same sends record the docstring as queryable facts under Doc's
+// exists its current public protocol records the docstring under Doc's
 // current module (docgen re-loads library sources for exactly this). A method
 // documented while no module is current still installs; its text is dropped.
 [Reflect defineMethod: #defineMethod:on:as:doc: on: Reflect as: [:self :sel :proto :blk :doc |
   [self defineMethod: sel on: proto as: blk];
   [[Globals includes: #Doc]
     ifTrue: [|
-      let mod := [[db cellFor: Doc attr: #currentModule] value];
-      [[mod isNil]
-        ifTrue:  [| nil]
-        ifFalse: [|
-          let e := [Object clone];
-          [[db cellFor: e attr: #sel]   set: sel];
-          [[db cellFor: e attr: #proto] set: proto];
-          [[db cellFor: e attr: #text]  set: doc];
-          let cur := [[db cellFor: mod attr: #docMethods] value];
-          [[db cellFor: mod attr: #docMethods] set: [cur add: e]]]]]
+      [Doc recordMethod: sel on: proto text: doc]]
     ifFalse: [| nil]];
   self]];
 [Reflect defineMethod: #docModule:is: on: Reflect as: [:self :mod :summary |
@@ -417,16 +408,6 @@ let reflectNameCollector := [ObjectModel newSlots: #[#[] nil] parent: ObjectVt];
   let index := [self slotIndex: key in: object];
   [[index isError] ifTrue: [| index] ifFalse: [| [ObjectModel slot: index in: object put: value]]]
 ]];
-
-// Fact reflection composes Store's rooted live snapshot with ordinary Blocks.
-// It does not inspect Store payloads or change collection settings.
-[Reflect defineMethod: #factsOf: on: Reflect as: [:self :entity |
-  let result := [#[] asCell];
-  let observed := [db liveTriplesDo: [:e :a :v |
-    [[e == entity] ifTrue: [|
-      [result set: [[result value] add: {#entity -> e #attribute -> a #value -> v}]]]]]];
-  [[observed isError] ifTrue: [| observed] ifFalse: [| [result value]]]] doc:
-  "Current live facts of an entity as Maps with entity, attribute and value keys."];
 
 // Does a caught error's kind satisfy an on:do: spec? the wildcard #error, an exact
 // kind symbol, or any collection of kinds. A single symbol short-circuits to false

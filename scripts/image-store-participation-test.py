@@ -6,7 +6,7 @@ import sys
 import tempfile
 from validation_support import ROOT, clean_environment, command, save_json, sha
 prefix=Path(sys.argv[1]).resolve();work=Path(tempfile.mkdtemp(prefix='birnam-image-store-'));image=work/'core.image'
-receipt=dict(passed=False,runs=[],prefix=str(prefix),source_sha256={str(p.relative_to(ROOT)):sha(p) for p in [Path(__file__).resolve(),ROOT/'modules/image-format.birnam',ROOT/'modules/store-image.birnam',ROOT/'rust/birnam-image/src/native.rs']})
+receipt=dict(passed=False,runs=[],prefix=str(prefix),source_sha256={str(p.relative_to(ROOT)):sha(p) for p in [Path(__file__).resolve(),ROOT/'modules/image-format.birnam',ROOT/'modules/store-support.birnam',ROOT/'rust/birnam-image/src/native.rs']})
 def run(name,source,expected):
  p=work/(name+'.birnam');p.write_text(source.replace('IMAGE',json.dumps(str(image))))
  r=command([prefix/'bin/birnam',p],env=clean_environment(),timeout=180);(work/(name+'.log')).write_text(r['output']);receipt['runs'].append(dict(name=name,source=source,**r));save_json(work/'results.json',receipt)

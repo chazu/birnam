@@ -50,7 +50,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Alien wrappers | Completed in `9aa4843d`: [AlienRecipes](../../modules/alien-recipes.birnam) owns indexed cache/registration data; native Alien publishes through current Method/dictionary messages. No Store calls or facts remain. | Store-absent wrapping, identity/signature distinctions, live replacement, reentry and exact Unit reclamation pass. The accepted startup cost remains recorded below. |
 | Alien restoration | Completed in `9aa4843d`: Image retains the explicit recipe-owner root, restores foreign methods before Map rehash, then builds ordinary registration indexes. | Current-definition selection, hash-dependent recovery, reentrant publication, independent cache aliases and mapped/rebuilt/resaved images pass. Partial-load failure reporting is preserved. |
 | Image facts and Store Cells | Completed component: Image selects its fact owner through current `System imageStore`; nil omits facts and all Store metadata/staging/exchange. Fact Cells use their recorded selected owner. The current distribution still opts in. | Heap/code/source/Globals transport works with no fact participant. Store opts into transporting its own facts/history and Cells through a bounded owner protocol. Keep explicit facts and references intact; empty fact sections alone are not independence. |
-| Standard-library optional hooks | [stdlib](../../modules/stdlib.birnam) directly writes Doc's facts from documented method definitions and provides `Reflect factsOf:` through global db. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
+| Standard-library optional hooks | Completed boundary: stdlib forwards documentation to current `Doc recordMethod:on:text:` and has no db accesses. Optional `storeSupport` installs `Reflect factsOf:` with its original fact semantics. | Ordinary Reflect construction/descriptions remain independent. Put documentation writes behind the selected documentation owner and fact reflection behind explicit Store use. Decide and document behavior when those facilities are absent; do not fabricate an empty fact database. |
 | Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares only html; [Cli](../../modules/cli.birnam) requires Doc globally, and its LSP path populates the catalog. | Keep the useful relational catalog as an explicit dependency. Basic CLI commands and LSP static analysis must not acquire it accidentally. Loading documentation features may explicitly load Store/Relational. Do not convert the catalog merely to eliminate textual db references. |
 | Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) loads store/relational unconditionally; [Host source startup](../../rust/birnam-host-entry/src/startup.rs) marks both as kernel modules. [Build](../../rust/birnam-build/src/main.rs) has one canonical native closure, builds startup with REPL/socket state, then loads all tools into a second image. | Core and optional dependency closures are explicit in build inputs, initialization, prepared images and receipts. A tooling image containing Doc is an explicitly optional composition, not the only way to run unrelated tools. |
 | Late optional initialization | Store no longer publishes a Globals seed; explicit loading after the actual Globals initializer passes. Relational attaches its query behavior to Store. Full-world late optional activation still needs qualification. | Load after live globals/methods/tasks exist without replacing core authority, changing local Cell defaults or installing mandatory mutation hooks. Preserve self-description, repeat-load behavior and existing explicit data. |
@@ -722,3 +722,32 @@ reflection into its Store integration. Documentation already defaults to no-op
 when Doc is absent; preserve that behavior and current receiver dispatch. Then
 finish optional late loading, CLI/LSP dependencies, production core composition,
 full absence and release qualification.
+
+
+## Qualified optional documentation and fact-reflection hooks (2026-10-20)
+
+Core stdlib no longer reads/writes db or knows Doc's catalog fields. Documented
+method definitions retain their existing installation, current-Doc selection,
+absent-Doc no-op and Reflect-return behavior, but recording is delegated to
+`Doc recordMethod:on:text:`. The new hook is built before Doc publication.
+Constructor variables are lexical, preserving Doc's public reverse name and
+avoiding incidental Globals aliases.
+
+The Store integration is now `storeSupport`: it installs image participation and
+`Reflect factsOf:`. The fact-query body is unchanged, including current db sends,
+collecting callbacks and error propagation. Its tests now belong to a separate
+StoreSupport suite, not core stdlib. Doc registers that optional API's description
+without replaying the integration or reselecting an image participant.
+
+All 853 language checks, mapped/rebuilt Cell and optional-fact images, no-compilation
+startup and CLI documentation probes pass. An actual Store-absent floor verifies
+both the missing fact-query binding and schema-free, rebound documentation receivers
+with collection. Final floor libraries match that qualified run byte-for-byte.
+Three paired observations show absent-Doc definitions -0.3% CPU, recording +1.5%,
+and startup -1.3%; no material regression or general speedup is claimed. See the
+[receipt](../measurements/optional-store-hooks-20261020.json).
+
+Next is CLI/LSP catalog separation, then actual late native Store/Relational
+activation and the production input-closure/packaging cutover. Merely installing
+these optional boundaries in today's Store-loaded bootstrap does not close the
+full absence or release gates.

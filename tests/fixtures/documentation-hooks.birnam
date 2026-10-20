@@ -1,0 +1,24 @@
+// Only the public documentation receiver protocol is needed, not its fact layout.
+[[|
+let hadDoc := [Globals includes: #Doc]; let priorDoc := [Globals at: #Doc];
+[Globals remove: #Doc];
+let target := [Object clone]; let calls := [Cell with: #[]];
+let quiet := [Reflect defineMethod: #undocumentedProbe on: target as: [:self | 11] doc: "dropped"];
+let first := [Object clone]; let second := [Object clone];
+[Reflect defineMethod: #recordMethod:on:text: on: first as: [:self :sel :proto :text |
+  [System gc]; [calls set: [[calls value] add: #[#first sel proto text]]]; self
+]];
+[Reflect defineMethod: #recordMethod:on:text: on: second as: [:self :sel :proto :text |
+  [System gc]; [calls set: [[calls value] add: #[#second sel proto text]]]; self
+]];
+[Globals at: #Doc put: first];
+let one := [Reflect defineMethod: #firstDocumentedProbe on: target as: [:self | 22] doc: "first text"];
+[Globals at: #Doc put: second];
+let two := [Reflect defineMethod: #secondDocumentedProbe on: target as: [:self | 33] doc: "second text"];
+[hadDoc ifTrue: [| [Globals at: #Doc put: priorDoc]] ifFalse: [| [Globals remove: #Doc]]];
+let rows := [calls value];
+let returns := [[[quiet == Reflect] & [one == Reflect]] & [two == Reflect]];
+let methods := [[[target undocumentedProbe] = 11] & [[[target firstDocumentedProbe] = 22] & [[target secondDocumentedProbe] = 33]]];
+let arguments := [rows = #[#[#first #firstDocumentedProbe target "first text"] #[#second #secondDocumentedProbe target "second text"]]];
+[[returns & methods] & arguments]
+] value]

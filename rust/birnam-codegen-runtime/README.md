@@ -342,8 +342,8 @@ generation replacement and its independent tests are described below.
 Module filename construction uses restored `Reflect nameOf:`: Symbols return
 their Id-owned name bytes as a String; non-Symbols answer `notASymbol`.
 `allMethodsOf:` resolves descriptor targets through native Namespace exports,
-then source-owned Globals, using live owner messages. Stdlib composes
-`factsOf:` from Store's rooted `liveTriplesDo:` snapshot and ordinary Blocks;
+then source-owned Globals, using live owner messages. Optional `storeSupport`
+installs `factsOf:` by composing Store's rooted `liveTriplesDo:` snapshot and ordinary Blocks;
 rows retain entity, attribute and value without changing collection settings.
 
 ## Initial generation projection

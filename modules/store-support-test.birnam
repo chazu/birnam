@@ -1,0 +1,42 @@
+// Explicit Store integration tests; these are not core stdlib requirements.
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[Module load: #storeSupport];
+let s := [TestSuite named: "StoreSupport" module: #storeSupport];
+
+[s test: "fact reflection preserves current values and identities" do: [:t |
+  let person := [Object clone];
+  [db assert: person attr: #name value: "Ada"];
+  let facts := [Reflect factsOf: person];
+  [t expect: [facts size] equals: 1 describes: "factsOf: returns current live facts"];
+  [t expect: [[facts at: 0] at: #value] equals: "Ada" describes: "fact map exposes its value"];
+  [t assert: [[[facts at: 0] at: #entity] == person] describes: "fact map retains entity identity"];
+  [t expect: [[facts at: 0] at: #attribute] equals: #name describes: "fact map names its attribute"];
+  [db assert: #reflectionTag attr: #cardinality value: #many];
+  [db assert: person attr: #reflectionTag value: #kept];
+  [db assert: person attr: #reflectionTag value: #removed];
+  [db retract: person attr: #reflectionTag value: #removed];
+  [db assert: person attr: #boundNil value: nil];
+  let current := [Reflect factsOf: person];
+  [t expect: [current size] equals: 3 describes: "live facts exclude retractions and retain bound nil"];
+  let tag := [current detect: [:row | [[row at: #attribute] = #reflectionTag]]];
+  [t expect: [tag at: #value] equals: #kept describes: "many-valued facts remain separate rows"];
+  let bound := [current detect: [:row | [[row at: #attribute] = #boundNil]]];
+  [t assert: [[bound includesKey: #value] & [[bound at: #value] isNil]] describes: "a nil fact still has a value key"]]];
+
+[s test: "fact reflection follows Store replacement and roots collecting callbacks" do: [:t |
+  let person := [Object clone];
+  [db assert: person attr: #name value: "Grace"];
+  let original := [db methodFor: #liveTriplesDo:];
+  [Reflect defineMethod: #liveTriplesDo: on: db as: [:self :visitor |
+    [System gc]; [original invokeOn: self arguments: #[visitor]]]];
+  let facts := [Reflect factsOf: person];
+  [Reflect removeMethod: #liveTriplesDo: on: db];
+  [System gc];
+  [t expect: [facts size] equals: 1 describes: "collecting Store replacement is observed"];
+  [t assert: [[[facts at: 0] at: #entity] == person] describes: "fact snapshot survives collection"];
+  [Reflect defineMethod: #liveTriplesDo: on: db as: [:self :visitor | [Error kind: #reflectionSnapshot]]];
+  let failure := [Reflect factsOf: person];
+  [Reflect removeMethod: #liveTriplesDo: on: db];
+  [t expect: [failure kind] equals: #reflectionSnapshot describes: "Store snapshot failure propagates"]]];
+
+s
