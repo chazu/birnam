@@ -90,7 +90,9 @@ python3 scripts/install_contract.py "$stage" >&2
 # Full qualification belongs to validate --candidate; archive acceptance checks
 # relocation. Packaging neither rebuilds supplied artifacts nor runs that matrix.
 log "tarball"
-tar -C "$work" -czf "$archive" "$name"
+# Extended attributes are not manifest files. Do not synthesize AppleDouble
+# sidecars from Spotlight/Finder metadata attached to ordinary source files.
+COPYFILE_DISABLE=1 tar -C "$work" -czf "$archive" "$name"
 mkdir -p "$(dirname "$published")"
 mv "$archive" "$published"
 

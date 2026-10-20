@@ -2,7 +2,8 @@
 
 2026-10-20. The original optional-data component is qualified below. The production
 provider cutover and declared-provider extension are implemented and qualified
-in the completion plan; clean release acceptance remains separate.
+in the completion plan. Clean release and immutable-archive acceptance passed
+for [v0.18.0](https://github.com/chazu/birnam/releases/tag/v0.18.0).
 
 Core Image asks current `System imageStore` once per save. The default answers
 nil. `Module load: #store` explicitly activates the native provider and authored

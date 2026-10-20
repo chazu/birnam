@@ -1,7 +1,7 @@
 # Store and Relational as optional language facilities
 
 2026-10-13; implementation status reviewed 2026-10-20.
-**Status: core independence and optional providers are implemented and qualified; clean release acceptance and publication remain.**
+**Status: completed and released in [v0.18.0](https://github.com/chazu/birnam/releases/tag/v0.18.0), with clean-candidate and archive acceptance.**
 The user selected completion of the Store-independent core before releasing.
 The [source-backed completion plan](store-independent-core-completion.md) defines
 completed boundaries, qualification status and the required core-absent
@@ -265,7 +265,7 @@ different answers about authority, history or inspection in each module.
 ## Historical progress as of 2026-10-19
 
 This dated table precedes the final owner migrations and production cutover. See
-the [current completion ledger](store-independent-core-completion.md#remaining-dependency-ledger)
+the [current completion ledger](store-independent-core-completion.md#dependency-completion-ledger)
 for present status; the remaining work below is historical.
 
 The five ordinary-object field migrations are committed as `e41c4f35`; Bench/Test
@@ -399,7 +399,7 @@ unobservable representation optimization, and does not copy or delete user facts
 
 ## Actionable migration safeguards
 
-- [x] Establish the [remaining-dependency ledger](store-independent-core-completion.md#remaining-dependency-ledger),
+- [x] Establish the [remaining-dependency ledger](store-independent-core-completion.md#dependency-completion-ledger),
   including hidden Globals seed import, image transient policy, Alien publication,
   late optional initialization and tool-image composition. Keep it current during
   each slice and close entries with owner, lifetime and acceptance evidence.
@@ -485,7 +485,8 @@ unobservable representation optimization, and does not copy or delete user facts
 The completion plan records qualification for bootstrap Globals, resource image
 policy, Alien recipes, optional Image participation, task/worker/REPL/socket state
 and actual core/optional composition. Host edge-case and timing checks pass; the consolidated receipt records the
-qualified cutover. Clean candidate release acceptance is separate.
+qualified cutover. Clean candidate and archive acceptance passed for v0.18.0;
+the completion plan links the published delivery evidence.
 Native artifact/certification self-hosting remains a follow-up. These changes do
 not alter GC policy or resume the paused Relational rewrite.
 

@@ -105,7 +105,7 @@ assert receipt["result"] == "passed"
 assert receipt["promotable"] is True
 PY
 evidence_archive="${evidence_dir}.tar.gz"
-tar -C dist -czf "$evidence_archive" "$(basename "$evidence_dir")"
+COPYFILE_DISABLE=1 tar -C dist -czf "$evidence_archive" "$(basename "$evidence_dir")"
 archive_digest=$(shasum -a 256 "$tarball" | awk '{print $1}')
 receipt_digest=$(shasum -a 256 "$evidence_dir/receipt.json" | awk '{print $1}')
 echo "==> accepted immutable archive ${archive_digest}"

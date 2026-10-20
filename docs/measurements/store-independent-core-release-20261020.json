@@ -1,0 +1,224 @@
+{
+  "status": "Completed and published",
+  "version": "0.18.0",
+  "tag": "v0.18.0",
+  "commit": "bf97466bf002902aae8913cb1a6a34332925c526",
+  "release_url": "https://github.com/chazu/birnam/releases/tag/v0.18.0",
+  "published_at": "2026-10-20T19:06:11Z",
+  "remote_tag_matches": true,
+  "assets": [
+    {
+      "digest": "sha256:b4915d47db00287e894f138e84623d263dbc1656791fbee990a29fbe714800ab",
+      "name": "birnam-0.18.0-aarch64-macos.tar.gz",
+      "size": 129418251,
+      "state": "uploaded",
+      "url": "https://github.com/chazu/birnam/releases/download/v0.18.0/birnam-0.18.0-aarch64-macos.tar.gz"
+    },
+    {
+      "digest": "sha256:9365103609f3904acaf2df00d6ca5891645d1bf63198a017dbd2e705bb45ff20",
+      "name": "receipt.json",
+      "size": 1643,
+      "state": "uploaded",
+      "url": "https://github.com/chazu/birnam/releases/download/v0.18.0/receipt.json"
+    },
+    {
+      "digest": "sha256:0bb219895b322d13e579dc3b4fb7d4147ae34d11a6cc2fafcd6aee95783cb32b",
+      "name": "v0.18.0-id-message-acceptance.tar.gz",
+      "size": 7422895,
+      "state": "uploaded",
+      "url": "https://github.com/chazu/birnam/releases/download/v0.18.0/v0.18.0-id-message-acceptance.tar.gz"
+    }
+  ],
+  "remote_asset_digests_match": true,
+  "downloaded_receipt_matches": true,
+  "acceptance": {
+    "admission_contract": {
+      "host_commands": [
+        "source",
+        "image",
+        "worker",
+        "compile-module",
+        "artifact",
+        "check",
+        "build",
+        "run",
+        "fetch",
+        "install",
+        "test",
+        "repl",
+        "listen",
+        "lsp",
+        "doc",
+        "docgen",
+        "init",
+        "wrap",
+        "bake",
+        "rebuild",
+        "help",
+        "version"
+      ],
+      "id_protocol_version": 1,
+      "stdlib_loading": "compiled-image",
+      "target": "aarch64-macos"
+    },
+    "archive": {
+      "bytes": 129418251,
+      "path": "birnam-0.18.0-aarch64-macos.tar.gz",
+      "sha256": "b4915d47db00287e894f138e84623d263dbc1656791fbee990a29fbe714800ab"
+    },
+    "gates_receipt": "gates/run.json",
+    "gates_receipt_sha256": "ec2f9c00bb3b1556bd964ba536b92c95c0c1cba80bf329ba3518cbb7f20f7e71",
+    "install_receipt_sha256": "eb6b2d82e50b45f59ac9532377f41f8f50580b3d0905da2303f2458084d24fde",
+    "promotable": true,
+    "qualification": {
+      "path": "/Users/chazu/dev/zig/birnam/dist/v0.18.0-id-message-acceptance/qualification/run.json",
+      "sha256": "0aa6cd67ab222039c7896aae22c18d6c6cde2d196453dc547390c20d33dcc6c6"
+    },
+    "result": "passed",
+    "schema": 3,
+    "scope": "birnam-id-message-archive-acceptance",
+    "source": {
+      "git_clean": true,
+      "git_commit": "bf97466bf002902aae8913cb1a6a34332925c526"
+    },
+    "source_manifest_sha256": "5a23978a5644bd61ab7c088764c3c1d5480c7875dbe2fbf95a84540810102619",
+    "staged_manifest_sha256": "a3e1a71141f3bd32b2c2cda4ec1d593b546b8182a38af255567b783e5b28d202",
+    "toolchain": {
+      "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+      "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+    }
+  },
+  "qualification": {
+    "status": "passed",
+    "selected_steps": [
+      "tool-tests",
+      "workspace",
+      "stackless-s2",
+      "portable-code-v1",
+      "release-changelog-test",
+      "release-acceptance-test",
+      "release-pipeline-test",
+      "v014-performance-acceptance-test",
+      "v015-performance-acceptance-test",
+      "install-contract-test",
+      "archive-test",
+      "native",
+      "install",
+      "host-test-binaries",
+      "host-cli",
+      "host-image",
+      "host-interaction",
+      "host-generation",
+      "host-tasks",
+      "dylib-audit",
+      "cold-source"
+    ],
+    "source": {
+      "git_clean": true,
+      "git_commit": "bf97466bf002902aae8913cb1a6a34332925c526"
+    },
+    "sha256": "0aa6cd67ab222039c7896aae22c18d6c6cde2d196453dc547390c20d33dcc6c6",
+    "all_phase_receipts_and_logs_verified": true,
+    "gate_wall_seconds": {
+      "archive-test": 0.038365417,
+      "cold-source": 337.792887208,
+      "dylib-audit": 1.303156208,
+      "host-cli": 1037.5812895,
+      "host-generation": 591.398984958,
+      "host-image": 1430.671884958,
+      "host-interaction": 735.414064917,
+      "host-tasks": 467.981992041,
+      "host-test-binaries": 0.376674542,
+      "install": 219.245986875,
+      "install-contract-test": 0.0716505,
+      "native": 2235.372320625,
+      "portable-code-v1": 0.385640125,
+      "release-acceptance-test": 0.077216625,
+      "release-changelog-test": 0.129430875,
+      "release-pipeline-test": 2.363656125,
+      "stackless-s2": 0.122045917,
+      "tool-tests": 3.250707583,
+      "v014-performance-acceptance-test": 0.037132084,
+      "v015-performance-acceptance-test": 0.038812708,
+      "workspace": 5.702803375
+    },
+    "recorded_schedule_seconds": 5296.361348749,
+    "recorded_schedule_note": "Sum of recorded serial gate durations plus the longer Host lane. Excludes runner overhead and earlier failed attempts; this is not the cached resume wall time.",
+    "latest_cached_resume_wall_seconds": 2.564014958
+  },
+  "requirement_evidence": {
+    "Cold core build": [
+      "install",
+      "cold-source"
+    ],
+    "Source and compiled bootstrap without providers": [
+      "host-cli:core-without-store-test.py --services",
+      "native:owner absence checks"
+    ],
+    "Live reflection, replacement, identity, roots and lifetime": [
+      "native",
+      "host-generation",
+      "host-tasks"
+    ],
+    "Host, projects, console, sockets, workers and LSP": [
+      "host-cli",
+      "host-interaction",
+      "host-tasks"
+    ],
+    "Core mapped, rebuilt and resaved persistence": [
+      "native",
+      "host-image",
+      "host-generation"
+    ],
+    "Late optional facilities, self-description, facts/history and queries": [
+      "host-cli:optional-store-test.py",
+      "host-image:optional-store-image-test.py",
+      "native:store and relational"
+    ],
+    "Independence and malleability after opt-in": [
+      "host-cli:optional-store-test.py",
+      "host-image:alien-publication-test.py",
+      "host-generation"
+    ],
+    "Failure, reentry, partial application and actual reclamation": [
+      "native",
+      "host-generation",
+      "host-image"
+    ],
+    "Relocation, fixture-free archives and shipped artifact acceptance": [
+      "cold-source",
+      "host-cli",
+      "archive-smoke"
+    ],
+    "All seven simplification recommendations": [
+      "docs/design/store-independent-core-completion.md#simplification-review-delete-before-translating"
+    ],
+    "Performance and formal boundaries": [
+      "docs/measurements/store-independent-core-20261020.json",
+      ".cargo-target/formal/results/rooting-m3a0b940/summary.json"
+    ]
+  },
+  "packaging": {
+    "release_invocation": "COPYFILE_DISABLE=1 mise exec -- bash scripts/release.sh --resume",
+    "cause": "BSD tar synthesized an unmanifested AppleDouble sidecar from macOS extended attributes on the bundled libtcc COPYING file.",
+    "runtime_bytes_changed": false,
+    "post_release_default_paths": [
+      "scripts/dist.sh",
+      "scripts/release.sh"
+    ],
+    "regression": {
+      "red_log_sha256": "bac0eee16511e0e6bdfcc8e9306a56bb0606dbea2b7d01b9aacc9157a7509751",
+      "green_log_sha256": "862b4ff8be29e43becd105d2c0a9d115ef29cfd8bc533784121adf3c69f0923a",
+      "pipeline_tests": 11,
+      "validation_tool_tests": 12,
+      "scope": "Real extended attributes and tar; exact extracted manifest, intentional ._ file preservation, archive reuse and publication ordering."
+    }
+  },
+  "remaining_outside_milestone": [
+    "Artifact/certification self-hosting",
+    "Paused Relational implementation migration",
+    "Generic live code mirrors",
+    "Per-instance Store persistence",
+    "Release qualification below one hour"
+  ]
+}

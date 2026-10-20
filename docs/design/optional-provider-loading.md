@@ -3,8 +3,9 @@
 2026-10-20. Implemented production contract. Core absence, late provider
 activation, optional images/workers and cold archive checks pass. Host
 edge-case and timing qualification also pass and are recorded in the
-[completion plan](store-independent-core-completion.md); release qualification
-remains separate.
+[completion plan](store-independent-core-completion.md). Delivered in
+[v0.18.0](https://github.com/chazu/birnam/releases/tag/v0.18.0) after clean-candidate
+and immutable-archive acceptance.
 
 Use ordinary compiled Birnam modules as the public entries for `#store` and
 `#relational`. Their initialization sends the existing `System loadModule:arguments:`

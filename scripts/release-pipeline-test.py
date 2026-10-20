@@ -313,12 +313,25 @@ output=Path(sys.argv[2]);output.mkdir(parents=True,exist_ok=True)
         for name in ('rust-install.sh','install-smoke.sh'):
             (self.root/'scripts'/name).write_text('#!/bin/sh\nexit 99\n')
             (self.root/'scripts'/name).chmod(0o755)
-        prefix=self.root/'input';prefix_fixture(prefix,version='0.1.0')
+        prefix=self.root/'input'
+        prefix.mkdir()
+        (prefix/'._intentional').write_bytes(b'a real manifest file, not generated metadata\n')
+        # macOS metadata must not create unmanifested AppleDouble members.
+        # Exercise real tar, not an environment-variable assertion.
+        self.env.pop('COPYFILE_DISABLE', None)
+        if sys.platform == 'darwin':
+            metadata = prefix/'metadata.txt'
+            metadata.write_bytes(b'ordinary manifest bytes\n')
+            subprocess.run(['xattr','-w','com.birnam.archive-test','unmanifested metadata',metadata],
+                           check=True, capture_output=True)
+        prefix_fixture(prefix,version='0.1.0')
         def package():
             return subprocess.run(['bash','scripts/dist.sh','--prefix',str(prefix)],cwd=self.root,
                 env=self.env,capture_output=True,text=True,timeout=30)
         first=package();self.assertEqual(first.returncode,0,first.stderr)
         archive=self.root/first.stdout.strip();digest=support.sha(archive);modified=archive.stat().st_mtime_ns
+        with tempfile.TemporaryDirectory() as unpacked:
+            self.assertEqual(verify(acceptance.extract_candidate(archive, Path(unpacked))), verify(prefix))
         again=package();self.assertEqual(again.returncode,0,again.stderr)
         self.assertIn('reusing identical',again.stderr)
         self.assertEqual((support.sha(archive),archive.stat().st_mtime_ns),(digest,modified))

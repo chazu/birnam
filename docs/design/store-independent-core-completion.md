@@ -1,8 +1,8 @@
 # Store-independent core: completion plan
 
 2026-10-19. Baseline `9e51daee` (qualified native-runtime setup committed).
-**Status: Store-independent core completion is implemented and qualified. Core-absence, optional-provider, Host/worker, format, formal, cold-archive and timing checks pass. Clean-candidate release qualification and publication remain separate.**
-This closes the implementation milestone selected as a prerequisite for the next release.
+**Status: completed and released in [v0.18.0](https://github.com/chazu/birnam/releases/tag/v0.18.0), from `bf97466b`. All 21 clean-candidate gates and immutable-archive acceptance passed.**
+The [delivery receipt](../measurements/store-independent-core-release-20261020.json) binds the published assets, acceptance evidence and completed requirements.
 This refines the [optional Store decision](optional-store-and-relational.md).
 
 ## Completion contract
@@ -34,7 +34,7 @@ rewrite just because they are native. The Relational rewrite remains paused. New
 image-buffer/dispatch optimizations and a generic live relational mirror are also
 outside this completion sequence.
 
-## Remaining dependency ledger
+## Dependency completion ledger
 
 These are source-backed completed boundaries or intentional optional consumers, not raw grep
 counts. Comments, test assertions, TOML example keys named `db`, and CandidatePolicy's
@@ -52,7 +52,7 @@ ordinary `cellFor:` helper are not Store dependencies.
 | Image facts and Store Cells | Image selects its fact owner through current `System imageStore`; nil omits facts and all Store metadata/staging/exchange. Fact Cells use their recorded selected owner. Only explicit Store activation selects a participant. | Core mapped/rebuilt/resaved images pass with providers physically absent. Explicit facts/history/Cells and fresh optional-provider workers also pass. |
 | Standard-library optional hooks | stdlib forwards documentation to current `Doc recordMethod:on:text:` and has no db accesses. Authored `store` installs `Reflect factsOf:` and fact-Cell conveniences. The intermediate `storeSupport` module is removed. | Ordinary Reflect construction/descriptions remain independent. Missing Doc means no documentation recording; fact queries require explicit Store. No empty database is fabricated. |
 | Intentional documentation catalog | [Doc](../../modules/doc.birnam) and [NativeDoc](../../modules/nativedoc.birnam) deliberately store/query documentation. Doc declares html, Store and Relational. CLI doc/docgen explicitly select that composition. | Basic CLI commands and LSP use the core; documentation retains its useful relational catalog. Direct Doc loading propagates dependency failures before construction. |
-| Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) and [Host source startup](../../rust/birnam-host-entry/src/startup.rs) omit Store/Relational. [Build](../../rust/birnam-build/src/main.rs) prepares and probes the core before optional providers are built/installed; raw providers live under `lib/native/`. | Explicit core/optional closures are recorded in receipts. Installed/relocated and two independent fixture-free cold archive builds pass. Release-candidate acceptance is separate. |
+| Composition and packaging | [Bootstrap](../../rust/birnam-bootstrap/src/lib.rs) and [Host source startup](../../rust/birnam-host-entry/src/startup.rs) omit Store/Relational. [Build](../../rust/birnam-build/src/main.rs) prepares and probes the core before optional providers are built/installed; raw providers live under `lib/native/`. | Explicit core/optional closures are recorded in receipts. Installed/relocated and two independent fixture-free cold archive builds pass. Release-candidate and immutable-archive acceptance pass for v0.18.0. |
 | Late optional initialization | Authored `store`/`relational` entries use the current native loader and ordinary Module registry. Store no longer publishes a Globals seed. | Full-world late activation, self-description, queries/history, repeated loading, existing aliases and user replacements pass. Ordinary edits create no facts before or after activation. |
 
 The primary references above point to the current implementation. Existing
@@ -63,20 +63,18 @@ useful component evidence, but explicitly exclude the full bootstrap/Host path.
 ## Simplification review: delete before translating
 
 2026-10-19 follow-up, against `5cbb91fa`. These candidates come from source
-and call-site inspection. Row status and the progress entries below distinguish
-completed work from remaining recommendations; deletion alone is not a speedup. The
-migration should shrink the machinery rather than reproduce its fact-shaped APIs
-in new private maps.
+and call-site inspection. Every recommendation below is completed. The progress
+entries retain the qualification history; deletion alone is not a speedup.
 
-| Priority | Candidate | Evidence and recommended reduction | Boundary to retain |
+| Status | Candidate | Completed reduction | Boundary retained |
 | --- | --- | --- | --- |
-| Completed `b1fe7200` | Globals compensation banks and image recovery checkpoints | `reserveBindingCompensationFor:count:`, credit queries/releases and conditional restoration remain in authored Globals and its native seed. Current candidate policy no longer calls them; a Generation regression explicitly checks that activation makes zero reservation calls. `imageBindingCheckpoint` / `restoreImageBindings:` have no current production callers in the repository. Image still calls `releaseImageReservations` to clear otherwise obsolete banks. Remove this capability family, its state slot/order snapshots, and its cleanup hook unless a concrete current requirement is selected. Update tests and the old ownership documentation accordingly. | Ordinary binding coherence, absent versus nil, alias order and identity; explicit candidate undo already has its own selected-write protocol. This deliberately removes public APIs, not their names alone. |
-| Completed; see qualification below | Dual Globals implementations and seed conversion | Store creates a native Globals facade; authored Globals imports its state, changes behavior, retracts automatic facts and compacts. Aim for one authored binding owner through bootstrap. Delete the Store-owned facade and transfer/cleanup path once any genuinely necessary minimal bootstrap interface is established. This also removes the late-Store-load clobber hazard. | Globals and Namespace have distinct responsibilities; do not merge them merely to remove a seed. Keep public binding behavior and early compilation working. |
+| Completed | Globals compensation banks and image recovery checkpoints | Removed the compensation/reservation capability family, its state/order snapshots, image binding checkpoints, native seed adapters and obsolete Image cleanup hook. Explicit candidate undo retains its separate selected-write contract. | Ordinary binding coherence, absent versus nil, alias order and identity; explicit candidate undo already has its own selected-write protocol. This deliberately removes public APIs, not their names alone. |
+| Completed | Dual Globals implementations and seed conversion | Authored Globals now constructs the sole binding facade before SourceRegistry and named modules. Removed the Store-owned facade, seed import, fact retraction/compaction and transfer path; late Store loading preserves the existing Globals owner. | Globals and Namespace have distinct responsibilities; do not merge them merely to remove a seed. Keep public binding behavior and early compilation working. |
 | Completed; qualified 2026-10-20 | Duplicate local-Cell implementation inside Store | Removed `Store localCell:` / `localCell:prototype:`, their native opcodes and tagged restoration. Remaining examples, scratch fixtures and the image-format generator use authored Cell; obsolete compatibility runner options are removed. | Keep actual fact-backed Store Cells and their explicit history. Preserve local value/alias/clone behavior through the authored owner; do not keep a second native representation solely for old-image compatibility. |
-| With task/resource migration | Database-shaped field access | Task/Worker/Concurrency fields repeatedly manufacture prefixed attribute Symbols, obtain fact-backed Cells, then read/write their values. They also maintain schema/history/transient declarations for ordinary private state. Replace that layer with ordinary owned fields/collections; retain actual Cells where field handles escape and aliases require shared mutation. | Queue order, transitions, cancellation/shielding, field alias semantics and resource cleanup. A field migration is not permission to simplify the scheduler's semantics. |
-| With Alien migration | Fact encoding and Store-mediated method installation | Recipes are encoded as `__aliens__` attributes with synthetic `__alien_N` keys, enumerated back into vectors, searched, and converted again for Image. Wrapper installation also detours through Store's method-publication API. Use one owned recipe collection and the established Method/dictionary publication protocols. | Function/signature code reuse and target/selector registration are distinct matching purposes. Preserve both, current reads across reentrant callbacks, native-handle ownership and Method/Unit lifetimes. |
-| With Image migration | Mandatory database staging and global transient schema | Even a fact-free image currently queries Store metadata, creates a staging Store and swaps Store state. Every heap object gets a Store transient-marker query. Remove these from the core path; integrate projection/admission into actual owner snapshot protocols and keep facts/history as an explicit optional contribution. | Reject unsupported resources and captured transient handles; preserve explicit facts/history and the selected partial-application contract. Staging optional fact data can still be useful—only its mandatory role is redundant. |
-| With tool split | Optional catalog knowledge embedded in core code | stdlib's documented-method helper knows Doc's fact layout, while Cli requires Doc for unrelated commands. Forward documentation to its owner and load the catalog only for features requiring it. Use existing module dependencies/precompiled artifacts; avoid a second dependency planner. | Doc's relational catalog is intentional useful data. Keep that facility, its explicit APIs and self-description rather than rewriting it to erase every `db` occurrence. |
+| Completed | Database-shaped field access | Task, Worker and Concurrency state uses ordinary fields/collections instead of prefixed fact attributes, schema and history. TaskField views preserve escaped field aliases. REPL and socket state likewise have ordinary owners and explicit resource policies. | Queue order, transitions, cancellation/shielding, field alias semantics and resource cleanup. A field migration is not permission to simplify the scheduler's semantics. |
+| Completed | Fact encoding and Store-mediated method installation | AlienRecipes owns indexed recipe/code/registration data. Removed synthetic fact keys and repeated encoding/enumeration. Alien publishes through current Method/dictionary messages, and Image reads the ordinary recipe owner. | Function/signature code reuse and target/selector registration are distinct matching purposes. Preserve both, current reads across reentrant callbacks, native-handle ownership and Method/Unit lifetimes. |
+| Completed | Mandatory database staging and global transient schema | Removed Store metadata, transient-marker queries, staging and exchange from the core Image path. Current owner imagePayload messages control projection/admission; System imageStore is nil by default. Explicitly selected facts/history retain optional staging and forward exchange. | Reject unsupported resources and captured transient handles; preserve explicit facts/history and the selected partial-application contract. Staging optional fact data can still be useful—only its mandatory role is redundant. |
+| Completed | Optional catalog knowledge embedded in core code | stdlib forwards documentation to the current Doc owner without knowing its schema. CLI/LSP use the core composition; documentation commands explicitly load the catalog and its Store/Relational dependencies through existing Module protocols. | Doc's relational catalog is intentional useful data. Keep that facility, its explicit APIs and self-description rather than rewriting it to erase every `db` occurrence. |
 
 In particular, do not replace these paths with a universal persistence registry,
 new compensation engine, mandatory live mirror, or a permanent native owner for
@@ -84,18 +82,17 @@ what can be ordinary Birnam data. Select the smallest owner-message protocol tha
 covers the actual resource and optional-data cases. Automatic rollback and policing
 of arbitrary replaced setters are outside the chosen contract.
 
-The strongest first deletion is the Globals bank/checkpoint family, paired with
-the seed work in slice 1. Keep `imageBindingProjection` and its transient-binding
-policy: unlike the abandoned rollback checkpoints, Image actively uses that
-projection to exclude process-local values without changing live bindings.
+The Globals bank/checkpoint deletion and seed removal are complete.
+`imageBindingProjection` and its transient-binding policy remain: Image actively
+uses that projection to exclude process-local values without changing live bindings.
 Likewise, necessary ownership, failure propagation and code retirement must survive
 all these removals. Their cost is not evidence that they are redundant.
 
 ## Ordered implementation slices
 
-Each slice should have its own implementation, focused negative/positive tests,
-updated ledger and commit. Keep the existing supported composition working while
-removing dependencies. The final release gate cannot pass on partial progress.
+All seven slices are complete and shipped. The sequence below retains the
+implementation requirements and acceptance conditions; the progress records show
+the commits and evidence for each slice.
 
 1. **Establish the end-to-end absence gate and free bootstrap Globals.** Add a
    reproducible current failure using a genuinely excluded Store/Relational input
@@ -184,34 +181,38 @@ runtime fault/GC/reentry tests. Existing formal receipts are not proof of this n
 composition. Record startup/steady-state CPU and retained/peak memory when claiming
 savings, without changing the GC threshold or weakening ownership to improve a score.
 
-## Decisions to close during the relevant slice
+## Decisions resolved in this milestone
 
-- **Early Globals:** establish the concrete cold construction order and minimal
-  interface, preserving the current Globals/Namespace distinction. No default
-  fact-backed adapter may remain merely for bootstrap convenience.
-- **Image ownership:** settle contribution selection, transient object/field
-  behavior, graph references, failure boundary and format transition. The contract
-  must remain ordinary owner messaging; a permanent Rust authority table is not
-  an acceptable stand-in for Store.
-- **Independent Stores:** the current runtime rejects an image capturing `Store new`,
-  while a control world saves successfully (rechecked 2026-10-19). This is a separate
-  optional persistence capability, not evidence that core independence requires
-  implementing every Store feature. Preserve and regression-test truthful rejection
-  unless per-instance persistence is deliberately included and qualified in slice 5;
-  do not silently discard the instance's facts or claim every Store is imageable.
-- **Optional tools:** distinguish packaged availability from activation. The default
-  core and unrelated commands stay independent; catalog-dependent features explicitly
-  select Store/Relational. Update declarations and saved-image contents, not only docs.
+- **Early Globals:** one authored binding owner is constructed before SourceRegistry
+  and named modules, preserving the separate Namespace responsibility. No Store
+  seed, import facade or automatic fact cleanup remains.
+- **Image ownership:** current owner messages select projection/admission and the
+  optional fact participant. Core images declare no providers; optional images
+  load their declared local providers before heap restoration. The current owner
+  envelope and provider record require rebuilding older executable images.
+  Failed application retains effects; recovery is an explicit user snapshot.
+- **Independent Stores:** images capturing `Store new` remain truthfully rejected,
+  with regression coverage. Per-instance persistence is a separate optional
+  capability; unsupported facts are not silently omitted.
+- **Optional tools:** packaging does not imply activation. Basic CLI/LSP stay in
+  the core; documentation explicitly selects Store/Relational and their catalog.
 
-## Current next step
+## Completion and follow-up
 
-Commit the qualified production cutover, then qualify and publish a clean release
-candidate through the existing release workflow. `scripts/core-without-store-test.py PREFIX
---services` physically removes both optional native libraries and authored entry
-artifacts before exercising real startup, images, console, LSP, projects, sockets
-and workers. The companion optional-provider tests cover late activation and
-fresh-process optional images. Earlier progress entries below are chronological
-slice records; their “next” statements describe that point in the migration.
+The cutover is committed and released in v0.18.0. The real
+`scripts/core-without-store-test.py PREFIX --services` gate physically removes
+both optional native libraries and authored entries before testing startup,
+images, console, LSP, projects, sockets and workers. Companion gates prove late
+activation and fresh-process optional images. All passed in the clean release.
+
+Artifact/certification self-hosting, the paused Relational port, generic live
+mirrors and per-instance Store persistence remain separate follow-ups. The
+one-hour release-process target is also not achieved: recorded gate durations
+still exceed it. This is qualification cost, not a new runtime regression.
+
+Earlier progress entries below are chronological records; their “next” statements
+and pending-release language describe that point in the migration. Publication
+and final evidence are recorded at the end of this document.
 
 
 ## Progress: Globals recovery cleanup (2026-10-19)
@@ -879,3 +880,21 @@ All 12 validation-tool tests pass. The
 [Host preflight receipt](../measurements/store-independent-core-release-host-preflight-20261020.json)
 distinguishes the initial failed image group from its successful corrected tail;
 it is not a substitute for clean-candidate release acceptance.
+
+## Release closure (2026-10-20)
+
+[v0.18.0](https://github.com/chazu/birnam/releases/tag/v0.18.0) is published from
+`bf97466bf002902aae8913cb1a6a34332925c526`. All 21 clean-candidate gates passed,
+followed by strict archive layout/signature, relocation, source/GC/image and
+compiled-startup acceptance. The archive receipt is promotable. The remote tag,
+runtime archive, evidence archive and receipt have been checked against the
+accepted commit and local SHA-256 digests; the downloaded receipt is identical.
+
+Packaging initially exposed an unmanifested AppleDouble file generated from
+macOS metadata on libtcc's COPYING file. The accepted archive was rebuilt from
+the same qualified installation with `COPYFILE_DISABLE=1`; no manifest file or
+runtime byte was removed or changed. Packaging helpers now select this setting
+by default. A real extended-attribute regression test reproduces the old failure
+and verifies exact extraction, preservation of an intentional `._` filename and
+unchanged archive reuse. This tooling follow-up does not change the released
+runtime or its tag. See the [delivery receipt](../measurements/store-independent-core-release-20261020.json).
