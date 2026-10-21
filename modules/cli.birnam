@@ -185,6 +185,7 @@
 # required staged dylib path. The wrapper source should be under source_roots.
 # [[wrapped]]
 # name = \"foo\"
+# packaging = \"adjacent\" # or \"embedded\" for a self-contained wrapper module
 # build = [[\"cc\", \"-dynamiclib\", \"native/foo.c\", \"-o\", \"{output}\"]]
 
 # The project-root-relative entry point. A bare `birnam` run anywhere under
@@ -233,8 +234,8 @@
 //   birnam build   (after adding this file to a project's source_roots)
 //
 // Add a matching `[[wrapped]]` entry to birnam.toml. Its build argv uses
-// `{output}` for the dylib path; birnam stages the result beside the compiled
-// wrapper and resolves this logical name at project run time.
+// `{output}` for the dylib path. `packaging = \"adjacent\"` publishes a sibling;
+// `packaging = \"embedded\"` includes it inside the compiled wrapper artifact.
 //
 // SIGNATURES are strings: the FIRST type is the return, the rest are the
 // arguments (whitespace ignored) — i=int l=long u=ulong d=double f=float
@@ -252,10 +253,10 @@
 
 // 3. Wrap a function as a method on the module. Replace this example with a
 //    real one from %N%. Here: `int %N%_version(void)` → `[%C% version]`.
-[Alien wrap: \"%N%_version\" signature: \"i\" as: #version on: %C%]
+[Alien bind: \"%N%_version\" signature: \"i\" as: #version on: %C%]
 
 // Add more wraps following the same pattern, e.g. a one-argument call:
-//   [Alien wrap: \"%N%_do\" signature: \"i i\" as: #do: on: %C%]
+//   [Alien bind: \"%N%_do\" signature: \"i i\" as: #do: on: %C%]
 // then `[%C% do: 5]` calls `%N%_do(5)`.
 "] doc:
   "The raw wrap scaffold source — %N% = the library name as typed, %C% = the capitalized Globals binding."];

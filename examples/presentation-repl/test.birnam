@@ -1,0 +1,82 @@
+// Run from the repository root: birnam examples/presentation-repl/test.birnam
+[System load: "modules/test.birnam"];
+[System load: "modules/os.birnam"];
+[System load: "examples/presentation-repl/model.birnam"];
+let s := [TestSuite named: "Presentation REPL" module: #presentationRepl];
+[s test: "selected child is the original object through GC and evaluation" do: [:t |
+  let model := [Presentations new];
+  let cell := [Cell with: 41];
+  [model appendValue: #[cell 7]];
+  [model expandSelected]; [model moveSelection: 1];
+  let id := [[model selectedRow] at: 0];
+  [System gc];
+  [t assert: [[model valueAt: id] == cell] describes: "child identity survives collection"];
+  [model insertSelected];
+  let previous := Presentations;
+  [Globals at: #Presentations put: model];
+  let result := [Codegen evalPersisting: ["[" , [model input] , " value]"]];
+  [Globals at: #Presentations put: previous];
+  [t expect: result equals: 41 describes: "inserted reference evaluates against the actual Cell"];
+  [[model valueAt: id] set: 42];
+  [t expect: [cell value] equals: 42 describes: "mutation reaches original"]
+]];
+[s test: "bounded lazy expansion and snapshots" do: [:t |
+  let model := [Presentations new];
+  [model appendValue: [0 to: 999999]]; [model expandSelected];
+  [t expect: [[model rows] size] equals: 21 describes: "million-element range renders only one page"];
+  [t expect: [[model rows] at: 1] equals: #[2 "  #2 [0] 0" 1 1] describes: "first child row"];
+  [model expandSelected];
+  [t expect: [[model rows] size] equals: 21 describes: "next page replaces previous page"];
+  [t expect: [model valueAt: [[[model rows] at: 1] at: 0]] equals: 20 describes: "next page starts at twenty"];
+  [model collapseSelected];
+  [t expect: [[model rows] size] equals: 1 describes: "collapse removes descendants"];
+  [t expect: [model valueAt: 2] equals: 0 describes: "collapse alone does not expire references"]
+]];
+[s test: "eviction and forget cannot alias an old ID" do: [:t |
+  let model := [Presentations new]; [model limit: 4];
+  let id := [model remember: nil];
+  [t expect: [model valueAt: id] equals: nil describes: "retained nil is distinct from expiration"];
+  [[1 to: 4] do: [:n | [model appendValue: n]]];
+  [t expect: [[model valueAt: id] kind] equals: #expiredPresentation describes: "ring eviction is explicit"];
+  [t expect: [[model registry] size] equals: 4 describes: "reference count bounded"];
+  [model forget]; [model appendValue: 99];
+  [t expect: [[model valueAt: 5] kind] equals: #expiredPresentation describes: "forget never resets IDs"];
+  [t assert: [[[model rows] size] <= 4] describes: "visible transcript is bounded"]
+]];
+[s test: "nested expansion reads current values without invoking printers on navigation" do: [:t |
+  let model := [Presentations new]; let calls := [Cell with: 0]; let object := [Object clone];
+  [Reflect defineMethod: #presentationSummary on: object as: [:self | [calls inc]; "custom"]];
+  let cell := [Cell with: object];
+  [model appendValue: #[cell]]; [model expandSelected]; [model moveSelection: 1]; [model expandSelected];
+  [t expect: [calls value] equals: 1 describes: "only requested child presentation ran"];
+  [model moveSelection: 1]; [model moveSelection: -1];
+  [t expect: [calls value] equals: 1 describes: "selection does not rerun presentation"];
+  [cell set: 9]; [model collapseSelected]; [model expandSelected];
+  [t expect: [model valueAt: [[[model rows] at: 2] at: 0]] equals: 9 describes: "explicit expansion sees changed Cell"]
+]];
+[s test: "text edits and bounded history" do: [:t |
+  let model := [Presentations new];
+  [model insert: "ac"]; [model cursor: 1]; [model insert: "b"];
+  [t expect: [model input] equals: "abc" describes: "insert at cursor"];
+  [model submitted]; [model recall: -1];
+  [t expect: [model input] equals: "abc" describes: "source history"];
+  [[1 to: 70] do: [:n | [model replaceInput: [n printString]]; [model submitted]]];
+  [t expect: [[model history] size] equals: 64 describes: "bounded source history"]
+]];
+[s test: "leaf values, failing presenters and cycles stay bounded" do: [:t |
+  let model := [Presentations new];
+  [#[nil true false 3 "text"] do: [:value |
+    [model appendValue: value]; [model expandSelected]
+  ]];
+  [t expect: [[model rows] size] equals: 5 describes: "leaf expansion adds no children"];
+  let broken := [Object clone];
+  [Reflect defineMethod: #presentationSummary on: broken as: [:self | [Error kind: #brokenPresenter]]];
+  [t expect: [model summaryOf: broken] equals: "<presentation failed>" describes: "presenter error becomes fallback"];
+  [t expect: [model summaryOf: "a\0b"] equals: "\"a␀b\"" describes: "embedded NUL cannot truncate the terminal packet"];
+  let cycle := [Cell with: nil]; [cycle set: cycle];
+  [model forget]; [model appendValue: cycle];
+  [[1 to: 9] do: [:unused | [model expandSelected]; [model moveSelection: 1]]];
+  [t expect: [[model rows] size] equals: 9 describes: "cyclic expansion stops at depth eight"]
+]];
+[Test runAllSuitesWithRunner: ConsoleRunner];
+[[ConsoleRunner allPassed] ifTrue: [| [OS exit: 0]] ifFalse: [| [OS exit: 1]]]

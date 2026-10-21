@@ -31,7 +31,11 @@ pub struct ProjectWrappedArtifactObservation {
     pub project_root: String,
     pub name: String,
     pub build: Vec<Vec<String>>,
+    #[serde(default = "adjacent_packaging")]
+    pub packaging: String,
 }
+
+pub fn adjacent_packaging() -> String { "adjacent".into() }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ProjectFetchResult {

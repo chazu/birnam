@@ -234,7 +234,13 @@ impl<'a, 'h> Decoder<'a, 'h> {
             if !has_output {
                 return Err(ProjectManifestDecodeError::MissingWrappedOutput(name));
             }
-            result.push(ProjectWrappedObservation { name, build });
+            let packaging_value = self.at(item, "packaging")?;
+            let packaging = if packaging_value == self.nil { "adjacent".into() }
+                else { self.string(packaging_value, "wrapped.packaging")? };
+            if !matches!(packaging.as_str(), "adjacent" | "embedded") {
+                return Err(ProjectManifestDecodeError::InvalidPath("wrapped.packaging (adjacent or embedded)"));
+            }
+            result.push(ProjectWrappedObservation { name, build, packaging });
         }
         Ok(result)
     }
@@ -256,6 +262,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
                 project_root,
                 name: artifact.name,
                 build: artifact.build,
+                packaging: artifact.packaging,
             });
         }
         Ok(result)
@@ -656,6 +663,7 @@ impl Builder<'_, '_> {
         for value in values {
             let mut item = self.new_map()?;
             item = self.put(item, "name", self.string(&value.name)?)?;
+            item = self.put(item, "packaging", self.string(&value.packaging)?)?;
             let mut commands = self.new_vector()?;
             for command in &value.build {
                 commands = self.add(commands, self.strings(command)?)?;

@@ -17,12 +17,13 @@ pub fn project_build_resolution_digest(
     let add_count = |input: &mut Vec<u8>, value: usize| {
         input.extend_from_slice(&(value as u64).to_be_bytes());
     };
-    add(&mut input, "birnam.project-build-resolution.v2");
+    add(&mut input, "birnam.project-build-resolution.v3");
     add(&mut input, &source_digest);
     add_count(&mut input, wrapped.len());
     for artifact in wrapped {
         add(&mut input, &artifact.project_root);
         add(&mut input, &artifact.name);
+        add(&mut input, &artifact.packaging);
         add_count(&mut input, artifact.build.len());
         for command in &artifact.build {
             add_count(&mut input, command.len());
@@ -617,6 +618,7 @@ mod tests {
         let wrapped = |root: &str, argument: &str| ProjectWrappedArtifactObservation {
             project_root: root.to_owned(),
             name: "native".to_owned(),
+            packaging: "adjacent".into(),
             build: vec![vec![
                 "cc".to_owned(),
                 argument.to_owned(),

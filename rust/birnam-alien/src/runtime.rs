@@ -182,6 +182,9 @@ enum Op {
     Close,
     Wrap,
     InstallRecipe,
+    InstallBinding,
+    ProvideLibrary,
+    ProvideLibraryPath,
     Callback,
     ReleaseCallback,
     Alloc,
@@ -204,6 +207,8 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
         use Op::*;
         let expected = match op {
             Wrap => 4,
+            InstallBinding => 5,
+            ProvideLibrary | ProvideLibraryPath => 2,
             Callback | Equal => {
                 if matches!(op, Callback) {
                     2
@@ -219,6 +224,29 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
             return scope.nil();
         }
         match op {
+            ProvideLibraryPath => {
+                let Some(name) = scope.bytes(a[1])? else { return scope.error(b"invalidNativeLibrary", b"library name must be a String"); };
+                let Some(path) = scope.bytes(a[0])? else { return scope.error(b"invalidNativeLibrary", b"library path must be a String"); };
+                let result = s.libraries.borrow_mut().provide_path(&name, &path);
+                match result {
+                    Ok(()) => Ok(Operand::object(r)),
+                    Err(e) => scope.error(b"invalidNativeLibrary", e.to_string().as_bytes()),
+                }
+            }
+            ProvideLibrary => {
+                let Some(name) = scope.bytes(a[1])? else { return scope.error(b"invalidEmbeddedLibrary", b"library name must be a String"); };
+                let Some(raw) = scope.call(a[0], b"bytes", &[])?.as_bytes() else { return scope.error(b"invalidEmbeddedLibrary", b"library bytes must be byte-bearing"); };
+                if raw.length > 256 * 1024 * 1024 { return scope.error(b"invalidEmbeddedLibrary", b"library exceeds 256 MiB"); }
+                let bytes = borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?.to_vec();
+                let result = s.libraries.borrow_mut().provide(&name, &bytes);
+                match result {
+                    Ok(()) => Ok(Operand::object(r)),
+                    Err(e) => scope.error(b"invalidEmbeddedLibrary", e.to_string().as_bytes()),
+                }
+            }
+            InstallBinding => {
+                install_wrapper(s, scope, &[a[0], a[1], a[2], a[3], a[4]], true)
+            }
             LibraryDir | Open | Close => {
                 let Some(path) = scope.bytes(a[0])? else {
                     return scope.nil();
@@ -549,6 +577,9 @@ methods!(
     (close, Close),
     (wrap, Wrap),
     (install_recipe, InstallRecipe),
+    (install_binding, InstallBinding),
+    (provide_library, ProvideLibrary),
+    (provide_library_path, ProvideLibraryPath),
     (callback, Callback),
     (release_callback, ReleaseCallback),
     (alloc, Alloc),
@@ -712,6 +743,10 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Answer {
             (vt, b"dlopen:", open),
             (vt, b"dlclose:", close),
             (vt, b"wrap:signature:as:on:", wrap),
+            (vt, b"bind:signature:as:on:", wrap),
+            (vt, b"bind:signature:as:on:code:", install_binding),
+            (vt, b"provideLibrary:named:", provide_library),
+            (vt, b"provideLibraryPath:named:", provide_library_path),
             (vt, b"installRecipe:", install_recipe),
             (vt, b"callback:signature:", callback),
             (vt, b"releaseCallback:", release_callback),

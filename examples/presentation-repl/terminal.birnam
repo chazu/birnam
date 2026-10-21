@@ -1,0 +1,133 @@
+[Module named: #presentationTerminal requires: #[#presentationBindings #presentationModel]];
+// Host owns the outer evaluation loop and teardown.
+let PresentationTerminal := [Object clone];
+let presentationStarted := [Cell with: false];
+let presentationWidth := [Cell with: 0];
+let presentationHeight := [Cell with: 0];
+let presentationSelection := [Cell with: -1];
+let presentationScroll := [Cell with: -1];
+let presentationPacket := [Cell with: ""];
+
+[Reflect defineMethod: #drawRow:top:selected:rows: on: PresentationTerminal as: [:self :index :top :selected :rows |
+  let row := [rows at: index];
+  let text := [[row isNil] ifTrue: [| ""] ifFalse: [| [row at: 1]]];
+  let background := [[index = selected] ifTrue: [| 5] ifFalse: [| 0]];
+  [Termbox line: [[index - top] + 1] fg: 8 bg: background text: text cursor: -1]
+]];
+
+[Reflect defineMethod: #draw on: PresentationTerminal as: [:self |
+  let model := Presentations; let tb := Termbox;
+  let width := [tb width]; let height := [tb height];
+  [[[[width = [presentationWidth value]] not] | [[height = [presentationHeight value]] not]] ifTrue: [|
+    [presentationWidth set: width]; [presentationHeight set: height];
+    [tb clear]; [model dirty: true]
+  ]];
+  let available := [[height - 4] max: 1];
+  let oldScroll := [model scroll]; let selected := [model selected];
+  let top := [[[oldScroll min: selected] max: [[selected - available] + 1]] max: 0];
+  [model scroll: top];
+  let rows := [model rows];
+  [[model dirty] ifTrue: [|
+    let packet := [StringBuilder new];
+    [rows do: [:row |
+      [packet add: [[row at: 1] replace: "\n" with: "↵"]]; [packet add: "\n"]
+    ]];
+    [presentationPacket set: [packet asString]]
+  ]];
+  [[[model dirty] | [[top = [presentationScroll value]] not]] ifTrue: [|
+    [tb line: 0 fg: 7 bg: 5 text: "Birnam presentations | Up/Down select | F2 expand/page F3 collapse F4 reuse" cursor: -1];
+    [tb rows: [presentationPacket value] top: top selected: [selected - top]];
+    [model dirty: false]
+  ] ifFalse: [|
+    let previous := [presentationSelection value];
+    [[[previous = selected] not] ifTrue: [|
+      [self drawRow: previous top: top selected: selected rows: rows];
+      [self drawRow: selected top: top selected: selected rows: rows]
+    ]]
+  ]];
+  [presentationSelection set: selected]; [presentationScroll set: top];
+  [tb line: [height - 3] fg: 3 bg: 0 text: [model status] cursor: -1];
+  [tb line: [height - 1] fg: 7 bg: 0 text: "Enter eval | Ctrl-J newline | Ctrl-P/N history | F5 forget | Ctrl-D quit" cursor: -1];
+  [tb line: [height - 2] fg: 8 bg: 0 text: ["> " , [model input]] cursor: [[model cursor] + 2]];
+  [tb present]; self
+]];
+[Reflect defineMethod: #deleteBackwards: on: PresentationTerminal as: [:self :backwards |
+  let model := Presentations; let text := [model input]; let cursor := [model cursor];
+  let start := [backwards ifTrue: [| [Termbox previousIn: text at: cursor]] ifFalse: [| cursor]];
+  let end := [backwards ifTrue: [| cursor] ifFalse: [| [Termbox nextIn: text at: cursor]]];
+  [model input: [[text copyFrom: 0 to: start] , [text copyFrom: end to: [text size]]]];
+  [model cursor: start]; self
+]];
+[Reflect defineMethod: #evaluate on: PresentationTerminal as: [:self |
+  let model := Presentations; let source := [[model input] trimmed];
+  [[source = ":quit"] ifTrue: [| #[#done nil]] ifFalse: [|
+    [[source isEmpty] ifTrue: [| #[#continue nil]] ifFalse: [|
+      [[Repl isComplete: source] ifTrue: [|
+        [model submitted]; [model status: "Evaluating (synchronous)"]; [self draw];
+        let capture := [Termbox captureBegin];
+        [[capture < 0] ifTrue: [| [Error kind: #outputCaptureFailed]] ifFalse: [|
+          let value := [Codegen evalPersisting: source];
+          let diagnostic := [Codegen lastError];
+          let output := [Termbox captureEnd];
+          [[output isEmpty] ifFalse: [| [model appendText: output]]];
+          [[diagnostic notNil] ifTrue: [|
+            [model appendText: diagnostic]; [model status: "Compile error"]; #[#continue nil]
+          ] ifFalse: [| #[#evaluated value]]]
+        ]]
+      ] ifFalse: [| [model insert: "\n"]; #[#continue nil]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #key: on: PresentationTerminal as: [:self :key |
+  let model := Presentations;
+  [[key = 13] ifTrue: [| [self evaluate]] ifFalse: [|
+    [[[key = 4] & [[model input] isEmpty]] ifTrue: [| #[#done nil]] ifFalse: [|
+      [[key = 65517] ifTrue: [| [model moveSelection: -1]]];
+      [[key = 65516] ifTrue: [| [model moveSelection: 1]]];
+      [[key = 65515] ifTrue: [| [model cursor: [Termbox previousIn: [model input] at: [model cursor]]]]];
+      [[key = 65514] ifTrue: [| [model cursor: [Termbox nextIn: [model input] at: [model cursor]]]]];
+      [[[key = 65521] | [key = 1]] ifTrue: [| [model cursor: 0]]];
+      [[[key = 65520] | [key = 5]] ifTrue: [| [model cursor: [[model input] size]]]];
+      [[[key = 8] | [key = 127]] ifTrue: [| [self deleteBackwards: true]]];
+      [[[key = 65522] | [key = 4]] ifTrue: [| [self deleteBackwards: false]]];
+      [[key = 3] ifTrue: [| [model replaceInput: ""]; [model status: "Input cleared"]]];
+      [[key = 10] ifTrue: [| [model insert: "\n"]]];
+      [[key = 16] ifTrue: [| [model recall: -1]]];
+      [[key = 14] ifTrue: [| [model recall: 1]]];
+      [[key = 65534] ifTrue: [| [model expandSelected]]];
+      [[key = 65533] ifTrue: [| [model collapseSelected]]];
+      [[key = 65532] ifTrue: [| [model insertSelected]]];
+      [[key = 65531] ifTrue: [| [model forget]]];
+      [[key = 12] ifTrue: [| [Termbox clear]; [model dirty: true]]];
+      #[#continue nil]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #step on: PresentationTerminal as: [:self |
+  let started := [[presentationStarted value] ifTrue: [| 0] ifFalse: [|
+    let result := [Termbox presentationInit];
+    [[result >= 0] ifTrue: [| [presentationStarted set: true]]]; result
+  ]];
+  [[started < 0] ifTrue: [| [Error kind: #terminalInitFailed]] ifFalse: [|
+    [self draw];
+    let event := [Termbox presentationPoll];
+    [[event < 0] ifTrue: [| [Error kind: #terminalReadFailed]] ifFalse: [|
+      [[[Termbox evType] = 1] ifTrue: [|
+        [[[Termbox evCh] > 0] ifTrue: [| [Presentations insert: [Termbox inputText]]; #[#continue nil]]
+          ifFalse: [| [self key: [Termbox evKey]]]]
+      ] ifFalse: [| [Presentations dirty: true]; #[#continue nil]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #close on: PresentationTerminal as: [:self |
+  [[presentationStarted value] ifTrue: [|
+    [presentationStarted set: false]; [Termbox presentationShutdown]
+  ]]; [Presentations forget]; self
+]];
+[Reflect defineMethod: #hostStep on: Repl as: [:self | [PresentationTerminal step]]];
+[Reflect defineMethod: #printHostResult: on: Repl as: [:self :value |
+  [Presentations appendValue: value]; self
+]];
+[Reflect defineMethod: #consoleDone on: Repl as: [:self |
+  [PresentationTerminal close]; [self closeConsoleResources]
+]];

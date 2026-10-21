@@ -1,0 +1,188 @@
+[Module named: #presentationModel requires: #[]];
+// Presentation protocol. No terminal, parser or evaluator on the editing path.
+// Summaries are snapshots; expand/refresh asks the live object again. Unknown
+// objects have a cheap fallback instead of invoking arbitrary printString.
+[Reflect defineMethod: #presentationSummary on: ObjectVt as: [:self | "object"]];
+[Reflect defineMethod: #presentationSize on: ObjectVt as: [:self | 0]];
+[Reflect defineMethod: #presentationChildAt: on: ObjectVt as: [:self :index | nil]];
+[Reflect defineMethod: #presentationSummary on: Integer as: [:self | [self printString]]];
+[Reflect defineMethod: #presentationSummary on: SymbolVt as: [:self | [self printString]]];
+[Reflect defineMethod: #presentationSummary on: String as: [:self |
+  let end := [[self size] min: 160];
+  let suffix := [[[self size] > end] ifTrue: [| "…\""] ifFalse: [| "\""]];
+  ["\"" , [self copyFrom: 0 to: end] , suffix]
+]];
+[Reflect defineMethod: #presentationSummary on: Vector as: [:self |
+  ["Vector (" , [[self size] printString] , " items)"]
+]];
+[Reflect defineMethod: #presentationSize on: Vector as: [:self | [self size]]];
+[Reflect defineMethod: #presentationChildAt: on: Vector as: [:self :index | [self at: index]]];
+[Reflect defineMethod: #presentationSummary on: Range as: [:self |
+  ["Range (" , [[self size] printString] , " items)"]
+]];
+[Reflect defineMethod: #presentationSize on: Range as: [:self | [self size]]];
+[Reflect defineMethod: #presentationChildAt: on: Range as: [:self :index | [self at: index]]];
+[Reflect defineMethod: #presentationSummary on: Map as: [:self |
+  ["Map (" , [[self size] printString] , " entries; expansion not yet supported)"]
+]];
+[Reflect defineMethod: #presentationSummary on: Cell as: [:self | "Cell (expand to inspect value)"]];
+[Reflect defineMethod: #presentationSize on: Cell as: [:self | 1]];
+[Reflect defineMethod: #presentationChildAt: on: Cell as: [:self :index | [self value]]];
+[Reflect defineMethod: #presentationSummary on: ErrorVt as: [:self |
+  ["error(" , [[self kind] printString] , ")"]
+]];
+
+// All retention is in this ordinary object. Ring slots carry a monotonically
+// increasing ID as well as the value; an evicted ID never aliases a newer value.
+// Rows contain snapshots and IDs, never hidden edges to expired values.
+let Presentations := [ObjectModel newSlots: #[] parent: ObjectVt];
+let presentationFields := #[#rows #registry #nextId #selected #input #cursor
+  #status #history #historyIndex #scroll #dirty #limit #pending #pageSize];
+[Reflect defineMethod: #slotNames on: Presentations as: [:self | presentationFields]];
+[[0 to: [[presentationFields size] - 1]] do: [:index |
+  let field := [presentationFields at: index];
+  [Reflect defineMethod: field on: Presentations as: [:self | [ObjectModel slot: index in: self]]];
+  [Reflect defineMethod: [[[Reflect nameOf: field] , ":"] asSymbol] on: Presentations as: [:self :value |
+    [ObjectModel slot: index in: self put: value]; self
+  ]]
+]];
+[Reflect defineMethod: #new on: Presentations as: [:self |
+  [ObjectModel newSlots: #[#[] [Map new] 1 0 "" 0 "Ready" #[] 0 0 true 256 "" 20]
+    parent: [Reflect vtableOf: self]]
+]];
+// Keep the prototype for independent headless sessions; publish the live session.
+let PresentationModel := Presentations;
+let Presentations := [PresentationModel new];
+
+[Reflect defineMethod: #summaryOf: on: Presentations as: [:self :value |
+  [[value isNil] ifTrue: [| "nil"] ifFalse: [|
+    [[value == true] ifTrue: [| "true"] ifFalse: [|
+      [[value == false] ifTrue: [| "false"] ifFalse: [|
+        let text := [value presentationSummary];
+        [[Reflect isString: text] ifTrue: [|
+          [[text copyFrom: 0 to: [[text size] min: 240]] replace: "\0" with: "␀"]]
+          ifFalse: [| "<presentation failed>"]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #remember: on: Presentations as: [:self :value |
+  let id := [self nextId];
+  [self registry: [[self registry] at: [id mod: [self limit]] put: #[id value]]];
+  [self nextId: [id + 1]]; id
+]];
+[Reflect defineMethod: #valueAt: on: Presentations as: [:self :id |
+  let entry := [[self registry] at: [id mod: [self limit]]];
+  [[entry isNil] ifTrue: [| [Error kind: #expiredPresentation]] ifFalse: [|
+    [[[entry at: 0] = id] ifTrue: [| [entry at: 1]]
+      ifFalse: [| [Error kind: #expiredPresentation]]]
+  ]]
+]];
+// A row is #[id cachedText depth parentId]; id 0 is non-interactive output.
+[Reflect defineMethod: #rowFor:depth:parent:label: on: Presentations as: [:self :value :depth :parent :label |
+  let id := [self remember: value];
+  let indent := [[0 to: [depth - 1]] inject: "" into: [:s :unused | [s , "  "]]];
+  #[id [indent , "#" , [id printString] , " " , label , [self summaryOf: value]] depth parent]
+]];
+[Reflect defineMethod: #trimRows: on: Presentations as: [:self :rows |
+  let start := [[[rows size] - [self limit]] max: 0];
+  [self rows: [rows copyFrom: start to: [rows size]]];
+  [self selected: [[[self selected] - start] max: 0]];
+  [self dirty: true]; self
+]];
+[Reflect defineMethod: #appendText: on: Presentations as: [:self :text |
+  let bounded := [text copyFrom: 0 to: [[text size] min: 16384]];
+  let added := [[bounded split: "\n"] inject: [self rows] into: [:rows :line |
+    [rows add: #[0 [line copyFrom: 0 to: [[line size] min: 512]] 0 0]]
+  ]];
+  [self selected: [[added size] - 1]]; [self trimRows: added]
+]];
+[Reflect defineMethod: #appendValue: on: Presentations as: [:self :value |
+  let row := [self rowFor: value depth: 0 parent: 0 label: ""];
+  let rows := [[self rows] add: row];
+  [self selected: [[rows size] - 1]]; [self trimRows: rows];
+  [self status: "Result ready; F2 expand, F4 insert reference"]; row
+]];
+[Reflect defineMethod: #selectedRow on: Presentations as: [:self |
+  [[self rows] at: [self selected]]
+]];
+[Reflect defineMethod: #moveSelection: on: Presentations as: [:self :delta |
+  [self selected: [[[[self selected] + delta] max: 0] min: [[[self rows] size] - 1]]];
+  self
+]];
+[Reflect defineMethod: #insert: on: Presentations as: [:self :text |
+  let before := [self input]; let pos := [self cursor];
+  [[[[before size] + [text size]] <= 4096] ifTrue: [|
+    [self input: [[before copyFrom: 0 to: pos] , text , [before copyFrom: pos to: [before size]]]];
+    [self cursor: [pos + [text size]]]
+  ] ifFalse: [| [self status: "Input limit: 4096 bytes"]]]; self
+]];
+[Reflect defineMethod: #insertSelected on: Presentations as: [:self |
+  let row := [self selectedRow];
+  [[row notNil] ifTrue: [|
+    let id := [row at: 0];
+    [[id > 0] ifTrue: [| [self insert: ["[Presentations valueAt: " , [id printString] , "]"]]]]
+  ]]; self
+]];
+[Reflect defineMethod: #replaceInput: on: Presentations as: [:self :text |
+  [self input: text]; [self cursor: [text size]]
+]];
+[Reflect defineMethod: #recall: on: Presentations as: [:self :delta |
+  let history := [self history];
+  let index := [[[[self historyIndex] + delta] max: 0] min: [history size]];
+  [self historyIndex: index];
+  [self replaceInput: [[index = [history size]] ifTrue: [| ""] ifFalse: [| [history at: index]]]]
+]];
+[Reflect defineMethod: #submitted on: Presentations as: [:self |
+  let source := [self input];
+  let history := [[self history] add: source];
+  [self history: [history copyFrom: [[[history size] - 64] max: 0] to: [history size]]];
+  [self historyIndex: [[self history] size]];
+  [self pending: source]; [self replaceInput: ""];
+  [self appendText: ["> " , source]]; source
+]];
+// Expanding inserts one page. Repeated expansion replaces descendants with the
+// next page; F3 collapses. Inspecting children always reads current live values.
+[Reflect defineMethod: #expandSelected on: Presentations as: [:self |
+  let row := [self selectedRow];
+  [[row notNil] ifTrue: [|
+    let id := [row at: 0];
+    [[id > 0] ifTrue: [|
+      let value := [self valueAt: id];
+      let count := [value presentationSize];
+      [[[count isError] | [value isError]] ifTrue: [| [self status: "Unavailable or error value"]] ifFalse: [|
+        let pos := [self selected]; let rows := [self rows]; let depth := [row at: 2];
+        let end := [Cell with: [pos + 1]];
+        [[| [[[end value] < [rows size]] and: [| [[[rows at: [end value]] at: 2] > depth]]]]
+          whileTrue: [| [end inc]]];
+        // Page offset lives in an optional fifth field on the parent row.
+        let offset := [[[row size] > 4] ifTrue: [| [row at: 4]] ifFalse: [| 0]];
+        let start := [[offset >= count] ifTrue: [| 0] ifFalse: [| offset]];
+        let stop := [[start + [self pageSize]] min: count];
+        [[depth >= 8] ifTrue: [| [self status: "Depth limit: 8; reuse the value as a new result"]] ifFalse: [|
+          let parent := #[id [row at: 1] depth [row at: 3] stop];
+          let children := [[start to: [stop - 1]] inject: #[] into: [:out :index |
+            [out add: [self rowFor: [value presentationChildAt: index] depth: [depth + 1]
+              parent: id label: ["[" , [index printString] , "] "]]]
+          ]];
+          let updated := [[[rows copyFrom: 0 to: pos] add: parent] , children , [rows copyFrom: [end value] to: [rows size]]];
+          [self trimRows: updated];
+          [self status: ["Showing " , [start printString] , ".." , [stop printString] , " of " , [count printString] , "; F2 next page"]]
+        ]]
+      ]]
+    ]]
+  ]]; self
+]];
+[Reflect defineMethod: #collapseSelected on: Presentations as: [:self |
+  let row := [self selectedRow];
+  [[row notNil] ifTrue: [|
+    let rows := [self rows]; let pos := [self selected]; let end := [Cell with: [pos + 1]];
+    [[| [[[end value] < [rows size]] and: [| [[[rows at: [end value]] at: 2] > [row at: 2]]]]]
+      whileTrue: [| [end inc]]];
+    [self trimRows: [[[rows copyFrom: 0 to: pos] add: [row copyFrom: 0 to: 4]] , [rows copyFrom: [end value] to: [rows size]]]]
+  ]]; self
+]];
+[Reflect defineMethod: #forget on: Presentations as: [:self |
+  [self registry: [Map new]]; [self rows: #[]]; [self selected: 0];
+  [self scroll: 0]; [self dirty: true]; [self status: "Forgot transcript and retained values"]
+]];

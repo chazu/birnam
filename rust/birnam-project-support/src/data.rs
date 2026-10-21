@@ -53,6 +53,8 @@ pub enum ProjectDependencySourceObservation {
 pub struct ProjectWrappedObservation {
     pub name: String,
     pub build: Vec<Vec<String>>,
+    #[serde(default = "adjacent_packaging")]
+    pub packaging: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]

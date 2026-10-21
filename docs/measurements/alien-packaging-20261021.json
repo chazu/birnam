@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-21",
+  "status": "implemented and locally installed",
+  "git_head": "48f060c39f2e442f87122520398103b95fa4f7c1",
+  "working_tree": "uncommitted changes",
+  "installed_prefix": "/Users/chazu/.local/opt/birnam",
+  "installed_binary_sha256": "742c2db1879c9501bd9cee574301fa96cabbf8e7acc384df14eeb4ee6f5aed74",
+  "installed_receipt_sha256": "3290141c48dc3593dd35483c6b204f4384ec203a7c92c7021095ce59c2e7ff70",
+  "source_sha256": {
+    "docs/guide/09-shipping-artifacts.md": "91d76bc1985ec1af0f9932f52666b79c0a3f5d8d4d188dc09e34ca4b3e7282a3",
+    "modules/cli.birnam": "d445220a6a62b363fa84065e918f39415150d43a10f7798a4bb49d7b08b9cbd5",
+    "rust/birnam-alien/README.md": "0149705022668bbdfa3787bbf15e13e70c6b82b1be7037c1e9c8b9152d040447",
+    "rust/birnam-alien/src/loader.rs": "a56a847735de89873dc3dc85979938cd285e81b185d271c8d3a370d68642dc6a",
+    "rust/birnam-alien/src/runtime.rs": "cb91f6a98aea908bd20250bf4db6697654e06e2a3259a4d0afc6e65bf6446de6",
+    "rust/birnam-codegen-runtime/src/artifact.rs": "4dcefd53c7ac085a0868b0919f57d685ff8c89518624c80cf6494ef2cedc0d8a",
+    "rust/birnam-codegen-runtime/src/lib.rs": "d98f0a5663fa109afeda7bd913d103af373131c1aecdc40d18b95a4c52497705",
+    "rust/birnam-codegen/src/artifact.rs": "ff39e49cd45a32ccdc43b4cd35ff0449a2a70bbad1dbcc4662048692791ac4bc",
+    "rust/birnam-host-support/src/project.rs": "ee68f67acd8a217fb226c46a5c09496c6f386e3696cb2b26c34d8c9faf2e2077",
+    "rust/birnam-project-build/src/project/data.rs": "0914fbac8c7626ddd259d61b5eb9fdfff033dd57a290939a0333b092148f4905",
+    "rust/birnam-project-build/src/project/operations.rs": "c8edbf0c7ddf0926079b6e7ff80d05a3654ee7feac88fb30f52cee60cd54c6ba",
+    "rust/birnam-project-support/src/data.rs": "a82d6ba96f0ab98fbb90eda6860d4b18ec8ca1e5614b2ec7a2f4b84aab9aa843",
+    "rust/birnam-project-support/src/values.rs": "9663ad27a0145a85b2885de84f99c75965168e74228a74e06c490d044dba9a02",
+    "rust/birnam-codegen-runtime/src/foreign.rs": "a19133dfc3300ff4553cc3d66de2f3d614760e60fb5e8d845b4a2be7b57cf883",
+    "scripts/alien-packaging-test.py": "78a3b57558b2103b7288db767bf6b171ef923715a87caecda597d3e1e99de149",
+    "examples/presentation-repl/bindings.birnam": "3c24aa4b45827f9288eff325187477b75db2646df772ad05a52ba21261592507",
+    "examples/presentation-repl/birnam.toml": "64b33944bc761f18de4ff5d8bee54e0d867bfe4c297b76cd3725b7549d40c5dd",
+    "examples/presentation-repl/play.sh": "92f4e80b1a4f36d35f827d17bde96be348e9bab4615102ab99e76d1a78a38f8f"
+  },
+  "logs_sha256": {
+    ".cargo-target/alien-packaging-workspace.log": "53b412f52baab652e3cc89eb1368191b56012e027206adbe1b2add92dfbdd775",
+    ".cargo-target/alien-packaging-authored.log": "7f2fd6eb116e5744352221911e63733e4512ff3d58d7269657b66e9dd018359c",
+    ".cargo-target/alien-packaging-native.log": "14eacf2ea5b3c13a55a1ac18af483f6b412529973070f4846daaba47d711291f",
+    ".cargo-target/alien-packaging-focused.log": "3c26c257434ea69d0514b71f2c195095e3bf8974ca2868ba1436584f36c44b17",
+    ".cargo-target/alien-packaging-project-smoke.log": "503cecbce86895b15968d49ae3f5b7fde8092e74d60a0d23c9fb5549b7fa08e5",
+    ".cargo-target/alien-packaging-project-owner.log": "2e40f132c5d0846c8909bcce584baa53e956151ad99a7f61e8ac0ee852b09148",
+    ".cargo-target/alien-packaging-installed-test.log": "c7ac5fba4d8f2e24f9f171a76a87d6657ff85023ea25317da95bffb39ec70ceb",
+    ".cargo-target/alien-packaging-installed-presentation.log": "01de23c4355d2161a9df2d7a341783ace36c50686fa407ee63449a25ee31e87c",
+    ".cargo-target/alien-packaging-user-install.log": "522eb51a3791adb149987a963078887421fe849d7b1fb72bbc59f4729a5fa1a0"
+  },
+  "checks": {
+    "packaging_modes": [
+      "adjacent",
+      "embedded"
+    ],
+    "source_free_single_file_relocation": true,
+    "compiler_disabled_activation": true,
+    "direct_artifact_entry": true,
+    "native_edits_and_packaging_switches": true,
+    "failed_build_preservation": true,
+    "authored_assertions": 854,
+    "presentation_model_assertions": 24,
+    "workspace": "passed",
+    "native_artifact_activation_embedding": "passed",
+    "collecting_project_policy": "passed",
+    "installed_presentation_pty": "passed"
+  },
+  "scope": "Local macOS arm64 build/installed validation; no release or cross-platform claim."
+}

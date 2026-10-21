@@ -31,6 +31,14 @@ pub fn emit(
     adapters: &[(u32, Vec<u8>)],
     synchronous_adapters: bool,
 ) -> Option<Vec<u8>> {
+    emit_with_embedded(tree, source, generated, path, metadata, adapters, synchronous_adapters, &[])
+}
+
+pub fn emit_with_embedded(
+    tree: &OwnedCst, source: &[u8], generated: &[u8], path: &[u8],
+    metadata: &crate::source_metadata::Metadata, adapters: &[(u32, Vec<u8>)],
+    synchronous_adapters: bool, embedded: &[(Vec<u8>, Vec<u8>)],
+) -> Option<Vec<u8>> {
     let encoded_metadata = metadata.encode()?;
     let revision = &metadata.revision;
     let module = &metadata.module;
@@ -72,17 +80,12 @@ pub fn emit(
     );
     list(
         &mut payload,
-        &source_revision::native_requirements(tree, source),
+        &source_revision::native_requirements(tree, source).into_iter().filter(|name| !embedded.iter().any(|(n, _)| n == name)).collect::<Vec<_>>(),
     );
-    list(
-        &mut payload,
-        &[
-            b"activate".to_vec(),
-            b"source".to_vec(),
-            b"reflection".to_vec(),
-            CAPABILITY.to_vec(),
-        ],
-    );
+    let mut capabilities = vec![b"activate".to_vec(), b"source".to_vec(),
+        b"reflection".to_vec(), CAPABILITY.to_vec(), b"prepared-alien-v1".to_vec()];
+    if !embedded.is_empty() { capabilities.push(b"embedded-native-hex-v1".to_vec()); }
+    list(&mut payload, &capabilities);
     let mut descriptor = DESCRIPTOR_MAGIC.to_vec();
     descriptor.extend_from_slice(&(payload.len() as u32).to_le_bytes());
     descriptor.extend_from_slice(&payload);
@@ -92,6 +95,13 @@ pub fn emit(
     array(&mut out, "__birnam_artifact_descriptor", &descriptor);
     array(&mut out, "__birnam_artifact_source", source);
     array(&mut out, "__birnam_artifact_metadata", &encoded_metadata);
+    for (index, (name, bytes)) in embedded.iter().enumerate() {
+        array(&mut out, &format!("__birnam_native_name_{index}"), name);
+        // Native binaries can themselves contain descriptor magic. An inert
+        // hex carrier keeps arbitrary payload bytes out of descriptor scanning.
+        let encoded: Vec<u8> = bytes.iter().flat_map(|b| [b"0123456789abcdef"[(b >> 4) as usize], b"0123456789abcdef"[(b & 15) as usize]]).collect();
+        array(&mut out, &format!("__birnam_native_bytes_{index}"), &encoded);
+    }
     for (arity, bytes) in adapters {
         array(
             &mut out,
@@ -105,6 +115,14 @@ pub fn emit(
     for (arity, bytes) in adapters {
         writeln!(out, "O row_{arity}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(integer(&c,{arity}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(string(&c,__birnam_artifact_adapter_{arity},{}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(named(&c,\"{}\"));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(row_{arity});adapters=call(&c,adapters,\"add:\",&v,1);", bytes.len(), if synchronous_adapters { "true" } else { "false" }).unwrap();
     }
-    out.push_str("O result=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(method);result=call(&c,result,\"add:\",&v,1);v=obj(source);result=call(&c,result,\"add:\",&v,1);v=obj(metadata);result=call(&c,result,\"add:\",&v,1);v=obj(adapters);result=call(&c,result,\"add:\",&v,1);return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),artifact_initialize};");
+    out.push_str("O result=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(method);result=call(&c,result,\"add:\",&v,1);v=obj(source);result=call(&c,result,\"add:\",&v,1);v=obj(metadata);result=call(&c,result,\"add:\",&v,1);v=obj(adapters);result=call(&c,result,\"add:\",&v,1);");
+    if !embedded.is_empty() {
+        out.push_str("O libraries=call(&c,named(&c,\"Vector\"),\"new\",0,0);");
+        for (index, (name, bytes)) in embedded.iter().enumerate() {
+            writeln!(out,"O lib_{index}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(string(&c,__birnam_native_name_{index},{}));lib_{index}=call(&c,lib_{index},\"add:\",&v,1);v=obj(string(&c,__birnam_native_bytes_{index},{}));lib_{index}=call(&c,lib_{index},\"add:\",&v,1);v=obj(lib_{index});libraries=call(&c,libraries,\"add:\",&v,1);",name.len(),bytes.len()*2).unwrap();
+        }
+        out.push_str("v=obj(libraries);result=call(&c,result,\"add:\",&v,1);");
+    }
+    out.push_str("return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),artifact_initialize};");
     Some(out.into_bytes())
 }

@@ -1,0 +1,40 @@
+[Module named: #presentationBindings requires: #[]];
+// termbox2 — terminal cell grid + keyboard events, wrapped through Alien.
+//
+// Build libpresentation_terminal.dylib beside this file first. The caller selects that
+// directory with `Alien libraryDir:` before filing in this wrapper.
+
+[Alien dlopen: "libpresentation_terminal.dylib"];
+
+// Calls with arguments pass the receiver as the adapter's ignored void*.
+// Use an explicit ForeignAddress capability; ordinary Objects cannot marshal
+// as C pointers. Alien reclaims this one-byte marker when the wrapper is gone.
+let Termbox := [Alien alloc: 1];
+
+[Alien bind: "lg_init"        signature: "i" as: #init       on: Termbox];
+[Alien bind: "lg_shutdown"    signature: "i" as: #shutdown   on: Termbox];
+[Alien bind: "lg_width"       signature: "i" as: #width      on: Termbox];
+[Alien bind: "lg_height"      signature: "i" as: #height     on: Termbox];
+[Alien bind: "lg_clear"       signature: "i" as: #clear      on: Termbox];
+[Alien bind: "lg_present"     signature: "i" as: #present    on: Termbox];
+[Alien bind: "lg_hide_cursor" signature: "i" as: #hideCursor on: Termbox];
+
+[Alien bind: "lg_set_cell" signature: "i p i i i i i"
+  as: #setX:y:ch:fg:bg: on: Termbox];
+[Alien bind: "lg_print" signature: "i p i i i i s"
+  as: #printX:y:fg:bg:str: on: Termbox];
+
+[Alien bind: "lg_poll"    signature: "i" as: #poll   on: Termbox];
+[Alien bind: "lg_ev_type" signature: "i" as: #evType on: Termbox];
+[Alien bind: "lg_ev_key"  signature: "i" as: #evKey  on: Termbox];
+[Alien bind: "lg_ev_ch"   signature: "i" as: #evCh   on: Termbox];
+[Alien bind: "pr_init" signature: "i" as: #presentationInit on: Termbox];
+[Alien bind: "pr_shutdown" signature: "i" as: #presentationShutdown on: Termbox];
+[Alien bind: "pr_text" signature: "s" as: #inputText on: Termbox];
+[Alien bind: "pr_poll" signature: "i" as: #presentationPoll on: Termbox];
+[Alien bind: "pr_previous" signature: "i p s i" as: #previousIn:at: on: Termbox];
+[Alien bind: "pr_next" signature: "i p s i" as: #nextIn:at: on: Termbox];
+[Alien bind: "pr_line" signature: "i p i i i s i" as: #line:fg:bg:text:cursor: on: Termbox];
+[Alien bind: "pr_rows" signature: "i p s i i" as: #rows:top:selected: on: Termbox];
+[Alien bind: "pr_capture_begin" signature: "i" as: #captureBegin on: Termbox];
+[Alien bind: "pr_capture_end" signature: "s" as: #captureEnd on: Termbox];

@@ -9,6 +9,8 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::fmt;
 use core::ptr::NonNull;
+use std::{fs, io::Write, os::unix::{ffi::OsStrExt, fs::DirBuilderExt}, path::PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const RTLD_LAZY: c_int = 1;
 
@@ -24,12 +26,22 @@ const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
 const RTLD_DEFAULT: *mut c_void = core::ptr::null_mut();
 
 unsafe extern "C" {
+    fn __cxa_atexit(callback: unsafe extern "C" fn(*mut c_void), argument: *mut c_void, dso: *const c_void) -> c_int;
+    static __dso_handle: u8;
     #[link_name = "dlopen"]
     fn system_dlopen(path: *const c_char, mode: c_int) -> *mut c_void;
     #[link_name = "dlsym"]
     fn system_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
     #[link_name = "dlclose"]
     fn system_dlclose(handle: *mut c_void) -> c_int;
+}
+
+// Native owners can live for the loaded DSO's entire lifetime. Tie filesystem
+// cleanup to that DSO as well as ordinary registry Drop, without retaining Id
+// objects or calling back into an already-destroyed runtime.
+unsafe extern "C" fn remove_materialization(argument: *mut c_void) {
+    let path = unsafe { Box::from_raw(argument.cast::<PathBuf>()) };
+    let _ = fs::remove_dir_all(&*path);
 }
 
 /// A loader operation can fail without exposing platform-specific `dlerror`
@@ -43,6 +55,9 @@ pub enum LoaderError {
     EmptySymbol,
     SymbolEmbeddedNul,
     SymbolNotFound,
+    InvalidEmbeddedName,
+    EmbeddedConflict,
+    EmbeddedIo,
 }
 
 impl fmt::Display for LoaderError {
@@ -55,6 +70,9 @@ impl fmt::Display for LoaderError {
             Self::EmptySymbol => "symbol name is empty",
             Self::SymbolEmbeddedNul => "symbol name contains an embedded NUL",
             Self::SymbolNotFound => "symbol was not found in the open library",
+            Self::InvalidEmbeddedName => "embedded library requires a bare filename and non-empty bytes (maximum 256 MiB)",
+            Self::EmbeddedConflict => "library name already denotes different content or a different open library",
+            Self::EmbeddedIo => "could not materialize embedded library",
         };
         formatter.write_str(message)
     }
@@ -76,9 +94,74 @@ struct OpenLibrary {
 pub struct LibraryRegistry {
     library_dir: Option<Vec<u8>>,
     open: Vec<OpenLibrary>,
+    embedded_dir: Option<PathBuf>,
+    embedded: Vec<(Vec<u8>, Vec<u8>, Vec<u8>)>,
+    adjacent: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl LibraryRegistry {
+    /// Bind an artifact's declared native sibling without changing the caller's
+    /// fallback directory or running constructors. The file remains caller-owned.
+    pub fn provide_path(&mut self, name: &[u8], path: &[u8]) -> Result<(), LoaderError> {
+        if name.is_empty() || name == b"." || name == b".." || name.iter().any(|b| matches!(b, 0 | b'/' | b'\\')) {
+            return Err(LoaderError::InvalidEmbeddedName);
+        }
+        if self.embedded.iter().any(|(n, _, _)| n == name) { return Err(LoaderError::EmbeddedConflict); }
+        let resolved = fs::canonicalize(std::ffi::OsStr::from_bytes(path)).map_err(|_| LoaderError::OpenFailed)?;
+        if !resolved.is_file() { return Err(LoaderError::OpenFailed); }
+        for entry in self.open.iter().filter(|entry| entry.requested == name) {
+            if fs::canonicalize(std::ffi::OsStr::from_bytes(&entry.resolved)).ok().as_ref() != Some(&resolved) {
+                return Err(LoaderError::EmbeddedConflict);
+            }
+        }
+        let resolved = resolved.as_os_str().as_bytes().to_vec();
+        if let Some(entry) = self.adjacent.iter_mut().find(|(n, _)| n == name) { entry.1 = resolved; }
+        else { self.adjacent.push((name.to_vec(), resolved)); }
+        Ok(())
+    }
+    /// Stage all bundled siblings before opening any of them. This performs no
+    /// dlopen and runs no constructors. The registry owns the private directory
+    /// until all retained loader handles have been closed at teardown.
+    pub fn provide(&mut self, name: &[u8], bytes: &[u8]) -> Result<(), LoaderError> {
+        if name.is_empty() || name == b"." || name == b".."
+            || name.iter().any(|b| matches!(b, 0 | b'/' | b'\\'))
+            || bytes.is_empty() || bytes.len() > 256 * 1024 * 1024 {
+            return Err(LoaderError::InvalidEmbeddedName);
+        }
+        if let Some((_, existing, _)) = self.embedded.iter().find(|(n, _, _)| n == name) {
+            return if existing == bytes { Ok(()) } else { Err(LoaderError::EmbeddedConflict) };
+        }
+        if self.open_count(name) != 0 || self.adjacent.iter().any(|(n, _)| n == name) { return Err(LoaderError::EmbeddedConflict); }
+        if self.embedded_dir.is_none() {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            for _ in 0..128 {
+                let path = std::env::temp_dir().join(format!("birnam-alien-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+                match fs::DirBuilder::new().mode(0o700).create(&path) {
+                    Ok(()) => {
+                        let cleanup = Box::into_raw(Box::new(path.clone()));
+                        let registered = unsafe { __cxa_atexit(remove_materialization, cleanup.cast(), (&raw const __dso_handle).cast()) };
+                        if registered != 0 {
+                            unsafe { remove_materialization(cleanup.cast()) };
+                            return Err(LoaderError::EmbeddedIo);
+                        }
+                        self.embedded_dir = Some(path); break;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(_) => return Err(LoaderError::EmbeddedIo),
+                }
+            }
+        }
+        let directory = self.embedded_dir.as_ref().ok_or(LoaderError::EmbeddedIo)?;
+        let path = directory.join(std::ffi::OsStr::from_bytes(name));
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&path)
+            .map_err(|_| LoaderError::EmbeddedIo)?;
+        if file.write_all(bytes).is_err() {
+            drop(file); let _ = fs::remove_file(&path); return Err(LoaderError::EmbeddedIo);
+        }
+        drop(file);
+        self.embedded.push((name.to_vec(), bytes.to_vec(), path.as_os_str().as_bytes().to_vec()));
+        Ok(())
+    }
     /// Set or replace the directory used to resolve a bare library name.
     pub fn set_library_dir(&mut self, path: &[u8]) -> Result<(), LoaderError> {
         validate_path(path)?;
@@ -186,6 +269,10 @@ impl LibraryRegistry {
     }
 
     fn resolve(&self, requested: &[u8]) -> Vec<u8> {
+        if let Some((_, _, path)) = self.embedded.iter().find(|(name, _, _)| name == requested) {
+            return path.clone();
+        }
+        if let Some((_, path)) = self.adjacent.iter().find(|(name, _)| name == requested) { return path.clone(); }
         let Some(directory) = self.library_dir.as_deref() else {
             return requested.to_vec();
         };
@@ -210,6 +297,7 @@ impl Drop for LibraryRegistry {
             // `drop`.
             let _ = unsafe { system_dlclose(entry.handle as *mut c_void) };
         }
+        if let Some(path) = self.embedded_dir.take() { let _ = fs::remove_dir_all(path); }
     }
 }
 
@@ -230,6 +318,31 @@ fn c_string(bytes: &[u8]) -> Result<std::ffi::CString, LoaderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_materialization_is_inert_bounded_and_owned() {
+        let mut registry = LibraryRegistry::default();
+        for name in [b"../escape".as_slice(), b"/escape", b".", b"..", b"a\\b", b"a\0b", b""] {
+            assert_eq!(registry.provide(name, b"bytes"), Err(LoaderError::InvalidEmbeddedName));
+        }
+        registry.provide(b"libprobe.dylib", b"not an executable").unwrap();
+        let path = PathBuf::from(std::ffi::OsStr::from_bytes(&registry.resolve(b"libprobe.dylib")));
+        assert_eq!(fs::read(&path).unwrap(), b"not an executable");
+        assert_eq!(registry.open_count(b"libprobe.dylib"), 0, "providing never invokes dlopen");
+        let mut adjacent = LibraryRegistry::default();
+        adjacent.set_library_dir(b"/tmp/fallback").unwrap();
+        adjacent.provide_path(b"libprobe.dylib", path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(adjacent.resolve(b"libprobe.dylib"), fs::canonicalize(&path).unwrap().as_os_str().as_bytes());
+        assert_eq!(adjacent.resolve(b"other.dylib"), b"/tmp/fallback/other.dylib");
+        assert_eq!(adjacent.open_count(b"libprobe.dylib"), 0);
+        drop(adjacent);
+        assert!(path.exists(), "adjacent files remain caller-owned");
+        registry.provide(b"libprobe.dylib", b"not an executable").unwrap();
+        assert_eq!(registry.provide(b"libprobe.dylib", b"different"), Err(LoaderError::EmbeddedConflict));
+        let parent = path.parent().unwrap().to_owned();
+        drop(registry);
+        assert!(!parent.exists(), "private materialization is reclaimed");
+    }
 
     fn system_library() -> &'static [u8] {
         #[cfg(any(

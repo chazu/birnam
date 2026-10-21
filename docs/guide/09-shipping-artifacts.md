@@ -145,14 +145,71 @@ lookup does not fall through to the current directory or a source checkout.
 
 ## Native wrappers
 
-A project authors a `[[wrapped]]` build recipe in `birnam.toml`. The generated
-Birnam wrapper artifact declares the native dylib it opens, and the native dylib
-is published beside that wrapper. Local project dependencies propagate these
+A project authors a `[[wrapped]]` build recipe in `birnam.toml`:
+
+```toml
+[[wrapped]]
+name = "foo"
+packaging = "embedded" # or "adjacent" (the default)
+build = [["cc", "-dynamiclib", "native/foo.c", "-o", "{output}"]]
+```
+
+The binding module declares its native requirement and prepared bindings:
+
+```birnam
+[Module named: #foo requires: #[]];
+[Alien dlopen: "libfoo.dylib"];
+let Foo := [Object clone];
+[Alien bind: "foo_version" signature: "i" as: #version on: Foo]
+```
+
+`bind:signature:as:on:` is an explicit artifact-compilation declaration when
+`Alien` is unshadowed and function/signature are literal Strings. Codegen asks
+the current AlienCompiler to prepare object code while compiling the module.
+Loading resolves the current native address and installs/records an ordinary
+Method, with no signature generation or C compilation. Source evaluation can
+still execute the declaration interactively. Use `Alien wrap:` for dynamically
+computed runtime bindings; its normal dispatch and compilation behavior remain.
+An invalid prepared signature fails the build without activating the module or
+running native constructors. New `birnam wrap` scaffolds use `bind:`.
+
+| Packaging | Published component | Native lookup at activation |
+| --- | --- | --- |
+| `adjacent` | Birnam artifact plus native dylib sibling | Its declared sibling, independent of caller cwd/library directory |
+| `embedded` | Birnam artifact contains the compiled bindings and declared native library bytes | Alien materializes private native siblings and the OS opens them |
+
+An embedded wrapper with no other Birnam module dependencies can be copied as
+one file. It still uses the installed Birnam runtime. Other Birnam dependencies
+remain ordinary artifact dependencies. `nativeRequires` lists only external
+native siblings; embedded payloads are carried in the compiled initializer.
+Payloads use a binary-safe hex carrier so native contents cannot impersonate an
+artifact descriptor. Embedded artifacts are identified by
+`embedded-native-hex-v1`; the current compiler marks its preparation capability
+with `prepared-alien-v1`. Older runtimes reject the extended initializer record.
+
+Every native library to be carried must be declared in `[[wrapped]]` and in the
+module's literal native requirements. OS-level dependencies must remain
+relocatable; package `@loader_path` native siblings together. This does not
+implicitly bundle system libraries, external resources, or arbitrary dependencies
+discovered by running constructors. Embedded inputs are limited to 256 MiB each.
+Conflicting content under an already-provided logical native name is rejected.
+Private materialization is owned by Alien and removed on normal runtime/DSO exit;
+adjacent files remain caller-owned. Module packaging does not change Image's
+separate native-library recovery contract.
+
+Local project dependencies propagate wrapped
 recipes transitively in dependency-first order; each recipe runs from its own
 project root and all outputs share the root build's `lib/` namespace. Duplicate
 wrapped names are rejected. Inspection checks presence before any wrapper
 initializer runs. Release staging copies optional wrappers only as deliberate,
 complete, signed closures; it never discovers them from developer build dirt.
+
+Explicit builds run the native recipes before compiling embedded consumers.
+Embedded publications conservatively recompile to capture native-only edits;
+switching packaging also invalidates affected reuse. Failed native builds preserve
+the previous publication. `check` validates declarations without running native
+build commands. `run` and `install` consume the published closure without source
+or compiler work. Inspecting either mode remains inert.
 
 ## Integrity and failures
 

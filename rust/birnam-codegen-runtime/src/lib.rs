@@ -17,6 +17,7 @@ mod reflection;
 mod source;
 mod source_metadata;
 mod compiled_source;
+mod foreign;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
@@ -642,6 +643,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 Op::Artifact(artifact::Op::Root),
             ),
             (vt, b"compile:output:from:synchronousBodies:", Op::Artifact(artifact::Op::FromSynchronousBodies)),
+            (vt, b"compile:output:root:embeddedLibraries:", Op::Artifact(artifact::Op::RootEmbedded)),
             (vt, b"load:", Op::Artifact(artifact::Op::Load)),
             (
                 vt,

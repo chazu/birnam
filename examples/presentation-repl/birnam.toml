@@ -1,0 +1,12 @@
+name = "presentation-repl"
+source_roots = ["."]
+load = ["presentationTerminal"]
+main = "main.birnam"
+
+[run]
+repl = "tty"
+
+[[wrapped]]
+name = "presentation_terminal"
+packaging = "embedded" # choose "adjacent" for a native sibling instead
+build = [["cc", "-O2", "-dynamiclib", "native.c", "-o", "{output}"]]

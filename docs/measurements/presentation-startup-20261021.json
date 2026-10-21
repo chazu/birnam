@@ -1,0 +1,89 @@
+{
+  "scope": "Fresh processes, warm filesystem, first usable prompt plus evaluated 1+2; initial preparation excluded.",
+  "binary": "/Users/chazu/.local/opt/birnam/bin/birnam",
+  "binary_sha256": "b092a91f93f63642455a8d554a6f151ad332b2071bc9d1f73a936da81b4522f3",
+  "runs": [
+    {
+      "ordinary_ms": 3250.902291,
+      "source_ms": 4627.58525,
+      "prepared_ms": 3184.1751249999993
+    },
+    {
+      "ordinary_ms": 2766.865749999999,
+      "prepared_ms": 3154.4440420000014,
+      "source_ms": 4496.035250000002
+    },
+    {
+      "ordinary_ms": 2928.8743749999994,
+      "source_ms": 4663.145333999999,
+      "prepared_ms": 3265.4469590000017
+    }
+  ],
+  "medians_ms": {
+    "ordinary_ms": 2928.8743749999994,
+    "source_ms": 4627.58525,
+    "prepared_ms": 3184.1751249999993
+  },
+  "source_phase_medians": {
+    "termbox-ready": {
+      "wall_ms": 511.5640001296997,
+      "cpu_ms": 511.32199999999966
+    },
+    "model-ready": {
+      "wall_ms": 195.90000009536743,
+      "cpu_ms": 195.9010000000003
+    },
+    "ffi-ready": {
+      "wall_ms": 936.2260003089905,
+      "cpu_ms": 934.7559999999999
+    },
+    "terminal-ready": {
+      "wall_ms": 7.486999988555908,
+      "cpu_ms": 7.4780000000000655
+    },
+    "init-before": {
+      "wall_ms": 0.36299991607666016,
+      "cpu_ms": 0.36300000000028376
+    },
+    "init-after": {
+      "wall_ms": 0.7140002250671387,
+      "cpu_ms": 0.29399999999986903
+    },
+    "draw-before": {
+      "wall_ms": 0.10500001907348633,
+      "cpu_ms": 0.10499999999956344
+    },
+    "ready": {
+      "wall_ms": 5.8429999351501465,
+      "cpu_ms": 2.4710000000004584
+    }
+  },
+  "prepared_wrappers": 23,
+  "cache_key": "926be1dbf64a7070893bc2f6103cb18caee6dcd64b657034ea24407836356251",
+  "source_hashes": {
+    "examples/presentation-repl/main.birnam": "b62ae4e6c48ea3f25dc4b327e7a375652193fbd79de5df3b39fbbc2a483ee3aa",
+    "examples/presentation-repl/model.birnam": "987229a99eccfed9f652daf1e8fd6c0b360198d3bd57af48bd8bac72169f9a82",
+    "examples/presentation-repl/terminal.birnam": "46f528517369b50714b6efcc0e17068788826c26e1c3dfd9cf246c6f048911cd",
+    "examples/presentation-repl/test.birnam": "f105f062d0fa03a2a56d9f86b03c404f91164579f0aa04e85861df927004a7a5",
+    "examples/presentation-repl/native.c": "023cc97f1d438eafbcc110a5a99c74872cdd4fef539915e15f09480c9d75777e",
+    "examples/presentation-repl/build.py": "7cc21f31c836428db3d782c33ccfcb5eb40f68f7e3e0a1445006783b8c94fe3d",
+    "examples/presentation-repl/build.sh": "ac0f3db3bc3086e107b50c4e865b2bf129dd8ca1a0f26deb4fd763747e9a433f",
+    "examples/presentation-repl/play.sh": "a4309257c83906a7785d5a8a09e52f23d01bc9e9e4c735580de1e0a56bcc8ffc",
+    "examples/presentation-repl/birnam.toml": "7b0b406e49125df69f53997aa379423dda1257481d90c074bad2d03fd832d352"
+  },
+  "acceptance": {
+    "compiler_guards": {
+      "prepared": 0,
+      "source_parser_negative_control": 1,
+      "source_wrapper_negative_control": 1
+    },
+    "cache_invalidation": "passed; isolated initial/warm, source, corruption, failure, runtime receipt",
+    "model_assertions": 24,
+    "full_prepared_pty_sessions": 1
+  },
+  "evidence": {
+    ".cargo-target/measurements/presentation-startup/results.json": "c0210d07b39f350cdff59d5f08af4330e91e6adadfcb2881edc4f357e0bb6dc0",
+    ".cargo-target/measurements/presentation-startup/interaction.json": "73c6b29df9aec4967fb50fd069ce62e4aa9ad923e4603a9e482c78283ed39d29",
+    ".cargo-target/measurements/presentation-startup/application.sample": "9a564295956e02aa3bf9a89e2f1236038503c6596aea675475c3a3412140b999"
+  }
+}

@@ -39,20 +39,36 @@ impl Project<'_> {
         module: &ProjectSourceObservation,
         output: &Path,
     ) -> Result<String, HostError> {
+        self.compile_project_artifact_with_libraries(module, output, &[])
+    }
+    fn compile_project_artifact_with_libraries(
+        &self, module: &ProjectSourceObservation, output: &Path,
+        embedded: &[(String, Vec<u8>)],
+    ) -> Result<String, HostError> {
         let q = self.host.scope();
         let source = q.string(&module.source)?;
         let output_value = q.string(output.as_os_str().as_bytes())?;
         let root = q.string(module.project_root.as_bytes())?;
         let cg = self.host.named(b"Codegen")?;
-        let result = q.call(
-            cg,
-            b"compile:output:root:",
-            &[
-                Operand::object(source),
-                Operand::object(output_value),
-                Operand::object(root),
-            ],
-        )?;
+        let mut arguments = vec![Operand::object(source), Operand::object(output_value), Operand::object(root)];
+        let selector: &[u8] = if embedded.is_empty() {
+            // Preserve the ordinary compiler protocol for check/adjacent builds.
+            b"compile:output:root:"
+        } else {
+            let vector = self.host.named(b"Vector")?;
+            let mut libraries = q.call(vector, b"new", &[])?;
+            for (name, bytes) in embedded {
+                let mut row = q.call(vector, b"new", &[])?;
+                let name = q.string(name.as_bytes())?;
+                row = q.call(row, b"add:", &[Operand::object(name)])?;
+                let content = q.string(bytes)?;
+                row = q.call(row, b"add:", &[Operand::object(content)])?;
+                libraries = q.call(libraries, b"add:", &[Operand::object(row)])?;
+            }
+            arguments.push(Operand::object(libraries));
+            b"compile:output:root:embeddedLibraries:"
+        };
+        let result = q.call(cg, selector, &arguments)?;
         q.check(cg, result)?;
         if result == self.host.named(b"nil")? {
             return Err(HostError(format!("compiler rejected {}", module.name)));
@@ -130,6 +146,8 @@ impl Project<'_> {
             if d.kind != b"module"
                 || d.identity != m.name.as_bytes()
                 || !d.capabilities.iter().any(|c| c == b"id-object-v3")
+                || !d.capabilities.iter().any(|c| c == b"prepared-alien-v1")
+                || d.capabilities.iter().any(|c| c == b"embedded-native-hex-v1")
             {
                 continue;
             }
@@ -237,7 +255,10 @@ impl Project<'_> {
         );
         let plan = self.plan_project_artifacts(&ProjectArtifactPlanRequest {
             resolution: &resolution,
-            previous: previous.as_ref(),
+            // Explicit native builds can change payload bytes independently of
+            // Birnam source. Embedded publications recompile rather than reuse
+            // an artifact carrying stale native code.
+            previous: if resolution.wrapped.iter().any(|w| w.packaging == "embedded") { None } else { previous.as_ref() },
             target: request.target,
             profile: request.profile,
             tool_version: request.tool_version,
@@ -250,6 +271,10 @@ impl Project<'_> {
         fs::create_dir(&stage).map_err(project_error)?;
         let staged = (|| {
             fs::create_dir(stage.join("lib")).map_err(project_error)?;
+            self.stage_project_wrapped(&resolution.wrapped, &stage).map_err(project_error)?;
+            let embedded = resolution.wrapped.iter().filter(|w| w.packaging == "embedded")
+                .map(|w| { let name = format!("lib{}.dylib", w.name); fs::read(stage.join("lib").join(&name)).map(|bytes| (name, bytes)) })
+                .collect::<Result<Vec<_>, _>>().map_err(project_error)?;
             let mut artifacts = Vec::new();
             for (module, item) in resolution.modules.iter().zip(&plan.artifacts) {
                 let output = stage.join(
@@ -266,7 +291,7 @@ impl Project<'_> {
                     fs::write(&output, &bytes).map_err(project_error)?;
                     checksum
                 } else {
-                    self.compile_project_artifact(module, &output)?
+                    self.compile_project_artifact_with_libraries(module, &output, &embedded)?
                 };
                 artifacts.push(ProjectStagedArtifact {
                     name: module.name.clone(),
@@ -275,8 +300,6 @@ impl Project<'_> {
                     checksum,
                 });
             }
-            self.stage_project_wrapped(&resolution.wrapped, &stage)
-                .map_err(project_error)?;
             let (module_name, module_source) = project_module_root_source(
                 &resolution,
                 &digest,
@@ -300,7 +323,7 @@ impl Project<'_> {
                     .project_source_bytes(source, &label, &resolution.project_root)?
                     .ok_or_else(|| HostError(format!("generated source not indexable: {name}")))?;
                 let output = stage.join("lib").join(filename);
-                self.compile_project_artifact(&module, &output)?;
+                self.compile_project_artifact_with_libraries(&module, &output, &embedded)?;
                 let canonical = stage.join("lib").join(format!("libbirnam_{name}.dylib"));
                 fs::hard_link(output, canonical).map_err(project_error)?;
                 Ok(())
@@ -323,6 +346,10 @@ impl Project<'_> {
             } else {
                 None
             };
+            // No embedded native sibling is published or installed. The build
+            // scratch is also removed before validating the actual publication.
+            for (name, _) in &embedded { fs::remove_file(stage.join("lib").join(name)).map_err(project_error)?; }
+            if stage.join("native").exists() { fs::remove_dir_all(stage.join("native")).map_err(project_error)?; }
             self.preflight_project(&stage.join("lib").join(PROJECT_MODULE_ROOT_FILENAME))?;
             self.preflight_project(&stage.join("lib").join(PROJECT_CONFIGURATION_FILENAME))?;
             if application.is_some() {
