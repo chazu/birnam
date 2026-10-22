@@ -233,15 +233,15 @@ pub(crate) struct FrameDescriptor {
     layout_version: usize,
     program_counter_count: usize,
     driver_argument_count: usize,
-    slot_kinds: Box<[SlotKind]>,
-    call_sites: Box<[CallSiteDescriptor]>,
-    pub(crate) call_plans: Box<[CallPreparation]>,
-    root_bitmap_words: Box<[u64]>,
+    slot_kinds: Arc<[SlotKind]>,
+    call_sites: Arc<[CallSiteDescriptor]>,
+    pub(crate) call_plans: Arc<[CallPreparation]>,
+    root_bitmap_words: Arc<[u64]>,
     root_words_per_pc: usize,
-    edges: Box<[FrameEdge]>,
+    edges: Arc<[FrameEdge]>,
     max_edge_copy_count: usize,
     v2_entry_binding: Option<V2EntryBinding>,
-    entry_capture_slots: Box<[usize]>,
+    entry_capture_slots: Arc<[usize]>,
     tail_entry_plan: std::sync::OnceLock<Option<Box<crate::entry_plan::Plan>>>,
     step_method: Method,
 }
@@ -277,8 +277,8 @@ pub(crate) enum DescriptorError {
 }
 
 impl FrameDescriptor {
-    /// A new binding owns its executable anchor and generation. Only immutable
-    /// admitted shape/code are copied; derived entry plans belong to that binding.
+    /// A new binding owns its executable anchor and generation. Immutable
+    /// admitted tables are shared; derived entry plans belong to that binding.
     pub(crate) fn for_binding(&self, generation: u64) -> Arc<Self> {
         Arc::new(Self {
             executable_owner: core::cell::Cell::new(core::ptr::null_mut()),
@@ -380,7 +380,7 @@ impl FrameDescriptor {
             plans.push(CallPreparation {pc, sources: sources.into_boxed_slice(), copies: transfers.into_boxed_slice()});
         }
         if !input.is_empty() { return Err(bad); }
-        self.call_plans = plans.into_boxed_slice();
+        self.call_plans = plans.into();
         Ok(())
     }
 
@@ -669,12 +669,12 @@ impl FrameDescriptor {
             layout_version: FRAME_LAYOUT_VERSION_V2,
             program_counter_count: spec.program_counter_count,
             driver_argument_count: spec.driver_argument_count,
-            slot_kinds: slot_kinds.into_boxed_slice(),
-            call_sites: spec.call_sites.into_boxed_slice(),
-            call_plans: Box::new([]),
-            root_bitmap_words: spec.root_bitmap_words.into_boxed_slice(),
+            slot_kinds: slot_kinds.into(),
+            call_sites: spec.call_sites.into(),
+            call_plans: Arc::from([]),
+            root_bitmap_words: spec.root_bitmap_words.into(),
             root_words_per_pc,
-            edges: edges.into_boxed_slice(),
+            edges: edges.into(),
             max_edge_copy_count,
             v2_entry_binding: Some(V2EntryBinding {
                 receiver_slot: spec.entry_receiver_slot,
@@ -682,7 +682,7 @@ impl FrameDescriptor {
                 argument_count: spec.entry_argument_count,
                 implementation_slot: spec.implementation_slot,
             }),
-            entry_capture_slots: spec.entry_capture_slots.into_boxed_slice(),
+            entry_capture_slots: spec.entry_capture_slots.into(),
             tail_entry_plan: std::sync::OnceLock::new(),
             step_method: spec.step_method,
             executable_owner: core::cell::Cell::new(core::ptr::null_mut()),
@@ -5304,6 +5304,19 @@ mod tests {
             .unwrap_or_else(|error| panic!("{name}: {error:?}"));
             assert_eq!(descriptor.identity().generation, 91);
             assert_eq!(descriptor.layout_version, FRAME_LAYOUT_VERSION_V2);
+            let rebound = descriptor.for_binding(92);
+            assert_eq!(rebound.slot_kinds.as_ptr(), descriptor.slot_kinds.as_ptr(),
+                       "binding must share immutable slot layout");
+            assert_eq!(rebound.root_bitmap_words.as_ptr(), descriptor.root_bitmap_words.as_ptr());
+            assert_eq!(rebound.identity().generation, 92);
+            assert_eq!(descriptor.identity().generation, 91);
+            descriptor.executable_owner.set(core::ptr::without_provenance_mut(11));
+            rebound.executable_owner.set(core::ptr::without_provenance_mut(12));
+            assert_eq!(descriptor.executable_owner.get(), core::ptr::without_provenance_mut(11));
+            assert!(descriptor.tail_entry_plan.set(None).is_ok());
+            assert!(rebound.tail_entry_plan.get().is_none(), "derived entry state remains binding-local");
+
+
             let authority = SelectionSpec { source_revision, root_kind: RootKind::MethodOperation,
                 root_index: 0, path, implementation_kind, disposition: Disposition::ResumableRequired };
             let view = canonical_descriptor::inspect(&bytes, authority).unwrap();

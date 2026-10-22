@@ -13,7 +13,7 @@ Native allocation savings are distinct from language-object allocation counts.
 | Slice | Status |
 | --- | --- |
 | Argument normalization without redundant copying (proposal 3) | Measured; not retained |
-| Shared immutable method layout data (proposal 5) | Pending |
+| Shared immutable method layout data (proposal 5) | Complete |
 | Reused collector workspace (proposal 4) | Pending |
 
 ## 1. Argument normalization
@@ -48,3 +48,47 @@ do not establish an application gain. All four PTY outputs match exactly.
 The candidate passed 27 Execution unit checks, the new production argument test,
 compiler and method-invocation suites, and 177 task-control checks. Rejection is
 for the measured cost tradeoff, not a semantic failure.
+
+
+## 2. Shared immutable method layouts
+
+Each binding retains its existing descriptor, identity, executable owner, step
+entry and derived entry state. Its immutable slot kinds, call sites/plans, root
+bitmaps, edge-copy tables and capture layout are shared through immutable array
+references. Rebinding no longer deep-copies these tables. Scalar fields and array
+lengths remain directly available in the descriptor, preserving the existing
+hot frame-access shape.
+
+The first trial grouped all layout fields behind a shared layout object. It
+improved binding construction but added pointer indirection to frame access;
+paired Logue runs were 3.7% slower overall and generation 7.1% slower. That
+representation was rejected. The retained design shares arrays directly and
+introduces no additional layout abstraction.
+
+Call-plan admission assigns a new immutable table to the receiving descriptor,
+so it cannot modify another binding's table. No method lookup, source message,
+logical frame or serialized format changes. The unit fixture proves shared
+storage with independent owners, generations and derived-entry caches. Production
+binding/replacement and mapped/rebuilt image checks cover the public behavior.
+
+[Evidence](../measurements/runtime-storage-layout-20261022.json). The binding
+workload takes Darwin live-malloc statistics around each 10,000-binding batch,
+with collection and compilation outside measurement. Each binding adds four
+live host allocations instead of eight. Eight- and sixteen-argument templates
+use 576 bytes/binding instead of 800/864: 224/288 bytes saved. Zero-argument byte
+counts also include variable registry growth; the allocation-count reduction is
+stable there too.
+
+External compiler/linker load roughly doubled even unchanged baseline timings.
+The final paired runs request the same foreground thread QoS for both variants;
+these are not quiet-host measurements. Binding medians are 2.52 → 2.22 µs,
+2.54 → 2.34 µs and 2.74 → 2.39 µs (0/8/16 arguments). The complete Logue sequence
+is 25.99 → 24.86 seconds, but no application-speedup claim is made under this
+load. The deterministic host allocation/storage reduction is the primary result.
+All four terminal outputs match exactly.
+
+Checks: 26 Execution unit tests; production compiler, Machine, method binding,
+method invocation and candidate-retirement suites; source-free mapped/rebuilt
+image checks with method replacement and collection. No expectation was relaxed.
+An initial timing run overlapped a correctness test and was discarded. Other
+uncontrolled runs under the external build load were not used for a speed claim.
