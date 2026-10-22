@@ -28,6 +28,7 @@ struct Function {
     synchronous: bool,
     body: String,
     descriptor: Vec<u8>,
+    call_plans: Option<Vec<u8>>,
     selection: Vec<u8>,
     named: bool,
     discarded: Option<DiscardedClone>,
@@ -233,12 +234,13 @@ fn literal(l: &Literal<'_>) -> Result<String, Error> {
     })
 }
 /// Emission switches, supplied explicitly to the compiler.
-/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration); 32 = guarded resumable call-window preparation; 64 = trailing frame copies in call preparation.
+/// 1 = Word expressions/locals, 2 is retired; 4 = authored helper plans, 8 = owner-batched root cleanup, 16 = invocation-covered input roots (no duplicate registration); 32 = guarded resumable call-window preparation; 64 = trailing frame copies in call preparation; 128 = admitted coarse calls (supersedes guarded 32).
 #[derive(Clone, Copy)]
 pub struct Optimizations(u8);
-impl Default for Optimizations { fn default()->Self {Self(125)} }
+impl Default for Optimizations { fn default()->Self {Self(253)} }
 impl Optimizations {
-    pub fn from_bits(bits:usize)->Option<Self> {(bits & !125 == 0).then_some(Self(bits as u8))}
+    pub fn from_bits(bits:usize)->Option<Self> {(bits & !253 == 0).then_some(Self(bits as u8))}
+    fn prepared_calls(self)->bool {self.0&128!=0}
     fn frame_copies(self)->bool {self.0&64!=0}
     fn frame_calls(self)->bool {self.0&32!=0}
     fn words(self)->bool {self.0&1!=0}
@@ -286,6 +288,7 @@ fn function(
         synchronous: false,
         body: String::new(),
         descriptor: vec![],
+        call_plans: None,
         selection: vec![],
         named,
         discarded: None,
@@ -320,6 +323,8 @@ fn function(
     let selected = selection::encode_artifact_selection(&[revision], &[authority])
         .map_err(|_| Error::Selection)?;
     let slot = |v: ir::ValueId| layout.value_slots[v.0 as usize];
+    let mut plans = Vec::new();
+    let mut plan_count = 0u32;
     let mut out = entry_prefix(&format!("step_{index}"));
     out.push_str("switch(pc.data.word){\n");
     for block in &program.blocks {
@@ -330,6 +335,7 @@ fn function(
         } else { 0 };
         let copy_count = if copy_count <= 32 { copy_count } else { 0 };
         for (position, operation) in block.operations.iter().enumerate() {
+            if policy.optimizations.prepared_calls() && position >= block.operations.len() - copy_count { continue; }
             if copy_count != 0 && position == block.operations.len() - copy_count {
                 let (Term::Call {call_site,receiver,selector,arguments,..} | Term::TailCall {call_site,receiver,selector,arguments,..}) = &block.terminator else { unreachable!() };
                 let sources = std::iter::once(receiver).chain(arguments.iter()).flat_map(|v| slot(*v).to_le_bytes()).map(|b| b.to_string()).collect::<Vec<_>>().join(",");
@@ -391,6 +397,24 @@ fn function(
                 arguments,
                 ..
             } => {
+                if policy.optimizations.prepared_calls() {
+                    // Derived from portable IR; never persisted as image pointers.
+                    if call_site.0 != plan_count { return Err(Error::Layout); }
+                    plan_count += 1;
+                    for word in [block.pc.0, arguments.len() as u32 + 1, copy_count as u32] {
+                        plans.extend_from_slice(&word.to_le_bytes());
+                    }
+                    for value in std::iter::once(receiver).chain(arguments.iter()) {
+                        plans.extend_from_slice(&slot(*value).to_le_bytes());
+                    }
+                    for op in &block.operations[block.operations.len()-copy_count..] {
+                        let Op::Bind {source,..} = op.kind else { unreachable!() };
+                        plans.extend_from_slice(&slot(source).to_le_bytes());
+                        plans.extend_from_slice(&slot(op.result).to_le_bytes());
+                    }
+                    writeln!(out, "{{A a[2]={{word({}),obj(keep(&c,intern(&c,{})))}};O result=call(&c,machine,\"prepareCall:selector:\",a,2);return finish(&c,obj(result));}}}}", call_site.0, quoted(selector)).unwrap();
+                    continue;
+                }
                 if copy_count == 0 && policy.optimizations.frame_calls() && arguments.len() <= 16 {
                     let mut slots = Vec::new();
                     for value in std::iter::once(receiver).chain(arguments.iter()) {
@@ -435,6 +459,12 @@ fn function(
         synchronous: false,
         body: out,
         descriptor,
+        call_plans: policy.optimizations.prepared_calls().then(|| {
+            let mut bytes = 1u32.to_le_bytes().to_vec();
+            bytes.extend_from_slice(&plan_count.to_le_bytes());
+            bytes.extend_from_slice(&plans);
+            bytes
+        }),
         selection: selected,
         named,
         inline_return: if named { None } else { inline_return(program, &layout) },
@@ -486,6 +516,7 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
         }
         array(&mut out, &format!("descriptor_{i}"), &f.descriptor);
         array(&mut out, &format!("selection_{i}"), &f.selection);
+        if let Some(plans) = &f.call_plans { array(&mut out, &format!("plans_{i}"), plans); }
     }
     out.push_str("static R initialize(const P*p,const A*a,size_t n){if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||n>3||a[0].kind!=1||a[1].kind!=1)return bad();id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};A key=obj(intern(&c,\"Roots\"));R root=raw(&c,ns,\"at:\",&key,1);if(root.status||root.value.kind!=1)return bad();roots=root.value.data.object;cache_selectors=1;batch_cleanup=ROOT_BATCH_POLICY;keep(&c,owner);keep(&c,ns);A root_arg=obj(roots);call(&c,owner,\"retain:\",&root_arg,1);\n");
     for (i, f) in functions.iter().enumerate() {
@@ -514,11 +545,14 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             }
             continue;
         }
-        writeln!(out,"{{A args[5]={{entry(step_{i}),bytes(descriptor_{i},sizeof(descriptor_{i})),bytes(selection_{i},sizeof(selection_{i})),obj(owner),n==3?a[2]:(A){{0}}}};").unwrap();
-        let (name, count) = if f.named {
-            ("fromStep:descriptor:selection:owner:implementation:", 5)
+        let (name, count) = if f.call_plans.is_some() {
+            writeln!(out,"{{A args[6]={{entry(step_{i}),bytes(descriptor_{i},sizeof(descriptor_{i})),bytes(selection_{i},sizeof(selection_{i})),obj(owner),bytes(plans_{i},sizeof(plans_{i})),n==3?a[2]:(A){{0}}}};").unwrap();
+            if f.named { ("fromStep:descriptor:selection:owner:callPlans:implementation:",6) }
+            else { ("fromStep:descriptor:selection:owner:callPlans:",5) }
         } else {
-            ("fromStep:descriptor:selection:owner:", 4)
+            writeln!(out,"{{A args[5]={{entry(step_{i}),bytes(descriptor_{i},sizeof(descriptor_{i})),bytes(selection_{i},sizeof(selection_{i})),obj(owner),n==3?a[2]:(A){{0}}}};").unwrap();
+            if f.named { ("fromStep:descriptor:selection:owner:implementation:",5) }
+            else { ("fromStep:descriptor:selection:owner:",4) }
         };
         writeln!(out,"methods[{i}]=call(&c,named(&c,\"Method\"),\"{name}\",args,{count});A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}").unwrap();
         if f.portable.is_some() {
@@ -623,6 +657,7 @@ pub fn compile_named_synchronous(arity: u32) -> Result<Vec<u8>, Error> {
         synchronous: true,
         body,
         descriptor: vec![],
+        call_plans: None,
         selection: vec![],
         named: true,
         discarded: None,

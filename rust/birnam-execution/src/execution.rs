@@ -220,6 +220,13 @@ struct FrameEdge {
     clear_bitmap_words: Box<[u64]>,
 }
 
+#[derive(Clone)]
+pub(crate) struct CallPreparation {
+    pub(crate) pc: usize,
+    pub(crate) sources: Box<[usize]>,
+    pub(crate) copies: Box<[SlotCopy]>,
+}
+
 pub(crate) struct FrameDescriptor {
     pub(crate) executable_owner: core::cell::Cell<Oop>,
     identity: DescriptorIdentity,
@@ -228,6 +235,7 @@ pub(crate) struct FrameDescriptor {
     driver_argument_count: usize,
     slot_kinds: Box<[SlotKind]>,
     call_sites: Box<[CallSiteDescriptor]>,
+    pub(crate) call_plans: Box<[CallPreparation]>,
     root_bitmap_words: Box<[u64]>,
     root_words_per_pc: usize,
     edges: Box<[FrameEdge]>,
@@ -280,6 +288,7 @@ impl FrameDescriptor {
             driver_argument_count: self.driver_argument_count,
             slot_kinds: self.slot_kinds.clone(),
             call_sites: self.call_sites.clone(),
+            call_plans: self.call_plans.clone(),
             root_bitmap_words: self.root_bitmap_words.clone(),
             root_words_per_pc: self.root_words_per_pc,
             edges: self.edges.clone(),
@@ -295,6 +304,8 @@ impl FrameDescriptor {
         core::mem::size_of::<Self>()
             + core::mem::size_of_val(self.slot_kinds.as_ref())
             + core::mem::size_of_val(self.call_sites.as_ref())
+            + core::mem::size_of_val(self.call_plans.as_ref())
+            + self.call_plans.iter().map(|p| core::mem::size_of_val(p.sources.as_ref()) + core::mem::size_of_val(p.copies.as_ref())).sum::<usize>()
             + core::mem::size_of_val(self.root_bitmap_words.as_ref())
             + core::mem::size_of_val(self.edges.as_ref())
             + self
@@ -324,6 +335,53 @@ impl FrameDescriptor {
         let descriptor = canonical_descriptor::inspect(bytes, authority)
             .map_err(|_| DescriptorError::InvalidCanonicalDescriptor)?;
         Self::admit_canonical_v2(descriptor, code_generation_identity, step_method)
+    }
+
+    /// Call plans are derived execution metadata, admitted atomically with the Method.
+    /// The canonical portable descriptor format is unchanged.
+    pub(crate) fn admit_call_plans(
+        &mut self, bytes: &[u8], canonical: &[u8], authority: SelectionSpec<'_>,
+    ) -> Result<(), DescriptorError> {
+        let bad = DescriptorError::InvalidCopyPlan;
+        let view = canonical_descriptor::inspect(canonical, authority).map_err(|_| bad)?;
+        let mut input = bytes;
+        let mut word = || -> Result<usize, DescriptorError> {
+            let value = input.get(..4).ok_or(bad)?;
+            let value = u32::from_le_bytes(value.try_into().unwrap()) as usize;
+            input = &input[4..];
+            Ok(value)
+        };
+        if word()? != 1 || word()? != self.call_sites.len() { return Err(bad); }
+        let mut plans = Vec::new();
+        for (site, call) in self.call_sites.iter().enumerate() {
+            let pc = word()?;
+            let count = word()?;
+            let copies = word()?;
+            if pc != view.call_site(site).ok_or(bad)?.source_pc as usize
+                || count != call.argument_count + 1 || copies > bytes.len() / 8 {
+                return Err(bad);
+            }
+            let valid = |slot: usize| self.slot_kind(slot) == Some(SlotKind::Oop)
+                && slot != call.receiver_slot && slot != call.selector_slot
+                && !(call.argument_start..call.argument_start + call.argument_count).contains(&slot);
+            let mut sources = Vec::new();
+            for _ in 0..count {
+                let slot = word()?;
+                if !valid(slot) { return Err(bad); }
+                sources.push(slot);
+            }
+            let mut transfers = Vec::new();
+            for _ in 0..copies {
+                let source = word()?;
+                let destination = word()?;
+                if !valid(source) || !valid(destination) { return Err(bad); }
+                transfers.push(SlotCopy {source, destination});
+            }
+            plans.push(CallPreparation {pc, sources: sources.into_boxed_slice(), copies: transfers.into_boxed_slice()});
+        }
+        if !input.is_empty() { return Err(bad); }
+        self.call_plans = plans.into_boxed_slice();
+        Ok(())
     }
 
     /// Admit the source-independent portable profile of descriptor-v2 bytes.
@@ -613,6 +671,7 @@ impl FrameDescriptor {
             driver_argument_count: spec.driver_argument_count,
             slot_kinds: slot_kinds.into_boxed_slice(),
             call_sites: spec.call_sites.into_boxed_slice(),
+            call_plans: Box::new([]),
             root_bitmap_words: spec.root_bitmap_words.into_boxed_slice(),
             root_words_per_pc,
             edges: edges.into_boxed_slice(),
@@ -5245,6 +5304,36 @@ mod tests {
             .unwrap_or_else(|error| panic!("{name}: {error:?}"));
             assert_eq!(descriptor.identity().generation, 91);
             assert_eq!(descriptor.layout_version, FRAME_LAYOUT_VERSION_V2);
+            let authority = SelectionSpec { source_revision, root_kind: RootKind::MethodOperation,
+                root_index: 0, path, implementation_kind, disposition: Disposition::ResumableRequired };
+            let view = canonical_descriptor::inspect(&bytes, authority).unwrap();
+            let mut plan = vec![1u32, descriptor.call_sites.len() as u32];
+            let mut applicable = true;
+            for (site, call) in descriptor.call_sites.iter().enumerate() {
+                let source = (0..descriptor.slot_count()).find(|s| *s != call.receiver_slot
+                    && *s != call.selector_slot && !(call.argument_start..call.argument_start + call.argument_count).contains(s));
+                let Some(source) = source else { applicable = false; break; };
+                plan.extend([view.call_site(site).unwrap().source_pc, call.argument_count as u32 + 1, 1]);
+                plan.extend(std::iter::repeat_n(source as u32, call.argument_count + 1));
+                plan.extend([source as u32, source as u32]);
+            }
+            if applicable {
+                let plan = plan.into_iter().flat_map(u32::to_le_bytes).collect::<Vec<_>>();
+                let mut admitted = descriptor.for_binding(92);
+                Arc::get_mut(&mut admitted).unwrap().admit_call_plans(&plan, &bytes, authority).unwrap();
+                assert_eq!(admitted.call_plans.len(), descriptor.call_sites.len());
+                assert_eq!(admitted.for_binding(93).call_plans.len(), admitted.call_plans.len());
+                for length in 0..plan.len() {
+                    assert!(Arc::get_mut(&mut admitted).unwrap().admit_call_plans(&plan[..length], &bytes, authority).is_err());
+                }
+                let mut extra = plan.clone(); extra.push(0);
+                assert!(Arc::get_mut(&mut admitted).unwrap().admit_call_plans(&extra, &bytes, authority).is_err());
+                for offset in (0..plan.len()).step_by(4) {
+                    let mut corrupt = plan.clone(); corrupt[offset..offset+4].fill(255);
+                    assert!(Arc::get_mut(&mut admitted).unwrap().admit_call_plans(&corrupt, &bytes, authority).is_err(), "{name} offset {offset}");
+                }
+            }
+
         }
     }
 

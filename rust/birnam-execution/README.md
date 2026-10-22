@@ -487,3 +487,34 @@ Block, logical frame, budget stop or continuation is removed. A 729-case oracle
 compares copy planning with sequential storage, including chains, overwrites and
 self-copies. The native and image tests also exercise withdrawal of either
 optional protocol, current replacement and collecting fallback.
+
+
+## Admitted generated call preparation
+
+New Methods may use `fromStep:descriptor:selection:owner:callPlans:` (and its
+`implementation:` variant). The extra Bytes operand contains little-endian u32
+words: version 1, site count, then one record per descriptor site: source PC,
+source count, copy count, receiver/argument source slots, and ordered
+(source,destination) pairs. It is copied before callbacks and fully admitted
+before the Method is published. Plans are derived immutable execution data,
+cloned with bindings and regenerated on portable materialization; they do not
+change canonical descriptor or image formats.
+
+`Machine prepareCall:selector:` accepts a native Word site and selector Object.
+The default body checks the current PC against the admitted site, performs
+ordered copies, fills the existing call window and publishes the existing call
+or tail-call action. It allocates no language objects and invokes no dependency
+between the first frame write and publication. Source dispatch still occurs in
+the driver. Compiler bookkeeping no longer promises interception of each index
+constructor, slot read/write or call-publication send. The coarse operation
+itself remains an ordinary replaceable Id message; errors are not retried.
+
+`Machine callPlan:field:` takes Integer site/field indices and returns Integer
+metadata for the current site. Fields 0–5 are receiver destination, selector
+destination, argument start, argument count, tail flag and copy count. The next
+1+argument-count fields are source slots; the remaining fields are ordered
+copy pairs. Invalid fields/sites/PCs fail without frame writes. This inspection
+surface supports the [authored implementation fixture](../../tests/fixtures/execution/prepared-call-reference.birnam).
+It executes the target transfer in Birnam, while the test's metacircular adapter
+uses native preparation for its own ABI/helper calls. See the
+[measurement and scope notes](../../docs/design/runtime-simplification-results.md).

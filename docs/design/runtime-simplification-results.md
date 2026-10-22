@@ -28,8 +28,8 @@ together. Logue remains unchanged as an application acceptance workload.
 | --- | --- | --- |
 | Established Id lookup improvement | Complete | `5018aad2`; [4–6% Logue CPU reduction](id-default-lookup-fact.md) |
 | Collector scratch and metadata retirement | Complete | `1498a182`; results below |
-| Live-bound Range traversal | Complete | Results below |
-| Admitted call plans, coarse compiled execution and authored implementation | Planned | Pending |
+| Live-bound Range traversal | Complete | `bcd31b31`; results below |
+| Admitted call plans, coarse compiled execution and authored implementation | Complete | Results below |
 | Bounded numeric temporary elimination | Planned | Pending |
 
 The earlier [diagnosis](runtime-costs-exposed-by-logue.md) supplies the starting
@@ -134,3 +134,71 @@ An initial direct CLI invocation of the task fixture lacked its native observer
 and failed the same 12 assertions on both prefixes. It is not acceptance evidence;
 the proper native fixture supplies that observer and passes. No test expectation
 was weakened to accommodate that setup error.
+
+## 3. Admitted call plans and coarse Execution calls
+
+Newly emitted resumable code sends `Machine prepareCall:selector:` with a native
+Word site index and an ordinary selector object. Method construction admits an
+immutable source/copy plan alongside the existing canonical descriptor. Admission
+checks version, extent, site count, source PC, arity and Oop-slot bounds, and excludes
+the destination call window from every source and copy. Ordered trailing bindings
+remain visible in their logical slots. The native implementation performs those
+ordered copies, fills the call window and publishes the existing call/tail-call
+action without allocation or a dependency callback. It uses the explicit frame
+as storage; there is no transfer array on the Rust stack.
+
+The coarse operation is an ordinary current Id send. It replaces the accepted
+compiler-bookkeeping interception contract; it is not a speculative fast path
+that rechecks Integer factories, namespace lookup and individual Machine methods
+on every call. Actual source sends, return/continue operations, inspection,
+suspension and selected code ownership retain their existing protocols. Legacy
+constructors and optional preparation operations remain for old compiled code.
+Compiler mask 253 selects the new convention; mask 125 retains the previous
+emission for comparison and compatibility tests. The durable descriptor and image
+formats are unchanged; materialization regenerates plans from portable IR.
+
+The [authored reference](../../tests/fixtures/execution/prepared-call-reference.birnam)
+reads the admitted plan through ordinary `callPlan:field:` inspection messages,
+performs ordered copies with the existing slot protocol, and publishes the call
+with `callSite:` or `tailCallSite:`. It does not invoke the saved native operation
+for the selected transfer. Its helpers run on another explicit Machine. The test
+fixture retains native preparation for the replacement's own ABI/bootstrap helper
+calls, avoiding infinite metacircular entry. This is a working authored transfer
+implementation, not a claim that the complete Execution owner or its ABI bridge
+has already been rewritten. The proof deliberately collects between inspecting
+the plan and copying the live values.
+
+[Evidence](../measurements/runtime-simplification-execution-20261022.json).
+Two fresh processes per variant, serial ABBA, compare the preceding Range
+installation with a complete rebuilt installation. Median CPU:
+
+| Workload | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Small block call | 0.011 ms | 0.009 ms | 15.1% |
+| 1,080 empty Range iterations | 305.45 ms | 229.43 ms | 24.9% |
+| Empty nested 60×18 loops | 319.70 ms | 238.72 ms | 25.3% |
+| Logue generation | 1,982.69 ms | 1,247.89 ms | 37.1% |
+| Logue ordinary redraw | 30.83 ms | 21.55 ms | 30.1% |
+| Logue descent + ascent, logic and rendering | 4,425.32 ms | 2,892.37 ms | 34.6% |
+| Complete measured Logue phase sequence | 14.63 s | 11.14 s | 23.9% |
+
+The flat/nested loop allocation counts remain 104,918/109,184: the preceding
+guarded optimization already omitted those boxes under default behavior. This
+slice removes recurring guards, metadata decoding and fallback preparation
+machinery from new code. The first full-map phase changes only 1.3%; GC-sensitive
+individual phases vary substantially, so neither the 69% explicit-GC difference
+nor a single rendering phase is a general collector speedup. Actual PTY output
+is byte-identical across all four runs. These percentages compare this slice
+with its immediate predecessor, not the original unoptimized installation.
+
+Checks: 39 Execution/backend unit tests, including truncated/corrupt plan
+rejection and binding cloning; all 869 language assertions; production compiler,
+Machine, binding, invocation, observation and candidate-retirement suites;
+177 task-control checks; 34 Logue assertions and 24 independent game-state
+checkpoints; source-free mapped and rebuilt images with fresh target
+replacement. The authored replacement runs with both the bootstrap library and
+the selected stackless library, survives explicit collection, preserves result
+identity, propagates entered failures without replay, and retires its code after
+removal and explicit materialization-cache eviction. Native fixture setup and
+temporary test-owned bindings were corrected during validation; no acceptance
+expectation was weakened.

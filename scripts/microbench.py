@@ -53,7 +53,7 @@ def main():
     if not .1 <= args.seconds <= 10 or not 1 <= args.batch_ms <= 100 or not 1 <= args.setup_timeout <= 120:
         p.error('seconds must be 0.1..10; batch-ms 1..100; setup-timeout 1..120')
     for mask in [args.baseline_mask, args.candidate_mask]:
-        if mask is not None and (mask < 0 or mask & ~125): p.error('compiler masks may use bits 1, 4, 8, 16, 32 and 64')
+        if mask is not None and (mask < 0 or mask & ~253): p.error('compiler masks may use bits 1, 4, 8, 16, 32, 64 and 128')
     if (args.baseline_mask is not None or args.candidate_mask is not None) and args.case in ('all','abi-audit'):
         p.error('mask overrides require one fixture')
     if args.check_control_replacement and args.case != "stackless-fold":

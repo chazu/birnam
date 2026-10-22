@@ -262,14 +262,15 @@ unsafe fn new_machine(s: &Execution) -> Result<Oop, Outcome> {
 
 // Registration consumes existing canonical descriptor and selection bytes. Both
 // are copied before sending to any dependency; no Rust carrier crosses a message.
-unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome> {
+unsafe fn from_step(s: &Execution, args: &[Operand], plans: bool) -> Result<Operand, Outcome> {
     let [step, descriptor, selection, owner, ..] = args else {
         return Err(invalid());
     };
-    if args.len() != 4 && args.len() != 5 {
+    let base = if plans { 5 } else { 4 };
+    if args.len() != base && args.len() != base + 1 {
         return Err(invalid());
     }
-    let implementation = args.get(4).copied().map(object).transpose()?;
+    let implementation = args.get(base).copied().map(object).transpose()?;
     let step = native_entry(*step)?;
     let owner = object(*owner)?;
     let copy = |value: Operand, limit: usize| -> Result<Vec<u8>, Outcome> {
@@ -289,6 +290,7 @@ unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
         *selection,
         birnam_artifact_codec::stackless_selection::MAX_CANONICAL_VALUE_BYTES,
     )?;
+    let call_plans = if plans { Some(copy(args[4], 16 << 20)?) } else { None };
     let _roots = s.scope(&[owner]);
     if let Some(v) = implementation {
         _roots.keep(v);
@@ -317,8 +319,12 @@ unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
         .as_word()
         .filter(|v| *v != 0)
         .ok_or_else(invalid)? as u64;
-    let descriptor = FrameDescriptor::admit_v2(&descriptor, authority, generation, step)
+    let mut admitted = FrameDescriptor::admit_v2(&descriptor, authority, generation, step)
         .map_err(|_| invalid())?;
+    if let Some(plans) = call_plans {
+        Arc::get_mut(&mut admitted).ok_or_else(invalid)?.admit_call_plans(&plans, &descriptor, authority).map_err(|_| invalid())?;
+    }
+    let descriptor = admitted;
     if implementation.is_some()
         && descriptor
             .v2_entry_binding()
@@ -1118,6 +1124,9 @@ enum Op {
     InvalidRequest,
     PreserveFailures,
     FromStep,
+    FromStepPlans,
+    PrepareCall,
+    CallPlanField,
     WithImplementation,
     WithInline,
     WithDiscardedClone,
@@ -1196,7 +1205,7 @@ unsafe extern "C" fn operation(
         // Capture queries and optional call admission must not collect before
         // their guards. The latter commits only after proving index allocation
         // may be omitted; refusal runs the ordinary admission path below.
-        if !matches!(op.kind, Op::TryPrepareCall | Op::TryPrepareCallCopies | Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
+        if !matches!(op.kind, Op::PrepareCall | Op::TryPrepareCall | Op::TryPrepareCallCopies | Op::BlockCaptureWord | Op::BlockReadWord | Op::BorrowCaptures(_) | Op::BorrowCaptureOperands) {
             s.send(s.gc, b"prepareAllocation", &[])?;
         }
         match op.kind {
@@ -1263,7 +1272,10 @@ unsafe extern "C" fn operation(
                 let _restore = Restore(&s.preserve_native_failures, s.preserve_native_failures.replace(true));
                 return s.id.send_named(object(*block)?, b"value", &[]);
             }
-            Op::FromStep => return from_step(s, args),
+            Op::FromStep => return from_step(s, args, false),
+            Op::FromStepPlans => return from_step(s, args, true),
+            Op::PrepareCall => return frame_call::prepared(s, receiver, args),
+            Op::CallPlanField => return frame_call::field(s, receiver, args),
             Op::WithImplementation => return with_implementation(s, receiver, args),
             Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
             Op::WithDiscardedClone => return crate::discarded_clone::attach(s, receiver, args),
@@ -1788,6 +1800,10 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"tryBorrowCaptureOperands:",
     b"invalidRequest",
     b"evaluatePreservingFailures:",
+    b"fromStep:descriptor:selection:owner:callPlans:",
+    b"fromStep:descriptor:selection:owner:callPlans:implementation:",
+    b"prepareCall:selector:",
+    b"callPlan:field:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:implementation:",
     b"withDiscardedClone:answer:selector:return:in:",
@@ -2215,6 +2231,10 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"recoverAt:withGraph:",
             Op::Recover(true),
         )?;
+        install_op(s, s.method_behavior, b"fromStep:descriptor:selection:owner:callPlans:", Op::FromStepPlans)?;
+        install_op(s, s.method_behavior, b"fromStep:descriptor:selection:owner:callPlans:implementation:", Op::FromStepPlans)?;
+        install_op(s, machine_vtable, b"prepareCall:selector:", Op::PrepareCall)?;
+        install_op(s, machine_vtable, b"callPlan:field:", Op::CallPlanField)?;
         install_op(s, machine_vtable, b"new", Op::New)?;
         install_op(s, machine_vtable, b"clone", Op::Disabled)?;
         install_op(s, machine_vtable, b"runBlock:", Op::Run(false))?;

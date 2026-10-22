@@ -15,6 +15,8 @@ mod inline_return;
 mod publication;
 #[path = "compiler/frame_call.rs"]
 mod frame_call;
+#[path = "compiler/prepared_call.rs"]
+mod prepared_call;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -241,6 +243,7 @@ fn source_compiles_and_runs_on_production_execution() {
         collecting_factories(&mut h);
         compiled_recovery(&mut h);
         frame_call::check(&mut h);
+        prepared_call::check(&mut h);
         dispatch::check(&mut h);
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
@@ -256,6 +259,13 @@ fn source_compiles_and_runs_on_production_execution() {
             0,
             "actual libtcc relocated bytes reclaimed"
         );
+        // Repeat the authored runtime replacement with the production selected
+        // stackless library. Its own loop/control work uses explicit frames.
+        optional_modules(id, ns, &["stdlib", "stacklessControl"]);
+        h.collect();
+        let baseline = h.units();
+        prepared_call::check(&mut h);
+        assert_eq!(h.units(), baseline, "authored preparation code retires after replacement");
     }
 }
 

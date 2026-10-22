@@ -284,3 +284,69 @@ mod tests {
         }
     }
 }
+
+/// Required coarse operation for newly emitted code. No allocation, dependency
+/// callback, guard cache or native-stack transfer array is needed: admission
+/// excludes the call window from all inputs, and ordered copies stay in the
+/// explicit logical frame. The eventual source send remains in the driver.
+pub(super) unsafe fn prepared(s: &Execution, machine: Oop, args: &[Operand]) -> Result<Operand, Outcome> {
+    let [site, selector] = args else { return Err(invalid()); };
+    let site = site.as_word().ok_or_else(invalid)?;
+    let selector = object(*selector)?;
+    let cap = cap(s, machine)?;
+    let mut state = s.machines.borrow_mut();
+    let m = checked(state.engine.machine(OWNER, cap))?;
+    let frame = m.arena().current_handle().ok_or_else(invalid)?;
+    let descriptor = checked(m.arena().descriptor_arc(frame))?;
+    let plan = descriptor.call_plans.get(site).ok_or_else(invalid)?;
+    let call = *descriptor.call_site(site).ok_or_else(invalid)?;
+    if checked(m.arena().program_counter(frame))? != plan.pc { return Err(invalid()); }
+    // Validated Oop slots are initialized by the arena. Admission guarantees
+    // all reads/writes below are in bounds, before the first effect.
+    for copy in &plan.copies {
+        let value = checked(state.engine.read_current_oop(OWNER, cap, copy.source))?;
+        checked(state.engine.write_current_oop(OWNER, cap, copy.destination, value))?;
+    }
+    for (i, source) in plan.sources.iter().enumerate() {
+        let value = checked(state.engine.read_current_oop(OWNER, cap, *source))?;
+        let destination = if i == 0 { call.receiver_slot } else { call.argument_start + i - 1 };
+        checked(state.engine.write_current_oop(OWNER, cap, destination, value))?;
+    }
+    checked(state.engine.write_current_oop(OWNER, cap, call.selector_slot, selector))?;
+    let State {engine, storage, ..} = &mut *state;
+    checked(engine.publish_call_site(storage, OWNER, cap, site, call.kind)).map(Operand::object)
+}
+
+/// Ordinary inspection protocol for an authored implementation. Returns
+/// Integer metadata, never a pointer into the descriptor. Fields: receiver slot,
+/// selector slot, argument start/count, tail flag, copy count, then receiver and
+/// argument sources followed by ordered (source,destination) copy pairs.
+pub(super) unsafe fn field(s: &Execution, machine: Oop, args: &[Operand]) -> Result<Operand, Outcome> {
+    let [site, field] = args else { return Err(invalid()); };
+    let site = unsafe { index(s, *site)? };
+    let field = unsafe { index(s, *field)? };
+    let cap = cap(s, machine)?;
+    let state = s.machines.borrow();
+    let m = checked(state.engine.machine(OWNER, cap))?;
+    let frame = m.arena().current_handle().ok_or_else(invalid)?;
+    let descriptor = checked(m.arena().descriptor_arc(frame))?;
+    let plan = descriptor.call_plans.get(site).ok_or_else(invalid)?;
+    if checked(m.arena().program_counter(frame))? != plan.pc { return Err(invalid()); }
+    let call = descriptor.call_site(site).ok_or_else(invalid)?;
+    let value = match field {
+        0 => call.receiver_slot,
+        1 => call.selector_slot,
+        2 => call.argument_start,
+        3 => call.argument_count,
+        4 => usize::from(call.kind == CallSiteKind::TailCall),
+        5 => plan.copies.len(),
+        n if n - 6 < plan.sources.len() => plan.sources[n - 6],
+        n => {
+            let n = n - 6 - plan.sources.len();
+            let copy = plan.copies.get(n / 2).ok_or_else(invalid)?;
+            if n % 2 == 0 { copy.source } else { copy.destination }
+        }
+    };
+    drop(state);
+    unsafe { integer(s, value) }
+}

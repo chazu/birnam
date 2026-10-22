@@ -30,8 +30,13 @@ candidate factories, image rebuild and generation descriptor hashing all call
 this owner through current Id lookup. Compiled/mapped artifact and image loading
 continue to consume saved metadata and objects without invoking it.
 
-Resumable call-window optimization uses explicit option bit 32; the default
-compiler mask is 125. Bit 64 additionally folds up to 32 trailing local copies
+New resumable emission uses admitted call plans (option bit 128); the default
+compiler mask is 253. It sends one ordinary `prepareCall:selector:` operation,
+without an optional fast-path/fallback pair. Plans are regenerated from portable
+IR and admitted atomically by Execution when constructing the Method.
+
+Legacy resumable call-window optimization uses explicit option bit 32;
+mask 125 retains the previous emission. Bit 64 additionally folds up to 32 trailing local copies
 into the call batch; mask 61 disables that extension. Mask 29 keeps the earlier synchronous passes without this
 optimization. The backend emits bounded source-slot metadata and retains the
 complete original call-preparation sequence after a refused attempt. Execution

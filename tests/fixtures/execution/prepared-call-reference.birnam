@@ -1,0 +1,28 @@
+// A complete authored call transfer. The synchronous ABI adapter only enters
+// another explicit Machine; iteration and nested control run on that Machine.
+// The target's logical frame remains the frame being prepared throughout.
+[Execution block: [:target :rawSite :selector |
+  [[Machine new] runBlock: [|
+    let site := [Execution objectResultOf: Integer selector: #fromWord: wordArgument: rawSite];
+    let receiverSlot := [target callPlan: site field: 0];
+    let selectorSlot := [target callPlan: site field: 1];
+    let argumentStart := [target callPlan: site field: 2];
+    let argumentCount := [target callPlan: site field: 3];
+    let tail := [target callPlan: site field: 4];
+    let copyCount := [target callPlan: site field: 5];
+    let copyStart := [7 + argumentCount];
+    [System gc];
+    [[0 to: [copyCount - 1]] do: [:i |
+      let pair := [copyStart + [i * 2]];
+      let source := [target callPlan: site field: pair];
+      let destination := [target callPlan: site field: [pair + 1]];
+      [target oopAt: destination put: [target oopAt: source]]]];
+    let receiverSource := [target callPlan: site field: 6];
+    [target oopAt: receiverSlot put: [target oopAt: receiverSource]];
+    [[0 to: [argumentCount - 1]] do: [:i |
+      let source := [target callPlan: site field: [7 + i]];
+      [target oopAt: [argumentStart + i] put: [target oopAt: source]]]];
+    [target oopAt: selectorSlot put: selector];
+    [[tail = 1] ifTrue: [| [target tailCallSite: site]] ifFalse: [| [target callSite: site]]]
+  ]]
+] withNativeSignature: "owO"]

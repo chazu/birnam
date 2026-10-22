@@ -18,6 +18,7 @@ pub(super) fn function(
         synchronous: true,
         body: String::new(),
         descriptor: vec![],
+        call_plans: None,
         selection: vec![],
         named: false,
         discarded: None,

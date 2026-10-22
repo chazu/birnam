@@ -459,6 +459,6 @@ mod option_tests {
                 mask & 4 != 0
             );
         }
-        assert!(Optimizations::from_bits(128).is_none());
+        assert!(Optimizations::from_bits(128).is_some());
     }
 }
