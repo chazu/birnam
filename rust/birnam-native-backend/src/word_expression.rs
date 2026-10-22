@@ -1,4 +1,4 @@
-//! One expression tree with lexical inputs and nonescaping Word intermediates.
+//! One expression region with lexical inputs and nonescaping Word intermediates.
 use birnam_artifact::portable_program::{BindingKind, NodeKind, Program, StatementKind};
 use std::collections::{BTreeMap, BTreeSet};
 pub(super) struct Plan {
@@ -255,7 +255,11 @@ pub(super) fn plans(p: &Program<'_>) -> BTreeMap<usize, Plan> {
         if claimed.contains(&i) {
             continue;
         }
-        if let Some(plan) = plan_min(p, i, &uses, 4, false) {
+        // Preserve existing partial regions when a producer escapes elsewhere.
+        // Only retry shared-local admission when the established region refuses.
+        if let Some(plan) = plan_min(p, i, &uses, 4, false)
+            .or_else(|| plan_min(p, i, &uses, 4, true))
+        {
             claimed.extend(plan.nodes.iter().copied());
             result.insert(i, plan);
         }
@@ -378,6 +382,52 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn shared_local_region_fuses_before_an_observer_but_never_escapes() {
+        for escape in [false, true] {
+            let mut body = vec![
+                Statement::Let {name:b"x", value:send(Expr::Global(b"a"), b"bitXor:", Expr::Global(b"b"))},
+                Statement::Let {name:b"sum", value:send(Expr::Global(b"x"), b"wrappingAdd:", Expr::Global(b"a"))},
+            ];
+            let tree = send(send(Expr::Global(b"sum"), b"bitAnd:", Expr::Global(b"x")), b"wrappingAdd:", Expr::Global(b"a"));
+            body.push(Statement::Expr(send(Expr::Global(b"observer"), b"value:", tree)));
+            if escape { body.push(Statement::Expr(Expr::Global(b"x"))); }
+            let bytes = crate::portable::encode_block(&Block { params:vec![b"a",b"b",b"observer"], body }, &[]).unwrap();
+            let p = birnam_artifact::portable_program::inspect(&bytes).unwrap();
+            assert!(helper(&p).is_none(), "opaque observer prevents the whole-helper optimization");
+            let plans = plans(&p);
+            assert_eq!(plans.len(), usize::from(!escape));
+            if !escape {
+                let plan = plans.values().next().unwrap();
+                assert_eq!(plan.bytes[2], 4, "shared producer appears exactly once");
+                assert_eq!(plan.aliases.len(), 3, "two uses of x and one of sum");
+            }
+        }
+    }
+
+    #[test]
+    fn escaping_producer_keeps_the_existing_partial_region() {
+        let bits = || Expr::Global(b"result");
+        let verdict = send(
+            send(send(Expr::Global(b"a"), b"bitXor:", bits()), b"bitAnd:",
+                 send(Expr::Global(b"b"), b"bitXor:", bits())),
+            b"unsignedLessThan:", Expr::Global(b"b"));
+        let bytes = crate::portable::encode_block(&Block {
+            params:vec![b"a",b"b",b"observer"],
+            body:vec![
+                Statement::Let {name:b"result", value:send(Expr::Global(b"a"), b"wrappingAdd:", Expr::Global(b"b"))},
+                Statement::Let {name:b"verdict", value:verdict},
+                Statement::Expr(send(Expr::Global(b"observer"), b"value:", bits())),
+                Statement::Expr(Expr::Global(b"verdict")),
+            ],
+        }, &[]).unwrap();
+        let p = birnam_artifact::portable_program::inspect(&bytes).unwrap();
+        let plans = plans(&p);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans.values().next().unwrap().bytes[2], 4,
+                   "retain the escaping result box but fuse its pure comparison");
+    }
+
     #[test]
     fn only_nonescaping_primitive_trees_form_a_plan() {
         let bytes = encoded(false);

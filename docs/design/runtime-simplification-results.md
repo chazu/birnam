@@ -29,8 +29,8 @@ together. Logue remains unchanged as an application acceptance workload.
 | Established Id lookup improvement | Complete | `5018aad2`; [4–6% Logue CPU reduction](id-default-lookup-fact.md) |
 | Collector scratch and metadata retirement | Complete | `1498a182`; results below |
 | Live-bound Range traversal | Complete | `bcd31b31`; results below |
-| Admitted call plans, coarse compiled execution and authored implementation | Complete | Results below |
-| Bounded numeric temporary elimination | Planned | Pending |
+| Admitted call plans, coarse compiled execution and authored implementation | Complete | `7011ed2a`; results below |
+| Bounded numeric temporary elimination | Complete | Results below |
 
 The earlier [diagnosis](runtime-costs-exposed-by-logue.md) supplies the starting
 workloads and costs. Proposed gains are not recorded as delivered gains. Results
@@ -202,3 +202,61 @@ identity, propagates entered failures without replay, and retires its code after
 removal and explicit materialization-cache eviction. Native fixture setup and
 temporary test-owned bindings were corrected during validation; no acceptance
 expectation was weakened.
+
+
+## 4. Shared nonescaping Word temporaries
+
+Ordinary synchronous expression regions can now use the existing whole-helper
+analysis for shared local values. A producer may be read more than once when
+all those reads stay inside the admitted pure region. Each producer is evaluated
+once; only the final escaping Word is constructed. The compiler still rejects
+captures, external uses and intervening observable calls. Changed primitives,
+representation access or allocation permissions take the existing ordered
+fallback. No new arithmetic engine, opcode, ABI or recovery representation was
+added.
+
+The established partial-region analysis runs first. Only a refusal tries the
+existing shared-local analysis. Using the broader analysis indiscriminately
+would absorb an escaping producer and then reject an otherwise useful partial
+region—for example, Integer addition's overflow comparison. A dedicated test
+preserves that optimization while the new case verifies four operations with a
+shared intermediate followed by an opaque observer. This bounded extension does
+not remove every Integer/Word adaptation box in Logue.
+
+Before the change, the new producer test finds no region and the native allocation
+witness finds four Words. Afterward there is one region, the shared producer
+occurs once, and only the final Word is allocated. Replacing a primitive executes
+it exactly once with its replacement result; replacing allocation restores all
+four original constructions. Collecting/mutating admission, permission revocation,
+escaping result identity and neighboring observation boundaries are checked.
+
+[Evidence](../measurements/runtime-simplification-numeric-20261022.json).
+The committed [numeric workload](../../rust/birnam-siphon/examples/numeric_workload.rs)
+runs five 10,000-call samples per case in each fresh process, serial ABBA. Setup,
+compilation and explicit collections are outside the timers. Full rebuilt
+prefixes compare this slice against `7011ed2a`.
+
+| Workload | Before | After | Total allocations/call |
+| --- | ---: | ---: | ---: |
+| Shared temporary inside a pure region | 11.564 µs | 10.468 µs | 17 → 14 |
+| Existing single-use region | 10.624 µs | 10.719 µs | 14 → 14 |
+| Local also passed to an observer | 11.786 µs | 11.540 µs | 17 → 17 |
+| Intervening observation boundary | 14.408 µs | 14.224 µs | 18 → 18 |
+
+The newly admitted case is **9.5% faster** with three fewer allocations; the
+native inventory separately verifies four Word boxes become one. The adjacent
+controls vary by roughly 1–2% and retain their original allocation behavior.
+There is **no demonstrated Logue speedup from this slice**: ordinary redraw is
+22.36 → 22.44 ms (+0.36%), floor roundtrip 2,947.58 → 2,961.33 ms (+0.47%), and
+the complete sequence 11.34 → 11.22 seconds (-1.04%). Terminal bytes are identical.
+The ordinary Integer-add probe varies by 2%, with unchanged allocation counts;
+its existing overflow region is retained rather than credited as a new gain.
+
+Validation on the rebuilt runtime: all 15 backend unit tests; seven production
+native suites covering compiler behavior, Word expressions/helpers, ordered
+representation fallback, Integer boxing observation and task control (177 checks);
+all 869 language assertions; 34 Logue assertions and 24 independent game-state
+checkpoints. The actual game also passes a PTY smoke test through class selection,
+six left/right movements, clean quit and terminal restoration. The installation
+receipt/file-closure audit passes. Timing runs were completed separately from
+these concurrent correctness checks.

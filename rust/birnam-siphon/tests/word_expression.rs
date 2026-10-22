@@ -79,6 +79,12 @@ unsafe extern "C" fn xor_hook(c: *mut c_void, r: Oop, _: *const Operand, _: usiz
 #[ignore = "production Word expression and compiler modules required"]
 fn word_temporaries_elide_only_with_current_owner_permissions() {
     unsafe {
+        check_case(false);
+        check_case(true);
+    }
+}
+unsafe fn check_case(shared: bool) {
+    unsafe {
         let id = id();
         let ns = load(
             id,
@@ -96,6 +102,11 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
         let roots = named(b"Roots");
         let gc = named(b"GC");
         let code=br#"let Probe := [Object clone]; [Reflect defineMethod: #compute:with: on: Probe as: [Execution block: [:self :a :b | let xor := [a bitXor: b]; let sum := [xor wrappingAdd: a]; let masked := [sum bitAnd: b]; [masked wrappingAdd: a]] withNativeSignature: "oOO"]]; Probe"#;
+        let code = if shared {
+            br#"let Probe := [Object clone]; [Reflect defineMethod: #finish: on: Probe as: [Execution block: [:self :value | value] withNativeSignature: "oO"]]; [Reflect defineMethod: #compute:with: on: Probe as: [Execution block: [:self :a :b | let xor := [a bitXor: b]; let sum := [xor wrappingAdd: a]; let masked := [sum bitAnd: xor]; [self finish: [masked wrappingAdd: a]]] withNativeSignature: "oOO"]]; Probe"#.as_slice()
+        } else { code.as_slice() };
+        let expected = if shared {14} else {16};
+        let replaced = if shared {10} else {14};
         let text = object(send(
             id,
             named(b"String"),
@@ -132,13 +143,18 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
         let before = words(id, named(b"WordVt"));
         let result = run();
         let result_pin = retain(id, roots, result);
-        assert_eq!(read(result), 16);
+        assert_eq!(read(result), expected);
         let after = words(id, named(b"WordVt"));
         assert_eq!(
             after - before,
             1,
             "only the final escaping Word should exist"
         );
+        let another = run();
+        let another_pin = retain(id, roots, another);
+        assert_ne!(another, result, "equal escaping results retain fresh identities");
+        assert_eq!(read(another), expected);
+        release(id, roots, another_pin);
         let vt = named(b"WordVt");
         let old = send(
             id,
@@ -157,7 +173,7 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
             word_behavior: vt,
         };
         install(id, vt, b"bitXor:", xor_hook, (&raw mut hook).cast());
-        assert_eq!(read(run()), 14);
+        assert_eq!(read(run()), replaced);
         assert_eq!(
             hook.calls.get(),
             1,
@@ -191,7 +207,7 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
             allocation_hook,
             (&raw mut hook).cast(),
         );
-        assert_eq!(read(run()), 16);
+        assert_eq!(read(run()), expected);
         assert_eq!(
             hook.calls.get(),
             4,
@@ -208,7 +224,7 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
         collect(id, gc);
         send(id, gc, b"budget:", &[Operand::word(usize::MAX)]);
         let before = words(id, vt);
-        assert_eq!(read(run()), 16);
+        assert_eq!(read(run()), expected);
         assert_eq!(words(id, vt) - before, 1);
         let permit_name = id.intern_name(b"canOmitAllocationFor:").unwrap();
         let permit = send(
@@ -248,7 +264,7 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
         );
         let answer = run();
         let pin = retain(id, roots, answer);
-        assert_eq!(read(answer), 16);
+        assert_eq!(read(answer), expected);
         assert!(
             present(id, a) && present(id, b),
             "collecting admission must preserve inputs"
@@ -269,7 +285,7 @@ fn word_temporaries_elide_only_with_current_owner_permissions() {
         assert_eq!(send(id, id.receiver, b"behaviorEpoch", &[]).as_word(), epoch);
         grant.change.set(true);
         hook.calls.set(0);
-        assert_eq!(read(run()), 14);
+        assert_eq!(read(run()), replaced);
         assert_eq!(
             hook.calls.get(),
             1,
