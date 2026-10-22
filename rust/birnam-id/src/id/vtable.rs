@@ -138,6 +138,11 @@ pub(crate) struct Vtables {
     // unreachable behavior cannot change a live lookup and does not advance it.
     binding_epoch: u64,
     slot_hints: [Cell<Option<usize>>; SLOT_HINTS],
+    // Only a positive fact about Id's own lookup primitive, never a selected
+    // source method. Addresses identify the checked metabehavior, selector and
+    // registry context; they retain no objects. Every existing-graph mutation
+    // clears this fact, including mutations after epoch counters saturate.
+    default_lookup: Cell<Option<(usize, usize, usize)>>,
 }
 
 impl Vtables {
@@ -148,6 +153,7 @@ impl Vtables {
             mutation_epoch: 0,
             binding_epoch: 0,
             slot_hints: std::array::from_fn(|_| Cell::new(None)),
+            default_lookup: Cell::new(None),
         }
     }
     pub(crate) fn mutation_epoch(&self) -> u64 {
@@ -155,6 +161,7 @@ impl Vtables {
     }
 
     pub(crate) fn note_mutation(&mut self) {
+        self.default_lookup.set(None);
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         self.binding_epoch = self.binding_epoch.saturating_add(1);
     }
@@ -310,6 +317,23 @@ impl Vtables {
         }
         Err(record.parent)
     }
+    /// Owner-local proof, valid until the next dictionary/graph mutation. The
+    /// receiver's current metabehavior is still checked by each dispatch, and
+    /// its requested method is still selected from the current dictionaries.
+    #[inline]
+    pub(crate) fn has_default_lookup(&self, meta: Oop, selector: Oop) -> bool {
+        let registry = core::ptr::from_ref(self).cast_mut().cast::<core::ffi::c_void>();
+        let key = (meta.addr(), selector.addr(), registry.addr());
+        if self.default_lookup.get() == Some(key) {
+            return true;
+        }
+        let expected = NativeEntry::new(super::id_dispatch::vtable_lookup_method, registry);
+        if self.lookup(meta, selector) == Some(expected) {
+            self.default_lookup.set(Some(key));
+            return true;
+        }
+        false
+    }
     // Expose this callback-free walk to its callers so the optimizer can
     // eliminate helper call/return work. Values and parents are still read live.
     #[inline(always)]
@@ -401,6 +425,7 @@ impl Vtables {
         }
         self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));
         if !dead.is_empty() {
+            self.default_lookup.set(None);
             self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         }
     }
@@ -439,6 +464,54 @@ impl Vtables {
 #[cfg(test)]
 mod core_tests {
     use super::*;
+    #[test]
+    fn default_lookup_fact_tracks_context_inheritance_retirement_and_saturation() {
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
+        memory.set_vtable(meta, meta);
+        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
+        let key = memory.allocate(0);
+        let expected = NativeEntry::new(super::super::id_dispatch::vtable_lookup_method,
+            core::ptr::from_mut(&mut tables).cast());
+        tables.add_method(meta, key, expected);
+        assert!(tables.has_default_lookup(meta, key));
+        // The same function with another registry context is not canonical.
+        tables.add_method(meta, key, NativeEntry::new(expected.method.unwrap(), core::ptr::null_mut()));
+        assert!(!tables.has_default_lookup(meta, key));
+        tables.add_method(meta, key, expected);
+        assert!(tables.has_default_lookup(meta, key));
+        tables.remove_method(meta, key);
+        assert!(!tables.has_default_lookup(meta, key));
+        tables.add_method(parent, key, expected);
+        tables.set_parent(meta, parent);
+        assert!(tables.has_default_lookup(meta, key));
+        tables.set_parent(meta, core::ptr::null_mut());
+        assert!(!tables.has_default_lookup(meta, key));
+        tables.set_parent(meta, parent);
+        assert!(tables.has_default_lookup(meta, key));
+        tables.add_weak_opaque_binding(meta, key, parent);
+        assert!(!tables.has_default_lookup(meta, key));
+        let mut dead = AddressMap::default(); dead.insert(key.addr(), ());
+        tables.remove_weak_keys(&dead);
+        assert!(tables.has_default_lookup(meta, key));
+        // Positive facts must not survive registry retirement/address reuse.
+        tables.remove_objects(&[meta]);
+        unsafe { tables.register(meta, core::ptr::null_mut()); }
+        assert!(!tables.has_default_lookup(meta, key));
+        tables.add_method(meta, key, expected);
+        assert!(tables.has_default_lookup(meta, key));
+        // Invalidation is explicit, not an equality check on a saturated epoch.
+        tables.mutation_epoch = u64::MAX;
+        tables.binding_epoch = u64::MAX;
+        tables.remove_method(meta, key);
+        assert!(!tables.has_default_lookup(meta, key));
+        tables.add_method(meta, key, expected);
+        assert!(tables.has_default_lookup(meta, key));
+        tables.add_weak_opaque_binding(meta, key, parent);
+        assert!(!tables.has_default_lookup(meta, key));
+    }
+
     #[test]
     fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {
         unsafe extern "C" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {

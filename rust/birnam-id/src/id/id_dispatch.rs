@@ -42,13 +42,12 @@ pub(crate) unsafe fn bind(
     if behavior == context.metavtable && selector == context.lookup {
         return Ok(unsafe { (&*context.dictionaries).lookup(context.metavtable, context.lookup) });
     }
-    // Specialize only the actual built-in lookup implementation. Recheck it
-    // for every send: replacing lookup or using a custom metabehavior takes
-    // the ordinary metacircular path below, before any source method runs.
-    // Dictionary reads stay inside Id; no foreign method/context is cached.
+    // Specialize only the actual built-in lookup implementation. Id invalidates
+    // its positive lookup fact on every existing-graph mutation. Check the
+    // receiver's metabehavior on every send; custom lookup takes the ordinary
+    // metacircular path below. Requested methods are always read live.
     if unsafe { ObjectMemory::vtable_of_valid_object(behavior) } == context.metavtable
-        && unsafe { (&*context.dictionaries).lookup(context.metavtable, context.lookup) }
-            == Some(NativeEntry::new(vtable_lookup_method, context.dictionaries.cast()))
+        && unsafe { (&*context.dictionaries).has_default_lookup(context.metavtable, context.lookup) }
     {
         return Ok(unsafe { (&*context.dictionaries).lookup(behavior, selector) });
     }

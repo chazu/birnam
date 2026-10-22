@@ -487,7 +487,13 @@ unsafe extern "C" fn native_bindings_match(
     let memory=unsafe {&*state.memory};
     let dictionaries=unsafe {&*state.dictionaries};
     if dictionaries.mutation_epoch()>=usize::MAX as u64 {return done(Operand::word(0));}
-    let default=NativeEntry::new(id_dispatch::vtable_lookup_method,state.dictionaries.cast());
+    // Every admitted row must use this same metabehavior. This owner-thread
+    // query has no callbacks, allocations or mutation, so its current lookup
+    // binding cannot change between rows. Check the invalidated-on-mutation
+    // fact once per query. No requested entry or batch result is cached.
+    if !dictionaries.has_default_lookup(state.protocol.receiver,state.lookup) {
+        return done(Operand::word(0));
+    }
     for row in bytes.chunks_exact(row_bytes) {
         let words:[usize;4]=std::array::from_fn(|i|usize::from_ne_bytes(row[i*size_of::<usize>()..(i+1)*size_of::<usize>()].try_into().unwrap()));
         let receiver=core::ptr::with_exposed_provenance_mut(words[0]);
@@ -499,7 +505,7 @@ unsafe extern "C" fn native_bindings_match(
         if !dictionaries.is_registered(behavior) {return done(Operand::word(0));}
         let meta=unsafe {crate::id::object_memory::ObjectMemory::vtable_of_valid_object(behavior)};
         // Decline custom metabehaviors before invoking any lookup callback.
-        if meta!=state.protocol.receiver || dictionaries.lookup(meta,state.lookup)!=Some(default) {
+        if meta!=state.protocol.receiver {
             return done(Operand::word(0));
         }
         let actual=dictionaries.lookup(behavior,selector);
