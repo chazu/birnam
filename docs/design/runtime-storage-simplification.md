@@ -14,7 +14,7 @@ Native allocation savings are distinct from language-object allocation counts.
 | --- | --- |
 | Argument normalization without redundant copying (proposal 3) | Measured; not retained |
 | Shared immutable method layout data (proposal 5) | Complete |
-| Reused collector workspace (proposal 4) | Pending |
+| Reused collector workspace (proposal 4) | Measured; not retained |
 
 ## 1. Argument normalization
 
@@ -92,3 +92,41 @@ method invocation and candidate-retirement suites; source-free mapped/rebuilt
 image checks with method replacement and collection. No expectation was relaxed.
 An initial timing run overlapped a correctness test and was discarded. Other
 uncontrolled runs under the external build load were not used for a speed claim.
+
+
+## 3. Collector-owned workspace reuse
+
+The experimental collector retained empty capacity for the allocation inventory, address
+index, marks, pending queue and core-edge snapshot. Activation and marking shared one preparation function; activation no longer cloned the whole inventory
+just to iterate it. Between cycles, all logical contents, marks, errors and
+visitor-admission state were cleared. Fresh `allocationsDo:`, root enumeration,
+owner/identity queries, tracing and ordered retirement still run each time.
+No answer or permission was cached, and no borrow spans an owner callback.
+
+Cleanup recycled storage after successful collection, marking errors and
+activation failure. The existing terminal failure behavior after partial
+retirement is unchanged. A deterministic unit test checks pointer/capacity reuse,
+stale-address removal, reset marks/failure/admission, duplicate-address refusal
+and successful preparation after that refusal. Eight production collection,
+activation, accounting, object-model and whole-heap suites pass.
+
+The tradeoff was retained high-water scratch capacity in the collector context;
+it holds no logical objects between cycles. Id's own census snapshot and the
+dead-object/retirement lists remain separate allocations. This is workspace
+reuse, not incremental collection or removal of the full-heap traversal.
+
+[Evidence and candidate patch](../measurements/runtime-storage-workspace-20261022.json).
+Two processes per variant, serial ABBA with the same foreground QoS; the external
+build remained active. Five precise collections per case used 200,000 live
+objects, then the same live set plus 200,000 newly dead objects per collection.
+Live-only medians were 314.61 → 313.75 ms (-0.27%); garbage medians were
+499.61 → 514.59 ms (+3.0%). Logue's complete sequence was 26.27 → 26.50 seconds
+(+0.91%), ordinary redraw 52.14 → 53.41 ms (+2.44%), and floor roundtrip essentially
+unchanged. All terminal outputs match.
+
+These samples do not establish a speedup. Four unit checks and eight production
+GC suites passed, but buffer reuse by itself is not acceptance evidence for a
+performance improvement. The candidate was removed before final delivery rather
+than retaining extra workspace lifetime/state and peak memory without a clear
+benefit. Its exact patch is retained in the evidence for a future quiet-host trial.
+The production collector is unchanged by this follow-up batch.
