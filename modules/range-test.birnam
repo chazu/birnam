@@ -72,4 +72,70 @@ let s := [TestSuite named: "Range" module: #range];
   [t expect: [range at: 2] equals: 5 describes: "index uses changed bounds"];
   [Reflect defineMethod: #rangeEnd on: range as: [:self | 4]];
   [t assert: [[range at: 2] isNil] describes: "replacement is visible"]
-]]
+]];
+
+[s test: "traversal uses live bounds independently of indexing overrides" do: [:t |
+  let range := [1 to: 3]; let calls := [0 asCell]; let seen := [#[] asCell];
+  [Reflect defineMethod: #size on: range as: [:self | [calls inc]; 0]];
+  [Reflect defineMethod: #at: on: range as: [:self :index | [calls inc]; 999]];
+  let answer := [range do: [:value | [seen set: [[seen value] add: value]]]];
+  [t assert: [answer == range] describes: "direct traversal returns receiver"];
+  [t expect: [seen value] equals: #[1 2 3] describes: "size and at do not define traversal"];
+  [t expect: [range inject: 0 into: [:sum :value | [sum + value]]] equals: 6 describes: "fold also uses live bounds"];
+  [t expect: [calls value] equals: 0 describes: "traversal sends no indexing queries"]
+]];
+
+[s test: "traversal retains fresh values and exact signed bounds" do: [:t |
+  let start := 3; let range := [start to: 4]; let seen := [#[] asCell];
+  [range do: [:value | [seen set: [[seen value] add: value]]]];
+  [t deny: [[[seen value] at: 0] == start] describes: "first iteration value is fresh"];
+  let first := [[seen value] at: 0];
+  [range do: [:value | [t deny: [value == first] describes: "later traversal values are fresh"]]];
+  [seen set: #[]];
+  [[9223372036854775805 to: 9223372036854775807] do: [:value |
+    [seen set: [[seen value] add: value]]]];
+  [t expect: [seen value] equals: #[9223372036854775805 9223372036854775806 9223372036854775807] describes: "exact max-bound comparison and overflow stop"];
+  [seen set: #[]];
+  [[-9223372036854775808 to: -9223372036854775806] do: [:value |
+    [seen set: [[seen value] add: value]]]];
+  [t expect: [seen value] equals: #[-9223372036854775808 -9223372036854775807 -9223372036854775806] describes: "exact min-bound comparison"]
+]];
+
+[s test: "traversal observes accessor replacement and can start uncountable ranges" do: [:t |
+  let range := [1 to: 3]; let seen := [#[] asCell];
+  [range do: [:value |
+    [seen set: [[seen value] add: value]];
+    [[value = 1] ifTrue: [|
+      [Reflect defineMethod: #rangeStart on: range as: [:self | 10]];
+      [Reflect defineMethod: #rangeEnd on: range as: [:self | 12]];
+      [System gc]]]
+  ]];
+  [t expect: [seen value] equals: #[1 11 12] describes: "new accessor methods govern the next step"];
+  let wide := [-9223372036854775808 to: 9223372036854775807];
+  [seen set: #[]];
+  [wide do: [:value |
+    [seen set: [[seen value] add: value]];
+    [ObjectModel slot: 1 in: wide put: -9223372036854775808]
+  ]];
+  [t expect: [seen value] equals: #[-9223372036854775808] describes: "no representable size is needed to begin traversal"]
+]];
+
+[s test: "extension of the last element is observed" do: [:t |
+ let r := [2 to: 2]; let seen := [#[] asCell];
+ [r do: [:v | [seen set: [[seen value] add: v]];
+  [[v = 2] ifTrue: [| [ObjectModel slot: 1 in: r put: 4]]]]];
+ [t expect: [seen value] equals: #[2 3 4] describes: "end can grow after its former last element"]
+]];
+[s test: "fold resumes against changed bounds" do: [:t |
+ let r := [1 to: 4]; let seen := [#[] asCell];
+ let task := [TaskControl start: [:task |
+  [r inject: 0 into: [:sum :v |
+   [seen set: [[seen value] add: v]];
+   [[v = 1] ifTrue: [| [task wait]]];
+   [sum + v]]]]];
+ [t expect: [seen value] equals: #[1] describes: "fold paused"];
+ [ObjectModel slot: 0 in: r put: 10]; [ObjectModel slot: 1 in: r put: 12]; [System gc];
+ [task resolve: [task waitToken] with: nil];
+ [t expect: [seen value] equals: #[1 11 12] describes: "fold uses new bounds without replay"];
+ [t expect: [task pollOutcome] equals: #[#success 24] describes: "fold preserves accumulator"]
+]];

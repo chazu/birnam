@@ -113,22 +113,34 @@
 [Reflect defineMethod: #do: on: Range as: [:self :body |
   [self stacklessDo: body from: 0]]];
 
+// Range traversal is defined by live bounds, not by size/at: overrides. Each
+// callback sees a fresh start+position value; the next step rereads both bounds.
+// No count is needed, including for ranges with an unrepresentable size.
+// Arithmetic overflow ends traversal instead of wrapping the position/value.
 [Reflect defineMethod: #stacklessDo:from: on: Range as: [:self :body :index |
-  [[index >= [self size]]
+  let each := [[self rangeStart] + index];
+  [[each isError]
     ifTrue: [| self]
     ifFalse: [|
-      [body value: [self at: index]];
-      [self stacklessDo: body from: [index + 1]]]]]];
+      [[[Integer compareInteger: each with: [self rangeEnd]] > 0]
+        ifTrue: [| self]
+        ifFalse: [|
+          [body value: each];
+          [self stacklessDo: body from: [index + 1]]]]]]]];
 
 [Reflect defineMethod: #inject:into: on: Range as: [:self :initial :body |
   [self stacklessInject: initial into: body from: 0]]];
 
 [Reflect defineMethod: #stacklessInject:into:from: on: Range as: [:self :accumulator :body :index |
-  [[index >= [self size]]
+  let each := [[self rangeStart] + index];
+  [[each isError]
     ifTrue: [| accumulator]
     ifFalse: [|
-      let next := [body value: accumulator value: [self at: index]];
-      [self stacklessInject: next into: body from: [index + 1]]]]]];
+      [[[Integer compareInteger: each with: [self rangeEnd]] > 0]
+        ifTrue: [| accumulator]
+        ifFalse: [|
+          let next := [body value: accumulator value: each];
+          [self stacklessInject: next into: body from: [index + 1]]]]]]]];
 
 [Reflect defineMethod: #do: on: String as: [:self :body |
   [self stacklessDo: body from: 0]]];

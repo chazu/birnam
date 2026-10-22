@@ -27,8 +27,8 @@ together. Logue remains unchanged as an application acceptance workload.
 | Slice | Status | Measurement / commit |
 | --- | --- | --- |
 | Established Id lookup improvement | Complete | `5018aad2`; [4–6% Logue CPU reduction](id-default-lookup-fact.md) |
-| Collector scratch and metadata retirement | Complete | Results below |
-| Live-bound Range traversal | Planned | Pending |
+| Collector scratch and metadata retirement | Complete | `1498a182`; results below |
+| Live-bound Range traversal | Complete | Results below |
 | Admitted call plans, coarse compiled execution and authored implementation | Planned | Pending |
 | Bounded numeric temporary elimination | Planned | Pending |
 
@@ -84,3 +84,53 @@ Implementation ordering was refined after source inspection: the old descriptor
 does not contain call-source operands. A separate static-plan cache would add
 machinery. Admit plans together with the new coarse-call contract instead; do the
 smaller Range source change first.
+
+## 2. Live-bound Range iteration and folding
+
+The selected resumable Range `do:` and `inject:into:` drivers compute one fresh
+`rangeStart + position` value, compare it exactly with the current `rangeEnd`,
+and advance after the callback. They no longer send `size` or `at:`. Public
+indexing and the separate indexed `detect:` implementation remain unchanged.
+The synchronous bootstrap Range entrypoints are unchanged; this slice changes
+the normal selected stackless control implementation.
+
+This is the accepted library-contract change, not a guarded bypass of the former
+indexing protocol. Bound getters and arithmetic remain current messages. A
+candidate arithmetic Error terminates traversal rather than wrapping; callback
+Errors remain ignored by `do:` and remain ordinary accumulator values in folds.
+A count need not be representable to start traversal. Tests stop an enormous
+range by changing its bound after the first callback, rather than attempting
+billions of iterations. First/later element identities remain fresh.
+
+[Evidence](../measurements/runtime-simplification-range-20261022.json). Paired
+ABBA processes use identical native libraries, changing only the compiled
+stackless-control artifact and rebuilt images. Median CPU:
+
+| Workload | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| 1,080 empty Range iterations | 593.07 ms | 328.14 ms | 44.7% |
+| Empty nested 60×18 loops | 611.92 ms | 345.86 ms | 43.5% |
+| Logue generation | 2,958.91 ms | 2,217.25 ms | 25.1% |
+| Logue ordinary redraw | 40.43 ms | 34.68 ms | 14.2% |
+| Logue descent + ascent, logic and rendering | 5,276.36 ms | 5,067.50 ms | 4.0% |
+| Complete measured Logue phase sequence | 19.73 s | 16.58 s | 16.0% |
+
+Allocation-only observations for flat/nested empty loops fall from
+152,431/157,363 to 104,918/109,184 objects, approximately 31% fewer. These
+include the prepared probe's entry/return. The first full-map sample falls
+38%, but collection moves between phases; that is not a universal floor-change
+speedup. Both variants still have two observed automatic collections during the
+120-turn waiting phase. Steady game logic is effectively unchanged (+0.36% in
+these samples). Terminal output is byte-identical.
+
+Validation: 869 language assertions; 91 Range/search assertions; the actual
+native task-control fixture's 177 assertions; all 34 game assertions and 24
+independent game-state checkpoints. New tests cover indexing overrides, exact
+signed limits, fresh identities, changing getters, extending the former final
+endpoint, and a fold suspended across bound mutation and collection. The old
+implementation fails the new traversal-contract checks before the source edit.
+
+An initial direct CLI invocation of the task fixture lacked its native observer
+and failed the same 12 assertions on both prefixes. It is not acceptance evidence;
+the proper native fixture supplies that observer and passes. No test expectation
+was weakened to accommodate that setup error.
