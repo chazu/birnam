@@ -8,6 +8,9 @@ pub(super) struct Walk {
     marked: Vec<u8>,
     pending: Vec<Oop>,
     failure: Option<Outcome>,
+    // Scratch belongs to the explicit traversal context. The buffer is reused
+    // across objects and remains owned here across visitor/owner messages.
+    core: CoreEdges,
 }
 impl Walk {
     fn emit(&mut self, value: Oop) -> Result<(), Outcome> {
@@ -114,6 +117,7 @@ pub(super) unsafe fn validate(memory: &Memory) -> Result<usize, Outcome> {
             marked: vec![0; allocations.len()],
             pending: Vec::new(),
             failure: None,
+            core: CoreEdges::default(),
         });
         let visitor = Operand::object(memory.receiver);
         memory.send(memory.id.receiver, b"rootsDo:", &[visitor])?;
@@ -183,9 +187,22 @@ pub(super) unsafe extern "C" fn visit(
     }
     done(answer)
 }
-pub(super) struct CoreEdges {
+#[derive(Default)]
+struct CoreEdges {
     values: Vec<Oop>,
     failure: Option<Outcome>,
+    accepting: bool,
+}
+impl CoreEdges {
+    fn begin(&mut self) {
+        self.values.clear();
+        self.failure = None;
+        self.accepting = true;
+    }
+    fn finish(&mut self) -> Option<Outcome> {
+        self.accepting = false;
+        self.failure
+    }
 }
 pub(super) unsafe extern "C" fn core_edge(
     context: *mut c_void,
@@ -195,8 +212,9 @@ pub(super) unsafe extern "C" fn core_edge(
 ) -> Outcome {
     done((|| unsafe {
         let memory = memory(context)?;
-        let mut edges = memory.core_edges.borrow_mut();
-        let edges = edges.as_mut().ok_or_else(invalid)?;
+        let mut walk = memory.walk.borrow_mut();
+        let edges = &mut walk.as_mut().ok_or_else(invalid)?.core;
+        if !edges.accepting { return Err(invalid()); }
         let result = (|| {
             if receiver != memory.core_visitor || memory.phase.get() != Phase::Marking {
                 return Err(invalid());
@@ -230,6 +248,7 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
             indices,
             pending: Vec::new(),
             failure: None,
+            core: CoreEdges::default(),
         });
         // Conservative native candidates are admitted only if they name an exact
         // allocation. Typed reference providers must emit valid Oops (or null).
@@ -253,29 +272,28 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
             let Some(value) = next else {
                 break;
             };
-            *memory.core_edges.borrow_mut() = Some(CoreEdges {
-                values: Vec::new(),
-                failure: None,
-            });
+            memory.walk.borrow_mut().as_mut().unwrap().core.begin();
             let result = memory.send(
                 memory.id.receiver,
                 b"referencesOf:do:",
                 &[Operand::object(value), Operand::object(memory.core_visitor)],
             );
-            let core = memory.core_edges.borrow_mut().take().unwrap();
+            let failure = memory.walk.borrow_mut().as_mut().unwrap().core.finish();
             let kind = result?.as_word().filter(|k| *k <= 2).ok_or_else(invalid)?;
-            if let Some(e) = core.failure {
+            if let Some(e) = failure {
                 return Err(e);
             }
-            if core.values.len() < if kind == 1 { 2 } else { 1 } {
+            let count = memory.walk.borrow().as_ref().unwrap().core.values.len();
+            if count < if kind == 1 { 2 } else { 1 } {
                 return Err(invalid());
             }
-            let behavior = core.values[0];
+            let behavior = memory.walk.borrow().as_ref().unwrap().core.values[0];
             // Preserve behavior edge order: header, parent, upper owner, keys.
             // Id alone interprets dictionary storage; upper owners only see Oops.
-            let prefix = if kind == 1 { 2 } else { core.values.len() };
-            for edge in &core.values[..prefix] {
-                emit(memory, *edge)?;
+            let prefix = if kind == 1 { 2 } else { count };
+            for index in 0..prefix {
+                let edge = memory.walk.borrow().as_ref().unwrap().core.values[index];
+                emit(memory, edge)?;
             }
             if kind != 2 {
                 if let Some(owner) = memory.trace_owner(behavior)? {
@@ -296,8 +314,9 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
                     }
                 }
             }
-            for edge in &core.values[prefix..] {
-                emit(memory, *edge)?;
+            for index in prefix..count {
+                let edge = memory.walk.borrow().as_ref().unwrap().core.values[index];
+                emit(memory, edge)?;
             }
             if let Some(error) = memory.walk.borrow().as_ref().unwrap().failure {
                 return Err(error);
@@ -321,7 +340,6 @@ unsafe fn sweep(memory: &Memory, dead: &[Allocation]) -> Result<usize, Outcome> 
     unsafe {
         // Retire weak keys, Symbols, behavior indexes and weak hook targets before
         // any address can be reused. Keep per-object finalizers live until detach.
-        let addresses: HashSet<_> = dead.iter().map(|a| a.object.addr()).collect();
         let bytes: Vec<_> = dead
             .iter()
             .flat_map(|a| a.object.addr().to_ne_bytes())
@@ -335,10 +353,10 @@ unsafe fn sweep(memory: &Memory, dead: &[Allocation]) -> Result<usize, Outcome> 
             b"retireIndexesFor:",
             &[Operand::bytes(&bytes)],
         )?;
-        memory
-            .tracers
-            .borrow_mut()
-            .retain(|address, _| !addresses.contains(address));
+        {
+            let mut tracers = memory.tracers.borrow_mut();
+            for allocation in dead { tracers.remove(&allocation.object.addr()); }
+        }
         for a in dead {
             if memory.identity(a.object)? != a.identity {
                 return Err(invalid());
@@ -441,6 +459,28 @@ pub(super) unsafe extern "C" fn collect_precisely(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn core_snapshot_reuses_context_storage_and_ends_callback_admission() {
+        let mut core = CoreEdges::default();
+        core.begin();
+        core.values.extend((1..128).map(ptr::without_provenance_mut));
+        let storage = core.values.as_ptr();
+        let capacity = core.values.capacity();
+        core.failure = Some(invalid());
+        assert!(core.finish().is_some());
+        assert!(!core.accepting);
+        core.begin();
+        assert!(core.values.is_empty());
+        assert!(core.failure.is_none());
+        assert!(core.accepting);
+        assert_eq!(core.values.as_ptr(), storage);
+        assert_eq!(core.values.capacity(), capacity);
+        core.values.push(ptr::without_provenance_mut(999));
+        assert!(core.finish().is_none());
+        assert_eq!(core.values, vec![ptr::without_provenance_mut(999)]);
+        assert!(!core.accepting);
+    }
+
     fn fixture(n: usize) -> Walk {
         let allocations: Vec<_> = (0..n)
             .map(|i| Allocation {
@@ -459,6 +499,7 @@ mod tests {
             allocations,
             pending: Vec::new(),
             failure: None,
+            core: CoreEdges::default(),
         }
     }
     #[test]

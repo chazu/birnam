@@ -55,7 +55,6 @@ struct Memory {
     constructing: Cell<bool>,
     walk: RefCell<Option<collection::Walk>>,
     inventory: RefCell<Option<collection::Inventory>>,
-    core_edges: RefCell<Option<collection::CoreEdges>>,
     retirement: RefCell<Vec<Oop>>,
 }
 fn invalid() -> Outcome {
@@ -96,8 +95,13 @@ impl Memory {
             .ok_or_else(invalid)
     }
     unsafe fn trace_owner(&self, mut behavior: Oop) -> Result<Option<Oop>, Outcome> {
-        let mut visited = HashSet::new();
-        while !behavior.is_null() && visited.insert(behavior.addr()) {
+        // The common direct-owner case needs no cycle-detection allocation.
+        // Parent traversal still checks current owners and identities on each hop.
+        let mut visited: Option<HashSet<usize>> = None;
+        while !behavior.is_null() {
+            if visited.as_ref().is_some_and(|seen| seen.contains(&behavior.addr())) {
+                break;
+            }
             let owner = self.tracers.borrow().get(&behavior.addr()).copied();
             if let Some(owner) = owner {
                 if unsafe { self.identity(behavior) }? != owner.identity {
@@ -105,6 +109,7 @@ impl Memory {
                 }
                 return Ok(Some(owner.object));
             }
+            visited.get_or_insert_with(HashSet::new).insert(behavior.addr());
             let parent =
                 unsafe { self.send(self.id.receiver, b"parentOf:", &[Operand::object(behavior)]) }?;
             behavior = parent.as_object().unwrap_or(ptr::null_mut());
@@ -410,7 +415,6 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             constructing: Cell::new(false),
             walk: RefCell::new(None),
             inventory: RefCell::new(None),
-            core_edges: RefCell::new(None),
             retirement: RefCell::new(Vec::new()),
         }));
         for (name, method) in [

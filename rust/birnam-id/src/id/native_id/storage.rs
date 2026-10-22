@@ -168,17 +168,16 @@ unsafe extern "C" fn allocations(
     let allocations: Vec<_> = unsafe { &*state.memory }
         .iter()
         .map(|(_, allocation)| {
-            [
-                Operand::object(allocation.payload().as_ptr().cast()),
-                Operand::word(allocation.requested_size()),
-                Operand::word(allocation.identity() as usize),
-            ]
+            (allocation.payload().as_ptr().cast(),
+             allocation.requested_size(), allocation.identity() as usize)
         })
         .collect();
     // Reentry can allocate or query. The caller keeps these snapshot objects
     // live; later allocations are not retroactively included in this visit.
-    for allocation in allocations {
-        let answer = unsafe { visit(state, visitor, state.visits[1], &allocation) };
+    for (object, size, identity) in allocations {
+        let answer = unsafe { visit(state, visitor, state.visits[1], &[
+            Operand::object(object), Operand::word(size), Operand::word(identity),
+        ]) };
         if answer.status != native::LOADED {
             return answer;
         }

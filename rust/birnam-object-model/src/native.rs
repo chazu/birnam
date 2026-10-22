@@ -236,13 +236,15 @@ unsafe extern "C" fn retire(
         if bytes.len() % size_of::<usize>() != 0 {
             return Err(invalid());
         }
-        let dead: HashSet<_> = bytes
-            .chunks_exact(size_of::<usize>())
-            .map(|b| usize::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        m.owners.borrow_mut().retain(|a, _| !dead.contains(a));
-        m.instances.borrow_mut().retain(|a, _| !dead.contains(a));
-        m.layouts.borrow_mut().retain(|a, _| !dead.contains(a));
+        let mut owners = m.owners.borrow_mut();
+        let mut instances = m.instances.borrow_mut();
+        let mut layouts = m.layouts.borrow_mut();
+        for address in bytes.chunks_exact(size_of::<usize>()) {
+            let address = usize::from_ne_bytes(address.try_into().unwrap());
+            owners.remove(&address);
+            instances.remove(&address);
+            layouts.remove(&address);
+        }
         Ok(Operand::unit())
     })())
 }
