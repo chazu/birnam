@@ -131,6 +131,9 @@ pub(crate) enum Action {
     MethodAt,
     LiteralAt,
     Invoke,
+    ApplyArguments,
+    LoadArguments,
+    LoadNative,
     WithContext,
     FaultKind,
     FaultDetail,
@@ -191,6 +194,9 @@ core_primitives![
     (b"size", SequenceSize),
     (b"methodAt:", MethodAt),
     (b"invokeOn:arguments:", Invoke),
+    (b"apply:to:", ApplyArguments),
+    (b"load:", LoadArguments),
+    (b"loadNative", LoadNative),
     (b"literalAt:", LiteralAt),
     (b"withContext:", WithContext),
     (b"faultKind", FaultKind),
@@ -368,8 +374,9 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load => self.name,
-                Action::At | Action::Put | Action::SequenceSize => self.sequence,
+                Action::Intern | Action::Load | Action::LoadNative => self.name,
+                Action::At | Action::Put | Action::SequenceSize
+                | Action::ApplyArguments | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt => self.module,
                 Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
@@ -574,10 +581,10 @@ impl State {
             }
             Action::Invoke => {
                 let (receiver, seq) = pair()?;
-                // Snapshot before a callback can mutate the source's fields.
-                let args = self.sequence_values(seq)?;
-                let scope = self.scope(receiver, nil, &args);
-                unsafe { self.invoke(r, receiver, &args, &scope) }
+                unsafe { self.send(seq, b"apply:to:", &[r, receiver]) }
+            }
+            Action::ApplyArguments | Action::LoadArguments => {
+                unsafe { self.apply_arguments(action, r, a) }
             }
             Action::WithContext => {
                 let ctx = one()?;
@@ -702,9 +709,10 @@ impl State {
                 Ok(nil)
             }
             Action::Load => {
-                let args = one()?;
-                let args = self.sequence_values(args)?;
-                unsafe { self.load_module(r, &args) }
+                unsafe { self.send(one()?, b"load:", &[r]) }
+            }
+            Action::LoadNative => {
+                unsafe { self.load_module(r, a) }
             }
         }
     }

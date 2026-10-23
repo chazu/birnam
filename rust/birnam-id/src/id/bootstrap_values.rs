@@ -101,9 +101,9 @@ impl State {
         if index >= n {
             return Err(self.invalid());
         }
-        // Reject invalid lengths or non-object fields before writing. These
-        // are this implementation's format rules, not allocator type tags.
-        self.sequence_values(o)?;
+        // A single-field write needs the checked extent and that field, not a
+        // copied/validated inventory of every other element.
+        self.behavior(unsafe { p.add(index).read() })?;
         self.behavior(value)?;
         unsafe { p.add(index).write(value) };
         Ok(value)
@@ -123,12 +123,34 @@ impl State {
         Ok((unsafe { p.add(size_of::<usize>()) }.cast(), len))
     }
     pub(super) fn sequence_values(&self, o: Oop) -> Result<Vec<Oop>, Oop> {
+        self.sequence_snapshot(o, &[])
+    }
+    fn sequence_snapshot(&self, o: Oop, prefix: &[Oop]) -> Result<Vec<Oop>, Oop> {
         let (p, n) = self.sequence_storage(o)?;
-        let values = unsafe { core::slice::from_raw_parts(p, n) }.to_vec();
+        let mut values = Vec::with_capacity(prefix.len() + n);
+        values.extend_from_slice(prefix);
+        values.extend_from_slice(unsafe { core::slice::from_raw_parts(p, n) });
         for &v in &values {
             self.behavior(v)?;
         }
         Ok(values)
+    }
+    pub(super) unsafe fn apply_arguments(
+        &self, operation: Action, sequence: Oop, args: &[Oop],
+    ) -> Result<Oop, Oop> {
+        // This is the argument container's implementation. Other containers
+        // implement these messages without exposing their payload to Id.
+        match (operation, args) {
+            (Action::ApplyArguments, &[callable, receiver]) => {
+                let forwarded = self.sequence_snapshot(sequence, &[receiver])?;
+                unsafe { self.send(callable, b"apply", &forwarded) }
+            }
+            (Action::LoadArguments, &[path]) => {
+                let values = self.sequence_values(sequence)?;
+                unsafe { self.send(path, b"loadNative", &values) }
+            },
+            _ => Err(self.invalid()),
+        }
     }
     pub(super) fn new_sequence(&self, values: &[Oop]) -> Result<Oop, Oop> {
         let n = values

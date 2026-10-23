@@ -63,6 +63,8 @@ unsafe fn run() {
             b"snapshotArgument:",
             b"apply",
             b"applyValue",
+            b"apply:to:",
+            b"argumentProxy",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -380,6 +382,19 @@ unsafe fn run() {
         println!(
             "non-native callable layout applies through live Id lookup and survives GC: passed"
         );
+
+        let proxy_type = send(base, b"delegated", &[]).unwrap();
+        let proxy_method = send(actor_vt, b"lookup", &[sel(b"argumentProxy")]).unwrap();
+        send(proxy_type, b"addMethod", &[sel(b"apply:to:"), proxy_method]).unwrap();
+        let proxy = send(proxy_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        let proxy_token = send(roots, b"retain:", &[proxy]).unwrap();
+        let collect_method = send(actor_vt, b"lookup", &[sel(b"collectArguments")]).unwrap();
+        assert_eq!(abi::as_size(send(collect_method, b"invokeOn:arguments:", &[actor, proxy]).unwrap()), Some(1));
+        let count_method = send(actor_vt, b"lookup", &[sel(b"doesNotUnderstand:")]).unwrap();
+        send(proxy_type, b"addMethod", &[sel(b"apply:to:"), count_method]).unwrap();
+        assert_eq!(abi::as_size(send(collect_method, b"invokeOn:arguments:", &[actor, proxy]).unwrap()), Some(2));
+        send(roots, b"release:", &[proxy_token]).unwrap();
+        println!("argument containers use current application behavior and survive GC: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();
