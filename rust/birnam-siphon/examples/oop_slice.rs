@@ -24,6 +24,7 @@ unsafe fn run() {
             library.join("libbirnam_boolean.dylib"),
             library.join("libbirnam_nil.dylib"),
             library.join("libbirnam_object_model.dylib"),
+            library.join("libbirnam_word.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"sequence",
@@ -97,6 +98,9 @@ unsafe fn run() {
             b"setLayoutOf:to:rest:", b"slotAt:in:", b"slotAt:in:put:", b"clone", b"objectPrototype",
             b"ownerOf:", b"ownerOf:put:", b"ensurePrivateVtableFor:", b"cloneAllocate", b"convertIndex",
             b"Integer", b"wordOf:", b"slot:in:", b"imageSizeOf:", b"slotKindOf:at:",
+            b"fromUnsignedLow:high:", b"low32", b"high32", b"fromBits:", b"bits", b"wrappingAdd:", b"wrappingSubtract:",
+            b"shiftLeft:", b"unsignedDivide:", b"tryPrimitiveExpression:", b"tryPrimitiveExpressionAtEpoch:",
+            b"imageSlotAt:in:", b"restoreImageSlotAt:in:put:", b"apply:to:with:",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
             b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
             b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
@@ -775,6 +779,49 @@ unsafe fn run() {
         assert_eq!(abi::as_size(send(model,b"imageSizeOf:",&[copy]).unwrap()),Some(16));
         send(roots,b"release:",&[copy_token]).unwrap();
         println!("ObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed");
+
+        let word_args=send(id.root,b"sequence",&[namespace]).unwrap();
+        let word=id.send(names[11],id.load,&[word_args]).unwrap();
+        let max=send(word,b"fromUnsignedLow:high:",&[abi::size(u32::MAX as usize).unwrap(),abi::size(u32::MAX as usize).unwrap()]).unwrap();
+        let max_token=send(roots,b"retain:",&[max]).unwrap();
+        assert_eq!(send(max,b"bits",&[]).unwrap(),max);
+        assert_eq!(abi::as_size(send(max,b"low32",&[]).unwrap()),Some(u32::MAX as usize));
+        assert_eq!(abi::as_size(send(max,b"high32",&[]).unwrap()),Some(u32::MAX as usize));
+        let copied=send(word,b"fromBits:",&[max]).unwrap();
+        assert_ne!(max,copied);
+        assert_eq!(abi::as_size(send(copied,b"high32",&[]).unwrap()),Some(u32::MAX as usize));
+        let one=send(word,b"fromBits:",&[abi::size(1).unwrap()]).unwrap();
+        let one_token=send(roots,b"retain:",&[one]).unwrap();
+        let wrapped=send(max,b"wrappingAdd:",&[one]).unwrap();
+        assert_eq!(abi::as_size(send(wrapped,b"bits",&[]).unwrap()),Some(0));
+        let shifted=send(one,b"shiftLeft:",&[abi::size(64).unwrap()]).unwrap();
+        assert_eq!(abi::as_size(send(shifted,b"bits",&[]).unwrap()),Some(0));
+        assert!(send(one,b"unsignedDivide:",&[abi::size(0).unwrap()]).is_err());
+        let bytecode:Vec<_>=[1,2,1,2,6,0,1].into_iter().map(|n|abi::size(n).unwrap()).collect();
+        let program=send(id.root,b"sequence",&bytecode).unwrap();
+        let program_token=send(roots,b"retain:",&[program]).unwrap();
+        let answer=send(word,b"tryPrimitiveExpression:",&[program,max,one]).unwrap();
+        assert!(!answer.is_null());
+        assert_eq!(abi::as_size(send(answer,b"bits",&[]).unwrap()),Some(0));
+        let word_type=send(id.root,b"behaviorOf:",&[word]).unwrap();
+        let addition=send(word_type,b"lookup",&[sel(b"wrappingAdd:")]).unwrap();
+        send(word_type,b"addMethod",&[sel(b"wrappingAdd:"),replacement]).unwrap();
+        assert!(send(word,b"tryPrimitiveExpression:",&[program,max,one]).unwrap().is_null());
+        send(word_type,b"addMethod",&[sel(b"wrappingAdd:"),addition]).unwrap();
+        let program_type=send(id.root,b"behaviorOf:",&[program]).unwrap();
+        let custom_program=send(program_type,b"delegated",&[]).unwrap();
+        send(custom_program,b"addMethod",&[sel(b"apply:to:with:"),replacement]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[program,custom_program]).unwrap();
+        assert_eq!(abi::as_size(send(word,b"tryPrimitiveExpression:",&[program,max,one]).unwrap()),Some(5));
+        send(id.root,b"reassociateBehaviorOf:with:",&[program,program_type]).unwrap();
+        send(model,b"restoreImageSlotAt:in:put:",&[abi::size(1).unwrap(),record,max]).unwrap();
+        let restored=send(model,b"imageSlotAt:in:",&[abi::size(1).unwrap(),record]).unwrap();
+        assert_eq!(abi::as_size(send(restored,b"low32",&[]).unwrap()),Some(u32::MAX as usize));
+        assert_eq!(abi::as_size(send(restored,b"high32",&[]).unwrap()),Some(u32::MAX as usize));
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        assert_eq!(abi::as_size(send(max,b"high32",&[]).unwrap()),Some(u32::MAX as usize));
+        for token in [max_token,one_token,program_token]{send(roots,b"release:",&[token]).unwrap();}
+        println!("Word full-width values, arithmetic, live expression guards and image slots: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

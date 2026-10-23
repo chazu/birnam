@@ -1,273 +1,479 @@
+//! Unsigned Word values own their eight-byte payload; all message values are Oops.
 use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::ffi::c_void;
-use std::{cell::RefCell, collections::HashMap};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 pub(crate) struct Number {
-    pub(super) id: Protocol,
-    pub(super) binding_guard: birnam_abi::binding_guard::BindingGuard,
+    pub(crate) id: Protocol,
+    namespace: Oop,
     roots: Oop,
     gc: Oop,
-    pub(super) model: Oop,
-    namespace: Oop,
-    pub(super) behavior: Oop,
-    pub(super) prototype: Oop,
+    pub(crate) model: Oop,
+    pub(crate) behavior: Oop,
+    pub(crate) prototype: Oop,
     truth: Oop,
     falsity: Oop,
     nil: Oop,
-    pub(super) names: HashMap<&'static [u8], Oop>,
-    thread: std::thread::ThreadId,
+    pub(crate) names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
-    pub(super) expression_meanings: core::cell::Cell<(usize, u32)>,
+    pub(crate) witnesses: [Cell<Oop>; 19],
+    pub(crate) expression_meanings: Cell<(usize, u32)>,
+    pub(crate) expression_entry: Cell<Oop>,
+    ready: Cell<bool>,
 }
-// Owner-local roots are reported through the registered rootsDo: protocol.
-// Nested calls append; dropping a scope restores only its own suffix.
-struct Scope<'a> { values: &'a RefCell<Vec<Oop>>, start: usize }
+struct Scope<'a> {
+    values: &'a RefCell<Vec<Oop>>,
+    start: usize,
+}
 impl Drop for Scope<'_> {
-    fn drop(&mut self) { self.values.borrow_mut().truncate(self.start); }
-}
-pub(crate) fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
-}
-pub(crate) fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)
-}
-pub(crate) fn done(v: Result<Operand, Outcome>) -> Outcome {
-    v.map_or_else(|e| e, Outcome::loaded)
-}
-pub(crate) unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Number, Outcome> {
-    let n = unsafe { &*context.cast::<Number>() };
-    if n.thread != std::thread::current().id() {
-        return Err(invalid());
+    fn drop(&mut self) {
+        self.values.borrow_mut().truncate(self.start);
     }
-    Ok(n)
+}
+static INSTANCE: AtomicPtr<Number> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+pub(crate) unsafe fn state<'a>(c: Oop) -> Result<&'a Number, Oop> {
+    let raw = INSTANCE.load(Ordering::Acquire);
+    if raw.is_null() {
+        let p = API.load(Ordering::Acquire);
+        if p.is_null() {
+            std::process::abort();
+        }
+        return Err(unsafe { (*p).invalid });
+    }
+    let n = unsafe { &*raw };
+    if c == n.prototype {
+        Ok(n)
+    } else {
+        Err(n.invalid())
+    }
 }
 impl Number {
-    pub(super) unsafe fn send(
-        &self,
-        r: Oop,
-        name: &'static [u8],
-        args: &[Operand],
-    ) -> Result<Operand, Outcome> {
-        unsafe { self.id.send(r, self.names[name], args) }
+    pub(crate) fn invalid(&self) -> Oop {
+        abi::object_reference(self.id.invalid)
     }
-    // Only newly allocated outputs need this local protection. Incoming
-    // receiver/arguments are covered by the native Id invocation contract.
-    pub(super) unsafe fn rooted(
-        &self,
-        values: &[Oop],
-        f: impl FnOnce() -> Result<Operand, Outcome>,
-    ) -> Result<Operand, Outcome> {
-        if values.iter().any(|value| value.is_null()) { return Err(invalid()); }
-        let start = self.scoped.borrow().len();
-        self.scoped.borrow_mut().extend(values.iter().copied());
-        let _scope = Scope { values: &self.scoped, start };
-        f()
+    pub(crate) unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[name], a) }
     }
-
-    unsafe fn matches_representation(&self, value: Oop) -> Result<bool, Outcome> {
+    pub(crate) fn boolean(&self, v: bool) -> Oop {
+        if v { self.truth } else { self.falsity }
+    }
+    fn scope(&self) -> Scope<'_> {
+        Scope {
+            values: &self.scoped,
+            start: self.scoped.borrow().len(),
+        }
+    }
+    fn keep(&self, v: Oop) -> Oop {
+        self.scoped.borrow_mut().push(v);
+        v
+    }
+    unsafe fn matches_representation(&self, value: Oop) -> Result<bool, Oop> {
         unsafe {
-            match self.send(self.id.receiver, b"tryRepresentationIdentityOf:behavior:bytes:",
-                &[Operand::object(value), Operand::object(self.behavior), Operand::word(8)]) {
-                Ok(result) if result.kind() == native::UNIT => {},
-                Err(error) if error.status == native::UNBOUND => {},
-                Ok(result) => return result.as_word().map(|identity| identity != 0).ok_or_else(invalid),
-                Err(error) => return Err(error),
+            let query = self.send(
+                self.id.root,
+                b"tryRepresentationIdentityOf:behavior:bytes:",
+                &[value, self.behavior, abi::size(8).unwrap()],
+            )?;
+            if !query.is_null() {
+                return abi::as_size(query).map(|n| n != 0).ok_or(self.invalid());
             }
-            if self.send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?.as_object() != Some(self.behavior) {
+            if self.send(self.id.root, b"behaviorOf:", &[value])? != self.behavior {
                 return Ok(false);
             }
-            Ok(self.send(self.id.receiver, b"allocationSizeOf:", &[Operand::object(value)])?.as_word() == Some(8))
+            Ok(self.send(self.id.root, b"allocationSizeOf:", &[value])? == abi::size(8).unwrap())
         }
     }
-    // Canonical expression inputs have no intervening callback between their
-    // shape facts and these owner-local reads. Decline retains ordered reads.
-    pub(super) unsafe fn read_inputs(&self, inputs: &[Operand], values: &mut [u64]) -> Result<bool, Outcome> {
-        if inputs.len() > 32 || inputs.len() > values.len() { return Err(invalid()); }
-        if inputs.len() >= 2 {
-            let mut addresses = [0usize; 32];
-            for (address, input) in addresses.iter_mut().zip(inputs) { *address = object(*input)?.addr(); }
-            let addresses = &addresses[..inputs.len()];
-            let bytes = unsafe { core::slice::from_raw_parts(addresses.as_ptr().cast::<u8>(), size_of_val(addresses)) };
-            match unsafe { self.send(self.id.receiver, b"tryRepresentationsOf:behavior:bytes:",
-                &[Operand::bytes(bytes), Operand::object(self.behavior), Operand::word(8)]) } {
-                Ok(reply) if reply.kind() == native::UNIT => {},
-                Err(error) if error.status == native::UNBOUND => {},
-                Ok(reply) => match reply.as_word() {
-                    Some(0) => return Ok(false),
-                    Some(1) => {
-                        for (input, value) in inputs.iter().zip(values) {
-                            *value = unsafe { object(*input)?.cast::<u64>().read() };
+    pub(crate) unsafe fn read(&self, value: Oop) -> Result<Option<u64>, Oop> {
+        if let Some(size) = abi::as_size(value) {
+            return Ok(Some(size as u64));
+        }
+        if !unsafe { self.matches_representation(value) }? {
+            return Ok(None);
+        }
+        Ok(Some(unsafe { value.cast::<u64>().read() }))
+    }
+    pub(crate) unsafe fn read_inputs(
+        &self,
+        inputs: &[Oop],
+        values: &mut [u64],
+    ) -> Result<bool, Oop> {
+        if inputs.len() > 32 || inputs.len() > values.len() {
+            return Err(self.invalid());
+        }
+        unsafe {
+            if inputs.len() >= 2 && inputs.iter().all(|&v| abi::as_size(v).is_none()) {
+                let mut request = [ptr::null_mut(); 34];
+                request[0] = self.behavior;
+                request[1] = abi::size(8).unwrap();
+                request[2..2 + inputs.len()].copy_from_slice(inputs);
+                let reply = self.send(
+                    self.id.root,
+                    b"representationsMatch",
+                    &request[..2 + inputs.len()],
+                )?;
+                if !reply.is_null() {
+                    match abi::as_size(reply) {
+                        Some(0) => return Ok(false),
+                        Some(1) => {
+                            for (&input, value) in inputs.iter().zip(values.iter_mut()) {
+                                *value = input.cast::<u64>().read();
+                            }
+                            return Ok(true);
                         }
-                        return Ok(true);
-                    },
-                    _ => return Err(invalid()),
-                },
-                Err(error) => return Err(error),
+                        _ => return Err(self.invalid()),
+                    }
+                }
             }
-        }
-        for (input, value) in inputs.iter().zip(values) {
-            let Some(bits) = (unsafe { self.read(object(*input)?) })? else { return Ok(false); };
-            *value = bits;
-        }
-        Ok(true)
-    }
-    pub(super) unsafe fn read(&self, value: Oop) -> Result<Option<u64>, Outcome> {
-        unsafe {
-            if !self.matches_representation(value)?
-            {
-                return Ok(None);
+            for (&input, value) in inputs.iter().zip(values.iter_mut()) {
+                let Some(bits) = self.read(input)? else {
+                    return Ok(false);
+                };
+                *value = bits;
             }
-            Ok(Some(value.cast::<u64>().read()))
+            Ok(true)
         }
     }
-    pub(super) unsafe fn make(&self, bits: usize) -> Result<Operand, Outcome> {
+    pub(crate) unsafe fn make(&self, bits: u64) -> Result<Oop, Oop> {
         unsafe {
-            let value = object(self.send(
+            let _scope = self.scope();
+            let value = self.keep(self.send(
                 self.model,
                 b"allocate:bytes:",
-                &[Operand::object(self.behavior), Operand::word(8)],
-            )?)?;
-            self.rooted(&[value], || {
-                if !self.matches_representation(value)?
-                {
-                    return Err(invalid());
+                &[self.behavior, abi::size(8).unwrap()],
+            )?);
+            if !self.matches_representation(value)? {
+                return Err(self.invalid());
+            }
+            value.cast::<u64>().write(bits);
+            Ok(value)
+        }
+    }
+    unsafe fn number_input(&self, value: Oop) -> Result<u64, Oop> {
+        if let Some(bits) = unsafe { self.read(value) }? {
+            return Ok(bits);
+        }
+        unsafe {
+            let low = abi::as_size(self.send(value, b"low32", &[])?)
+                .filter(|n| *n <= u32::MAX as usize)
+                .ok_or(self.invalid())?;
+            let high = abi::as_size(self.send(value, b"high32", &[])?)
+                .filter(|n| *n <= u32::MAX as usize)
+                .ok_or(self.invalid())?;
+            Ok(low as u64 | ((high as u64) << 32))
+        }
+    }
+    unsafe fn execute(&self, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
+        let invalid = self.invalid();
+        unsafe {
+            if op == 0 {
+                let [v] = a else {
+                    return Err(invalid);
+                };
+                return self.make(self.number_input(*v)?);
+            }
+            if op == 19 {
+                let [lo, hi] = a else {
+                    return Err(invalid);
+                };
+                let lo = abi::as_size(*lo)
+                    .filter(|v| *v <= u32::MAX as usize)
+                    .ok_or(invalid)?;
+                let hi = abi::as_size(*hi)
+                    .filter(|v| *v <= u32::MAX as usize)
+                    .ok_or(invalid)?;
+                return self.make(lo as u64 | ((hi as u64) << 32));
+            }
+            if op == 17 {
+                let [left, right] = a else {
+                    return Err(invalid);
+                };
+                if left.is_null() || right.is_null() {
+                    return Err(invalid);
                 }
-                value.cast::<usize>().write(bits);
-                Ok(Operand::object(value))
-            })
+                return self.make(u64::from(left == right));
+            }
+            if op == 18 {
+                let [zero, nonzero] = a else {
+                    return Err(invalid);
+                };
+                if zero.is_null() || nonzero.is_null() {
+                    return Err(invalid);
+                }
+                let value = self.read(r)?.ok_or(invalid)?;
+                return Ok(if value == 0 { *zero } else { *nonzero });
+            }
+            if op == 22 {
+                let [left, right, yes, no] = a else {
+                    return Err(invalid);
+                };
+                if a.iter().any(|v| v.is_null()) {
+                    return Err(invalid);
+                }
+                return Ok(if left == right { *yes } else { *no });
+            }
+            if (6..=16).contains(&op) && !r.is_null() && a.len() == 1 && !a[0].is_null() {
+                let mut values = [0; 2];
+                if !self.read_inputs(&[r, a[0]], &mut values)? {
+                    return Err(invalid);
+                }
+                if op == 16 {
+                    return Ok(self.boolean(values[0] < values[1]));
+                }
+                return self
+                    .make(crate::operations::calculate(values[0], values[1], op).ok_or(invalid)?);
+            }
+            if (5..=16).contains(&op) {
+                let value = self.read(r)?.ok_or(invalid)?;
+                if op == 5 {
+                    if !a.is_empty() {
+                        return Err(invalid);
+                    }
+                    return self.make(!value);
+                }
+                let [right] = a else {
+                    return Err(invalid);
+                };
+                let right = self.read(*right)?.ok_or(invalid)?;
+                if op == 16 {
+                    return Ok(self.boolean(value < right));
+                }
+                return self.make(crate::operations::calculate(value, right, op).ok_or(invalid)?);
+            }
+            if a.len() != usize::from(op == 2) {
+                return Err(invalid);
+            }
+            let Some(value) = self.read(r)? else {
+                return Ok(self.nil);
+            };
+            match op {
+                // A Word is already an object-valued bit pattern. Small boundary
+                // numbers use the size immediate; all 64 bits remain available.
+                1 => Ok(abi::size(value as usize).unwrap_or(r)),
+                2 => Ok(self.boolean(self.read(a[0])? == Some(value))),
+                20 => Ok(abi::size((value & u32::MAX as u64) as usize).unwrap()),
+                21 => Ok(abi::size((value >> 32) as usize).unwrap()),
+                _ => Err(invalid),
+            }
         }
     }
-    pub(super) fn boolean(&self, value: bool) -> Operand {
-        Operand::object(if value { self.truth } else { self.falsity })
-    }
 }
-unsafe extern "C" fn roots(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let n = state(context)?;
-        let Some([visitor]) = borrowed_slice(args, count) else {
-            return Err(invalid());
+unsafe extern "C" fn roots(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([visitor]) = abi::borrowed_slice(a, n) else {
+            return Err(s.invalid());
         };
-        let visitor = object(*visitor)?;
         let mut values = vec![
-            n.roots,
-            n.gc,
-            n.model,
-            n.namespace,
-            n.behavior,
-            n.prototype,
-            n.truth,
-            n.falsity,
-            n.nil,
+            s.roots,
+            s.gc,
+            s.model,
+            s.namespace,
+            s.behavior,
+            s.prototype,
+            s.truth,
+            s.falsity,
+            s.nil,
         ];
-        values.extend(n.names.values().copied());
-        values.extend(n.scoped.borrow().iter().copied());
+        values.extend(s.names.values().copied());
+        values.extend(s.scoped.borrow().iter().copied());
+        values.extend(s.witnesses.iter().map(Cell::get));
+        values.push(s.expression_entry.get());
         for value in values {
-            n.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
+            s.send(*visitor, b"visit:", &[value])?;
         }
-        Ok(Operand::unit())
-    })())
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn references(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let n = state(context)?;
-        let Some([value, visitor]) = borrowed_slice(args, count) else {
-            return Err(invalid());
+unsafe extern "C" fn references(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([value, visitor]) = abi::borrowed_slice(a, n) else {
+            return Err(s.invalid());
         };
-        let value = object(*value)?;
-        let visitor = object(*visitor)?;
-        let precise =
-            n.id.send_named(n.gc, b"precisePayloads", &[])?
-                .as_word()
-                .ok_or_else(invalid)?
-                != 0;
+        let precise = abi::as_size(s.send(s.gc, b"precisePayloads", &[])?).ok_or(s.invalid())? != 0;
         if !precise {
-            let bytes =
-                n.id.send_named(
-                    n.id.receiver,
-                    b"allocationSizeOf:",
-                    &[Operand::object(value)],
-                )?
-                .as_word()
-                .ok_or_else(invalid)?;
-            // Native callers may use an empty family object as a factory receiver.
-            // Collection scans its actual padded extent; numeric value reads retain
-            // their separate exact-size checks.
+            let bytes = abi::as_size(s.send(s.id.root, b"allocationSizeOf:", &[*value])?)
+                .ok_or(s.invalid())?;
             for i in 0..bytes.div_ceil(size_of::<usize>()) {
                 let bits = value.cast::<usize>().add(i).read();
-                let edge =
-                    n.id.send_named(n.id.receiver, b"allocationAt:", &[Operand::word(bits)])?;
-                if edge.as_object().is_some() {
-                    n.id.send_named(visitor, b"visit:", &[edge])?;
+                if bits & 1 != 0 {
+                    continue;
+                }
+                let Some(address) = abi::size(bits) else {
+                    continue;
+                };
+                let edge = s.send(s.id.root, b"allocationAt:", &[address])?;
+                if !edge.is_null() {
+                    s.send(*visitor, b"visit:", &[edge])?;
                 }
             }
         }
-        Ok(Operand::unit())
-    })())
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
-macro_rules! entry {
-    ($name:ident,$op:expr) => {
-        pub(super) unsafe extern "C" fn $name(
-            context: *mut c_void,
-            receiver: Oop,
-            args: *const Operand,
-            count: usize,
-        ) -> Outcome {
-            done((|| unsafe {
-                let n = state(context)?;
-                let args = borrowed_slice(args, count).ok_or_else(invalid)?;
-                // Id callers keep receiver and Object arguments live through
-                // this complete call, including dependency callbacks. Fresh
-                // values created inside execute still need their own roots.
-                execute(n, receiver, args, $op)
-            })())
-        }
-    };
-}
-
-const NAMES: &[&[u8]] = &[
+macro_rules! operations{($(($name:literal,$entry:ident,$op:expr)),*$(,)?)=>{
+    $(pub(crate) unsafe extern "C" fn $entry(_id:Oop,c:Oop,r:Oop,a:*const Oop,n:usize)->Oop{
+        (||unsafe{let s=state(c)?;let a=abi::borrowed_slice(a,n).ok_or(s.invalid())?;s.execute(r,a,$op)})().unwrap_or_else(abi::fault_reference)
+    })*
+    static METHODS:&[MethodSpec]=&[$(MethodSpec{name:index($name),entry:Some($entry)}),*,
+        MethodSpec{name:index(b"rootsDo:"),entry:Some(roots)},MethodSpec{name:index(b"referencesOf:do:"),entry:Some(references)},
+        MethodSpec{name:index(b"evaluateWordProgram"),entry:Some(crate::expression::program)},
+        MethodSpec{name:index(b"tryPrimitiveExpression:"),entry:Some(crate::expression::evaluate)},
+        MethodSpec{name:index(b"tryPrimitiveExpressionAtEpoch:"),entry:Some(crate::expression::evaluate_at_epoch)}];
+};}
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
     b"behaviorEpoch",
     b"usesDefaultAllocation",
     b"canOmitAllocationFor:",
-    b"usesDefaultLookup:",
-    b"bind:to:",
     b"nativeBindingsMatch:",
-    b"nativeBindingQuerySemantics:for:",
     b"retain:",
     b"release:",
     b"behaviorOf:",
     b"allocationSizeOf:",
     b"tryRepresentationIdentityOf:behavior:bytes:",
-    b"tryRepresentationsOf:behavior:bytes:",
+    b"representationsMatch",
     b"allocate:bytes:",
     b"at:",
+    b"at:put:",
     b"rootsDo:",
     b"referencesOf:do:",
     b"addMethod",
     b"register:",
     b"trace:with:",
     b"ownerOf:put:",
-    b"at:put:",
     b"Word",
     b"WordVt",
+    b"Roots",
+    b"GC",
+    b"ObjectModel",
+    b"true",
+    b"false",
+    b"nil",
+    b"ObjectVt",
+    b"sizeBehavior",
+    b"parentOf:put:",
+    b"delegated",
+    b"setLayoutOf:to:rest:",
+    b"sequence",
+    b"methodAt:",
+    b"withContext:",
+    b"visit:",
+    b"precisePayloads",
+    b"allocationAt:",
+    b"size",
+    b"selectIfSameObject:with:ifEqual:ifDifferent:",
+    b"tryPrimitiveExpression:",
+    b"tryPrimitiveExpressionAtEpoch:",
+    b"sameObject:with:",
+    b"selectIfZero:ifNonzero:",
+    b"bitNot",
+    b"wrappingAdd:",
+    b"wrappingSubtract:",
+    b"wrappingMultiply:",
+    b"unsignedDivide:",
+    b"unsignedRemainder:",
+    b"bitAnd:",
+    b"bitOr:",
+    b"bitXor:",
+    b"shiftLeft:",
+    b"shiftRight:",
+    b"unsignedLessThan:",
+    b"fromBits:",
+    b"bits",
+    b"=",
+    b"fromUnsignedLow:high:",
+    b"low32",
+    b"high32",
+    b"apply:to:with:",
+    b"evaluateWordProgram"
 ];
-
-unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| {
-            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+const fn index(name: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        if NAMES[i].len() == name.len() {
+            let mut j = 0;
+            while j < name.len() && NAMES[i][j] == name[j] {
+                j += 1;
+            }
+            if j == name.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+operations![
+    (b"fromBits:", from_bits, 0),
+    (b"bits", bits, 1),
+    (b"=", equal, 2),
+    (b"bitNot", bit_not, 5),
+    (b"wrappingAdd:", wrapping_add, 6),
+    (b"wrappingSubtract:", wrapping_sub, 7),
+    (b"wrappingMultiply:", wrapping_mul, 8),
+    (b"unsignedDivide:", unsigned_div, 9),
+    (b"unsignedRemainder:", unsigned_rem, 10),
+    (b"bitAnd:", bit_and, 11),
+    (b"bitOr:", bit_or, 12),
+    (b"bitXor:", bit_xor, 13),
+    (b"shiftLeft:", shift_left, 14),
+    (b"shiftRight:", shift_right, 15),
+    (b"unsignedLessThan:", unsigned_less, 16),
+    (b"sameObject:with:", same_object, 17),
+    (b"selectIfZero:ifNonzero:", select_object, 18),
+    (b"fromUnsignedLow:high:", from_halves, 19),
+    (b"low32", low32, 20),
+    (b"high32", high32, 21),
+    (
+        b"selectIfSameObject:with:ifEqual:ifDifferent:",
+        select_same,
+        22
+    )
+];
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    argc: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([namespace]) = (unsafe { abi::borrowed_slice(a, argc) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { abi::borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if symbols.len() != NAMES.len() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let s = unsafe { &*old };
+        return if s.ready.get() && s.namespace == *namespace {
+            s.prototype
+        } else {
+            id.invalid
         };
+    }
+    (|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |name: &[u8]| send(*namespace, b"at:", &[names[name]]);
         let roots = named(b"Roots")?;
         let gc = named(b"GC")?;
         let model = named(b"ObjectModel")?;
@@ -275,250 +481,84 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         let falsity = named(b"false")?;
         let nil = named(b"nil")?;
         let parent = named(b"ObjectVt")?;
-
-        let retain = id.intern_name(b"retain:")?;
-        let release = id.intern_name(b"release:")?;
         let mut tokens = Vec::new();
-        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
-            tokens.push(
-                id.send(roots, retain, &[Operand::object(v)])?
-                    .as_word()
-                    .filter(|n| *n != 0)
-                    .ok_or_else(invalid)?,
-            );
-            Ok(v)
-        };
-        let mut names = HashMap::new();
-        for name in NAMES
-            .iter()
-            .copied()
-            .chain(METHODS.iter().map(|(name, _)| *name))
-        {
-            names.insert(name, keep(id.intern_name(name)?)?);
-        }
-        let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-        id.send_named(
-            model,
-            b"setLayoutOf:to:rest:",
-            &[
-                Operand::object(behavior),
-                Operand::bytes(&[]),
-                Operand::word(0),
-            ],
-        )?;
-        let prototype = keep(object(id.send_named(
-            model,
-            b"allocate:bytes:",
-            &[Operand::object(behavior), Operand::word(8)],
-        )?)?)?;
-        // Zero-filled ordinary storage represents the numeric prototype (zero).
-        let binding_guard = birnam_abi::binding_guard::BindingGuard::discover(id,
-            birnam_abi::binding_guard::SERVICES.map(|name| names[name]),
-            names[b"nativeBindingQuerySemantics:for:".as_slice()]);
-        let pointer = Box::into_raw(Box::new(Number {
-            id,
-            binding_guard,
-            roots,
-            gc,
-            model,
-            namespace,
-            behavior,
-            prototype,
-            truth,
-            falsity,
-            nil,
-            names,
-            thread: std::thread::current().id(),
-            scoped: RefCell::new(Vec::new()),
-            expression_meanings: core::cell::Cell::new((usize::MAX, 0)),
-        }));
-        let n = &*pointer;
-        for (name, method) in METHODS.iter().copied().chain([
-            (b"rootsDo:".as_slice(), self::roots as Method),
-            (b"referencesOf:do:", references),
-        ]) {
-            n.send(
+        let result = (|| {
+            let mut keep = |v| -> Result<Oop, Oop> {
+                tokens.push(send(roots, b"retain:", &[v])?);
+                Ok(v)
+            };
+            let behavior = keep(send(parent, b"delegated", &[])?)?;
+            let empty = keep(send(id.root, b"sequence", &[])?)?;
+            send(
+                model,
+                b"setLayoutOf:to:rest:",
+                &[behavior, empty, abi::size(0).unwrap()],
+            )?;
+            let prototype = keep(send(
+                model,
+                b"allocate:bytes:",
+                &[behavior, abi::size(8).unwrap()],
+            )?)?;
+            let s = Box::into_raw(Box::new(Number {
+                id,
+                namespace: *namespace,
+                roots,
+                gc,
+                model,
                 behavior,
-                b"addMethod",
-                &[
-                    Operand::object(n.names[name]),
-                    Operand::entry(NativeEntry::new(method, pointer.cast())),
-                ],
-            )?;
-        }
-        n.send(roots, b"register:", &[Operand::object(prototype)])?;
-        n.send(
-            gc,
-            b"trace:with:",
-            &[Operand::object(behavior), Operand::object(prototype)],
-        )?;
-        n.send(
-            id.receiver,
-            b"ownerOf:put:",
-            &[Operand::object(behavior), Operand::object(prototype)],
-        )?;
-        for (name, value) in [(b"Word".as_slice(), prototype), (b"WordVt", behavior)] {
-            n.send(
-                namespace,
-                b"at:put:",
-                &[Operand::object(n.names[name]), Operand::object(value)],
-            )?;
-        }
+                prototype,
+                truth,
+                falsity,
+                nil,
+                names: names.clone(),
+                scoped: RefCell::new(Vec::new()),
+                witnesses: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
+                expression_meanings: Cell::new((usize::MAX, 0)),
+                expression_entry: Cell::new(ptr::null_mut()),
+                ready: Cell::new(false),
+            }));
+            INSTANCE.store(s, Ordering::Release);
+            let s = &*s;
+            for spec in METHODS {
+                let name = NAMES[spec.name];
+                let method = s.send(image, b"methodAt:", &[symbols[spec.name]])?;
+                let method = s.send(method, b"withContext:", &[prototype])?;
+                if name == b"evaluateWordProgram" {
+                    s.expression_entry.set(method);
+                } else {
+                    s.send(behavior, b"addMethod", &[symbols[spec.name], method])?;
+                }
+                if let Some(code) = crate::expression::code_for(name) {
+                    s.witnesses[code as usize].set(method);
+                }
+            }
+            s.send(roots, b"register:", &[prototype])?;
+            s.send(gc, b"trace:with:", &[behavior, prototype])?;
+            s.send(id.root, b"ownerOf:put:", &[behavior, prototype])?;
+            // Boundary sizes have the same unsigned operations, without changing
+            // the identity or eight-byte storage of constructed Word objects.
+            let size_behavior = s.send(id.root, b"sizeBehavior", &[])?;
+            s.send(id.root, b"parentOf:put:", &[size_behavior, behavior])?;
+            for (name, value) in [(b"Word".as_slice(), prototype), (b"WordVt", behavior)] {
+                s.send(*namespace, b"at:put:", &[s.names[name], value])?;
+            }
+            s.ready.set(true);
+            Ok(prototype)
+        })();
         for token in tokens {
-            id.send(roots, release, &[Operand::word(token)])?;
+            send(roots, b"release:", &[token])?;
         }
-        Ok(Operand::object(prototype))
-    }
-}
-unsafe extern "C" fn initialize(
-    id: *const Protocol,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([namespace]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let namespace = object(*namespace)?;
-        let id = *id;
-        let current = id.send_named(
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Word")?)],
-        )?;
-        if current.kind() == native::OBJECT {
-            return Ok(current);
-        }
-        construct(id, namespace)
-    })())
+        result
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
-unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
-    unsafe {
-        if op == 0 {
-            let [bits] = args else { return Err(invalid()) };
-            return n.make(bits.as_word().ok_or_else(invalid)?);
-        }
-        if op == 17 {
-            let [left, right] = args else {
-                return Err(invalid());
-            };
-            return n.make(usize::from(object(*left)? == object(*right)?));
-        }
-        if op == 18 {
-            let [zero, nonzero] = args else {
-                return Err(invalid());
-            };
-            let value = n.read(r)?.ok_or_else(invalid)?;
-            let (zero, nonzero) = (object(*zero)?, object(*nonzero)?);
-            return Ok(Operand::object(if value == 0 { zero } else { nonzero }));
-        }
-        // Only well-shaped binary requests use the optional batch. Malformed
-        // arity/carriers retain the original left-read-before-rejection order.
-        if (6..=16).contains(&op) && !r.is_null() && args.len() == 1
-            && args[0].as_object().is_some_and(|v| !v.is_null())
-        {
-            let mut values = [0u64; 2];
-            if !n.read_inputs(&[Operand::object(r), args[0]], &mut values)? { return Err(invalid()); }
-            if op == 16 { return Ok(n.boolean(values[0] < values[1])); }
-            let value = crate::operations::calculate(values[0], values[1], op).ok_or_else(invalid)?;
-            return n.make(value as usize);
-        }
-        if op >= 5 {
-            let value = n.read(r)?.ok_or_else(invalid)?;
-            if op == 5 {
-                if !args.is_empty() {
-                    return Err(invalid());
-                }
-                return n.make(!value as usize);
-            }
-            let [right] = args else {
-                return Err(invalid());
-            };
-            let right = n.read(object(*right)?)?.ok_or_else(invalid)?;
-            if op == 16 {
-                return Ok(n.boolean(value < right));
-            }
-            let result = crate::operations::calculate(value, right, op).ok_or_else(invalid)?;
-            return n.make(result as usize);
-        }
-        if args.len() != usize::from(op == 2) {
-            return Err(invalid());
-        }
-        let Some(value) = n.read(r)? else {
-            return Ok(Operand::object(n.nil));
-        };
-        match op {
-            1 => Ok(Operand::word(value as usize)),
-            2 => Ok(n.boolean(n.read(object(args[0])?)? == Some(value))),
-            _ => Err(invalid()),
-        }
-    }
-}
-entry!(from_bits, 0);
-entry!(bits, 1);
-entry!(equal, 2);
-entry!(bit_not, 5);
-entry!(wrapping_add, 6);
-entry!(wrapping_sub, 7);
-entry!(wrapping_mul, 8);
-entry!(unsigned_div, 9);
-entry!(unsigned_rem, 10);
-entry!(bit_and, 11);
-entry!(bit_or, 12);
-entry!(bit_xor, 13);
-entry!(shift_left, 14);
-entry!(shift_right, 15);
-entry!(unsigned_less, 16);
-entry!(same_object, 17);
-entry!(select_object, 18);
-// Pure data selection: native callers keep Object operands live throughout the
-// synchronous Id call. No allocation, payload read, dependency send or callback
-// occurs here, so no additional root registrations or allocator checks are needed.
-unsafe extern "C" fn select_same_object(
-    context: *mut c_void, _: Oop, args: *const Operand, count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        state(context)?;
-        let [left, right, equal, different] = borrowed_slice(args, count).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let (left, right, equal, different) =
-            (object(*left)?, object(*right)?, object(*equal)?, object(*different)?);
-        Ok(Operand::object(if left == right { equal } else { different }))
-    })())
-}
-
-const METHODS: &[(&[u8], Method)] = &[
-    (b"selectIfSameObject:with:ifEqual:ifDifferent:", select_same_object),
-    (b"tryPrimitiveExpression:", crate::expression::evaluate),
-    (
-        b"tryPrimitiveExpressionAtEpoch:",
-        crate::expression::evaluate_at_epoch,
-    ),
-    (b"sameObject:with:", same_object),
-    (b"selectIfZero:ifNonzero:", select_object),
-    (b"bitNot", bit_not),
-    (b"wrappingAdd:", wrapping_add),
-    (b"wrappingSubtract:", wrapping_sub),
-    (b"wrappingMultiply:", wrapping_mul),
-    (b"unsignedDivide:", unsigned_div),
-    (b"unsignedRemainder:", unsigned_rem),
-    (b"bitAnd:", bit_and),
-    (b"bitOr:", bit_or),
-    (b"bitXor:", bit_xor),
-    (b"shiftLeft:", shift_left),
-    (b"shiftRight:", shift_right),
-    (b"unsignedLessThan:", unsigned_less),
-    (b"fromBits:", from_bits),
-    (b"bits", bits),
-    (b"=", equal),
-];

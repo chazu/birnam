@@ -155,10 +155,14 @@ impl State {
         self.sequence_snapshot(o, &[])
     }
     fn sequence_snapshot(&self, o: Oop, prefix: &[Oop]) -> Result<Vec<Oop>, Oop> {
+        self.sequence_snapshot_with(o, prefix, &[])
+    }
+    fn sequence_snapshot_with(&self, o: Oop, prefix: &[Oop], suffix: &[Oop]) -> Result<Vec<Oop>, Oop> {
         let (p, n) = self.sequence_storage(o)?;
-        let mut values = Vec::with_capacity(prefix.len() + n);
+        let mut values = Vec::with_capacity(prefix.len() + n + suffix.len());
         values.extend_from_slice(prefix);
         values.extend_from_slice(unsafe { core::slice::from_raw_parts(p, n) });
+        values.extend_from_slice(suffix);
         for &v in &values {
             self.behavior(v)?;
         }
@@ -173,6 +177,10 @@ impl State {
             (Action::ApplyArguments, &[callable, receiver]) => {
                 let forwarded = self.sequence_snapshot(sequence, &[receiver])?;
                 unsafe { self.send(callable, b"apply", &forwarded) }
+            }
+            (Action::ApplyArgumentsWith, [callable, receiver, suffix @ ..]) => {
+                let forwarded = self.sequence_snapshot_with(sequence, &[*receiver], suffix)?;
+                unsafe { self.send(*callable, b"apply", &forwarded) }
             }
             (Action::LoadArguments, &[path]) => {
                 let values = self.sequence_values(sequence)?;

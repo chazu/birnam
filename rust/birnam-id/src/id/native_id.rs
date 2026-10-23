@@ -150,6 +150,7 @@ pub(crate) enum Action {
     LiteralAt,
     Invoke,
     ApplyArguments,
+    ApplyArgumentsWith,
     LoadArguments,
     LoadNative,
     WithContext,
@@ -238,6 +239,7 @@ core_primitives![
     (b"methodAt:", MethodAt),
     (b"invokeOn:arguments:", Invoke),
     (b"apply:to:", ApplyArguments),
+    (b"apply:to:with:", ApplyArgumentsWith),
     (b"load:", LoadArguments),
     (b"loadNative", LoadNative),
     (b"literalAt:", LiteralAt),
@@ -422,7 +424,7 @@ impl State {
                 | Action::Bindings => self.meta,
                 Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol => self.name,
                 Action::At | Action::Put | Action::SequenceSize
-                | Action::ApplyArguments | Action::LoadArguments => self.sequence,
+                | Action::ApplyArguments | Action::ApplyArgumentsWith | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
                 Action::SymbolHash => self.symbol,
                 Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
@@ -748,7 +750,7 @@ impl State {
                 let (receiver, seq) = pair()?;
                 unsafe { self.send(seq, b"apply:to:", &[r, receiver]) }
             }
-            Action::ApplyArguments | Action::LoadArguments => {
+            Action::ApplyArguments | Action::ApplyArgumentsWith | Action::LoadArguments => {
                 unsafe { self.apply_arguments(action, r, a) }
             }
             Action::WithContext => self.clone_method(r, one()?),

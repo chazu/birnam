@@ -320,3 +320,24 @@ retaining every temporary index until a slot-construction loop ends. No addition
 Id hot-path bookkeeping is introduced. High-level Integer/Vector adapters and
 raw-word image transport await integration with those owners; this checkpoint does
 not claim their complete acceptance. [Receipts](../measurements/oop-object-model-20261023.json).
+
+## Piece 13: Word values and expression evaluation use Oops
+
+Word now receives and returns objects throughout. Constructed Words retain their
+fresh identity and full eight-byte unsigned payload. Boundary sizes participate
+in unsigned operations; full-width values remain Word objects. Explicit low/high
+32-bit projections support lossless transport without sharing private payloads.
+ObjectModel's raw image slots now round-trip `u64::MAX` through that protocol.
+
+The native gate checks full-width construction/copy, wrapping arithmetic, shifts
+outside the word width, division failure, guarded expression evaluation, operator
+replacement/refusal and restoration, GC, and image-slot transport. The existing
+machine-arithmetic unit test also passes. Expression guards compare current Method
+objects and retain the epoch check before committing a result.
+
+Regression review replaced a byte-by-byte program-reading loop with the argument
+container's bulk `apply:to:with:` protocol. The container supplies one snapshot plus
+additional inputs; no temporary managed input object or per-byte Id send is needed.
+Replacing that protocol changes the subsequent evaluation, as the native test
+verifies. Broader throughput measurement remains deferred with the compiler and
+full-language integration. [Receipts](../measurements/oop-word-20261023.json).
