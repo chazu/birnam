@@ -393,3 +393,25 @@ argument rooting. This is structural simplification, not a claimed timing win:
 strict byte transfer still expands bytes into Oop arguments, and full-language
 performance recovery remains deferred. Real Integer/Float/Vector integration is
 still pending. [Qualification receipts](../measurements/oop-string-20261023.json).
+
+## Piece 16: Float arithmetic uses Oops
+
+Float keeps its eight-byte IEEE payload and exact-vtable recognition. Its native
+methods receive Oop contexts and Oop arguments/results. Full-width bit transport
+uses Word's public low/high projections and constructor; no foreign payload is
+read. ObjectModel still allocates the storage and owns the registered raw layout.
+Precise and conservative owner tracing retain their existing policies.
+
+Removed the per-call root-token allocation/retain/release loop. Id already keeps
+incoming call objects alive, and scoped roots now protect only temporary objects
+across callbacks. Current Float, Integer, String and Error constructors remain
+observable, as does the current Namespace ErrorVt binding. Error diagnostics stay
+ordinary language objects, distinct from failed Id returns.
+
+The native gate checks exact signed-zero, infinity, quiet/signaling NaN and
+subnormal bit transport; arithmetic and mixed input; signed rounding/conversion;
+zero-divide/domain/overflow objects; live constructor and ErrorVt replacement;
+invalid extent/private-vtable rejection; and collection inside allocation and
+numeric conversion. All prior gates pass. Integer and Error are independent C
+providers here; the full-language integration and performance work remain pending.
+[Qualification receipts](../measurements/oop-float-20261023.json).

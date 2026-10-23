@@ -27,8 +27,10 @@ unsafe fn run() {
             library.join("libbirnam_word.dylib"),
             library.join("libbirnam_bytes.dylib"),
             library.join("libbirnam_string.dylib"),
+            library.join("libbirnam_float.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"Float",b"FloatVt",b"integerInput",b"errorFactory",b"numericAllocate",b"Error",b"ErrorVt",b"kind:message:",b"overflow",b"zeroDivide",b"domain",b"typeMismatch",b"+",b"-",b"*",b"/",b"<",b"<=",b">",b">=",b"negated",b"abs",b"floor",b"ceiling",b"rounded",b"sqrt",
             b"String",b"StringBuilder",b"asBytes",b"bytes",b"trimmed",b"replace:with:",b"asSymbol",b"asString",b"add:",b"new",b"clone",b",",b"=",b"installNumbers:",b"installCollections:",b"byteAt:",b"copyFrom:to:",b"indexOf:",b"bracketDepth",b"asInteger",b"asNumber",b"addByte:",b"split:",b"bitsOf:",b"numericWord",b"vectorNew",b"vectorAdd",b"collectionEquals:",b"collectionHash",
             b"sequence",
             b"objectBehavior",
@@ -1011,6 +1013,103 @@ unsafe fn run() {
         send(gc,b"collectPrecisely",&[]).unwrap();
         assert!(send(id.root,b"identityOf:",&[original]).is_err());
         println!("String Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed");
+
+
+        let integer_input=send(actor_vt,b"lookup",&[sel(b"integerInput")]).unwrap();
+        send(integer_type,b"addMethod",&[sel(b"wordOf:"),integer_input]).unwrap();
+        let error_type=send(sequence_type,b"delegated",&[]).unwrap();
+        let error_factory_method=send(actor_vt,b"lookup",&[sel(b"errorFactory")]).unwrap();
+        send(error_type,b"addMethod",&[sel(b"kind:message:"),error_factory_method]).unwrap();
+        let error_factory=send(id.root,b"sequence",&[]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[error_factory,error_type]).unwrap();
+        send(namespace,b"at:put:",&[sel(b"Error"),error_factory]).unwrap();
+        send(namespace,b"at:put:",&[sel(b"ErrorVt"),error_type]).unwrap();
+        let float_args=send(id.root,b"sequence",&[namespace]).unwrap();
+        let float=id.send(names[14],id.load,&[float_args]).expect("Float loaded");
+        let float_type=send(id.root,b"behaviorOf:",&[float]).unwrap();
+        let float_meta=send(id.root,b"behaviorOf:",&[float_type]).unwrap();
+        let private_meta=send(float_meta,b"delegated",&[]).unwrap();
+        let collecting_allocate=send(actor_vt,b"lookup",&[sel(b"numericAllocate")]).unwrap();
+        send(private_meta,b"addMethod",&[sel(b"allocate"),collecting_allocate]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[float_type,private_meta]).unwrap();
+        let word_value=|bits:u64|send(word,b"fromUnsignedLow:high:",&[abi::size(bits as u32 as usize).unwrap(),abi::size((bits>>32)as usize).unwrap()]).unwrap();
+        let full_bits=|value|->u64{
+            if let Some(bits)=abi::as_size(value){return bits as u64;}
+            let lo=abi::as_size(send(value,b"low32",&[]).unwrap()).unwrap()as u64;
+            let hi=abi::as_size(send(value,b"high32",&[]).unwrap()).unwrap()as u64;
+            lo|(hi<<32)
+        };
+        let make_float=|bits:u64|send(float,b"fromBits:",&[word_value(bits)]).unwrap();
+        let read_float=|value|full_bits(send(value,b"bits",&[]).unwrap());
+        for bits in [0,1,0x8000_0000_0000_0000,0x7ff0_0000_0000_0000,0xfff0_0000_0000_0000,0xfff8_1234_5678_9abc,0x7ff0_1234_5678_9abc]{
+            let value=make_float(bits);let token=send(roots,b"retain:",&[value]).unwrap();
+            assert_eq!(read_float(value),bits);
+            assert_eq!(full_bits(send(float,b"bitsOf:",&[value]).unwrap()),bits);
+            send(gc,b"collectPrecisely",&[]).unwrap();assert_eq!(read_float(value),bits);
+            send(roots,b"release:",&[token]).unwrap();
+        }
+        let left=make_float(2.5f64.to_bits());let left_token=send(roots,b"retain:",&[left]).unwrap();
+        let right=make_float((-1.5f64).to_bits());let right_token=send(roots,b"retain:",&[right]).unwrap();
+        assert_eq!(read_float(send(left,b"+",&[right]).unwrap()),1.0f64.to_bits());
+        assert_eq!(read_float(send(left,b"+",&[abi::size(2).unwrap()]).unwrap()),4.5f64.to_bits());
+        assert_eq!(send(left,b">",&[right]).unwrap(),truth);
+        assert_eq!(read_float(send(right,b"negated",&[]).unwrap()),1.5f64.to_bits());
+        assert_eq!(read_float(send(right,b"abs",&[]).unwrap()),1.5f64.to_bits());
+        assert_eq!(full_bits(send(right,b"asInteger",&[]).unwrap()),(-1i64)as u64);
+        assert_eq!(full_bits(send(right,b"floor",&[]).unwrap()),(-2i64)as u64);
+        assert_eq!(full_bits(send(right,b"ceiling",&[]).unwrap()),(-1i64)as u64);
+        assert_eq!(full_bits(send(right,b"rounded",&[]).unwrap()),(-2i64)as u64);
+        let positive_zero=make_float(0);let pos_token=send(roots,b"retain:",&[positive_zero]).unwrap();
+        let negative_zero=make_float(1<<63);let neg_token=send(roots,b"retain:",&[negative_zero]).unwrap();
+        assert_eq!(send(positive_zero,b"collectionHash",&[]).unwrap(),send(negative_zero,b"collectionHash",&[]).unwrap());
+        assert_eq!(send(positive_zero,b"=",&[negative_zero]).unwrap(),truth);
+        for zero in [positive_zero,negative_zero]{
+            let error=send(left,b"/",&[zero]).unwrap();
+            assert_eq!(send(error,b"at:",&[abi::size(0).unwrap()]).unwrap(),sel(b"zeroDivide"));
+            assert_eq!(text_bytes(send(error,b"at:",&[abi::size(1).unwrap()]).unwrap()),b"division by zero");
+        }
+        let domain_error=send(right,b"sqrt",&[]).unwrap();let domain_token=send(roots,b"retain:",&[domain_error]).unwrap();
+        assert_eq!(send(domain_error,b"at:",&[abi::size(0).unwrap()]).unwrap(),sel(b"domain"));
+        assert_eq!(send(left,b"+",&[domain_error]).unwrap(),domain_error);
+        let infinity=make_float(f64::INFINITY.to_bits());let infinity_token=send(roots,b"retain:",&[infinity]).unwrap();
+        let overflow=send(infinity,b"asInteger",&[]).unwrap();
+        assert_eq!(send(overflow,b"at:",&[abi::size(0).unwrap()]).unwrap(),sel(b"overflow"));
+        assert_eq!(text_bytes(send(negative_zero,b"printString",&[]).unwrap()),b"-0.0");
+        let nan=make_float(0xfff8_1234_5678_9abc);let nan_token=send(roots,b"retain:",&[nan]).unwrap();
+        assert_eq!(send(nan,b"=",&[nan]).unwrap(),falsity);
+        assert_eq!(send(nan,b"collectionEquals:",&[nan]).unwrap(),truth);
+        let nan2=make_float(0xfff8_1234_5678_9abc);
+        assert_eq!(send(nan,b"collectionEquals:",&[nan2]).unwrap(),falsity);
+        let constructor=send(float_type,b"lookup",&[sel(b"fromBits:")]).unwrap();let constructor_token=send(roots,b"retain:",&[constructor]).unwrap();
+        send(float_type,b"addMethod",&[sel(b"fromBits:"),replacement]).unwrap();
+        assert_eq!(send(left,b"+",&[right]).unwrap(),expected);
+        send(float_type,b"addMethod",&[sel(b"fromBits:"),constructor]).unwrap();
+        let error_constructor=send(error_type,b"lookup",&[sel(b"kind:message:")]).unwrap();let error_constructor_token=send(roots,b"retain:",&[error_constructor]).unwrap();
+        send(error_type,b"addMethod",&[sel(b"kind:message:"),replacement]).unwrap();
+        assert_eq!(send(right,b"sqrt",&[]).unwrap(),expected);
+        send(error_type,b"addMethod",&[sel(b"kind:message:"),error_constructor]).unwrap();
+        send(namespace,b"at:put:",&[sel(b"ErrorVt"),float_type]).unwrap();
+        assert_eq!(send(left,b"+",&[right]).unwrap(),right);
+        send(namespace,b"at:put:",&[sel(b"ErrorVt"),error_type]).unwrap();
+        let text_constructor=send(string_type,b"lookup",&[sel(b"fromBytes:")]).unwrap();
+        let text_constructor_token=send(roots,b"retain:",&[text_constructor]).unwrap();
+        send(string_type,b"addMethod",&[sel(b"fromBytes:"),replacement]).unwrap();
+        assert_eq!(send(left,b"printString",&[]).unwrap(),expected);
+        send(string_type,b"addMethod",&[sel(b"fromBytes:"),text_constructor]).unwrap();
+        send(roots,b"release:",&[text_constructor_token]).unwrap();
+        send(integer_type,b"addMethod",&[sel(b"fromWord:"),replacement]).unwrap();
+        assert_eq!(send(right,b"asInteger",&[]).unwrap(),expected);
+        send(integer_type,b"addMethod",&[sel(b"fromWord:"),identity_number]).unwrap();
+        let malformed=send(float_type,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+        assert!(send(float,b"bitsOf:",&[malformed]).unwrap().is_null());
+        let private=send(id.root,b"ensurePrivateVtableFor:",&[left]).unwrap();
+        assert_ne!(private,float_type);
+        assert!(send(float,b"bitsOf:",&[left]).unwrap().is_null());
+        send(id.root,b"reassociateBehaviorOf:with:",&[left,float_type]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[float_type,float_meta]).unwrap();
+        for token in [left_token,right_token,pos_token,neg_token,domain_token,infinity_token,nan_token,constructor_token,error_constructor_token]{send(roots,b"release:",&[token]).unwrap();}
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        println!("Float exact IEEE bits, arithmetic, conversions, live constructors/ErrorVt and allocation-time GC: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();
