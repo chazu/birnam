@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 5],
+    modules: [Oop; 6],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -674,6 +674,73 @@ pub(super) unsafe fn check(
         send(namespace, b"at:put:", &[sel(b"System"), system]).unwrap();
         println!(
             "Prelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert!(id.send(modules[5], id.load, &[args]).unwrap().is_null());
+        let reader = keep(send(system_type, b"lookup", &[sel(b"readLine")]).unwrap());
+        send(system_type, b"removeMethod:", &[sel(b"readLine")]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert!(id.send(modules[5], id.load, &[args]).unwrap().is_null());
+        assert!(
+            send(system_type, b"lookup", &[sel(b"readLine")])
+                .unwrap()
+                .is_null()
+        );
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        let no_args = send(id.root, b"sequence", &[]).unwrap();
+        let first = send(reader, b"invokeOn:arguments:", &[system, no_args]).unwrap();
+        send(system_type, b"addMethod", &[sel(b"readLine"), reader]).unwrap();
+        if std::env::args().nth(2).as_deref() == Some("numeric-input-error") {
+            assert_eq!(
+                send(first, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+                sel(b"ioError")
+            );
+            assert_eq!(
+                text_bytes(send(first, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+                b"stdin read failed"
+            );
+            keep(error);
+            send(
+                namespace,
+                b"at:put:",
+                &[sel(b"Error"), core::ptr::null_mut()],
+            )
+            .unwrap();
+            assert_eq!(send(system, b"readLine", &[]).unwrap(), nil);
+            send(namespace, b"at:put:", &[sel(b"Error"), error]).unwrap();
+            println!("SYSTEM_INPUT_ERROR_OK");
+            return;
+        }
+        assert_eq!(text_bytes(first), b"a\0\xff\r");
+        assert_eq!(send(system, b"readLine", &[one]).unwrap(), nil);
+        assert_eq!(text_bytes(send(system, b"readLine", &[]).unwrap()), b"");
+        let string_type = send(id.root, b"behaviorOf:", &[string]).unwrap();
+        let factory = keep(send(string_type, b"lookup", &[sel(b"fromBytes:")]).unwrap());
+        send(
+            string_type,
+            b"addMethod",
+            &[sel(b"fromBytes:"), replacement],
+        )
+        .unwrap();
+        assert_eq!(send(system, b"readLine", &[]).unwrap(), expected);
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), factory]).unwrap();
+        assert_eq!(text_bytes(send(system, b"readLine", &[]).unwrap()), b"last");
+        assert_eq!(send(system, b"readLine", &[]).unwrap(), nil);
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        println!(
+            "System readLine binary input, EOF, detached Method, live constructor and callback GC: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

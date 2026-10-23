@@ -34,8 +34,10 @@ unsafe fn run() {
             library.join("libbirnam_vector.dylib"),
             library.join("libbirnam_map.dylib"),
             library.join("libbirnam_prelude.dylib"),
+            library.join("libbirnam_system_input.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"readLine",b"ioError",
             b"System",b"SystemVt",
             b"Map",b"MapNode",b"includesKey:",b"at:ifAbsent:",b"keys",b"values",b"keysAndValuesDo:",b"rehashImage:",b"collisionHash",
             b"CollectionVt",b"collectionProbe",
@@ -970,8 +972,8 @@ unsafe fn run() {
         send(bytes_type,b"addMethod",&[sel(b"fromBytes:"),bytes_factory]).unwrap();
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
-        if std::env::args().nth(2).as_deref()==Some("numeric-integration") {
-            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18]],[namespace,roots,gc,actor,base,word,string]);
+        if matches!(std::env::args().nth(2).as_deref(),Some("numeric-integration"|"numeric-input-error")) {
+            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19]],[namespace,roots,gc,actor,base,word,string]);
             return;
         }
         // Numeric and collection adapters are independent C objects for this slice.

@@ -516,3 +516,21 @@ native check verifies payload size, vtable ownership, rebinding, precise GC and
 repeated-load identity. All earlier gates pass. Full Bootstrap and application
 qualification remain pending.
 [Qualification receipts](../measurements/oop-prelude-20261023.json).
+
+## Piece 21: System input uses Oop contexts and byte objects
+
+`readLine` now transfers arbitrary bytes as an ordinary argument Sequence to the
+current String constructor. It preserves binary input, LF-only removal, EOF, lazy
+Error lookup and the existing stdin-lock lifetime. Method context is an Oop; native
+entry pointers and Operand/Outcome carriers are gone.
+
+One ordinary root Sequence replaces separately retained dependency roots. Incoming
+objects use Id call roots. A private error Method receives the diagnostic as its
+receiver, so lazy lookup and Error construction require no temporary root-token
+cleanup. Dependencies remain live if publication exposes a Method before failing.
+
+The gate passes normal stdin fixtures and a separate directory-stdin failure
+process, checking binary/empty/unterminated lines, arity, EOF, absent Error, captured
+Methods after removal, live String replacement, reload behavior and callback GC.
+Broad performance work and full-language qualification remain pending.
+[Qualification receipts](../measurements/oop-system-input-20261023.json).
