@@ -95,6 +95,10 @@ unsafe context interpretation, and the need to retain a Fault's reference tag
 independently of its retired metadata. The original Id owner-thread cache and
 collector's lazy parent-walk scratch behavior were retained.
 
+Follow-up: [causal slowdown diagnosis](oop-id-slowdown-diagnosis-20261023.md)
+separates per-send metadata/rooting work, temporary Names and GC housekeeping.
+It retains no diagnostic bypasses.
+
 ## Performance result
 
 The final comparison uses the same C workload, four fresh processes per variant,
