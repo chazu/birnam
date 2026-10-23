@@ -25,6 +25,7 @@ unsafe fn run() {
             library.join("libbirnam_nil.dylib"),
             library.join("libbirnam_object_model.dylib"),
             library.join("libbirnam_word.dylib"),
+            library.join("libbirnam_bytes.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"sequence",
@@ -101,6 +102,9 @@ unsafe fn run() {
             b"fromUnsignedLow:high:", b"low32", b"high32", b"fromBits:", b"bits", b"wrappingAdd:", b"wrappingSubtract:",
             b"shiftLeft:", b"unsignedDivide:", b"tryPrimitiveExpression:", b"tryPrimitiveExpressionAtEpoch:",
             b"imageSlotAt:in:", b"restoreImageSlotAt:in:put:", b"apply:to:with:",
+            b"fromByteValues", b"appendByteValues", b"appendBytes:", b"appendTo:", b"bytes", b"length", b"byteAtWord:",
+            b"sliceFromWord:toWord:", b"sha256", b"readU64At:", b"readTaggedTableWithSchema:limit:", b"withSymbolName:",
+            b"fromWord:", b"numberIdentity", b"externalCharge",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
             b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
             b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
@@ -822,6 +826,62 @@ unsafe fn run() {
         assert_eq!(abi::as_size(send(max,b"high32",&[]).unwrap()),Some(u32::MAX as usize));
         for token in [max_token,one_token,program_token]{send(roots,b"release:",&[token]).unwrap();}
         println!("Word full-width values, arithmetic, live expression guards and image slots: passed");
+
+        let identity_number=send(actor_vt,b"lookup",&[sel(b"numberIdentity")]).unwrap();
+        send(integer_type,b"addMethod",&[sel(b"wordOf:"),identity_number]).unwrap();
+        send(integer_type,b"addMethod",&[sel(b"fromWord:"),identity_number]).unwrap();
+        let bytes_args=send(id.root,b"sequence",&[namespace]).unwrap();
+        let bytes=id.send(names[12],id.load,&[bytes_args]).unwrap();
+        let gc_type=send(id.root,b"behaviorOf:",&[gc]).unwrap();
+        let original_charge=send(gc_type,b"lookup",&[sel(b"chargeExternalAllocation:")]).unwrap();
+        send(actor,b"at:put:",&[abi::size(35).unwrap(),original_charge]).unwrap();
+        let collecting_charge=send(actor_vt,b"lookup",&[sel(b"externalCharge")]).unwrap();
+        send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),collecting_charge]).unwrap();
+        let data=send(bytes,b"fromByteValues",&[abi::size(0).unwrap(),abi::size(255).unwrap(),abi::size(17).unwrap(),abi::size(65).unwrap()]).unwrap();
+        let data_token=send(roots,b"retain:",&[data]).unwrap();
+        send(data,b"appendBytes:",&[data]).unwrap();
+        assert_eq!(abi::as_size(send(data,b"length",&[]).unwrap()),Some(8));
+        for (i,expected) in [0,255,17,65,0,255,17,65].into_iter().enumerate(){
+            assert_eq!(abi::as_size(send(data,b"byteAtWord:",&[abi::size(i).unwrap()]).unwrap()),Some(expected));
+        }
+        send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
+        let name=send(id.root,b"nameWithBytes",&[abi::size(104).unwrap(),abi::size(105).unwrap()]).unwrap();
+        let text=send(bytes,b"fromBytes:",&[name]).unwrap();
+        assert_eq!(abi::as_size(send(text,b"length",&[]).unwrap()),Some(2));
+        let name_type=send(id.root,b"behaviorOf:",&[name]).unwrap();
+        let original_append=send(name_type,b"lookup",&[sel(b"appendTo:")]).unwrap();
+        let alternate=send(actor_vt,b"lookup",&[sel(b"doesNotUnderstand:")]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"appendTo:"),alternate]).unwrap();
+        let changed=send(bytes,b"fromBytes:",&[name]).unwrap();
+        assert_eq!(abi::as_size(send(changed,b"length",&[]).unwrap()),Some(0));
+        send(name_type,b"addMethod",&[sel(b"appendTo:"),original_append]).unwrap();
+        let symbol_copy=send(text,b"withSymbolName:",&[sel(b"missingProbe")]).unwrap();
+        assert_eq!(abi::as_size(send(symbol_copy,b"length",&[]).unwrap()),Some(14));
+        let full=send(bytes,b"fromByteValues",&vec![abi::size(255).unwrap();8]).unwrap();
+        let full_word=send(full,b"readU64At:",&[abi::size(0).unwrap()]).unwrap();
+        assert_eq!(abi::as_size(send(full_word,b"high32",&[]).unwrap()),Some(u32::MAX as usize));
+        let digest=send(data,b"sha256",&[]).unwrap();
+        assert_eq!(abi::as_size(send(digest,b"length",&[]).unwrap()),Some(32));
+        for (index,expected) in [41, 66, 222, 45, 53, 6, 155, 43, 132, 77, 179, 102, 216, 217, 185, 241, 93, 238, 8, 18, 225, 239, 73, 145, 7, 34, 38, 160, 2, 133, 134, 19].into_iter().enumerate(){
+            assert_eq!(abi::as_size(send(digest,b"byteAtWord:",&[abi::size(index).unwrap()]).unwrap()),Some(expected));
+        }
+        let source:Vec<_>=[1,0,0,0,2,7,0,0,0,1,0,0,0,4,3,0,0,0,120,121,122].into_iter().map(|v|abi::size(v).unwrap()).collect();
+        let source=send(bytes,b"fromByteValues",&source).unwrap();
+        let schema=send(bytes,b"fromByteValues",&[48,48,50,48,52].map(|v|abi::size(v).unwrap())).unwrap();
+        let table=send(source,b"readTaggedTableWithSchema:limit:",&[schema,abi::size(10).unwrap()]).unwrap();
+        let table_token=send(roots,b"retain:",&[table]).unwrap();
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        assert!(send(id.root,b"identityOf:",&[source]).is_err());
+        assert_eq!(abi::as_size(send(table,b"size",&[]).unwrap()),Some(1));
+        let row=send(table,b"at:",&[abi::size(0).unwrap()]).unwrap();
+        let fields=send(row,b"at:",&[abi::size(1).unwrap()]).unwrap();
+        let field=send(fields,b"at:",&[abi::size(0).unwrap()]).unwrap();
+        let contents=send(field,b"at:",&[abi::size(2).unwrap()]).unwrap();
+        assert_eq!(abi::as_size(send(contents,b"length",&[]).unwrap()),Some(3));
+        assert_eq!(abi::as_size(send(contents,b"byteAtWord:",&[abi::size(0).unwrap()]).unwrap()),Some(120));
+        for token in [data_token,table_token]{send(roots,b"release:",&[token]).unwrap();}
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        println!("Bytes binary values, live accounting with GC, full-width reads and independent decoded views: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

@@ -341,3 +341,25 @@ additional inputs; no temporary managed input object or per-byte Id send is need
 Replacing that protocol changes the subsequent evaluation, as the native test
 verifies. Broader throughput measurement remains deferred with the compiler and
 full-language integration. [Receipts](../measurements/oop-word-20261023.json).
+
+## Piece 14: Bytes and decoded views use Oops
+
+Bytes transfers data through object protocols. Its own buffer objects remain the
+storage authority; other owners supply bytes through `appendTo:` and bulk byte
+values. Names and Symbols provide that protocol without exposing borrowed native
+pointers. Buffer operations and binary framing still run inside the Bytes owner.
+
+Removed the mirrored pointer/length payload, the Bytes/TaggedView discriminator,
+and empty buffer records for decoded views. Buffers and views retain their actual
+owned data, and their handles have zero payload. Neither contains managed payload
+references. Owner-local scoped roots replace per-scope retain/release message
+loops. Lazy decoded-table construction no longer requires the unused Vector
+factory; eager Vector results still use the current factory.
+
+The native gate checks zero/255 bytes, self-append, Name/Symbol transfer and live
+replacement, SHA-256 against an independent expected digest, full-width reads,
+GC inside external-capacity accounting, and a decoded view after its original
+buffer has been collected. Existing binary framing/hash unit tests and all prior
+native gates pass. Numeric adapters are exercised with an independent object
+provider; full Integer/Vector integration remains in the migration queue.
+[Qualification receipts](../measurements/oop-bytes-20261023.json).

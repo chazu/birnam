@@ -138,6 +138,8 @@ pub(crate) enum Action {
     NewName,
     NameSize,
     NameAt,
+    NameAppend,
+    SymbolAppend,
     Intern,
     IsSymbol,
     IsBehavior,
@@ -228,6 +230,8 @@ core_primitives![
     (b"nameWithBytes", NewName),
     (b"size", NameSize),
     (b"at:", NameAt),
+    (b"appendTo:", NameAppend),
+    (b"appendTo:", SymbolAppend),
     (b"intern", Intern),
     (b"isSymbol:", IsSymbol),
     (b"isBehavior:", IsBehavior),
@@ -401,7 +405,7 @@ impl State {
             b"incompatibleModule",
             b"initializerFailed",
             b"trace:with:",
-            b"rawIntern", b"rawNameWithBytes", b"rawSequence", b"rawWithContext:", b"rawNewMethodAt:",
+            b"rawIntern", b"rawNameWithBytes", b"rawSequence", b"rawWithContext:", b"rawNewMethodAt:", b"appendByteValues",
         ] {
             let symbol = self.seed_symbol(name);
             self.names.borrow_mut().insert(name, symbol);
@@ -422,11 +426,11 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol => self.name,
+                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol | Action::NameAppend => self.name,
                 Action::At | Action::Put | Action::SequenceSize
                 | Action::ApplyArguments | Action::ApplyArgumentsWith | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
-                Action::SymbolHash => self.symbol,
+                Action::SymbolHash | Action::SymbolAppend => self.symbol,
                 Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
@@ -711,6 +715,17 @@ impl State {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
             Action::NewName => self.name_from_values(a),
+            Action::NameAppend | Action::SymbolAppend => {
+                let target=one()?;
+                let values:Vec<Oop>=if action==Action::NameAppend {
+                    let (p,n)=self.name_data(r)?;
+                    unsafe{core::slice::from_raw_parts(p,n)}.iter().map(|&b|abi::size(b as usize).unwrap()).collect()
+                } else {
+                    let symbols=self.symbols.borrow();
+                    symbols.bytes_of(r).ok_or(invalid)?.iter().map(|&b|abi::size(b as usize).unwrap()).collect()
+                };
+                unsafe{self.send(target,b"appendByteValues",&values)}
+            }
             Action::NameSize => {
                 if !a.is_empty() { return Err(invalid); }
                 abi::size(self.name_data(r)?.1).ok_or(invalid)

@@ -2,5 +2,7 @@
   "schema_version": 1,
   "scope": "Owned byte storage, bounded byte operations and generic framed-data views via Id",
   "install_name": "@rpath/libbirnam_bytes.dylib",
-  "exported_symbols": ["birnam_native_module_v1", "birnam_symbol_borrow_v1"]
+  "exported_symbols": [
+    "birnam_native_module_v2"
+  ]
 }
