@@ -1,5 +1,6 @@
 //! The native caller's registers and stack outlive traversal and collection.
-use super::*;
+use birnam_abi::Oop;
+use core::{ffi::c_void, ptr};
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[repr(align(16))]
 struct RegisterSave([usize; 24]);
@@ -11,8 +12,9 @@ const _: () = {
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[inline(never)]
 pub(super) unsafe fn with_roots<T>(
-    operation: impl FnOnce(&[usize]) -> Result<T, Outcome>,
-) -> Result<T, Outcome> {
+    invalid: Oop,
+    operation: impl FnOnce(&[usize]) -> Result<T, Oop>,
+) -> Result<T, Oop> {
     unsafe extern "C" {
         fn _setjmp(buffer: *mut usize) -> i32;
         fn pthread_self() -> *mut c_void;
@@ -22,9 +24,9 @@ pub(super) unsafe fn with_roots<T>(
     unsafe { _setjmp(registers.0.as_mut_ptr()) };
     let start = ptr::addr_of!(registers).addr();
     let bottom = unsafe { pthread_get_stackaddr_np(pthread_self()) }.addr();
-    let distance = bottom.checked_sub(start).ok_or_else(invalid)?;
+    let distance = bottom.checked_sub(start).ok_or(invalid)?;
     if distance > 128 << 20 {
-        return Err(invalid());
+        return Err(invalid);
     }
     let mut roots = Vec::new();
     let mut address = start.next_multiple_of(size_of::<usize>());
@@ -41,7 +43,8 @@ pub(super) unsafe fn with_roots<T>(
 }
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 pub(super) unsafe fn with_roots<T>(
-    _: impl FnOnce(&[usize]) -> Result<T, Outcome>,
-) -> Result<T, Outcome> {
-    Err(invalid())
+    invalid: Oop,
+    _: impl FnOnce(&[usize]) -> Result<T, Oop>,
+) -> Result<T, Oop> {
+    Err(invalid)
 }

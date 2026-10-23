@@ -1,6 +1,8 @@
 //! Oop-only collector vertical slice: explicit collection and owner callbacks.
 //! Retains the production inventory/mark/retire/detach/finalize ordering.
 mod collection;
+mod construction;
+mod native_stack;
 use birnam_abi::{
     self as abi, Oop,
     id_protocol::{Literal, MethodSpec, Module, Protocol},
@@ -11,6 +13,7 @@ use std::{
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
+    Inactive,
     Idle,
     Marking,
     Finalizing,
@@ -34,10 +37,18 @@ static INSTANCE: std::sync::atomic::AtomicPtr<Memory> =
 struct Memory {
     id: Protocol,
     receiver: Oop,
+    image: Oop,
     roots: Oop,
+    temporary: RefCell<Vec<Oop>>,
+    budget: Cell<usize>,
+    automatic: Cell<bool>,
+    precise_payloads: Cell<bool>,
+    charged: Cell<usize>,
+    constructing: Cell<bool>,
     core_visitor: Oop,
     names: HashMap<&'static [u8], Oop>,
     phase: Cell<Phase>,
+    ready: Cell<bool>,
     tracers: RefCell<HashMap<usize, Owner>>,
     finalizers: RefCell<HashMap<usize, Owner>>,
     retirement: RefCell<Vec<Oop>>,
@@ -104,7 +115,8 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
         return s.invalid();
     };
     let mut values: Vec<_> = s.names.values().copied().collect();
-    values.extend([s.receiver, s.roots, s.core_visitor]);
+    values.extend([s.receiver, s.roots, s.core_visitor, s.image]);
+    values.extend(s.temporary.borrow().iter().copied());
     values.extend(s.tracers.borrow().values().map(|v| v.object));
     values.extend(s.finalizers.borrow().values().map(|v| v.object));
     values.extend(s.retirement.borrow().iter().copied());
@@ -159,19 +171,26 @@ unsafe extern "C" fn reference_owner(_id: Oop,c: Oop,_: Oop,a: *const Oop,n: usi
     (|| unsafe {
         let s=memory(c)?;
         let Some([behavior])=abi::borrowed_slice(a,n) else { return Err(s.invalid()); };
+        if s.send(s.id.root,b"isBehavior:",&[*behavior])? != abi::size(1).unwrap() { return Err(s.invalid()); }
         Ok(s.trace_owner(*behavior)?.unwrap_or(core::ptr::null_mut()))
     })().unwrap_or_else(|e|e)
 }
 unsafe extern "C" fn register_retirement(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = memory(c)?;
-        if s.phase.get() != Phase::Idle { return Err(s.invalid()); }
+        if !matches!(s.phase.get(), Phase::Inactive | Phase::Idle) { return Err(s.invalid()); }
         let Some([owner]) = abi::borrowed_slice(a, n) else { return Err(s.invalid()); };
         s.identity(*owner)?;
         let mut owners = s.retirement.borrow_mut();
         if !owners.contains(owner) { owners.push(*owner); }
         Ok(core::ptr::null_mut())
     })().unwrap_or_else(|e|e)
+}
+unsafe extern "C" fn manager(_id:Oop,c:Oop,_r:Oop,_a:*const Oop,n:usize)->Oop {
+    match unsafe{memory(c)} { Ok(s)=>if n==0{s.receiver}else{s.invalid()}, Err(e)=>e }
+}
+unsafe extern "C" fn root_registry(_id:Oop,c:Oop,_r:Oop,_a:*const Oop,n:usize)->Oop {
+    match unsafe{memory(c)} { Ok(s)=>if n==0{s.roots}else{s.invalid()}, Err(e)=>e }
 }
 macro_rules! literals {($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
@@ -205,7 +224,14 @@ literals![
     b"referenceOwnerOf:",
     b"isBehavior:",
     b"registerRetirement:",
-    b"retire:"
+    b"retire:",
+    b"allocate:bytes:", b"newBehaviorWithParent:", b"allocationChargeFor:", b"allocationSizeOf:",
+    b"vtableBehavior", b"nameBehavior", b"methodBehavior", b"moduleBehavior",
+    b"intern", b"existingSymbol", b"rawIntern", b"nameWithBytes", b"newMethodAt:",
+    b"rawNameWithBytes", b"rawSequence", b"rawWithContext:", b"rawNewMethodAt:",
+    b"managedAllocate", b"managedDelegated", b"managedIntern", b"managedName", b"managedSequence",
+    b"managedContext", b"managedNativeMethod", b"activate", b"prepareAllocation", b"budget:",
+    b"automaticCollection:", b"precisePayloads:", b"precisePayloads", b"allocationBytes", b"chargeExternalAllocation:", b"collect", b"memoryManager", b"roots"
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -225,6 +251,24 @@ const fn index(name: &[u8]) -> usize {
     panic!("missing collector name")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec{name:index(b"memoryManager"),entry:Some(manager)},
+    MethodSpec{name:index(b"roots"),entry:Some(root_registry)},
+    MethodSpec{name:index(b"managedAllocate"),entry:Some(construction::allocate)},
+    MethodSpec{name:index(b"managedDelegated"),entry:Some(construction::delegated)},
+    MethodSpec{name:index(b"managedIntern"),entry:Some(construction::intern)},
+    MethodSpec{name:index(b"managedName"),entry:Some(construction::new_name)},
+    MethodSpec{name:index(b"managedSequence"),entry:Some(construction::sequence)},
+    MethodSpec{name:index(b"managedContext"),entry:Some(construction::method_context)},
+    MethodSpec{name:index(b"managedNativeMethod"),entry:Some(construction::native_method)},
+    MethodSpec{name:index(b"activate"),entry:Some(construction::activate)},
+    MethodSpec{name:index(b"prepareAllocation"),entry:Some(construction::prepare)},
+    MethodSpec{name:index(b"budget:"),entry:Some(construction::budget)},
+    MethodSpec{name:index(b"automaticCollection:"),entry:Some(construction::automatic)},
+    MethodSpec{name:index(b"precisePayloads:"),entry:Some(construction::precise_set)},
+    MethodSpec{name:index(b"precisePayloads"),entry:Some(construction::precise)},
+    MethodSpec{name:index(b"allocationBytes"),entry:Some(construction::charged)},
+    MethodSpec{name:index(b"chargeExternalAllocation:"),entry:Some(construction::external)},
+    MethodSpec{name:index(b"collect"),entry:Some(construction::collect)},
     MethodSpec { name:index(b"registerRetirement:"), entry:Some(register_retirement) },
     MethodSpec { name:index(b"referenceOwnerOf:"), entry:Some(reference_owner) },
     MethodSpec {
@@ -276,7 +320,7 @@ unsafe extern "C" fn initialize(
     let existing = INSTANCE.load(std::sync::atomic::Ordering::Acquire);
     if !existing.is_null() {
         let s = unsafe { &*existing };
-        return if s.roots == *root_registry {
+        return if s.ready.get() && s.phase.get() != Phase::Failed && s.roots == *root_registry {
             s.receiver
         } else {
             id.invalid
@@ -304,10 +348,18 @@ unsafe extern "C" fn initialize(
             let s = Box::new(Memory {
                 id,
                 receiver,
+                image,
+                temporary:RefCell::new(Vec::new()),
+                budget:Cell::new(16<<20),
+                automatic:Cell::new(true),
+                precise_payloads:Cell::new(false),
+                charged:Cell::new(0),
+                constructing:Cell::new(false),
                 roots: *root_registry,
                 core_visitor,
                 names,
-                phase: Cell::new(Phase::Idle),
+                phase: Cell::new(Phase::Inactive),
+                ready: Cell::new(false),
                 tracers: RefCell::new(HashMap::new()),
                 finalizers: RefCell::new(HashMap::new()),
                 retirement: RefCell::new(Vec::new()),
@@ -324,6 +376,8 @@ unsafe extern "C" fn initialize(
                 let m = s.send(m, b"withContext:", &[receiver])?;
                 let target = if spec.name == index(b"coreEdge:") {
                     core_vt
+                } else if spec.name == index(b"memoryManager") {
+                    s.send(id.root,b"behaviorOf:",&[id.root])?
                 } else {
                     vt
                 };
@@ -354,6 +408,7 @@ unsafe extern "C" fn initialize(
             }
             s.send(id.root, b"referenceOwnersDo:", &[receiver])?;
             s.send(*root_registry, b"register:", &[receiver])?;
+            s.ready.set(true);
             Ok(receiver)
         })()
     })

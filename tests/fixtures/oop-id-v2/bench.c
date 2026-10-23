@@ -81,7 +81,7 @@ int main(int argc,char**argv){assert(argc==4);void*h=dlopen(argv[1],RTLD_NOW|RTL
  }result("produce-and-intern-new-64",fresh,now()-start);
  for(size_t i=0;i<n/8;i+=2)release(roots,tokens[i]);free(tokens);
 #ifdef V2
- Oop gc=load(path_gc,roots,1);
+ Oop gc=load(path_gc,roots,1);send(gc,selectors[ACTIVATE],0,0);Oop off=id_size(0);send(gc,selectors[AUTO],&off,1);
 #else
  Oop gc=load(argv[3],roots,1);raw(gc,selectors[ACTIVATE],0,0);BirnamOperand off=word(0);raw(gc,selectors[AUTO],&off,1);
 #endif

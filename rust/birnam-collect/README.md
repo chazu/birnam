@@ -1,4 +1,27 @@
-# Memory management over Id and Roots
+# Memory management over Oop-only Id
+
+This branch migrates the collector to ordinary Oop messages. Current implemented
+coverage and evidence are in the [migration log](../../docs/design/oop-invariant-migration-20261023.md).
+All sizes, counts, flags, roots and callbacks cross Id as Oops. `retire:` now takes
+the dead objects as its Oop arguments, without an address-byte packet.
+
+Activation, allocation preparation, accounting, budget settings, native and precise
+collection, reference-owner changes, retirement and finalization are implemented.
+Allocation-omission guards and the wider ObjectModel/compiler integration remain
+in progress; this is not yet a complete language runtime. Native `collect` retains
+the existing optional Darwin arm64 caller-root capture. Suspended language state
+still belongs in Execution's explicit frames; this work adds no native-stack
+continuations.
+
+Run `bash scripts/oop-id-slice-test.sh` for the currently migrated closure. It
+includes activation repair, automatic collection, live accounting replacement,
+collection inside accounting, and separate terminal-failure processes.
+
+The following is the previous runtime's protocol reference for the remaining
+migration. Its Operand/Word/Bytes terminology and constructor details are
+historical, not permission to reintroduce carriers.
+
+## Previous runtime protocol
 
 `libbirnam_collect` initializes with one Roots Object and returns a GC Object.
 Bootstrap loads it after Nil, publishes `GC` in Namespace, and sends `activate`.

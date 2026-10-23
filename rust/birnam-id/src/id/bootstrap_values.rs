@@ -50,8 +50,11 @@ impl State {
         // The owner interprets a bounded declaration index, never unvalidated
         // payload bytes as a Rust function pointer.
         let data = unsafe { p.cast::<NativeMethod>().read() };
-        self.behavior(data.context)?;
-        self.behavior(data.owner)?;
+        // The bootstrap context is permanently rooted. Other contexts must
+        // still be valid Oops before native code sees them. Invocation checks
+        // the code owner when resolving its declared entry; tracing validates
+        // every emitted owner through the collector's allocation inventory.
+        if data.context != self.root { self.behavior(data.context)?; }
         Ok(data)
     }
     pub(super) fn fault_data(&self, o: Oop) -> Result<FaultData, Oop> {
@@ -300,6 +303,13 @@ mod tests {
             })
         };
         assert!(s.method_data(object).is_err());
+        for (context, owner) in [
+            (core::ptr::without_provenance_mut(0x1000), s.root),
+            (s.root, core::ptr::without_provenance_mut(0x1000)),
+        ] {
+            unsafe { object.cast::<NativeMethod>().write(NativeMethod { entry_index: 0, context, owner }) };
+            assert!(s.method_data(object).is_err());
+        }
     }
     #[test]
     fn reference_storage_rejects_invalid_lengths_and_non_object_words() {

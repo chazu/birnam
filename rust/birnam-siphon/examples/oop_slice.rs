@@ -90,6 +90,9 @@ unsafe fn run() {
             b"observe:",
             b"visit:",
             b"registerRetirement:",
+            b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
+            b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
+            b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
             b"true", b"false", b"not", b"==", b"&", b"|", b"ifTrue:", b"ifFalse:",
             b"ifTrue:ifFalse:", b"and:", b"or:", b"value", b"valueProbe", b"echoName",
             b"isNil", b"notNil", b"installPrinting:", b"printString", b"fromBytes:", b"size",
@@ -122,6 +125,22 @@ unsafe fn run() {
         }
         let load_args = send(id.root, b"sequence", &[roots]).unwrap();
         let gc = id.send(names[1], id.load, &[load_args]).expect("GC loaded");
+        assert!(send(gc, b"collectPrecisely", &[]).is_err());
+        if std::env::args().nth(2).as_deref() == Some("allocation-policy") {
+            let base = send(id.root, b"objectBehavior", &[]).unwrap();
+            let unknown = send(base, b"allocate", &[abi::size(8).unwrap()]).unwrap();
+            assert!(send(gc, b"activate", &[]).is_err());
+            send(id.root, b"identityOf:", &[unknown]).unwrap();
+            assert!(send(gc, b"collectPrecisely", &[]).is_err());
+            let owner = send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+            send(gc, b"trace:with:", &[base, owner]).unwrap();
+        }
+        send(gc, b"activate", &[]).expect("GC activation");
+        if std::env::args().nth(2).as_deref() == Some("allocation-policy") {
+            let base = send(id.root, b"objectBehavior", &[]).unwrap();
+            send(gc, b"trace:with:", &[base, core::ptr::null_mut()]).unwrap();
+        }
+        send(gc, b"automaticCollection:", &[abi::size(0).unwrap()]).unwrap();
         let load_args = send(id.root, b"sequence", &[roots, gc]).unwrap();
         let actor = id
             .send(names[2], id.load, &[load_args])
@@ -602,6 +621,43 @@ unsafe fn run() {
         assert_eq!(send(actor, b"at:", &[abi::size(25).unwrap()]).unwrap(), reclaimed);
         assert!(send(id.root, b"identityOf:", &[dead]).is_err());
         println!("retirement owners see live Oops before release and are registered once: passed");
+
+        if std::env::args().nth(2).as_deref() == Some("allocation-policy") {
+            let owner = send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+            send(gc, b"trace:with:", &[base, owner]).unwrap();
+            send(gc, b"collectPrecisely", &[]).unwrap();
+            assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(0));
+            let charge = send(id.root, b"allocationChargeFor:", &[abi::size(16).unwrap()]).unwrap();
+            send(base, b"allocate", &[abi::size(16).unwrap()]).unwrap();
+            assert_eq!(send(gc, b"allocationBytes", &[]).unwrap(), charge);
+            send(gc, b"chargeExternalAllocation:", &[abi::size(7).unwrap()]).unwrap();
+            let charged = abi::as_size(charge).unwrap()+7;
+            assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(charged));
+            send(gc, b"budget:", &[abi::size(1).unwrap()]).unwrap();
+            send(gc, b"automaticCollection:", &[abi::size(1).unwrap()]).unwrap();
+            assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(charged));
+            send(gc, b"prepareAllocation", &[]).unwrap();
+            assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(0));
+            send(gc, b"automaticCollection:", &[abi::size(0).unwrap()]).unwrap();
+            let root_type = send(id.root, b"behaviorOf:", &[id.root]).unwrap();
+            let original = send(root_type, b"lookup", &[sel(b"allocationChargeFor:")]).unwrap();
+            let one = send(actor_vt, b"lookup", &[sel(b"doesNotUnderstand:")]).unwrap();
+            send(root_type, b"addMethod", &[sel(b"allocationChargeFor:"), one]).unwrap();
+            send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+            assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(1));
+            send(root_type, b"addMethod", &[sel(b"allocationChargeFor:"), original]).unwrap();
+            send(actor, b"at:put:", &[abi::size(27).unwrap(), original]).unwrap();
+            let collecting_charge = send(actor_vt, b"lookup", &[sel(b"chargeAfterGC")]).unwrap();
+            send(root_type, b"addMethod", &[sel(b"allocationChargeFor:"), collecting_charge]).unwrap();
+            send(gc, b"chargeExternalAllocation:", &[abi::size(9).unwrap()]).unwrap();
+            let fresh = send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+            send(id.root, b"identityOf:", &[fresh]).unwrap();
+            assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(8));
+            send(root_type, b"addMethod", &[sel(b"allocationChargeFor:"), original]).unwrap();
+            send(gc, b"precisePayloads:", &[abi::size(1).unwrap()]).unwrap();
+            assert_eq!(abi::as_size(send(gc, b"precisePayloads", &[]).unwrap()), Some(1));
+            println!("ALLOCATION_POLICY_OK");
+        }
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

@@ -95,6 +95,12 @@ pub(crate) enum Action {
     Add,
     Remove,
     Allocate,
+    AllocateRaw,
+    NewBehavior,
+    AllocationCharge,
+    MetaBehavior,
+    MethodBehavior,
+    ExistingSymbol,
     Delegated,
     Behavior,
     Reassociate,
@@ -165,6 +171,12 @@ core_primitives![
     (b"referenceOwnersDo:", ReferenceOwners),
     (b"removeMethod:", Remove),
     (b"allocate", Allocate),
+    (b"allocate:bytes:", AllocateRaw),
+    (b"newBehaviorWithParent:", NewBehavior),
+    (b"allocationChargeFor:", AllocationCharge),
+    (b"vtableBehavior", MetaBehavior),
+    (b"methodBehavior", MethodBehavior),
+    (b"existingSymbol", ExistingSymbol),
     (b"delegated", Delegated),
     (b"behaviorOf:", Behavior),
     (b"reassociateBehaviorOf:with:", Reassociate),
@@ -357,6 +369,7 @@ impl State {
             b"incompatibleModule",
             b"initializerFailed",
             b"trace:with:",
+            b"rawIntern", b"rawNameWithBytes", b"rawSequence", b"rawWithContext:", b"rawNewMethodAt:",
         ] {
             let symbol = self.seed_symbol(name);
             self.names.borrow_mut().insert(name, symbol);
@@ -377,7 +390,7 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt => self.name,
+                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol => self.name,
                 Action::At | Action::Put | Action::SequenceSize
                 | Action::ApplyArguments | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
@@ -398,6 +411,16 @@ impl State {
                 self.default_lookup.set(m);
                 self.permanent.borrow_mut().push(m);
             }
+        }
+        for (behavior, public, raw) in [
+            (self.name, b"intern".as_slice(), b"rawIntern".as_slice()),
+            (self.object, b"nameWithBytes", b"rawNameWithBytes"),
+            (self.object, b"sequence", b"rawSequence"),
+            (self.method, b"withContext:", b"rawWithContext:"),
+            (self.module, b"newMethodAt:", b"rawNewMethodAt:"),
+        ] {
+            let method = self.tables.borrow().lookup(behavior, self.selector(public)).unwrap();
+            self.tables.borrow_mut().add_method(behavior, self.selector(raw), method);
         }
         self.install_reference_owners();
     }
@@ -469,6 +492,29 @@ impl State {
                     .unwrap_or(nil))
             }
             Action::Allocate => self.allocate(r, abi::as_size(one()?).ok_or(invalid)?),
+            Action::AllocateRaw => {
+                let (behavior, bytes)=pair()?;
+                self.allocate(behavior, abi::as_size(bytes).ok_or(invalid)?)
+            }
+            Action::NewBehavior => {
+                let parent=one()?;
+                if !self.tables.borrow().is_registered(parent) { return Err(invalid); }
+                let meta=self.behavior(parent)?;
+                Ok(self.tables.borrow_mut().create(&mut self.heap.borrow_mut(), parent, meta))
+            }
+            Action::AllocationCharge => {
+                let bytes=abi::as_size(one()?).ok_or(invalid)?;
+                Ok(if ObjectMemory::valid_payload_size(bytes) {
+                    ObjectMemory::allocation_total_size(bytes).and_then(abi::size).unwrap_or(nil)
+                } else { nil })
+            }
+            Action::MetaBehavior => Ok(self.meta),
+            Action::MethodBehavior => Ok(self.method),
+            Action::ExistingSymbol => {
+                if !a.is_empty() { return Err(invalid); }
+                let (p,n)=self.name_data(r)?;
+                Ok(self.symbols.borrow().existing(unsafe { core::slice::from_raw_parts(p,n) }).unwrap_or(nil))
+            }
             Action::Delegated => {
                 if !a.is_empty() || !self.tables.borrow().is_registered(r) {
                     return Err(invalid);

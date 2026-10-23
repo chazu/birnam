@@ -179,3 +179,45 @@ storage remains allocated and further collection is refused. All native gates,
 unit tests and export checks pass. The only new normal collection work is the
 previously required callback for each registered owner; an empty owner list does
 not allocate. [Receipts](../measurements/oop-retirement-20261023.json).
+
+## Piece 8: activation and allocation policy
+
+Restored inactive/active construction, activation validation and repair, allocation
+preparation, budgets, automatic collection, allocation charges, external-storage
+charges, precision settings and the existing native-caller `collect` operation.
+Explicit `collectPrecisely` continues to use declared roots only. Incoming values
+are already protected by Id; construction adds a temporary root only for its new
+result across replaceable size/charge queries. Successful collection resets the
+charge; a charge callback that collects adds to the new current total afterwards.
+
+GC installs ordinary construction methods above raw Id storage, using fresh
+messages. The new bootstrap Name, Sequence and native-Method constructors also
+participate, with payloads initialized before accounting callbacks. Existing Name
+interning remains nonallocating and allowed during collection. Failed activation
+leaves construction available for repair; failed finalization remains terminal.
+Readiness is distinct from publication of native context, preventing an incomplete
+initialization from being reported as complete.
+
+Added checks exercise inactive refusal, failed activation followed by owner repair,
+exact geometry charges, external charges, unchanged counters when settings change,
+automatic collection at `prepareAllocation`, replacement of `allocationChargeFor:`,
+and collection inside that replacement while preserving the new result. Normal
+and separate-target cold qualification pass, including all earlier owner, loader,
+callback and failure tests. Allocation-omission guards remain part of the pending
+ObjectModel/compiler migration.
+
+Regression review removed repeated checks of the permanently rooted bootstrap
+context and code-owner liveness already established by declaration lookup. Bad
+contexts and undeclared code owners are still rejected before invocation. In an
+identical-caller comparison of pre-activation paths, median costs fall 8.6% for
+allocation/rooting, 10.9% for existing-name interning and 4.3% for fresh names.
+These measurements do not include the newly restored allocation policy or GC.
+The earlier probe now activates GC before its collection timer; older inactive
+GC timings are therefore not used to claim a collection speedup.
+
+Rejected a proposed shortcut that reused allocation-snapshot identities instead
+of calling `identityOf:` during owner lookup. That query is replaceable; blindly
+reusing a physical fact would bypass supported replacement behavior. No new cache
+or side table was added to justify the shortcut.
+
+[Measurements and receipts](../measurements/oop-allocation-policy-20261023.json).

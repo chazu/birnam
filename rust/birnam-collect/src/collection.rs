@@ -166,7 +166,7 @@ pub(super) fn emit(s: &Memory, v: Oop) -> Result<(), Oop> {
         Err(s.invalid())
     } else { Ok(()) }
 }
-unsafe fn mark(s: &Memory) -> Result<Vec<Allocation>, Oop> {
+unsafe fn mark(s: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Oop> {
     unsafe {
         let epoch = s.send(s.id.root, b"allocationEpoch", &[])?;
         let allocations = inventory(s)?;
@@ -189,6 +189,11 @@ unsafe fn mark(s: &Memory) -> Result<Vec<Allocation>, Oop> {
         });
         s.send(s.id.root, b"rootsDo:", &[s.receiver])?;
         s.send(s.roots, b"rootsDo:", &[s.receiver])?;
+        for address in native {
+            let value={let walk=s.walk.borrow();let w=walk.as_ref().unwrap();
+                w.indices.get(address).map(|&i|w.allocations[i].object)};
+            if let Some(value)=value { emit(s,value)?; }
+        }
         loop {
             let next = s.walk.borrow_mut().as_mut().unwrap().pending.pop();
             let Some(value) = next else { break };
@@ -282,24 +287,21 @@ unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {
     }
 }
 pub(super) unsafe extern "C" fn collect(_id: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
-    let s = match unsafe { memory(c) } {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    if n != 0 {
-        return s.invalid();
-    }
+    (||unsafe{let s=memory(c)?;if n!=0{return Err(s.invalid());}run(s,&[])})().unwrap_or_else(|e|e)
+}
+pub(super) unsafe fn run(s: &Memory, native: &[usize]) -> Result<Oop,Oop> {
     match s.phase.get() {
-        Phase::Marking | Phase::Finalizing => return abi::size(0).unwrap(),
-        Phase::Failed => return s.invalid(),
+        Phase::Marking | Phase::Finalizing => return Ok(abi::size(0).unwrap()),
+        Phase::Inactive | Phase::Failed => return Err(s.invalid()),
         Phase::Idle => {}
     }
     s.phase.set(Phase::Marking);
-    let result = match unsafe { mark(s) } {
+    let result = match unsafe { mark(s, native) } {
         Ok(dead) => {
             s.phase.set(Phase::Finalizing);
             match unsafe { sweep(s, &dead) } {
                 Ok(n) => {
+                    s.charged.set(0);
                     s.phase.set(Phase::Idle);
                     Ok(abi::size(n).unwrap())
                 }
@@ -315,5 +317,27 @@ pub(super) unsafe extern "C" fn collect(_id: Oop, c: Oop, _: Oop, _: *const Oop,
         }
     };
     *s.walk.borrow_mut() = None;
-    result.unwrap_or_else(|e| e)
+    result
+}
+
+pub(super) unsafe fn validate(s: &Memory) -> Result<usize,Oop>{
+    unsafe{
+        let epoch=s.send(s.id.root,b"allocationEpoch",&[])?;
+        let allocations=inventory(s)?;
+        let indices:HashMap<_,_>=allocations.iter().enumerate().map(|(i,a)|(a.object.addr(),i)).collect();
+        let count=allocations.len();if indices.len()!=count{return Err(s.invalid());}
+        *s.walk.borrow_mut()=Some(Walk{allocations,indices,marked:vec![0;count],pending:Vec::new(),failure:None,core:CoreEdges::default()});
+        s.send(s.id.root,b"rootsDo:",&[s.receiver])?;s.send(s.roots,b"rootsDo:",&[s.receiver])?;
+        let mut charged=0;
+        for i in 0..count{
+            let row=s.walk.borrow().as_ref().unwrap().allocations[i];
+            s.send(s.id.root,b"referencesOf:do:",&[row.object,s.receiver])?;
+            let behavior=s.send(s.id.root,b"behaviorOf:",&[row.object])?;
+            if row.size!=0 && s.trace_owner(behavior)?.is_none(){return Err(s.invalid());}
+            charged=construction::add(charged,s.allocation_charge(row.size)?);
+        }
+        if s.send(s.id.root,b"allocationEpoch",&[])?!=epoch{return Err(s.invalid());}
+        if let Some(error)=s.walk.borrow().as_ref().unwrap().failure{return Err(error);}
+        Ok(charged)
+    }
 }

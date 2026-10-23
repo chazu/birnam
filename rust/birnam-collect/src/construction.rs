@@ -1,282 +1,304 @@
-//! Upper allocation policy delegates through fresh messages to Id storage.
+//! Allocation policy above Id. Raw storage remains reachable through live messages.
 use super::*;
-unsafe fn construct(
-    memory: &Memory,
-    roots: &[Oop],
-    operation: impl FnOnce() -> Result<Operand, Outcome>,
-) -> Result<Operand, Outcome> {
-    memory.check()?;
-    if !matches!(memory.phase.get(), Phase::Idle | Phase::Inactive) {
-        return Err(invalid());
+pub(super) fn add(current: usize, bytes: usize) -> usize {
+    current.checked_add(bytes).unwrap_or_else(|| {
+        eprintln!("birnam invariant failed: GC allocation byte counter overflow");
+        std::process::abort()
+    })
+}
+impl Memory {
+    pub(super) unsafe fn allocation_charge(&self, bytes: usize) -> Result<usize, Oop> {
+        abi::as_size(unsafe {
+            self.send(
+                self.id.root,
+                b"allocationChargeFor:",
+                &[abi::size(bytes).ok_or(self.invalid())?],
+            )
+        }?)
+        .filter(|n| *n != 0)
+        .ok_or(self.invalid())
     }
-    let depth = memory.temporary.borrow().len();
-    memory.temporary.borrow_mut().extend_from_slice(roots);
-    let nested = memory.constructing.replace(true);
-    let result = (|| unsafe {
-        if memory.automatic.get()
-            && !nested
-            && memory.phase.get() == Phase::Idle
-            && !memory.below_threshold()
+    unsafe fn prepare(&self) -> Result<(), Oop> {
+        if !matches!(self.phase.get(), Phase::Inactive | Phase::Idle) {
+            return Err(self.invalid());
+        }
+        if self.phase.get() == Phase::Idle
+            && self.automatic.get()
+            && !self.constructing.get()
+            && self.charged.get() >= self.budget.get()
         {
-            collection::conservative(memory)?;
+            unsafe {
+                native_stack::with_roots(self.invalid(), |roots| collection::run(self, roots))
+            }?;
         }
-        let answer = operation()?;
-        let value = object(answer)?;
-        memory.temporary.borrow_mut().push(value);
-        let bytes = memory
-            .send(memory.id.receiver, b"allocationSizeOf:", &[answer])?
-            .as_word()
-            .ok_or_else(invalid)?;
-        let charge = memory.allocation_charge(bytes)?;
-        // Geometry lookup is a live send and may allocate or collect. Add to
-        // the current total after it returns, never to a cached pre-call total.
-        memory
-            .charged
-            .set(accounting::add(memory.charged.get(), charge));
-        Ok(answer)
-    })();
-    memory.constructing.set(nested);
-    memory.temporary.borrow_mut().truncate(depth);
-    result
+        Ok(())
+    }
+    unsafe fn construct(&self, operation: impl FnOnce() -> Result<Oop, Oop>) -> Result<Oop, Oop> {
+        // Id already keeps the incoming receiver and arguments alive. Only the
+        // returned object needs an additional root across the accounting sends.
+        unsafe { self.prepare() }?;
+        let depth = self.temporary.borrow().len();
+        let nested = self.constructing.replace(true);
+        let answer = (|| unsafe {
+            let value = operation()?;
+            if value.is_null() || abi::as_size(value).is_some() {
+                return Err(self.invalid());
+            }
+            self.temporary.borrow_mut().push(value);
+            let bytes = abi::as_size(self.send(self.id.root, b"allocationSizeOf:", &[value])?)
+                .ok_or(self.invalid())?;
+            let charge = self.allocation_charge(bytes)?;
+            self.charged.set(add(self.charged.get(), charge));
+            Ok(value)
+        })();
+        self.constructing.set(nested);
+        self.temporary.borrow_mut().truncate(depth);
+        answer
+    }
 }
-unsafe extern "C" fn allocate(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        let Some([bytes]) = borrowed_slice(args, count) else {
-            return Err(invalid());
+macro_rules! wrappers{($(($entry:ident,$raw:literal)),*$(,)?)=>{$(
+    pub(super) unsafe extern "C" fn $entry(_id:Oop,c:Oop,r:Oop,a:*const Oop,n:usize)->Oop{
+        (||unsafe{let s=memory(c)?;let a=abi::borrowed_slice(a,n).ok_or(s.invalid())?;
+            s.construct(||s.send(r,$raw,a))
+        })().unwrap_or_else(|e|e)
+    }
+)*};}
+wrappers![
+    (new_name, b"rawNameWithBytes"),
+    (sequence, b"rawSequence"),
+    (method_context, b"rawWithContext:"),
+    (native_method, b"rawNewMethodAt:")
+];
+pub(super) unsafe extern "C" fn allocate(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        let Some([bytes]) = abi::borrowed_slice(a, n) else {
+            return Err(s.invalid());
         };
-        bytes.as_word().ok_or_else(invalid)?;
-        construct(memory, &[receiver], || {
-            memory.send(
-                memory.id.receiver,
-                b"allocate:bytes:",
-                &[Operand::object(receiver), *bytes],
-            )
-        })
-    })())
+        abi::as_size(*bytes).ok_or(s.invalid())?;
+        s.construct(|| s.send(s.id.root, b"allocate:bytes:", &[r, *bytes]))
+    })()
+    .unwrap_or_else(|e| e)
 }
-unsafe extern "C" fn delegated(
-    context: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if count != 0 {
-            return Err(invalid());
+pub(super) unsafe extern "C" fn delegated(
+    _id: Oop,
+    c: Oop,
+    r: Oop,
+    _a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if n != 0 {
+            return Err(s.invalid());
         }
-        let memory = memory(context)?;
-        construct(memory, &[receiver], || {
-            memory.send(
-                memory.id.receiver,
-                b"newBehaviorWithParent:",
-                &[Operand::word(receiver.addr())],
-            )
-        })
-    })())
+        s.construct(|| s.send(s.id.root, b"newBehaviorWithParent:", &[r]))
+    })()
+    .unwrap_or_else(|e| e)
 }
-unsafe extern "C" fn delegated_with(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        let Some([entry, selector]) = borrowed_slice(args, count) else { return Err(invalid()) };
-        entry.as_entry().filter(|e| e.method.is_some()).ok_or_else(invalid)?;
-        let selector = object(*selector)?;
-        // The caller retains the entered NativeEntry's owner; the GC owner roots
-        // its opaque object operands and the fresh result across every callback.
-        construct(memory, &[receiver, selector], || {
-            memory.send(memory.id.receiver, b"newBehaviorWithParent:method:as:", &[
-                Operand::object(receiver), *entry, Operand::object(selector)])
-        })
-    })())
-}
-unsafe extern "C" fn intern(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        let Some([bytes]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let bytes = bytes.as_bytes().ok_or_else(invalid)?;
-        let bytes = birnam_abi::borrowed_bytes(bytes.pointer, bytes.length)
-            .ok_or_else(invalid)?
-            .to_vec();
-        let current = memory.send(
-            memory.id.receiver,
-            b"symbolNamed:",
-            &[Operand::bytes(&bytes)],
-        )?;
-        if current.kind() == native::OBJECT {
+pub(super) unsafe extern "C" fn intern(_id: Oop, c: Oop, r: Oop, _a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if n != 0 {
+            return Err(s.invalid());
+        }
+        let current = s.send(r, b"existingSymbol", &[])?;
+        if !current.is_null() {
             return Ok(current);
         }
-        construct(memory, &[memory.id.receiver], || {
-            memory.send(
-                memory.id.receiver,
-                b"internBytes:",
-                &[Operand::bytes(&bytes)],
-            )
-        })
-    })())
+        s.construct(|| s.send(r, b"rawIntern", &[]))
+    })()
+    .unwrap_or_else(|e| e)
 }
-// Existing-name interning calls only Id symbolNamed:, whose meaning must be
-// fenced separately. With that canonical query and a rooted existing Symbol,
-// this entry neither allocates nor collects. This is a code description, not
-// an allocation permission or a declaration about a foreign implementation.
-pub(super) unsafe extern "C" fn intern_query_semantics(
-    context: *mut c_void, _: Oop, args: *const Operand, count: usize,
-) -> Outcome {
-    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else { return invalid() };
-    let Some(entry) = argument.as_entry() else { return invalid() };
-    Outcome::loaded(Operand::word(usize::from(entry == NativeEntry::new(intern, context))))
+pub(super) unsafe extern "C" fn prepare(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    _a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if n != 0 {
+            return Err(s.invalid());
+        }
+        s.prepare()?;
+        Ok(core::ptr::null_mut())
+    })()
+    .unwrap_or_else(|e| e)
 }
 pub(super) unsafe extern "C" fn activate(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        if count != 0 {
-            return Err(invalid());
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    _a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if n != 0 {
+            return Err(s.invalid());
         }
-        if memory.phase.get() == Phase::Idle {
-            return Ok(Operand::unit());
+        if s.phase.get() == Phase::Idle {
+            return Ok(core::ptr::null_mut());
         }
-        if memory.phase.get() != Phase::Inactive {
-            return Err(invalid());
+        if s.phase.get() != Phase::Inactive {
+            return Err(s.invalid());
         }
-        // Already interned selectors; installation introduces no heap allocation.
-        // Leave these wrappers installed after a failed validation so repair can
-        // allocate while collection remains disabled, then retry activation.
-        memory.phase.set(Phase::Marking);
-        let result = (|| {
-            for (name, method) in [
-                (b"allocate".as_slice(), allocate as Method),
-                (b"delegated", delegated),
-                (b"delegatedWith:as:", delegated_with),
-                (b"intern:", intern),
-            ] {
-                memory.send(
-                    memory.id.receiver,
-                    b"addMethod",
-                    &[
-                        Operand::object(memory.selectors[name]),
-                        Operand::entry(NativeEntry::new(method, context)),
-                    ],
-                )?;
-            }
-            memory.charged.set(collection::validate(memory)?);
-            Ok(Operand::unit())
-        })();
-        *memory.walk.borrow_mut() = None;
-        memory.phase.set(if result.is_ok() {
+        let object = s.send(s.id.root, b"objectBehavior", &[])?;
+        let meta = s.send(s.id.root, b"vtableBehavior", &[])?;
+        let name = s.send(s.id.root, b"nameBehavior", &[])?;
+        let method = s.send(s.id.root, b"methodBehavior", &[])?;
+        let module = s.send(s.id.root, b"moduleBehavior", &[])?;
+        for (target, public, implementation) in [
+            (meta, b"allocate".as_slice(), b"managedAllocate".as_slice()),
+            (meta, b"delegated", b"managedDelegated"),
+            (name, b"intern", b"managedIntern"),
+            (object, b"nameWithBytes", b"managedName"),
+            (object, b"sequence", b"managedSequence"),
+            (method, b"withContext:", b"managedContext"),
+            (module, b"newMethodAt:", b"managedNativeMethod"),
+        ] {
+            let implementation = s.send(s.image, b"methodAt:", &[s.names[implementation]])?;
+            let implementation = s.send(implementation, b"withContext:", &[s.receiver])?;
+            s.send(target, b"addMethod", &[s.names[public], implementation])?;
+        }
+        // Failed validation leaves complete policy methods installed; inactive
+        // construction can repair missing owners before a later activation.
+        s.phase.set(Phase::Marking);
+        let answer = collection::validate(s);
+        *s.walk.borrow_mut() = None;
+        s.phase.set(if answer.is_ok() {
             Phase::Idle
         } else {
             Phase::Inactive
         });
-        result
-    })())
+        s.charged.set(answer?);
+        Ok(core::ptr::null_mut())
+    })()
+    .unwrap_or_else(|e| e)
 }
-
-/// Keep the existing allocation admission point even when a private behavior
-/// already exists. Callers root their inputs before sending this message.
-pub(super) unsafe extern "C" fn prepare(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        if count != 0 || !matches!(memory.phase.get(), Phase::Inactive | Phase::Idle) {
-            return Err(invalid());
+pub(super) unsafe extern "C" fn budget(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if s.phase.get() != Phase::Idle {
+            return Err(s.invalid());
         }
-        if memory.phase.get() == Phase::Idle
-            && memory.automatic.get()
-            && !memory.constructing.get()
-            && !memory.below_threshold()
-        {
-            collection::conservative(memory)?;
-        }
-        Ok(Operand::unit())
-    })())
-}
-
-/// True only for this owner's ordinary allocation path. No budget reservation,
-/// allocation charge, collection or finalization is performed by this guard.
-pub(super) unsafe extern "C" fn can_omit(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = memory(c)?;
-        let Some([behavior]) = borrowed_slice(a, n) else {
-            return Err(invalid());
+        let Some([v]) = abi::borrowed_slice(a, n) else {
+            return Err(s.invalid());
         };
-        let behavior = object(*behavior)?;
-        if m.phase.get() != Phase::Idle {
-            return Ok(Operand::word(0));
-        }
-        let epoch = m
-            .send(m.id.receiver, b"behaviorEpoch", &[])?
-            .as_word()
-            .ok_or_else(invalid)?;
-        if epoch == usize::MAX
-            || m.send(m.id.receiver, b"usesDefaultAllocation", &[])?
-                .as_word()
-                != Some(1)
-        {
-            return Ok(Operand::word(0));
-        }
-        let expected = [
-            (behavior, m.selectors[b"allocate".as_slice()], NativeEntry::new(allocate, c)),
-            (m.receiver, m.selectors[b"prepareAllocation".as_slice()], NativeEntry::new(prepare, c)),
-        ];
-        if !m.binding_guard.admits(m.id, &expected)? {
-            for (receiver, name, method) in [
-                (behavior, b"allocate".as_slice(), allocate as Method),
-                (
-                    m.receiver,
-                    b"prepareAllocation".as_slice(),
-                    prepare as Method,
-                ),
-            ] {
-                if m.send(
-                    m.id.receiver,
-                    b"usesDefaultLookup:",
-                    &[Operand::object(receiver)],
-                )?
-                .as_word()
-                    != Some(1)
-                    || m.send(
-                        m.id.receiver,
-                        b"bind:to:",
-                        &[
-                            Operand::object(m.selectors[name]),
-                            Operand::object(receiver),
-                        ],
-                    )?
-                    .as_entry()
-                        != Some(NativeEntry::new(method, c))
-                {
-                    return Ok(Operand::word(0));
-                }
+        s.budget
+            .set(abi::as_size(*v).filter(|v| *v != 0).ok_or(s.invalid())?);
+        Ok(core::ptr::null_mut())
+    })()
+    .unwrap_or_else(|e| e)
+}
+unsafe fn setting(c: Oop, a: *const Oop, n: usize, precise: bool) -> Result<Oop, Oop> {
+    let s = unsafe { memory(c) }?;
+    let Some([v]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return Err(s.invalid());
+    };
+    let enabled = abi::as_size(*v).ok_or(s.invalid())? != 0;
+    if precise {
+        s.precise_payloads.set(enabled);
+    } else {
+        s.automatic.set(enabled);
+    }
+    Ok(core::ptr::null_mut())
+}
+pub(super) unsafe extern "C" fn automatic(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { setting(c, a, n, false) }.unwrap_or_else(|e| e)
+}
+pub(super) unsafe extern "C" fn precise_set(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { setting(c, a, n, true) }.unwrap_or_else(|e| e)
+}
+pub(super) unsafe extern "C" fn precise(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    _a: *const Oop,
+    n: usize,
+) -> Oop {
+    match unsafe { memory(c) } {
+        Ok(s) => {
+            if n == 0 {
+                abi::size(usize::from(s.precise_payloads.get())).unwrap()
+            } else {
+                s.invalid()
             }
         }
-        Ok(Operand::word(usize::from(
-            m.phase.get() == Phase::Idle
-                && m.send(m.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch),
-        )))
-    })())
+        Err(e) => e,
+    }
+}
+pub(super) unsafe extern "C" fn charged(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    _a: *const Oop,
+    n: usize,
+) -> Oop {
+    match unsafe { memory(c) } {
+        Ok(s) => {
+            if n == 0 {
+                abi::size(s.charged.get()).unwrap_or(s.invalid())
+            } else {
+                s.invalid()
+            }
+        }
+        Err(e) => e,
+    }
+}
+pub(super) unsafe extern "C" fn external(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if !matches!(s.phase.get(), Phase::Idle | Phase::Inactive) {
+            return Err(s.invalid());
+        }
+        let Some([bytes]) = abi::borrowed_slice(a, n) else {
+            return Err(s.invalid());
+        };
+        s.charged.set(add(
+            s.charged.get(),
+            abi::as_size(*bytes).ok_or(s.invalid())?,
+        ));
+        Ok(core::ptr::null_mut())
+    })()
+    .unwrap_or_else(|e| e)
+}
+pub(super) unsafe extern "C" fn collect(
+    _id: Oop,
+    c: Oop,
+    _r: Oop,
+    _a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if n != 0 {
+            return Err(s.invalid());
+        }
+        if matches!(s.phase.get(), Phase::Marking | Phase::Finalizing) {
+            return Ok(abi::size(0).unwrap());
+        }
+        native_stack::with_roots(s.invalid(), |roots| collection::run(s, roots))
+    })()
+    .unwrap_or_else(|e| e)
 }
