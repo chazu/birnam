@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 9],
+    modules: [Oop; 10],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -1117,6 +1117,106 @@ pub(super) unsafe fn check(
         std::fs::remove_dir_all(&directory).unwrap();
         println!(
             "File I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        let peg = id.send(modules[9], id.load, &[args]).expect("PEG loaded");
+        let peg_types = [b"PegPatternVt".as_slice(), b"PegGrammarVt", b"PegCstVt"]
+            .map(|name| send(namespace, b"at:", &[sel(name)]).unwrap());
+        let peg_meta = send(id.root, b"behaviorOf:", &[peg_types[0]]).unwrap();
+        let private_meta = send(peg_meta, b"delegated", &[]).unwrap();
+        send(private_meta, b"addMethod", &[sel(b"allocate"), allocating]).unwrap();
+        for vt in peg_types {
+            send(id.root, b"reassociateBehaviorOf:with:", &[vt, private_meta]).unwrap();
+        }
+        let literal = keep(send(peg, b"literal:", &[text(b"ab\0\xff")]).unwrap());
+        let grammar = keep(send(peg, b"grammar", &[]).unwrap());
+        let root_name = text(b"root");
+        send(grammar, b"rule:is:", &[root_name, literal]).unwrap();
+        let tree = keep(send(grammar, b"parse:from:", &[text(b"ab\0\xff!"), root_name]).unwrap());
+        assert_eq!(text_bytes(send(tree, b"ruleName", &[]).unwrap()), b"root");
+        assert_eq!(int_value(send(tree, b"start", &[]).unwrap()), 0);
+        assert_eq!(int_value(send(tree, b"end", &[]).unwrap()), 4);
+        let digits = keep(send(peg, b"anyOf:", &[text(b"0123456789")]).unwrap());
+        let digits = keep(send(digits, b"plus", &[]).unwrap());
+        let digit_name = text(b"digits");
+        send(grammar, b"rule:is:", &[digit_name, digits]).unwrap();
+        let seq = keep(send(peg, b"seq", &[]).unwrap());
+        let a = send(peg, b"literal:", &[text(b"a")]).unwrap();
+        send(seq, b"add:", &[a]).unwrap();
+        let reference = send(peg, b"ruleRef:", &[digit_name]).unwrap();
+        send(seq, b"add:", &[reference]).unwrap();
+        let eof = send(peg, b"eof", &[]).unwrap();
+        send(seq, b"add:", &[eof]).unwrap();
+        send(grammar, b"rule:is:", &[root_name, seq]).unwrap();
+        let tree = keep(send(grammar, b"parse:from:", &[text(b"a123"), root_name]).unwrap());
+        assert_eq!(int_value(send(tree, b"childCount", &[]).unwrap()), 1);
+        let child = keep(send(tree, b"childAt:", &[zero]).unwrap());
+        assert_eq!(
+            text_bytes(send(child, b"ruleName", &[]).unwrap()),
+            b"digits"
+        );
+        assert_eq!(int_value(send(child, b"start", &[]).unwrap()), 1);
+        assert_eq!(int_value(send(child, b"end", &[]).unwrap()), 4);
+        let children = send(tree, b"children", &[]).unwrap();
+        assert_eq!(int_value(send(children, b"size", &[]).unwrap()), 1);
+        assert_eq!(
+            send(children, b"atWord:", &[abi::size(0).unwrap()]).unwrap(),
+            child
+        );
+        let syntax = keep(send(grammar, b"parse:from:", &[text(b"aX"), root_name]).unwrap());
+        assert_eq!(
+            send(syntax, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+            sel(b"syntaxError")
+        );
+        assert_eq!(
+            text_bytes(send(syntax, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+            b"syntax error at line 1, col 2"
+        );
+        assert_eq!(int_value(send(grammar, b"furthestFail", &[]).unwrap()), 1);
+        let missing =
+            keep(send(grammar, b"parse:from:", &[text(b""), text(b"missingRule")]).unwrap());
+        assert_eq!(
+            send(missing, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+            sel(b"undefinedRule")
+        );
+        assert_eq!(
+            text_bytes(send(missing, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+            b"undefined rule: missingRule"
+        );
+        let loop_rule = text(b"loop");
+        let recursive = send(peg, b"ruleRef:", &[loop_rule]).unwrap();
+        send(grammar, b"rule:is:", &[loop_rule, recursive]).unwrap();
+        let recursion = keep(send(grammar, b"parse:from:", &[text(b""), loop_rule]).unwrap());
+        assert_eq!(
+            send(recursion, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+            sel(b"leftRecursion")
+        );
+        let range = keep(send(peg, b"range:to:", &[text(b"A"), text(b"Z")]).unwrap());
+        send(grammar, b"rule:is:", &[root_name, range]).unwrap();
+        let tree = send(grammar, b"parse:from:", &[text(b"Q"), root_name]).unwrap();
+        assert_eq!(int_value(send(tree, b"end", &[]).unwrap()), 1);
+        let patterns = keep(send(vector, b"add:", &[range]).unwrap());
+        let patterns = keep(send(patterns, b"add:", &[send(peg, b"eof", &[]).unwrap()]).unwrap());
+        let sequence = send(peg, b"seqOf:", &[patterns]).unwrap();
+        send(grammar, b"rule:is:", &[root_name, sequence]).unwrap();
+        let tree = send(grammar, b"parse:from:", &[text(b"Z"), root_name]).unwrap();
+        assert_eq!(int_value(send(tree, b"end", &[]).unwrap()), 1);
+        let ephemeral = send(peg, b"literal:", &[text(b"discard")]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        assert!(send(id.root, b"identityOf:", &[ephemeral]).is_err());
+        for _ in 0..24 {
+            send(peg, b"literal:", &[text(b"reuse")]).unwrap();
+            send(gc, b"collectPrecisely", &[]).unwrap();
+        }
+        send(string_type, b"addMethod", &[sel(b"bytes"), absent_value]).unwrap();
+        assert!(send(peg, b"literal:", &[present]).is_err());
+        send(string_type, b"addMethod", &[sel(b"bytes"), original_bytes]).unwrap();
+        for vt in peg_types {
+            send(id.root, b"reassociateBehaviorOf:with:", &[vt, peg_meta]).unwrap();
+        }
+        println!(
+            "PEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

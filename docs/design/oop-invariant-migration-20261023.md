@@ -591,3 +591,24 @@ missing-file behavior, filename-provider mutation plus GC, contents-failure prio
 constructor replacement and captured/reloaded Methods. All prior gates pass.
 Broad performance and full Bootstrap/compiler/execution/image/worker acceptance
 remain pending. [Qualification receipts](../measurements/oop-file-io-20261023.json).
+
+## Piece 25: PEG uses Oop methods, byte providers and direct retirement
+
+PEG now declares native methods once and uses its ordinary Peg object as context.
+Removed the 36 leaked native Entry records and the per-call root-token/release
+loop. One scoped reference list protects newly constructed graphs and parser
+snapshots. New Value references are protected before allocating their handles;
+returned handles are validated before recording owner data. Pattern/Grammar/CST
+classification stays entirely within the PEG owner, above opaque Id storage.
+
+Byte-provider application replaces native borrowed bytes for literals, parsing,
+character classes, rule names and diagnostics. Retirement takes dead Oops directly.
+The matcher, memoization rules and independent matcher comparisons are unchanged.
+
+All three independent matcher tests and the native integration gate pass. The
+latter covers binary literals, sequence/character combinators, String and Symbol
+rule conversion, CST names/spans/children, syntax/undefined/left-recursive errors,
+GC during every selected allocation, current byte-method replacement, retirement
+and subsequent allocations. Full compiler/execution/image/worker qualification
+and performance recovery remain pending.
+[Qualification receipts](../measurements/oop-peg-20261023.json).

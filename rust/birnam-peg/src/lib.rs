@@ -1,22 +1,47 @@
-//! PEG's existing matcher over production Id-owned pattern, grammar and CST objects.
+//! PEG owns pattern, grammar and CST data. Only Oops cross Id.
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::RefCell, ffi::c_void, ptr};
-use std::{collections::HashMap, rc::Rc};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
+use std::{
+    collections::HashMap,
+    rc::Rc,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 include!("matcher.rs");
 fn abort(message: &str) -> ! {
     panic!("invalid private PEG graph: {message}")
 }
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
 }
-fn done(v: Result<Operand, Outcome>) -> Outcome {
-    v.map_or_else(|e| e, Outcome::loaded)
+fn done(v: Result<Oop, Oop>) -> Oop {
+    v.unwrap_or_else(abi::fault_reference)
+}
+unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
+        return Err(invalid());
+    }
+    let s = unsafe { &*p };
+    if c == s.prototype {
+        Ok(s)
+    } else {
+        Err(invalid())
+    }
 }
 #[derive(Clone)]
 enum Value {
@@ -39,137 +64,180 @@ impl Value {
         }
     }
 }
+
 struct State {
     id: Protocol,
     ns: Oop,
-    roots: Oop,
     gc: Oop,
     model: Oop,
+    prototype: Oop,
     behaviors: [Oop; 3],
     values: RefCell<HashMap<usize, Value>>,
     permanent: Vec<Oop>,
-    thread: std::thread::ThreadId,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
+    byte_operation: Cell<Oop>,
+    ready: Cell<bool>,
 }
 struct Scope<'a> {
     s: &'a State,
-    tokens: RefCell<Vec<usize>>,
+    start: usize,
 }
 impl Scope<'_> {
-    unsafe fn keep(&self, v: Oop) -> Result<Oop, Outcome> {
-        let t = unsafe {
-            self.s
-                .id
-                .send_named(self.s.roots, b"retain:", &[Operand::object(v)])
-        }?
-        .as_word()
-        .ok_or_else(invalid)?;
-        self.tokens.borrow_mut().push(t);
-        Ok(v)
+    fn keep(&self, v: Oop) -> Oop {
+        self.s.scoped.borrow_mut().push(v);
+        v
     }
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        for t in self.tokens.get_mut().drain(..) {
-            unsafe {
-                self.s
-                    .id
-                    .send_named(self.s.roots, b"release:", &[Operand::word(t)])
-                    .expect("release PEG root");
-            }
-        }
+        self.s.scoped.borrow_mut().truncate(self.start);
     }
 }
 impl State {
-    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Operand, Outcome> {
-        unsafe { self.id.send_named(r, n, a) }
+    fn scope(&self) -> Scope<'_> {
+        Scope {
+            s: self,
+            start: self.scoped.borrow().len(),
+        }
     }
-    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { object(self.send(self.ns, b"at:", &[Operand::object(self.id.intern_name(n)?)])?) }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, *self.names.get(n).ok_or_else(invalid)?, a) }
     }
-    unsafe fn bytes(&self, v: Oop) -> Result<Vec<u8>, Outcome> {
+    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Oop> {
+        object(unsafe { self.send(self.ns, b"at:", &[*self.names.get(n).ok_or_else(invalid)?]) }?)
+    }
+    unsafe fn bytes_call(&self, v: Oop, r: Oop, mode: usize, extra: Oop) -> Result<Oop, Oop> {
         unsafe {
-            let b = self
-                .send(v, b"bytes", &[])?
-                .as_bytes()
+            let bytes = self.send(v, b"bytes", &[])?;
+            self.send(
+                bytes,
+                b"apply:to:with:",
+                &[
+                    self.byte_operation.get(),
+                    r,
+                    abi::size(mode).unwrap(),
+                    extra,
+                ],
+            )
+        }
+    }
+    unsafe fn number(&self, v: usize) -> Result<Oop, Oop> {
+        unsafe {
+            self.send(
+                self.named(b"Integer")?,
+                b"fromWord:",
+                &[abi::size(v).ok_or_else(invalid)?],
+            )
+        }
+    }
+    unsafe fn word_bits(&self, v: Oop) -> Result<u64, Oop> {
+        unsafe {
+            if let Some(n) = abi::as_size(v) {
+                return Ok(n as u64);
+            }
+            let lo = abi::as_size(self.send(v, b"low32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
                 .ok_or_else(invalid)?;
-            Ok(borrowed_bytes(b.pointer, b.length)
-                .ok_or_else(invalid)?
-                .to_vec())
+            let hi = abi::as_size(self.send(v, b"high32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            Ok(lo as u64 | ((hi as u64) << 32))
         }
     }
-    unsafe fn number(&self, v: usize) -> Result<Operand, Outcome> {
-        unsafe { self.send(self.named(b"Integer")?, b"fromWord:", &[Operand::word(v)]) }
-    }
-    unsafe fn index(&self, v: Operand) -> Result<usize, Outcome> {
-        unsafe { self.send(self.named(b"Integer")?, b"wordOf:", &[v]) }?
-            .as_word()
-            .filter(|v| *v <= isize::MAX as usize)
-            .ok_or_else(invalid)
-    }
-    unsafe fn byte(&self, v: Oop) -> Result<u8, Outcome> {
+    unsafe fn index(&self, v: Oop) -> Result<usize, Oop> {
         unsafe {
-            let integer = self.send(self.named(b"Integer")?, b"wordOf:", &[Operand::object(v)])?;
-            if let Some(word) = integer.as_word() {
-                return Ok(word as u8);
-            }
-            Ok(self.bytes(v)?.first().copied().unwrap_or(0))
-        }
-    }
-    unsafe fn symbol(&self, v: Oop) -> Result<Oop, Outcome> {
-        unsafe {
-            match self.send(self.id.receiver, b"symbolBytesOf:", &[Operand::object(v)]) {
-                Ok(b) if b.as_bytes().is_some() => Ok(v),
-                _ => self.id.intern_name(&self.bytes(v)?),
+            let word = self.send(self.named(b"Integer")?, b"wordOf:", &[v])?;
+            let n = self.word_bits(word)?;
+            if n > isize::MAX as u64 {
+                Err(invalid())
+            } else {
+                Ok(n as usize)
             }
         }
     }
-    unsafe fn allocate(&self, scope: &Scope<'_>, v: Value) -> Result<Oop, Outcome> {
+    unsafe fn byte(&self, v: Oop) -> Result<u8, Oop> {
         unsafe {
-            let b = self.behaviors[match v {
+            let integer = self.send(self.named(b"Integer")?, b"wordOf:", &[v])?;
+            if !integer.is_null() {
+                return Ok(self.word_bits(integer)? as u8);
+            }
+            abi::as_size(self.bytes_call(v, self.prototype, 3, ptr::null_mut())?)
+                .and_then(|v| u8::try_from(v).ok())
+                .ok_or_else(invalid)
+        }
+    }
+    unsafe fn symbol(&self, v: Oop) -> Result<Oop, Oop> {
+        unsafe {
+            if self
+                .send(self.id.root, b"isSymbol:", &[v])
+                .ok()
+                .and_then(abi::as_size)
+                == Some(1)
+            {
+                return Ok(v);
+            }
+            self.bytes_call(v, self.prototype, 4, ptr::null_mut())
+        }
+    }
+    unsafe fn allocate(&self, scope: &Scope<'_>, v: Value) -> Result<Oop, Oop> {
+        unsafe {
+            for r in v.refs() {
+                scope.keep(r);
+            }
+            let behavior = self.behaviors[match v {
                 Value::Pattern(_) => 0,
                 Value::Grammar(..) => 1,
                 Value::Cst(..) => 2,
             }];
-            let o = scope.keep(object(self.send(
+            let o = scope.keep(self.send(
                 self.model,
                 b"allocate:bytes:",
-                &[Operand::object(b), Operand::word(0)],
-            )?)?)?;
-            self.values.borrow_mut().insert(o as usize, v);
+                &[behavior, abi::size(0).unwrap()],
+            )?);
+            if self.send(self.id.root, b"allocationSizeOf:", &[o])? != abi::size(0).unwrap()
+                || self.send(self.id.root, b"behaviorOf:", &[o])? != behavior
+                || self.values.borrow().contains_key(&o.addr())
+            {
+                return Err(invalid());
+            }
+            self.values.borrow_mut().insert(o.addr(), v);
             Ok(o)
         }
     }
-    fn value(&self, v: Oop) -> Result<Value, Outcome> {
+    fn value(&self, v: Oop) -> Result<Value, Oop> {
         self.values
             .borrow()
-            .get(&(v as usize))
+            .get(&v.addr())
             .cloned()
             .ok_or_else(invalid)
     }
-    fn pattern(&self, v: Oop) -> Result<PatternState, Outcome> {
+    fn pattern(&self, v: Oop) -> Result<PatternState, Oop> {
         match self.value(v)? {
             Value::Pattern(p) => Ok(p),
             _ => Err(invalid()),
         }
     }
-    unsafe fn error(&self, scope: &Scope<'_>, kind: &[u8], msg: &[u8]) -> Result<Operand, Outcome> {
+    unsafe fn error(&self, scope: &Scope<'_>, kind: &[u8], msg: &[u8]) -> Result<Oop, Oop> {
         unsafe {
+            let values: Vec<_> = msg
+                .iter()
+                .map(|&b| abi::size(b as usize).unwrap())
+                .collect();
+            let source = scope.keep(self.send(self.id.root, b"sequence", &values)?);
             let m = scope.keep(object(self.send(
                 self.named(b"String")?,
                 b"fromBytes:",
-                &[Operand::bytes(msg)],
-            )?)?)?;
+                &[source],
+            )?)?);
             self.send(
                 self.named(b"Error")?,
                 b"kind:message:",
-                &[
-                    Operand::object(self.id.intern_name(kind)?),
-                    Operand::object(m),
-                ],
+                &[self.names[kind], m],
             )
         }
     }
-    unsafe fn cst(&self, scope: &Scope<'_>, m: &Matcher, index: usize) -> Result<Oop, Outcome> {
+    unsafe fn cst(&self, scope: &Scope<'_>, m: &Matcher, index: usize) -> Result<Oop, Oop> {
         unsafe {
             let n = &m.nodes[index];
             let mut children = Vec::new();
@@ -183,12 +251,11 @@ impl State {
         &self,
         scope: &Scope<'_>,
         grammar: Oop,
-        source: Oop,
+        source: Vec<u8>,
         root: Oop,
-    ) -> Result<Operand, Outcome> {
+    ) -> Result<Oop, Oop> {
         unsafe {
-            let source = self.bytes(source)?;
-            let root = scope.keep(self.symbol(root)?)?;
+            let root = scope.keep(self.symbol(root)?);
             let Value::Grammar(rules, _) = self.value(grammar)? else {
                 return Err(invalid());
             };
@@ -216,14 +283,14 @@ impl State {
             // Matcher snapshots can outlive reentrant grammar replacement during CST allocation.
             for p in m.patterns.values() {
                 for v in &p.children {
-                    scope.keep(*v)?;
+                    scope.keep(*v);
                 }
                 if !p.rule_name.is_null() {
-                    scope.keep(p.rule_name)?;
+                    scope.keep(p.rule_name);
                 }
             }
             for n in &m.nodes {
-                scope.keep(n.rule)?;
+                scope.keep(n.rule);
             }
             if let Some(r) = result {
                 let i = m.nodes.len();
@@ -233,9 +300,9 @@ impl State {
                     end: r.end,
                     children: r.children,
                 });
-                return Ok(Operand::object(self.cst(scope, &m, i)?));
+                return Ok(self.cst(scope, &m, i)?);
             }
-            for (name, kind, prefix) in [
+            for (name, kind, _prefix) in [
                 (
                     m.undefined_rule,
                     b"undefinedRule".as_slice(),
@@ -248,19 +315,17 @@ impl State {
                 ),
             ] {
                 if !name.is_null() {
-                    let b = self
-                        .send(
-                            self.id.receiver,
-                            b"symbolBytesOf:",
-                            &[Operand::object(name)],
-                        )?
-                        .as_bytes()
-                        .ok_or_else(invalid)?;
-                    let mut message = prefix.to_vec();
-                    message.extend_from_slice(
-                        borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?,
+                    let mode = if kind == b"undefinedRule" { 5 } else { 6 };
+                    return self.send(
+                        name,
+                        b"apply:to:with:",
+                        &[
+                            self.byte_operation.get(),
+                            self.prototype,
+                            abi::size(mode).unwrap(),
+                            ptr::null_mut(),
+                        ],
                     );
-                    return self.error(scope, kind, &message);
                 }
             }
             let (line, col) = syntax_position(&m.source, m.furthest);
@@ -289,32 +354,14 @@ enum Op {
     Fail,
     Cst(u8),
 }
-struct Entry {
-    state: *const State,
-    op: Op,
-}
-unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let e = &*c.cast::<Entry>();
-        let s = &*e.state;
-        if s.thread != std::thread::current().id() {
+unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
+    unsafe {
+        let scope = s.scope();
+        if a.iter().any(|v| v.is_null()) {
             return Err(invalid());
         }
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let scope = Scope {
-            s,
-            tokens: RefCell::new(Vec::new()),
-        };
-        scope.keep(r)?;
-        let a = a
-            .iter()
-            .map(|v| object(*v))
-            .collect::<Result<Vec<_>, _>>()?;
-        for &v in &a {
-            scope.keep(v)?;
-        }
         s.send(s.gc, b"prepareAllocation", &[])?;
-        let expected = match e.op {
+        let expected = match op {
             Op::New(_) | Op::Grammar | Op::Fail => 0,
             Op::Unary(_, true) | Op::Cst(0..=4) | Op::Cst(6) => 0,
             Op::Range | Op::FromTo | Op::Rule | Op::Parse => 2,
@@ -323,29 +370,26 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
         if a.len() != expected {
             return Err(invalid());
         }
-        let mut p = match e.op {
+        let mut p = match op {
             Op::New(k) | Op::Seq(k) | Op::Unary(k, _) => PatternState::new(k),
             _ => PatternState::new(Kind::Literal),
         };
-        match e.op {
+        match op {
             Op::New(_) => {}
             Op::Grammar => {
-                return Ok(Operand::object(
-                    s.allocate(&scope, Value::Grammar(Vec::new(), 0))?,
-                ));
+                return Ok(s.allocate(&scope, Value::Grammar(Vec::new(), 0))?);
             }
-            Op::Literal => p.literal = s.bytes(a[0])?,
+            Op::Literal => return s.bytes_call(a[0], r, 0, ptr::null_mut()),
             Op::RuleRef => {
                 p.kind = Kind::RuleRef;
                 p.rule_name = s.symbol(a[0])?
             }
             Op::Seq(_) => {
-                let count = scope.keep(object(s.send(a[0], b"size", &[])?)?)?;
-                let count = s.index(Operand::object(count))?;
+                let count = scope.keep(object(s.send(a[0], b"size", &[])?)?);
+                let count = s.index(count)?;
                 for i in 0..count {
-                    let index = scope.keep(object(s.number(i)?)?)?;
-                    let v =
-                        scope.keep(object(s.send(a[0], b"at:", &[Operand::object(index)])?)?)?;
+                    let index = scope.keep(object(s.number(i)?)?);
+                    let v = scope.keep(object(s.send(a[0], b"at:", &[index])?)?);
                     s.pattern(v)?;
                     p.children.push(v);
                 }
@@ -355,22 +399,14 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 s.pattern(v)?;
                 p.children.push(v)
             }
-            Op::AnyOf => {
-                p.kind = Kind::Charset;
-                for b in s.bytes(a[0])? {
-                    p.ranges.push(Range { lo: b, hi: b });
-                }
-            }
+            Op::AnyOf => return s.bytes_call(a[0], r, 1, ptr::null_mut()),
             Op::Range | Op::FromTo => {
-                let (lo, hi) = if matches!(e.op, Op::Range) {
+                let (lo, hi) = if matches!(op, Op::Range) {
                     (s.byte(a[0])?, s.byte(a[1])?)
                 } else {
-                    (
-                        s.index(Operand::object(a[0]))? as u8,
-                        s.index(Operand::object(a[1]))? as u8,
-                    )
+                    (s.index(a[0])? as u8, s.index(a[1])? as u8)
                 };
-                if matches!(e.op, Op::FromTo) {
+                if matches!(op, Op::FromTo) {
                     p = s.pattern(r)?;
                 } else {
                     p.kind = Kind::Charset;
@@ -379,9 +415,9 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                     lo: lo as u8,
                     hi: hi as u8,
                 });
-                if matches!(e.op, Op::FromTo) {
+                if matches!(op, Op::FromTo) {
                     s.values.borrow_mut().insert(r as usize, Value::Pattern(p));
-                    return Ok(Operand::object(r));
+                    return Ok(r);
                 }
             }
             Op::Add => {
@@ -389,7 +425,7 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 p = s.pattern(r)?;
                 p.children.push(a[0]);
                 s.values.borrow_mut().insert(r as usize, Value::Pattern(p));
-                return Ok(Operand::object(r));
+                return Ok(r);
             }
             Op::Rule => {
                 let name = s.symbol(a[0])?;
@@ -403,9 +439,9 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 } else {
                     rules.push((name, a[1]));
                 }
-                return Ok(Operand::object(r));
+                return Ok(r);
             }
-            Op::Parse => return s.parse(&scope, r, a[0], a[1]),
+            Op::Parse => return s.bytes_call(a[0], r, 2, a[1]),
             Op::Fail => {
                 let Value::Grammar(_, v) = s.value(r)? else {
                     return Err(invalid());
@@ -417,258 +453,615 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                     return Err(invalid());
                 };
                 return match op {
-                    0 => Ok(Operand::object(rule)),
-                    1 => {
-                        let b = s
-                            .send(s.id.receiver, b"symbolBytesOf:", &[Operand::object(rule)])?
-                            .as_bytes()
-                            .ok_or_else(invalid)?;
-                        let bytes = borrowed_bytes(b.pointer, b.length)
-                            .ok_or_else(invalid)?
-                            .to_vec();
-                        s.send(
-                            s.named(b"String")?,
-                            b"fromBytes:",
-                            &[Operand::bytes(&bytes)],
-                        )
-                    }
+                    0 => Ok(rule),
+                    1 => s.send(s.named(b"String")?, b"fromBytes:", &[rule]),
                     2 => s.number(start),
                     3 => s.number(end),
                     4 => s.number(children.len()),
-                    5 => Ok(Operand::object(
-                        children
-                            .get(s.index(Operand::object(a[0]))?)
-                            .copied()
-                            .unwrap_or(s.named(b"nil")?),
-                    )),
+                    5 => Ok(children
+                        .get(s.index(a[0])?)
+                        .copied()
+                        .unwrap_or(s.named(b"nil")?)),
                     6 => {
                         let mut v =
-                            scope.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?)?;
+                            scope.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?);
                         for child in children {
-                            v = scope.keep(object(s.send(
-                                v,
-                                b"add:",
-                                &[Operand::object(child)],
-                            )?)?)?;
+                            v = scope.keep(object(s.send(v, b"add:", &[child])?)?);
                         }
-                        Ok(Operand::object(v))
+                        Ok(v)
                     }
                     _ => Err(invalid()),
                 };
             }
         }
-        Ok(Operand::object(s.allocate(&scope, Value::Pattern(p))?))
+        Ok(s.allocate(&scope, Value::Pattern(p))?)
+    }
+}
+
+unsafe extern "C" fn byte_operation(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    done((|| unsafe {
+        let s = state(c)?;
+        let scope = s.scope();
+        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
+        let mode = abi::as_size(a[end]).ok_or_else(invalid)?;
+        let extra = a[end + 1];
+        let bytes = a[..end]
+            .iter()
+            .map(|&v| {
+                abi::as_size(v)
+                    .and_then(|v| u8::try_from(v).ok())
+                    .ok_or_else(invalid)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        match mode {
+            0 | 1 => {
+                let mut p = PatternState::new(if mode == 0 {
+                    Kind::Literal
+                } else {
+                    Kind::Charset
+                });
+                if mode == 0 {
+                    p.literal = bytes;
+                } else {
+                    p.ranges = bytes.into_iter().map(|b| Range { lo: b, hi: b }).collect();
+                }
+                s.allocate(&scope, Value::Pattern(p))
+            }
+            2 => s.parse(&scope, r, bytes, extra),
+            3 => Ok(abi::size(bytes.first().copied().unwrap_or(0) as usize).unwrap()),
+            4 => {
+                let name = s.send(s.id.root, b"nameWithBytes", &a[..end])?;
+                s.id.send(name, s.id.intern, &[])
+            }
+            5 | 6 => {
+                let mut msg = if mode == 5 {
+                    b"undefined rule: ".to_vec()
+                } else {
+                    b"left-recursive rule: ".to_vec()
+                };
+                msg.extend_from_slice(&bytes);
+                s.error(
+                    &scope,
+                    if mode == 5 {
+                        b"undefinedRule"
+                    } else {
+                        b"leftRecursion"
+                    },
+                    &msg,
+                )
+            }
+            _ => Err(invalid()),
+        }
     })())
 }
-unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
-        let Some([o, v]) = borrowed_slice(a, n) else {
+        let s = state(c)?;
+        let [o, v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let entry = object(*v)?;
         let refs = s
             .values
             .borrow()
-            .get(&(object(*o)? as usize))
+            .get(&o.addr())
             .map(Value::refs)
             .unwrap_or_default();
         for r in refs {
-            s.id.send_named(entry, b"visit:", &[Operand::object(r)])?;
+            s.send(*v, b"visit:", &[r])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
-        let Some([v]) = borrowed_slice(a, n) else {
+        let s = state(c)?;
+        let [v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let v = object(*v)?;
-        for &o in &s.permanent {
-            s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
+        let mut values = s.permanent.clone();
+        values.extend(s.names.values().copied());
+        values.extend(s.scoped.borrow().iter().copied());
+        values.push(s.byte_operation.get());
+        for r in values {
+            s.send(*v, b"visit:", &[r])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
-        let Some([v]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let b = v.as_bytes().ok_or_else(invalid)?;
-        let bytes = borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?;
-        if bytes.len() % size_of::<usize>() != 0 {
-            return Err(invalid());
-        }
+        let s = state(c)?;
+        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let mut values = s.values.borrow_mut();
-        for b in bytes.chunks_exact(size_of::<usize>()) {
-            values.remove(&usize::from_ne_bytes(b.try_into().unwrap()));
+        for v in a {
+            values.remove(&v.addr());
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named =
-            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
-        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Peg")?)])?;
-        if existing.kind() == native::OBJECT {
+macro_rules! entry {
+    ($name:ident,$op:expr) => {
+        unsafe extern "C" fn $name(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+            done((|| unsafe {
+                execute(state(c)?, r, borrowed_slice(a, n).ok_or_else(invalid)?, $op)
+            })())
+        }
+    };
+}
+entry!(operation_0, Op::Literal);
+entry!(operation_1, Op::New(Kind::Any));
+entry!(operation_2, Op::New(Kind::Any));
+entry!(operation_3, Op::New(Kind::Eof));
+entry!(operation_4, Op::New(Kind::Charset));
+entry!(operation_5, Op::New(Kind::Seq));
+entry!(operation_6, Op::New(Kind::Choice));
+entry!(operation_7, Op::Grammar);
+entry!(operation_8, Op::Grammar);
+entry!(operation_9, Op::RuleRef);
+entry!(operation_10, Op::Seq(Kind::Seq));
+entry!(operation_11, Op::Seq(Kind::Choice));
+entry!(operation_12, Op::AnyOf);
+entry!(operation_13, Op::Range);
+entry!(operation_14, Op::Unary(Kind::Star, false));
+entry!(operation_15, Op::Unary(Kind::Plus, false));
+entry!(operation_16, Op::Unary(Kind::Opt, false));
+entry!(operation_17, Op::Unary(Kind::And, false));
+entry!(operation_18, Op::Unary(Kind::Not, false));
+entry!(operation_19, Op::Unary(Kind::Star, true));
+entry!(operation_20, Op::Unary(Kind::Plus, true));
+entry!(operation_21, Op::Unary(Kind::Opt, true));
+entry!(operation_22, Op::Unary(Kind::Not, true));
+entry!(operation_23, Op::Unary(Kind::And, true));
+entry!(operation_24, Op::Add);
+entry!(operation_25, Op::FromTo);
+entry!(operation_26, Op::Rule);
+entry!(operation_27, Op::Parse);
+entry!(operation_28, Op::Fail);
+entry!(operation_29, Op::Cst(0));
+entry!(operation_30, Op::Cst(1));
+entry!(operation_31, Op::Cst(2));
+entry!(operation_32, Op::Cst(3));
+entry!(operation_33, Op::Cst(4));
+entry!(operation_34, Op::Cst(5));
+entry!(operation_35, Op::Cst(6));
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"Error",
+    b"GC",
+    b"Integer",
+    b"ObjectModel",
+    b"ObjectVt",
+    b"Peg",
+    b"PegCstVt",
+    b"PegFacadeVt",
+    b"PegGrammarVt",
+    b"PegPatternVt",
+    b"Roots",
+    b"String",
+    b"Vector",
+    b"add:",
+    b"addMethod",
+    b"allocate:bytes:",
+    b"allocationSizeOf:",
+    b"and:",
+    b"any",
+    b"anyByte",
+    b"anyOf:",
+    b"apply:to:with:",
+    b"at:",
+    b"at:put:",
+    b"behaviorOf:",
+    b"byteOperation",
+    b"bytes",
+    b"charset",
+    b"childAt:",
+    b"childCount",
+    b"children",
+    b"choice",
+    b"choiceOf:",
+    b"delegated",
+    b"end",
+    b"eof",
+    b"from:to:",
+    b"fromBytes:",
+    b"fromWord:",
+    b"furthestFail",
+    b"grammar",
+    b"high32",
+    b"isSymbol:",
+    b"kind:message:",
+    b"leftRecursion",
+    b"literal:",
+    b"lookahead",
+    b"low32",
+    b"methodAt:",
+    b"nameWithBytes",
+    b"negate",
+    b"new",
+    b"newGrammar",
+    b"nil",
+    b"not:",
+    b"opt",
+    b"opt:",
+    b"parse:from:",
+    b"plus",
+    b"plus:",
+    b"prepareAllocation",
+    b"range:to:",
+    b"referencesOf:do:",
+    b"register:",
+    b"registerRetirement:",
+    b"release:",
+    b"retain:",
+    b"retire:",
+    b"rootsDo:",
+    b"rule",
+    b"rule:is:",
+    b"ruleName",
+    b"ruleRef:",
+    b"seq",
+    b"seqOf:",
+    b"sequence",
+    b"size",
+    b"star",
+    b"star:",
+    b"start",
+    b"syntaxError",
+    b"trace:with:",
+    b"undefinedRule",
+    b"visit:",
+    b"withContext:",
+    b"wordOf:"
+];
+const fn index(n: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        let c = NAMES[i];
+        if c.len() == n.len() {
+            let mut j = 0;
+            while j < n.len() && c[j] == n[j] {
+                j += 1;
+            }
+            if j == n.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"literal:"),
+        entry: Some(operation_0),
+    },
+    MethodSpec {
+        name: index(b"any"),
+        entry: Some(operation_1),
+    },
+    MethodSpec {
+        name: index(b"anyByte"),
+        entry: Some(operation_2),
+    },
+    MethodSpec {
+        name: index(b"eof"),
+        entry: Some(operation_3),
+    },
+    MethodSpec {
+        name: index(b"charset"),
+        entry: Some(operation_4),
+    },
+    MethodSpec {
+        name: index(b"seq"),
+        entry: Some(operation_5),
+    },
+    MethodSpec {
+        name: index(b"choice"),
+        entry: Some(operation_6),
+    },
+    MethodSpec {
+        name: index(b"grammar"),
+        entry: Some(operation_7),
+    },
+    MethodSpec {
+        name: index(b"newGrammar"),
+        entry: Some(operation_8),
+    },
+    MethodSpec {
+        name: index(b"ruleRef:"),
+        entry: Some(operation_9),
+    },
+    MethodSpec {
+        name: index(b"seqOf:"),
+        entry: Some(operation_10),
+    },
+    MethodSpec {
+        name: index(b"choiceOf:"),
+        entry: Some(operation_11),
+    },
+    MethodSpec {
+        name: index(b"anyOf:"),
+        entry: Some(operation_12),
+    },
+    MethodSpec {
+        name: index(b"range:to:"),
+        entry: Some(operation_13),
+    },
+    MethodSpec {
+        name: index(b"star:"),
+        entry: Some(operation_14),
+    },
+    MethodSpec {
+        name: index(b"plus:"),
+        entry: Some(operation_15),
+    },
+    MethodSpec {
+        name: index(b"opt:"),
+        entry: Some(operation_16),
+    },
+    MethodSpec {
+        name: index(b"and:"),
+        entry: Some(operation_17),
+    },
+    MethodSpec {
+        name: index(b"not:"),
+        entry: Some(operation_18),
+    },
+    MethodSpec {
+        name: index(b"star"),
+        entry: Some(operation_19),
+    },
+    MethodSpec {
+        name: index(b"plus"),
+        entry: Some(operation_20),
+    },
+    MethodSpec {
+        name: index(b"opt"),
+        entry: Some(operation_21),
+    },
+    MethodSpec {
+        name: index(b"negate"),
+        entry: Some(operation_22),
+    },
+    MethodSpec {
+        name: index(b"lookahead"),
+        entry: Some(operation_23),
+    },
+    MethodSpec {
+        name: index(b"add:"),
+        entry: Some(operation_24),
+    },
+    MethodSpec {
+        name: index(b"from:to:"),
+        entry: Some(operation_25),
+    },
+    MethodSpec {
+        name: index(b"rule:is:"),
+        entry: Some(operation_26),
+    },
+    MethodSpec {
+        name: index(b"parse:from:"),
+        entry: Some(operation_27),
+    },
+    MethodSpec {
+        name: index(b"furthestFail"),
+        entry: Some(operation_28),
+    },
+    MethodSpec {
+        name: index(b"rule"),
+        entry: Some(operation_29),
+    },
+    MethodSpec {
+        name: index(b"ruleName"),
+        entry: Some(operation_30),
+    },
+    MethodSpec {
+        name: index(b"start"),
+        entry: Some(operation_31),
+    },
+    MethodSpec {
+        name: index(b"end"),
+        entry: Some(operation_32),
+    },
+    MethodSpec {
+        name: index(b"childCount"),
+        entry: Some(operation_33),
+    },
+    MethodSpec {
+        name: index(b"childAt:"),
+        entry: Some(operation_34),
+    },
+    MethodSpec {
+        name: index(b"children"),
+        entry: Some(operation_35),
+    },
+    MethodSpec {
+        name: index(b"rootsDo:"),
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: index(b"referencesOf:do:"),
+        entry: Some(references),
+    },
+    MethodSpec {
+        name: index(b"retire:"),
+        entry: Some(retire),
+    },
+    MethodSpec {
+        name: index(b"byteOperation"),
+        entry: Some(byte_operation),
+    },
+];
+const BINDINGS: &[(usize, &[u8])] = &[
+    (3, b"literal:"),
+    (3, b"any"),
+    (3, b"anyByte"),
+    (3, b"eof"),
+    (3, b"charset"),
+    (3, b"seq"),
+    (3, b"choice"),
+    (3, b"grammar"),
+    (3, b"newGrammar"),
+    (3, b"ruleRef:"),
+    (3, b"seqOf:"),
+    (3, b"choiceOf:"),
+    (3, b"anyOf:"),
+    (3, b"range:to:"),
+    (3, b"star:"),
+    (3, b"plus:"),
+    (3, b"opt:"),
+    (3, b"and:"),
+    (3, b"not:"),
+    (0, b"star"),
+    (0, b"plus"),
+    (0, b"opt"),
+    (0, b"negate"),
+    (0, b"lookahead"),
+    (0, b"add:"),
+    (0, b"from:to:"),
+    (1, b"rule:is:"),
+    (1, b"parse:from:"),
+    (1, b"furthestFail"),
+    (2, b"rule"),
+    (2, b"ruleName"),
+    (2, b"start"),
+    (2, b"end"),
+    (2, b"childCount"),
+    (2, b"childAt:"),
+    (2, b"children"),
+];
+
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if n != NAMES.len() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let s = unsafe { &*old };
+        return if s.ready.get() && s.ns == *ns {
+            done(unsafe { s.send(*ns, b"at:", &[s.names[b"Peg".as_slice()]]) })
+        } else {
+            id.invalid
+        };
+    }
+    done((|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |n: &[u8]| object(send(*ns, b"at:", &[names[n]])?);
+        let existing = send(*ns, b"at:", &[names[b"Peg".as_slice()]])?;
+        if !existing.is_null() {
             return Ok(existing);
         }
-        let root = named(b"Roots")?;
+        let roots = named(b"Roots")?;
         let model = named(b"ObjectModel")?;
         let gc = named(b"GC")?;
+        let parent = named(b"ObjectVt")?;
         let mut tokens = Vec::new();
-        let mut make = || -> Result<Oop, Outcome> {
-            let v = object(id.send_named(named(b"ObjectVt")?, b"delegated", &[])?)?;
-            tokens.push(
-                id.send_named(root, b"retain:", &[Operand::object(v)])?
-                    .as_word()
-                    .ok_or_else(invalid)?,
-            );
-            Ok(v)
-        };
-        let vt = make()?;
-        let behaviors = [make()?, make()?, make()?];
-        let receiver = object(id.send_named(
-            model,
-            b"allocate:bytes:",
-            &[Operand::object(vt), Operand::word(0)],
-        )?)?;
-        tokens.push(
-            id.send_named(root, b"retain:", &[Operand::object(receiver)])?
-                .as_word()
-                .ok_or_else(invalid)?,
-        );
-        let s = Box::into_raw(Box::new(State {
-            id,
-            ns,
-            roots: root,
-            gc,
-            model,
-            behaviors,
-            values: RefCell::new(HashMap::new()),
-            permanent: vec![
-                ns,
-                root,
+        let result = (|| {
+            let mut keep = |v| -> Result<Oop, Oop> {
+                tokens.push(send(roots, b"retain:", &[v])?);
+                Ok(v)
+            };
+            let vt = keep(send(parent, b"delegated", &[])?)?;
+            let behaviors = [
+                keep(send(parent, b"delegated", &[])?)?,
+                keep(send(parent, b"delegated", &[])?)?,
+                keep(send(parent, b"delegated", &[])?)?,
+            ];
+            let receiver = keep(send(
+                model,
+                b"allocate:bytes:",
+                &[vt, abi::size(0).unwrap()],
+            )?)?;
+            let s = Box::into_raw(Box::new(State {
+                id,
+                ns: *ns,
                 gc,
                 model,
+                prototype: receiver,
+                behaviors,
+                values: RefCell::new(HashMap::new()),
+                permanent: vec![
+                    *ns,
+                    gc,
+                    model,
+                    receiver,
                     vt,
-                behaviors[0],
-                behaviors[1],
-                behaviors[2],
-            ],
-            thread: std::thread::current().id(),
-        }));
-        for (n, f) in [
-            (b"rootsDo:".as_slice(), roots as Method),
-            (b"referencesOf:do:", references),
-            (b"retire:", retire),
-        ] {
-            id.send_named(
-                vt,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(n)?),
-                    Operand::entry(NativeEntry::new(f, s.cast())),
+                    behaviors[0],
+                    behaviors[1],
+                    behaviors[2],
                 ],
-            )?;
+                names: names.clone(),
+                scoped: RefCell::new(Vec::new()),
+                byte_operation: Cell::new(ptr::null_mut()),
+                ready: Cell::new(false),
+            }));
+            INSTANCE.store(s, Ordering::Release);
+            let s = &*s;
+            for spec in METHODS {
+                let name = NAMES[spec.name];
+                let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
+                let method = send(method, b"withContext:", &[receiver])?;
+                if name == b"byteOperation" {
+                    s.byte_operation.set(keep(method)?);
+                    continue;
+                }
+                let target = BINDINGS
+                    .iter()
+                    .find(|(_, n)| *n == name)
+                    .map_or(
+                        vt,
+                        |(target, _)| if *target == 3 { vt } else { behaviors[*target] },
+                    );
+                send(target, b"addMethod", &[symbols[spec.name], method])?;
+            }
+            send(roots, b"register:", &[receiver])?;
+            send(gc, b"registerRetirement:", &[receiver])?;
+            for b in behaviors {
+                send(gc, b"trace:with:", &[b, receiver])?;
+            }
+            for (name, v) in [
+                (b"Peg".as_slice(), receiver),
+                (b"PegFacadeVt", vt),
+                (b"PegPatternVt", behaviors[0]),
+                (b"PegGrammarVt", behaviors[1]),
+                (b"PegCstVt", behaviors[2]),
+            ] {
+                send(*ns, b"at:put:", &[names[name], v])?;
+            }
+            s.ready.set(true);
+            Ok(receiver)
+        })();
+        for token in tokens {
+            send(roots, b"release:", &[token])?;
         }
-        let methods: &[(usize, &[u8], Op)] = &[
-            (3, b"literal:", Op::Literal),
-            (3, b"any", Op::New(Kind::Any)),
-            (3, b"anyByte", Op::New(Kind::Any)),
-            (3, b"eof", Op::New(Kind::Eof)),
-            (3, b"charset", Op::New(Kind::Charset)),
-            (3, b"seq", Op::New(Kind::Seq)),
-            (3, b"choice", Op::New(Kind::Choice)),
-            (3, b"grammar", Op::Grammar),
-            (3, b"newGrammar", Op::Grammar),
-            (3, b"ruleRef:", Op::RuleRef),
-            (3, b"seqOf:", Op::Seq(Kind::Seq)),
-            (3, b"choiceOf:", Op::Seq(Kind::Choice)),
-            (3, b"anyOf:", Op::AnyOf),
-            (3, b"range:to:", Op::Range),
-            (3, b"star:", Op::Unary(Kind::Star, false)),
-            (3, b"plus:", Op::Unary(Kind::Plus, false)),
-            (3, b"opt:", Op::Unary(Kind::Opt, false)),
-            (3, b"and:", Op::Unary(Kind::And, false)),
-            (3, b"not:", Op::Unary(Kind::Not, false)),
-            (0, b"star", Op::Unary(Kind::Star, true)),
-            (0, b"plus", Op::Unary(Kind::Plus, true)),
-            (0, b"opt", Op::Unary(Kind::Opt, true)),
-            (0, b"negate", Op::Unary(Kind::Not, true)),
-            (0, b"lookahead", Op::Unary(Kind::And, true)),
-            (0, b"add:", Op::Add),
-            (0, b"from:to:", Op::FromTo),
-            (1, b"rule:is:", Op::Rule),
-            (1, b"parse:from:", Op::Parse),
-            (1, b"furthestFail", Op::Fail),
-            (2, b"rule", Op::Cst(0)),
-            (2, b"ruleName", Op::Cst(1)),
-            (2, b"start", Op::Cst(2)),
-            (2, b"end", Op::Cst(3)),
-            (2, b"childCount", Op::Cst(4)),
-            (2, b"childAt:", Op::Cst(5)),
-            (2, b"children", Op::Cst(6)),
-        ];
-        for &(target, n, op) in methods {
-            let c = Box::into_raw(Box::new(Entry { state: s, op }));
-            id.send_named(
-                if target == 3 { vt } else { behaviors[target] },
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(n)?),
-                    Operand::entry(NativeEntry::new(operation, c.cast())),
-                ],
-            )?;
-        }
-        id.send_named(root, b"register:", &[Operand::object(receiver)])?;
-        id.send_named(gc, b"registerRetirement:", &[Operand::object(receiver)])?;
-        for b in behaviors {
-            id.send_named(
-                gc,
-                b"trace:with:",
-                &[Operand::object(b), Operand::object(receiver)],
-            )?;
-        }
-        for (n, v) in [
-            (b"Peg".as_slice(), receiver),
-            (b"PegFacadeVt", vt),
-            (b"PegPatternVt", behaviors[0]),
-            (b"PegGrammarVt", behaviors[1]),
-            (b"PegCstVt", behaviors[2]),
-        ] {
-            id.send_named(
-                ns,
-                b"at:put:",
-                &[Operand::object(id.intern_name(n)?), Operand::object(v)],
-            )?;
-        }
-        for t in tokens {
-            id.send_named(root, b"release:", &[Operand::word(t)])?;
-        }
-        Ok(Operand::object(receiver))
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        construct(*id, object(*ns)?)
+        result
     })())
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
 #[cfg(test)]
