@@ -20,6 +20,7 @@ unsafe fn run() {
             fixtures.join("rejected.dylib"),
             fixtures.join("rejected-null.dylib"),
             library.join("libbirnam_namespace.dylib"),
+            library.join("libbirnam_storage.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"sequence",
@@ -82,6 +83,10 @@ unsafe fn run() {
             b"nodeWithChild:",
             b"trace:with:",
             b"referenceOwnerOf:",
+            b"Roots",
+            b"GC",
+            b"observe:",
+            b"visit:",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -481,6 +486,46 @@ unsafe fn run() {
         assert_eq!(send(actor, b"at:", &[abi::size(18).unwrap()]).unwrap(), count);
         assert!(send(namespace, b"at:", &[sel(b"missingProbe")]).unwrap().is_null());
         println!("Namespace Oop bindings, live lookup and enumeration mutation with GC: passed");
+
+        send(namespace, b"at:put:", &[sel(b"Roots"), roots]).unwrap();
+        send(namespace, b"at:put:", &[sel(b"GC"), gc]).unwrap();
+        let storage_args = send(id.root, b"sequence", &[namespace]).unwrap();
+        if std::env::args().nth(2).as_deref() == Some("storage-init-failure") {
+            let original = send(ns_type, b"lookup", &[sel(b"at:put:")]).unwrap();
+            let token = send(roots, b"retain:", &[original]).unwrap();
+            // This one-argument method rejects the two-argument publication.
+            let reject = send(actor_vt, b"lookup", &[sel(b"failTracing:")]).unwrap();
+            send(ns_type, b"addMethod", &[sel(b"at:put:"), reject]).unwrap();
+            assert!(id.send(names[7], id.load, &[storage_args]).is_err());
+            send(ns_type, b"addMethod", &[sel(b"at:put:"), original]).unwrap();
+            assert!(id.send(names[7], id.load, &[storage_args]).is_err());
+            send(roots, b"release:", &[token]).unwrap();
+            send(gc, b"collectPrecisely", &[]).unwrap();
+            println!("STORAGE_PUBLICATION_FAILURE_CONTAINED");
+            return;
+        }
+        let storage = id.send(names[7], id.load, &[storage_args]).unwrap();
+        send(actor, b"at:put:", &[abi::size(19).unwrap(), storage]).unwrap();
+        let child = send(actor, b"dynamicName:", &[abi::size(47).unwrap()]).unwrap();
+        let node = send(actor, b"nodeWithChild:", &[child]).unwrap();
+        let node_token = send(roots, b"retain:", &[node]).unwrap();
+        send(actor, b"failTracing:", &[abi::size(6).unwrap()]).unwrap();
+        assert_eq!(abi::as_size(send(storage, b"observe:", &[actor]).unwrap()), Some(1));
+        let expired = send(actor, b"at:", &[abi::size(20).unwrap()]).unwrap();
+        assert!(!expired.is_null());
+        assert!(send(expired, b"visit:", &[id.root]).is_err());
+        send(actor, b"failTracing:", &[abi::size(0).unwrap()]).unwrap();
+        for index in 21..=23 {
+            assert!(abi::as_size(send(actor, b"at:", &[abi::size(index).unwrap()]).unwrap()).unwrap()>0);
+            send(actor, b"at:put:", &[abi::size(index).unwrap(), abi::size(0).unwrap()]).unwrap();
+        }
+        assert_eq!(abi::as_size(send(storage, b"observe:", &[actor]).unwrap()), Some(1));
+        send(actor, b"failTracing:", &[abi::size(3).unwrap()]).unwrap();
+        assert!(send(storage, b"observe:", &[actor]).is_err());
+        send(actor, b"failTracing:", &[abi::size(0).unwrap()]).unwrap();
+        send(roots, b"release:", &[node_token]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        println!("Storage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

@@ -12,6 +12,7 @@ struct Namespace {
     active: RefCell<Vec<Oop>>,
     names: HashMap<&'static [u8], Oop>,
     lookup_method: Cell<Oop>,
+    ready: Cell<bool>,
 }
 struct Scope<'a> { namespace: &'a Namespace, start: usize }
 impl Scope<'_> {
@@ -148,7 +149,7 @@ unsafe extern "C" fn initialize(p: *const Protocol, image: Oop, l: *const Oop, n
     let id = unsafe { *p };
     let Some([registry]) = (unsafe { abi::borrowed_slice(a,argc) }) else { return id.invalid; };
     let old = INSTANCE.load(Ordering::Acquire);
-    if !old.is_null() { return if unsafe { (*old).registry } == *registry { unsafe { (*old).receiver } } else { id.invalid }; }
+    if !old.is_null() { return if unsafe { (*old).ready.get() && (*old).registry == *registry } { unsafe { (*old).receiver } } else { id.invalid }; }
     let Some(symbols) = (unsafe { abi::borrowed_slice(l,n) }) else { return id.invalid; };
     if symbols.len()!=NAMES.len() { return id.invalid; }
     (|| unsafe {
@@ -159,7 +160,7 @@ unsafe extern "C" fn initialize(p: *const Protocol, image: Oop, l: *const Oop, n
         let receiver = send(behavior,b"allocate",&[abi::size(0).unwrap()])?;
         let token = send(*registry,b"retain:",&[receiver])?;
         let s = Box::new(Namespace { id,receiver,registry:*registry,storage:RefCell::new(Environment::new()),
-            active:RefCell::new(Vec::new()),names,lookup_method:Cell::new(ptr::null_mut()) });
+            active:RefCell::new(Vec::new()),names,lookup_method:Cell::new(ptr::null_mut()),ready:Cell::new(false) });
         let s = Box::into_raw(s);
         INSTANCE.store(s,Ordering::Release);
         let s = &*s;
@@ -174,6 +175,7 @@ unsafe extern "C" fn initialize(p: *const Protocol, image: Oop, l: *const Oop, n
             for (name,value) in [(b"Namespace".as_slice(),receiver),(b"Roots",*registry)] {
                 s.send(receiver,b"at:put:",&[s.names[name],value])?;
             }
+            s.ready.set(true);
             Ok(receiver)
         })();
         s.send(*registry,b"release:",&[token])?;

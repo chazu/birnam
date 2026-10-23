@@ -113,3 +113,27 @@ marking uses the same algorithm. Paired CPU changes are -0.4%, +0.5%, -3.2%, +0.
 for the existing four probes. [Evidence](../measurements/oop-gc-owners-20261023.json).
 The original permission for live owner changes is preserved rather than replaced
 with a blanket prohibition on mutations during callbacks.
+
+## Piece 5: Storage diagnostics use Oops
+
+Storage's observation protocol now carries only Oops, including allocation sizes,
+identities and coverage bits. It asks the current GC owner for payload references;
+the old numeric payload-kind replies and Operand/Outcome conversions are gone.
+Normal and nested-observation errors remain distinct failure objects (details 1
+and 2). Namespace publication and callback methods use ordinary Method objects.
+
+The native visitor checks all report endpoints, runs collection during reporting,
+attempts a nested observation, retains an expired callback, and tries it again
+during a later observation. Expired callbacks fail without poisoning the new
+observation. A swallowed malformed trace emission still fails the observation.
+A separate process makes Namespace publication fail and verifies that reloading
+cannot falsely report the half-initialized module as complete; collection remains
+safe. Namespace and Storage track successful initialization separately from the
+publication of their native context. All slice gates and export audits pass.
+
+Regression inspection removes the duplicate-identity hash set by checking adjacent
+sorted identities. Completed root/edge lists move into reporting instead of being
+cloned; the retained allocation inventory already keeps every endpoint alive.
+No generic Id hot-path work changes in this piece, so the unchanged microprobes
+were not repeated. Storage throughput and full-language profiling remain pending.
+[Qualification receipts](../measurements/oop-storage-20261023.json).
