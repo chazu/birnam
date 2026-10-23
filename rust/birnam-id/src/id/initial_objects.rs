@@ -1,72 +1,82 @@
-//! The initial Id object graph, constructed before any upper runtime service.
-use crate::abi::id_protocol::{Operand, LOADED};
-#[cfg(test)]
-use crate::abi::Oop;
-use crate::abi::id_protocol::NativeEntry;
-use crate::id::object_memory::ObjectMemory;
-use crate::id::symbol::Symbols;
-use crate::id::vtable::Vtables;
-
-pub(crate) struct InitialObjects {
-    pub(crate) protocol: Box<crate::id::native_id::State>,
-    #[cfg(test)]
-    pub(crate) vtable_vt: Oop,
-    #[cfg(test)]
-    pub(crate) object_vt: Oop,
-    #[cfg(test)]
-    pub(crate) lookup: Oop,
-    #[cfg(test)]
-    pub(crate) does_not_understand: Oop,
-    #[cfg(test)]
-    pub(crate) object_prototype: Oop,
-    #[cfg(test)]
-    pub(crate) symbol_prototype: Oop,
-}
-
-impl InitialObjects {
-    pub(crate) fn new() -> Self {
-        let mut memory = crate::owned::Owned::new(ObjectMemory::new());
-        let mut dictionaries = crate::owned::Owned::new(Vtables::new());
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
-        let vtable_vt = dictionaries.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
-        assert!(memory.set_vtable(vtable_vt, vtable_vt));
-        let object_vt = dictionaries.create(&mut memory, core::ptr::null_mut(), vtable_vt);
-        dictionaries.set_parent(vtable_vt, object_vt);
-        let symbol_vt = dictionaries.create(&mut memory, object_vt, vtable_vt);
-        let object_prototype = memory.allocate(0);
-        assert!(memory.set_vtable(object_prototype, object_vt));
-        let lookup = symbols.intern(&mut memory, symbol_vt, b"lookup").unwrap();
-        let does_not_understand = symbols.intern(&mut memory, symbol_vt, b"doesNotUnderstand:").unwrap();
-        let _symbol_prototype = symbols.intern(&mut memory, symbol_vt, b"Symbol").unwrap();
-        let add_method = symbols.intern(&mut memory, symbol_vt, b"addMethod").unwrap();
-        let remove_method = symbols.intern(&mut memory, symbol_vt, b"removeMethod:").unwrap();
-        let context = crate::id::id_dispatch::Context {
-            dictionaries: dictionaries.pointer(), metavtable: vtable_vt,
-            lookup, does_not_understand,
-        };
-        let entry = |method| NativeEntry::new(method, context.dictionaries.cast());
-        dictionaries.add_method(vtable_vt, lookup, entry(crate::id::id_dispatch::vtable_lookup_method));
-        dictionaries.add_method(vtable_vt, add_method, entry(crate::id::id_dispatch::vtable_add_method));
-        // Only the first two bindings are ad hoc. The next uses Id's message path.
-        unsafe {
-            assert_eq!(crate::id::id_dispatch::send(context, vtable_vt, add_method, &[
-                Operand::object(remove_method), Operand::entry(entry(crate::id::id_dispatch::vtable_remove_method)),
-            ]).status, LOADED);
-        }
-        let protocol = unsafe { crate::id::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
-        Self { protocol,
-            #[cfg(test)]
-            vtable_vt,
-            #[cfg(test)]
-            object_vt,
-            #[cfg(test)]
-            lookup,
-            #[cfg(test)]
-            does_not_understand,
-            #[cfg(test)]
-            object_prototype,
-            #[cfg(test)]
-            symbol_prototype: _symbol_prototype,
-        }
-    }
+//! Direct seed construction, then the real message path installs later methods.
+use super::{native_id::State, object_memory::ObjectMemory, symbol::Symbols, vtable::Vtables};
+use crate::raw::AddressMap;
+use core::cell::{Cell, RefCell};
+pub(crate) fn construct() -> Box<State> {
+    let mut heap = ObjectMemory::new();
+    let mut tables = Vtables::new();
+    let mut symbols = Symbols::new();
+    let nil = core::ptr::null_mut();
+    let meta = tables.create(&mut heap, nil, nil);
+    assert!(heap.set_vtable(meta, meta));
+    let object = tables.create(&mut heap, nil, meta);
+    tables.set_parent(meta, object);
+    let mut family = || tables.create(&mut heap, object, meta);
+    let symbol = family();
+    let name = family();
+    let size = family();
+    let none = family();
+    let method = family();
+    let fault = family();
+    let sequence = family();
+    let module = family();
+    let root = heap.allocate(size_of::<usize>());
+    assert!(heap.set_vtable(root, object));
+    let lookup = symbols.intern(&mut heap, symbol, b"lookup").unwrap();
+    let dnu = symbols
+        .intern(&mut heap, symbol, b"doesNotUnderstand:")
+        .unwrap();
+    let mut s = Box::new(State {
+        protocol: crate::abi::id_protocol::Protocol {
+            version: 2,
+            byte_size: size_of::<crate::abi::id_protocol::Protocol>() as u32,
+            message: super::native_id::message,
+            root,
+            intern: nil,
+            load: nil,
+            at: nil,
+            seeds: nil,
+            invalid: nil,
+        },
+        heap: RefCell::new(heap),
+        tables: RefCell::new(tables),
+        symbols: RefCell::new(symbols),
+        root,
+        meta,
+        object,
+        symbol,
+        name,
+        size,
+        none,
+        method,
+        fault,
+        sequence,
+        module,
+        lookup,
+        dnu,
+        methods: RefCell::new(AddressMap::default()),
+        faults: RefCell::new(AddressMap::default()),
+        sequences: RefCell::new(AddressMap::default()),
+        modules: RefCell::new(AddressMap::default()),
+        name_objects: RefCell::new(AddressMap::default()),
+        names: RefCell::new(std::collections::HashMap::new()),
+        detached: RefCell::new(AddressMap::default()),
+        active: RefCell::new(Vec::new()),
+        permanent: RefCell::new(vec![
+            root, meta, object, symbol, name, size, none, method, fault, sequence, module, lookup,
+            dnu,
+        ]),
+        default_lookup: Cell::new(nil),
+        invalid_fault: Cell::new(nil),
+        unbound_fault: Cell::new(nil),
+        owner: std::thread::current().id(),
+    });
+    let pointer = core::ptr::from_mut(&mut *s);
+    unsafe { root.cast::<*const State>().write(pointer) };
+    s.initialize();
+    s.protocol.intern = s.selector(b"intern");
+    s.protocol.load = s.selector(b"loadNative:");
+    s.protocol.at = s.selector(b"at:");
+    s.protocol.invalid = s.invalid();
+    s
 }

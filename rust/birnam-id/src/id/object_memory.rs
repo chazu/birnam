@@ -20,6 +20,14 @@ pub(crate) struct Allocation {
 }
 
 impl Allocation {
+    pub(crate) fn object(&self) -> Oop {
+        let object = self.payload().as_ptr().cast();
+        if self.geometry & 1 != 0 {
+            crate::abi::fault_reference(object)
+        } else {
+            object
+        }
+    }
     pub(crate) fn identity(&self) -> u64 {
         self.geometry >> 5
     }
@@ -57,7 +65,8 @@ impl ObjectMemory {
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
         let alignment = align_of::<Oop>();
-        VTABLE_HEADER_SIZE.checked_add(payload_size)?
+        VTABLE_HEADER_SIZE
+            .checked_add(payload_size)?
             .checked_add(alignment - 1)
             .map(|size| size & !(alignment - 1))
     }
@@ -96,20 +105,28 @@ impl ObjectMemory {
     }
 
     pub(crate) fn get(&self, address: usize) -> Option<&Allocation> {
-        self.allocations.get(&address)
+        self.allocations.get(&(address & !2))
     }
     pub(crate) fn iter(&self) -> impl Iterator<Item = (usize, &Allocation)> {
         self.allocations
             .iter()
             .map(|(address, allocation)| (*address, allocation))
     }
+    pub(crate) fn mark_fault(&mut self, object: Oop) {
+        self.allocations
+            .get_mut(&crate::abi::heap_address(object))
+            .expect("owned fault allocation")
+            .geometry |= 1;
+    }
+    pub(crate) fn allocation_epoch(&self) -> u64 {
+        self.next_identity
+    }
     pub(crate) fn len(&self) -> usize {
         self.allocations.len()
     }
     pub(crate) fn detach(&mut self, address: usize) -> Option<Allocation> {
-        self.allocations.remove(&address)
+        self.allocations.remove(&(address & !2))
     }
-
 }
 
 /// # Safety
@@ -126,11 +143,15 @@ impl ObjectMemory {
         }
         // SAFETY: exact registry membership proves this non-null address is the
         // payload start of the live floor allocation owned by this ObjectMemory.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        let payload =
+            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
         // SAFETY: exact registry membership proves that payload is the start of
         // the live floor allocation owned by this ObjectMemory.
         let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
+        debug_assert_eq!(
+            slot.addr(),
+            crate::abi::heap_address(object) - VTABLE_HEADER_SIZE
+        );
         // SAFETY: slot addresses the live, pointer-aligned header word.
         unsafe { slot.write(vtable) };
         true
@@ -140,11 +161,15 @@ impl ObjectMemory {
         self.get(object.addr())?;
         // SAFETY: exact registry membership proves this non-null address is the
         // payload start of the live floor allocation owned by this ObjectMemory.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        let payload =
+            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
         // SAFETY: exact registry membership proves that payload is the start of
         // the live floor allocation owned by this ObjectMemory.
         let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
+        debug_assert_eq!(
+            slot.addr(),
+            crate::abi::heap_address(object) - VTABLE_HEADER_SIZE
+        );
         // SAFETY: slot addresses the initialized header word. alloc_zeroed
         // makes an unset header null.
         Some(unsafe { slot.read() })
@@ -152,7 +177,8 @@ impl ObjectMemory {
 
     pub(crate) unsafe fn vtable_of_valid_object(object: Oop) -> Oop {
         // SAFETY: the caller provides exact live-object provenance.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        let payload =
+            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
         // SAFETY: the same provenance establishes the preceding header word.
         let slot = unsafe { vtable_slot_from_payload(payload) };
         // SAFETY: the live block's header is initialized (possibly to null).

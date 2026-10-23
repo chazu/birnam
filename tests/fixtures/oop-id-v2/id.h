@@ -1,0 +1,31 @@
+#ifndef OOP_ID_V2_H
+#define OOP_ID_V2_H
+/* Independent C declaration: no generated Rust headers or carrier structs. */
+#include <stdint.h>
+#include <stddef.h>
+typedef void *Oop;
+typedef Oop (*IdMethod)(Oop id,Oop context,Oop receiver,const Oop *arguments,size_t count);
+typedef Oop (*IdSend)(Oop id,Oop receiver,Oop selector,const Oop *arguments,size_t count);
+typedef struct IdProtocol {
+ uint32_t version,byte_size;
+ IdSend message;
+ Oop root,intern,load,at,seeds,invalid;
+} IdProtocol;
+typedef struct IdLiteral {const unsigned char *bytes;size_t length;} IdLiteral;
+typedef Oop (*IdInitialize)(const IdProtocol *,Oop image,const Oop *symbols,size_t symbol_count,const Oop *arguments,size_t count);
+typedef struct IdMethodSpec {size_t name;IdMethod entry;} IdMethodSpec;
+typedef struct IdModule {
+ uint32_t version,byte_size;
+ const IdLiteral *literals;size_t literal_count;
+ const IdMethodSpec *methods;size_t method_count;
+ IdInitialize initialize;
+} IdModule;
+typedef struct IdSeed {const unsigned char *bytes;size_t length;} IdSeed;
+_Static_assert(sizeof(Oop)==8,"64-bit Oop");
+_Static_assert(sizeof(IdProtocol)==64,"independent protocol layout");
+_Static_assert(sizeof(IdModule)==48,"independent module layout");
+static inline Oop id_size(size_t n){return (Oop)((n<<1)|1);}
+static inline size_t id_unbox(Oop o){return (size_t)o>>1;}
+static inline int id_fault(Oop o){return ((uintptr_t)o&3)==2;}
+#define LIT(s) {(const unsigned char *)(s),sizeof(s)-1}
+#endif

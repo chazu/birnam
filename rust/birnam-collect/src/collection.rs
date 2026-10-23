@@ -1,562 +1,320 @@
-//! Immediate admission, LIFO traversal, then ordered retirement. No registry
-//! borrow spans a send or a visitor. Foreign payloads are enumerated by owners.
+//! Port of the production census/LIFO walk/ordered retirement algorithm to Oops.
+//! All traversal storage remains in the explicit Memory/Walk owner.
 use super::*;
-
 pub(super) struct Walk {
     allocations: Vec<Allocation>,
     indices: HashMap<usize, usize>,
     marked: Vec<u8>,
     pending: Vec<Oop>,
-    failure: Option<Outcome>,
-    // Scratch belongs to the explicit traversal context. The buffer is reused
-    // across objects and remains owned here across visitor/owner messages.
+    failure: Option<Oop>,
     core: CoreEdges,
-}
-impl Walk {
-    fn emit(&mut self, value: Oop) -> Result<(), Outcome> {
-        if value.is_null() {
-            return Ok(());
-        }
-        let index = self
-            .indices
-            .get(&value.addr())
-            .copied()
-            .ok_or_else(invalid)?;
-        if self.marked[index] == 0 {
-            self.marked[index] = 1;
-            self.pending.push(value);
-        }
-        Ok(())
-    }
-    pub(super) fn marked(&self, value: Oop) -> bool {
-        self.indices
-            .get(&value.addr())
-            .is_some_and(|i| self.marked[*i] != 0)
-    }
-}
-pub(super) struct Inventory {
-    values: Vec<Allocation>,
-    failure: Option<Outcome>,
-}
-pub(super) unsafe extern "C" fn allocation(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        let mut inventory = memory.inventory.borrow_mut();
-        let inventory = inventory.as_mut().ok_or_else(invalid)?;
-        let result = (|| {
-            if receiver != memory.receiver {
-                return Err(invalid());
-            }
-            let Some([value, size, identity]) = borrowed_slice(args, count) else {
-                return Err(invalid());
-            };
-            inventory.values.push(Allocation {
-                object: object(*value)?,
-                size: size.as_word().ok_or_else(invalid)?,
-                identity: identity.as_word().filter(|n| *n != 0).ok_or_else(invalid)?,
-            });
-            Ok(Operand::unit())
-        })();
-        if let Err(e) = result {
-            inventory.failure.get_or_insert(e);
-        }
-        result
-    })())
-}
-pub(super) unsafe fn inventory(memory: &Memory) -> Result<Vec<Allocation>, Outcome> {
-    if memory.inventory.borrow().is_some() {
-        return Err(invalid());
-    }
-    *memory.inventory.borrow_mut() = Some(Inventory {
-        values: Vec::new(),
-        failure: None,
-    });
-    let result = unsafe {
-        memory.send(
-            memory.id.receiver,
-            b"allocationsDo:",
-            &[Operand::object(memory.receiver)],
-        )
-    };
-    let inventory = memory.inventory.borrow_mut().take().unwrap();
-    result?;
-    if let Some(e) = inventory.failure {
-        return Err(e);
-    }
-    let mut allocations = inventory.values;
-    // Allocation identity gives stable creation order independent of Id's index.
-    allocations.sort_unstable_by_key(|a| a.identity);
-    if allocations
-        .windows(2)
-        .any(|w| w[0].identity == w[1].identity)
-    {
-        return Err(invalid());
-    }
-    Ok(allocations)
-}
-/// Activation refuses an ordinary native payload without an enumeration owner.
-pub(super) unsafe fn validate(memory: &Memory) -> Result<usize, Outcome> {
-    unsafe {
-        let allocations = inventory(memory)?;
-        let indices: HashMap<_, _> = allocations
-            .iter()
-            .enumerate()
-            .map(|(i, a)| (a.object.addr(), i))
-            .collect();
-        if indices.len() != allocations.len() {
-            return Err(invalid());
-        }
-        *memory.walk.borrow_mut() = Some(Walk {
-            allocations: allocations.clone(),
-            indices,
-            marked: vec![0; allocations.len()],
-            pending: Vec::new(),
-            failure: None,
-            core: CoreEdges::default(),
-        });
-        let visitor = Operand::object(memory.receiver);
-        memory.send(memory.id.receiver, b"rootsDo:", &[visitor])?;
-        memory.send(memory.roots, b"rootsDo:", &[visitor])?;
-        let mut charged = 0usize;
-        for a in allocations {
-            let kind = memory
-                .send(
-                    memory.id.receiver,
-                    b"referencesOf:do:",
-                    &[Operand::object(a.object), visitor],
-                )?
-                .as_word()
-                .filter(|k| *k <= 2)
-                .ok_or_else(invalid)?;
-            if kind == 0 && a.size != 0 {
-                let behavior = object(memory.send(
-                    memory.id.receiver,
-                    b"behaviorOf:",
-                    &[Operand::object(a.object)],
-                )?)?;
-                if memory.trace_owner(behavior)?.is_none() {
-                    return Err(invalid());
-                }
-            }
-            charged = accounting::add(charged, memory.allocation_charge(a.size)?);
-        }
-        if let Some(error) = memory.walk.borrow().as_ref().unwrap().failure {
-            return Err(error);
-        }
-        Ok(charged)
-    }
-}
-pub(super) fn emit(memory: &Memory, value: Oop) -> Result<(), Outcome> {
-    let mut state = memory.walk.borrow_mut();
-    let walk = state.as_mut().ok_or_else(invalid)?;
-    let answer = walk.emit(value);
-    if let Err(error) = answer {
-        walk.failure = Some(error);
-    }
-    answer
-}
-pub(super) unsafe extern "C" fn visit(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let memory = match unsafe { memory(context) } {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let answer = (|| unsafe {
-        if receiver != memory.receiver || memory.phase.get() != Phase::Marking {
-            return Err(invalid());
-        }
-        let Some([value]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        emit(memory, value.as_object().ok_or_else(invalid)?)?;
-        Ok(Operand::unit())
-    })();
-    if let Err(error) = answer {
-        if let Some(walk) = memory.walk.borrow_mut().as_mut() {
-            walk.failure.get_or_insert(error);
-        }
-    }
-    done(answer)
 }
 #[derive(Default)]
 struct CoreEdges {
     values: Vec<Oop>,
-    failure: Option<Outcome>,
     accepting: bool,
+    failure: Option<Oop>,
 }
-impl CoreEdges {
-    fn begin(&mut self) {
-        self.values.clear();
-        self.failure = None;
-        self.accepting = true;
+pub(super) struct Inventory {
+    values: Vec<Allocation>,
+    failure: Option<Oop>,
+}
+impl Walk {
+    fn emit(&mut self, v: Oop) -> Result<(), ()> {
+        if v.is_null() || abi::as_size(v).is_some() {
+            return Ok(());
+        }
+        let i = *self.indices.get(&v.addr()).ok_or(())?;
+        if self.marked[i] == 0 {
+            self.marked[i] = 1;
+            self.pending.push(v)
+        }
+        Ok(())
     }
-    fn finish(&mut self) -> Option<Outcome> {
-        self.accepting = false;
-        self.failure
+}
+fn inventory_failure(s: &Memory) -> Oop {
+    if let Some(i) = s.inventory.borrow_mut().as_mut() {
+        i.failure = Some(s.invalid())
+    }
+    s.invalid()
+}
+fn walk_failure(s: &Memory) -> Oop {
+    if let Some(w) = s.walk.borrow_mut().as_mut() {
+        w.failure = Some(s.invalid())
+    }
+    s.invalid()
+}
+fn core_failure(s: &Memory) -> Oop {
+    if let Some(w) = s.walk.borrow_mut().as_mut() {
+        w.core.failure = Some(s.invalid())
+    }
+    s.invalid()
+}
+pub(super) unsafe extern "C" fn allocation(
+    _id: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if r != s.receiver {
+        return inventory_failure(s);
+    }
+    let Some([o, size, id]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return inventory_failure(s);
+    };
+    let (Some(size), Some(identity)) = (abi::as_size(*size), abi::as_size(*id)) else {
+        return inventory_failure(s);
+    };
+    if identity == 0 {
+        return inventory_failure(s);
+    }
+    let mut inventory = s.inventory.borrow_mut();
+    let Some(v) = inventory.as_mut() else {
+        return s.invalid();
+    };
+    v.values.push(Allocation {
+        object: *o,
+        size,
+        identity,
+    });
+    core::ptr::null_mut()
+}
+pub(super) unsafe extern "C" fn visit(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if r != s.receiver || s.phase.get() != Phase::Marking {
+        return walk_failure(s);
+    }
+    let Some([v]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return walk_failure(s);
+    };
+    let mut walk = s.walk.borrow_mut();
+    let Some(w) = walk.as_mut() else {
+        return s.invalid();
+    };
+    if w.emit(*v).is_err() {
+        w.failure = Some(s.invalid());
+        s.invalid()
+    } else {
+        core::ptr::null_mut()
     }
 }
 pub(super) unsafe extern "C" fn core_edge(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        let mut walk = memory.walk.borrow_mut();
-        let edges = &mut walk.as_mut().ok_or_else(invalid)?.core;
-        if !edges.accepting { return Err(invalid()); }
-        let result = (|| {
-            if receiver != memory.core_visitor || memory.phase.get() != Phase::Marking {
-                return Err(invalid());
-            }
-            let Some([value]) = borrowed_slice(args, count) else {
-                return Err(invalid());
-            };
-            edges.values.push(value.as_object().ok_or_else(invalid)?);
-            Ok(Operand::unit())
-        })();
-        if let Err(e) = result {
-            edges.failure.get_or_insert(e);
-        }
-        result
-    })())
+    _id: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if r != s.core_visitor || s.phase.get() != Phase::Marking {
+        return core_failure(s);
+    }
+    let Some([v]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return core_failure(s);
+    };
+    let mut walk = s.walk.borrow_mut();
+    let Some(w) = walk.as_mut() else {
+        return s.invalid();
+    };
+    if !w.core.accepting {
+        w.core.failure = Some(s.invalid());
+        return s.invalid();
+    }
+    w.core.values.push(*v);
+    core::ptr::null_mut()
 }
-unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Outcome> {
+unsafe fn inventory(s: &Memory) -> Result<Vec<Allocation>, Oop> {
+    if s.inventory.borrow().is_some() {
+        return Err(s.invalid());
+    }
+    *s.inventory.borrow_mut() = Some(Inventory {
+        values: Vec::new(),
+        failure: None,
+    });
+    let answer = unsafe { s.send(s.id.root, b"allocationsDo:", &[s.receiver]) };
+    let inventory = s.inventory.borrow_mut().take().unwrap();
+    answer?;
+    if let Some(error) = inventory.failure {
+        return Err(error);
+    }
+    let mut rows = inventory.values;
+    rows.sort_unstable_by_key(|a| a.identity);
+    if rows.windows(2).any(|w| w[0].identity == w[1].identity) {
+        return Err(s.invalid());
+    }
+    Ok(rows)
+}
+fn emit(s: &Memory, v: Oop) -> Result<(), Oop> {
+    s.walk
+        .borrow_mut()
+        .as_mut()
+        .unwrap()
+        .emit(v)
+        .map_err(|_| s.invalid())
+}
+unsafe fn mark(s: &Memory) -> Result<Vec<Allocation>, Oop> {
     unsafe {
-        let allocations = inventory(memory)?;
+        let epoch = s.send(s.id.root, b"allocationEpoch", &[])?;
+        let allocations = inventory(s)?;
+        let count = allocations.len();
         let indices: HashMap<_, _> = allocations
             .iter()
             .enumerate()
             .map(|(i, a)| (a.object.addr(), i))
             .collect();
-        if indices.len() != allocations.len() {
-            return Err(invalid());
+        if indices.len() != count {
+            return Err(s.invalid());
         }
-        *memory.walk.borrow_mut() = Some(Walk {
-            marked: vec![0; allocations.len()],
+        *s.walk.borrow_mut() = Some(Walk {
             allocations,
             indices,
+            marked: vec![0; count],
             pending: Vec::new(),
             failure: None,
             core: CoreEdges::default(),
         });
-        // Conservative native candidates are admitted only if they name an exact
-        // allocation. Typed reference providers must emit valid Oops (or null).
-        for address in native {
-            let value = {
-                let state = memory.walk.borrow();
-                let walk = state.as_ref().unwrap();
-                walk.indices
-                    .get(address)
-                    .map(|i| walk.allocations[*i].object)
-            };
-            if let Some(value) = value {
-                emit(memory, value)?;
-            }
-        }
-        let visitor = Operand::object(memory.receiver);
-        memory.send(memory.id.receiver, b"rootsDo:", &[visitor])?;
-        memory.send(memory.roots, b"rootsDo:", &[visitor])?;
+        s.send(s.id.root, b"rootsDo:", &[s.receiver])?;
+        s.send(s.roots, b"rootsDo:", &[s.receiver])?;
         loop {
-            let next = memory.walk.borrow_mut().as_mut().unwrap().pending.pop();
-            let Some(value) = next else {
-                break;
-            };
-            memory.walk.borrow_mut().as_mut().unwrap().core.begin();
-            let result = memory.send(
-                memory.id.receiver,
-                b"referencesOf:do:",
-                &[Operand::object(value), Operand::object(memory.core_visitor)],
-            );
-            let failure = memory.walk.borrow_mut().as_mut().unwrap().core.finish();
-            let kind = result?.as_word().filter(|k| *k <= 2).ok_or_else(invalid)?;
-            if let Some(e) = failure {
+            let next = s.walk.borrow_mut().as_mut().unwrap().pending.pop();
+            let Some(value) = next else { break };
+            {
+                let mut state = s.walk.borrow_mut();
+                let core = &mut state.as_mut().unwrap().core;
+                core.values.clear();
+                core.failure = None;
+                core.accepting = true;
+            }
+            let result = s.send(s.id.root, b"referencesOf:do:", &[value, s.core_visitor]);
+            s.walk.borrow_mut().as_mut().unwrap().core.accepting = false;
+            if let Some(e) = s.walk.borrow().as_ref().unwrap().core.failure {
                 return Err(e);
             }
-            let count = memory.walk.borrow().as_ref().unwrap().core.values.len();
+            let kind = abi::as_size(result?)
+                .filter(|k| *k <= 2)
+                .ok_or(s.invalid())?;
+            let count = s.walk.borrow().as_ref().unwrap().core.values.len();
             if count < if kind == 1 { 2 } else { 1 } {
-                return Err(invalid());
+                return Err(s.invalid());
             }
-            let behavior = memory.walk.borrow().as_ref().unwrap().core.values[0];
-            // Preserve behavior edge order: header, parent, upper owner, keys.
-            // Id alone interprets dictionary storage; upper owners only see Oops.
+            let behavior = s.walk.borrow().as_ref().unwrap().core.values[0];
             let prefix = if kind == 1 { 2 } else { count };
-            for index in 0..prefix {
-                let edge = memory.walk.borrow().as_ref().unwrap().core.values[index];
-                emit(memory, edge)?;
+            for i in 0..prefix {
+                let edge = s.walk.borrow().as_ref().unwrap().core.values[i];
+                emit(s, edge)?;
             }
             if kind != 2 {
-                if let Some(owner) = memory.trace_owner(behavior)? {
-                    emit(memory, owner)?;
-                    memory.send(
-                        owner,
-                        b"referencesOf:do:",
-                        &[Operand::object(value), visitor],
-                    )?;
+                if let Some(owner) = s.trace_owner(behavior)? {
+                    emit(s, owner)?;
+                    s.send(owner, b"referencesOf:do:", &[value, s.receiver])?;
                 } else if kind == 0 {
-                    let size = {
-                        let state = memory.walk.borrow();
-                        let walk = state.as_ref().unwrap();
-                        walk.allocations[walk.indices[&value.addr()]].size
-                    };
-                    if size != 0 {
-                        return Err(invalid());
+                    let walk = s.walk.borrow();
+                    let w = walk.as_ref().unwrap();
+                    if w.allocations[w.indices[&value.addr()]].size != 0 {
+                        return Err(s.invalid());
                     }
                 }
             }
-            for index in prefix..count {
-                let edge = memory.walk.borrow().as_ref().unwrap().core.values[index];
-                emit(memory, edge)?;
+            for i in prefix..count {
+                let edge = s.walk.borrow().as_ref().unwrap().core.values[i];
+                emit(s, edge)?;
             }
-            if let Some(error) = memory.walk.borrow().as_ref().unwrap().failure {
+            if let Some(error) = s.walk.borrow().as_ref().unwrap().failure {
                 return Err(error);
             }
         }
-        let state = memory.walk.borrow();
-        let walk = state.as_ref().unwrap();
-        if let Some(error) = walk.failure {
+        // A trace callback that allocates must not cause us to sweep from an obsolete
+        // census. Abort marking without retirement; retry on a later explicit request.
+        if s.send(s.id.root, b"allocationEpoch", &[])? != epoch {
+            return Err(s.invalid());
+        }
+        let walk = s.walk.borrow();
+        let w = walk.as_ref().unwrap();
+        if let Some(error) = w.failure {
             return Err(error);
         }
-        Ok(walk
-            .allocations
+        Ok(w.allocations
             .iter()
             .enumerate()
-            .filter(|(i, _)| walk.marked[*i] == 0)
+            .filter(|(i, _)| w.marked[*i] == 0)
             .map(|(_, a)| *a)
             .collect())
     }
 }
-unsafe fn sweep(memory: &Memory, dead: &[Allocation]) -> Result<usize, Outcome> {
+unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {
     unsafe {
-        // Retire weak keys, Symbols, behavior indexes and weak hook targets before
-        // any address can be reused. Keep per-object finalizers live until detach.
-        let bytes: Vec<_> = dead
-            .iter()
-            .flat_map(|a| a.object.addr().to_ne_bytes())
-            .collect();
-        let owners = memory.retirement.borrow().clone();
-        for owner in owners {
-            memory.send(owner, b"retire:", &[Operand::bytes(&bytes)])?;
-        }
-        memory.send(
-            memory.id.receiver,
-            b"retireIndexesFor:",
-            &[Operand::bytes(&bytes)],
-        )?;
+        let objects: Vec<_> = dead.iter().map(|a| a.object).collect();
+        let sequence = s.send(s.id.root, b"sequence", &objects)?;
+        s.temporary.borrow_mut().push(sequence);
+        s.send(s.id.root, b"retireIndexesFor:", &[sequence])?;
         {
-            let mut tracers = memory.tracers.borrow_mut();
-            for allocation in dead { tracers.remove(&allocation.object.addr()); }
+            let mut owners = s.tracers.borrow_mut();
+            for a in dead {
+                owners.remove(&a.object.addr());
+            }
         }
         for a in dead {
-            if memory.identity(a.object)? != a.identity {
-                return Err(invalid());
+            if s.identity(a.object)? != a.identity {
+                return Err(s.invalid());
             }
-            let release = memory
-                .send(
-                    memory.id.receiver,
-                    b"detachAllocationAt:",
-                    &[Operand::word(a.object.addr())],
-                )?
-                .as_word()
-                .filter(|h| *h != 0)
-                .ok_or_else(invalid)?;
-            // Detachment is a fresh send and may itself reenter. Select/remove
-            // the finalizer only after that call has completed.
-            let owner = memory.finalizers.borrow_mut().remove(&a.object.addr());
+            let token = s.send(s.id.root, b"detachAllocation:", &[a.object])?;
+            let owner = s.finalizers.borrow_mut().remove(&a.object.addr());
             if let Some(owner) = owner {
                 if owner.identity != a.identity {
-                    return Err(invalid());
+                    return Err(s.invalid());
                 }
-                memory.send(owner.object, b"finalize:", &[Operand::object(a.object)])?;
+                s.send(owner.object, b"finalize:", &[a.object])?;
             }
-            memory.send(
-                memory.id.receiver,
-                b"releaseDetachedAllocation:",
-                &[Operand::word(release)],
-            )?;
+            s.send(s.id.root, b"releaseDetachedAllocation:", &[token])?;
         }
+        s.temporary.borrow_mut().pop();
         Ok(dead.len())
     }
 }
-pub(super) unsafe fn run(memory: &Memory, native: &[usize]) -> Result<Operand, Outcome> {
-    memory.check()?;
-    match memory.phase.get() {
-        Phase::Marking | Phase::Finalizing => return Ok(Operand::word(0)),
-        Phase::Idle => {}
-        _ => return Err(invalid()),
+pub(super) unsafe extern "C" fn collect(_id: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if n != 0 {
+        return s.invalid();
     }
-    memory.phase.set(Phase::Marking);
-    let marked = unsafe { mark(memory, native) };
-    let result = match marked {
+    match s.phase.get() {
+        Phase::Marking | Phase::Finalizing => return abi::size(0).unwrap(),
+        Phase::Failed => return s.invalid(),
+        Phase::Idle => {}
+    }
+    s.phase.set(Phase::Marking);
+    let result = match unsafe { mark(s) } {
         Ok(dead) => {
-            memory.phase.set(Phase::Finalizing);
-            match unsafe { sweep(memory, &dead) } {
-                Ok(count) => {
-                    memory.charged.set(0);
-                    memory.phase.set(Phase::Idle);
-                    Ok(Operand::word(count))
+            s.phase.set(Phase::Finalizing);
+            match unsafe { sweep(s, &dead) } {
+                Ok(n) => {
+                    s.phase.set(Phase::Idle);
+                    Ok(abi::size(n).unwrap())
                 }
-                // Once retirement starts, failure cannot resume the language on a
-                // partially retired heap. Keep detached storage unreclaimed.
-                Err(error) => {
-                    memory.phase.set(Phase::Failed);
-                    Err(error)
+                Err(e) => {
+                    s.phase.set(Phase::Failed);
+                    Err(e)
                 }
             }
         }
-        Err(error) => {
-            memory.phase.set(Phase::Idle);
-            Err(error)
+        Err(e) => {
+            s.phase.set(Phase::Idle);
+            Err(e)
         }
     };
-    *memory.walk.borrow_mut() = None;
-    result
-}
-pub(super) unsafe fn conservative(memory: &Memory) -> Result<Operand, Outcome> {
-    // Nested collection must return before trying to capture another stack.
-    if matches!(memory.phase.get(), Phase::Marking | Phase::Finalizing) {
-        return Ok(Operand::word(0));
-    }
-    unsafe { native_stack::with_roots(|roots| run(memory, roots)) }
-}
-pub(super) unsafe extern "C" fn collect(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if count != 0 {
-            return Err(invalid());
-        }
-        conservative(memory(context)?)
-    })())
-}
-pub(super) unsafe extern "C" fn collect_precisely(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if count != 0 {
-            return Err(invalid());
-        }
-        run(memory(context)?, &[])
-    })())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn core_snapshot_reuses_context_storage_and_ends_callback_admission() {
-        let mut core = CoreEdges::default();
-        core.begin();
-        core.values.extend((1..128).map(ptr::without_provenance_mut));
-        let storage = core.values.as_ptr();
-        let capacity = core.values.capacity();
-        core.failure = Some(invalid());
-        assert!(core.finish().is_some());
-        assert!(!core.accepting);
-        core.begin();
-        assert!(core.values.is_empty());
-        assert!(core.failure.is_none());
-        assert!(core.accepting);
-        assert_eq!(core.values.as_ptr(), storage);
-        assert_eq!(core.values.capacity(), capacity);
-        core.values.push(ptr::without_provenance_mut(999));
-        assert!(core.finish().is_none());
-        assert_eq!(core.values, vec![ptr::without_provenance_mut(999)]);
-        assert!(!core.accepting);
-    }
-
-    fn fixture(n: usize) -> Walk {
-        let allocations: Vec<_> = (0..n)
-            .map(|i| Allocation {
-                object: ptr::without_provenance_mut((i + 1) * 16),
-                size: i,
-                identity: i + 1,
-            })
-            .collect();
-        Walk {
-            indices: allocations
-                .iter()
-                .enumerate()
-                .map(|(i, a)| (a.object.addr(), i))
-                .collect(),
-            marked: vec![0; n],
-            allocations,
-            pending: Vec::new(),
-            failure: None,
-            core: CoreEdges::default(),
-        }
-    }
-    #[test]
-    fn indexed_marks_match_hash_set_admission_pending_order_and_retirement() {
-        let mut walk = fixture(257);
-        let mut expected = HashSet::new();
-        let mut pending = Vec::new();
-        let mut seed = 73usize;
-        for _ in 0..8192 {
-            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-            let value = walk.allocations[seed % walk.allocations.len()].object;
-            if expected.insert(value.addr()) {
-                pending.push(value);
-            }
-            walk.emit(value).unwrap();
-            assert_eq!(walk.pending, pending);
-            assert!(walk.marked(value));
-        }
-        let before = walk.pending.clone();
-        walk.emit(ptr::null_mut()).unwrap();
-        assert_eq!(walk.pending, before);
-        assert!(walk.emit(ptr::without_provenance_mut(7)).is_err());
-        assert_eq!(walk.pending, before);
-        assert!(!walk.marked(ptr::without_provenance_mut(7)));
-        let dead: Vec<_> = walk
-            .allocations
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| walk.marked[*i] == 0)
-            .map(|(_, a)| a.identity)
-            .collect();
-        let reference: Vec<_> = walk
-            .allocations
-            .iter()
-            .filter(|a| !expected.contains(&a.object.addr()))
-            .map(|a| a.identity)
-            .collect();
-        assert_eq!(dead, reference);
-    }
-    #[test]
-    fn sparse_inventory_keeps_creation_order_for_unmarked_objects() {
-        let mut walk = fixture(9);
-        for i in [8, 1, 3, 1, 8] {
-            walk.emit(walk.allocations[i].object).unwrap();
-        }
-        assert_eq!(
-            walk.pending.iter().map(|o| o.addr()).collect::<Vec<_>>(),
-            vec![144, 32, 64]
-        );
-        assert_eq!(
-            walk.allocations
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| walk.marked[*i] == 0)
-                .map(|(_, a)| a.identity)
-                .collect::<Vec<_>>(),
-            vec![1, 3, 5, 6, 7, 8]
-        );
-    }
+    *s.walk.borrow_mut() = None;
+    result.unwrap_or_else(|e| e)
 }

@@ -6,7 +6,7 @@ use core::mem::offset_of;
 use core::ptr::NonNull;
 
 use crate::abi::Oop;
-use crate::abi::id_protocol::{NativeEntry, Operand};
+
 use crate::boundary;
 use crate::id::object_memory::ObjectMemory;
 use crate::raw::AddressMap;
@@ -18,7 +18,7 @@ pub(crate) struct RawVtable {
     pub(crate) size: usize,
     pub(crate) tally: usize,
     pub(crate) keys: *mut Oop,
-    pub(crate) values: *mut Operand,
+    pub(crate) values: *mut Oop,
     pub(crate) parent: Oop,
 }
 
@@ -36,8 +36,9 @@ pub(crate) struct VtableRecord {
     pub(crate) raw: NonNull<RawVtable>,
     pub(crate) logical_capacity: usize,
     pub(crate) keys: Vec<Oop>,
-    pub(crate) values: Vec<Operand>,
+    pub(crate) values: Vec<Oop>,
     pub(crate) weak_keys: Vec<bool>,
+    callable: Vec<bool>,
     // Derived identity lookup only. Ordered vectors retain raw-view and GC
     // authority; these integer addresses never add roots or cache dispatch.
     pub(crate) key_indices: AddressMap<usize>,
@@ -97,7 +98,6 @@ impl VtableRecord {
             self.values.as_mut_ptr()
         };
         raw.parent = self.parent;
-
     }
 
     fn grow_dictionary(&mut self) {
@@ -110,6 +110,8 @@ impl VtableRecord {
         };
         self.keys.reserve_exact(next_capacity - self.keys.len());
         self.values.reserve_exact(next_capacity - self.values.len());
+        self.callable
+            .reserve_exact(next_capacity - self.callable.len());
         self.weak_keys
             .reserve_exact(next_capacity - self.weak_keys.len());
         self.logical_capacity = next_capacity;
@@ -117,7 +119,7 @@ impl VtableRecord {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AddMethod<T = NativeEntry> {
+pub(crate) enum AddMethod<T = Oop> {
     Added,
     Overwrote(T),
 }
@@ -165,11 +167,18 @@ impl Vtables {
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         self.binding_epoch = self.binding_epoch.saturating_add(1);
     }
-    pub(crate) fn binding_epoch(&self) -> u64 { self.binding_epoch }
+    pub(crate) fn binding_epoch(&self) -> u64 {
+        self.binding_epoch
+    }
     pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();
 
     /// Construct a behavior using Id allocation alone.
-    pub(crate) fn create(&mut self, memory: &mut ObjectMemory, parent: Oop, metavtable: Oop) -> Oop {
+    pub(crate) fn create(
+        &mut self,
+        memory: &mut ObjectMemory,
+        parent: Oop,
+        metavtable: Oop,
+    ) -> Oop {
         let object = memory.allocate(Self::PAYLOAD_SIZE);
         assert!(memory.set_vtable(object, metavtable));
         // SAFETY: the fresh allocation has the exact behavior payload extent.
@@ -180,8 +189,15 @@ impl Vtables {
     /// Atomically construct a fresh behavior with its initial method. No caller
     /// can have observed this allocation yet, so no existing lookup changes.
     /// Subsequent edits still use add_method and advance both epochs.
-    pub(crate) fn create_with_method(&mut self, memory: &mut ObjectMemory, parent: Oop, meta: Oop, selector: Oop, method: NativeEntry) -> Oop {
-        assert!(method.method.is_some());
+    pub(crate) fn create_with_method(
+        &mut self,
+        memory: &mut ObjectMemory,
+        parent: Oop,
+        meta: Oop,
+        selector: Oop,
+        method: Oop,
+    ) -> Oop {
+        assert!(!method.is_null());
         let object = self.create(memory, parent, meta);
         self.insert_method(object, selector, method);
         object
@@ -217,6 +233,7 @@ impl Vtables {
                 keys: Vec::new(),
                 values: Vec::new(),
                 weak_keys: Vec::new(),
+                callable: Vec::new(),
                 key_indices: AddressMap::default(),
                 parent,
             },
@@ -299,21 +316,17 @@ impl Vtables {
     pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {
         &self.record(vtable).keys
     }
-    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
+    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<Oop> {
         let record = self.record(vtable);
         record
             .key_index(selector)
             // Object-valued internal dictionary entries are not methods.
-            .and_then(|index| record.values[index].as_entry())
+            .and_then(|index| record.callable[index].then_some(record.values[index]))
     }
-    pub(crate) fn lookup_head(
-        &self,
-        vtable: Oop,
-        selector: Oop,
-    ) -> Result<Option<NativeEntry>, Oop> {
+    pub(crate) fn lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<Oop>, Oop> {
         let record = self.record(vtable);
         if let Some(index) = record.key_index(selector) {
-            return Ok(record.values[index].as_entry());
+            return Ok(record.callable[index].then_some(record.values[index]));
         }
         Err(record.parent)
     }
@@ -321,13 +334,12 @@ impl Vtables {
     /// receiver's current metabehavior is still checked by each dispatch, and
     /// its requested method is still selected from the current dictionaries.
     #[inline]
-    pub(crate) fn has_default_lookup(&self, meta: Oop, selector: Oop) -> bool {
-        let registry = core::ptr::from_ref(self).cast_mut().cast::<core::ffi::c_void>();
-        let key = (meta.addr(), selector.addr(), registry.addr());
+    pub(crate) fn has_default_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
+        let key = (meta.addr(), selector.addr(), expected.addr());
         if self.default_lookup.get() == Some(key) {
             return true;
         }
-        let expected = NativeEntry::new(super::id_dispatch::vtable_lookup_method, registry);
+
         if self.lookup(meta, selector) == Some(expected) {
             self.default_lookup.set(Some(key));
             return true;
@@ -337,41 +349,47 @@ impl Vtables {
     // Expose this callback-free walk to its callers so the optimizer can
     // eliminate helper call/return work. Values and parents are still read live.
     #[inline(always)]
-    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {
+    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<Oop> {
         while !vtable.is_null() {
             // Membership is still checked before consulting a hint. Retirement,
             // address reuse and slot shifts cannot make an old index authority.
             let record = self.record(vtable);
             // Tiny dictionaries already use a cheaper linear scan. Avoid adding
             // hint hashing to fresh one-method Block behaviors and empty parents.
-            let hint = if record.key_indices.is_empty() { None } else {
+            let hint = if record.key_indices.is_empty() {
+                None
+            } else {
                 let hash = (vtable.addr().rotate_left(13) ^ selector.addr())
                     .wrapping_mul(0x9e3779b97f4a7c15);
                 Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])
             };
-            if let Some(slot) = hint && let Some(index) = slot.get()
+            if let Some(slot) = hint
+                && let Some(index) = slot.get()
                 && record.keys.get(index) == Some(&selector)
             {
-                return record.values[index].as_entry();
+                return record.callable[index].then_some(record.values[index]);
             }
             if let Some(index) = record.key_index(selector) {
-                if let Some(slot) = hint { slot.set(Some(index)); }
-                return record.values[index].as_entry();
+                if let Some(slot) = hint {
+                    slot.set(Some(index));
+                }
+                return record.callable[index].then_some(record.values[index]);
             }
             // Never memoize inherited resolution or absence: read this live link.
             vtable = record.parent;
         }
         None
     }
-    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {
-        assert!(method.method.is_some(), "method binding requires a native entry");
+    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Oop) -> AddMethod<Oop> {
+        assert!(!method.is_null(), "method binding requires a Method object");
         self.note_mutation();
         self.insert_method(vtable, selector, method)
     }
-    fn insert_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {
+    fn insert_method(&mut self, vtable: Oop, selector: Oop, method: Oop) -> AddMethod<Oop> {
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(selector) {
-            let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect("method dictionary held non-entry");
+            let previous = core::mem::replace(&mut record.values[index], method);
+            record.callable[index] = true;
             record.sync_raw_view();
             return AddMethod::Overwrote(previous);
         }
@@ -379,7 +397,8 @@ impl Vtables {
             record.grow_dictionary();
         }
         record.keys.push(selector);
-        record.values.push(Operand::entry(method));
+        record.values.push(method);
+        record.callable.push(true);
         record.weak_keys.push(false);
         record.index_appended_key();
         record.sync_raw_view();
@@ -389,7 +408,8 @@ impl Vtables {
         self.note_mutation();
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(key) {
-            record.values[index] = Operand::object(value);
+            record.values[index] = value;
+            record.callable[index] = false;
             record.weak_keys[index] = true;
             record.sync_raw_view();
             return;
@@ -398,21 +418,23 @@ impl Vtables {
             record.grow_dictionary();
         }
         record.keys.push(key);
-        record.values.push(Operand::object(value));
+        record.values.push(value);
+        record.callable.push(false);
         record.weak_keys.push(true);
         record.index_appended_key();
         record.sync_raw_view();
     }
-    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
+    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<Oop> {
         self.note_mutation();
         let record = self.record_mut(vtable);
         let index = record.key_index(selector)?;
         record.keys.remove(index);
         let removed = record.values.remove(index);
         record.weak_keys.remove(index);
+        let callable = record.callable.remove(index);
         record.rebuild_key_indices();
         record.sync_raw_view();
-        removed.as_entry()
+        callable.then_some(removed)
     }
     pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {
         // SAFETY: forwarded caller precondition.
@@ -421,16 +443,24 @@ impl Vtables {
     /// Retire dictionary records before the caller releases their allocations.
     pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {
         for vtable in dead {
-            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant("dead vtable registry record disappeared"));
+            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| {
+                boundary::fatal_invariant("dead vtable registry record disappeared")
+            });
         }
-        self.ordered.retain(|vtable| self.by_address.contains_key(&vtable.addr()));
+        self.ordered
+            .retain(|vtable| self.by_address.contains_key(&vtable.addr()));
         if !dead.is_empty() {
             self.default_lookup.set(None);
             self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         }
     }
-    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {
-        self.record(vtable).values.iter().filter_map(|value| value.as_entry())
+    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = Oop> + '_ {
+        self.record(vtable)
+            .values
+            .iter()
+            .copied()
+            .zip(self.record(vtable).callable.iter())
+            .filter_map(|(v, c)| (*c).then_some(v))
     }
     pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {
         let mut removed = 0usize;
@@ -443,6 +473,7 @@ impl Vtables {
                 if dead {
                     record.keys.remove(index);
                     record.values.remove(index);
+                    record.callable.remove(index);
                     record.weak_keys.remove(index);
                     removed = removed.saturating_add(1);
                 } else {
@@ -472,56 +503,59 @@ mod core_tests {
         memory.set_vtable(meta, meta);
         let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let key = memory.allocate(0);
-        let expected = NativeEntry::new(super::super::id_dispatch::vtable_lookup_method,
-            core::ptr::from_mut(&mut tables).cast());
+        let expected = memory.allocate(0);
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key));
-        // The same function with another registry context is not canonical.
-        tables.add_method(meta, key, NativeEntry::new(expected.method.unwrap(), core::ptr::null_mut()));
-        assert!(!tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
+        // A distinct Method object is not the canonical lookup Method.
+        tables.add_method(meta, key, memory.allocate(0));
+        assert!(!tables.has_default_lookup(meta, key, expected));
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
         tables.remove_method(meta, key);
-        assert!(!tables.has_default_lookup(meta, key));
+        assert!(!tables.has_default_lookup(meta, key, expected));
         tables.add_method(parent, key, expected);
         tables.set_parent(meta, parent);
-        assert!(tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
         tables.set_parent(meta, core::ptr::null_mut());
-        assert!(!tables.has_default_lookup(meta, key));
+        assert!(!tables.has_default_lookup(meta, key, expected));
         tables.set_parent(meta, parent);
-        assert!(tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
         tables.add_weak_opaque_binding(meta, key, parent);
-        assert!(!tables.has_default_lookup(meta, key));
-        let mut dead = AddressMap::default(); dead.insert(key.addr(), ());
+        assert!(!tables.has_default_lookup(meta, key, expected));
+        let mut dead = AddressMap::default();
+        dead.insert(key.addr(), ());
         tables.remove_weak_keys(&dead);
-        assert!(tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
         // Positive facts must not survive registry retirement/address reuse.
         tables.remove_objects(&[meta]);
-        unsafe { tables.register(meta, core::ptr::null_mut()); }
-        assert!(!tables.has_default_lookup(meta, key));
+        unsafe {
+            tables.register(meta, core::ptr::null_mut());
+        }
+        assert!(!tables.has_default_lookup(meta, key, expected));
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
         // Invalidation is explicit, not an equality check on a saturated epoch.
         tables.mutation_epoch = u64::MAX;
         tables.binding_epoch = u64::MAX;
         tables.remove_method(meta, key);
-        assert!(!tables.has_default_lookup(meta, key));
+        assert!(!tables.has_default_lookup(meta, key, expected));
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key));
+        assert!(tables.has_default_lookup(meta, key, expected));
         tables.add_weak_opaque_binding(meta, key, parent);
-        assert!(!tables.has_default_lookup(meta, key));
+        assert!(!tables.has_default_lookup(meta, key, expected));
     }
 
     #[test]
     fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {
-        unsafe extern "C" fn leaf(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {
-            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))
-        }
-        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<NativeEntry> {
+        fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<Oop> {
             while !at.is_null() {
                 let row = tables.record(at);
-                for (&candidate, value) in row.keys.iter().zip(&row.values) {
-                    if candidate == key { return value.as_entry(); }
+                for ((&candidate, value), weak) in
+                    row.keys.iter().zip(&row.values).zip(&row.callable)
+                {
+                    if candidate == key {
+                        return (*weak).then_some(*value);
+                    }
                 }
                 at = row.parent;
             }
@@ -535,19 +569,32 @@ mod core_tests {
         let other = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let child = tables.create(&mut memory, parent, meta);
         let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();
-        let entry = |value| NativeEntry::new(leaf, core::ptr::without_provenance_mut(value));
+        let entry = |value: usize| core::ptr::without_provenance_mut(value << 3);
         for (i, &key) in keys.iter().enumerate() {
-            tables.add_method(parent, key, entry(i+1));
-            tables.add_method(other, key, entry(i+101));
+            tables.add_method(parent, key, entry(i + 1));
+            tables.add_method(other, key, entry(i + 101));
         }
         for round in 0..80 {
             let key = keys[round % keys.len()];
-            for &lookup in &keys { assert_eq!(tables.lookup(child, lookup), reference(&tables, child, lookup)); }
+            for &lookup in &keys {
+                assert_eq!(
+                    tables.lookup(child, lookup),
+                    reference(&tables, child, lookup)
+                );
+            }
             match round % 4 {
-                0 => { tables.add_method(parent, key, entry(round+501)); }
-                1 => { tables.remove_method(parent, key); }
-                2 => { tables.set_parent(child, if round % 8 == 2 {other} else {parent}); }
-                _ => { tables.add_method(child, key, entry(round+901)); }
+                0 => {
+                    tables.add_method(parent, key, entry(round + 501));
+                }
+                1 => {
+                    tables.remove_method(parent, key);
+                }
+                2 => {
+                    tables.set_parent(child, if round % 8 == 2 { other } else { parent });
+                }
+                _ => {
+                    tables.add_method(child, key, entry(round + 901));
+                }
             }
         }
         // A populated large-dictionary hint must read a newly opaque value,
@@ -555,7 +602,8 @@ mod core_tests {
         assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));
         tables.add_weak_opaque_binding(other, keys[0], meta);
         assert_eq!(tables.lookup(other, keys[0]), None);
-        let mut removed_key = AddressMap::default(); removed_key.insert(keys[0].addr(), ());
+        let mut removed_key = AddressMap::default();
+        removed_key.insert(keys[0].addr(), ());
         tables.remove_weak_keys(&removed_key);
         assert_eq!(tables.lookup(other, keys[0]), None);
         tables.add_method(other, keys[0], entry(101));
@@ -564,24 +612,33 @@ mod core_tests {
         tables.set_parent(child, other);
         tables.add_weak_opaque_binding(child, keys[0], meta);
         assert_eq!(tables.lookup(child, keys[0]), None);
-        let mut dead = AddressMap::default(); dead.insert(keys[0].addr(), ());
+        let mut dead = AddressMap::default();
+        dead.insert(keys[0].addr(), ());
         tables.remove_weak_keys(&dead);
         assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));
         // Re-register the same still-allocated payload after retiring its record.
         // Hints do not keep a record or its previous entries alive.
         tables.remove_objects(&[child]);
-        unsafe { tables.register(child, parent); }
+        unsafe {
+            tables.register(child, parent);
+        }
         tables.add_method(child, keys[0], entry(9999));
         assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));
-        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }
+        for &key in &keys {
+            assert_eq!(tables.lookup(child, key), reference(&tables, child, key));
+        }
         // Force stale/out-of-range entries and cache collisions independently
         // of the hash, then check fallback against a linear reference.
         for hint in &tables.slot_hints {
             hint.set(Some(usize::MAX));
         }
         assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));
-        for &key in &keys { assert_eq!(tables.lookup(other, key), reference(&tables, other, key)); }
-        for &key in &keys { assert_eq!(tables.lookup(child, key), reference(&tables, child, key)); }
+        for &key in &keys {
+            assert_eq!(tables.lookup(other, key), reference(&tables, other, key));
+        }
+        for &key in &keys {
+            assert_eq!(tables.lookup(child, key), reference(&tables, child, key));
+        }
     }
 
     #[test]
@@ -602,12 +659,13 @@ mod core_tests {
         tables.set_parent(survivor, meta);
         tables.set_parent(survivor, live);
         assert_eq!(tables.parent_of(survivor), live);
-        assert_eq!(tables.binding_epoch(), before + 2, "ABA must invalidate snapshots");
-        unsafe extern "C" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {
-            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))
-        }
+        assert_eq!(
+            tables.binding_epoch(),
+            before + 2,
+            "ABA must invalidate snapshots"
+        );
         let key = memory.allocate(0);
-        let entry = NativeEntry::new(method, core::ptr::null_mut());
+        let entry = memory.allocate(0);
         tables.add_method(live, key, entry);
         let bound = tables.binding_epoch();
         tables.remove_method(live, key);
@@ -621,11 +679,8 @@ mod core_tests {
         let mut tables = Vtables::new();
         let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
         memory.set_vtable(meta, meta);
-        unsafe extern "C" fn method(_: *mut core::ffi::c_void, r: Oop, _: *const Operand, _: usize) -> crate::abi::id_protocol::Outcome {
-            crate::abi::id_protocol::Outcome::loaded(Operand::object(r))
-        }
         let key = memory.allocate(0);
-        let entry = NativeEntry::new(method, core::ptr::null_mut());
+        let entry = memory.allocate(0);
         let before = (tables.binding_epoch(), tables.mutation_epoch());
         let fresh = tables.create_with_method(&mut memory, meta, meta, key, entry);
         assert_eq!(tables.direct_lookup(fresh, key), Some(entry));
@@ -645,15 +700,38 @@ mod core_tests {
         assert!(memory.set_vtable(meta, meta));
         let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let child = tables.create(&mut memory, parent, meta);
-        assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));
-        unsafe extern "C" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }
-        let identity = NativeEntry::new(identity, core::ptr::null_mut());
+        assert_eq!(
+            memory
+                .get(child.addr())
+                .map(|allocation| allocation.requested_size()),
+            Some(40)
+        );
+        let identity = memory.allocate(0);
         let mut symbols = crate::id::symbol::Symbols::new();
         let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);
-        let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!("key-{index}").as_bytes()).unwrap()).collect();
-        assert_eq!(symbols.intern(&mut memory, symbol_behavior, b"key-7").unwrap(), keys[7]);
-        for &key in &keys { tables.add_method(parent, key, identity); }
-        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(identity)); }
+        let keys: Vec<_> = (0..24)
+            .map(|index| {
+                symbols
+                    .intern(
+                        &mut memory,
+                        symbol_behavior,
+                        format!("key-{index}").as_bytes(),
+                    )
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            symbols
+                .intern(&mut memory, symbol_behavior, b"key-7")
+                .unwrap(),
+            keys[7]
+        );
+        for &key in &keys {
+            tables.add_method(parent, key, identity);
+        }
+        for &key in &keys {
+            assert_eq!(tables.lookup(child, key), Some(identity));
+        }
         tables.remove_method(parent, keys[7]);
         assert!(tables.lookup(child, keys[7]).is_none());
         tables.remove_objects(&[child]);

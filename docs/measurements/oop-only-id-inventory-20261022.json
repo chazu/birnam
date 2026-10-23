@@ -1,0 +1,3744 @@
+{
+  "revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+  "scope": "tracked Rust, test and script .rs/.c/.h/.py/.sh files; token counts are migration inventory, not dynamic cost",
+  "owners": {
+    "rust/birnam-siphon": {
+      "files": 124,
+      "references": 4346
+    },
+    "rust/birnam-execution": {
+      "files": 16,
+      "references": 563
+    },
+    "rust/birnam-host": {
+      "files": 12,
+      "references": 465
+    },
+    "rust/birnam-id": {
+      "files": 8,
+      "references": 428
+    },
+    "rust/birnam-codegen-runtime": {
+      "files": 13,
+      "references": 370
+    },
+    "rust/birnam-generation": {
+      "files": 10,
+      "references": 222
+    },
+    "rust/birnam-object-model": {
+      "files": 1,
+      "references": 186
+    },
+    "rust/birnam-collect": {
+      "files": 5,
+      "references": 171
+    },
+    "rust/birnam-integer": {
+      "files": 3,
+      "references": 166
+    },
+    "rust/birnam-image": {
+      "files": 2,
+      "references": 162
+    },
+    "rust/birnam-string": {
+      "files": 4,
+      "references": 148
+    },
+    "rust/birnam-bytes": {
+      "files": 4,
+      "references": 121
+    },
+    "rust/birnam-alien": {
+      "files": 1,
+      "references": 119
+    },
+    "rust/birnam-store": {
+      "files": 1,
+      "references": 113
+    },
+    "rust/birnam-bootstrap": {
+      "files": 2,
+      "references": 112
+    },
+    "rust/birnam-isolate": {
+      "files": 2,
+      "references": 110
+    },
+    "rust/birnam-portable-code": {
+      "files": 2,
+      "references": 109
+    },
+    "rust/birnam-vector": {
+      "files": 1,
+      "references": 106
+    },
+    "rust/birnam-artifact": {
+      "files": 1,
+      "references": 98
+    },
+    "rust/birnam-tcc": {
+      "files": 1,
+      "references": 98
+    },
+    "rust/birnam-map": {
+      "files": 1,
+      "references": 97
+    },
+    "rust/birnam-float": {
+      "files": 1,
+      "references": 96
+    },
+    "rust/birnam-word": {
+      "files": 2,
+      "references": 96
+    },
+    "rust/birnam-peg": {
+      "files": 1,
+      "references": 95
+    },
+    "rust/birnam-namespace": {
+      "files": 1,
+      "references": 80
+    },
+    "rust/birnam-host-support": {
+      "files": 2,
+      "references": 77
+    },
+    "rust/birnam-root-registry": {
+      "files": 1,
+      "references": 73
+    },
+    "rust/birnam-file-io": {
+      "files": 1,
+      "references": 72
+    },
+    "rust/birnam-relational": {
+      "files": 1,
+      "references": 70
+    },
+    "rust/birnam-host-project": {
+      "files": 6,
+      "references": 69
+    },
+    "rust/birnam-boolean": {
+      "files": 1,
+      "references": 65
+    },
+    "rust/birnam-lang-seed": {
+      "files": 2,
+      "references": 65
+    },
+    "rust/birnam-project-build": {
+      "files": 4,
+      "references": 64
+    },
+    "rust/birnam-storage": {
+      "files": 1,
+      "references": 61
+    },
+    "rust/birnam-abi": {
+      "files": 4,
+      "references": 58
+    },
+    "rust/birnam-native-backend": {
+      "files": 2,
+      "references": 58
+    },
+    "rust/birnam-system-output": {
+      "files": 1,
+      "references": 45
+    },
+    "rust/birnam-environment": {
+      "files": 1,
+      "references": 42
+    },
+    "rust/birnam-nil": {
+      "files": 1,
+      "references": 40
+    },
+    "rust/birnam-system-input": {
+      "files": 1,
+      "references": 39
+    },
+    "rust/birnam-host-entry": {
+      "files": 5,
+      "references": 36
+    },
+    "rust/birnam-host-interaction": {
+      "files": 2,
+      "references": 30
+    },
+    "rust/birnam-prelude": {
+      "files": 1,
+      "references": 25
+    },
+    "rust/birnam-project-support": {
+      "files": 1,
+      "references": 9
+    },
+    "tests/reference": {
+      "files": 1,
+      "references": 4
+    }
+  },
+  "files": [
+    {
+      "path": "rust/birnam-abi/src/binding_guard.rs",
+      "tokens": {
+        "Operand": 6,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 2,
+        "entry": 1,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-abi/src/id_protocol.rs",
+      "tokens": {
+        "Operand": 21,
+        "Outcome": 14
+      },
+      "constructors": {
+        "unit": 1,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-abi/src/lib.rs",
+      "tokens": {
+        "Operand": 5
+      },
+      "constructors": {
+        "unit": 1,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-abi/src/native_module.rs",
+      "tokens": {
+        "Operand": 2,
+        "Outcome": 8
+      },
+      "constructors": {}
+    },
+    {
+      "path": "rust/birnam-alien/src/runtime.rs",
+      "tokens": {
+        "Operand": 92,
+        "Outcome": 27
+      },
+      "constructors": {
+        "object": 64,
+        "bytes": 1,
+        "word": 9,
+        "unit": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-artifact/src/module.rs",
+      "tokens": {
+        "Operand": 66,
+        "Outcome": 32
+      },
+      "constructors": {
+        "object": 35,
+        "word": 10,
+        "bytes": 2,
+        "unit": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-boolean/src/base.rs",
+      "tokens": {
+        "Operand": 39,
+        "Outcome": 26
+      },
+      "constructors": {
+        "object": 17,
+        "bytes": 1,
+        "entry": 2,
+        "unit": 1,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-bootstrap/src/lib.rs",
+      "tokens": {
+        "Operand": 82,
+        "Outcome": 17
+      },
+      "constructors": {
+        "object": 42,
+        "word": 4,
+        "bytes": 26,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-bootstrap/src/load_result.rs",
+      "tokens": {
+        "Operand": 10,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 6,
+        "bytes": 2,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-bytes/src/native.rs",
+      "tokens": {
+        "Operand": 52,
+        "Outcome": 24
+      },
+      "constructors": {
+        "object": 23,
+        "word": 8,
+        "unit": 4,
+        "bytes": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-bytes/src/numeric.rs",
+      "tokens": {
+        "Operand": 14,
+        "Outcome": 5
+      },
+      "constructors": {
+        "word": 1,
+        "object": 8
+      }
+    },
+    {
+      "path": "rust/birnam-bytes/src/tagged_rows.rs",
+      "tokens": {
+        "Operand": 8,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 4,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-bytes/src/tagged_view.rs",
+      "tokens": {
+        "Operand": 12,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 7,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/artifact.rs",
+      "tokens": {
+        "Operand": 45,
+        "Outcome": 7
+      },
+      "constructors": {
+        "object": 37,
+        "word": 1,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/backend.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 7
+      },
+      "constructors": {
+        "word": 1,
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/candidate_inventory.rs",
+      "tokens": {
+        "Operand": 11,
+        "Outcome": 1
+      },
+      "constructors": {
+        "object": 7,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/compiled_source.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 5
+      },
+      "constructors": {
+        "word": 2,
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/embedding.rs",
+      "tokens": {
+        "Outcome": 4,
+        "Operand": 3
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 2
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/foreign.rs",
+      "tokens": {
+        "Outcome": 4,
+        "Operand": 4
+      },
+      "constructors": {
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/image.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 43
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 34,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/lib.rs",
+      "tokens": {
+        "Operand": 76,
+        "Outcome": 23
+      },
+      "constructors": {
+        "object": 50,
+        "word": 7,
+        "bytes": 4,
+        "unit": 1,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/materialization.rs",
+      "tokens": {
+        "Operand": 13,
+        "Outcome": 2
+      },
+      "constructors": {
+        "word": 2,
+        "object": 9
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/publication.rs",
+      "tokens": {
+        "Operand": 15,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 6,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/reflection.rs",
+      "tokens": {
+        "Operand": 20,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 15,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/source.rs",
+      "tokens": {
+        "Outcome": 11,
+        "Operand": 23
+      },
+      "constructors": {
+        "object": 17,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-codegen-runtime/src/source_metadata.rs",
+      "tokens": {
+        "Outcome": 20,
+        "Operand": 9
+      },
+      "constructors": {
+        "object": 7,
+        "word": 1,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-collect/src/accounting.rs",
+      "tokens": {
+        "Outcome": 3,
+        "Operand": 5
+      },
+      "constructors": {
+        "word": 2,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-collect/src/collection.rs",
+      "tokens": {
+        "Outcome": 17,
+        "Operand": 26
+      },
+      "constructors": {
+        "unit": 3,
+        "object": 9,
+        "bytes": 2,
+        "word": 5
+      }
+    },
+    {
+      "path": "rust/birnam-collect/src/construction.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 11
+      },
+      "constructors": {
+        "object": 7,
+        "word": 6,
+        "bytes": 2,
+        "unit": 3,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-collect/src/lib.rs",
+      "tokens": {
+        "Operand": 49,
+        "Outcome": 27
+      },
+      "constructors": {
+        "object": 14,
+        "unit": 5,
+        "word": 3,
+        "entry": 3
+      }
+    },
+    {
+      "path": "rust/birnam-collect/src/native_stack.rs",
+      "tokens": {
+        "Outcome": 4
+      },
+      "constructors": {}
+    },
+    {
+      "path": "rust/birnam-environment/src/lib.rs",
+      "tokens": {
+        "Operand": 28,
+        "Outcome": 14
+      },
+      "constructors": {
+        "object": 14,
+        "word": 1,
+        "bytes": 1,
+        "entry": 1,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/binding_proof.rs",
+      "tokens": {
+        "Outcome": 1
+      },
+      "constructors": {}
+    },
+    {
+      "path": "rust/birnam-execution/src/control.rs",
+      "tokens": {
+        "Outcome": 4,
+        "Operand": 7
+      },
+      "constructors": {
+        "object": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/discarded_clone.rs",
+      "tokens": {
+        "Operand": 13,
+        "Outcome": 2
+      },
+      "constructors": {
+        "unit": 5,
+        "object": 4,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/execution.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 4
+      },
+      "constructors": {
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/execution/probe_descriptor.rs",
+      "tokens": {
+        "Operand": 2,
+        "Outcome": 2
+      },
+      "constructors": {
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/execution/tail_entry.rs",
+      "tokens": {
+        "Operand": 4,
+        "Outcome": 4
+      },
+      "constructors": {
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/lib.rs",
+      "tokens": {
+        "Operand": 102,
+        "Outcome": 49
+      },
+      "constructors": {
+        "object": 42,
+        "unit": 10,
+        "word": 7,
+        "entry": 3
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/machine.rs",
+      "tokens": {
+        "Outcome": 41,
+        "Operand": 147
+      },
+      "constructors": {
+        "object": 108,
+        "word": 5,
+        "entry": 2,
+        "unit": 3,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/machine/frame_call.rs",
+      "tokens": {
+        "Outcome": 6,
+        "Operand": 18
+      },
+      "constructors": {
+        "object": 3,
+        "entry": 1,
+        "unit": 7
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/native_abi.rs",
+      "tokens": {
+        "Outcome": 16,
+        "Operand": 41
+      },
+      "constructors": {
+        "object": 13,
+        "bytes": 5,
+        "word": 5,
+        "unit": 3
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/native_message.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 10
+      },
+      "constructors": {
+        "object": 3,
+        "word": 3,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/native_tier.rs",
+      "tokens": {
+        "Operand": 3,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 1
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/numeric.rs",
+      "tokens": {
+        "Operand": 8,
+        "Outcome": 2
+      },
+      "constructors": {
+        "word": 1,
+        "entry": 1,
+        "object": 2
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/numeric_predicate.rs",
+      "tokens": {
+        "Operand": 16,
+        "Outcome": 3
+      },
+      "constructors": {
+        "unit": 3,
+        "object": 8,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/recovery.rs",
+      "tokens": {
+        "Outcome": 11,
+        "Operand": 19
+      },
+      "constructors": {
+        "object": 9,
+        "word": 5
+      }
+    },
+    {
+      "path": "rust/birnam-execution/src/word_helper.rs",
+      "tokens": {
+        "Operand": 13,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 6,
+        "word": 2,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-file-io/src/lib.rs",
+      "tokens": {
+        "Operand": 49,
+        "Outcome": 23
+      },
+      "constructors": {
+        "object": 28,
+        "word": 1,
+        "bytes": 4,
+        "entry": 1,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-float/src/native.rs",
+      "tokens": {
+        "Operand": 70,
+        "Outcome": 26
+      },
+      "constructors": {
+        "object": 32,
+        "word": 11,
+        "bytes": 3,
+        "unit": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/backend.rs",
+      "tokens": {
+        "Outcome": 4,
+        "Operand": 7
+      },
+      "constructors": {
+        "word": 1,
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/candidate.rs",
+      "tokens": {
+        "Operand": 40,
+        "Outcome": 16
+      },
+      "constructors": {
+        "word": 2,
+        "object": 32
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/candidate_image.rs",
+      "tokens": {
+        "Operand": 4,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 2
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/candidate_ledger.rs",
+      "tokens": {
+        "Outcome": 10,
+        "Operand": 19
+      },
+      "constructors": {
+        "object": 10,
+        "entry": 3
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/candidate_observation.rs",
+      "tokens": {
+        "Outcome": 6,
+        "Operand": 10
+      },
+      "constructors": {
+        "object": 10
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/candidate_retirement.rs",
+      "tokens": {
+        "Outcome": 6,
+        "Operand": 14
+      },
+      "constructors": {
+        "word": 2,
+        "object": 7
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/compiler.rs",
+      "tokens": {
+        "Operand": 9,
+        "Outcome": 8
+      },
+      "constructors": {
+        "object": 8
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/lib.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 18
+      },
+      "constructors": {
+        "object": 14,
+        "word": 3,
+        "unit": 1,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/sources.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 3
+      },
+      "constructors": {
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-generation/src/values.rs",
+      "tokens": {
+        "Outcome": 7,
+        "Operand": 5
+      },
+      "constructors": {
+        "object": 4,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host-entry/src/image.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "object": 5
+      }
+    },
+    {
+      "path": "rust/birnam-host-entry/src/lib.rs",
+      "tokens": {
+        "Operand": 6,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 2
+      }
+    },
+    {
+      "path": "rust/birnam-host-entry/src/program.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "object": 5
+      }
+    },
+    {
+      "path": "rust/birnam-host-entry/src/startup.rs",
+      "tokens": {
+        "Operand": 5
+      },
+      "constructors": {
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-host-entry/src/worker.rs",
+      "tokens": {
+        "Operand": 11
+      },
+      "constructors": {
+        "object": 8,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-host-interaction/src/interaction.rs",
+      "tokens": {
+        "Operand": 23
+      },
+      "constructors": {
+        "object": 20,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-host-interaction/src/lib.rs",
+      "tokens": {
+        "Operand": 5,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host-project/src/lib.rs",
+      "tokens": {
+        "Operand": 8,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 2
+      }
+    },
+    {
+      "path": "rust/birnam-host-project/src/project/operations.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "object": 5
+      }
+    },
+    {
+      "path": "rust/birnam-host-project/src/project/query.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "object": 5
+      }
+    },
+    {
+      "path": "rust/birnam-host-project/src/project/source.rs",
+      "tokens": {
+        "Operand": 23,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 13,
+        "entry": 6
+      }
+    },
+    {
+      "path": "rust/birnam-host-project/src/project_query_contract.rs",
+      "tokens": {
+        "Operand": 8
+      },
+      "constructors": {
+        "object": 7
+      }
+    },
+    {
+      "path": "rust/birnam-host-project/src/test_support.rs",
+      "tokens": {
+        "Operand": 10
+      },
+      "constructors": {
+        "object": 5,
+        "bytes": 3,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host-support/src/native.rs",
+      "tokens": {
+        "Operand": 35,
+        "Outcome": 10
+      },
+      "constructors": {
+        "object": 15,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host-support/src/runtime.rs",
+      "tokens": {
+        "Operand": 30,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 18,
+        "bytes": 1,
+        "word": 4
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/image.rs",
+      "tokens": {
+        "Operand": 5
+      },
+      "constructors": {
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/image_loading_test.rs",
+      "tokens": {
+        "Operand": 5,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/interaction.rs",
+      "tokens": {
+        "Operand": 3
+      },
+      "constructors": {
+        "object": 2
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/lifecycle_test.rs",
+      "tokens": {
+        "Operand": 212,
+        "Outcome": 15
+      },
+      "constructors": {
+        "object": 183,
+        "entry": 20,
+        "unit": 1,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/program.rs",
+      "tokens": {
+        "Operand": 4
+      },
+      "constructors": {
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/project/mod.rs",
+      "tokens": {
+        "Operand": 22
+      },
+      "constructors": {
+        "object": 19
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/runtime.rs",
+      "tokens": {
+        "Operand": 12
+      },
+      "constructors": {
+        "object": 4,
+        "bytes": 3,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/startup.rs",
+      "tokens": {
+        "Operand": 51,
+        "Outcome": 10
+      },
+      "constructors": {
+        "object": 34,
+        "entry": 9,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-host/src/worker.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "word": 1,
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-host/tests/native_backend.rs",
+      "tokens": {
+        "Operand": 21,
+        "Outcome": 4
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 12,
+        "word": 1,
+        "entry": 3
+      }
+    },
+    {
+      "path": "rust/birnam-host/tests/native_compilers.rs",
+      "tokens": {
+        "Operand": 55,
+        "Outcome": 4
+      },
+      "constructors": {
+        "bytes": 4,
+        "word": 4,
+        "object": 38,
+        "entry": 6
+      }
+    },
+    {
+      "path": "rust/birnam-host/tests/native_owners.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 17,
+        "bytes": 4,
+        "word": 1,
+        "entry": 4
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/id_dispatch.rs",
+      "tokens": {
+        "Operand": 60,
+        "Outcome": 22
+      },
+      "constructors": {
+        "object": 22,
+        "unit": 4,
+        "entry": 11,
+        "bytes": 2,
+        "word": 3,
+        "protocol": 1
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/initial_objects.rs",
+      "tokens": {
+        "Operand": 3
+      },
+      "constructors": {
+        "object": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id.rs",
+      "tokens": {
+        "Operand": 11,
+        "Outcome": 21
+      },
+      "constructors": {
+        "object": 4,
+        "entry": 1,
+        "protocol": 1
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/metrics.rs",
+      "tokens": {
+        "Operand": 18,
+        "Outcome": 22
+      },
+      "constructors": {
+        "object": 1,
+        "entry": 1,
+        "unit": 1,
+        "bytes": 6
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/objects.rs",
+      "tokens": {
+        "Operand": 61,
+        "Outcome": 50
+      },
+      "constructors": {
+        "object": 11,
+        "entry": 1,
+        "word": 9,
+        "unit": 7
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/registries.rs",
+      "tokens": {
+        "Operand": 61,
+        "Outcome": 33
+      },
+      "constructors": {
+        "object": 2,
+        "entry": 1,
+        "word": 19,
+        "bytes": 1,
+        "unit": 5
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/storage.rs",
+      "tokens": {
+        "Operand": 24,
+        "Outcome": 19
+      },
+      "constructors": {
+        "object": 4,
+        "entry": 1,
+        "unit": 6,
+        "word": 4
+      }
+    },
+    {
+      "path": "rust/birnam-id/src/id/vtable.rs",
+      "tokens": {
+        "Operand": 15,
+        "Outcome": 8
+      },
+      "constructors": {
+        "entry": 2,
+        "object": 6
+      }
+    },
+    {
+      "path": "rust/birnam-image/src/format.rs",
+      "tokens": {
+        "Outcome": 8
+      },
+      "constructors": {}
+    },
+    {
+      "path": "rust/birnam-image/src/native.rs",
+      "tokens": {
+        "Operand": 101,
+        "Outcome": 53
+      },
+      "constructors": {
+        "object": 63,
+        "word": 13,
+        "bytes": 3,
+        "unit": 3,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-integer/src/mixed.rs",
+      "tokens": {
+        "Operand": 20,
+        "Outcome": 5
+      },
+      "constructors": {
+        "word": 2,
+        "object": 8,
+        "entry": 1,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-integer/src/native.rs",
+      "tokens": {
+        "Operand": 97,
+        "Outcome": 30
+      },
+      "constructors": {
+        "object": 45,
+        "word": 19,
+        "bytes": 3,
+        "unit": 4,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-integer/src/predicate.rs",
+      "tokens": {
+        "Operand": 12,
+        "Outcome": 2
+      },
+      "constructors": {
+        "unit": 7,
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-isolate/src/native.rs",
+      "tokens": {
+        "Operand": 76,
+        "Outcome": 21
+      },
+      "constructors": {
+        "object": 41,
+        "word": 14,
+        "bytes": 2,
+        "unit": 5,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-isolate/src/native/transfer.rs",
+      "tokens": {
+        "Outcome": 3,
+        "Operand": 10
+      },
+      "constructors": {
+        "object": 9,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-lang-seed/src/grammar.rs",
+      "tokens": {
+        "Outcome": 13
+      },
+      "constructors": {}
+    },
+    {
+      "path": "rust/birnam-lang-seed/src/lib.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 23
+      },
+      "constructors": {
+        "object": 13,
+        "word": 3,
+        "bytes": 1,
+        "unit": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-map/src/lib.rs",
+      "tokens": {
+        "Operand": 61,
+        "Outcome": 36
+      },
+      "constructors": {
+        "object": 37,
+        "word": 6,
+        "unit": 1,
+        "entry": 1,
+        "bytes": 3
+      }
+    },
+    {
+      "path": "rust/birnam-namespace/src/native.rs",
+      "tokens": {
+        "Operand": 47,
+        "Outcome": 33
+      },
+      "constructors": {
+        "unit": 3,
+        "object": 19,
+        "word": 4,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-native-backend/src/lib.rs",
+      "tokens": {
+        "Operand": 36,
+        "Outcome": 18
+      },
+      "constructors": {
+        "object": 20,
+        "bytes": 1,
+        "word": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-native-backend/src/native_prelude.c",
+      "tokens": {
+        "Operand": 2,
+        "Outcome": 2
+      },
+      "constructors": {}
+    },
+    {
+      "path": "rust/birnam-nil/src/base.rs",
+      "tokens": {
+        "Operand": 24,
+        "Outcome": 16
+      },
+      "constructors": {
+        "object": 9,
+        "bytes": 1,
+        "entry": 2,
+        "unit": 3
+      }
+    },
+    {
+      "path": "rust/birnam-object-model/src/native.rs",
+      "tokens": {
+        "Operand": 133,
+        "Outcome": 53
+      },
+      "constructors": {
+        "object": 59,
+        "word": 24,
+        "unit": 7,
+        "bytes": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-peg/src/lib.rs",
+      "tokens": {
+        "Operand": 67,
+        "Outcome": 28
+      },
+      "constructors": {
+        "object": 40,
+        "word": 5,
+        "bytes": 2,
+        "unit": 3,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-portable-code/src/inventory.rs",
+      "tokens": {
+        "Outcome": 5,
+        "Operand": 1
+      },
+      "constructors": {
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-portable-code/src/lib.rs",
+      "tokens": {
+        "Operand": 53,
+        "Outcome": 50
+      },
+      "constructors": {
+        "object": 22,
+        "word": 6,
+        "bytes": 3,
+        "unit": 5,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-prelude/src/lib.rs",
+      "tokens": {
+        "Operand": 17,
+        "Outcome": 8
+      },
+      "constructors": {
+        "object": 11,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-project-build/src/lib.rs",
+      "tokens": {
+        "Operand": 7,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 2,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-project-build/src/project/observation.rs",
+      "tokens": {
+        "Operand": 7
+      },
+      "constructors": {
+        "object": 6
+      }
+    },
+    {
+      "path": "rust/birnam-project-build/src/project/operations.rs",
+      "tokens": {
+        "Outcome": 4,
+        "Operand": 34
+      },
+      "constructors": {
+        "object": 27,
+        "entry": 4
+      }
+    },
+    {
+      "path": "rust/birnam-project-build/src/test_support.rs",
+      "tokens": {
+        "Operand": 10
+      },
+      "constructors": {
+        "object": 5,
+        "bytes": 3,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-project-support/src/values.rs",
+      "tokens": {
+        "Operand": 9
+      },
+      "constructors": {
+        "object": 5,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-relational/src/native.rs",
+      "tokens": {
+        "Operand": 48,
+        "Outcome": 22
+      },
+      "constructors": {
+        "object": 27,
+        "word": 5,
+        "bytes": 2,
+        "unit": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-root-registry/src/lib.rs",
+      "tokens": {
+        "Operand": 39,
+        "Outcome": 34
+      },
+      "constructors": {
+        "word": 13,
+        "bytes": 2,
+        "unit": 3,
+        "object": 4,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/binding_workload.rs",
+      "tokens": {
+        "Operand": 18
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 12,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/gc_microbench.rs",
+      "tokens": {
+        "Operand": 10
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 2,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/gc_workload.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 1,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/invocation_workload.rs",
+      "tokens": {
+        "Operand": 12,
+        "Outcome": 3
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 7,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/micro_support/control.rs",
+      "tokens": {
+        "Operand": 15,
+        "Outcome": 2
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 11,
+        "entry": 1,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/microbench.rs",
+      "tokens": {
+        "Operand": 47,
+        "Outcome": 9
+      },
+      "constructors": {
+        "word": 6,
+        "object": 24,
+        "unit": 2,
+        "entry": 3,
+        "bytes": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/numeric_workload.rs",
+      "tokens": {
+        "Operand": 12
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 4,
+        "word": 4,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/slot_cost.rs",
+      "tokens": {
+        "Operand": 12
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 6,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/socket_owner_profile.rs",
+      "tokens": {
+        "Operand": 12
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 9
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/examples/task_field_profile.rs",
+      "tokens": {
+        "Operand": 16
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 11,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/src/lib.rs",
+      "tokens": {
+        "Operand": 3,
+        "Outcome": 7
+      },
+      "constructors": {
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/alien.rs",
+      "tokens": {
+        "Operand": 30,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 18,
+        "bytes": 2,
+        "word": 3,
+        "entry": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/alien_without_store.rs",
+      "tokens": {
+        "Operand": 20
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 16
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/allocation_accounting.rs",
+      "tokens": {
+        "Operand": 24,
+        "Outcome": 6
+      },
+      "constructors": {
+        "unit": 3,
+        "word": 11,
+        "bytes": 1,
+        "object": 6
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/artifact.rs",
+      "tokens": {
+        "Operand": 23,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 13,
+        "bytes": 4,
+        "entry": 2,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/artifact_activation.rs",
+      "tokens": {
+        "Operand": 14,
+        "Outcome": 5
+      },
+      "constructors": {
+        "object": 6,
+        "bytes": 2,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/artifact_templates.rs",
+      "tokens": {
+        "Operand": 27,
+        "Outcome": 9
+      },
+      "constructors": {
+        "object": 14,
+        "word": 1,
+        "bytes": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/binding_proof.rs",
+      "tokens": {
+        "Operand": 17,
+        "Outcome": 5
+      },
+      "constructors": {
+        "word": 1,
+        "object": 8,
+        "bytes": 3,
+        "entry": 1,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/binding_undo.rs",
+      "tokens": {
+        "Operand": 31,
+        "Outcome": 5
+      },
+      "constructors": {
+        "word": 2,
+        "object": 17,
+        "entry": 3,
+        "unit": 5,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/block_loop.rs",
+      "tokens": {
+        "Operand": 37,
+        "Outcome": 18
+      },
+      "constructors": {
+        "object": 21,
+        "bytes": 2,
+        "entry": 3,
+        "unit": 1,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/boolean_values.rs",
+      "tokens": {
+        "Operand": 76,
+        "Outcome": 13
+      },
+      "constructors": {
+        "bytes": 3,
+        "object": 56,
+        "entry": 4,
+        "unit": 1,
+        "word": 5,
+        "protocol": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/borrowed_read_inputs.rs",
+      "tokens": {
+        "Operand": 48,
+        "Outcome": 8
+      },
+      "constructors": {
+        "object": 35,
+        "word": 6,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/byte_abi.rs",
+      "tokens": {
+        "Operand": 43,
+        "Outcome": 12
+      },
+      "constructors": {
+        "bytes": 6,
+        "object": 28,
+        "unit": 2,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/candidate.rs",
+      "tokens": {
+        "Operand": 27,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 19,
+        "bytes": 2,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/candidate_retirement.rs",
+      "tokens": {
+        "Operand": 17,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 9,
+        "bytes": 2,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/capture_access.rs",
+      "tokens": {
+        "Operand": 43,
+        "Outcome": 17
+      },
+      "constructors": {
+        "object": 14,
+        "bytes": 3,
+        "entry": 1,
+        "word": 14
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/capture_dependencies.rs",
+      "tokens": {
+        "Operand": 8,
+        "Outcome": 2
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 3,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/cell_without_store.rs",
+      "tokens": {
+        "Operand": 28,
+        "Outcome": 7
+      },
+      "constructors": {
+        "bytes": 4,
+        "object": 18,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/closure_construction.rs",
+      "tokens": {
+        "Operand": 66,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 48,
+        "word": 7,
+        "bytes": 3,
+        "entry": 2,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/collections.rs",
+      "tokens": {
+        "Operand": 83,
+        "Outcome": 11
+      },
+      "constructors": {
+        "object": 55,
+        "word": 14,
+        "bytes": 5,
+        "entry": 1,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler.rs",
+      "tokens": {
+        "Operand": 44,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 39,
+        "bytes": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/accounting.rs",
+      "tokens": {
+        "Operand": 8,
+        "Outcome": 3
+      },
+      "constructors": {
+        "unit": 1,
+        "word": 2,
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/discarded_clone.rs",
+      "tokens": {
+        "Operand": 25,
+        "Outcome": 7
+      },
+      "constructors": {
+        "object": 10,
+        "word": 10,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/dispatch.rs",
+      "tokens": {
+        "Operand": 11,
+        "Outcome": 5
+      },
+      "constructors": {
+        "object": 7,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/frame_call.rs",
+      "tokens": {
+        "Operand": 21,
+        "Outcome": 7
+      },
+      "constructors": {
+        "unit": 1,
+        "object": 10,
+        "entry": 1,
+        "word": 5
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/globals.rs",
+      "tokens": {
+        "Operand": 25,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 21,
+        "word": 1,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/inline_return.rs",
+      "tokens": {
+        "Operand": 7,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 4,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/numeric_predicate.rs",
+      "tokens": {
+        "Operand": 22,
+        "Outcome": 5
+      },
+      "constructors": {
+        "object": 14,
+        "word": 4,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/prepared_call.rs",
+      "tokens": {
+        "Operand": 5,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/compiler/publication.rs",
+      "tokens": {
+        "Operand": 51,
+        "Outcome": 12
+      },
+      "constructors": {
+        "object": 42,
+        "unit": 1,
+        "entry": 2,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/dispatch_metrics.rs",
+      "tokens": {
+        "Operand": 9,
+        "Outcome": 3
+      },
+      "constructors": {
+        "unit": 1,
+        "object": 3,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/embedding.rs",
+      "tokens": {
+        "Operand": 28,
+        "Outcome": 10
+      },
+      "constructors": {
+        "object": 13,
+        "bytes": 8,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/execution_machines.rs",
+      "tokens": {
+        "Operand": 59,
+        "Outcome": 10
+      },
+      "constructors": {
+        "bytes": 3,
+        "object": 45,
+        "word": 2,
+        "unit": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/execution_machines/native_tier.rs",
+      "tokens": {
+        "Operand": 50,
+        "Outcome": 12
+      },
+      "constructors": {
+        "object": 33,
+        "word": 1,
+        "entry": 7,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/execution_machines/recovery.rs",
+      "tokens": {
+        "Operand": 66,
+        "Outcome": 11
+      },
+      "constructors": {
+        "object": 40,
+        "word": 13,
+        "bytes": 4,
+        "unit": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/execution_methods.rs",
+      "tokens": {
+        "Operand": 63,
+        "Outcome": 21
+      },
+      "constructors": {
+        "object": 45,
+        "entry": 2,
+        "unit": 2,
+        "word": 3,
+        "bytes": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/external_allocation.rs",
+      "tokens": {
+        "Operand": 17,
+        "Outcome": 3
+      },
+      "constructors": {
+        "bytes": 6,
+        "object": 4,
+        "word": 4,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/fixed_abi.rs",
+      "tokens": {
+        "Operand": 32,
+        "Outcome": 12
+      },
+      "constructors": {
+        "unit": 1,
+        "object": 16,
+        "word": 8,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/generation.rs",
+      "tokens": {
+        "Operand": 19,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 13,
+        "bytes": 2,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/generation_ledger.rs",
+      "tokens": {
+        "Operand": 39,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 24,
+        "bytes": 2,
+        "word": 1,
+        "entry": 7
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/generation_transaction.rs",
+      "tokens": {
+        "Operand": 20,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 12,
+        "bytes": 2,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/global_resolution.rs",
+      "tokens": {
+        "Operand": 40,
+        "Outcome": 10
+      },
+      "constructors": {
+        "unit": 1,
+        "word": 3,
+        "object": 32,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/globals_without_store.rs",
+      "tokens": {
+        "Operand": 24
+      },
+      "constructors": {
+        "bytes": 6,
+        "object": 15,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/guard_batch.rs",
+      "tokens": {
+        "Operand": 10,
+        "Outcome": 4
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 5,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/harness_retention.rs",
+      "tokens": {
+        "Operand": 11
+      },
+      "constructors": {
+        "object": 5,
+        "bytes": 3,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/id.rs",
+      "tokens": {
+        "Operand": 3
+      },
+      "constructors": {
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/image.rs",
+      "tokens": {
+        "Operand": 54,
+        "Outcome": 13
+      },
+      "constructors": {
+        "object": 34,
+        "bytes": 4,
+        "entry": 1,
+        "word": 8
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/image_recovery_conflict.rs",
+      "tokens": {
+        "Operand": 22,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 15,
+        "bytes": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/image_snapshot_stamp.rs",
+      "tokens": {
+        "Operand": 18,
+        "Outcome": 7
+      },
+      "constructors": {
+        "object": 8,
+        "word": 2,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/image_without_store.rs",
+      "tokens": {
+        "Operand": 23
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 19
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/integer_box_observability.rs",
+      "tokens": {
+        "Operand": 12,
+        "Outcome": 4
+      },
+      "constructors": {
+        "word": 4,
+        "bytes": 1,
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/integer_index_guard.rs",
+      "tokens": {
+        "Operand": 11,
+        "Outcome": 6
+      },
+      "constructors": {
+        "word": 2,
+        "bytes": 1,
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/integer_operation_objects.rs",
+      "tokens": {
+        "Operand": 16,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 10,
+        "bytes": 1,
+        "word": 1,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/integer_performance.rs",
+      "tokens": {
+        "Operand": 27,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 13,
+        "unit": 1,
+        "entry": 4,
+        "bytes": 2,
+        "word": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/integer_values.rs",
+      "tokens": {
+        "Operand": 23
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 15,
+        "word": 4,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/invocation_arguments.rs",
+      "tokens": {
+        "Operand": 19,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 11,
+        "bytes": 2,
+        "entry": 1,
+        "word": 2,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/invocation_inputs.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 5
+      },
+      "constructors": {
+        "bytes": 3,
+        "object": 19,
+        "word": 3,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/isolate.rs",
+      "tokens": {
+        "Operand": 30,
+        "Outcome": 7
+      },
+      "constructors": {
+        "object": 17,
+        "bytes": 3,
+        "word": 1,
+        "entry": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/lang.rs",
+      "tokens": {
+        "Operand": 9
+      },
+      "constructors": {
+        "object": 4,
+        "bytes": 2,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/local_cell_retention.rs",
+      "tokens": {
+        "Operand": 11
+      },
+      "constructors": {
+        "object": 5,
+        "bytes": 3,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/materialization.rs",
+      "tokens": {
+        "Operand": 30,
+        "Outcome": 11
+      },
+      "constructors": {
+        "object": 18,
+        "bytes": 4,
+        "entry": 1,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/memory.rs",
+      "tokens": {
+        "Operand": 49,
+        "Outcome": 16
+      },
+      "constructors": {
+        "unit": 1,
+        "word": 10,
+        "object": 28,
+        "bytes": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/memory_activation.rs",
+      "tokens": {
+        "Operand": 16,
+        "Outcome": 5
+      },
+      "constructors": {
+        "unit": 3,
+        "object": 10
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/method_binding.rs",
+      "tokens": {
+        "Operand": 9
+      },
+      "constructors": {
+        "object": 4,
+        "word": 1,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/method_invocation.rs",
+      "tokens": {
+        "Operand": 18,
+        "Outcome": 5
+      },
+      "constructors": {
+        "object": 11,
+        "word": 1,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/method_observation.rs",
+      "tokens": {
+        "Operand": 22,
+        "Outcome": 6
+      },
+      "constructors": {
+        "word": 1,
+        "object": 14,
+        "unit": 3,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/minimal_mutation.rs",
+      "tokens": {
+        "Operand": 32,
+        "Outcome": 5
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 23,
+        "word": 1,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/module_registry_retention.rs",
+      "tokens": {
+        "Operand": 11
+      },
+      "constructors": {
+        "object": 5,
+        "bytes": 3,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/modules.rs",
+      "tokens": {
+        "Operand": 100,
+        "Outcome": 15
+      },
+      "constructors": {
+        "bytes": 7,
+        "unit": 3,
+        "object": 55,
+        "word": 9,
+        "entry": 14
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/native_incoming.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 16,
+        "entry": 3,
+        "bytes": 4,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/native_loader.rs",
+      "tokens": {
+        "Operand": 40,
+        "Outcome": 13
+      },
+      "constructors": {
+        "object": 25,
+        "bytes": 3,
+        "entry": 3,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/native_numeric_inputs.rs",
+      "tokens": {
+        "Operand": 16,
+        "Outcome": 4
+      },
+      "constructors": {
+        "word": 6,
+        "bytes": 1,
+        "object": 6
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/native_values.rs",
+      "tokens": {
+        "Operand": 34,
+        "Outcome": 8
+      },
+      "constructors": {
+        "bytes": 4,
+        "object": 20,
+        "word": 3,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/numbers.rs",
+      "tokens": {
+        "Operand": 52,
+        "Outcome": 5
+      },
+      "constructors": {
+        "word": 5,
+        "bytes": 2,
+        "object": 41
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/numbers_loading.rs",
+      "tokens": {
+        "Operand": 25,
+        "Outcome": 5
+      },
+      "constructors": {
+        "object": 12,
+        "word": 4,
+        "entry": 3,
+        "bytes": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/object_model.rs",
+      "tokens": {
+        "Operand": 58,
+        "Outcome": 15
+      },
+      "constructors": {
+        "word": 15,
+        "object": 32,
+        "unit": 2,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/object_model_scopes.rs",
+      "tokens": {
+        "Operand": 35,
+        "Outcome": 8
+      },
+      "constructors": {
+        "unit": 3,
+        "object": 20,
+        "word": 6,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/object_model_slots.rs",
+      "tokens": {
+        "Operand": 44,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 27,
+        "bytes": 5,
+        "word": 8
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/ordinary_record_retention.rs",
+      "tokens": {
+        "Operand": 11
+      },
+      "constructors": {
+        "object": 5,
+        "bytes": 3,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/owned_globals.rs",
+      "tokens": {
+        "Operand": 33,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 24,
+        "word": 2,
+        "bytes": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/portable_code.rs",
+      "tokens": {
+        "Operand": 20,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 10,
+        "bytes": 4,
+        "entry": 1,
+        "word": 1,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/publication_contract.rs",
+      "tokens": {
+        "Operand": 32,
+        "Outcome": 13
+      },
+      "constructors": {
+        "object": 22,
+        "unit": 2,
+        "bytes": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/publication_failure_boundary.rs",
+      "tokens": {
+        "Operand": 47,
+        "Outcome": 30
+      },
+      "constructors": {
+        "object": 25,
+        "bytes": 3,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/publication_failure_image.rs",
+      "tokens": {
+        "Operand": 6
+      },
+      "constructors": {
+        "object": 2,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/publication_result_proposal.rs",
+      "tokens": {
+        "Operand": 10,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 4,
+        "word": 1,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/relational.rs",
+      "tokens": {
+        "Operand": 39,
+        "Outcome": 9
+      },
+      "constructors": {
+        "bytes": 4,
+        "object": 26,
+        "word": 2,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/relational_authored.rs",
+      "tokens": {
+        "Operand": 38,
+        "Outcome": 11
+      },
+      "constructors": {
+        "bytes": 5,
+        "object": 24,
+        "word": 5
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/representation.rs",
+      "tokens": {
+        "Operand": 22,
+        "Outcome": 4
+      },
+      "constructors": {
+        "object": 14,
+        "word": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/representation_batch.rs",
+      "tokens": {
+        "Operand": 12,
+        "Outcome": 2
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 6,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/representation_fallback.rs",
+      "tokens": {
+        "Operand": 9,
+        "Outcome": 4
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 3,
+        "word": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/result_cleanup.rs",
+      "tokens": {
+        "Operand": 30,
+        "Outcome": 8
+      },
+      "constructors": {
+        "bytes": 4,
+        "object": 14,
+        "word": 6
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/root_batches.rs",
+      "tokens": {
+        "Operand": 20,
+        "Outcome": 5
+      },
+      "constructors": {
+        "unit": 1,
+        "object": 5,
+        "entry": 1,
+        "bytes": 5,
+        "word": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/root_reuse.rs",
+      "tokens": {
+        "Operand": 25,
+        "Outcome": 10
+      },
+      "constructors": {
+        "object": 16,
+        "word": 1,
+        "bytes": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/roots.rs",
+      "tokens": {
+        "Operand": 7,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 4,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/shared_invocation_probe.rs",
+      "tokens": {
+        "Operand": 44,
+        "Outcome": 13
+      },
+      "constructors": {
+        "object": 24,
+        "word": 2,
+        "bytes": 5,
+        "entry": 4,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/source_inspection.rs",
+      "tokens": {
+        "Operand": 23,
+        "Outcome": 3
+      },
+      "constructors": {
+        "object": 15,
+        "bytes": 2,
+        "word": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/source_loader.rs",
+      "tokens": {
+        "Operand": 40,
+        "Outcome": 14
+      },
+      "constructors": {
+        "object": 27,
+        "bytes": 4,
+        "word": 1,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/storage_trace.rs",
+      "tokens": {
+        "Operand": 46,
+        "Outcome": 24
+      },
+      "constructors": {
+        "object": 20,
+        "unit": 5,
+        "word": 6,
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/store.rs",
+      "tokens": {
+        "Operand": 96,
+        "Outcome": 21
+      },
+      "constructors": {
+        "object": 65,
+        "bytes": 3,
+        "word": 4,
+        "unit": 5,
+        "entry": 7
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/store_compensation.rs",
+      "tokens": {
+        "Operand": 24
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 19,
+        "word": 1,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/support/mod.rs",
+      "tokens": {
+        "Operand": 51
+      },
+      "constructors": {
+        "bytes": 6,
+        "object": 31,
+        "word": 5,
+        "entry": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/system_gc.rs",
+      "tokens": {
+        "Operand": 69,
+        "Outcome": 14
+      },
+      "constructors": {
+        "object": 36,
+        "word": 15,
+        "bytes": 7,
+        "entry": 1,
+        "unit": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/system_output.rs",
+      "tokens": {
+        "Operand": 56,
+        "Outcome": 10
+      },
+      "constructors": {
+        "object": 42,
+        "entry": 3,
+        "bytes": 5,
+        "word": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/system_services.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 6
+      },
+      "constructors": {
+        "object": 16,
+        "bytes": 4,
+        "entry": 2,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/system_services/file_io.rs",
+      "tokens": {
+        "Operand": 13,
+        "Outcome": 4
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 7,
+        "unit": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/tagged_rows.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 4
+      },
+      "constructors": {
+        "word": 2,
+        "bytes": 3,
+        "object": 21
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/task_control.rs",
+      "tokens": {
+        "Operand": 14,
+        "Outcome": 7
+      },
+      "constructors": {
+        "object": 8,
+        "bytes": 2
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/task_without_store.rs",
+      "tokens": {
+        "Operand": 20
+      },
+      "constructors": {
+        "bytes": 2,
+        "object": 16
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/text_error.rs",
+      "tokens": {
+        "Operand": 51,
+        "Outcome": 11
+      },
+      "constructors": {
+        "bytes": 3,
+        "object": 34,
+        "entry": 5,
+        "word": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/trace_graphs.rs",
+      "tokens": {
+        "Operand": 47,
+        "Outcome": 22
+      },
+      "constructors": {
+        "object": 18,
+        "word": 10,
+        "unit": 2,
+        "bytes": 5,
+        "entry": 2,
+        "protocol": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/trace_heap.rs",
+      "tokens": {
+        "Operand": 12,
+        "Outcome": 7
+      },
+      "constructors": {
+        "unit": 1,
+        "word": 3,
+        "bytes": 1,
+        "object": 3
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/word_expression.rs",
+      "tokens": {
+        "Operand": 32,
+        "Outcome": 8
+      },
+      "constructors": {
+        "word": 4,
+        "unit": 2,
+        "object": 17,
+        "bytes": 4
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/word_helper.rs",
+      "tokens": {
+        "Operand": 26,
+        "Outcome": 7
+      },
+      "constructors": {
+        "object": 15,
+        "bytes": 3,
+        "word": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-siphon/tests/word_representation_order.rs",
+      "tokens": {
+        "Operand": 11,
+        "Outcome": 3
+      },
+      "constructors": {
+        "bytes": 1,
+        "object": 5,
+        "word": 3
+      }
+    },
+    {
+      "path": "rust/birnam-storage/src/lib.rs",
+      "tokens": {
+        "Operand": 39,
+        "Outcome": 22
+      },
+      "constructors": {
+        "object": 18,
+        "unit": 3,
+        "word": 5,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-store/src/native.rs",
+      "tokens": {
+        "Operand": 85,
+        "Outcome": 28
+      },
+      "constructors": {
+        "object": 54,
+        "word": 7,
+        "unit": 5,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-string/src/binary.rs",
+      "tokens": {
+        "Operand": 2,
+        "Outcome": 1
+      },
+      "constructors": {
+        "bytes": 1
+      }
+    },
+    {
+      "path": "rust/birnam-string/src/native.rs",
+      "tokens": {
+        "Operand": 71,
+        "Outcome": 28
+      },
+      "constructors": {
+        "object": 35,
+        "word": 7,
+        "bytes": 5,
+        "unit": 4,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-string/src/numeric.rs",
+      "tokens": {
+        "Operand": 24,
+        "Outcome": 6
+      },
+      "constructors": {
+        "word": 2,
+        "object": 11,
+        "bytes": 1,
+        "entry": 1,
+        "unit": 1
+      }
+    },
+    {
+      "path": "rust/birnam-string/src/split.rs",
+      "tokens": {
+        "Operand": 14,
+        "Outcome": 2
+      },
+      "constructors": {
+        "object": 9,
+        "unit": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "rust/birnam-system-input/src/lib.rs",
+      "tokens": {
+        "Operand": 26,
+        "Outcome": 13
+      },
+      "constructors": {
+        "object": 12,
+        "word": 1,
+        "bytes": 1,
+        "entry": 1,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-system-output/src/lib.rs",
+      "tokens": {
+        "Operand": 29,
+        "Outcome": 16
+      },
+      "constructors": {
+        "object": 15,
+        "word": 1,
+        "entry": 1,
+        "unit": 2
+      }
+    },
+    {
+      "path": "rust/birnam-tcc/src/lib.rs",
+      "tokens": {
+        "Operand": 68,
+        "Outcome": 30
+      },
+      "constructors": {
+        "object": 27,
+        "word": 10,
+        "bytes": 2,
+        "unit": 5,
+        "entry": 2
+      }
+    },
+    {
+      "path": "rust/birnam-vector/src/lib.rs",
+      "tokens": {
+        "Operand": 68,
+        "Outcome": 38
+      },
+      "constructors": {
+        "object": 42,
+        "word": 7,
+        "unit": 1,
+        "entry": 1,
+        "bytes": 3
+      }
+    },
+    {
+      "path": "rust/birnam-word/src/expression.rs",
+      "tokens": {
+        "Operand": 10,
+        "Outcome": 4
+      },
+      "constructors": {
+        "unit": 2,
+        "object": 4
+      }
+    },
+    {
+      "path": "rust/birnam-word/src/native.rs",
+      "tokens": {
+        "Operand": 59,
+        "Outcome": 23
+      },
+      "constructors": {
+        "object": 28,
+        "word": 8,
+        "bytes": 2,
+        "unit": 2,
+        "entry": 1
+      }
+    },
+    {
+      "path": "tests/reference/alien-compiler/src/native_prelude.c",
+      "tokens": {
+        "Operand": 2,
+        "Outcome": 2
+      },
+      "constructors": {}
+    }
+  ],
+  "validation_plan": {
+    "suite": "release",
+    "deadline_seconds": 14400,
+    "jobs": 2,
+    "host_lanes": [
+      [
+        "host-interaction",
+        "host-cli"
+      ],
+      [
+        "host-tasks",
+        "host-image",
+        "host-generation"
+      ]
+    ],
+    "steps": [
+      {
+        "name": "tool-tests",
+        "argv": [
+          "python3",
+          "scripts/validation-support-test.py"
+        ],
+        "inputs": [
+          "scripts/validation*.py",
+          "scripts/validate.py",
+          "scripts/host-cli-test.sh",
+          "scripts/rust-install.sh",
+          "scripts/*timing*.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/host_test_binaries.py"
+        ]
+      },
+      {
+        "name": "workspace",
+        "argv": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--locked",
+          "--offline"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib"
+        ],
+        "timeout": 600
+      },
+      {
+        "name": "stackless-s2",
+        "argv": [
+          "python3",
+          "tests/fixtures/stackless-s2/verify.py"
+        ],
+        "inputs": [
+          "tests/fixtures/stackless-s2/*"
+        ]
+      },
+      {
+        "name": "portable-code-v1",
+        "argv": [
+          "python3",
+          "tests/fixtures/portable-code-v1/verify.py"
+        ],
+        "inputs": [
+          "tests/fixtures/portable-code-v1/*"
+        ]
+      },
+      {
+        "name": "release-changelog-test",
+        "argv": [
+          "python3",
+          "scripts/release-changelog-test.py"
+        ],
+        "inputs": [
+          "scripts/release-changelog-test.py",
+          "scripts/release-changelog.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/install_contract.py"
+        ]
+      },
+      {
+        "name": "release-acceptance-test",
+        "argv": [
+          "python3",
+          "scripts/release-acceptance-test.py"
+        ],
+        "inputs": [
+          "scripts/release-acceptance-test.py",
+          "scripts/release-acceptance.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/install_contract.py"
+        ]
+      },
+      {
+        "name": "release-pipeline-test",
+        "argv": [
+          "python3",
+          "scripts/release-pipeline-test.py"
+        ],
+        "inputs": [
+          "scripts/release-pipeline-test.py",
+          "scripts/release-pipeline.py",
+          "scripts/release*.py",
+          "scripts/release.sh",
+          "scripts/dist.sh",
+          "scripts/install_contract.py"
+        ]
+      },
+      {
+        "name": "v014-performance-acceptance-test",
+        "argv": [
+          "python3",
+          "scripts/v014-performance-acceptance-test.py"
+        ],
+        "inputs": [
+          "scripts/v014-performance-acceptance-test.py",
+          "scripts/v014-performance-acceptance.py"
+        ]
+      },
+      {
+        "name": "v015-performance-acceptance-test",
+        "argv": [
+          "python3",
+          "scripts/v015-performance-acceptance-test.py"
+        ],
+        "inputs": [
+          "scripts/v015-performance-acceptance-test.py",
+          "scripts/v015-performance-acceptance.py"
+        ]
+      },
+      {
+        "name": "install-contract-test",
+        "argv": [
+          "python3",
+          "scripts/install-contract-test.py"
+        ],
+        "inputs": [
+          "scripts/install-contract-test.py",
+          "scripts/install_contract.py"
+        ]
+      },
+      {
+        "name": "archive-test",
+        "argv": [
+          "python3",
+          "scripts/measurement-archive-test.py"
+        ],
+        "inputs": [
+          "scripts/measurement*.py"
+        ]
+      },
+      {
+        "name": "native",
+        "argv": [
+          "bash",
+          "scripts/native-message-test.sh"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/native-message-test.sh",
+          "tests/fixtures/**/*"
+        ],
+        "timeout": 2700
+      },
+      {
+        "name": "install",
+        "argv": [
+          "bash",
+          "scripts/rust-install.sh",
+          "install",
+          "--root",
+          "/Users/chazu/dev/zig/birnam",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix",
+          "--profile",
+          "release",
+          "--build-cache",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/install"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "VERSION",
+          "scripts/rust-install.sh",
+          "docs/guide/**/*"
+        ],
+        "artifacts": [
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix"
+        ],
+        "timeout": 900
+      },
+      {
+        "name": "host-test-binaries",
+        "argv": [
+          "python3",
+          "scripts/host_test_binaries.py",
+          "prepare",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "VERSION",
+          "tests/**/*",
+          "scripts/*",
+          "scripts/**/*.py",
+          "scripts/**/*.sh",
+          "scripts/**/*.birnam",
+          "scripts/fixtures/**/*"
+        ],
+        "artifacts": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests"
+        ],
+        "timeout": 600
+      },
+      {
+        "name": "host-cli",
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix",
+          "--group",
+          "cli",
+          "--prepared-binaries",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests/manifest.json",
+          "--timings",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/cli.json"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "tests/**/*",
+          "examples/**/*",
+          "scripts/*",
+          "scripts/**/*.py",
+          "scripts/**/*.sh",
+          "scripts/**/*.birnam",
+          "scripts/fixtures/**/*"
+        ],
+        "depends": [
+          "install",
+          "host-test-binaries"
+        ],
+        "artifacts": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/cli.json"
+        ],
+        "timeout": 2400
+      },
+      {
+        "name": "host-image",
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix",
+          "--group",
+          "image",
+          "--prepared-binaries",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests/manifest.json",
+          "--timings",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/image.json"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "tests/**/*",
+          "examples/**/*",
+          "scripts/*",
+          "scripts/**/*.py",
+          "scripts/**/*.sh",
+          "scripts/**/*.birnam",
+          "scripts/fixtures/**/*"
+        ],
+        "depends": [
+          "install",
+          "host-test-binaries"
+        ],
+        "artifacts": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/image.json"
+        ],
+        "timeout": 2400
+      },
+      {
+        "name": "host-interaction",
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix",
+          "--group",
+          "interaction",
+          "--prepared-binaries",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests/manifest.json",
+          "--timings",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/interaction.json"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "tests/**/*",
+          "examples/**/*",
+          "scripts/*",
+          "scripts/**/*.py",
+          "scripts/**/*.sh",
+          "scripts/**/*.birnam",
+          "scripts/fixtures/**/*"
+        ],
+        "depends": [
+          "install",
+          "host-test-binaries"
+        ],
+        "artifacts": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/interaction.json"
+        ],
+        "timeout": 3600
+      },
+      {
+        "name": "host-generation",
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix",
+          "--group",
+          "generation",
+          "--prepared-binaries",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests/manifest.json",
+          "--timings",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/generation.json"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "tests/**/*",
+          "examples/**/*",
+          "scripts/*",
+          "scripts/**/*.py",
+          "scripts/**/*.sh",
+          "scripts/**/*.birnam",
+          "scripts/fixtures/**/*"
+        ],
+        "depends": [
+          "install",
+          "host-test-binaries"
+        ],
+        "artifacts": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/generation.json"
+        ],
+        "timeout": 2400
+      },
+      {
+        "name": "host-tasks",
+        "argv": [
+          "bash",
+          "scripts/host-cli-test.sh",
+          "--prefix",
+          "/private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-validation-4c662f4feaa0/prefix",
+          "--group",
+          "tasks",
+          "--prepared-binaries",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/artifacts/host-tests/manifest.json",
+          "--timings",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/tasks.json"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "tests/**/*",
+          "examples/**/*",
+          "scripts/*",
+          "scripts/**/*.py",
+          "scripts/**/*.sh",
+          "scripts/**/*.birnam",
+          "scripts/fixtures/**/*"
+        ],
+        "depends": [
+          "install",
+          "host-test-binaries"
+        ],
+        "artifacts": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/validation/timings/tasks.json"
+        ],
+        "timeout": 2400
+      },
+      {
+        "name": "dylib-audit",
+        "argv": [
+          "bash",
+          "scripts/rust-dylib-audit.sh"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "scripts/rust-dylib-audit.sh",
+          "rust/birnam-id/exports.json"
+        ],
+        "timeout": 300
+      },
+      {
+        "name": "cold-source",
+        "argv": [
+          "bash",
+          "scripts/rust-driver-cold-archive-smoke.sh"
+        ],
+        "inputs": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust/**/*",
+          "modules/**/*",
+          "vendor/libtcc-src/**/*",
+          "wrapped/**/*.dylib",
+          "VERSION",
+          "scripts/rust-install.sh",
+          "scripts/rust-driver-cold-archive-smoke.sh",
+          "docs/guide/**/*",
+          "examples/fizzbuzz.birnam"
+        ],
+        "timeout": 1200
+      }
+    ]
+  },
+  "baseline_floor_log": "   Compiling birnam-abi v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-abi)\nwarning: field `0` is never read\n   --> rust/birnam-abi/src/id_protocol.rs:325:24\n    |\n325 |         struct Aligned(Header);\n    |                ------- ^^^^^^\n    |                |\n    |                field in this struct\n    |\n    = help: consider removing this field\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-abi` (lib test) generated 1 warning\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.52s\n     Running unittests src/lib.rs (.cargo-target/simplifications/debug/deps/birnam_abi-6c2345d810897a4f)\n\nrunning 3 tests\ntest id_protocol::tests::carrier_validation_is_inert_and_checks_the_header_before_fields ... ok\ntest tests::borrowed_buffers_enforce_null_count_and_alignment_shape ... ok\ntest native_signature::tests::signatures_are_explicit_and_bounded ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/simplifications/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 15 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::id_dispatch::tests::specialized_lookup_falls_back_for_replacement_and_custom_metabehavior ... ok\ntest id::id_dispatch::tests::actual_initial_graph_installs_invokes_and_forwards_without_runtime ... ok\ntest id::id_dispatch::tests::saved_primitives_work_without_an_active_message_and_keep_their_registry ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::native_id::thread_identity_tests::cached_thread_identity_agrees_and_never_crosses_thread_lifetimes ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest id::id_dispatch::tests::c_native_entry_round_trips_typed_operands_through_actual_id ... ok\n\ntest result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s\n\n"
+}

@@ -1,0 +1,130 @@
+#include "id.h"
+#include <string.h>
+/* This module owns Node payloads. Its state is an Id Sequence manipulated only
+   through messages. No foreign payload or Id registry is inspected. */
+typedef struct Node {Oop child;Oop size;} Node;
+static IdProtocol id;
+enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,NAMES};
+static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:")};
+static Oop names[NAMES];
+static Oop call(Oop r,int name,const Oop *a,size_t n){return id.message(id.root,r,names[name],a,n);}
+static Oop zero(Oop r,int n){return call(r,n,0,0);}
+static Oop one(Oop r,int n,Oop a){return call(r,n,&a,1);}
+static Oop two(Oop r,int n,Oop a,Oop b){Oop args[]={a,b};return call(r,n,args,2);}
+static Oop get(Oop s,size_t i){return one(s,AT,id_size(i));}
+static Oop put(Oop s,size_t i,Oop o){return two(s,PUT,id_size(i),o);}
+/* Actor slots: Roots, GC, Node behavior, finalizer count, trace-fail flag,
+   entered Method, context Name, original method, custom-lookup calls. */
+#define REQUIRE(v) do {Oop check_=(v); if(id_fault(check_))return check_;}while(0)
+static Oop references(Oop root_,Oop context,Oop receiver,const Oop *args,size_t n){
+ (void)receiver;if(n!=2)return id.invalid;
+ Oop flag=get(context,4);if(id_fault(flag))return flag;
+ if(id_unbox(flag)==1)return id.invalid;
+ if(id_unbox(flag)==3){(void)call(args[1],VISIT,0,0);}
+ Oop extent=one(id.root,EXTENT,args[0]);if(id_fault(extent)||id_unbox(extent)!=sizeof(Node))return id.invalid;
+ if(id_unbox(flag)==2){Oop base=zero(id.root,OBJECT);REQUIRE(one(base,ALLOCATE,id_size(0)));}
+ Node *node=(Node *)args[0];
+ REQUIRE(one(id.root,BEHAVIOR,node->child));REQUIRE(one(id.root,BEHAVIOR,node->size));
+ REQUIRE(one(args[1],VISIT,node->child));REQUIRE(one(args[1],VISIT,node->size));
+ return 0;
+}
+static Oop finalize(Oop root_,Oop context,Oop receiver,const Oop *args,size_t n){
+ (void)receiver;if(n!=1)return id.invalid;
+ Oop extent=one(id.root,EXTENT,args[0]);if(id_fault(extent)||id_unbox(extent)!=sizeof(Node))return id.invalid;
+ if(id_unbox(get(context,9)))return id.invalid;
+ Node *node=(Node *)args[0];if(!( (uintptr_t)node->size&1))return id.invalid;
+ REQUIRE(put(context,3,id_size(id_unbox(get(context,3))+1)));
+ /* Reentrant collection during finalization must be a harmless no-op. */
+ Oop nested=zero(get(context,1),COLLECT);if(id_fault(nested)||id_unbox(nested)!=0)return id.invalid;
+ return 0;
+}
+static Oop replacement(Oop root_,Oop context,Oop receiver,const Oop *args,size_t n){(void)receiver;(void)args;(void)n;return get(context,6);}
+static Oop exercise(Oop root_,Oop context,Oop receiver,const Oop *args,size_t n){
+ if(n!=1)return id.invalid;
+ Oop vt=get(context,2),gc=get(context,1),roots=get(context,0);
+ Oop method=one(vt,LOOKUP,names[EXERCISE]);if(id_fault(method))return method;
+ /* Remove the currently entered method, leaving its context protected by Id's
+    explicit invocation roots. We do not retain the Method in a root registry. */
+ REQUIRE(one(vt,REMOVE,names[EXERCISE]));
+ Oop child=args[0];
+ Node *live=(Node *)one(vt,ALLOCATE,id_size(sizeof(Node)));if(id_fault((Oop)live))return (Oop)live;
+ live->child=child;live->size=id_size(64);
+ Oop token=one(roots,RETAIN,(Oop)live);if(id_fault(token))return token;
+ for(size_t i=0;i<128;i++){
+  Node *dead=(Node *)one(vt,ALLOCATE,id_size(sizeof(Node)));if(id_fault((Oop)dead))return(Oop)dead;
+  dead->child=0;dead->size=id_size(i);
+  REQUIRE(two(gc,FINALIZER,(Oop)dead,context));
+ }
+ REQUIRE(zero(gc,COLLECT));
+ /* receiver and argument were protected without explicit retain calls. */
+ REQUIRE(one(id.root,IDENTITY,receiver));REQUIRE(one(id.root,IDENTITY,args[0]));
+ if(live->child!=child||id_unbox(live->size)!=64||id_unbox(get(context,3))!=128)return id.invalid;
+ Oop symbol=id.message(id.root,child,id.intern,0,0);if(id_fault(symbol))return symbol;
+ REQUIRE(two(vt,ADD,names[EXERCISE],method));
+ REQUIRE(one(roots,RELEASE,token));
+ return symbol;
+}
+static Oop finalized(Oop root_,Oop c,Oop r,const Oop*a,size_t n){(void)r;(void)a;return n?id.invalid:get(c,3);}
+static Oop fail_tracing(Oop root_,Oop c,Oop r,const Oop*a,size_t n){(void)r;return n==1?put(c,4,a[0]):id.invalid;}
+static Oop dynamic(Oop root_,Oop c,Oop r,const Oop*a,size_t n){(void)c;(void)r;if(n!=1)return id.invalid;size_t length=id_unbox(a[0]);if(length>1024)return id.invalid;
+ Oop bytes[1024];for(size_t i=0;i<length;i++)bytes[i]=id_size('a'+i%26);
+ /* Entire native-to-name request uses Oop byte values in one message. */
+ return call(id.root,NEWNAME,bytes,length);
+}
+static Oop context_run(Oop root_,Oop context,Oop receiver,const Oop*a,size_t n){
+ (void)a;if(n)return id.invalid;
+ Oop vt=one(id.root,BEHAVIOR,receiver);if(id_fault(vt))return vt;
+ REQUIRE(one(vt,REMOVE,names[CONTEXT_RUN]));
+ REQUIRE(zero(get(context,0),COLLECT));
+ Oop name=get(context,1);if(id_fault(name))return name;
+ return id.message(id.root,name,id.intern,0,0);
+}
+static Oop new_finalizable(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;(void)r;(void)a;if(n)return id.invalid;
+ Node *node=(Node*)one(get(c,2),ALLOCATE,id_size(sizeof(Node)));if(id_fault((Oop)node))return(Oop)node;
+ node->child=0;node->size=id_size(17);REQUIRE(two(get(c,1),FINALIZER,(Oop)node,c));return(Oop)node;
+}
+static Oop lookup_override(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;if(n!=1)return id.invalid;
+ REQUIRE(put(c,8,id_size(id_unbox(get(c,8))+1)));
+ if(a[0]==names[MISSING])return get(c,10);
+ Oop args=call(id.root,SEQUENCE,a,n);if(id_fault(args))return args;
+ return two(get(c,7),INVOKE,r,args);
+}
+static Oop dnu(Oop root_,Oop c,Oop r,const Oop*a,size_t n){(void)root_;(void)c;(void)r;(void)a;return id_size(n);}
+static Oop bad_refs(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;if(n!=2)return id.invalid;
+ Oop scratch=get(c,12);REQUIRE(put(scratch,0,a[0]));REQUIRE(put(scratch,1,a[1]));
+ Oop result=two(get(c,11),INVOKE,r,scratch);if(id_fault(result))return result;
+ (void)call(a[1],VISIT,0,0); /* deliberately swallow a detected invalid emission */
+ return result;
+}
+static Oop bad_allocations(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;if(n!=1)return id.invalid;
+ (void)call(a[0],ALLOCATION,0,0);
+ Oop scratch=get(c,12);REQUIRE(put(scratch,0,a[0]));
+ return two(get(c,11),INVOKE,r,scratch);
+}
+static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations}};
+static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t ns,const Oop*a,size_t n){
+ id=*p;if(ns!=NAMES||n!=2)return id.invalid;for(size_t i=0;i<ns;i++)names[i]=s[i];
+ Oop base=zero(id.root,OBJECT);if(id_fault(base))return base;
+ Oop vt=zero(base,DELEGATED);if(id_fault(vt))return vt;
+ Oop actor_values[]={a[0],a[1],vt,id_size(0),id_size(0),0,0,0,id_size(0),id_size(0),0,0,0};
+ Oop actor=call(id.root,SEQUENCE,actor_values,13);if(id_fault(actor))return actor;
+ /* A separate behavior on an ordinary opaque actor would need an owner too.
+    Use a dedicated behavior inheriting Sequence behavior for these methods. */
+ Oop actor_vt=zero(one(id.root,BEHAVIOR,actor),DELEGATED);if(id_fault(actor_vt))return actor_vt;
+ REQUIRE(two(id.root,REASSOC,actor,actor_vt));
+ for(size_t i=0;i<sizeof(methods)/sizeof(methods[0]);i++){
+  Oop m=one(image,METHOD,names[methods[i].name]);if(id_fault(m))return m;
+  m=one(m,CONTEXT,actor);if(id_fault(m))return m;
+  REQUIRE(two(actor_vt,ADD,names[methods[i].name],m));
+  if(methods[i].name==EXERCISE){REQUIRE(two(vt,ADD,names[EXERCISE],m));}
+ }
+ REQUIRE(two(a[1],TRACE,vt,actor));
+ /* Keep a second Name solely through an entered Method's context. */
+ Oop name=one(image,LITERAL,id_size(HELLO));if(id_fault(name))return name;REQUIRE(put(actor,6,name));
+ return actor;
+}
+__attribute__((visibility("default")))const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,NAMES,methods,sizeof(methods)/sizeof(methods[0]),initialize};

@@ -1,23 +1,16 @@
-//! Memory management above Id. All foreign objects are opaque and all service
-//! operations use live Id messages. See README.md for the native protocol.
-mod accounting;
+//! Oop-only collector vertical slice: explicit collection and owner callbacks.
+//! Retains the production inventory/mark/retire/detach/finalize ordering.
 mod collection;
-mod construction;
-mod native_stack;
 use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{
+use std::{
     cell::{Cell, RefCell},
-    ffi::c_void,
-    ptr,
+    collections::{HashMap, HashSet},
 };
-use std::collections::{HashMap, HashSet};
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
-    Inactive,
     Idle,
     Marking,
     Finalizing,
@@ -34,496 +27,336 @@ struct Allocation {
     size: usize,
     identity: usize,
 }
+static API: std::sync::atomic::AtomicPtr<Protocol> =
+    std::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+static INSTANCE: std::sync::atomic::AtomicPtr<Memory> =
+    std::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
 struct Memory {
     id: Protocol,
-    binding_guard: birnam_abi::binding_guard::BindingGuard,
     receiver: Oop,
     roots: Oop,
     core_visitor: Oop,
-    thread: std::thread::ThreadId,
-    selectors: HashMap<&'static [u8], Oop>,
-    // Same retained Symbol as the inventory entry; never a cached method.
-    allocation_charge_selector: Oop,
+    names: HashMap<&'static [u8], Oop>,
     phase: Cell<Phase>,
     tracers: RefCell<HashMap<usize, Owner>>,
     finalizers: RefCell<HashMap<usize, Owner>>,
-    temporary: RefCell<Vec<Oop>>,
-    budget: Cell<usize>,
-    automatic: Cell<bool>,
-    precise_payloads: Cell<bool>,
-    charged: Cell<usize>,
-    constructing: Cell<bool>,
     walk: RefCell<Option<collection::Walk>>,
     inventory: RefCell<Option<collection::Inventory>>,
-    retirement: RefCell<Vec<Oop>>,
-}
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
-}
-fn object(value: Operand) -> Result<Oop, Outcome> {
-    value
-        .as_object()
-        .filter(|p| !p.is_null())
-        .ok_or_else(invalid)
-}
-fn done(value: Result<Operand, Outcome>) -> Outcome {
-    match value {
-        Ok(v) => Outcome::loaded(v),
-        Err(e) => e,
-    }
+    temporary: RefCell<Vec<Oop>>,
 }
 impl Memory {
-    unsafe fn send(
-        &self,
-        receiver: Oop,
-        name: &'static [u8],
-        args: &[Operand],
-    ) -> Result<Operand, Outcome> {
-        unsafe { self.id.send(receiver, self.selectors[name], args) }
+    fn invalid(&self) -> Oop {
+        self.id.invalid
     }
-    fn check(&self) -> Result<(), Outcome> {
-        if self.thread == std::thread::current().id() && self.phase.get() != Phase::Failed {
-            Ok(())
-        } else {
-            Err(invalid())
-        }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[n], a) }
     }
-    unsafe fn identity(&self, value: Oop) -> Result<usize, Outcome> {
-        unsafe { self.send(self.id.receiver, b"identityOf:", &[Operand::object(value)]) }?
-            .as_word()
-            .filter(|n| *n != 0)
-            .ok_or_else(invalid)
+    unsafe fn identity(&self, o: Oop) -> Result<usize, Oop> {
+        abi::as_size(unsafe { self.send(self.id.root, b"identityOf:", &[o]) }?)
+            .ok_or(self.invalid())
     }
-    unsafe fn trace_owner(&self, mut behavior: Oop) -> Result<Option<Oop>, Outcome> {
-        // The common direct-owner case needs no cycle-detection allocation.
-        // Parent traversal still checks current owners and identities on each hop.
+    unsafe fn trace_owner(&self, mut behavior: Oop) -> Result<Option<Oop>, Oop> {
         let mut visited: Option<HashSet<usize>> = None;
         while !behavior.is_null() {
-            if visited.as_ref().is_some_and(|seen| seen.contains(&behavior.addr())) {
+            if visited
+                .as_ref()
+                .is_some_and(|seen| seen.contains(&behavior.addr()))
+            {
                 break;
             }
             let owner = self.tracers.borrow().get(&behavior.addr()).copied();
             if let Some(owner) = owner {
                 if unsafe { self.identity(behavior) }? != owner.identity {
-                    return Err(invalid());
+                    return Err(self.invalid());
                 }
                 return Ok(Some(owner.object));
             }
-            visited.get_or_insert_with(HashSet::new).insert(behavior.addr());
-            let parent =
-                unsafe { self.send(self.id.receiver, b"parentOf:", &[Operand::object(behavior)]) }?;
-            behavior = parent.as_object().unwrap_or(ptr::null_mut());
+            visited
+                .get_or_insert_with(HashSet::new)
+                .insert(behavior.addr());
+            behavior = unsafe { self.send(self.id.root, b"parentOf:", &[behavior]) }?;
         }
         Ok(None)
     }
 }
-unsafe fn memory<'a>(context: *mut c_void) -> Result<&'a Memory, Outcome> {
-    let memory = unsafe { &*context.cast::<Memory>() };
-    memory.check()?;
-    Ok(memory)
-}
-unsafe extern "C" fn roots(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        let Some([visitor]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let visitor = object(*visitor)?;
-        let mut roots = vec![receiver, memory.roots, memory.core_visitor];
-        roots.extend(memory.selectors.values().copied());
-        roots.extend(memory.tracers.borrow().values().map(|v| v.object));
-        roots.extend(memory.finalizers.borrow().values().map(|v| v.object));
-        roots.extend(memory.temporary.borrow().iter().copied());
-        roots.extend(memory.retirement.borrow().iter().copied());
-        for root in roots {
-            memory.send(visitor, b"visit:", &[Operand::object(root)])?;
+unsafe fn memory<'a>(c: Oop) -> Result<&'a Memory, Oop> {
+    let raw = INSTANCE.load(std::sync::atomic::Ordering::Acquire);
+    if raw.is_null() {
+        let api = API.load(std::sync::atomic::Ordering::Acquire);
+        if api.is_null() {
+            std::process::abort()
         }
-        Ok(Operand::unit())
-    })())
-}
-unsafe extern "C" fn root_registry(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| {
-        if count != 0 {
-            return Err(invalid());
-        }
-        Ok(Operand::object(unsafe { memory(context)? }.roots))
-    })())
-}
-unsafe extern "C" fn manager(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| {
-        if count != 0 {
-            return Err(invalid());
-        }
-        Ok(Operand::object(unsafe { memory(context)? }.receiver))
-    })())
-}
-unsafe extern "C" fn trace_with(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done(unsafe { attach(context, args, count, true) })
-}
-unsafe extern "C" fn finalize_with(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done(unsafe { attach(context, args, count, false) })
-}
-unsafe fn attach(
-    context: *mut c_void,
-    args: *const Operand,
-    count: usize,
-    trace: bool,
-) -> Result<Operand, Outcome> {
-    unsafe {
-        let memory = memory(context)?;
-        let Some([target, owner]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let target = object(*target)?;
-        let identity = memory.identity(target)?;
-        let owner = if owner.kind() == native::UNIT {
-            None
-        } else {
-            Some(object(*owner)?)
-        };
-        if trace
-            && memory
-                .send(
-                    memory.id.receiver,
-                    b"isBehavior:",
-                    &[Operand::object(target)],
-                )?
-                .as_word()
-                != Some(1)
-        {
-            return Err(invalid());
-        }
-        if let Some(owner) = owner {
-            memory.identity(owner)?;
-            if memory.phase.get() == Phase::Marking && memory.walk.borrow().is_some() {
-                collection::emit(memory, owner)?;
-            } else if memory.phase.get() == Phase::Finalizing
-                && !memory
-                    .walk
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|walk| walk.marked(owner))
-            {
-                // A replacement callback cannot resurrect a provider in the dead snapshot.
-                return Err(invalid());
-            }
-        }
-        // Selection remains live: an earlier trace/finalizer may change a later
-        // object's owner. Do not hold either registry across those callbacks.
-        let map = if trace {
-            &memory.tracers
-        } else {
-            &memory.finalizers
-        };
-        if let Some(object) = owner {
-            map.borrow_mut()
-                .insert(target.addr(), Owner { identity, object });
-        } else {
-            map.borrow_mut().remove(&target.addr());
-        }
-        Ok(Operand::unit())
+        return Err(unsafe { (*api).invalid });
     }
-}
-unsafe extern "C" fn budget(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        if memory.phase.get() != Phase::Idle {
-            return Err(invalid());
-        }
-        let Some([bytes]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        memory
-            .budget
-            .set(bytes.as_word().filter(|n| *n != 0).ok_or_else(invalid)?);
-        Ok(Operand::unit())
-    })())
-}
-// Settings remain mutable from trace/finalizer sends. Assigning a setting never
-// allocates, collects, resets accounting, or changes the collection phase.
-unsafe fn setting(
-    c: *mut c_void,
-    a: *const Operand,
-    n: usize,
-    precise: bool,
-) -> Result<Operand, Outcome> {
-    let m = unsafe { memory(c)? };
-    let Some([flag]) = (unsafe { borrowed_slice(a, n) }) else {
-        return Err(invalid());
-    };
-    let enabled = flag.as_word().ok_or_else(invalid)? != 0;
-    if precise {
-        m.precise_payloads.set(enabled);
+    let s = unsafe { &*raw };
+    if c == s.receiver {
+        Ok(s)
     } else {
-        m.automatic.set(enabled);
+        Err(s.invalid())
     }
-    Ok(Operand::unit())
 }
-unsafe extern "C" fn automatic_collection(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done(unsafe { setting(c, a, n, false) })
-}
-unsafe extern "C" fn precise_payloads_set(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done(unsafe { setting(c, a, n, true) })
-}
-unsafe extern "C" fn precise_payloads(
-    c: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| {
-        let m = unsafe { memory(c)? };
-        if n != 0 {
-            return Err(invalid());
+unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let Some([visitor]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return s.invalid();
+    };
+    let mut values: Vec<_> = s.names.values().copied().collect();
+    values.extend([s.receiver, s.roots, s.core_visitor]);
+    values.extend(s.tracers.borrow().values().map(|v| v.object));
+    values.extend(s.finalizers.borrow().values().map(|v| v.object));
+    values.extend(s.temporary.borrow().iter());
+    for o in values {
+        if let Err(e) = unsafe { s.send(*visitor, b"visit:", &[o]) } {
+            return e;
         }
-        Ok(Operand::word(usize::from(m.precise_payloads.get())))
-    })())
+    }
+    core::ptr::null_mut()
 }
-// Metadata owners retire their weak records before Id detaches any allocation.
-unsafe extern "C" fn register_retirement(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let memory = memory(context)?;
-        if !matches!(memory.phase.get(), Phase::Inactive | Phase::Idle) {
-            return Err(invalid());
-        }
-        let Some([owner]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let owner = object(*owner)?;
-        memory.identity(owner)?;
-        let mut owners = memory.retirement.borrow_mut();
-        if !owners.contains(&owner) {
-            owners.push(owner);
-        }
-        Ok(Operand::unit())
-    })())
+unsafe extern "C" fn references(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let Some([o, _]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return s.invalid();
+    };
+    if *o != s.receiver && *o != s.core_visitor {
+        return s.invalid();
+    }
+    core::ptr::null_mut()
 }
-const NAMES: &[&[u8]] = &[
-    b"visit:",
-    b"allocation:bytes:identity:",
-    b"releaseDetachedAllocation:",
-    b"canOmitAllocationFor:",
-    b"usesDefaultAllocation",
-    b"usesDefaultLookup:",
-    b"behaviorEpoch",
-    b"bind:to:",
-    b"nativeBindingsMatch:",
-    b"nativeBindingQuerySemantics:for:",
-    b"prepareAllocation",
-    b"identityOf:",
-    b"behaviorOf:",
-    b"isBehavior:",
-    b"parentOf:",
-    b"allocationSizeOf:",
-    b"allocationChargeFor:",
-    b"rootsDo:",
-    b"allocationsDo:",
-    b"referencesOf:do:",
-    b"retireIndexesFor:",
-    b"detachAllocationAt:",
-    b"finalize:",
-    b"retire:",
-    b"allocate:bytes:",
-    b"newBehaviorWithParent:",
-    b"internBytes:",
-    b"symbolNamed:",
-    b"allocate",
+unsafe extern "C" fn register_trace(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let Some([behavior, owner]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return s.invalid();
+    };
+    match unsafe { s.identity(*behavior) } {
+        Ok(identity) => {
+            s.tracers.borrow_mut().insert(
+                behavior.addr(),
+                Owner {
+                    identity,
+                    object: *owner,
+                },
+            );
+            *owner
+        }
+        Err(e) => e,
+    }
+}
+unsafe extern "C" fn register_finalizer(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    let s = match unsafe { memory(c) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let Some([o, owner]) = (unsafe { abi::borrowed_slice(a, n) }) else {
+        return s.invalid();
+    };
+    match unsafe { s.identity(*o) } {
+        Ok(identity) => {
+            s.finalizers.borrow_mut().insert(
+                o.addr(),
+                Owner {
+                    identity,
+                    object: *owner,
+                },
+            );
+            *owner
+        }
+        Err(e) => e,
+    }
+}
+macro_rules! literals {($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"objectBehavior",
     b"delegated",
-    b"delegatedWith:as:",
-    b"newBehaviorWithParent:method:as:",
-    b"intern:",
+    b"allocate",
+    b"methodAt:",
+    b"withContext:",
     b"addMethod",
+    b"behaviorOf:",
+    b"identityOf:",
+    b"parentOf:",
+    b"rootsDo:",
+    b"referencesOf:do:",
+    b"visit:",
+    b"allocationsDo:",
+    b"allocation:bytes:identity:",
+    b"coreEdge:",
+    b"collectPrecisely",
+    b"trace:with:",
+    b"finalize:with:",
+    b"finalize:",
+    b"sequence",
+    b"retireIndexesFor:",
+    b"detachAllocation:",
+    b"releaseDetachedAllocation:",
+    b"register:",
+    b"allocationCount",
+    b"allocationEpoch"
 ];
-unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let mut selectors = HashMap::new();
-        for name in NAMES {
-            selectors.insert(*name, id.intern_name(name)?);
-        }
-        let prototype = id.send_named(id.receiver, b"objectPrototype", &[])?;
-        let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
-        let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
-        let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
-        let core_behavior = object(id.send_named(parent, b"delegated", &[])?)?;
-        let core_visitor =
-            object(id.send_named(core_behavior, b"allocate", &[Operand::word(0)])?)?;
-        let binding_guard = birnam_abi::binding_guard::BindingGuard::discover(id,
-            birnam_abi::binding_guard::SERVICES.map(|name| selectors[name]),
-            selectors[b"nativeBindingQuerySemantics:for:".as_slice()]);
-        let pointer = Box::into_raw(Box::new(Memory {
-            id,
-            binding_guard,
-            receiver,
-            roots: roots_object,
-            core_visitor,
-            thread: std::thread::current().id(),
-            allocation_charge_selector: selectors[b"allocationChargeFor:".as_slice()],
-            selectors,
-            phase: Cell::new(Phase::Inactive),
-            tracers: RefCell::new(HashMap::new()),
-            finalizers: RefCell::new(HashMap::new()),
-            temporary: RefCell::new(Vec::new()),
-            budget: Cell::new(16 << 20),
-            automatic: Cell::new(true),
-            precise_payloads: Cell::new(false),
-            charged: Cell::new(0),
-            constructing: Cell::new(false),
-            walk: RefCell::new(None),
-            inventory: RefCell::new(None),
-            retirement: RefCell::new(Vec::new()),
-        }));
-        for (name, method) in [
-            (b"rootsDo:".as_slice(), roots as Method),
-            (b"visit:", collection::visit),
-            (b"allocation:bytes:identity:", collection::allocation),
-            (b"roots", root_registry),
-            (b"activate", construction::activate),
-            (b"internQuerySemantics:", construction::intern_query_semantics),
-            (b"prepareAllocation", construction::prepare),
-            (b"registerRetirement:", register_retirement),
-            (b"collect", collection::collect),
-            (b"collectPrecisely", collection::collect_precisely),
-            (b"trace:with:", trace_with),
-            (b"referenceOwnerOf:", reference_owner),
-            (b"finalize:with:", finalize_with),
-            (b"budget:", budget),
-            (b"automaticCollection:", automatic_collection),
-            (b"precisePayloads:", precise_payloads_set),
-            (b"precisePayloads", precise_payloads),
-            (b"allocationBytes", accounting::read),
-            (b"chargeExternalAllocation:", accounting::external),
-            (b"canOmitAllocationFor:", construction::can_omit),
-        ] {
-            id.send_named(
-                behavior,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(method, pointer.cast())),
-                ],
-            )?;
-        }
-        id.send_named(
-            core_behavior,
-            b"addMethod",
-            &[
-                Operand::object((&(*pointer).selectors)[b"visit:".as_slice()]),
-                Operand::entry(NativeEntry::new(collection::core_edge, pointer.cast())),
-            ],
-        )?;
-        id.send_named(roots_object, b"register:", &[Operand::object(receiver)])?;
-        id.send_named(
-            id.receiver,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(b"memoryManager")?),
-                Operand::entry(NativeEntry::new(manager, pointer.cast())),
-            ],
-        )?;
-        Ok(Operand::object(receiver))
-    }
-}
-unsafe extern "C" fn initialize(
-    id: *const Protocol,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([roots]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let roots = object(*roots)?;
-        let id = *id;
-        let selector = id.intern_name(b"memoryManager")?;
-        let existing = id.send_named(id.receiver, b"lookup", &[Operand::object(selector)])?;
-        if existing.kind() != native::UNIT {
-            let memory = object(id.send(id.receiver, selector, &[])?)?;
-            if id.send_named(memory, b"roots", &[])?.as_object() != Some(roots) {
-                return Err(invalid());
+const fn index(name: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        let a = NAMES[i];
+        if a.len() == name.len() {
+            let mut j = 0;
+            while j < a.len() && a[j] == name[j] {
+                j += 1
             }
-            return Ok(Operand::object(memory));
+            if j == a.len() {
+                return i;
+            }
         }
-        construct(id, roots)
-    })())
+        i += 1
+    }
+    panic!("missing collector name")
+}
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"rootsDo:"),
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: index(b"referencesOf:do:"),
+        entry: Some(references),
+    },
+    MethodSpec {
+        name: index(b"visit:"),
+        entry: Some(collection::visit),
+    },
+    MethodSpec {
+        name: index(b"allocation:bytes:identity:"),
+        entry: Some(collection::allocation),
+    },
+    MethodSpec {
+        name: index(b"coreEdge:"),
+        entry: Some(collection::core_edge),
+    },
+    MethodSpec {
+        name: index(b"collectPrecisely"),
+        entry: Some(collection::collect),
+    },
+    MethodSpec {
+        name: index(b"trace:with:"),
+        entry: Some(register_trace),
+    },
+    MethodSpec {
+        name: index(b"finalize:with:"),
+        entry: Some(register_finalizer),
+    },
+];
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    argc: usize,
+) -> Oop {
+    API.store(p.cast_mut(), std::sync::atomic::Ordering::Release);
+    let id = unsafe { *p };
+    let Some([root_registry]) = (unsafe { abi::borrowed_slice(a, argc) }) else {
+        return id.invalid;
+    };
+    let existing = INSTANCE.load(std::sync::atomic::Ordering::Acquire);
+    if !existing.is_null() {
+        let s = unsafe { &*existing };
+        return if s.roots == *root_registry {
+            s.receiver
+        } else {
+            id.invalid
+        };
+    }
+    let Some(symbols) = (unsafe { abi::borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if symbols.len() != NAMES.len() {
+        return id.invalid;
+    }
+    (unsafe {
+        (|| {
+            let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+            let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+            let base = send(id.root, b"objectBehavior", &[])?;
+            let vt = send(base, b"delegated", &[])?;
+            let receiver = send(vt, b"allocate", &[abi::size(size_of::<usize>()).unwrap()])?;
+            let core_vt = send(base, b"delegated", &[])?;
+            let core_visitor = send(
+                core_vt,
+                b"allocate",
+                &[abi::size(size_of::<usize>()).unwrap()],
+            )?;
+            let s = Box::new(Memory {
+                id,
+                receiver,
+                roots: *root_registry,
+                core_visitor,
+                names,
+                phase: Cell::new(Phase::Idle),
+                tracers: RefCell::new(HashMap::new()),
+                finalizers: RefCell::new(HashMap::new()),
+                walk: RefCell::new(None),
+                inventory: RefCell::new(None),
+                temporary: RefCell::new(Vec::new()),
+            });
+            let raw = Box::into_raw(s);
+            INSTANCE.store(raw, std::sync::atomic::Ordering::Release);
+            receiver.cast::<*const Memory>().write(raw);
+            core_visitor.cast::<*const Memory>().write(raw);
+            let s = &*raw;
+            for spec in METHODS {
+                let m = s.send(image, b"methodAt:", &[symbols[spec.name]])?;
+                let m = s.send(m, b"withContext:", &[receiver])?;
+                let target = if spec.name == index(b"coreEdge:") {
+                    core_vt
+                } else {
+                    vt
+                };
+                let selector = if spec.name == index(b"coreEdge:") {
+                    s.names[b"visit:".as_slice()]
+                } else {
+                    symbols[spec.name]
+                };
+                s.send(target, b"addMethod", &[selector, m])?;
+            }
+            // Native payloads are interpreted only by their own registered owners.
+            for (behavior, owner) in [
+                (vt, receiver),
+                (core_vt, receiver),
+                (
+                    s.send(id.root, b"behaviorOf:", &[*root_registry])?,
+                    *root_registry,
+                ),
+            ] {
+                let identity = s.identity(behavior)?;
+                s.tracers.borrow_mut().insert(
+                    behavior.addr(),
+                    Owner {
+                        identity,
+                        object: owner,
+                    },
+                );
+            }
+            s.send(*root_registry, b"register:", &[receiver])?;
+            Ok(receiver)
+        })()
+    })
+    .unwrap_or_else(|e| e)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
-    1
-}
-
-unsafe extern "C" fn reference_owner(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = memory(context)?;
-        let Some([behavior]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let behavior = object(*behavior)?;
-        if m.send(m.id.receiver, b"isBehavior:", &[Operand::object(behavior)])?
-            .as_word()
-            != Some(1)
-        {
-            return Err(invalid());
-        }
-        Ok(m.trace_owner(behavior)?
-            .map_or_else(Operand::unit, Operand::object))
-    })())
-}

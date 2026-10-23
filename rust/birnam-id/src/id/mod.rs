@@ -1,8 +1,7 @@
-//! Id implementation. Only its native carrier crosses into upper construction.
 mod id_dispatch;
 mod initial_objects;
 mod native_id;
 mod object_memory;
 mod symbol;
 mod vtable;
-pub(crate) use native_id::DESCRIPTOR;
+pub(crate) use native_id::bootstrap;
