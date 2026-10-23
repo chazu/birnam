@@ -88,7 +88,7 @@ unsafe fn memory<'a>(c: Oop) -> Result<&'a Memory, Oop> {
         return Err(unsafe { (*api).invalid });
     }
     let s = unsafe { &*raw };
-    if c == s.receiver {
+    if c == s.receiver && s.phase.get() != Phase::Failed {
         Ok(s)
     } else {
         Err(s.invalid())
@@ -126,49 +126,39 @@ unsafe extern "C" fn references(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
     }
     core::ptr::null_mut()
 }
-unsafe extern "C" fn register_trace(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    let s = match unsafe { memory(c) } {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let Some([behavior, owner]) = (unsafe { abi::borrowed_slice(a, n) }) else {
-        return s.invalid();
-    };
-    match unsafe { s.identity(*behavior) } {
-        Ok(identity) => {
-            s.tracers.borrow_mut().insert(
-                behavior.addr(),
-                Owner {
-                    identity,
-                    object: *owner,
-                },
-            );
-            *owner
-        }
-        Err(e) => e,
+unsafe fn attach(c: Oop, a: *const Oop, n: usize, trace: bool) -> Result<Oop, Oop> {
+    let s = unsafe { memory(c) }?;
+    let Some([target, owner]) = (unsafe { abi::borrowed_slice(a,n) }) else { return Err(s.invalid()); };
+    let identity = unsafe { s.identity(*target) }?;
+    if trace && unsafe { s.send(s.id.root,b"isBehavior:",&[*target]) }? != abi::size(1).unwrap() {
+        return Err(s.invalid());
     }
+    if !owner.is_null() {
+        unsafe { s.identity(*owner) }?;
+        if s.phase.get() == Phase::Marking && s.walk.borrow().is_some() {
+            collection::emit(s,*owner)?;
+        } else if s.phase.get() == Phase::Finalizing && !s.walk.borrow().as_ref().is_some_and(|w|w.marked(*owner)) {
+            // A replacement cannot resurrect an owner in the dead-object list.
+            return Err(s.invalid());
+        }
+    }
+    let map = if trace { &s.tracers } else { &s.finalizers };
+    if owner.is_null() { map.borrow_mut().remove(&target.addr()); }
+    else { map.borrow_mut().insert(target.addr(),Owner{identity,object:*owner}); }
+    Ok(core::ptr::null_mut())
 }
-unsafe extern "C" fn register_finalizer(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    let s = match unsafe { memory(c) } {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let Some([o, owner]) = (unsafe { abi::borrowed_slice(a, n) }) else {
-        return s.invalid();
-    };
-    match unsafe { s.identity(*o) } {
-        Ok(identity) => {
-            s.finalizers.borrow_mut().insert(
-                o.addr(),
-                Owner {
-                    identity,
-                    object: *owner,
-                },
-            );
-            *owner
-        }
-        Err(e) => e,
-    }
+unsafe extern "C" fn register_trace(_id: Oop,c: Oop,_: Oop,a: *const Oop,n: usize) -> Oop {
+    unsafe { attach(c,a,n,true) }.unwrap_or_else(|e|e)
+}
+unsafe extern "C" fn register_finalizer(_id: Oop,c: Oop,_: Oop,a: *const Oop,n: usize) -> Oop {
+    unsafe { attach(c,a,n,false) }.unwrap_or_else(|e|e)
+}
+unsafe extern "C" fn reference_owner(_id: Oop,c: Oop,_: Oop,a: *const Oop,n: usize) -> Oop {
+    (|| unsafe {
+        let s=memory(c)?;
+        let Some([behavior])=abi::borrowed_slice(a,n) else { return Err(s.invalid()); };
+        Ok(s.trace_owner(*behavior)?.unwrap_or(core::ptr::null_mut()))
+    })().unwrap_or_else(|e|e)
 }
 macro_rules! literals {($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
@@ -198,7 +188,9 @@ literals![
     b"register:",
     b"allocationCount",
     b"allocationEpoch",
-    b"referenceOwnersDo:"
+    b"referenceOwnersDo:",
+    b"referenceOwnerOf:",
+    b"isBehavior:"
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -218,6 +210,7 @@ const fn index(name: &[u8]) -> usize {
     panic!("missing collector name")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name:index(b"referenceOwnerOf:"), entry:Some(reference_owner) },
     MethodSpec {
         name: index(b"rootsDo:"),
         entry: Some(roots),

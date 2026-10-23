@@ -78,6 +78,10 @@ unsafe fn run() {
             b"bindingsDo:",
             b"liveBindingsDo:",
             b"isCanonicalLookup:",
+            b"prepareOwner:",
+            b"nodeWithChild:",
+            b"trace:with:",
+            b"referenceOwnerOf:",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -424,6 +428,35 @@ unsafe fn run() {
         assert_eq!(abi::as_size(send(collect_method, b"invokeOn:arguments:", &[actor, proxy]).unwrap()), Some(2));
         send(roots, b"release:", &[proxy_token]).unwrap();
         println!("argument containers use current application behavior and survive GC: passed");
+
+        // A tracer can replace a later owner. The new owner is deliberately
+        // unrooted until registration inside the tracer adds it to the mark walk.
+        let child = send(actor, b"dynamicName:", &[abi::size(43).unwrap()]).unwrap();
+        let node = send(actor, b"nodeWithChild:", &[child]).unwrap();
+        let node_token = send(roots, b"retain:", &[node]).unwrap();
+        let new_type = send(base, b"delegated", &[]).unwrap();
+        let trace_method = send(actor_vt, b"lookup", &[sel(b"referencesOf:do:")]).unwrap();
+        send(new_type, b"addMethod", &[sel(b"referencesOf:do:"), trace_method]).unwrap();
+        let new_owner = send(new_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        send(actor, b"prepareOwner:", &[new_owner]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        assert_eq!(send(gc, b"referenceOwnerOf:", &[vt]).unwrap(), new_owner);
+        send(id.root, b"identityOf:", &[new_owner]).unwrap();
+        send(id.root, b"identityOf:", &[child]).unwrap();
+        let derived = send(vt, b"delegated", &[]).unwrap();
+        send(id.root, b"reassociateBehaviorOf:with:", &[node, derived]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        send(id.root, b"identityOf:", &[child]).unwrap();
+        send(gc, b"trace:with:", &[vt, core::ptr::null_mut()]).unwrap();
+        assert!(send(gc, b"referenceOwnerOf:", &[derived]).unwrap().is_null());
+        let count = send(id.root, b"allocationCount", &[]).unwrap();
+        assert!(send(gc, b"collectPrecisely", &[]).is_err());
+        assert_eq!(send(id.root, b"allocationCount", &[]).unwrap(), count);
+        send(gc, b"trace:with:", &[vt, actor]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        send(id.root, b"identityOf:", &[child]).unwrap();
+        send(roots, b"release:", &[node_token]).unwrap();
+        println!("GC owner replacement during tracing, inherited behavior and owner removal: passed");
 
         let ns_args = send(id.root, b"sequence", &[roots]).unwrap();
         let namespace = id.send(names[6], id.load, &[ns_args]).unwrap();

@@ -4,9 +4,10 @@
    through messages. No foreign payload or Id registry is inspected. */
 typedef struct Node {Oop child;Oop size;} Node;
 static IdProtocol id;
-enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,APPLYVALUE,APPLY,ARGPROXY,NAMEFACTORY,METHODFACTORY,NSBIND,NAMES};
-static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("applyValue"),LIT("apply"),LIT("argumentProxy"),LIT("nameFactory"),LIT("methodFactory"),LIT("binding:value:")};
+enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,APPLYVALUE,APPLY,ARGPROXY,NAMEFACTORY,METHODFACTORY,NSBIND,PREPAREOWNER,NODECHILD,NAMES};
+static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("applyValue"),LIT("apply"),LIT("argumentProxy"),LIT("nameFactory"),LIT("methodFactory"),LIT("binding:value:"),LIT("prepareOwner:"),LIT("nodeWithChild:")};
 static Oop names[NAMES];
+static Oop pending_owner;
 static Oop call(Oop r,int name,const Oop *a,size_t n){return id.message(id.root,r,names[name],a,n);}
 static Oop zero(Oop r,int n){return call(r,n,0,0);}
 static Oop one(Oop r,int n,Oop a){return call(r,n,&a,1);}
@@ -19,6 +20,11 @@ static Oop put(Oop s,size_t i,Oop o){return two(s,PUT,id_size(i),o);}
 static Oop references(Oop root_,Oop context,Oop receiver,const Oop *args,size_t n){
  (void)receiver;if(n!=2)return id.invalid;
  Oop flag=get(context,4);if(id_fault(flag))return flag;
+ if(id_unbox(flag)==4){
+  Oop replacement=pending_owner;pending_owner=0;
+  REQUIRE(two(get(context,1),TRACE,get(context,2),replacement));
+  REQUIRE(put(context,4,id_size(0)));
+ }
  if(id_unbox(flag)==1)return id.invalid;
  if(id_unbox(flag)==3){(void)call(args[1],VISIT,0,0);}
  Oop extent=one(id.root,EXTENT,args[0]);if(id_fault(extent)||id_unbox(extent)!=sizeof(Node))return id.invalid;
@@ -146,7 +152,16 @@ static Oop namespace_binding(Oop root_,Oop context,Oop receiver,const Oop*args,s
  REQUIRE(put(context,18,id_size(id_unbox(get(context,18))+1)));
  return 0;
 }
-static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{APPLYVALUE,apply_value},{ARGPROXY,argument_proxy},{NAMEFACTORY,name_factory},{METHODFACTORY,method_factory},{NSBIND,namespace_binding}};
+static Oop prepare_owner(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;(void)r;if(n!=1)return id.invalid;
+ pending_owner=a[0];return put(c,4,id_size(4));
+}
+static Oop node_child(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;(void)r;if(n!=1)return id.invalid;
+ Node *node=(Node*)one(get(c,2),ALLOCATE,id_size(sizeof(Node)));if(id_fault((Oop)node))return(Oop)node;
+ node->child=a[0];node->size=id_size(0);return(Oop)node;
+}
+static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{APPLYVALUE,apply_value},{ARGPROXY,argument_proxy},{NAMEFACTORY,name_factory},{METHODFACTORY,method_factory},{NSBIND,namespace_binding},{PREPAREOWNER,prepare_owner},{NODECHILD,node_child}};
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t ns,const Oop*a,size_t n){
  id=*p;if(ns!=NAMES||n!=2)return id.invalid;for(size_t i=0;i<ns;i++)names[i]=s[i];
  Oop base=zero(id.root,OBJECT);if(id_fault(base))return base;

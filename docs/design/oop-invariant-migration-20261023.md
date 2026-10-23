@@ -90,3 +90,26 @@ ordered storage/indexes and avoids additional per-lookup managed allocations.
 Broad microprobe changes are -1.7%, -0.4%, -0.1%, +1.5% in the four existing
 workloads; these do not measure Namespace throughput. See
 [raw evidence](../measurements/oop-namespace-20261023.json).
+
+## Piece 4: preserve live GC owner changes
+
+Comparison with the existing collector found that the initial Oop slice omitted
+registration's marking rule. An owner installed from a trace callback must itself
+be marked immediately; otherwise the earlier root snapshot can miss it. Restored
+that rule, rejection of dead-owner resurrection during finalization, removal of
+owners by nil registration, validation of trace targets as vtables, and refusal
+of collector operations after failed finalization. No new per-object type table
+or additional tracing pass is introduced.
+
+`referenceOwnerOf:` exposes the existing current/inherited lookup for Storage.
+The independent test installs an otherwise unrooted replacement owner inside a
+trace callback, then checks its survival and the child's survival. It changes the
+object to an inherited behavior, removes the owner, verifies refusal before
+sweeping, restores it and successfully collects again. All previous native checks
+and 20 unit tests (17 Id, 3 Namespace) pass.
+
+Regression inspection: added work occurs during owner registration; ordinary
+marking uses the same algorithm. Paired CPU changes are -0.4%, +0.5%, -3.2%, +0.9%
+for the existing four probes. [Evidence](../measurements/oop-gc-owners-20261023.json).
+The original permission for live owner changes is preserved rather than replaced
+with a blanket prohibition on mutations during callbacks.

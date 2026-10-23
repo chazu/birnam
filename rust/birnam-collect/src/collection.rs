@@ -20,6 +20,9 @@ pub(super) struct Inventory {
     failure: Option<Oop>,
 }
 impl Walk {
+    pub(super) fn marked(&self, value: Oop) -> bool {
+        self.indices.get(&value.addr()).is_some_and(|&i| self.marked[i] != 0)
+    }
     fn emit(&mut self, v: Oop) -> Result<(), ()> {
         if v.is_null() || abi::as_size(v).is_some() {
             return Ok(());
@@ -155,13 +158,13 @@ unsafe fn inventory(s: &Memory) -> Result<Vec<Allocation>, Oop> {
     }
     Ok(rows)
 }
-fn emit(s: &Memory, v: Oop) -> Result<(), Oop> {
-    s.walk
-        .borrow_mut()
-        .as_mut()
-        .unwrap()
-        .emit(v)
-        .map_err(|_| s.invalid())
+pub(super) fn emit(s: &Memory, v: Oop) -> Result<(), Oop> {
+    let mut state = s.walk.borrow_mut();
+    let walk = state.as_mut().ok_or(s.invalid())?;
+    if walk.emit(v).is_err() {
+        walk.failure = Some(s.invalid());
+        Err(s.invalid())
+    } else { Ok(()) }
 }
 unsafe fn mark(s: &Memory) -> Result<Vec<Allocation>, Oop> {
     unsafe {
