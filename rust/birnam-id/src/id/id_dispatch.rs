@@ -1,47 +1,51 @@
-//! Metacircular binding over Method objects. Selected code and incoming values
-//! are protected by Id's explicit owned invocation-root storage.
-use super::native_id::State;
+//! Live method lookup. Callers keep the receiver and arguments alive before
+//! lookup can call user code; selected Method data is read once.
+use super::{
+    native_id::{SelectedMethod, State},
+    object_memory::ObjectMemory,
+};
 use crate::abi::Oop;
-pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Oop, Oop> {
+pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<SelectedMethod>, Oop> {
     let behavior = s.behavior(r)?;
+    // The validated receiver's vtable was admitted when assigned and is kept
+    // alive by that receiver. Read its current vtable, without a second check
+    // of the same allocation. This does not cache method selection.
+    // A detached receiver's former vtable may already have been released.
+    // Keep the checked path during finalization; the live path has the
+    // receiver's strong reference to its admitted vtable.
+    let meta = if s.detached.borrow().is_empty() {
+        unsafe { ObjectMemory::vtable_of_valid_object(behavior) }
+    } else {
+        s.behavior(behavior)?
+    };
     if (behavior == s.meta && selector == s.lookup)
-        || (s.behavior(behavior)? == s.meta
+        || (meta == s.meta
             && s.tables
                 .borrow()
                 .has_default_lookup(s.meta, s.lookup, s.default_lookup.get()))
     {
-        return Ok(s
-            .tables
-            .borrow()
-            .lookup(behavior, selector)
-            .unwrap_or(core::ptr::null_mut()));
+        let method = s.tables.borrow().lookup(behavior, selector);
+        return Ok(method.map(|m| unsafe { s.bound_method(m) }));
     }
     let method = unsafe { send(s, behavior, s.lookup, &[selector]) }?;
-    if method.is_null()
-        || s.methods
-            .borrow()
-            .contains_key(&crate::abi::heap_address(method))
-    {
-        Ok(method)
+    if method.is_null() {
+        Ok(None)
     } else {
-        Err(s.invalid())
+        s.checked_method(method).map(Some)
     }
 }
 pub(crate) unsafe fn send(s: &State, r: Oop, selector: Oop, args: &[Oop]) -> Result<Oop, Oop> {
     s.check()?;
     let scope = s.scope(r, selector, args);
-    let method = unsafe { bind(s, r, selector) }?;
-    if !method.is_null() {
+    if let Some(method) = unsafe { bind(s, r, selector) }? {
         return unsafe { s.invoke(method, r, args, &scope) };
     }
     if selector == s.dnu || (selector == s.lookup && s.behavior(r)? == s.meta) {
         return Err(s.unbound());
     }
-    let handler = unsafe { bind(s, r, s.dnu) }?;
-    if handler.is_null() {
+    let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {
         return Err(s.unbound());
-    }
-    // Keep all arguments; no native-stack scratch or truncating fixed array.
+    };
     let mut forwarded = Vec::with_capacity(args.len() + 1);
     forwarded.push(selector);
     forwarded.extend_from_slice(args);

@@ -9,6 +9,10 @@ migration checkpoint, not a completed language cutover or an install candidate.
 Stackless execution, source compilation, images and workers remain unmigrated.
 The initial ownership question is revised by the Piumarta comparison below.
 
+Follow-up: [simpler object storage and call roots](oop-runtime-simplification-20261023.md)
+removes the four redundant tables and per-call argument copying. Native checks
+pass and costs fall, but the migration remains isolated and incomplete.
+
 ## Required end state
 
 Every receiver, selector, argument and result crossing an ordinary Id message is

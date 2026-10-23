@@ -42,7 +42,6 @@ struct Memory {
     finalizers: RefCell<HashMap<usize, Owner>>,
     walk: RefCell<Option<collection::Walk>>,
     inventory: RefCell<Option<collection::Inventory>>,
-    temporary: RefCell<Vec<Oop>>,
 }
 impl Memory {
     fn invalid(&self) -> Oop {
@@ -107,7 +106,6 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
     values.extend([s.receiver, s.roots, s.core_visitor]);
     values.extend(s.tracers.borrow().values().map(|v| v.object));
     values.extend(s.finalizers.borrow().values().map(|v| v.object));
-    values.extend(s.temporary.borrow().iter());
     for o in values {
         if let Err(e) = unsafe { s.send(*visitor, b"visit:", &[o]) } {
             return e;
@@ -194,7 +192,7 @@ literals![
     b"finalize:with:",
     b"finalize:",
     b"sequence",
-    b"retireIndexesFor:",
+    b"removeDeadObjects",
     b"detachAllocation:",
     b"releaseDetachedAllocation:",
     b"register:",
@@ -304,7 +302,6 @@ unsafe extern "C" fn initialize(
                 finalizers: RefCell::new(HashMap::new()),
                 walk: RefCell::new(None),
                 inventory: RefCell::new(None),
-                temporary: RefCell::new(Vec::new()),
             });
             let raw = Box::into_raw(s);
             INSTANCE.store(raw, std::sync::atomic::Ordering::Release);

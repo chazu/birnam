@@ -255,9 +255,9 @@ unsafe fn mark(s: &Memory) -> Result<Vec<Allocation>, Oop> {
 unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {
     unsafe {
         let objects: Vec<_> = dead.iter().map(|a| a.object).collect();
-        let sequence = s.send(s.id.root, b"sequence", &objects)?;
-        s.temporary.borrow_mut().push(sequence);
-        s.send(s.id.root, b"retireIndexesFor:", &[sequence])?;
+        // Pass the dead objects as Oop arguments. No managed object is created
+        // after marking to hold references that will become invalid on release.
+        s.send(s.id.root, b"removeDeadObjects", &objects)?;
         {
             let mut owners = s.tracers.borrow_mut();
             for a in dead {
@@ -278,7 +278,6 @@ unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {
             }
             s.send(s.id.root, b"releaseDetachedAllocation:", &[token])?;
         }
-        s.temporary.borrow_mut().pop();
         Ok(dead.len())
     }
 }

@@ -59,6 +59,8 @@ unsafe fn run() {
             b"badAllocations",
             b"allocationsDo:",
             b"referencesOf:do:",
+            b"collectArguments",
+            b"snapshotArgument:",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -93,15 +95,25 @@ unsafe fn run() {
             .send(names[2], id.load, &[load_args])
             .expect("independent native module loaded");
         println!("cold bootstrap and three native modules: passed");
-        let before=send(id.root,b"allocationCount",&[]).unwrap();
-        let object_type=send(id.root,b"objectBehavior",&[]).unwrap();
-        assert!(send(object_type,b"allocate",&[abi::size(usize::MAX >> 1).unwrap()]).is_err());
-        for bad in [abi::size(0).unwrap(),abi::size(256).unwrap(),id.root] {
-            assert!(send(id.root,b"nameWithBytes",&[bad]).is_err());
+        let before = send(id.root, b"allocationCount", &[]).unwrap();
+        let object_type = send(id.root, b"objectBehavior", &[]).unwrap();
+        assert!(
+            send(
+                object_type,
+                b"allocate",
+                &[abi::size(usize::MAX >> 1).unwrap()]
+            )
+            .is_err()
+        );
+        for bad in [abi::size(0).unwrap(), abi::size(256).unwrap(), id.root] {
+            assert!(send(id.root, b"nameWithBytes", &[bad]).is_err());
         }
-        assert_eq!(send(id.root,b"allocationCount",&[]).unwrap(),before);
-        let empty_name=send(id.root,b"nameWithBytes",&[]).unwrap();
-        assert_eq!(id.send(empty_name,id.intern,&[]).unwrap(),id.send(empty_name,id.intern,&[]).unwrap());
+        assert_eq!(send(id.root, b"allocationCount", &[]).unwrap(), before);
+        let empty_name = send(id.root, b"nameWithBytes", &[]).unwrap();
+        assert_eq!(
+            id.send(empty_name, id.intern, &[]).unwrap(),
+            id.send(empty_name, id.intern, &[]).unwrap()
+        );
         println!("size limits and invalid byte values rejected without allocating: passed");
         if std::env::args().nth(2).as_deref() == Some("finalizer-failure") {
             send(
@@ -134,6 +146,14 @@ unsafe fn run() {
         );
         send(roots, b"release:", &[token]).unwrap();
         println!("entered receiver/argument survival, 128 finalizers and nested GC: passed");
+        let arguments: Vec<_> = (0..64)
+            .map(|i| send(actor, b"dynamicName:", &[abi::size(16 + i).unwrap()]).unwrap())
+            .collect();
+        assert_eq!(
+            abi::as_size(send(actor, b"collectArguments", &arguments).unwrap()),
+            Some(64)
+        );
+        println!("all 64 borrowed object arguments survived collection: passed");
         // Only the selected clone links this context to live roots after its binding
         // is removed inside contextRun. Host locals are deliberately not GC roots.
         let context_name = send(actor, b"dynamicName:", &[abi::size(32).unwrap()]).unwrap();
@@ -151,6 +171,21 @@ unsafe fn run() {
             context_name
         );
         println!("removed entered Method and otherwise-unrooted context survived GC: passed");
+        let argument = send(actor, b"dynamicName:", &[abi::size(27).unwrap()]).unwrap();
+        let source = send(id.root, b"sequence", &[argument]).unwrap();
+        send(actor, b"at:put:", &[abi::size(12).unwrap(), source]).unwrap();
+        let snapshot_method = send(actor_vt, b"lookup", &[sel(b"snapshotArgument:")]).unwrap();
+        assert_eq!(
+            send(snapshot_method, b"invokeOn:arguments:", &[actor, source]).unwrap(),
+            argument
+        );
+        assert_ne!(
+            send(source, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+            argument
+        );
+        println!(
+            "changing the source fields preserves the entered call's argument snapshot: passed"
+        );
         // Live replacement of interning, then restoration via a captured Method Oop.
         let name = send(actor, b"dynamicName:", &[abi::size(64).unwrap()]).unwrap();
         let name_token = send(roots, b"retain:", &[name]).unwrap();
@@ -290,7 +325,8 @@ unsafe fn run() {
         let replace = send(actor_vt, b"lookup", &[sel(b"replacement")]).unwrap();
         send(actor, b"at:put:", &[abi::size(10).unwrap(), replace]).unwrap();
         let custom_meta = send(meta, b"delegated", &[]).unwrap();
-        let custom_type = send(vt, b"delegated", &[]).unwrap();
+        let plain_type = send(id.root, b"objectBehavior", &[]).unwrap();
+        let custom_type = send(plain_type, b"delegated", &[]).unwrap();
         send(
             id.root,
             b"reassociateBehaviorOf:with:",

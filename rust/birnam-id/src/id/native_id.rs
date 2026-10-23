@@ -1,7 +1,7 @@
 //! Oop-only production floor for the vertical migration slice.
 use super::{
     id_dispatch,
-    object_memory::{Allocation, ObjectMemory},
+    object_memory::{Allocation, ObjectMemory, Storage},
     symbol::Symbols,
     vtable::Vtables,
 };
@@ -18,12 +18,20 @@ use std::{
     collections::HashMap,
     ffi::c_void,
 };
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct MethodRecord {
     pub entry: Method,
     pub context: Oop,
     pub owner: Oop,
 }
+// Private result of method selection, not an Id argument/result carrier.
+// The method body is immutable; the selected copy remains valid across callbacks.
+pub(crate) struct SelectedMethod {
+    object: Oop,
+    data: MethodRecord,
+}
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct FaultRecord {
     kind: Oop,
@@ -54,32 +62,47 @@ pub(crate) struct State {
     pub module: Oop,
     pub lookup: Oop,
     pub dnu: Oop,
-    pub methods: RefCell<AddressMap<MethodRecord>>,
-    pub faults: RefCell<AddressMap<FaultRecord>>,
-    pub sequences: RefCell<AddressMap<Vec<Oop>>>,
     pub modules: RefCell<AddressMap<ModuleRecord>>,
-    pub name_objects: RefCell<AddressMap<usize>>,
     pub names: RefCell<HashMap<&'static [u8], Oop>>,
     pub detached: RefCell<AddressMap<Allocation>>,
-    pub active: RefCell<Vec<Oop>>,
+    pub active: RefCell<Vec<CallFrame>>,
     pub permanent: RefCell<Vec<Oop>>,
     pub default_lookup: Cell<Oop>,
     pub invalid_fault: Cell<Oop>,
     pub unbound_fault: Cell<Oop>,
     pub owner: std::thread::ThreadId,
 }
+// These records live in Id-owned storage. They borrow the immutable argument
+// area only for the synchronous native call; suspended language execution must
+// continue to own its arguments in the stackless runtime's frames.
+pub(crate) struct CallFrame {
+    receiver: Oop,
+    selector: Oop,
+    arguments: *const Oop,
+    count: usize,
+    method: Oop,
+    context: Oop,
+    owner: Oop,
+}
 pub(crate) struct Scope<'a> {
     s: &'a State,
     start: usize,
+    _arguments: core::marker::PhantomData<&'a [Oop]>,
 }
 impl Scope<'_> {
-    pub fn keep(&self, o: Oop) {
-        self.s.active.borrow_mut().push(o)
+    fn entered(&self, method: Oop, context: Oop, owner: Oop) {
+        let mut frames = self.s.active.borrow_mut();
+        let frame = &mut frames[self.start];
+        frame.method = method;
+        frame.context = context;
+        frame.owner = owner;
     }
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        self.s.active.borrow_mut().truncate(self.start)
+        let mut frames = self.s.active.borrow_mut();
+        debug_assert_eq!(frames.len(), self.start + 1);
+        frames.truncate(self.start);
     }
 }
 #[derive(Clone, Copy)]
@@ -159,7 +182,7 @@ core_primitives![
     (b"rootsDo:", Roots),
     (b"allocationsDo:", Allocations),
     (b"referencesOf:do:", References),
-    (b"retireIndexesFor:", Retire),
+    (b"removeDeadObjects", Retire),
     (b"detachAllocation:", Detach),
     (b"releaseDetachedAllocation:", Release),
     (b"objectBehavior", CoreObject),
@@ -216,63 +239,94 @@ impl State {
         assert!(h.set_vtable(o, behavior));
         Ok(o)
     }
+    // Native owners only interpret their own storage. Vtable replacement does
+    // not change this layout or turn another object into a Name/Method.
+    fn storage(&self, o: Oop, expected: Storage) -> Result<(*mut u8, usize), Oop> {
+        let check = |a: &Allocation| {
+            if a.object() != o || a.storage() != expected {
+                return Err(self.invalid());
+            }
+            Ok((a.payload().as_ptr(), a.requested_size()))
+        };
+        if let Some(a) = self.heap.borrow().get(o.addr()) {
+            return check(a);
+        }
+        self.detached
+            .borrow()
+            .values()
+            .find(|a| a.object() == o)
+            .map(check)
+            .unwrap_or(Err(self.invalid()))
+    }
+    pub fn is_method(&self, o: Oop) -> bool {
+        self.storage(o, Storage::Method).is_ok()
+    }
+    fn method_data(&self, o: Oop) -> Result<MethodRecord, Oop> {
+        let (p, n) = self.storage(o, Storage::Method)?;
+        if n != size_of::<MethodRecord>() {
+            return Err(self.invalid());
+        }
+        Ok(unsafe { p.cast::<MethodRecord>().read() })
+    }
+    fn fault_data(&self, o: Oop) -> Result<FaultRecord, Oop> {
+        let (p, n) = self.storage(o, Storage::Fault)?;
+        if n != size_of::<FaultRecord>() {
+            return Err(self.invalid());
+        }
+        Ok(unsafe { p.cast::<FaultRecord>().read() })
+    }
     pub fn make_name(&self, b: &[u8]) -> Result<Oop, Oop> {
         if b.contains(&0) {
             return Err(self.invalid());
         }
-        let n = size_of::<usize>()
-            .checked_add(b.len())
-            .ok_or(self.invalid())?;
-        let o = self.allocate(self.name, n)?;
-        unsafe {
-            o.cast::<usize>().write(b.len());
-            core::ptr::copy_nonoverlapping(
-                b.as_ptr(),
-                o.cast::<u8>().add(size_of::<usize>()),
-                b.len(),
-            )
-        };
-        self.name_objects.borrow_mut().insert(o.addr(), b.len());
+        let o = self.allocate(self.name, b.len())?;
+        unsafe { core::ptr::copy_nonoverlapping(b.as_ptr(), o.cast::<u8>(), b.len()) };
+        self.heap.borrow_mut().set_storage(o, Storage::Name);
         Ok(o)
     }
     fn name_data(&self, o: Oop) -> Result<(*const u8, usize), Oop> {
-        if !self.name_objects.borrow().contains_key(&o.addr()) {
-            return Err(self.invalid());
-        }
-        let h = self.heap.borrow();
-        let a = h.get(o.addr()).ok_or(self.invalid())?;
-        if a.requested_size() < size_of::<usize>() {
-            return Err(self.invalid());
-        }
-        let n = unsafe { o.cast::<usize>().read() };
-        if n != a.requested_size() - size_of::<usize>() {
-            return Err(self.invalid());
-        }
-        Ok((unsafe { o.cast::<u8>().add(size_of::<usize>()) }, n))
+        self.storage(o, Storage::Name)
+            .map(|(p, n)| (p.cast_const(), n))
     }
-    fn new_sequence(&self, values: Vec<Oop>) -> Result<Oop, Oop> {
-        let o = self.allocate(self.sequence, 0)?;
-        self.sequences.borrow_mut().insert(o.addr(), values);
+    fn sequence_storage(&self, o: Oop) -> Result<(*mut Oop, usize), Oop> {
+        let (p, n) = self.storage(o, Storage::References)?;
+        if n % size_of::<Oop>() != 0 {
+            return Err(self.invalid());
+        }
+        Ok((p.cast(), n / size_of::<Oop>()))
+    }
+    fn sequence_values(&self, o: Oop) -> Result<Vec<Oop>, Oop> {
+        let (p, n) = self.sequence_storage(o)?;
+        Ok(unsafe { core::slice::from_raw_parts(p, n) }.to_vec())
+    }
+    fn new_sequence(&self, values: &[Oop]) -> Result<Oop, Oop> {
+        let size = values
+            .len()
+            .checked_mul(size_of::<Oop>())
+            .ok_or(self.invalid())?;
+        let o = self.allocate(self.sequence, size)?;
+        unsafe { core::ptr::copy_nonoverlapping(values.as_ptr(), o.cast::<Oop>(), values.len()) };
+        self.heap.borrow_mut().set_storage(o, Storage::References);
         Ok(o)
     }
     fn new_method(&self, entry: Method, context: Oop, owner: Oop) -> Result<Oop, Oop> {
-        let o = self.allocate(self.method, 0)?;
-        self.methods.borrow_mut().insert(
-            o.addr(),
-            MethodRecord {
+        let o = self.allocate(self.method, size_of::<MethodRecord>())?;
+        unsafe {
+            o.cast::<MethodRecord>().write(MethodRecord {
                 entry,
                 context,
                 owner,
-            },
-        );
+            })
+        };
+        self.heap.borrow_mut().set_storage(o, Storage::Method);
         Ok(o)
     }
     fn make_fault(&self, kind: Oop, detail: Oop) -> Oop {
-        let o = self.allocate(self.fault, 0).expect("core fault allocation");
-        self.heap.borrow_mut().mark_fault(o);
-        self.faults
-            .borrow_mut()
-            .insert(o.addr(), FaultRecord { kind, detail });
+        let o = self
+            .allocate(self.fault, size_of::<FaultRecord>())
+            .expect("core fault allocation");
+        unsafe { o.cast::<FaultRecord>().write(FaultRecord { kind, detail }) };
+        self.heap.borrow_mut().set_storage(o, Storage::Fault);
         abi::fault_reference(o)
     }
     pub fn behavior(&self, o: Oop) -> Result<Oop, Oop> {
@@ -294,30 +348,67 @@ impl State {
             })
             .ok_or(self.invalid())
     }
-    // The unsafe native boundary already requires live Oop arguments. Protect
-    // them before lookup; validate receiver/primitive-specific shapes where
-    // consumed. Rechecking every argument's behavior here adds duplicate Id
-    // registry lookups without establishing its borrow lifetime.
-    pub fn scope(&self, r: Oop, s: Oop, a: &[Oop]) -> Scope<'_> {
-        let mut roots = self.active.borrow_mut();
-        let start = roots.len();
-        roots.push(r);
-        roots.push(s);
-        roots.extend_from_slice(a);
-        Scope { s: self, start }
+    pub fn scope<'a>(&'a self, r: Oop, selector: Oop, args: &'a [Oop]) -> Scope<'a> {
+        let mut frames = self.active.borrow_mut();
+        let start = frames.len();
+        frames.push(CallFrame {
+            receiver: r,
+            selector,
+            arguments: args.as_ptr(),
+            count: args.len(),
+            method: core::ptr::null_mut(),
+            context: core::ptr::null_mut(),
+            owner: core::ptr::null_mut(),
+        });
+        Scope {
+            s: self,
+            start,
+            _arguments: core::marker::PhantomData,
+        }
     }
-    pub unsafe fn invoke(&self, m: Oop, r: Oop, a: &[Oop], scope: &Scope<'_>) -> Result<Oop, Oop> {
-        let record = *self
-            .methods
-            .borrow()
-            .get(&abi::heap_address(m))
-            .ok_or(self.invalid())?;
-        scope.keep(m);
-        scope.keep(record.context);
-        scope.keep(record.owner);
+    fn call_roots(&self) -> Vec<Oop> {
+        let frames = self.active.borrow();
+        let mut roots = Vec::new();
+        for frame in frames.iter() {
+            roots.extend([frame.receiver, frame.selector]);
+            // Scope ties this borrowed argument area to the active call. No
+            // frame or argument borrow survives the later visitor messages.
+            roots.extend_from_slice(unsafe {
+                core::slice::from_raw_parts(frame.arguments, frame.count)
+            });
+            if !frame.method.is_null() {
+                roots.extend([frame.method, frame.context, frame.owner]);
+            }
+        }
+        roots
+    }
+    pub fn checked_method(&self, m: Oop) -> Result<SelectedMethod, Oop> {
+        Ok(SelectedMethod {
+            object: m,
+            data: self.method_data(m)?,
+        })
+    }
+    // Only private dictionary entries admitted by addMethod reach this path.
+    // A live binding keeps the immutable Method alive; no callback intervenes.
+    pub unsafe fn bound_method(&self, m: Oop) -> SelectedMethod {
+        SelectedMethod {
+            object: m,
+            data: unsafe { m.cast::<MethodRecord>().read() },
+        }
+    }
+    pub unsafe fn invoke(
+        &self,
+        selected: SelectedMethod,
+        r: Oop,
+        a: &[Oop],
+        scope: &Scope<'_>,
+    ) -> Result<Oop, Oop> {
+        let m = selected.object;
+        let record = selected.data;
+        scope.entered(m, record.context, record.owner);
         let value = unsafe { (record.entry)(self.root, record.context, r, a.as_ptr(), a.len()) };
         if abi::is_fault(value) {
-            if !self.faults.borrow().contains_key(&abi::heap_address(value)) {
+            if self.fault_data(value).is_err() {
                 return Err(self.invalid());
             }
             Err(value)
@@ -403,9 +494,7 @@ impl State {
             }
             Action::Add => {
                 let (sel, m) = pair()?;
-                if !self.tables.borrow().is_registered(r)
-                    || !self.methods.borrow().contains_key(&abi::heap_address(m))
-                {
+                if !self.tables.borrow().is_registered(r) || !self.is_method(m) {
                     return Err(invalid);
                 }
                 self.tables.borrow_mut().add_method(r, sel, m);
@@ -518,17 +607,15 @@ impl State {
                 {
                     return Err(invalid);
                 }
-                let bytes = size_of::<usize>().checked_add(a.len()).ok_or(invalid)?;
-                let name = self.allocate(self.name, bytes)?;
+                let name = self.allocate(self.name, a.len())?;
                 unsafe {
-                    name.cast::<usize>().write(a.len());
                     for (i, &v) in a.iter().enumerate() {
                         name.cast::<u8>()
-                            .add(size_of::<usize>() + i)
+                            .add(i)
                             .write(abi::as_size(v).unwrap() as u8);
                     }
                 }
-                self.name_objects.borrow_mut().insert(name.addr(), a.len());
+                self.heap.borrow_mut().set_storage(name, Storage::Name);
                 Ok(name)
             }
             Action::Intern => {
@@ -542,46 +629,41 @@ impl State {
                     .intern(&mut self.heap.borrow_mut(), self.symbol, bytes)
                     .map_err(|_| invalid)
             }
-            Action::NewSequence => self.new_sequence(a.to_vec()),
+            Action::NewSequence => self.new_sequence(a),
             Action::SequenceSize => {
                 if !a.is_empty() {
                     return Err(invalid);
                 }
-                abi::size(self.sequences.borrow().get(&r.addr()).ok_or(invalid)?.len())
-                    .ok_or(invalid)
+                abi::size(self.sequence_storage(r)?.1).ok_or(invalid)
             }
             Action::At => {
                 let at = abi::as_size(one()?).ok_or(invalid)?;
-                self.sequences
-                    .borrow()
-                    .get(&r.addr())
-                    .and_then(|v| v.get(at))
-                    .copied()
-                    .ok_or(invalid)
+                let (p, n) = self.sequence_storage(r)?;
+                if at >= n {
+                    return Err(invalid);
+                }
+                Ok(unsafe { p.add(at).read() })
             }
             Action::Put => {
                 let (at, v) = pair()?;
                 let at = abi::as_size(at).ok_or(invalid)?;
-                let mut seq = self.sequences.borrow_mut();
-                *seq.get_mut(&r.addr())
-                    .and_then(|v| v.get_mut(at))
-                    .ok_or(invalid)? = v;
+                let (p, n) = self.sequence_storage(r)?;
+                if at >= n {
+                    return Err(invalid);
+                }
+                unsafe { p.add(at).write(v) };
                 Ok(v)
             }
             Action::Invoke => {
                 let (receiver, seq) = pair()?;
-                let args = self
-                    .sequences
-                    .borrow()
-                    .get(&seq.addr())
-                    .cloned()
-                    .ok_or(invalid)?;
+                // Snapshot before a callback can mutate the source's fields.
+                let args = self.sequence_values(seq)?;
                 let scope = self.scope(receiver, nil, &args);
-                unsafe { self.invoke(r, receiver, &args, &scope) }
+                unsafe { self.invoke(self.checked_method(r)?, receiver, &args, &scope) }
             }
             Action::WithContext => {
                 let ctx = one()?;
-                let old = *self.methods.borrow().get(&r.addr()).ok_or(invalid)?;
+                let old = self.method_data(r)?;
                 self.new_method(old.entry, ctx, old.owner)
             }
             Action::LiteralAt => {
@@ -606,18 +688,8 @@ impl State {
                 let (k, d) = pair()?;
                 Ok(self.make_fault(k, d))
             }
-            Action::FaultKind => Ok(self
-                .faults
-                .borrow()
-                .get(&abi::heap_address(r))
-                .ok_or(invalid)?
-                .kind),
-            Action::FaultDetail => Ok(self
-                .faults
-                .borrow()
-                .get(&abi::heap_address(r))
-                .ok_or(invalid)?
-                .detail),
+            Action::FaultKind => Ok(self.fault_data(r)?.kind),
+            Action::FaultDetail => Ok(self.fault_data(r)?.detail),
             Action::SelfValue => {
                 if a.is_empty() {
                     Ok(r)
@@ -628,7 +700,7 @@ impl State {
             Action::Roots => {
                 let visitor = one()?;
                 let mut roots = self.permanent.borrow().clone();
-                roots.extend(self.active.borrow().iter().copied());
+                roots.extend(self.call_roots());
                 for v in roots {
                     unsafe { self.send(visitor, b"visit:", &[v]) }?;
                 }
@@ -636,13 +708,12 @@ impl State {
             }
             Action::Allocations => {
                 let visitor = one()?;
-                let mut rows: Vec<_> = self
+                let rows: Vec<_> = self
                     .heap
                     .borrow()
                     .iter()
                     .map(|(_, a)| (a.object(), a.requested_size(), a.identity()))
                     .collect();
-                rows.sort_by_key(|v| v.2);
                 for (o, n, id) in rows {
                     unsafe {
                         self.send(
@@ -689,14 +760,7 @@ impl State {
                 Ok(nil)
             }
             Action::Retire => {
-                let seq = one()?;
-                let dead = self
-                    .sequences
-                    .borrow()
-                    .get(&seq.addr())
-                    .cloned()
-                    .ok_or(invalid)?;
-                self.retire(&dead)?;
+                self.retire(a)?;
                 Ok(nil)
             }
             Action::Detach => {
@@ -713,12 +777,7 @@ impl State {
             }
             Action::Load => {
                 let args = one()?;
-                let args = self
-                    .sequences
-                    .borrow()
-                    .get(&args.addr())
-                    .cloned()
-                    .ok_or(invalid)?;
+                let args = self.sequence_values(args)?;
                 unsafe { self.load_module(r, &args) }
             }
         }
@@ -741,17 +800,29 @@ impl State {
             }
             return Ok((edges, 1));
         }
-        if let Some(m) = self.methods.borrow().get(&address) {
-            edges.extend([m.context, m.owner]);
-            return Ok((edges, 2));
-        }
-        if let Some(f) = self.faults.borrow().get(&address) {
-            edges.extend([f.kind, f.detail]);
-            return Ok((edges, 2));
-        }
-        if let Some(v) = self.sequences.borrow().get(&address) {
-            edges.extend(v);
-            return Ok((edges, 2));
+        match self
+            .heap
+            .borrow()
+            .get(o.addr())
+            .ok_or(self.invalid())?
+            .storage()
+        {
+            Storage::Method => {
+                let m = self.method_data(o)?;
+                edges.extend([m.context, m.owner]);
+                return Ok((edges, 2));
+            }
+            Storage::Fault => {
+                let f = self.fault_data(o)?;
+                edges.extend([f.kind, f.detail]);
+                return Ok((edges, 2));
+            }
+            Storage::References => {
+                edges.extend(self.sequence_values(o)?);
+                return Ok((edges, 2));
+            }
+            Storage::Name => return Ok((edges, 2)),
+            Storage::Opaque => {}
         }
         if let Some(m) = self.modules.borrow().get(&address) {
             edges.extend(&m.literals);
@@ -762,10 +833,7 @@ impl State {
             edges.push(m.result);
             return Ok((edges, 2));
         }
-        if o == self.root
-            || self.symbols.borrow().bytes_of(o).is_some()
-            || self.name_objects.borrow().contains_key(&address)
-        {
+        if o == self.root || self.symbols.borrow().bytes_of(o).is_some() {
             return Ok((edges, 2));
         }
         Ok((edges, 0))
@@ -793,12 +861,8 @@ impl State {
             t.remove_objects(&behaviors);
         }
         self.symbols.borrow_mut().remove_objects(&dead);
-        for address in dead.keys() {
-            self.methods.borrow_mut().remove(address);
-            self.faults.borrow_mut().remove(address);
-            self.sequences.borrow_mut().remove(address);
-            self.name_objects.borrow_mut().remove(address);
-        }
+        // Object contents survive until storage release; only actual indexes
+        // need clearing here. No per-kind state tables remain.
         Ok(())
     }
     unsafe fn load_module(&self, path: Oop, args: &[Oop]) -> Result<Oop, Oop> {
@@ -968,12 +1032,7 @@ pub(crate) unsafe fn bootstrap(seeds: *const native::Seed, n: usize) -> *const P
             return core::ptr::null();
         }
         if !inputs.is_empty() {
-            let existing = s
-                .sequences
-                .borrow()
-                .get(&s.protocol.seeds.addr())
-                .unwrap()
-                .clone();
+            let existing = s.sequence_values(s.protocol.seeds).unwrap();
             if existing.len() != inputs.len() {
                 return core::ptr::null();
             }
@@ -995,11 +1054,11 @@ pub(crate) unsafe fn bootstrap(seeds: *const native::Seed, n: usize) -> *const P
         return core::ptr::null();
     }
     let mut s = super::initial_objects::construct();
-    let names = inputs
+    let names: Vec<_> = inputs
         .into_iter()
         .map(|b| s.make_name(b).unwrap())
         .collect();
-    let seq = s.new_sequence(names).unwrap();
+    let seq = s.new_sequence(&names).unwrap();
     s.permanent.borrow_mut().push(seq);
     s.protocol.seeds = seq;
     let raw = Box::into_raw(s);
@@ -1022,5 +1081,85 @@ mod oop_tests {
         let detached = s.heap.borrow_mut().detach(fault.addr()).unwrap();
         assert_eq!(detached.object(), fault);
         assert_eq!(detached.identity(), id);
+    }
+    #[test]
+    fn contents_survive_index_cleanup_and_detachment() {
+        let s = super::super::initial_objects::construct();
+        let name = s.make_name(b"kept contents").unwrap();
+        let fields = s.new_sequence(&[name]).unwrap();
+        let empty = s.new_sequence(&[]).unwrap();
+        let fault = s.make_fault(s.selector(b"invalidRequest"), fields);
+        let method = s.new_method(primitive::SelfValue, s.root, s.root).unwrap();
+        let objects = [name, fields, fault, method];
+        s.retire(&objects).unwrap();
+        let check = || unsafe {
+            let (p, n) = s.name_data(name).unwrap();
+            assert_eq!(core::slice::from_raw_parts(p, n), b"kept contents");
+            assert_eq!(
+                s.send(fields, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+                name
+            );
+            assert_eq!(s.send(fault, b"detail", &[]).unwrap(), fields);
+            assert_eq!(
+                s.send(method, b"invokeOn:arguments:", &[name, empty])
+                    .unwrap(),
+                name
+            );
+        };
+        check();
+        for object in objects {
+            let allocation = s.heap.borrow_mut().detach(object.addr()).unwrap();
+            let identity = allocation.identity() as usize;
+            s.detached.borrow_mut().insert(identity, allocation);
+        }
+        check();
+        s.detached.borrow_mut().clear();
+        assert!(s.name_data(name).is_err());
+        assert!(s.method_data(method).is_err());
+        assert!(s.fault_data(fault).is_err());
+        assert!(s.sequence_values(fields).is_err());
+    }
+    #[test]
+    fn vtable_changes_do_not_forge_or_destroy_storage_layouts() {
+        let s = super::super::initial_objects::construct();
+        let name = s.make_name(b"same storage").unwrap();
+        let original = s
+            .tables
+            .borrow()
+            .lookup(s.name, s.selector(b"intern"))
+            .unwrap();
+        let empty = s.new_sequence(&[]).unwrap();
+        assert!(s.heap.borrow_mut().set_vtable(name, s.object));
+        assert!(unsafe { s.send(name, b"intern", &[]) }.is_err());
+        let answer = unsafe { s.send(original, b"invokeOn:arguments:", &[name, empty]) }.unwrap();
+        assert_eq!(
+            s.symbols.borrow().bytes_of(answer),
+            Some(b"same storage".as_slice())
+        );
+        let fake_name = s.allocate(s.name, b"same storage".len()).unwrap();
+        assert!(s.name_data(fake_name).is_err());
+        let fake_method = s.allocate(s.method, size_of::<MethodRecord>()).unwrap();
+        assert!(unsafe { s.send(fake_method, b"invokeOn:arguments:", &[name, empty]) }.is_err());
+        let fake_fields = s.allocate(s.sequence, size_of::<Oop>()).unwrap();
+        assert!(unsafe { s.send(fake_fields, b"at:", &[abi::size(0).unwrap()]) }.is_err());
+        let fake_fault =
+            abi::fault_reference(s.allocate(s.fault, size_of::<FaultRecord>()).unwrap());
+        assert!(s.fault_data(fake_fault).is_err());
+    }
+    #[test]
+    fn detached_object_with_released_vtable_is_not_dispatched() {
+        let s = super::super::initial_objects::construct();
+        let vt = s
+            .tables
+            .borrow_mut()
+            .create(&mut s.heap.borrow_mut(), s.object, s.meta);
+        let object = s.allocate(vt, 0).unwrap();
+        let storage = s.heap.borrow_mut().detach(object.addr()).unwrap();
+        s.detached
+            .borrow_mut()
+            .insert(storage.identity() as usize, storage);
+        s.retire(&[vt]).unwrap();
+        drop(s.heap.borrow_mut().detach(vt.addr()).unwrap());
+        assert!(unsafe { s.send(object, b"yourself", &[]) }.is_err());
     }
 }

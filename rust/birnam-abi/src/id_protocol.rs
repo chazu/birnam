@@ -23,7 +23,7 @@ impl Protocol {
     /// an intrinsic failure-reference tag, distinct from normal Error data.
     /// # Safety
     /// Receiver, selector and every argument are live Oops from this runtime
-    /// (including its valid immediates). The argument slice is readable until
+    /// (including its valid immediates). The argument slice is readable and unchanged until
     /// return. Id protects these values during lookup, invocation and callbacks;
     /// callers protect other values they retain across subsequent sends.
     pub unsafe fn send(&self, r: Oop, s: Oop, a: &[Oop]) -> Result<Oop, Oop> {
