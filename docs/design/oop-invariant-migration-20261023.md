@@ -137,3 +137,28 @@ cloned; the retained allocation inventory already keeps every endpoint alive.
 No generic Id hot-path work changes in this piece, so the unchanged microprobes
 were not repeated. Storage throughput and full-language profiling remain pending.
 [Qualification receipts](../measurements/oop-storage-20261023.json).
+
+## Piece 6: Boolean and nil use Oops
+
+Boolean and nil publish the same canonical identities and preserve conditional
+selection, eager Boolean operators, predicates and optional printing installation.
+Only the chosen block receives `value`, through current lookup. Absence remains
+distinct from the language nil object. Context validation no longer dereferences
+a foreign native context pointer.
+
+Printing initially used an ordinary Sequence context. Regression inspection
+showed those per-field messages were unnecessary: each printing Method now uses
+its String dependency directly as its context Oop. There is no Printing box or
+context wrapper allocation. Literal text Names belong to the module and are
+passed to the current `fromBytes:` method. The Name owner provides `size` and
+`at:` as object methods; minimal Id still does not classify payloads.
+
+The native gate verifies identities and predicates, short-circuit behavior with
+an uncallable untaken argument, GC inside the selected branch, subsequent `value`
+replacement, printing text, and a captured printing Method after binding removal
+and GC. Replacing the String dependency's `fromBytes:` changes the captured
+Method's subsequent call. The seven migrated dylibs pass the export audit.
+
+The broad probes change -3.1%, +1.9%, -0.8%, +1.4%; no clear broad regression is
+established, and these are not Boolean-specific throughput measurements.
+[Evidence](../measurements/oop-boolean-nil-20261023.json).

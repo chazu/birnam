@@ -3,7 +3,6 @@
   "scope": "Canonical Boolean/nil identities and Boolean behavior needed by cold bootstrap",
   "install_name": "@rpath/libbirnam_boolean.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ]
 }

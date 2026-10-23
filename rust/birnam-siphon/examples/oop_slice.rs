@@ -21,6 +21,8 @@ unsafe fn run() {
             fixtures.join("rejected-null.dylib"),
             library.join("libbirnam_namespace.dylib"),
             library.join("libbirnam_storage.dylib"),
+            library.join("libbirnam_boolean.dylib"),
+            library.join("libbirnam_nil.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"sequence",
@@ -87,6 +89,9 @@ unsafe fn run() {
             b"GC",
             b"observe:",
             b"visit:",
+            b"true", b"false", b"not", b"==", b"&", b"|", b"ifTrue:", b"ifFalse:",
+            b"ifTrue:ifFalse:", b"and:", b"or:", b"value", b"valueProbe", b"echoName",
+            b"isNil", b"notNil", b"installPrinting:", b"printString", b"fromBytes:", b"size",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -526,6 +531,60 @@ unsafe fn run() {
         send(roots, b"release:", &[node_token]).unwrap();
         send(gc, b"collectPrecisely", &[]).unwrap();
         println!("Storage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed");
+
+        let value_args = send(id.root, b"sequence", &[namespace]).unwrap();
+        let truth = id.send(names[8], id.load, &[value_args]).unwrap();
+        assert!(id.send(names[9], id.load, &[value_args]).unwrap().is_null());
+        let falsity = send(namespace, b"at:", &[sel(b"false")]).unwrap();
+        let nil = send(namespace, b"at:", &[sel(b"nil")]).unwrap();
+        assert_eq!(send(truth, b"not", &[]).unwrap(), falsity);
+        assert_eq!(send(falsity, b"not", &[]).unwrap(), truth);
+        assert_eq!(send(nil, b"isNil", &[]).unwrap(), truth);
+        assert_eq!(send(truth, b"isNil", &[]).unwrap(), falsity);
+        assert_eq!(send(nil, b"notNil", &[]).unwrap(), falsity);
+        assert_eq!(send(truth, b"==", &[falsity]).unwrap(), falsity);
+        assert_eq!(send(truth, b"&", &[nil]).unwrap(), nil);
+        assert_eq!(send(falsity, b"|", &[nil]).unwrap(), nil);
+        let block_type = send(base, b"delegated", &[]).unwrap();
+        let value_method = send(actor_vt, b"lookup", &[sel(b"valueProbe")]).unwrap();
+        send(block_type, b"addMethod", &[sel(b"value"), value_method]).unwrap();
+        let block = send(block_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        let block_token = send(roots, b"retain:", &[block]).unwrap();
+        let untaken = send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        let untaken_token = send(roots, b"retain:", &[untaken]).unwrap();
+        let expected = send(actor, b"at:", &[abi::size(6).unwrap()]).unwrap();
+        assert_eq!(send(truth, b"ifTrue:ifFalse:", &[block, untaken]).unwrap(), expected);
+        assert_eq!(send(falsity, b"ifTrue:ifFalse:", &[untaken, block]).unwrap(), expected);
+        assert_eq!(send(truth, b"ifFalse:", &[untaken]).unwrap(), nil);
+        assert_eq!(send(falsity, b"and:", &[untaken]).unwrap(), falsity);
+        assert_eq!(send(truth, b"or:", &[untaken]).unwrap(), truth);
+        assert_eq!(abi::as_size(send(actor, b"at:", &[abi::size(24).unwrap()]).unwrap()), Some(2));
+        let alternate = send(actor_vt, b"lookup", &[sel(b"doesNotUnderstand:")]).unwrap();
+        send(block_type, b"addMethod", &[sel(b"value"), alternate]).unwrap();
+        assert_eq!(abi::as_size(send(truth, b"ifTrue:", &[block]).unwrap()), Some(0));
+        let string_type = send(base, b"delegated", &[]).unwrap();
+        let echo = send(actor_vt, b"lookup", &[sel(b"echoName")]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), echo]).unwrap();
+        let string = send(string_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        send(truth, b"installPrinting:", &[string]).unwrap();
+        let nil_string = send(string_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        send(nil, b"installPrinting:", &[nil_string]).unwrap();
+        for (value, length, first) in [(truth, 4, b't'), (falsity, 5, b'f'), (nil, 3, b'n')] {
+            let text = send(value, b"printString", &[]).unwrap();
+            assert_eq!(abi::as_size(send(text, b"size", &[]).unwrap()), Some(length));
+            assert_eq!(abi::as_size(send(text, b"at:", &[abi::size(0).unwrap()]).unwrap()), Some(first as usize));
+        }
+        let boolean_type = send(id.root, b"behaviorOf:", &[truth]).unwrap();
+        let printing = send(boolean_type, b"lookup", &[sel(b"printString")]).unwrap();
+        let printing_token = send(roots, b"retain:", &[printing]).unwrap();
+        send(boolean_type, b"removeMethod:", &[sel(b"printString")]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        send(id.root, b"identityOf:", &[string]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), replacement]).unwrap();
+        let no_args = send(id.root, b"sequence", &[]).unwrap();
+        assert_eq!(send(printing, b"invokeOn:arguments:", &[truth, no_args]).unwrap(), expected);
+        for token in [block_token, untaken_token, printing_token] { send(roots, b"release:", &[token]).unwrap(); }
+        println!("Boolean/nil identities, selected branches, live dependencies and captured printing contexts: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

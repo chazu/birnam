@@ -9,12 +9,12 @@ fixture="$CARGO_TARGET_DIR/fixtures"
 logs="$CARGO_TARGET_DIR/qualification"
 mkdir -p "$fixture" "$logs"
 mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace --lib > "$logs/unit.log" 2>&1
-mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage > "$logs/build.log" 2>&1
+mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage -p birnam-boolean -p birnam-nil > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_slice > "$logs/caller-build.log" 2>&1
 python3 - "$CARGO_TARGET_DIR/release" <<'PY_EXPORTS'
 from pathlib import Path
 import json,subprocess,sys
-for name in ['id','root-registry','collect','namespace','storage']:
+for name in ['id','root-registry','collect','namespace','storage','boolean','nil']:
     manifest=json.loads(Path('rust/birnam-'+name+'/exports.json').read_text())
     library=Path(sys.argv[1])/('libbirnam_'+name.replace('-','_')+'.dylib')
     actual=set(subprocess.check_output(['nm','-gjU',str(library)],text=True).splitlines())

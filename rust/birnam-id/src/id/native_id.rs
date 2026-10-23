@@ -115,6 +115,8 @@ pub(crate) enum Action {
     ModuleBehavior,
     NewNativeMethod,
     NewName,
+    NameSize,
+    NameAt,
     Intern,
     IsSymbol,
     IsBehavior,
@@ -183,6 +185,8 @@ core_primitives![
     (b"moduleBehavior", ModuleBehavior),
     (b"newMethodAt:", NewNativeMethod),
     (b"nameWithBytes", NewName),
+    (b"size", NameSize),
+    (b"at:", NameAt),
     (b"intern", Intern),
     (b"isSymbol:", IsSymbol),
     (b"isBehavior:", IsBehavior),
@@ -373,7 +377,7 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load | Action::LoadNative => self.name,
+                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt => self.name,
                 Action::At | Action::Put | Action::SequenceSize
                 | Action::ApplyArguments | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
@@ -559,6 +563,16 @@ impl State {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
             Action::NewName => self.name_from_values(a),
+            Action::NameSize => {
+                if !a.is_empty() { return Err(invalid); }
+                abi::size(self.name_data(r)?.1).ok_or(invalid)
+            }
+            Action::NameAt => {
+                let index=abi::as_size(one()?).ok_or(invalid)?;
+                let (p,n)=self.name_data(r)?;
+                if index>=n { return Err(invalid); }
+                Ok(abi::size(unsafe{p.add(index).read()} as usize).unwrap())
+            }
             Action::IsBehavior => Ok(abi::size(usize::from(self.tables.borrow().is_registered(one()?))).unwrap()),
             Action::IsSymbol => Ok(abi::size(usize::from(self.symbols.borrow().bytes_of(one()?).is_some())).unwrap()),
             Action::Intern => {
