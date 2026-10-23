@@ -65,6 +65,10 @@ unsafe fn run() {
             b"applyValue",
             b"apply:to:",
             b"argumentProxy",
+            b"nameFactory",
+            b"methodFactory",
+            b"moduleBehavior",
+            b"newMethodAt:",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -271,6 +275,17 @@ unsafe fn run() {
             send(gc, b"collectPrecisely", &[]).unwrap();
         }
         println!("swallowed core-edge and allocation-census failures also refused safely: passed");
+        // Loading observes replaced constructors; each replacement collects before
+        // calling its captured original, exercising partially built module roots.
+        let module_type = send(id.root, b"moduleBehavior", &[]).unwrap();
+        let original_name_factory = send(object_type, b"lookup", &[sel(b"nameWithBytes")]).unwrap();
+        let original_method_factory = send(module_type, b"lookup", &[sel(b"newMethodAt:")]).unwrap();
+        send(actor, b"at:put:", &[abi::size(13).unwrap(), original_name_factory]).unwrap();
+        send(actor, b"at:put:", &[abi::size(14).unwrap(), original_method_factory]).unwrap();
+        let name_factory = send(actor_vt, b"lookup", &[sel(b"nameFactory")]).unwrap();
+        let method_factory = send(actor_vt, b"lookup", &[sel(b"methodFactory")]).unwrap();
+        send(object_type, b"addMethod", &[sel(b"nameWithBytes"), name_factory]).unwrap();
+        send(module_type, b"addMethod", &[sel(b"newMethodAt:"), method_factory]).unwrap();
         // Failure is an object and can be inspected; ordinary object data remains data.
         let published = send(id.root, b"sequence", &[core::ptr::null_mut()]).unwrap();
         let token = send(roots, b"retain:", &[published]).unwrap();
@@ -278,6 +293,11 @@ unsafe fn run() {
         let failure = id
             .send(names[3], id.load, &[args])
             .expect_err("intentional initializer failure");
+        send(object_type, b"addMethod", &[sel(b"nameWithBytes"), original_name_factory]).unwrap();
+        send(module_type, b"addMethod", &[sel(b"newMethodAt:"), original_method_factory]).unwrap();
+        assert_eq!(abi::as_size(send(actor, b"at:", &[abi::size(15).unwrap()]).unwrap()), Some(5));
+        assert_eq!(abi::as_size(send(actor, b"at:", &[abi::size(16).unwrap()]).unwrap()), Some(1));
+        println!("module construction follows current factories and survives GC between declarations: passed");
         assert!(abi::is_fault(failure));
         assert!(!send(failure, b"faultKind", &[]).unwrap().is_null());
         assert_eq!(send(failure, b"detail", &[]).unwrap(), published);

@@ -16,16 +16,7 @@ std::thread_local! {static THREAD_ID:std::thread::ThreadId=std::thread::current(
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ffi::c_void,
 };
-pub(crate) struct ModuleRecord {
-    _handle: *mut c_void,
-    pub(super) declarations: &'static [native::MethodSpec],
-    pub(super) literals: Vec<Oop>,
-    pub(super) symbols: Vec<Oop>,
-    pub(super) methods: Vec<(Oop, Oop)>,
-    pub(super) result: Oop,
-}
 pub(crate) struct State {
     pub protocol: Protocol,
     pub heap: RefCell<ObjectMemory>,
@@ -47,7 +38,7 @@ pub(crate) struct State {
     pub module: Oop,
     pub lookup: Oop,
     pub dnu: Oop,
-    pub modules: RefCell<AddressMap<ModuleRecord>>,
+    pub modules: super::native_modules::NativeModules,
     pub names: RefCell<HashMap<&'static [u8], Oop>>,
     pub detached: RefCell<AddressMap<Allocation>>,
     pub active: RefCell<Vec<CallFrame>>,
@@ -121,6 +112,8 @@ pub(crate) enum Action {
     Release,
     CoreObject,
     CoreName,
+    ModuleBehavior,
+    NewNativeMethod,
     NewName,
     Intern,
     Load,
@@ -185,6 +178,8 @@ core_primitives![
     (b"releaseDetachedAllocation:", Release),
     (b"objectBehavior", CoreObject),
     (b"nameBehavior", CoreName),
+    (b"moduleBehavior", ModuleBehavior),
+    (b"newMethodAt:", NewNativeMethod),
     (b"nameWithBytes", NewName),
     (b"intern", Intern),
     (b"loadNative:", Load),
@@ -364,8 +359,8 @@ impl State {
         let unbound = self.make_fault(self.selector(b"unbound"), core::ptr::null_mut());
         self.unbound_fault.set(unbound);
         self.permanent.borrow_mut().extend([invalid, unbound]);
-        for &(name, action, entry) in OPERATIONS {
-            let m = self.new_method(entry, self.root, self.root).unwrap();
+        for (index, &(name, action, _)) in OPERATIONS.iter().enumerate() {
+            let m = self.new_method_index(index, self.root, self.root).unwrap();
             let sel = self.selector(name);
             let vt = match action {
                 Action::Lookup
@@ -377,7 +372,7 @@ impl State {
                 Action::Intern | Action::Load | Action::LoadNative => self.name,
                 Action::At | Action::Put | Action::SequenceSize
                 | Action::ApplyArguments | Action::LoadArguments => self.sequence,
-                Action::MethodAt | Action::LiteralAt => self.module,
+                Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
                 Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
@@ -555,6 +550,10 @@ impl State {
             }
             Action::CoreObject => Ok(self.object),
             Action::CoreName => Ok(self.name),
+            Action::ModuleBehavior => Ok(self.module),
+            Action::NewNativeMethod => {
+                self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
+            },
             Action::NewName => self.name_from_values(a),
             Action::Intern => {
                 if !a.is_empty() {
@@ -586,29 +585,10 @@ impl State {
             Action::ApplyArguments | Action::LoadArguments => {
                 unsafe { self.apply_arguments(action, r, a) }
             }
-            Action::WithContext => {
-                let ctx = one()?;
-                let old = self.method_data(r)?;
-                self.new_method(old.entry, ctx, old.owner)
-            }
-            Action::LiteralAt => {
-                let at = abi::as_size(one()?).ok_or(invalid)?;
-                self.modules
-                    .borrow()
-                    .get(&r.addr())
-                    .and_then(|m| m.literals.get(at))
-                    .copied()
-                    .ok_or(invalid)
-            }
-            Action::MethodAt => {
-                let sel = one()?;
-                self.modules
-                    .borrow()
-                    .get(&r.addr())
-                    .and_then(|m| m.methods.iter().find(|(s, _)| *s == sel))
-                    .map(|(_, v)| *v)
-                    .ok_or(invalid)
-            }
+            Action::WithContext => self.clone_method(r, one()?),
+            Action::LiteralAt => self.modules.literal(r, abi::as_size(one()?).ok_or(invalid)?)
+                .ok_or(invalid),
+            Action::MethodAt => self.modules.method(r, one()?).ok_or(invalid),
             Action::MakeFault => {
                 let (k, d) = pair()?;
                 Ok(self.make_fault(k, d))
@@ -626,14 +606,6 @@ impl State {
                 let visitor = one()?;
                 let mut roots = self.permanent.borrow().clone();
                 roots.extend(self.call_roots());
-                for module in self.modules.borrow().values() {
-                    roots.extend(&module.literals);
-                    roots.extend(&module.symbols);
-                    for (k, v) in &module.methods {
-                        roots.extend([*k, *v]);
-                    }
-                    roots.push(module.result);
-                }
                 for v in roots {
                     unsafe { self.send(visitor, b"visit:", &[v]) }?;
                 }
@@ -743,133 +715,7 @@ impl State {
         // need clearing here. No per-kind state tables remain.
         Ok(())
     }
-    unsafe fn load_module(&self, path: Oop, args: &[Oop]) -> Result<Oop, Oop> {
-        let (p, n) = self.name_data(path)?;
-        let path_bytes = unsafe { core::slice::from_raw_parts(p, n) };
-        let Some(handle) = (unsafe { abi::native_module::open(path_bytes) }) else {
-            return Err(self.make_fault(self.selector(b"mappingFailed"), path));
-        };
-        let descriptor = unsafe { abi::native_module::symbol(handle, c"birnam_native_module_v2") }
-            .cast::<native::Module>();
-        if descriptor.is_null() {
-            unsafe { abi::native_module::close(handle) };
-            return Err(self.make_fault(self.selector(b"incompatibleModule"), path));
-        }
-        if unsafe { (*descriptor).version } != native::VERSION
-            || unsafe { (*descriptor).byte_size } as usize != size_of::<native::Module>()
-        {
-            unsafe { abi::native_module::close(handle) };
-            return Err(self.make_fault(self.selector(b"incompatibleModule"), path));
-        }
-        let d = unsafe { &*descriptor };
-        let Some(initialize) = d.initialize else {
-            unsafe { abi::native_module::close(handle) };
-            return Err(self.make_fault(self.selector(b"incompatibleModule"), path));
-        };
-        if d.literal_count > 65536 || d.method_count > 65536 {
-            unsafe { abi::native_module::close(handle) };
-            return Err(self.invalid());
-        }
-        let literals =
-            unsafe { abi::borrowed_slice(d.literals, d.literal_count) }.ok_or(self.invalid())?;
-        let methods =
-            unsafe { abi::borrowed_slice(d.methods, d.method_count) }.ok_or(self.invalid())?;
-        let image = self.allocate(self.module, 0)?;
-        self.modules.borrow_mut().insert(
-            image.addr(),
-            ModuleRecord {
-                _handle: handle,
-                declarations: methods,
-                literals: Vec::new(),
-                symbols: Vec::new(),
-                methods: Vec::new(),
-                result: core::ptr::null_mut(),
-            },
-        );
-        // Native images, including partly initialized ones, stay resident. Publication
-        // cannot be rolled back. The bounded slice has no native image-unload policy.
-        self.permanent.borrow_mut().push(image);
-        for literal in literals {
-            if literal.length > 16 * 1024 * 1024 {
-                return Err(self.invalid());
-            }
-            let bytes = unsafe { abi::borrowed_slice(literal.bytes, literal.length) }
-                .ok_or(self.invalid())?;
-            let name = self.make_name(bytes)?;
-            self.modules
-                .borrow_mut()
-                .get_mut(&image.addr())
-                .unwrap()
-                .literals
-                .push(name);
-        }
-        let names = self
-            .modules
-            .borrow()
-            .get(&image.addr())
-            .unwrap()
-            .literals
-            .clone();
-        for name in names {
-            let symbol = unsafe { self.send(name, b"intern", &[]) }?;
-            self.modules
-                .borrow_mut()
-                .get_mut(&image.addr())
-                .unwrap()
-                .symbols
-                .push(symbol);
-        }
-        for method in methods {
-            let selector = *self
-                .modules
-                .borrow()
-                .get(&image.addr())
-                .unwrap()
-                .symbols
-                .get(method.name)
-                .ok_or(self.invalid())?;
-            let method = self.new_method(
-                method.entry.ok_or(self.invalid())?,
-                core::ptr::null_mut(),
-                image,
-            )?;
-            self.modules
-                .borrow_mut()
-                .get_mut(&image.addr())
-                .unwrap()
-                .methods
-                .push((selector, method));
-        }
-        let names = self
-            .modules
-            .borrow()
-            .get(&image.addr())
-            .unwrap()
-            .symbols
-            .clone();
-        let result = unsafe {
-            initialize(
-                &self.protocol,
-                image,
-                names.as_ptr(),
-                names.len(),
-                args.as_ptr(),
-                args.len(),
-            )
-        };
-        self.modules
-            .borrow_mut()
-            .get_mut(&image.addr())
-            .unwrap()
-            .result = result;
-        self.behavior(result)?;
-        if abi::is_fault(result) {
-            Err(result)
-        } else {
-            self.behavior(result)?;
-            Ok(result)
-        }
-    }
+
 }
 pub(crate) unsafe extern "C" fn message(
     root: Oop,
@@ -957,7 +803,7 @@ mod lifetime_tests {
         let fields = s.new_sequence(&[name]).unwrap();
         let empty = s.new_sequence(&[]).unwrap();
         let fault = s.make_fault(s.selector(b"invalidRequest"), fields);
-        let method = s.new_method(s.method_data(s.tables.borrow().lookup(s.object, s.selector(b"yourself")).unwrap()).unwrap().entry, s.root, s.root).unwrap();
+        let method = s.clone_method(s.tables.borrow().lookup(s.object, s.selector(b"yourself")).unwrap(), s.root).unwrap();
         let objects = [name, fields, fault, method];
         s.retire(&objects).unwrap();
         let check = || unsafe {

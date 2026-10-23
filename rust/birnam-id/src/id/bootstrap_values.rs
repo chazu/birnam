@@ -24,21 +24,23 @@ pub(super) struct FaultData {
 impl State {
     pub(super) fn method_data(&self, o: Oop) -> Result<MethodData, Oop> {
         let data = self.native_method_fields(o)?;
-        let entry = if data.owner == self.root {
-            OPERATIONS.get(data.entry_index).map(|(_, _, entry)| *entry)
-        } else {
-            self.modules
-                .borrow()
-                .get(&data.owner.addr())
-                .and_then(|module| module.declarations.get(data.entry_index))
-                .and_then(|entry| entry.entry)
-        }
-        .ok_or(self.invalid())?;
+        let entry = self.native_entry(data.owner, data.entry_index)?;
         Ok(MethodData {
             entry,
             context: data.context,
             owner: data.owner,
         })
+    }
+    fn native_entry(&self, owner: Oop, index: usize) -> Result<Method, Oop> {
+        if owner == self.root {
+            OPERATIONS.get(index).map(|(_, _, entry)| *entry)
+        } else {
+            self.modules.entry(owner, index)
+        }.ok_or(self.invalid())
+    }
+    pub(super) fn clone_method(&self, method: Oop, context: Oop) -> Result<Oop, Oop> {
+        let data = self.native_method_fields(method)?;
+        self.new_method_index(data.entry_index, context, data.owner)
     }
     fn native_method_fields(&self, o: Oop) -> Result<NativeMethod, Oop> {
         let (p, n) = self.payload(o)?;
@@ -165,19 +167,9 @@ impl State {
         };
         Ok(o)
     }
-    pub(super) fn new_method(&self, entry: Method, context: Oop, owner: Oop) -> Result<Oop, Oop> {
-        let entry_index = if owner == self.root {
-            OPERATIONS
-                .iter()
-                .position(|(_, _, f)| *f as usize == entry as usize)
-        } else {
-            self.modules.borrow().get(&owner.addr()).and_then(|m| {
-                m.declarations
-                    .iter()
-                    .position(|d| d.entry.is_some_and(|f| f as usize == entry as usize))
-            })
-        }
-        .ok_or(self.invalid())?;
+    pub(super) fn new_method_index(&self, entry_index: usize, context: Oop, owner: Oop) -> Result<Oop, Oop> {
+        self.native_entry(owner, entry_index)?;
+        self.behavior(context)?;
         let o = self.allocate(self.method, size_of::<NativeMethod>())?;
         unsafe {
             o.cast::<NativeMethod>().write(NativeMethod {
@@ -227,6 +219,7 @@ impl State {
             (self.fault, b"faultReferences"),
             (self.sequence, b"sequenceReferences"),
             (self.module, b"noReferences"),
+            (self.modules.registry_behavior, b"moduleReferences"),
         ] {
             let vt = self.tables.borrow_mut().create(
                 &mut self.heap.borrow_mut(),
@@ -274,17 +267,7 @@ impl State {
                 }
                 Ok(out)
             }
-            Action::ModuleReferences => {
-                let modules = self.modules.borrow();
-                let module = modules.get(&o.addr()).ok_or(self.invalid())?;
-                let mut out = module.literals.clone();
-                out.extend(&module.symbols);
-                for (name, method) in &module.methods {
-                    out.extend([*name, *method]);
-                }
-                out.push(module.result);
-                Ok(out)
-            }
+            Action::ModuleReferences => self.modules.references(o).ok_or(self.invalid()),
             _ => Err(self.invalid()),
         }
     }

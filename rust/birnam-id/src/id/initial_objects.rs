@@ -21,6 +21,9 @@ pub(crate) fn construct() -> Box<State> {
     let sequence = family();
     let module = family();
     let root_behavior = family();
+    let registry_behavior = family();
+    let registry = heap.allocate(0);
+    assert!(heap.set_vtable(registry, registry_behavior));
     let root = heap.allocate(size_of::<usize>());
     assert!(heap.set_vtable(root, root_behavior));
     let lookup = symbols.intern(&mut heap, symbol, b"lookup").unwrap();
@@ -58,13 +61,13 @@ pub(crate) fn construct() -> Box<State> {
         module,
         lookup,
         dnu,
-        modules: RefCell::new(AddressMap::default()),
+        modules: super::native_modules::NativeModules::new(registry, registry_behavior),
         names: RefCell::new(std::collections::HashMap::new()),
         detached: RefCell::new(AddressMap::default()),
         active: RefCell::new(Vec::new()),
         permanent: RefCell::new(vec![
             root, meta, object, symbol, name, size, none, method, fault, sequence, module, lookup,
-            dnu,
+            dnu, registry,
         ]),
         default_lookup: Cell::new(nil),
         invalid_fault: Cell::new(nil),

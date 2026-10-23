@@ -41,3 +41,25 @@ Name interning -2.6%, fresh Name production -4.0%, collection -1.0%. These short
 microprobes show no broad regression; they do not measure the changed single-field
 write or explicit-invocation path, and are not a Logue result. Raw trials are in
 [the evidence](../measurements/oop-argument-protocol-20261023.json).
+
+## Piece 2: native module ownership and live construction
+
+Native image records are private to `native_modules.rs`. Generic Id root listing
+no longer reads their fields. A rooted loader object and its registered reference
+owner report the resident images' contents through the same GC protocol as other
+owners. Images still remain resident, including after partial publication.
+
+After bootstrap, literal Names are constructed through current `nameWithBytes`
+lookup and native Methods through the module's current `newMethodAt:` method.
+The independent fixture replaces both constructors, collects inside each one,
+forwards to the captured originals and checks that all five Names and the Method
+from a partially failing module use those replacements. The published Method
+remains callable after collection. The complete slice gate and 17 unit tests pass.
+
+Regression inspection removed the scan of all code declarations when cloning a
+Method or importing a method whose declaration index is already known. The index
+is checked directly. No pointer is inferred from arbitrary payload bytes. Paired
+CPU medians against piece 1: allocation/rooting -1.8%, existing-name interning
+0.0%, fresh-name production -0.1%, collection +1.3%. No clear broad regression;
+startup factory costs are not included in these timed workloads. See
+[raw trials and checks](../measurements/oop-module-owners-20261023.json).
