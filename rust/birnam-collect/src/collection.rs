@@ -24,6 +24,7 @@ impl Walk {
         self.indices.get(&value.addr()).is_some_and(|&i| self.marked[i] != 0)
     }
     fn emit(&mut self, v: Oop) -> Result<(), ()> {
+        let v=abi::object_reference(v);
         if v.is_null() || abi::as_size(v).is_some() {
             return Ok(());
         }
@@ -62,7 +63,7 @@ pub(super) unsafe extern "C" fn allocation(
 ) -> Oop {
     let s = match unsafe { memory(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     if r != s.receiver {
         return inventory_failure(s);
@@ -90,7 +91,7 @@ pub(super) unsafe extern "C" fn allocation(
 pub(super) unsafe extern "C" fn visit(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { memory(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     if r != s.receiver || s.phase.get() != Phase::Marking {
         return walk_failure(s);
@@ -118,7 +119,7 @@ pub(super) unsafe extern "C" fn core_edge(
 ) -> Oop {
     let s = match unsafe { memory(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     if r != s.core_visitor || s.phase.get() != Phase::Marking {
         return core_failure(s);
@@ -287,7 +288,7 @@ unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {
     }
 }
 pub(super) unsafe extern "C" fn collect(_id: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
-    (||unsafe{let s=memory(c)?;if n!=0{return Err(s.invalid());}run(s,&[])})().unwrap_or_else(|e|e)
+    (||unsafe{let s=memory(c)?;if n!=0{return Err(s.invalid());}run(s,&[])})().unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe fn run(s: &Memory, native: &[usize]) -> Result<Oop,Oop> {
     match s.phase.get() {

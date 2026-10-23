@@ -15,16 +15,13 @@ pub(crate) struct Allocation {
     pub(crate) base: NonNull<u8>,
     total_size: usize,
     // Preserve the existing identity bound and requested-size geometry. Low
-    // two bits preserve the canonical reference; GC state belongs to its owner.
+    // two bits are unused; GC state belongs to its owner.
     pub(crate) geometry: u64,
 }
 
 impl Allocation {
     pub(crate) fn object(&self) -> Oop {
-        self.payload()
-            .as_ptr()
-            .cast::<core::ffi::c_void>()
-            .map_addr(|p| p | (self.geometry as usize & 3))
+        self.payload().as_ptr().cast()
     }
     pub(crate) fn identity(&self) -> u64 {
         self.geometry >> 5
@@ -110,16 +107,6 @@ impl ObjectMemory {
             .iter()
             .map(|(address, allocation)| (*address, allocation))
     }
-    // Remember the actual reference chosen by the owner, without interpreting
-    // its payload or giving the allocation a language type.
-    pub(crate) fn set_reference(&mut self, reference: Oop) {
-        assert!(crate::abi::as_size(reference).is_none());
-        let record = self
-            .allocations
-            .get_mut(&crate::abi::heap_address(reference))
-            .expect("owned reference");
-        record.geometry = (record.geometry & !3) | (reference.addr() as u64 & 3);
-    }
     pub(crate) fn allocation_epoch(&self) -> u64 {
         self.next_identity
     }
@@ -192,18 +179,16 @@ impl ObjectMemory {
 mod tests {
     use super::*;
     #[test]
-    fn reference_encoding_does_not_change_extent_identity_or_record_size() {
+    fn allocation_geometry_preserves_extent_identity_and_record_size() {
         assert_eq!(size_of::<Allocation>(), 24);
         let mut h = ObjectMemory::new();
         for n in 0..128 {
             let o = h.allocate(n);
             let id = h.get(o.addr()).unwrap().identity();
-            let reference = crate::abi::fault_reference(o);
-            h.set_reference(reference);
             let a = h.get(o.addr()).unwrap();
             assert_eq!(a.requested_size(), n);
             assert_eq!(a.identity(), id);
-            assert_eq!(a.object(), reference);
+            assert_eq!(a.object(), o);
         }
     }
 }

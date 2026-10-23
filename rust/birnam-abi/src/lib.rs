@@ -13,6 +13,11 @@ pub fn as_size(value: Oop) -> Option<usize> {
 pub fn is_fault(value: Oop) -> bool {
     value.addr() & 3 == 2
 }
+/// Remove a native return's failure marker when handling its object as data.
+/// Immediate size Oops are unchanged.
+pub fn object_reference(value: Oop) -> Oop {
+    if is_fault(value) { heap_pointer(value) } else { value }
+}
 pub fn heap_address(value: Oop) -> usize {
     value.addr() & !2
 }

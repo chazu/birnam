@@ -43,6 +43,10 @@ use either term for the whole message send without saying so.
 - **Context:** the object supplied to a method implementation for its own state.
 - **Code owner:** the object that keeps the selected executable code and associated
   resources alive while they are needed.
+- **Failure return / caught error:** a native failure return marks an object
+  reference. Catching it yields a normal reference to that object, which can be
+  stored or returned as data. Rethrowing marks the return again. The marker is
+  not an allocation type or an intrinsic property of the error object.
 - **Name:** an object containing immutable bytes to be interned. Names have variable
   length. A benchmark's 32- or 64-byte name is an input size, not a representation
   limit.

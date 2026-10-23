@@ -29,6 +29,7 @@ pub(crate) struct State {
     pub reference_owners: RefCell<Vec<(Oop, Oop)>>,
     pub meta: Oop,
     pub object: Oop,
+    pub prototype: Oop,
     pub symbol: Oop,
     pub name: Oop,
     pub size: Oop,
@@ -82,7 +83,7 @@ impl Drop for Scope<'_> {
         frames.truncate(self.start);
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Action {
     Lookup,
     ApplyNative,
@@ -118,6 +119,18 @@ pub(crate) enum Action {
     Detach,
     Release,
     CoreObject,
+    CorePrototype,
+    SizeBehavior,
+    SymbolBehavior,
+    AllocationAt,
+    Representation,
+    Representations,
+    Bind,
+    UsesDefaultLookup,
+    NativeBindingsMatch,
+    NativeBindingSemantics,
+    DefaultAllocation,
+    SymbolHash,
     CoreName,
     ModuleBehavior,
     NewNativeMethod,
@@ -157,9 +170,9 @@ macro_rules! core_primitives {
             use super::*;
             $(pub(super) unsafe extern "C" fn $action(root:Oop,context:Oop,r:Oop,a:*const Oop,n:usize)->Oop {
                 let s=unsafe{&*root.cast::<*const State>().read()};
-                if context!=root{return s.invalid()}
-                let Some(a)=(unsafe{abi::borrowed_slice(a,n)})else{return s.invalid()};
-                unsafe{s.perform(Action::$action,r,a)}.unwrap_or_else(|e|e)
+                if context!=root{return abi::fault_reference(s.invalid())}
+                let Some(a)=(unsafe{abi::borrowed_slice(a,n)})else{return abi::fault_reference(s.invalid())};
+                unsafe{s.perform(Action::$action,r,a)}.unwrap_or_else(abi::fault_reference)
             })*
         }
         pub(super) const OPERATIONS:&[(&[u8],Action,Method)]=&[$(($name,Action::$action,primitive::$action)),*];
@@ -194,6 +207,18 @@ core_primitives![
     (b"detachAllocation:", Detach),
     (b"releaseDetachedAllocation:", Release),
     (b"objectBehavior", CoreObject),
+    (b"objectPrototype", CorePrototype),
+    (b"sizeBehavior", SizeBehavior),
+    (b"symbolBehavior", SymbolBehavior),
+    (b"allocationAt:", AllocationAt),
+    (b"tryRepresentationIdentityOf:behavior:bytes:", Representation),
+    (b"representationsMatch", Representations),
+    (b"bind:to:", Bind),
+    (b"usesDefaultLookup:", UsesDefaultLookup),
+    (b"nativeBindingsMatch:", NativeBindingsMatch),
+    (b"nativeBindingQuerySemantics:for:", NativeBindingSemantics),
+    (b"usesDefaultAllocation", DefaultAllocation),
+    (b"nameHash", SymbolHash),
     (b"nameBehavior", CoreName),
     (b"moduleBehavior", ModuleBehavior),
     (b"newMethodAt:", NewNativeMethod),
@@ -265,21 +290,13 @@ impl State {
     // Allocation facts only. Payload interpretation belongs to the selected
     // owner implementation, never to the allocator or generic dispatcher.
     pub(super) fn payload(&self, o: Oop) -> Result<(*mut u8, usize), Oop> {
-        let check = |a: &Allocation| {
-            if a.object() != o {
-                return Err(self.invalid());
-            }
-            Ok((a.payload().as_ptr(), a.requested_size()))
-        };
         if let Some(a) = self.heap.borrow().get(o.addr()) {
-            return check(a);
+            return Ok((a.payload().as_ptr(), a.requested_size()));
         }
-        self.detached
-            .borrow()
-            .values()
-            .find(|a| a.object() == o)
-            .map(check)
-            .unwrap_or(Err(self.invalid()))
+        self.detached.borrow().values()
+            .find(|a| a.payload().as_ptr().addr() == abi::heap_address(o))
+            .map(|a| (a.payload().as_ptr(), a.requested_size()))
+            .ok_or(self.invalid())
     }
     pub fn behavior(&self, o: Oop) -> Result<Oop, Oop> {
         if o.is_null() {
@@ -291,16 +308,26 @@ impl State {
         self.heap
             .borrow()
             .get(o.addr())
-            .filter(|a| a.object() == o)
             .map(|_| unsafe { ObjectMemory::vtable_of_valid_object(o) })
             .or_else(|| {
                 self.detached
                     .borrow()
                     .values()
-                    .find(|a| a.object() == o)
+                    .find(|a| a.payload().as_ptr().addr() == abi::heap_address(o))
                     .map(|_| unsafe { ObjectMemory::vtable_of_valid_object(o) })
             })
             .ok_or(self.invalid())
+    }
+    pub(super) fn representation_identity(&self,value:Oop,behavior:Oop,bytes:usize)->Option<usize>{
+        let value=abi::object_reference(value);
+        let heap=self.heap.borrow();let record=heap.get(value.addr())?;
+        if record.object()!=value || record.requested_size()!=bytes { return None; }
+        if unsafe{ObjectMemory::vtable_of_valid_object(value)}!=behavior { return None; }
+        Some(record.identity() as usize)
+    }
+    pub(super) fn uses_default_lookup(&self,value:Oop)->Result<bool,Oop>{
+        let behavior=self.behavior(value)?;let meta=self.behavior(behavior)?;
+        Ok(self.tables.borrow().has_default_root_lookup(meta,self.lookup,self.default_lookup.get()))
     }
     pub fn scope<'a>(&'a self, r: Oop, selector: Oop, args: &'a [Oop]) -> Scope<'a> {
         let mut frames = self.active.borrow_mut();
@@ -395,6 +422,7 @@ impl State {
                 Action::At | Action::Put | Action::SequenceSize
                 | Action::ApplyArguments | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
+                Action::SymbolHash => self.symbol,
                 Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
@@ -510,8 +538,8 @@ impl State {
                     ObjectMemory::allocation_total_size(bytes).and_then(abi::size).unwrap_or(nil)
                 } else { nil })
             }
-            Action::MetaBehavior => Ok(self.meta),
-            Action::MethodBehavior => Ok(self.method),
+            Action::MetaBehavior => { if !a.is_empty() { return Err(invalid); } Ok(self.meta) },
+            Action::MethodBehavior => { if !a.is_empty() { return Err(invalid); } Ok(self.method) },
             Action::ExistingSymbol => {
                 if !a.is_empty() { return Err(invalid); }
                 let (p,n)=self.name_data(r)?;
@@ -604,9 +632,75 @@ impl State {
             Action::BindingEpoch => {
                 abi::size(self.tables.borrow().binding_epoch() as usize).ok_or(invalid)
             }
-            Action::CoreObject => Ok(self.object),
-            Action::CoreName => Ok(self.name),
-            Action::ModuleBehavior => Ok(self.module),
+            Action::CoreObject => { if !a.is_empty() { return Err(invalid); } Ok(self.object) },
+            Action::CorePrototype => { if !a.is_empty() { return Err(invalid); } Ok(self.prototype) },
+            Action::SizeBehavior => { if !a.is_empty() { return Err(invalid); } Ok(self.size) },
+            Action::SymbolBehavior => { if !a.is_empty() { return Err(invalid); } Ok(self.symbol) },
+            Action::AllocationAt => {
+                let address=abi::as_size(one()?).ok_or(invalid)?;
+                Ok(self.heap.borrow().get(address).filter(|record|record.object().addr()==(address & !2))
+                    .map_or(nil,|record|record.object()))
+            }
+            Action::Representation => {
+                let [value,behavior,bytes]=a else { return Err(invalid); };
+                let bytes=abi::as_size(*bytes).ok_or(invalid)?;
+                if !self.representation_queries_current(r) { return Ok(nil); }
+                abi::size(self.representation_identity(*value,*behavior,bytes).unwrap_or(0)).ok_or(invalid)
+            }
+            Action::Representations => {
+                let [behavior,bytes,values @ ..]=a else { return Err(invalid); };
+                let bytes=abi::as_size(*bytes).ok_or(invalid)?;
+                if !(2..=32).contains(&values.len()) { return Err(invalid); }
+                let current=self.tables.borrow().lookup(self.behavior(r)?,self.selector(b"representationsMatch"));
+                if !self.representation_queries_current(r) || !current.is_some_and(|m|self.method_is_builtin(m,Action::Representations)) { return Ok(nil); }
+                Ok(abi::size(usize::from(values.iter().all(|&v|self.representation_identity(v,*behavior,bytes).is_some()))).unwrap())
+            }
+            Action::Bind => {
+                let (selector,receiver)=pair()?;
+                Ok(unsafe{id_dispatch::bind(self,receiver,selector)}?.unwrap_or(nil))
+            }
+            Action::UsesDefaultLookup => Ok(abi::size(usize::from(self.uses_default_lookup(one()?)?)).unwrap()),
+            Action::NativeBindingsMatch => {
+                let current=self.tables.borrow().lookup(self.behavior(self.root)?,self.selector(b"nativeBindingsMatch:"));
+                if !current.is_some_and(|m|self.method_is_builtin(m,Action::NativeBindingsMatch)) || a.len()%3!=0 {
+                    return Ok(abi::size(0).unwrap());
+                }
+                for row in a.chunks_exact(3) {
+                    if !self.uses_default_lookup(row[0])? { return Ok(abi::size(0).unwrap()); }
+                    let actual=self.tables.borrow().lookup(self.behavior(row[0])?,row[1]);
+                    if !actual.is_some_and(|m|self.same_native_method(m,row[2])) { return Ok(abi::size(0).unwrap()); }
+                }
+                Ok(abi::size(1).unwrap())
+            }
+            Action::NativeBindingSemantics => {
+                let (method,selector)=pair()?;
+                let expected=[(b"usesDefaultLookup:".as_slice(),Action::UsesDefaultLookup),
+                    (b"bind:to:",Action::Bind),(b"nativeBindingsMatch:",Action::NativeBindingsMatch)]
+                    .into_iter().find(|(name,_)|self.selector(name)==selector).map(|(_,action)|action);
+                Ok(abi::size(usize::from(expected.is_some_and(|action|self.method_is_builtin(method,action)))).unwrap())
+            }
+            Action::DefaultAllocation => {
+                if !a.is_empty() { return Err(invalid); }
+                if !self.uses_default_lookup(self.root)? { return Ok(abi::size(0).unwrap()); }
+                for (name,action) in [(b"usesDefaultAllocation".as_slice(),Action::DefaultAllocation),
+                    (b"allocate:bytes:",Action::AllocateRaw),(b"allocationSizeOf:",Action::Extent),
+                    (b"allocationChargeFor:",Action::AllocationCharge),(b"behaviorOf:",Action::Behavior),
+                    (b"identityOf:",Action::Identity),(b"tryRepresentationIdentityOf:behavior:bytes:",Action::Representation),
+                    (b"representationsMatch",Action::Representations)] {
+                    let method=self.tables.borrow().lookup(self.behavior(self.root)?,self.selector(name));
+                    if !method.is_some_and(|m|self.method_is_builtin(m,action)) { return Ok(abi::size(0).unwrap()); }
+                }
+                Ok(abi::size(1).unwrap())
+            }
+            Action::SymbolHash => {
+                if !a.is_empty() { return Err(invalid); }
+                let symbols=self.symbols.borrow();
+                let bytes=symbols.bytes_of(r).ok_or(invalid)?;
+                let hash=bytes.iter().fold(2_166_136_261u32,|hash,&byte|(hash^u32::from(byte)).wrapping_mul(16_777_619));
+                Ok(abi::size(hash as usize).unwrap())
+            }
+            Action::CoreName => { if !a.is_empty() { return Err(invalid); } Ok(self.name) },
+            Action::ModuleBehavior => { if !a.is_empty() { return Err(invalid); } Ok(self.module) },
             Action::NewNativeMethod => {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
@@ -659,7 +753,7 @@ impl State {
             Action::MethodAt => self.modules.method(r, one()?).ok_or(invalid),
             Action::MakeFault => {
                 let (k, d) = pair()?;
-                Ok(self.make_fault(k, d))
+                Err(self.make_fault(k, d))
             }
             Action::FaultKind => Ok(self.fault_data(r)?.kind),
             Action::FaultDetail => Ok(self.fault_data(r)?.detail),
@@ -794,9 +888,9 @@ pub(crate) unsafe extern "C" fn message(
 ) -> Oop {
     let s = unsafe { &*root.cast::<*const State>().read() };
     let Some(args) = (unsafe { abi::borrowed_slice(args, n) }) else {
-        return s.invalid();
+        return abi::fault_reference(s.invalid());
     };
-    unsafe { id_dispatch::send(s, r, selector, args) }.unwrap_or_else(|e| e)
+    unsafe { id_dispatch::send(s, r, selector, args) }.unwrap_or_else(abi::fault_reference)
 }
 // One runtime on the calling thread. Siphon performs this single native handoff.
 static PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);

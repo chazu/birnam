@@ -34,6 +34,8 @@ pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Oop
     }
 }
 pub(crate) unsafe fn send(s: &State, r: Oop, selector: Oop, args: &[Oop]) -> Result<Oop, Oop> {
+    let r=crate::abi::object_reference(r);
+    let selector=crate::abi::object_reference(selector);
     s.check()?;
     let scope = s.scope(r, selector, args);
     if let Some(method) = unsafe { bind(s, r, selector) }? {

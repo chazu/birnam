@@ -31,6 +31,8 @@ pub(crate) fn construct() -> Box<State> {
     assert!(heap.set_vtable(registry, registry_behavior));
     let root = heap.allocate(size_of::<usize>());
     assert!(heap.set_vtable(root, root_behavior));
+    let prototype = heap.allocate(0);
+    assert!(heap.set_vtable(prototype, object));
     let lookup = symbols.intern(&mut heap, symbol, b"lookup").unwrap();
     let dnu = symbols
         .intern(&mut heap, symbol, b"doesNotUnderstand:")
@@ -57,6 +59,7 @@ pub(crate) fn construct() -> Box<State> {
         reference_owners: RefCell::new(Vec::new()),
         meta,
         object,
+        prototype,
         symbol,
         name,
         size,
@@ -73,7 +76,7 @@ pub(crate) fn construct() -> Box<State> {
         active: RefCell::new(Vec::new()),
         permanent: RefCell::new(vec![
             root, meta, object, symbol, name, size, none, method, fault, sequence, module, lookup,
-            dnu, registry, native_meta,
+            dnu, registry, native_meta, prototype,
         ]),
         default_lookup: Cell::new(nil),
         invalid_fault: Cell::new(nil),
@@ -86,6 +89,6 @@ pub(crate) fn construct() -> Box<State> {
     s.protocol.intern = s.selector(b"intern");
     s.protocol.load = s.selector(b"loadNative:");
     s.protocol.at = s.selector(b"at:");
-    s.protocol.invalid = s.invalid();
+    s.protocol.invalid = crate::abi::fault_reference(s.invalid());
     s
 }

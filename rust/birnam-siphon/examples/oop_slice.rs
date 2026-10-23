@@ -91,6 +91,7 @@ unsafe fn run() {
             b"visit:",
             b"registerRetirement:",
             b"globalLookup", b"setGlobalLookup:", b"globalLookupCalls",
+            b"caughtFailure", b"rethrow:", b"fault:detail:", b"allocationAt:",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
             b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
             b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
@@ -369,7 +370,7 @@ unsafe fn run() {
         assert_eq!(abi::as_size(send(actor, b"at:", &[abi::size(15).unwrap()]).unwrap()), Some(5));
         assert_eq!(abi::as_size(send(actor, b"at:", &[abi::size(16).unwrap()]).unwrap()), Some(1));
         println!("module construction follows current factories and survives GC between declarations: passed");
-        assert!(abi::is_fault(failure));
+        assert!(!abi::is_fault(failure), "caught errors are ordinary object references");
         assert!(!send(failure, b"faultKind", &[]).unwrap().is_null());
         assert_eq!(send(failure, b"detail", &[]).unwrap(), published);
         send(gc, b"collectPrecisely", &[]).unwrap();
@@ -686,6 +687,23 @@ unsafe fn run() {
             assert_eq!(abi::as_size(send(gc, b"precisePayloads", &[]).unwrap()), Some(1));
             println!("ALLOCATION_POLICY_OK");
         }
+
+        let caught = send(actor, b"caughtFailure", &[]).unwrap();
+        assert_eq!(caught, abi::object_reference(id.invalid));
+        assert!(!abi::is_fault(caught));
+        let detail = send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        let error = send(id.root, b"fault:detail:", &[sel(b"missingProbe"), detail]).unwrap_err();
+        let data = send(id.root, b"sequence", &[error]).unwrap();
+        let token = send(roots, b"retain:", &[data]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        let value = send(data, b"at:", &[abi::size(0).unwrap()]).unwrap();
+        assert_eq!(value, error);
+        assert_eq!(send(value, b"detail", &[]).unwrap(), detail);
+        assert_eq!(send(id.root, b"allocationAt:", &[abi::size(value.addr()).unwrap()]).unwrap(), value);
+        assert_eq!(send(actor, b"rethrow:", &[value]).unwrap_err(), value);
+        assert_eq!(send(id.root, b"identityOf:", &[value]).unwrap(), send(id.root, b"identityOf:", &[abi::fault_reference(value)]).unwrap());
+        send(roots, b"release:", &[token]).unwrap();
+        println!("caught failures are ordinary data, survive GC and rethrow with the same identity: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

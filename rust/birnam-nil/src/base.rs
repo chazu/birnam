@@ -49,7 +49,7 @@ unsafe extern "C" fn yes(_id: Oop, c: Oop, _r: Oop, _a: *const Oop, n: usize) ->
                 s.id.invalid
             }
         }
-        Err(e) => e,
+        Err(e) => abi::fault_reference(e),
     }
 }
 unsafe extern "C" fn no(_id: Oop, c: Oop, _r: Oop, _a: *const Oop, n: usize) -> Oop {
@@ -61,7 +61,7 @@ unsafe extern "C" fn no(_id: Oop, c: Oop, _r: Oop, _a: *const Oop, n: usize) -> 
                 s.id.invalid
             }
         }
-        Err(e) => e,
+        Err(e) => abi::fault_reference(e),
     }
 }
 unsafe extern "C" fn roots(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
@@ -78,7 +78,7 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -
         }
         Ok(ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn print(_id: Oop, c: Oop, _r: Oop, _a: *const Oop, n: usize) -> Oop {
     let raw = INSTANCE.load(Ordering::Acquire);
@@ -89,7 +89,7 @@ unsafe extern "C" fn print(_id: Oop, c: Oop, _r: Oop, _a: *const Oop, n: usize) 
     if n != 0 {
         return s.id.invalid;
     }
-    (|| unsafe { s.send(c, b"fromBytes:", &[s.text]) })().unwrap_or_else(|e| e)
+    (|| unsafe { s.send(c, b"fromBytes:", &[s.text]) })().unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn install(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
@@ -110,7 +110,7 @@ unsafe extern "C" fn install(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) 
         s.printing.set(true);
         Ok(ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 macro_rules! literals{($($n:literal),* $(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
@@ -250,7 +250,7 @@ unsafe extern "C" fn initialize(
         s.ready.set(true);
         Ok(ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {

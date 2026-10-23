@@ -111,7 +111,7 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
         }
         Ok(ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe fn receive(
     c: Oop,
@@ -153,7 +153,7 @@ unsafe fn receive(
                 let [value] = args else {
                     return Err(invalid());
                 };
-                let value = *value;
+                let value = abi::object_reference(*value);
                 if value.is_null() || abi::as_size(value).is_some() {
                     return Ok(ptr::null_mut());
                 }
@@ -178,10 +178,10 @@ unsafe fn receive(
     }
 }
 unsafe extern "C" fn allocation(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { receive(c, r, a, n, true) }.unwrap_or_else(|e| e)
+    unsafe { receive(c, r, a, n, true) }.unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn visit(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { receive(c, r, a, n, false) }.unwrap_or_else(|e| e)
+    unsafe { receive(c, r, a, n, false) }.unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn observe(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
@@ -258,7 +258,7 @@ unsafe extern "C" fn observe(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) 
         s.checked()?;
         Ok(result)
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 macro_rules! literals { ($($name:literal),* $(,)?) => {
     const NAMES: &[&[u8]] = &[$($name),*];
@@ -292,9 +292,9 @@ unsafe fn construct(id:Protocol,image:Oop,symbols:&[Oop],ns:Oop)->Result<Oop,Oop
         let sink_behavior=send(base,b"delegated",&[])?;
         let sink_token=send(roots,b"retain:",&[sink_behavior])?;
         let kind=send(id.invalid,b"faultKind",&[])?;
-        let invalid=send(id.root,b"fault:detail:",&[kind,abi::size(1).unwrap()]).err().ok_or(id.invalid)?;
+        let invalid=abi::fault_reference(send(id.root,b"fault:detail:",&[kind,abi::size(1).unwrap()]).err().ok_or(id.invalid)?);
         let error_token=send(roots,b"retain:",&[invalid])?;
-        let nested=send(id.root,b"fault:detail:",&[kind,abi::size(2).unwrap()]).err().ok_or(id.invalid)?;
+        let nested=abi::fault_reference(send(id.root,b"fault:detail:",&[kind,abi::size(2).unwrap()]).err().ok_or(id.invalid)?);
         let nested_token=send(roots,b"retain:",&[nested])?;
         let s=Box::into_raw(Box::new(State {id,names,ready:Cell::new(false),invalid,nested,ns,roots,gc,receiver,sink_behavior,
             thread:std::thread::current().id(),active:Cell::new(false),sink:Cell::new(ptr::null_mut()),
@@ -329,7 +329,7 @@ unsafe extern "C" fn initialize(p:*const Protocol,image:Oop,l:*const Oop,n:usize
     if INITIALIZING.swap(true,Ordering::AcqRel){return invalid();}
     let answer=unsafe{construct(id,image,symbols,*ns)};
     INITIALIZING.store(false,Ordering::Release);
-    answer.unwrap_or_else(|e|e)
+    answer.unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2:Module=Module{version:2,byte_size:size_of::<Module>() as u32,

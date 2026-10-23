@@ -5,6 +5,10 @@ This is a correctness/design checkpoint, not a performance improvement or a
 completed language migration. [Evidence](../measurements/oop-payload-opacity-20261023.json)
 contains raw trials, source/binary hashes and qualification receipts.
 
+The later [invariant migration](oop-invariant-migration-20261023.md) also removes
+per-allocation failure-reference bits: a failure marker now belongs only to the
+native return convention. Earlier measurements below remain historical evidence.
+
 ## Change
 
 Removed `Storage`, its allocation-record bits, constructor tagging and payload-kind

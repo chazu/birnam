@@ -89,7 +89,7 @@ unsafe fn state<'a>(c: Oop) -> Result<&'a Registry, Oop> {
 unsafe extern "C" fn retain(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     let Some([v]) = (unsafe { abi::borrowed_slice(a, n) }) else {
         return s.id.invalid;
@@ -103,7 +103,7 @@ unsafe extern "C" fn retain(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -
 unsafe extern "C" fn release(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     let Some([t]) = (unsafe { abi::borrowed_slice(a, n) }) else {
         return s.id.invalid;
@@ -116,7 +116,7 @@ unsafe extern "C" fn release(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) 
 unsafe extern "C" fn register(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     let Some([o]) = (unsafe { abi::borrowed_slice(a, n) }) else {
         return s.id.invalid;
@@ -127,7 +127,7 @@ unsafe extern "C" fn register(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
 unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     let Some([visitor]) = (unsafe { abi::borrowed_slice(a, n) }) else {
         return s.id.invalid;
@@ -157,12 +157,12 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
             Ok(core::ptr::null_mut())
         })()
     })
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn references(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     let Some([object, visitor]) = (unsafe { abi::borrowed_slice(a, n) }) else {
         return s.id.invalid;
@@ -239,7 +239,7 @@ unsafe extern "C" fn initialize(
             Ok(receiver)
         })()
     })
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {

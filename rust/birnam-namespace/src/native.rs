@@ -111,9 +111,9 @@ macro_rules! operations { ($(($name:literal, $op:ident)),* $(,)?) => {
     #[allow(non_snake_case)] mod entries {
         use super::*;
         $(pub unsafe extern "C" fn $op(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-            let s = match unsafe { state(c) } { Ok(s) => s, Err(e) => return e };
+            let s = match unsafe { state(c) } { Ok(s) => s, Err(e) => return abi::fault_reference(e) };
             let Some(a) = (unsafe { abi::borrowed_slice(a,n) }) else { return s.invalid(); };
-            unsafe { s.perform(Op::$op,r,a) }.unwrap_or_else(|e|e)
+            unsafe { s.perform(Op::$op,r,a) }.unwrap_or_else(abi::fault_reference)
         })*
     }
     const METHODS: &[MethodSpec] = &[$(MethodSpec { name: index($name), entry: Some(entries::$op) }),*];
@@ -180,7 +180,7 @@ unsafe extern "C" fn initialize(p: *const Protocol, image: Oop, l: *const Oop, n
         })();
         s.send(*registry,b"release:",&[token])?;
         result
-    })().unwrap_or_else(|e|e)
+    })().unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module { version: 2, byte_size:size_of::<Module>() as u32,

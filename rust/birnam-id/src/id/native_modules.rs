@@ -161,10 +161,10 @@ impl State {
             .borrow_mut()
             .get_mut(&image.addr())
             .unwrap()
-            .result = result;
+            .result = abi::object_reference(result);
         self.behavior(result)?;
         if abi::is_fault(result) {
-            Err(result)
+            Err(abi::object_reference(result))
         } else {
             Ok(result)
         }

@@ -60,7 +60,7 @@ macro_rules! wrappers{($(($entry:ident,$raw:literal)),*$(,)?)=>{$(
     pub(super) unsafe extern "C" fn $entry(_id:Oop,c:Oop,r:Oop,a:*const Oop,n:usize)->Oop{
         (||unsafe{let s=memory(c)?;let a=abi::borrowed_slice(a,n).ok_or(s.invalid())?;
             s.construct(||s.send(r,$raw,a))
-        })().unwrap_or_else(|e|e)
+        })().unwrap_or_else(abi::fault_reference)
     }
 )*};}
 wrappers![
@@ -78,7 +78,7 @@ pub(super) unsafe extern "C" fn allocate(_id: Oop, c: Oop, r: Oop, a: *const Oop
         abi::as_size(*bytes).ok_or(s.invalid())?;
         s.construct(|| s.send(s.id.root, b"allocate:bytes:", &[r, *bytes]))
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn delegated(
     _id: Oop,
@@ -94,7 +94,7 @@ pub(super) unsafe extern "C" fn delegated(
         }
         s.construct(|| s.send(s.id.root, b"newBehaviorWithParent:", &[r]))
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn intern(_id: Oop, c: Oop, r: Oop, _a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
@@ -108,7 +108,7 @@ pub(super) unsafe extern "C" fn intern(_id: Oop, c: Oop, r: Oop, _a: *const Oop,
         }
         s.construct(|| s.send(r, b"rawIntern", &[]))
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn prepare(
     _id: Oop,
@@ -125,7 +125,7 @@ pub(super) unsafe extern "C" fn prepare(
         s.prepare()?;
         Ok(core::ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn activate(
     _id: Oop,
@@ -176,7 +176,7 @@ pub(super) unsafe extern "C" fn activate(
         s.charged.set(answer?);
         Ok(core::ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn budget(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
@@ -191,7 +191,7 @@ pub(super) unsafe extern "C" fn budget(_id: Oop, c: Oop, _r: Oop, a: *const Oop,
             .set(abi::as_size(*v).filter(|v| *v != 0).ok_or(s.invalid())?);
         Ok(core::ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe fn setting(c: Oop, a: *const Oop, n: usize, precise: bool) -> Result<Oop, Oop> {
     let s = unsafe { memory(c) }?;
@@ -213,7 +213,7 @@ pub(super) unsafe extern "C" fn automatic(
     a: *const Oop,
     n: usize,
 ) -> Oop {
-    unsafe { setting(c, a, n, false) }.unwrap_or_else(|e| e)
+    unsafe { setting(c, a, n, false) }.unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn precise_set(
     _id: Oop,
@@ -222,7 +222,7 @@ pub(super) unsafe extern "C" fn precise_set(
     a: *const Oop,
     n: usize,
 ) -> Oop {
-    unsafe { setting(c, a, n, true) }.unwrap_or_else(|e| e)
+    unsafe { setting(c, a, n, true) }.unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn precise(
     _id: Oop,
@@ -239,7 +239,7 @@ pub(super) unsafe extern "C" fn precise(
                 s.invalid()
             }
         }
-        Err(e) => e,
+        Err(e) => abi::fault_reference(e),
     }
 }
 pub(super) unsafe extern "C" fn charged(
@@ -257,7 +257,7 @@ pub(super) unsafe extern "C" fn charged(
                 s.invalid()
             }
         }
-        Err(e) => e,
+        Err(e) => abi::fault_reference(e),
     }
 }
 pub(super) unsafe extern "C" fn external(
@@ -281,7 +281,7 @@ pub(super) unsafe extern "C" fn external(
         ));
         Ok(core::ptr::null_mut())
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) unsafe extern "C" fn collect(
     _id: Oop,
@@ -300,5 +300,5 @@ pub(super) unsafe extern "C" fn collect(
         }
         native_stack::with_roots(s.invalid(), |roots| collection::run(s, roots))
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }

@@ -27,5 +27,8 @@ _Static_assert(sizeof(IdModule)==48,"independent module layout");
 static inline Oop id_size(size_t n){return (Oop)((n<<1)|1);}
 static inline size_t id_unbox(Oop o){return (size_t)o>>1;}
 static inline int id_fault(Oop o){return ((uintptr_t)o&3)==2;}
+/* The marker belongs to a failing return, not to the allocated object. */
+static inline Oop id_error_value(Oop result){return id_fault(result)?(Oop)((uintptr_t)result&~(uintptr_t)2):result;}
+static inline Oop id_failure(Oop value){return (Oop)((uintptr_t)value|2);}
 #define LIT(s) {(const unsigned char *)(s),sizeof(s)-1}
 #endif

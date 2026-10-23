@@ -22,6 +22,30 @@ pub(super) struct FaultData {
     pub detail: Oop,
 }
 impl State {
+    fn native_application(&self,m:Oop)->bool{
+        if self.uses_default_lookup(m)!=Ok(true) { return false; }
+        let Ok(behavior)=self.behavior(m) else { return false; };
+        self.tables.borrow().lookup(behavior,self.selector(b"apply"))==Some(self.native_apply.get())
+    }
+    pub(super) fn method_is_builtin(&self,m:Oop,action:Action)->bool{
+        if !self.native_application(m) { return false; }
+        let Ok(fields)=self.native_method_fields(m) else { return false; };
+        fields.context==self.root && fields.owner==self.root
+            && OPERATIONS.get(fields.entry_index).is_some_and(|(_,found,_)|*found==action)
+    }
+    pub(super) fn same_native_method(&self,a:Oop,b:Oop)->bool{
+        if !self.native_application(a) || !self.native_application(b) { return false; }
+        let (Ok(a),Ok(b))=(self.method_data(a),self.method_data(b)) else { return false; };
+        a.entry as usize==b.entry as usize && a.context==b.context && a.owner==b.owner
+    }
+    pub(super) fn representation_queries_current(&self, receiver: Oop) -> bool {
+        if receiver != self.root || self.uses_default_lookup(receiver) != Ok(true) { return false; }
+        let Ok(behavior)=self.behavior(receiver) else { return false; };
+        [(b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(),Action::Representation),
+            (b"behaviorOf:",Action::Behavior),(b"allocationSizeOf:",Action::Extent),(b"identityOf:",Action::Identity)]
+            .into_iter().all(|(name,action)|self.tables.borrow().lookup(behavior,self.selector(name))
+                .is_some_and(|m|self.method_is_builtin(m,action)))
+    }
     pub(super) fn method_data(&self, o: Oop) -> Result<MethodData, Oop> {
         let data = self.native_method_fields(o)?;
         let entry = self.native_entry(data.owner, data.entry_index)?;
@@ -171,6 +195,8 @@ impl State {
         Ok(o)
     }
     pub(super) fn new_method_index(&self, entry_index: usize, context: Oop, owner: Oop) -> Result<Oop, Oop> {
+        let context=abi::object_reference(context);
+        let owner=abi::object_reference(owner);
         self.native_entry(owner, entry_index)?;
         self.behavior(context)?;
         let o = self.allocate(self.method, size_of::<NativeMethod>())?;
@@ -187,10 +213,8 @@ impl State {
         let o = self
             .allocate(self.fault, size_of::<FaultData>())
             .expect("failure object allocation");
-        unsafe { o.cast::<FaultData>().write(FaultData { kind, detail }) };
-        let reference = abi::fault_reference(o);
-        self.heap.borrow_mut().set_reference(reference);
-        reference
+        unsafe { o.cast::<FaultData>().write(FaultData { kind:abi::object_reference(kind), detail:abi::object_reference(detail) }) };
+        o
     }
     pub(super) unsafe fn apply_native(
         &self,
@@ -205,7 +229,7 @@ impl State {
             unsafe { (method.entry)(self.root, method.context, r, args.as_ptr(), args.len()) };
         self.behavior(result)?;
         if abi::is_fault(result) {
-            Err(result)
+            Err(abi::object_reference(result))
         } else {
             Ok(result)
         }
@@ -279,6 +303,42 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn object_valued_fact_queries_decline_after_live_replacement() {
+        let s = super::super::initial_objects::construct();
+        let id = s.protocol;
+        let size = abi::size(8).unwrap();
+        let value = s.allocate(s.object, 8).unwrap();
+        let query = s.selector(b"tryRepresentationIdentityOf:behavior:bytes:");
+        let identity = s.selector(b"identityOf:");
+        let matches = s.selector(b"nativeBindingsMatch:");
+        let root_type = s.behavior(s.root).unwrap();
+        let original = s.tables.borrow().lookup(root_type, identity).unwrap();
+        let witness = s.clone_method(original, s.root).unwrap();
+        assert!(abi::as_size(unsafe { id.send(s.root, query, &[value, s.object, size]) }.unwrap()).unwrap() > 0);
+        assert_eq!(unsafe { id.send(s.root, matches, &[s.root, identity, witness]) }.unwrap(), abi::size(1).unwrap());
+        let replacement = s.tables.borrow().lookup(s.object, s.selector(b"yourself")).unwrap();
+        s.tables.borrow_mut().add_method(root_type, identity, replacement);
+        assert!(unsafe { id.send(s.root, query, &[value, s.object, size]) }.unwrap().is_null());
+        assert_eq!(unsafe { id.send(s.root, matches, &[s.root, identity, witness]) }.unwrap(), abi::size(0).unwrap());
+        s.tables.borrow_mut().add_method(root_type, identity, original);
+        let private = s.tables.borrow_mut().create(&mut s.heap.borrow_mut(), s.method, s.native_meta);
+        s.tables.borrow_mut().add_method(private, s.selector(b"apply"), replacement);
+        s.heap.borrow_mut().set_vtable(witness, private);
+        s.tables.borrow_mut().note_mutation();
+        assert_eq!(unsafe { id.send(s.root, matches, &[s.root, identity, witness]) }.unwrap(), abi::size(0).unwrap());
+    }
+    #[test]
+    fn failure_can_be_caught_and_stored_as_data() {
+        let s = super::super::initial_objects::construct();
+        let id = s.protocol;
+        let arguments = [s.selector(b"invalidRequest"), s.root];
+        let error = unsafe { id.send(s.root, s.selector(b"fault:detail:"), &arguments) }.unwrap_err();
+        assert!(!abi::is_fault(error), "caught errors are ordinary object references");
+        let sequence = unsafe { id.send(s.root, s.selector(b"sequence"), &[error]) }.unwrap();
+        assert_eq!(unsafe { id.send(sequence, s.selector(b"at:"), &[abi::size(0).unwrap()]) }.unwrap(), error);
+        assert_eq!(unsafe { id.send(s.root, s.selector(b"allocationAt:"), &[abi::size(error.addr()).unwrap()]) }.unwrap(), error);
+    }
     #[test]
     fn payload_meaning_can_be_supplied_after_allocation() {
         let s = super::super::initial_objects::construct();

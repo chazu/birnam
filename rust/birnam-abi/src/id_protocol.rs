@@ -1,4 +1,4 @@
-use crate::{Oop, is_fault};
+use crate::{Oop, is_fault, object_reference};
 use core::ffi::c_void;
 pub const VERSION: u32 = 2;
 pub type Method = unsafe extern "C" fn(Oop, Oop, Oop, *const Oop, usize) -> Oop;
@@ -19,8 +19,9 @@ pub struct Protocol {
     pub invalid: Oop,
 }
 impl Protocol {
-    /// No packet/envelope: failure objects are ordinary messageable Oops with
-    /// an intrinsic failure-reference tag, distinct from normal Error data.
+    /// A failing native return marks its object reference. Catching it removes
+    /// that marker: the error can be stored, inspected or returned as data.
+    /// Native entry points mark Err values again with `fault_reference`.
     /// # Safety
     /// Receiver, selector and every argument are live Oops from this runtime
     /// (including its valid immediates). The argument slice is readable and unchanged until
@@ -28,7 +29,7 @@ impl Protocol {
     /// callers protect other values they retain across subsequent sends.
     pub unsafe fn send(&self, r: Oop, s: Oop, a: &[Oop]) -> Result<Oop, Oop> {
         let v = unsafe { (self.message)(self.root, r, s, a.as_ptr(), a.len()) };
-        if is_fault(v) { Err(v) } else { Ok(v) }
+        if is_fault(v) { Err(object_reference(v)) } else { Ok(v) }
     }
     pub unsafe fn literal(&self, index: usize) -> Result<Oop, Oop> {
         unsafe { self.send(self.seeds, self.at, &[crate::size(index).unwrap()]) }

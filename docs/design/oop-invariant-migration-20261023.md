@@ -248,3 +248,35 @@ Final common-path CPU changes versus `eaed1bef`: -0.6% allocation/rooting, +2.0%
 existing-name interning, -0.3% fresh names. The initial fix's +7.2% existing-name
 result and final measurements are both retained in
 [the evidence](../measurements/oop-metacircular-lookup-20261023.json).
+
+## Piece 10: caught errors are data; reflective inputs are Oops
+
+A focused test exposed another consequence of treating failure as an intrinsic
+allocation property: catching an error and retrieving it from a container failed
+again, and `allocationAt:` could not return that allocated object as data.
+
+Failure marking now belongs to the native return convention. `Protocol::send`
+returns an ordinary error-object reference in `Err`; Rust native entry points
+mark it again when propagating failure. Independent C callers use `id_error_value`
+and `id_failure` for the same distinction. Allocation records contain no failure
+bits or `set_reference` operation. Normal and failing views resolve to the same
+object identity, and GC admits their ordinary object reference.
+
+Native checks now catch an error, store it, collect, read its detail and allocation
+identity, and rethrow the same object. Existing malformed-context, swallowed-error,
+partial-initialization, retirement and finalization checks continue to pass.
+Twenty-one Id and three Namespace unit tests pass.
+
+ObjectModel prerequisites now include the ordinary Object prototype, size/Symbol
+behavior queries, allocation-address/geometry queries, and object-valued binding
+facts. Batched representation checks take Oop arguments rather than an address
+byte packet. Binding comparisons take Method objects rather than native-entry
+structs. Representation shortcuts decline when the current supporting methods
+have been replaced; tests also cover a changed Method application protocol.
+Symbol name hashing is performed by its owning implementation.
+
+Regression inspection removed the canonical-reference validation made redundant
+by ordinary heap references. Catching/rethrowing needs no wrapper allocation.
+The failure-bit changes affect the error path; broader performance recovery
+remains deferred until the language migration is complete.
+[Reproduction and qualification receipts](../measurements/oop-error-data-20261023.json).

@@ -149,9 +149,9 @@ impl State {
 macro_rules! operations {($(($name:literal,$op:ident)),* $(,)?)=>{
     #[derive(Clone,Copy)]enum Op{$($op),*}
     #[allow(non_snake_case)]mod entries{use super::*;$(pub unsafe extern "C" fn $op(_id:Oop,c:Oop,r:Oop,a:*const Oop,n:usize)->Oop{
-        let s=match unsafe{state(c)}{Ok(s)=>s,Err(e)=>return e};
+        let s=match unsafe{state(c)}{Ok(s)=>s,Err(e) => return abi::fault_reference(e)};
         let Some(a)=(unsafe{abi::borrowed_slice(a,n)})else{return s.id.invalid;};
-        unsafe{s.perform(Op::$op,r,a)}.unwrap_or_else(|e|e)
+        unsafe{s.perform(Op::$op,r,a)}.unwrap_or_else(abi::fault_reference)
     })*}
     static METHODS:&[MethodSpec]=&[$(MethodSpec{name:index($name),entry:Some(entries::$op)}),*,
         MethodSpec{name:index(b"printBoolean"),entry:Some(print)}];
@@ -246,7 +246,7 @@ unsafe extern "C" fn print(_id: Oop, c: Oop, r: Oop, _a: *const Oop, n: usize) -
         };
         s.send(c, b"fromBytes:", &[text])
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -341,7 +341,7 @@ unsafe extern "C" fn initialize(
         }
         result
     })()
-    .unwrap_or_else(|e| e)
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {
