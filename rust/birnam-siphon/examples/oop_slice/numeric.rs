@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 2],
+    modules: [Oop; 3],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -296,6 +296,203 @@ pub(super) unsafe fn check(
         send(integer_type, b"addMethod", &[sel(b"+"), old_add]).unwrap();
         send(gc, b"collectPrecisely", &[]).unwrap();
         assert_eq!(int_value(min), i64::MIN);
+
+        let collection_parent = keep(send(base, b"delegated", &[]).unwrap());
+        send(
+            collection_parent,
+            b"addMethod",
+            &[sel(b"collectionProbe"), replacement],
+        )
+        .unwrap();
+        send(
+            namespace,
+            b"at:put:",
+            &[sel(b"CollectionVt"), collection_parent],
+        )
+        .unwrap();
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        let vector = id
+            .send(modules[2], id.load, &[args])
+            .expect("real Vector loaded");
+        assert_eq!(send(vector, b"collectionProbe", &[]).unwrap(), expected);
+        let vector_type = send(id.root, b"behaviorOf:", &[vector]).unwrap();
+        let node_type = send(namespace, b"at:", &[sel(b"VectorNode")]).unwrap();
+        let mut current = vector;
+        let mut current_token = send(roots, b"retain:", &[current]).unwrap();
+        let mut snapshots = Vec::new();
+        for i in 0..1070 {
+            let value = make_int(i);
+            let next = send(current, b"add:", &[value]).unwrap();
+            let token = send(roots, b"retain:", &[next]).unwrap();
+            send(roots, b"release:", &[current_token]).unwrap();
+            current = next;
+            current_token = token;
+            if [1, 31, 32, 33, 1024, 1056, 1057].contains(&(i + 1)) {
+                keep(current);
+                snapshots.push((i + 1, current));
+                send(gc, b"collectPrecisely", &[]).unwrap();
+            }
+        }
+        assert_eq!(int_value(send(current, b"size", &[]).unwrap()), 1070);
+        for i in [0, 31, 32, 33, 1023, 1024, 1055, 1056, 1069] {
+            assert_eq!(
+                int_value(send(current, b"atWord:", &[abi::size(i).unwrap()]).unwrap()),
+                i as i64
+            );
+        }
+        for (length, snapshot) in snapshots {
+            assert_eq!(
+                send(snapshot, b"sizeWord", &[]).unwrap(),
+                abi::size(length as usize).unwrap()
+            );
+            assert_eq!(
+                int_value(
+                    send(
+                        snapshot,
+                        b"atWord:",
+                        &[abi::size(length as usize - 1).unwrap()]
+                    )
+                    .unwrap()
+                ),
+                length - 1
+            );
+        }
+        assert_eq!(send(current, b"at:", &[minus]).unwrap(), nil);
+        assert_eq!(
+            send(current, b"atWord:", &[abi::size(1070).unwrap()]).unwrap(),
+            nil
+        );
+        // Each new tree allocation can collect, including nested sort work.
+        let vector_meta = send(id.root, b"behaviorOf:", &[vector_type]).unwrap();
+        let private_meta = send(vector_meta, b"delegated", &[]).unwrap();
+        let allocating = send(actor_type, b"lookup", &[sel(b"numericAllocate")]).unwrap();
+        send(private_meta, b"addMethod", &[sel(b"allocate"), allocating]).unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[vector_type, private_meta],
+        )
+        .unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[node_type, private_meta],
+        )
+        .unwrap();
+        let grown = keep(send(current, b"add:", &[minus]).unwrap());
+        assert_eq!(
+            int_value(send(grown, b"atWord:", &[abi::size(1070).unwrap()]).unwrap()),
+            -2
+        );
+        let two_b = make_int(2);
+        let mut small = vector;
+        for v in [two, one, two_b] {
+            small = keep(send(small, b"add:", &[v]).unwrap());
+        }
+        let copied = keep(send(small, b"copyFrom:to:", &[one, three]).unwrap());
+        assert_eq!(
+            send(copied, b"atWord:", &[abi::size(0).unwrap()]).unwrap(),
+            one
+        );
+        let reversed = keep(send(small, b"reversed", &[]).unwrap());
+        assert_eq!(
+            send(reversed, b"atWord:", &[abi::size(0).unwrap()]).unwrap(),
+            two_b
+        );
+        let concat = keep(send(small, b",", &[reversed]).unwrap());
+        assert_eq!(int_value(send(concat, b"size", &[]).unwrap()), 6);
+        assert_eq!(
+            int_value(send(small, b"indexOf:", &[make_int(2)]).unwrap()),
+            0
+        );
+        let sorter_type = send(base, b"delegated", &[]).unwrap();
+        let key = send(actor_type, b"lookup", &[sel(b"vectorKey")]).unwrap();
+        send(sorter_type, b"addMethod", &[sel(b"value:"), key]).unwrap();
+        let sorter = keep(send(sorter_type, b"allocate", &[abi::size(0).unwrap()]).unwrap());
+        send(
+            actor,
+            b"at:put:",
+            &[abi::size(36).unwrap(), abi::size(0).unwrap()],
+        )
+        .unwrap();
+        send(actor, b"at:put:", &[abi::size(37).unwrap(), small]).unwrap();
+        for selector in [b"sortBy:".as_slice(), b"mergeSortBy:"] {
+            let sorted = keep(send(small, selector, &[sorter]).unwrap());
+            for (i, value) in [one, two, two_b].into_iter().enumerate() {
+                assert_eq!(
+                    send(sorted, b"atWord:", &[abi::size(i).unwrap()]).unwrap(),
+                    value
+                );
+            }
+        }
+        assert_eq!(
+            send(actor, b"at:", &[abi::size(36).unwrap()]).unwrap(),
+            abi::size(6).unwrap()
+        );
+        send(
+            actor,
+            b"at:put:",
+            &[abi::size(37).unwrap(), core::ptr::null_mut()],
+        )
+        .unwrap();
+        let reducer_type = send(base, b"delegated", &[]).unwrap();
+        let sum = send(actor_type, b"lookup", &[sel(b"sumValues")]).unwrap();
+        send(reducer_type, b"addMethod", &[sel(b"value:value:"), sum]).unwrap();
+        let reducer = keep(send(reducer_type, b"allocate", &[abi::size(0).unwrap()]).unwrap());
+        assert_eq!(
+            int_value(send(small, b"inject:into:", &[zero, reducer]).unwrap()),
+            5
+        );
+        let gc_type = send(id.root, b"behaviorOf:", &[gc]).unwrap();
+        let original_charge =
+            send(gc_type, b"lookup", &[sel(b"chargeExternalAllocation:")]).unwrap();
+        let collecting_charge = send(actor_type, b"lookup", &[sel(b"externalCharge")]).unwrap();
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        assert_eq!(
+            text_bytes(send(small, b"printString", &[]).unwrap()),
+            b"#[2 1 2]"
+        );
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        send(string, b"installCollections:", &[vector]).unwrap();
+        let parts = keep(send(text(b"a,b,"), b"split:", &[text(b",")]).unwrap());
+        assert_eq!(int_value(send(parts, b"size", &[]).unwrap()), 3);
+        for (i, value) in [b"a".as_slice(), b"b", b""].into_iter().enumerate() {
+            assert_eq!(
+                text_bytes(send(parts, b"atWord:", &[abi::size(i).unwrap()]).unwrap()),
+                value
+            );
+        }
+        let new_method = keep(send(vector_type, b"lookup", &[sel(b"new")]).unwrap());
+        send(vector_type, b"addMethod", &[sel(b"new"), replacement]).unwrap();
+        assert!(send(text(b"a,b"), b"split:", &[text(b",")]).is_err());
+        send(vector_type, b"addMethod", &[sel(b"new"), new_method]).unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[vector_type, vector_meta],
+        )
+        .unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[node_type, vector_meta],
+        )
+        .unwrap();
+        send(roots, b"release:", &[current_token]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        println!(
+            "Vector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed"
+        );
         println!("NUMERIC_INTEGRATION_OK");
     }
 }

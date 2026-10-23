@@ -448,3 +448,31 @@ All earlier gates and the independent C/TinyCC callers pass. Error is still an
 independent C provider; full Execution/compiler/image/worker qualification and
 performance recovery remain pending.
 [Qualification receipts](../measurements/oop-integer-20261023.json).
+
+## Piece 18: Vector uses Oops and a single scoped root list
+
+Vector retains its persistent 32-way trie and tail. Its payload and node layouts
+remain owned by Vector and are declared to ObjectModel for tracing. Vector still
+delegates to CollectionVt; nodes delegate to ObjectVt. Only Oops cross messages,
+including full-width index conversion and printing. Printing accumulates an owned
+Bytes object through current element printing/byte messages and the current String
+constructor, replacing borrowed byte-pointer transport.
+
+Replaced per-scope root-token vectors and retain/release/cleanup sends with one
+owner-local scoped reference list. Nested scopes append and restore their suffix;
+reset retains just the current persistent result. Removed the now-infallible
+error wrappers around keep/reset and the redundant receiver/argument copy in each
+entry point. Cold initialization still retains its objects until the complete
+Vector root provider can be registered.
+
+The fresh-process integration check exercises 1,070 elements across tail and trie
+growth, persistent snapshots, inherited Collection behavior, signed invalid bounds,
+slices, reversal, concatenation, collection equality, both stable sorts with fresh
+keys and nested Vector operations, folds, GC at every selected tree allocation,
+printing with GC during byte-capacity accounting, and String split using actual
+Vector construction. Review caught and fixed an initial wrong ObjectVt parent;
+the inherited-method check now protects that contract. All prior native gates pass.
+
+Broad throughput work remains deferred. The concrete removed costs are root-token
+allocation and retain/release dispatch for each temporary reference; no application
+speedup is claimed yet. [Qualification receipts](../measurements/oop-vector-20261023.json).
