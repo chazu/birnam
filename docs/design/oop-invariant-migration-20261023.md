@@ -566,3 +566,28 @@ rendering with collection, unavailable/malformed renderings, private String
 vtables, current byte methods, captured Methods and reload preservation. The
 prompt-flush unit check and all prior native gates pass.
 [Qualification receipts](../measurements/oop-system-output-20261023.json).
+
+## Piece 24: File I/O transfers byte values through ordinary Methods
+
+File operations now use Oop contexts and byte-provider application, preserving
+exact String arguments, UTF-8 paths, binary contents, read limits, diagnostic text,
+read/error precedence and current String/Bytes/Vector constructors. Filename byte
+values are captured before contents callbacks and carried as an immutable argument
+suffix. Contents callbacks cannot redirect writes by mutating an earlier provider.
+Fresh snapshot objects become private Method receivers so ordinary Id call roots
+protect them through subsequent constructors; no temporary root-token table is
+needed. Completed dependencies and private Methods occupy one root Sequence.
+
+A qualification failure exposed the missing Sequence byte-provider operation.
+Its owner now implements `appendTo:` by sending its values to the destination's
+current `appendByteValues`; the destination validates bytes. A replacement check
+proves this path stays live. This avoids an extra String conversion while retaining
+Bytes `fromBytes:` replacement. Review also removed an unused native filename copy
+on the two-argument write/remove path.
+
+The gate checks actual temporary files, binary reads/writes, path/content snapshots,
+16-MiB embedding refusal, bounded-reader error tests, changed-file deletion refusal,
+missing-file behavior, filename-provider mutation plus GC, contents-failure priority,
+constructor replacement and captured/reloaded Methods. All prior gates pass.
+Broad performance and full Bootstrap/compiler/execution/image/worker acceptance
+remain pending. [Qualification receipts](../measurements/oop-file-io-20261023.json).

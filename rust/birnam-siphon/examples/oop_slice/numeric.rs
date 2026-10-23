@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 8],
+    modules: [Oop; 9],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -937,6 +937,186 @@ pub(super) unsafe fn check(
         .unwrap();
         println!(
             "System output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert!(id.send(modules[8], id.load, &[args]).unwrap().is_null());
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("birnam-oop-files-{}-{nonce}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let file = directory.join("binary.dat");
+        let filename = text(file.to_str().unwrap().as_bytes());
+        let contents = text(b"a\0\xff\r\n");
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        assert_eq!(
+            send(system, b"writeFile:contents:", &[filename, contents]).unwrap(),
+            system
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), b"a\0\xff\r\n");
+        let reader = keep(send(system_type, b"lookup", &[sel(b"readFile:")]).unwrap());
+        send(system_type, b"removeMethod:", &[sel(b"readFile:")]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        id.send(modules[8], id.load, &[args]).unwrap();
+        assert!(
+            send(system_type, b"lookup", &[sel(b"readFile:")])
+                .unwrap()
+                .is_null()
+        );
+        let args = send(id.root, b"sequence", &[filename]).unwrap();
+        assert_eq!(
+            text_bytes(send(reader, b"invokeOn:arguments:", &[system, args]).unwrap()),
+            b"a\0\xff\r\n"
+        );
+        send(system_type, b"addMethod", &[sel(b"readFile:"), reader]).unwrap();
+        let bytes_data = |v| {
+            let n = abi::as_size(send(v, b"length", &[]).unwrap()).unwrap();
+            (0..n)
+                .map(|i| {
+                    abi::as_size(send(v, b"byteAtWord:", &[abi::size(i).unwrap()]).unwrap())
+                        .unwrap() as u8
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            bytes_data(send(system, b"embedFile:", &[filename]).unwrap()),
+            b"a\0\xff\r\n"
+        );
+        let snapshot = keep(send(system, b"readFileSnapshot:", &[filename]).unwrap());
+        assert_eq!(int_value(send(snapshot, b"size", &[]).unwrap()), 2);
+        assert_eq!(
+            bytes_data(send(snapshot, b"atWord:", &[abi::size(0).unwrap()]).unwrap()),
+            file.to_str().unwrap().as_bytes()
+        );
+        assert_eq!(
+            bytes_data(send(snapshot, b"atWord:", &[abi::size(1).unwrap()]).unwrap()),
+            b"a\0\xff\r\n"
+        );
+        send(actor, b"at:put:", &[abi::size(41).unwrap(), original_bytes]).unwrap();
+        send(actor, b"at:put:", &[abi::size(42).unwrap(), filename]).unwrap();
+        send(actor, b"at:put:", &[abi::size(44).unwrap(), contents]).unwrap();
+        let file_bytes = send(actor_type, b"lookup", &[sel(b"fileBytes")]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"bytes"), file_bytes]).unwrap();
+        assert_eq!(
+            send(system, b"writeFile:contents:", &[filename, contents]).unwrap(),
+            system
+        );
+        assert!(!directory.join("binary.dat.redirect").exists());
+        send(
+            actor,
+            b"at:put:",
+            &[abi::size(45).unwrap(), abi::size(1).unwrap()],
+        )
+        .unwrap();
+        assert!(send(system, b"writeFile:contents:", &[malformed, contents]).is_err());
+        send(
+            actor,
+            b"at:put:",
+            &[abi::size(45).unwrap(), abi::size(0).unwrap()],
+        )
+        .unwrap();
+        send(string_type, b"addMethod", &[sel(b"bytes"), original_bytes]).unwrap();
+        assert_eq!(
+            send(system, b"writeFile:contents:", &[malformed, one]).unwrap(),
+            nil
+        );
+        let changed = keep(
+            send(
+                system,
+                b"removeFile:ifContents:",
+                &[filename, text(b"different")],
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            text_bytes(send(changed, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+            b"file changed since candidate admission"
+        );
+        assert!(file.exists());
+        assert_eq!(
+            send(system, b"removeFile:ifContents:", &[filename, contents]).unwrap(),
+            system
+        );
+        assert!(!file.exists());
+        assert_eq!(
+            send(system, b"removeFile:ifContents:", &[filename, contents]).unwrap(),
+            system
+        );
+        assert_eq!(
+            send(system, b"readFileSnapshot:", &[filename]).unwrap(),
+            nil
+        );
+        let missing = keep(send(system, b"readFile:", &[filename]).unwrap());
+        assert_eq!(
+            send(missing, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+            sel(b"ioError")
+        );
+        assert_eq!(send(system, b"readFile:", &[one]).unwrap(), nil);
+        let wrong = keep(send(system, b"embedFile:", &[one]).unwrap());
+        assert_eq!(
+            text_bytes(send(wrong, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+            b"embedFile: expected a String path"
+        );
+        let oversized = directory.join("too-large.bin");
+        std::fs::File::create(&oversized)
+            .unwrap()
+            .set_len(16 * 1024 * 1024 + 1)
+            .unwrap();
+        let too_large = keep(
+            send(
+                system,
+                b"embedFile:",
+                &[text(oversized.to_str().unwrap().as_bytes())],
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            text_bytes(send(too_large, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+            b"embedFile: could not read the file within the 16 MiB limit"
+        );
+        std::fs::write(&file, b"live factory").unwrap();
+        send(
+            string_type,
+            b"addMethod",
+            &[sel(b"fromBytes:"), replacement],
+        )
+        .unwrap();
+        assert_eq!(send(system, b"readFile:", &[filename]).unwrap(), expected);
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), factory]).unwrap();
+        let bytes_factory = send(namespace, b"at:", &[sel(b"Bytes")]).unwrap();
+        let bytes_type = send(id.root, b"behaviorOf:", &[bytes_factory]).unwrap();
+        let bytes_constructor = keep(send(bytes_type, b"lookup", &[sel(b"fromBytes:")]).unwrap());
+        // Keep filename transfer independent of the result factory under test.
+        // String itself supplies byte application, so returning self is valid.
+        let yourself = send(base, b"lookup", &[sel(b"yourself")]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"bytes"), yourself]).unwrap();
+        send(bytes_type, b"addMethod", &[sel(b"fromBytes:"), replacement]).unwrap();
+        assert_eq!(send(system, b"embedFile:", &[filename]).unwrap(), expected);
+        send(string_type, b"addMethod", &[sel(b"bytes"), original_bytes]).unwrap();
+        send(
+            bytes_type,
+            b"addMethod",
+            &[sel(b"fromBytes:"), bytes_constructor],
+        )
+        .unwrap();
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        std::fs::remove_dir_all(&directory).unwrap();
+        println!(
+            "File I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

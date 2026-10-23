@@ -190,6 +190,11 @@ impl State {
                 let forwarded = self.sequence_snapshot_with(sequence, &[*receiver], suffix)?;
                 unsafe { self.send(*callable, b"apply", &forwarded) }
             }
+            (Action::AppendArguments, &[target]) => {
+                let values = self.sequence_values(sequence)?;
+                // The destination owns validation and interpretation of byte values.
+                unsafe { self.send(target, b"appendByteValues", &values) }
+            }
             (Action::LoadArguments, &[path]) => {
                 let values = self.sequence_values(sequence)?;
                 unsafe { self.send(path, b"loadNative", &values) }

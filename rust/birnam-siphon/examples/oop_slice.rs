@@ -37,8 +37,11 @@ unsafe fn run() {
             library.join("libbirnam_system_input.dylib"),
             library.join("libbirnam_environment.dylib"),
             library.join("libbirnam_system_output.dylib"),
+            library.join("libbirnam_file_io.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"Bytes",
+            b"readFile:",b"readFileSnapshot:",b"embedFile:",b"writeFile:contents:",b"removeFile:ifContents:",b"fileBytes",
             b"print:",b"println:",b"printErrorText:",b"renderOutput",
             b"getEnv:",b"publishErrorString",b"absentValue",
             b"readLine",b"ioError",
@@ -877,6 +880,18 @@ unsafe fn run() {
         let changed=send(bytes,b"fromBytes:",&[name]).unwrap();
         assert_eq!(abi::as_size(send(changed,b"length",&[]).unwrap()),Some(0));
         send(name_type,b"addMethod",&[sel(b"appendTo:"),original_append]).unwrap();
+        let sequence=send(id.root,b"sequence",&[abi::size(65).unwrap(),abi::size(0).unwrap(),abi::size(255).unwrap()]).unwrap();
+        let sequence_token=send(roots,b"retain:",&[sequence]).unwrap();
+        let sequence_bytes=send(bytes,b"fromBytes:",&[sequence]).unwrap();
+        assert_eq!(send(sequence_bytes,b"length",&[]).unwrap(),abi::size(3).unwrap());
+        let sequence_type=send(id.root,b"behaviorOf:",&[sequence]).unwrap();
+        let append=send(sequence_type,b"lookup",&[sel(b"appendTo:")]).unwrap();
+        let append_token=send(roots,b"retain:",&[append]).unwrap();
+        send(sequence_type,b"addMethod",&[sel(b"appendTo:"),alternate]).unwrap();
+        let sequence_bytes=send(bytes,b"fromBytes:",&[sequence]).unwrap();
+        assert_eq!(send(sequence_bytes,b"length",&[]).unwrap(),abi::size(0).unwrap());
+        send(sequence_type,b"addMethod",&[sel(b"appendTo:"),append]).unwrap();
+        for token in [sequence_token,append_token]{send(roots,b"release:",&[token]).unwrap();}
         let symbol_copy=send(text,b"withSymbolName:",&[sel(b"missingProbe")]).unwrap();
         assert_eq!(abi::as_size(send(symbol_copy,b"length",&[]).unwrap()),Some(14));
         let full=send(bytes,b"fromByteValues",&vec![abi::size(255).unwrap();8]).unwrap();
@@ -977,7 +992,7 @@ unsafe fn run() {
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
         if matches!(std::env::args().nth(2).as_deref(),Some("numeric-integration"|"numeric-input-error")) {
-            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21]],[namespace,roots,gc,actor,base,word,string]);
+            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22]],[namespace,roots,gc,actor,base,word,string]);
             return;
         }
         // Numeric and collection adapters are independent C objects for this slice.
