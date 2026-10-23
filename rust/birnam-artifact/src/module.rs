@@ -1,12 +1,16 @@
-//! Artifact inspection. Object storage, dependencies and GC use Id messages.
+//! Artifact inspection uses Oop messages; descriptor parsers remain unchanged.
 use crate as parser;
 use crate::Descriptor as ParsedDescriptor;
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::Cell, ffi::c_void, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 use std::{
+    collections::HashMap,
     ffi::OsStr,
     fs,
     io::Read,
@@ -14,7 +18,6 @@ use std::{
     path::Path,
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
-
 // Preserve the descriptor's existing thirteen object slots.
 const KIND: usize = 0;
 const IDENTITY: usize = 1;
@@ -29,6 +32,7 @@ const CAPABILITIES: usize = 9;
 const REQUIRES_COUNT: usize = 10;
 const NATIVE_REQUIRES_COUNT: usize = 11;
 const CAPABILITIES_COUNT: usize = 12;
+
 struct State {
     id: Protocol,
     ns: Oop,
@@ -43,130 +47,147 @@ struct State {
     artifact_vt: Oop,
     descriptor_vt: Oop,
     last_failure: Cell<Oop>,
-    thread: std::thread::ThreadId,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
+    helpers: [Cell<Oop>; 3],
+    ready: Cell<bool>,
 }
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
 static BUSY: AtomicBool = AtomicBool::new(false);
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+struct Constructing;
+impl Drop for Constructing {
+    fn drop(&mut self) {
+        BUSY.store(false, Ordering::Release);
+    }
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
 }
-unsafe fn state<'a>(c: *mut c_void) -> Result<&'a State, Outcome> {
-    let s = unsafe { &*c.cast::<State>() };
-    if s.thread != std::thread::current().id() {
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
+unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
         return Err(invalid());
     }
-    Ok(s)
+    let s = unsafe { &*p };
+    if c == s.artifact {
+        Ok(s)
+    } else {
+        Err(invalid())
+    }
+}
+struct Scope<'a> {
+    s: &'a State,
+    start: usize,
+}
+impl Scope<'_> {
+    fn keep(&self, v: Oop) -> Oop {
+        self.s.scoped.borrow_mut().push(v);
+        v
+    }
+    fn reset(&self, v: Oop) -> Oop {
+        let mut values = self.s.scoped.borrow_mut();
+        values.truncate(self.start);
+        values.push(v);
+        v
+    }
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.s.scoped.borrow_mut().truncate(self.start);
+    }
 }
 impl State {
+    fn scope(&self) -> Scope<'_> {
+        Scope {
+            s: self,
+            start: self.scoped.borrow().len(),
+        }
+    }
     unsafe fn rooted<T>(
         &self,
         values: &[Oop],
-        f: impl FnOnce() -> Result<T, Outcome>,
-    ) -> Result<T, Outcome> {
-        unsafe {
-            let mut tokens = Vec::new();
-            let result = (|| {
-                for &value in values {
-                    tokens.push(
-                        self.id
-                            .send_named(self.roots, b"retain:", &[Operand::object(value)])?
-                            .as_word()
-                            .filter(|t| *t != 0)
-                            .ok_or_else(invalid)?,
-                    );
-                }
-                f()
-            })();
-            for token in tokens {
-                if self
-                    .id
-                    .send_named(self.roots, b"release:", &[Operand::word(token)])?
-                    .as_word()
-                    != Some(1)
-                {
-                    return Err(invalid());
-                }
-            }
-            result
+        f: impl FnOnce() -> Result<T, Oop>,
+    ) -> Result<T, Oop> {
+        let scope = self.scope();
+        for &v in values {
+            scope.keep(v);
         }
+        f()
     }
-    unsafe fn named(&self, name: &[u8]) -> Result<Operand, Outcome> {
-        unsafe {
-            self.id.send_named(
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name)?)],
-            )
-        }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, *self.names.get(n).ok_or_else(invalid)?, a) }
     }
-    unsafe fn slot(&self, r: Oop, index: usize) -> Result<Oop, Outcome> {
-        unsafe {
-            object(self.id.send_named(
+    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Oop> {
+        unsafe { self.send(self.ns, b"at:", &[*self.names.get(n).ok_or_else(invalid)?]) }
+    }
+    unsafe fn slot(&self, r: Oop, index: usize) -> Result<Oop, Oop> {
+        object(unsafe {
+            self.send(
                 self.model,
                 b"slotAt:in:",
-                &[Operand::word(index), Operand::object(r)],
-            )?)
+                &[abi::size(index).ok_or_else(invalid)?, r],
+            )
+        }?)
+    }
+    unsafe fn symbol(&self, b: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            let end = b.iter().position(|b| *b == 0).unwrap_or(b.len());
+            let values: Vec<_> = b[..end]
+                .iter()
+                .map(|&b| abi::size(b as usize).unwrap())
+                .collect();
+            let name = self.send(self.id.root, b"nameWithBytes", &values)?;
+            self.id.send(name, self.id.intern, &[])
         }
     }
-    unsafe fn bytes(&self, r: Oop) -> Result<Vec<u8>, Outcome> {
+    unsafe fn string(&self, b: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let b = self
-                .id
-                .send_named(r, b"bytes", &[])?
-                .as_bytes()
+            let values: Vec<_> = b.iter().map(|&b| abi::size(b as usize).unwrap()).collect();
+            let source = self.send(self.id.root, b"sequence", &values)?;
+            object(self.send(self.string, b"fromBytes:", &[source])?)
+        }
+    }
+    unsafe fn number(&self, n: usize) -> Result<Oop, Oop> {
+        object(unsafe {
+            self.send(
+                self.integer,
+                b"fromWord:",
+                &[abi::size(n).ok_or_else(invalid)?],
+            )
+        }?)
+    }
+    unsafe fn word(&self, r: Oop) -> Result<usize, Oop> {
+        unsafe {
+            let value = self.send(self.integer, b"wordOf:", &[r])?;
+            if let Some(n) = abi::as_size(value) {
+                return Ok(n);
+            }
+            let lo = abi::as_size(self.send(value, b"low32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
                 .ok_or_else(invalid)?;
-            // A String borrow cannot survive another send, including rooting.
-            Ok(borrowed_bytes(b.pointer, b.length)
-                .ok_or_else(invalid)?
-                .to_vec())
+            let hi = abi::as_size(self.send(value, b"high32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            Ok(lo | (hi << 32))
         }
     }
-    unsafe fn symbol(&self, b: &[u8]) -> Result<Oop, Outcome> {
-        // Preserve the former C-string projection without retaining its native API.
-        let end = b.iter().position(|b| *b == 0).unwrap_or(b.len());
-        unsafe { self.id.intern_name(&b[..end]) }
+    unsafe fn family(&self, r: Oop, vt: Oop) -> Result<bool, Oop> {
+        unsafe { Ok(self.send(self.id.root, b"behaviorOf:", &[r])? == vt) }
     }
-    unsafe fn string(&self, b: &[u8]) -> Result<Oop, Outcome> {
-        unsafe {
-            object(
-                self.id
-                    .send_named(self.string, b"fromBytes:", &[Operand::bytes(b)])?,
-            )
-        }
+    unsafe fn fail(&self, name: &[u8]) -> Result<Oop, Oop> {
+        self.last_failure
+            .set(*self.names.get(name).ok_or_else(invalid)?);
+        Ok(self.nil)
     }
-    unsafe fn number(&self, n: usize) -> Result<Oop, Outcome> {
-        unsafe {
-            object(
-                self.id
-                    .send_named(self.integer, b"fromWord:", &[Operand::word(n)])?,
-            )
-        }
-    }
-    unsafe fn word(&self, r: Oop) -> Result<usize, Outcome> {
-        unsafe {
-            self.id
-                .send_named(self.integer, b"wordOf:", &[Operand::object(r)])?
-                .as_word()
-                .ok_or_else(invalid)
-        }
-    }
-    unsafe fn family(&self, r: Oop, vt: Oop) -> Result<bool, Outcome> {
-        unsafe {
-            Ok(object(self.id.send_named(
-                self.id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(r)],
-            )?)? == vt)
-        }
-    }
-    unsafe fn fail(&self, name: &[u8]) -> Result<Operand, Outcome> {
-        self.last_failure.set(unsafe { self.id.intern_name(name)? });
-        Ok(Operand::object(self.nil))
-    }
-    unsafe fn count(&self, r: Oop, kind: ListKind) -> Result<usize, Outcome> {
+    unsafe fn count(&self, r: Oop, kind: ListKind) -> Result<usize, Oop> {
         unsafe {
             let index = match kind {
                 ListKind::Roots => return Ok(1),
@@ -178,7 +199,8 @@ impl State {
             self.rooted(&[count], || self.word(count))
         }
     }
-    unsafe fn value_at(&self, r: Oop, kind: ListKind, index: usize) -> Result<Oop, Outcome> {
+
+    unsafe fn value_at(&self, r: Oop, kind: ListKind, index: usize) -> Result<Oop, Oop> {
         unsafe {
             if index >= self.count(r, kind)? {
                 return Ok(self.nil);
@@ -190,94 +212,80 @@ impl State {
                 ListKind::Capabilities => CAPABILITIES,
             };
             let buffer = self.slot(r, slot)?;
-            let bytes = self.rooted(&[buffer], || self.bytes(buffer))?;
-            let Some(value) = list_field(&bytes, index) else {
-                return Ok(self.nil);
-            };
-            if kind == ListKind::NativeRequires {
-                self.string(value)
-            } else {
-                self.symbol(value)
-            }
+            let bytes = self.send(buffer, b"bytes", &[])?;
+            self.send(
+                bytes,
+                b"apply:to:with:",
+                &[
+                    self.helpers[2].get(),
+                    r,
+                    abi::size(index).ok_or_else(invalid)?,
+                    abi::size(usize::from(kind == ListKind::NativeRequires)).unwrap(),
+                ],
+            )
         }
     }
-    unsafe fn vector(&self, r: Oop, kind: ListKind) -> Result<Operand, Outcome> {
+    unsafe fn vector(&self, r: Oop, kind: ListKind) -> Result<Oop, Oop> {
         unsafe {
             let vector = self.named(b"Vector")?;
-            let Some(vector) = vector.as_object().filter(|v| !v.is_null()) else {
-                return Ok(Operand::object(self.nil));
-            };
-            self.rooted(&[vector], || {
-                let mut result = object(self.id.send_named(vector, b"new", &[])?)?;
-                // Replace the accumulator root each iteration; add: may return a new Vector.
-                let mut token = self
-                    .id
-                    .send_named(self.roots, b"retain:", &[Operand::object(result)])?
-                    .as_word()
-                    .ok_or_else(invalid)?;
-                let outcome = (|| {
-                    let count = self.count(r, kind)?;
-                    for index in 0..count {
-                        let value = self.value_at(r, kind, index)?;
-                        let next = self.rooted(&[value], || {
-                            object(self.id.send_named(
-                                result,
-                                b"add:",
-                                &[Operand::object(value)],
-                            )?)
-                        })?;
-                        let next_token = self
-                            .id
-                            .send_named(self.roots, b"retain:", &[Operand::object(next)])?
-                            .as_word()
-                            .ok_or_else(invalid)?;
-                        self.id
-                            .send_named(self.roots, b"release:", &[Operand::word(token)])?;
-                        result = next;
-                        token = next_token;
-                    }
-                    Ok(Operand::object(result))
-                })();
-                self.id
-                    .send_named(self.roots, b"release:", &[Operand::word(token)])?;
-                outcome
-            })
+            if vector.is_null() {
+                return Ok(self.nil);
+            }
+            let scope = self.scope();
+            let mut result = scope.keep(object(self.send(vector, b"new", &[])?)?);
+            let count = self.count(r, kind)?;
+            for i in 0..count {
+                let value = self.value_at(r, kind, i)?;
+                result = scope.reset(object(self.send(result, b"add:", &[value])?)?);
+            }
+            Ok(result)
         }
     }
-    unsafe fn inspect(&self, args: &[Operand]) -> Result<Operand, Outcome> {
+    unsafe fn inspect(&self, args: &[Oop]) -> Result<Oop, Oop> {
         unsafe {
             let [path] = args else {
                 return self.fail(b"artifactPathInvalid");
             };
-            let Some(path) = path.as_object().filter(|v| !v.is_null()) else {
-                return self.fail(b"artifactPathInvalid");
-            };
-            if !self.family(path, self.string_vt)? {
+            if path.is_null() || !self.family(*path, self.string_vt)? {
                 return self.fail(b"artifactPathInvalid");
             }
-            let path = self.bytes(path)?;
-            let bytes = match read_artifact(path_from_bytes(&path)) {
-                Ok(bytes) => bytes,
-                Err(()) => return self.fail(b"artifactUnavailable"),
-            };
-            self.inspect_bytes(&bytes, &path)
+            let provider = self.send(*path, b"bytes", &[])?;
+            self.send(
+                provider,
+                b"apply:to:with:",
+                &[
+                    self.helpers[0].get(),
+                    self.artifact,
+                    ptr::null_mut(),
+                    abi::size(0).unwrap(),
+                ],
+            )
         }
     }
-    unsafe fn inspect_snapshot(&self, args: &[Operand]) -> Result<Operand, Outcome> {
+    unsafe fn inspect_snapshot(&self, args: &[Oop]) -> Result<Oop, Oop> {
         unsafe {
             let [bytes, path] = args else {
                 return Err(invalid());
             };
             let path = object(*path)?;
+            object(*bytes)?;
             if !self.family(path, self.string_vt)? {
                 return self.fail(b"artifactPathInvalid");
             }
-            let path = self.bytes(path)?;
-            let bytes = self.bytes(object(*bytes)?)?;
-            self.inspect_bytes(&bytes, &path)
+            let provider = self.send(path, b"bytes", &[])?;
+            self.send(
+                provider,
+                b"apply:to:with:",
+                &[
+                    self.helpers[0].get(),
+                    self.artifact,
+                    *bytes,
+                    abi::size(1).unwrap(),
+                ],
+            )
         }
     }
-    unsafe fn inspect_bytes(&self, bytes: &[u8], path: &[u8]) -> Result<Operand, Outcome> {
+    unsafe fn inspect_bytes(&self, bytes: &[u8], path: &[u8]) -> Result<Oop, Oop> {
         unsafe {
             let parsed = match parser::inspect(bytes) {
                 Ok(parsed) => parsed,
@@ -295,18 +303,14 @@ impl State {
             self.materialize(parsed, path)
         }
     }
-    unsafe fn materialize(
-        &self,
-        parsed: ParsedDescriptor<'_>,
-        path: &[u8],
-    ) -> Result<Operand, Outcome> {
+    unsafe fn materialize(&self, parsed: ParsedDescriptor<'_>, path: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let result = object(self.id.send_named(
+            let result = object(self.send(
                 self.model,
                 b"allocate:bytes:",
                 &[
-                    Operand::object(self.descriptor_vt),
-                    Operand::word(13 * size_of::<Oop>()),
+                    self.descriptor_vt,
+                    abi::size(13 * size_of::<Oop>()).unwrap(),
                 ],
             )?)?;
             self.rooted(&[result], || {
@@ -328,20 +332,14 @@ impl State {
                         CAPABILITIES_COUNT => self.number(parsed.capabilities.count())?,
                         _ => unreachable!(),
                     };
-                    self.rooted(&[value], || {
-                        self.id.send_named(
-                            self.model,
-                            b"slotAt:in:put:",
-                            &[
-                                Operand::word(index),
-                                Operand::object(result),
-                                Operand::object(value),
-                            ],
-                        )
-                    })?;
+                    self.send(
+                        self.model,
+                        b"slotAt:in:put:",
+                        &[abi::size(index).unwrap(), result, value],
+                    )?;
                 }
                 self.last_failure.set(self.nil);
-                Ok(Operand::object(result))
+                Ok(result)
             })
         }
     }
@@ -399,40 +397,13 @@ fn native_requirements_present(descriptor: ParsedDescriptor<'_>, path: &[u8]) ->
     })
 }
 
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let s = state(c)?;
-        let Some([visitor]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let visitor = object(*visitor)?;
-        for value in [
-            s.ns,
-            s.roots,
-            s.model,
-            s.string,
-            s.integer,
-            s.string_vt,
-            s.integer_vt,
-            s.nil,
-            s.artifact,
-            s.artifact_vt,
-            s.descriptor_vt,
-            s.last_failure.get(),
-        ] {
-            s.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
-        }
-        Ok(Operand::unit())
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe fn execute(s: &State, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
+unsafe fn execute(s: &State, r: Oop, args: &[Oop], op: usize) -> Result<Oop, Oop> {
     unsafe {
         match op {
             0 => s.inspect(args),
             21 => s.inspect_snapshot(args),
-            1 => Ok(Operand::object(s.last_failure.get())),
-            2..=8 => Ok(Operand::object(s.slot(r, op - 2)?)),
+            1 => Ok(s.last_failure.get()),
+            2..=8 => Ok(s.slot(r, op - 2)?),
             9..=20 => {
                 let kind = [
                     ListKind::Roots,
@@ -442,22 +413,22 @@ unsafe fn execute(s: &State, r: Oop, args: &[Operand], op: usize) -> Result<Oper
                 ][(op - 9) / 3];
                 match (op - 9) % 3 {
                     0 => s.vector(r, kind),
-                    1 => Ok(Operand::object(s.number(s.count(r, kind)?)?)),
+                    1 => Ok(s.number(s.count(r, kind)?)?),
                     _ => {
                         let [index] = args else {
-                            return Ok(Operand::object(s.nil));
+                            return Ok(s.nil);
                         };
-                        let Some(index) = index.as_object().filter(|v| !v.is_null()) else {
-                            return Ok(Operand::object(s.nil));
+                        let Some(index) = (!index.is_null()).then_some(*index) else {
+                            return Ok(s.nil);
                         };
                         if !s.family(index, s.integer_vt)? {
-                            return Ok(Operand::object(s.nil));
+                            return Ok(s.nil);
                         }
                         let index = s.word(index)?;
                         if (index as isize) < 0 {
-                            return Ok(Operand::object(s.nil));
+                            return Ok(s.nil);
                         }
-                        Ok(Operand::object(s.value_at(r, kind, index)?))
+                        Ok(s.value_at(r, kind, index)?)
                     }
                 }
             }
@@ -465,27 +436,22 @@ unsafe fn execute(s: &State, r: Oop, args: &[Operand], op: usize) -> Result<Oper
         }
     }
 }
+
 macro_rules! entry {
-    ($name:ident, $op:expr) => {
-        unsafe extern "C" fn $name(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    ($name:ident,$op:expr) => {
+        unsafe extern "C" fn $name(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
             (|| unsafe {
                 let s = state(c)?;
-                let Some(args) = borrowed_slice(a, n) else {
+                let Some(a) = borrowed_slice(a, n) else {
                     return if $op == 0 {
                         s.fail(b"artifactPathInvalid")
                     } else {
                         Err(invalid())
                     };
                 };
-                let mut values = vec![r];
-                values.extend(
-                    args.iter()
-                        .filter_map(|v| v.as_object())
-                        .filter(|v| !v.is_null()),
-                );
-                s.rooted(&values, || execute(s, r, args, $op))
+                execute(s, r, a, $op)
             })()
-            .map_or_else(|e| e, Outcome::loaded)
+            .unwrap_or_else(abi::fault_reference)
         }
     };
 }
@@ -511,24 +477,374 @@ entry!(native_require_at, 17);
 entry!(capabilities, 18);
 entry!(capabilities_count, 19);
 entry!(capability_at, 20);
-unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| {
-            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+
+fn decode(values: &[Oop]) -> Result<Vec<u8>, Oop> {
+    values
+        .iter()
+        .map(|&v| {
+            abi::as_size(v)
+                .and_then(|v| u8::try_from(v).ok())
+                .ok_or_else(invalid)
+        })
+        .collect()
+}
+unsafe extern "C" fn inspect_path(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
+        let mode = abi::as_size(a[end + 1])
+            .filter(|v| *v < 2)
+            .ok_or_else(invalid)?;
+        if mode == 1 {
+            let provider = s.send(a[end], b"bytes", &[])?;
+            let mut args = vec![s.helpers[1].get(), r];
+            args.extend_from_slice(&a[..end]);
+            args.push(abi::size(end).unwrap());
+            return s.send(provider, b"apply:to:with:", &args);
+        }
+        let path = decode(&a[..end])?;
+        let bytes = match read_artifact(path_from_bytes(&path)) {
+            Ok(v) => v,
+            Err(()) => return s.fail(b"artifactUnavailable"),
         };
+        s.inspect_bytes(&bytes, &path)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn inspect_snapshot_bytes(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let (length, values) = a.split_last().ok_or_else(invalid)?;
+        let length = abi::as_size(*length).ok_or_else(invalid)?;
+        let split = values.len().checked_sub(length).ok_or_else(invalid)?;
+        s.inspect_bytes(&decode(&values[..split])?, &decode(&values[split..])?)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn list_value(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
+        let index = abi::as_size(a[end]).ok_or_else(invalid)?;
+        let native = abi::as_size(a[end + 1])
+            .filter(|v| *v < 2)
+            .ok_or_else(invalid)?;
+        let bytes = decode(&a[..end])?;
+        let Some(value) = list_field(&bytes, index) else {
+            return Ok(s.nil);
+        };
+        if native == 1 {
+            s.string(value)
+        } else {
+            s.symbol(value)
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let mut values = vec![
+            s.ns,
+            s.roots,
+            s.model,
+            s.string,
+            s.integer,
+            s.string_vt,
+            s.integer_vt,
+            s.nil,
+            s.artifact,
+            s.artifact_vt,
+            s.descriptor_vt,
+            s.last_failure.get(),
+        ];
+        values.extend(s.names.values().copied());
+        values.extend(s.helpers.iter().map(Cell::get));
+        values.extend(s.scoped.borrow().iter().copied());
+        for value in values {
+            s.send(*visitor, b"visit:", &[value])?;
+        }
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"Artifact",
+    b"ArtifactDescriptorVt",
+    b"ArtifactVt",
+    b"Integer",
+    b"IntegerVt",
+    b"ObjectModel",
+    b"ObjectVt",
+    b"Roots",
+    b"String",
+    b"StringVt",
+    b"Vector",
+    b"add:",
+    b"addMethod",
+    b"allocate",
+    b"allocate:bytes:",
+    b"apply:to:with:",
+    b"artifactAbi",
+    b"artifactAbiMismatch",
+    b"artifactDescriptionMissing",
+    b"artifactPathInvalid",
+    b"artifactTargetMismatch",
+    b"artifactUnavailable",
+    b"at:",
+    b"at:put:",
+    b"behaviorOf:",
+    b"bytes",
+    b"capabilities",
+    b"capabilitiesCount",
+    b"capabilityAt:",
+    b"delegated",
+    b"fromBytes:",
+    b"fromWord:",
+    b"high32",
+    b"identity",
+    b"inspect:",
+    b"inspectBytes:from:",
+    b"inspectPathBytes",
+    b"inspectSnapshotBytes",
+    b"kind",
+    b"kind:message:",
+    b"lastFailure",
+    b"listValueBytes",
+    b"low32",
+    b"methodAt:",
+    b"nameWithBytes",
+    b"nativeRequireAt:",
+    b"nativeRequirementUnavailable",
+    b"nativeRequires",
+    b"nativeRequiresCount",
+    b"new",
+    b"nil",
+    b"ownerOf:put:",
+    b"path",
+    b"register:",
+    b"release:",
+    b"requireAt:",
+    b"requires",
+    b"requiresCount",
+    b"retain:",
+    b"revisionDigest",
+    b"rootAt:",
+    b"roots",
+    b"rootsCount",
+    b"rootsDo:",
+    b"sequence",
+    b"setLayoutOf:to:rest:",
+    b"slotAt:in:",
+    b"slotAt:in:put:",
+    b"sourceDigest",
+    b"target",
+    b"visit:",
+    b"withContext:",
+    b"wordOf:"
+];
+const fn index(n: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        let c = NAMES[i];
+        if c.len() == n.len() {
+            let mut j = 0;
+            while j < n.len() && c[j] == n[j] {
+                j += 1;
+            }
+            if j == n.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"inspect:"),
+        entry: Some(inspect),
+    },
+    MethodSpec {
+        name: index(b"inspectBytes:from:"),
+        entry: Some(inspect_snapshot),
+    },
+    MethodSpec {
+        name: index(b"lastFailure"),
+        entry: Some(last_failure),
+    },
+    MethodSpec {
+        name: index(b"rootsDo:"),
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: index(b"kind"),
+        entry: Some(kind),
+    },
+    MethodSpec {
+        name: index(b"identity"),
+        entry: Some(identity),
+    },
+    MethodSpec {
+        name: index(b"artifactAbi"),
+        entry: Some(artifact_abi),
+    },
+    MethodSpec {
+        name: index(b"target"),
+        entry: Some(target),
+    },
+    MethodSpec {
+        name: index(b"sourceDigest"),
+        entry: Some(source_digest),
+    },
+    MethodSpec {
+        name: index(b"revisionDigest"),
+        entry: Some(revision_digest),
+    },
+    MethodSpec {
+        name: index(b"path"),
+        entry: Some(path),
+    },
+    MethodSpec {
+        name: index(b"roots"),
+        entry: Some(roots_list),
+    },
+    MethodSpec {
+        name: index(b"rootsCount"),
+        entry: Some(roots_count),
+    },
+    MethodSpec {
+        name: index(b"rootAt:"),
+        entry: Some(root_at),
+    },
+    MethodSpec {
+        name: index(b"requires"),
+        entry: Some(requires),
+    },
+    MethodSpec {
+        name: index(b"requiresCount"),
+        entry: Some(requires_count),
+    },
+    MethodSpec {
+        name: index(b"requireAt:"),
+        entry: Some(require_at),
+    },
+    MethodSpec {
+        name: index(b"nativeRequires"),
+        entry: Some(native_requires),
+    },
+    MethodSpec {
+        name: index(b"nativeRequiresCount"),
+        entry: Some(native_requires_count),
+    },
+    MethodSpec {
+        name: index(b"nativeRequireAt:"),
+        entry: Some(native_require_at),
+    },
+    MethodSpec {
+        name: index(b"capabilities"),
+        entry: Some(capabilities),
+    },
+    MethodSpec {
+        name: index(b"capabilitiesCount"),
+        entry: Some(capabilities_count),
+    },
+    MethodSpec {
+        name: index(b"capabilityAt:"),
+        entry: Some(capability_at),
+    },
+    MethodSpec {
+        name: index(b"inspectPathBytes"),
+        entry: Some(inspect_path),
+    },
+    MethodSpec {
+        name: index(b"inspectSnapshotBytes"),
+        entry: Some(inspect_snapshot_bytes),
+    },
+    MethodSpec {
+        name: index(b"listValueBytes"),
+        entry: Some(list_value),
+    },
+];
+const DESCRIPTOR_METHODS: &[&[u8]] = &[
+    b"kind",
+    b"identity",
+    b"artifactAbi",
+    b"target",
+    b"sourceDigest",
+    b"revisionDigest",
+    b"path",
+    b"roots",
+    b"rootsCount",
+    b"rootAt:",
+    b"requires",
+    b"requiresCount",
+    b"requireAt:",
+    b"nativeRequires",
+    b"nativeRequiresCount",
+    b"nativeRequireAt:",
+    b"capabilities",
+    b"capabilitiesCount",
+    b"capabilityAt:",
+];
+
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if n != NAMES.len() || ns.is_null() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let s = unsafe { &*old };
+        return if s.ready.get() && s.id.root == id.root && s.ns == *ns {
+            s.artifact
+        } else {
+            id.invalid
+        };
+    }
+    if BUSY.swap(true, Ordering::AcqRel) {
+        return id.invalid;
+    }
+    let _constructing = Constructing;
+    (|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |n: &[u8]| object(send(*ns, b"at:", &[names[n]])?);
         let roots = named(b"Roots")?;
         let mut tokens = Vec::new();
         let result = (|| {
-            let mut keep = |value| -> Result<Oop, Outcome> {
-                tokens.push(
-                    id.send_named(roots, b"retain:", &[Operand::object(value)])?
-                        .as_word()
-                        .filter(|t| *t != 0)
-                        .ok_or_else(invalid)?,
-                );
-                Ok(value)
+            let mut keep = |v| -> Result<Oop, Oop> {
+                tokens.push(send(roots, b"retain:", &[v])?);
+                Ok(v)
             };
-            keep(ns)?;
+            keep(*ns)?;
             keep(roots)?;
             let model = keep(named(b"ObjectModel")?)?;
             let string = keep(named(b"String")?)?;
@@ -537,16 +853,18 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             let integer_vt = keep(named(b"IntegerVt")?)?;
             let nil = keep(named(b"nil")?)?;
             let parent = keep(named(b"ObjectVt")?)?;
-            let artifact_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-            let artifact = keep(object(id.send_named(
-                artifact_vt,
-                b"allocate",
-                &[Operand::word(0)],
-            )?)?)?;
-            let descriptor_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-            let pointer = Box::into_raw(Box::new(State {
+            let artifact_vt = keep(send(parent, b"delegated", &[])?)?;
+            let artifact = keep(send(artifact_vt, b"allocate", &[abi::size(0).unwrap()])?)?;
+            let descriptor_vt = keep(send(parent, b"delegated", &[])?)?;
+            let layout = keep(send(id.root, b"sequence", &[abi::size(1).unwrap(); 13])?)?;
+            send(
+                model,
+                b"setLayoutOf:to:rest:",
+                &[descriptor_vt, layout, abi::size(0).unwrap()],
+            )?;
+            let s = Box::into_raw(Box::new(State {
                 id,
-                ns,
+                ns: *ns,
                 roots,
                 model,
                 string,
@@ -558,174 +876,64 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 artifact_vt,
                 descriptor_vt,
                 last_failure: Cell::new(nil),
-                thread: std::thread::current().id(),
+                names: names.clone(),
+                scoped: RefCell::new(Vec::new()),
+                helpers: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
+                ready: Cell::new(false),
             }));
-            // Once entries are installed their context must remain valid, even if publication fails.
-            id.send_named(
-                model,
-                b"setLayoutOf:to:rest:",
-                &[
-                    Operand::object(descriptor_vt),
-                    Operand::bytes(&[1; 13]),
-                    Operand::word(0),
-                ],
-            )?;
-            for (vt, name, method) in [
-                (artifact_vt, b"inspect:".as_slice(), inspect as Method),
-                (
-                    artifact_vt,
-                    b"inspectBytes:from:",
-                    inspect_snapshot as Method,
-                ),
-                (
-                    artifact_vt,
-                    b"lastFailure".as_slice(),
-                    last_failure as Method,
-                ),
-                (descriptor_vt, b"kind".as_slice(), kind as Method),
-                (descriptor_vt, b"identity".as_slice(), identity as Method),
-                (
-                    descriptor_vt,
-                    b"artifactAbi".as_slice(),
-                    artifact_abi as Method,
-                ),
-                (descriptor_vt, b"target".as_slice(), target as Method),
-                (
-                    descriptor_vt,
-                    b"sourceDigest".as_slice(),
-                    source_digest as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"revisionDigest".as_slice(),
-                    revision_digest as Method,
-                ),
-                (descriptor_vt, b"path".as_slice(), path as Method),
-                (descriptor_vt, b"roots".as_slice(), roots_list as Method),
-                (
-                    descriptor_vt,
-                    b"rootsCount".as_slice(),
-                    roots_count as Method,
-                ),
-                (descriptor_vt, b"rootAt:".as_slice(), root_at as Method),
-                (descriptor_vt, b"requires".as_slice(), requires as Method),
-                (
-                    descriptor_vt,
-                    b"requiresCount".as_slice(),
-                    requires_count as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"requireAt:".as_slice(),
-                    require_at as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"nativeRequires".as_slice(),
-                    native_requires as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"nativeRequiresCount".as_slice(),
-                    native_requires_count as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"nativeRequireAt:".as_slice(),
-                    native_require_at as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"capabilities".as_slice(),
-                    capabilities as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"capabilitiesCount".as_slice(),
-                    capabilities_count as Method,
-                ),
-                (
-                    descriptor_vt,
-                    b"capabilityAt:".as_slice(),
-                    capability_at as Method,
-                ),
-                (artifact_vt, b"rootsDo:", self::roots as Method),
-            ] {
-                id.send_named(
-                    vt,
-                    b"addMethod",
-                    &[
-                        Operand::object(id.intern_name(name)?),
-                        Operand::entry(NativeEntry::new(method, pointer.cast())),
-                    ],
-                )?;
+            INSTANCE.store(s, Ordering::Release);
+            let s = &*s;
+            for spec in METHODS {
+                let name = NAMES[spec.name];
+                let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
+                let method = send(method, b"withContext:", &[artifact])?;
+                if let Some(i) = [
+                    b"inspectPathBytes".as_slice(),
+                    b"inspectSnapshotBytes",
+                    b"listValueBytes",
+                ]
+                .iter()
+                .position(|&n| n == name)
+                {
+                    s.helpers[i].set(keep(method)?);
+                } else {
+                    send(
+                        if DESCRIPTOR_METHODS.contains(&name) {
+                            descriptor_vt
+                        } else {
+                            artifact_vt
+                        },
+                        b"addMethod",
+                        &[symbols[spec.name], method],
+                    )?;
+                }
             }
-            id.send_named(roots, b"register:", &[Operand::object(artifact)])?;
-            id.send_named(
-                id.receiver,
-                b"ownerOf:put:",
-                &[Operand::object(artifact_vt), Operand::object(artifact)],
-            )?;
-            for (name, value) in [
+            send(roots, b"register:", &[artifact])?;
+            send(id.root, b"ownerOf:put:", &[artifact_vt, artifact])?;
+            for (name, v) in [
                 (b"Artifact".as_slice(), artifact),
                 (b"ArtifactVt", artifact_vt),
                 (b"ArtifactDescriptorVt", descriptor_vt),
             ] {
-                id.send_named(
-                    ns,
-                    b"at:put:",
-                    &[
-                        Operand::object(id.intern_name(name)?),
-                        Operand::object(value),
-                    ],
-                )?;
+                send(*ns, b"at:put:", &[names[name], v])?;
             }
-            INSTANCE.store(pointer, Ordering::Release);
-            Ok(Operand::object(artifact))
+            s.ready.set(true);
+            Ok(artifact)
         })();
         for token in tokens {
-            id.send_named(roots, b"release:", &[Operand::word(token)])?;
+            send(roots, b"release:", &[token])?;
         }
-        result
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let ns = object(*ns)?;
-        let existing = INSTANCE.load(Ordering::Acquire);
-        if !existing.is_null() {
-            let s = &*existing;
-            return if s.id.same_contract(&*id)
-                && s.ns == ns
-                && s.thread == std::thread::current().id()
-            {
-                Ok(Operand::object(s.artifact))
-            } else {
-                Err(invalid())
-            };
-        }
-        if BUSY.swap(true, Ordering::AcqRel) {
-            return Err(invalid());
-        }
-        let result = construct(*id, ns);
-        BUSY.store(false, Ordering::Release);
         result
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
-    1
-}

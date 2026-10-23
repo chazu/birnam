@@ -1,5 +1,7 @@
 {
   "schema_version": 1,
   "scope": "Artifact inspector through Id messages; codecs remain internal libraries",
-  "exported_symbols": ["birnam_native_module_v1", "birnam_symbol_borrow_v1"]
+  "exported_symbols": [
+    "birnam_native_module_v2"
+  ]
 }

@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 10],
+    modules: [Oop; 11],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -1217,6 +1217,174 @@ pub(super) unsafe fn check(
         }
         println!(
             "PEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        let artifact = id
+            .send(modules[10], id.load, &[args])
+            .expect("Artifact loaded");
+        fn field(out: &mut Vec<u8>, value: &[u8]) {
+            out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+            out.extend_from_slice(value);
+        }
+        fn list(out: &mut Vec<u8>, values: &[&[u8]]) {
+            out.extend_from_slice(&(values.len() as u32).to_le_bytes());
+            for value in values {
+                field(out, value);
+            }
+        }
+        let artifact_bytes = |abi_name: &[u8], target: &[u8]| {
+            let mut payload = Vec::new();
+            for v in [
+                b"module".as_slice(),
+                b"candidate",
+                abi_name,
+                target,
+                b"source-digest",
+                b"revision-digest",
+            ] {
+                field(&mut payload, v);
+            }
+            list(&mut payload, &[b"Foo", b"Bar"]);
+            list(&mut payload, &[b"libdep.dylib"]);
+            list(&mut payload, &[b"activate", b"inspect"]);
+            let mut bytes = b"not executable: inspection only\n".to_vec();
+            bytes.extend_from_slice(b"BIRNAM-ARTIFACT-DESCRIPTOR-V1");
+            bytes.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&payload);
+            bytes
+        };
+        let fixture = artifact_bytes(b"birnam-artifact-generation-v1", b"aarch64-macos");
+        let directory = std::env::temp_dir().join(format!(
+            "birnam-oop-artifacts-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let path = directory.join("candidate.dylib");
+        std::fs::write(&path, &fixture).unwrap();
+        std::fs::write(directory.join("libdep.dylib"), b"sibling marker").unwrap();
+        let filename = text(path.to_str().unwrap().as_bytes());
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        let descriptor = keep(send(artifact, b"inspect:", &[filename]).unwrap());
+        let descriptor_type = send(namespace, b"at:", &[sel(b"ArtifactDescriptorVt")]).unwrap();
+        assert_eq!(
+            send(id.root, b"behaviorOf:", &[descriptor]).unwrap(),
+            descriptor_type
+        );
+        assert_eq!(send(artifact, b"lastFailure", &[]).unwrap(), nil);
+        let symbol_text = |symbol| text_bytes(send(string, b"fromBytes:", &[symbol]).unwrap());
+        assert_eq!(
+            symbol_text(send(descriptor, b"kind", &[]).unwrap()),
+            b"module"
+        );
+        let identity = send(descriptor, b"identity", &[]).unwrap();
+        assert_eq!(symbol_text(identity), b"candidate");
+        assert_eq!(send(descriptor, b"rootAt:", &[zero]).unwrap(), identity);
+        assert_eq!(int_value(send(descriptor, b"rootsCount", &[]).unwrap()), 1);
+        for (selector, expected) in [
+            (
+                b"artifactAbi".as_slice(),
+                b"birnam-artifact-generation-v1".as_slice(),
+            ),
+            (b"target", b"aarch64-macos"),
+            (b"sourceDigest", b"source-digest"),
+            (b"revisionDigest", b"revision-digest"),
+        ] {
+            assert_eq!(
+                text_bytes(send(descriptor, selector, &[]).unwrap()),
+                expected
+            );
+        }
+        assert_eq!(
+            int_value(send(descriptor, b"requiresCount", &[]).unwrap()),
+            2
+        );
+        assert_eq!(
+            symbol_text(send(descriptor, b"requireAt:", &[zero]).unwrap()),
+            b"Foo"
+        );
+        assert_eq!(
+            symbol_text(send(descriptor, b"requireAt:", &[one]).unwrap()),
+            b"Bar"
+        );
+        assert_eq!(send(descriptor, b"requireAt:", &[minus]).unwrap(), nil);
+        assert_eq!(send(descriptor, b"requireAt:", &[two]).unwrap(), nil);
+        assert_eq!(
+            text_bytes(send(descriptor, b"nativeRequireAt:", &[zero]).unwrap()),
+            b"libdep.dylib"
+        );
+        assert_eq!(
+            symbol_text(send(descriptor, b"capabilityAt:", &[one]).unwrap()),
+            b"inspect"
+        );
+        let requires = keep(send(descriptor, b"requires", &[]).unwrap());
+        assert_eq!(int_value(send(requires, b"size", &[]).unwrap()), 2);
+        let bytes = text(&fixture);
+        send(actor, b"at:put:", &[abi::size(42).unwrap(), filename]).unwrap();
+        send(actor, b"at:put:", &[abi::size(44).unwrap(), bytes]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"bytes"), file_bytes]).unwrap();
+        let snapshot = keep(send(artifact, b"inspectBytes:from:", &[bytes, filename]).unwrap());
+        send(string_type, b"addMethod", &[sel(b"bytes"), original_bytes]).unwrap();
+        assert_eq!(
+            text_bytes(send(snapshot, b"path", &[]).unwrap()),
+            path.to_str().unwrap().as_bytes()
+        );
+        assert_eq!(send(artifact, b"inspect:", &[one]).unwrap(), nil);
+        assert_eq!(
+            send(artifact, b"lastFailure", &[]).unwrap(),
+            sel(b"artifactPathInvalid")
+        );
+        for (data, reason) in [
+            (b"bad".to_vec(), b"artifactDescriptionMissing".as_slice()),
+            (
+                artifact_bytes(b"bad-abi", b"aarch64-macos"),
+                b"artifactAbiMismatch",
+            ),
+            (
+                artifact_bytes(b"birnam-artifact-generation-v1", b"bad-target"),
+                b"artifactTargetMismatch",
+            ),
+        ] {
+            assert_eq!(
+                send(artifact, b"inspectBytes:from:", &[text(&data), filename]).unwrap(),
+                nil
+            );
+            assert_eq!(send(artifact, b"lastFailure", &[]).unwrap(), sel(reason));
+        }
+        std::fs::remove_file(directory.join("libdep.dylib")).unwrap();
+        assert_eq!(send(artifact, b"inspect:", &[filename]).unwrap(), nil);
+        assert_eq!(
+            send(artifact, b"lastFailure", &[]).unwrap(),
+            sel(b"nativeRequirementUnavailable")
+        );
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(send(artifact, b"inspect:", &[filename]).unwrap(), nil);
+        assert_eq!(
+            send(artifact, b"lastFailure", &[]).unwrap(),
+            sel(b"artifactUnavailable")
+        );
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        assert_eq!(
+            symbol_text(send(descriptor, b"identity", &[]).unwrap()),
+            b"candidate"
+        );
+        send(vector_type, b"addMethod", &[sel(b"new"), replacement]).unwrap();
+        assert!(send(descriptor, b"requires", &[]).is_err());
+        send(vector_type, b"addMethod", &[sel(b"new"), vector_new]).unwrap();
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        std::fs::remove_dir_all(&directory).unwrap();
+        println!(
+            "Artifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

@@ -22,7 +22,7 @@ Current implementation work is tracked in the [invariant migration log](oop-inva
 Namespace, Storage, Boolean, nil, ObjectModel, Word, Bytes, String, Float, Integer, Vector and Map now join the
 Oop-only native closure; collector activation/accounting and live root-lookup
 replacement are tested. Prelude now constructs System through Oops; input, output, environment and file I/O
-also use the Oop-only interface. PEG now joins the qualified native closure. The remaining bootstrap/support
+also use the Oop-only interface. PEG and Artifact inspection now join the qualified native closure. The remaining bootstrap/support
 owners, execution/compiler, images and workers are still pending.
 
 ## Required end state

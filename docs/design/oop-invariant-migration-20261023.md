@@ -612,3 +612,24 @@ GC during every selected allocation, current byte-method replacement, retirement
 and subsequent allocations. Full compiler/execution/image/worker qualification
 and performance recovery remain pending.
 [Qualification receipts](../measurements/oop-peg-20261023.json).
+
+## Piece 26: Artifact inspection uses Oop data and scoped roots
+
+Artifact's runtime module now uses v2 declarations, an Oop Method context and
+byte-provider application. The descriptor parsers and binary formats are unchanged.
+Its thirteen-field descriptors remain ordinary objects allocated, accessed and
+traced by ObjectModel. List projections use current field/byte/Integer/Vector
+protocols; exact String paths and Integer indices retain their recognition rules.
+
+Removed incoming-argument copies, root-token loops and per-iteration accumulator
+root registration. A scoped reference list protects descriptor construction and
+replaces the Vector accumulator directly. Snapshot inspection preserves filename
+bytes before contents callbacks. Diagnostic reasons, ABI/target checks and native
+sibling requirements retain their existing policies.
+
+The gate passes 59 artifact codec tests (one existing ignored test), plus native
+checks of fields and list projections, signed bounds, callback-time GC, mutated
+byte providers, constructor replacement, missing/invalid descriptors, compatibility
+failures and adjacent native libraries. Full Codegen activation and executable
+compatibility remain part of the unfinished compiler/execution/image migration.
+[Qualification receipts](../measurements/oop-artifact-20261023.json).
