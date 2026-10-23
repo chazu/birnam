@@ -19,9 +19,10 @@ protocols. Native correctness checks pass, but measured costs rise; this superse
 the previous report's storage-classification design, not its historical measurements.
 
 Current implementation work is tracked in the [invariant migration log](oop-invariant-migration-20261023.md).
-Namespace, Storage, Boolean and nil now join the Oop-only native closure; collector
-activation/accounting and live root-lookup replacement are tested. ObjectModel,
-the remaining value owners, execution/compiler, images and workers are still pending.
+Namespace, Storage, Boolean, nil, ObjectModel, Word, Bytes and String now join the
+Oop-only native closure; collector activation/accounting and live root-lookup
+replacement are tested. The remaining value owners, execution/compiler, images
+and workers are still pending.
 
 ## Required end state
 

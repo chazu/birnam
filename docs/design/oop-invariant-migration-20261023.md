@@ -363,3 +363,33 @@ buffer has been collected. Existing binary framing/hash unit tests and all prior
 native gates pass. Numeric adapters are exercised with an independent object
 provider; full Integer/Vector integration remains in the migration queue.
 [Qualification receipts](../measurements/oop-bytes-20261023.json).
+
+## Piece 15: String owns bytes and uses object-valued extensions
+
+String and StringBuilder now own their native byte arrays directly. Removed the
+separate Bytes backing object and payload mirror; handles have zero payload.
+Byte transfer uses the provider's current `apply:to:with:` or `appendTo:` method.
+Internal text construction passes an ordinary Sequence to the current String
+`fromBytes:`; this preserves zero bytes, which Names deliberately reject. `bytes`
+and `asBytes` call the current Bytes `fromBytes:` and return independent copies.
+
+Numeric Methods capture a completed Sequence of Integer and Float dependencies;
+split Methods capture their Vector dependency directly. Removed leaked native
+extension records, permanent dependency retain tokens, and redundant copies of
+incoming call roots. Only temporary results need owner-local scoped roots.
+Id's incoming-call roots and Method-context tracing provide the existing lifetime
+obligations. No new shared payload classification or dispatch table was added.
+
+The native gate covers binary text, independent clones, builder self-append,
+replacement and trimming, Symbol conversion, independent byte copies, signed
+64-bit/IEEE bit preservation, parsing overflow, GC during external accounting and
+numeric conversion, captured numeric Methods after all extension bindings are
+removed, and split construction with collection during Vector calls. It checks
+replacement of byte-provider application, String construction, Bytes construction,
+and Vector construction. The full prior native gate and export audit pass.
+
+Regression review retained live Bytes construction and removed redundant incoming
+argument rooting. This is structural simplification, not a claimed timing win:
+strict byte transfer still expands bytes into Oop arguments, and full-language
+performance recovery remains deferred. Real Integer/Float/Vector integration is
+still pending. [Qualification receipts](../measurements/oop-string-20261023.json).

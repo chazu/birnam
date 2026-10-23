@@ -1,34 +1,21 @@
 use super::*;
-struct Split {
-    text: *const Text,
-    vector: Oop,
-    new: Oop,
-    add: Oop,
-}
-unsafe extern "C" fn split(c: *mut c_void, r: Oop, a: *const Operand, count: usize) -> Outcome {
+pub(super) unsafe extern "C" fn split(_: Oop, c: Oop, r: Oop, a: *const Oop, count: usize) -> Oop {
     done((|| unsafe {
-        let extension = &*c.cast::<Split>();
-        let t = state(extension.text.cast_mut().cast())?;
+        let t = instance()?;
         let Some([separator]) = borrowed_slice(a, count) else {
             return Err(invalid());
         };
         let separator = object(*separator)?;
-        t.rooted(&[r, separator], || {
+        {
             let bytes = t.copy(r, Kind::String)?;
-            let separator = if t
-                .send(t.id.receiver, b"behaviorOf:", &[Operand::object(separator)])?
-                .as_object()
-                == Some(t.behavior)
-            {
+            let separator = if t.send(t.id.root, b"behaviorOf:", &[separator])? == t.behavior {
                 Some(t.copy(separator, Kind::String)?)
             } else {
                 None
             };
-            let mut result = object(t.id.send(extension.vector, extension.new, &[])?)?;
+            let mut result = object(t.send(c, b"new", &[])?)?;
             if separator.is_none() {
-                return t.rooted(&[result], || {
-                    t.id.send(result, extension.add, &[Operand::object(r)])
-                });
+                return t.send(result, b"add:", &[r]);
             }
             let separator = separator.unwrap();
             let mut from = 0;
@@ -45,64 +32,33 @@ unsafe extern "C" fn split(c: *mut c_void, r: Oop, a: *const Operand, count: usi
                 // Keep only the current persistent result across construction of a segment.
                 result = object(t.rooted(&[result], || {
                     let part = object(t.string(part)?)?;
-                    t.rooted(&[part], || {
-                        t.id.send(result, extension.add, &[Operand::object(part)])
-                    })
+                    t.send(result, b"add:", &[part])
                 })?)?;
                 let Some(end) = end else { break };
                 from = end + separator.len();
             }
-            Ok(Operand::object(result))
-        })
+            Ok(result)
+        }
     })())
 }
-pub(super) unsafe extern "C" fn install(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    count: usize,
-) -> Outcome {
+
+pub(super) unsafe extern "C" fn install(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
         let t = state(c)?;
-        let Some([vector]) = borrowed_slice(a, count) else {
+        let [vector] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let vector = object(*vector)?;
-        if r != t.prototype.get() {
+        if r != t.prototype {
             return Err(invalid());
         }
-        t.rooted(&[vector], || {
-            let selector = t.id.intern_name(b"split:")?;
-            t.rooted(&[selector], || {
-                if t.id
-                    .send_named(t.behavior, b"lookup", &[Operand::object(selector)])?
-                    .kind()
-                    != native::UNIT
-                {
-                    return Ok(Operand::unit());
-                }
-                // Root the completed extension dependencies before installing its method.
-                let new = t.id.intern_name(b"new")?;
-                t.send(t.roots, b"retain:", &[Operand::object(new)])?;
-                let add = t.id.intern_name(b"add:")?;
-                t.send(t.roots, b"retain:", &[Operand::object(add)])?;
-                t.send(t.roots, b"retain:", &[Operand::object(vector)])?;
-                let extension = Box::into_raw(Box::new(Split {
-                    text: t,
-                    vector,
-                    new,
-                    add,
-                }));
-                t.send(
-                    t.behavior,
-                    b"addMethod",
-                    &[
-                        Operand::object(selector),
-                        Operand::entry(NativeEntry::new(split, extension.cast())),
-                    ],
-                )?;
-                Ok(Operand::unit())
-            })
-        })
+        let vector = object(*vector)?;
+        if t.send(t.behavior, b"lookup", &[t.selector(b"split:")?])?
+            .is_null()
+        {
+            // The Method context itself keeps the chosen Vector dependency alive.
+            let method = t.method(b"split::split", vector)?;
+            t.send(t.behavior, b"addMethod", &[t.selector(b"split:")?, method])?;
+        }
+        Ok(ptr::null_mut())
     })())
 }

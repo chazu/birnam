@@ -26,8 +26,10 @@ unsafe fn run() {
             library.join("libbirnam_object_model.dylib"),
             library.join("libbirnam_word.dylib"),
             library.join("libbirnam_bytes.dylib"),
+            library.join("libbirnam_string.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"String",b"StringBuilder",b"asBytes",b"bytes",b"trimmed",b"replace:with:",b"asSymbol",b"asString",b"add:",b"new",b"clone",b",",b"=",b"installNumbers:",b"installCollections:",b"byteAt:",b"copyFrom:to:",b"indexOf:",b"bracketDepth",b"asInteger",b"asNumber",b"addByte:",b"split:",b"bitsOf:",b"numericWord",b"vectorNew",b"vectorAdd",b"collectionEquals:",b"collectionHash",
             b"sequence",
             b"objectBehavior",
             b"allocate",
@@ -882,6 +884,133 @@ unsafe fn run() {
         for token in [data_token,table_token]{send(roots,b"release:",&[token]).unwrap();}
         send(gc,b"collectPrecisely",&[]).unwrap();
         println!("Bytes binary values, live accounting with GC, full-width reads and independent decoded views: passed");
+
+
+        let replacement=send(actor_vt,b"lookup",&[sel(b"replacement")]).unwrap();
+        let string_args=send(id.root,b"sequence",&[namespace]).unwrap();
+        let string=id.send(names[13],id.load,&[string_args]).expect("String loaded");
+        let string_type=send(id.root,b"behaviorOf:",&[string]).unwrap();
+        let make_text=|text:&[u8]|{
+            let values:Vec<_>=text.iter().map(|&b|abi::size(b as usize).unwrap()).collect();
+            let source=send(id.root,b"sequence",&values).unwrap();
+            send(string,b"fromBytes:",&[source]).unwrap()
+        };
+        let text_bytes=|value|{
+            let bytes=send(value,b"asBytes",&[]).unwrap();
+            let length=abi::as_size(send(bytes,b"length",&[]).unwrap()).unwrap();
+            (0..length).map(|i|abi::as_size(send(bytes,b"byteAtWord:",&[abi::size(i).unwrap()]).unwrap()).unwrap() as u8).collect::<Vec<_>>()
+        };
+        send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),collecting_charge]).unwrap();
+        let original=make_text(b" \tab\0\xff ab\r\n");
+        let original_token=send(roots,b"retain:",&[original]).unwrap();
+        assert_eq!(send(id.root,b"allocationSizeOf:",&[original]).unwrap(),abi::size(0).unwrap());
+        assert_eq!(text_bytes(original),b" \tab\0\xff ab\r\n");
+        let trimmed=send(original,b"trimmed",&[]).unwrap();
+        let trimmed_token=send(roots,b"retain:",&[trimmed]).unwrap();
+        assert_eq!(text_bytes(trimmed),b"ab\0\xff ab");
+        let copy=send(trimmed,b"clone",&[]).unwrap();
+        let copy_token=send(roots,b"retain:",&[copy]).unwrap();
+        assert_ne!(trimmed,copy);
+        assert_eq!(send(trimmed,b"=",&[copy]).unwrap(),truth);
+        assert_eq!(send(trimmed,b"collectionEquals:",&[copy]).unwrap(),truth);
+        assert_eq!(send(trimmed,b"collectionHash",&[]).unwrap(),send(copy,b"collectionHash",&[]).unwrap());
+        let needle=make_text(b"ab");let needle_token=send(roots,b"retain:",&[needle]).unwrap();
+        let insert=make_text(b"X");let insert_token=send(roots,b"retain:",&[insert]).unwrap();
+        let replaced=send(trimmed,b"replace:with:",&[needle,insert]).unwrap();
+        assert_eq!(text_bytes(replaced),b"X\0\xff X");
+        let symbol=send(trimmed,b"asSymbol",&[]).unwrap();
+        let expected_name=send(id.root,b"nameWithBytes",&[abi::size(97).unwrap(),abi::size(98).unwrap()]).unwrap();
+        assert_eq!(symbol,id.send(expected_name,id.intern,&[]).unwrap());
+        let source=send(trimmed,b"bytes",&[]).unwrap();
+        let source_token=send(roots,b"retain:",&[source]).unwrap();
+        send(source,b"appendByteValues",&[abi::size(33).unwrap()]).unwrap();
+        assert_eq!(text_bytes(trimmed),b"ab\0\xff ab");
+        let from_buffer=send(string,b"fromBytes:",&[source]).unwrap();
+        assert_eq!(text_bytes(from_buffer),b"ab\0\xff ab!");
+        let builder=send(namespace,b"at:",&[sel(b"StringBuilder")]).unwrap();
+        let builder=send(builder,b"new",&[]).unwrap();
+        let builder_token=send(roots,b"retain:",&[builder]).unwrap();
+        send(builder,b"add:",&[needle]).unwrap();send(builder,b"add:",&[builder]).unwrap();
+        assert_eq!(text_bytes(send(builder,b"asString",&[]).unwrap()),b"abab");
+        let empty_builder=send(builder,b"clone",&[]).unwrap();
+        assert_eq!(text_bytes(send(empty_builder,b"asString",&[]).unwrap()),b"");
+        // Subsequent construction observes replacement of the provider protocol.
+        let name=send(id.root,b"nameWithBytes",&[abi::size(97).unwrap()]).unwrap();
+        let name_token=send(roots,b"retain:",&[name]).unwrap();
+        let name_type=send(id.root,b"behaviorOf:",&[name]).unwrap();
+        let apply=send(name_type,b"lookup",&[sel(b"apply:to:with:")]).unwrap();
+        let apply_token=send(roots,b"retain:",&[apply]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"apply:to:with:"),replacement]).unwrap();
+        assert_eq!(send(string,b"fromBytes:",&[name]).unwrap(),expected);
+        send(name_type,b"addMethod",&[sel(b"apply:to:with:"),apply]).unwrap();
+        let factory=send(string_type,b"lookup",&[sel(b"fromBytes:")]).unwrap();
+        let factory_token=send(roots,b"retain:",&[factory]).unwrap();
+        send(string_type,b"addMethod",&[sel(b"fromBytes:"),replacement]).unwrap();
+        assert_eq!(send(original,b"trimmed",&[]).unwrap(),expected);
+        send(string_type,b"addMethod",&[sel(b"fromBytes:"),factory]).unwrap();
+        let bytes_type=send(id.root,b"behaviorOf:",&[bytes]).unwrap();
+        let bytes_factory=send(bytes_type,b"lookup",&[sel(b"fromBytes:")]).unwrap();
+        let bytes_factory_token=send(roots,b"retain:",&[bytes_factory]).unwrap();
+        send(bytes_type,b"addMethod",&[sel(b"fromBytes:"),replacement]).unwrap();
+        assert_eq!(send(original,b"asBytes",&[]).unwrap(),expected);
+        send(bytes_type,b"addMethod",&[sel(b"fromBytes:"),bytes_factory]).unwrap();
+        send(roots,b"release:",&[bytes_factory_token]).unwrap();
+        send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
+        // Numeric and collection adapters are independent C objects for this slice.
+        let numeric_type=send(base,b"delegated",&[]).unwrap();
+        let numeric_word=send(actor_vt,b"lookup",&[sel(b"numericWord")]).unwrap();
+        for selector in [b"wordOf:".as_slice(),b"bitsOf:"]{send(numeric_type,b"addMethod",&[sel(selector),numeric_word]).unwrap();}
+        for selector in [b"fromWord:".as_slice(),b"fromBits:"]{send(numeric_type,b"addMethod",&[sel(selector),identity_number]).unwrap();}
+        let number_factory=send(numeric_type,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+        send(string,b"installNumbers:",&[number_factory,number_factory]).unwrap();
+        assert_eq!(abi::as_size(send(trimmed,b"size",&[]).unwrap()),Some(7));
+        assert_eq!(abi::as_size(send(trimmed,b"byteAt:",&[abi::size(3).unwrap()]).unwrap()),Some(255));
+        assert_eq!(text_bytes(send(trimmed,b"at:",&[abi::size(3).unwrap()]).unwrap()),b"\xff");
+        assert_eq!(text_bytes(send(trimmed,b"copyFrom:to:",&[abi::size(2).unwrap(),abi::size(4).unwrap()]).unwrap()),b"\0\xff");
+        assert_eq!(send(trimmed,b"byteAt:",&[abi::size(7).unwrap()]).unwrap(),nil);
+        assert_eq!(abi::as_size(send(trimmed,b"indexOf:",&[needle]).unwrap()),Some(0));
+        send(builder,b"addByte:",&[abi::size(255).unwrap()]).unwrap();
+        assert_eq!(abi::as_size(send(builder,b"size",&[]).unwrap()),Some(5));
+        let signed=send(make_text(b" -9223372036854775808 "),b"asInteger",&[]).unwrap();
+        assert_eq!(abi::as_size(send(signed,b"high32",&[]).unwrap()),Some(0x80000000));
+        assert_eq!(abi::as_size(send(signed,b"low32",&[]).unwrap()),Some(0));
+        assert_eq!(send(make_text(b"9223372036854775808"),b"asInteger",&[]).unwrap(),nil);
+        let float_bits=send(make_text(b"-1.5"),b"asNumber",&[]).unwrap();
+        assert_eq!(abi::as_size(send(float_bits,b"high32",&[]).unwrap()),Some(0xbff80000));
+        assert_eq!(abi::as_size(send(float_bits,b"low32",&[]).unwrap()),Some(0));
+        assert_eq!(abi::as_size(send(make_text(b"[\"[\" // ]\n{"),b"bracketDepth",&[]).unwrap()),Some(2));
+        // Capture a numeric Method, detach it, collect, then invoke it.
+        let numeric_method=send(string_type,b"lookup",&[sel(b"size")]).unwrap();
+        let numeric_token=send(roots,b"retain:",&[numeric_method]).unwrap();
+        for selector in [b"size".as_slice(),b"at:",b"byteAt:",b"copyFrom:to:",b"indexOf:",b"bracketDepth",b"asInteger",b"asNumber"]{send(string_type,b"removeMethod:",&[sel(selector)]).unwrap();}
+        let builder_type=send(id.root,b"behaviorOf:",&[builder]).unwrap();
+        for selector in [b"size".as_slice(),b"addByte:"]{send(builder_type,b"removeMethod:",&[sel(selector)]).unwrap();}
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        send(id.root,b"identityOf:",&[number_factory]).unwrap();
+        let empty=send(id.root,b"sequence",&[]).unwrap();
+        assert_eq!(send(numeric_method,b"invokeOn:arguments:",&[trimmed,empty]).unwrap(),abi::size(7).unwrap());
+        send(string_type,b"addMethod",&[sel(b"size"),numeric_method]).unwrap();
+        let vector_type=send(base,b"delegated",&[]).unwrap();
+        let vector_new=send(actor_vt,b"lookup",&[sel(b"vectorNew")]).unwrap();
+        send(vector_type,b"addMethod",&[sel(b"new"),vector_new]).unwrap();
+        let vector=send(vector_type,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+        let sample=send(id.root,b"sequence",&[]).unwrap();
+        let sequence_type=send(id.root,b"behaviorOf:",&[sample]).unwrap();
+        let vector_add=send(actor_vt,b"lookup",&[sel(b"vectorAdd")]).unwrap();
+        send(sequence_type,b"addMethod",&[sel(b"add:"),vector_add]).unwrap();
+        send(string,b"installCollections:",&[vector]).unwrap();
+        let split_text=make_text(b"abXabX");let split_token=send(roots,b"retain:",&[split_text]).unwrap();
+        let parts=send(split_text,b"split:",&[insert]).unwrap();let parts_token=send(roots,b"retain:",&[parts]).unwrap();
+        assert_eq!(send(parts,b"at:",&[abi::size(0).unwrap()]).unwrap(),abi::size(3).unwrap());
+        for (i,want) in [b"ab".as_slice(),b"ab",b""].into_iter().enumerate(){let part=send(parts,b"at:",&[abi::size(i+1).unwrap()]).unwrap();assert_eq!(text_bytes(part),want);}
+        send(vector_type,b"addMethod",&[sel(b"new"),replacement]).unwrap();
+        assert!(send(split_text,b"split:",&[insert]).is_err());
+        send(vector_type,b"addMethod",&[sel(b"new"),vector_new]).unwrap();
+        send(sequence_type,b"removeMethod:",&[sel(b"add:")]).unwrap();
+        for token in [original_token,trimmed_token,copy_token,needle_token,insert_token,source_token,builder_token,name_token,apply_token,factory_token,numeric_token,split_token,parts_token]{send(roots,b"release:",&[token]).unwrap();}
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        assert!(send(id.root,b"identityOf:",&[original]).is_err());
+        println!("String Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

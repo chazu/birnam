@@ -139,6 +139,8 @@ pub(crate) enum Action {
     NameSize,
     NameAt,
     NameAppend,
+    NameApply,
+    SymbolApply,
     SymbolAppend,
     Intern,
     IsSymbol,
@@ -231,6 +233,8 @@ core_primitives![
     (b"size", NameSize),
     (b"at:", NameAt),
     (b"appendTo:", NameAppend),
+    (b"apply:to:with:", NameApply),
+    (b"apply:to:with:", SymbolApply),
     (b"appendTo:", SymbolAppend),
     (b"intern", Intern),
     (b"isSymbol:", IsSymbol),
@@ -426,11 +430,11 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol | Action::NameAppend => self.name,
+                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol | Action::NameAppend | Action::NameApply => self.name,
                 Action::At | Action::Put | Action::SequenceSize
                 | Action::ApplyArguments | Action::ApplyArgumentsWith | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
-                Action::SymbolHash | Action::SymbolAppend => self.symbol,
+                Action::SymbolHash | Action::SymbolAppend | Action::SymbolApply => self.symbol,
                 Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
@@ -715,16 +719,19 @@ impl State {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
             Action::NewName => self.name_from_values(a),
-            Action::NameAppend | Action::SymbolAppend => {
-                let target=one()?;
-                let values:Vec<Oop>=if action==Action::NameAppend {
+            Action::NameAppend | Action::SymbolAppend | Action::NameApply | Action::SymbolApply => {
+                let applying=matches!(action,Action::NameApply|Action::SymbolApply);
+                if applying && a.len()<2 {return Err(invalid);}
+                let target=if applying {a[0]}else{one()?};
+                let mut values:Vec<Oop>=if matches!(action,Action::NameAppend|Action::NameApply) {
                     let (p,n)=self.name_data(r)?;
                     unsafe{core::slice::from_raw_parts(p,n)}.iter().map(|&b|abi::size(b as usize).unwrap()).collect()
                 } else {
                     let symbols=self.symbols.borrow();
                     symbols.bytes_of(r).ok_or(invalid)?.iter().map(|&b|abi::size(b as usize).unwrap()).collect()
                 };
-                unsafe{self.send(target,b"appendByteValues",&values)}
+                if applying {values.insert(0,a[1]);values.extend_from_slice(&a[2..]);unsafe{self.send(target,b"apply",&values)}}
+                else {unsafe{self.send(target,b"appendByteValues",&values)}}
             }
             Action::NameSize => {
                 if !a.is_empty() { return Err(invalid); }
