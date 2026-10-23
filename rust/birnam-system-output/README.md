@@ -1,49 +1,24 @@
-# System construction and output over Id
+# System output over Oop messages
 
-Bootstrap loads `prelude`, `printing` and `system_output` with the completed
-Namespace Object after String and the Boolean/Nil printers, before collections.
-Each module depends only on the common Id ABI. Prelude publishes `System` and
-`SystemVt`; Printing installs Object/Symbol defaults and publishes Id's existing
-`SymbolVt`. Repeated loading preserves installed replacements. Prelude returns
-the original System; the two method installers return Unit.
+The v2 initializer installs `print:`, `println:` and `printErrorText:` on System.
+It captures the completed Namespace, exact String vtable and nil object. One
+ordinary root Sequence retains those dependencies and its private writing Method.
+Repeated loading preserves method replacement and removal.
 
-| Method | Preserved behavior |
-|---|---|
-| Object `printString` | Construct a fresh String containing `anObject`. |
-| Object `asString` | Send the receiver's current `printString`. |
-| Symbol `printString` | Copy its name through Id `symbolBytesOf:` and construct a String prefixed with `#`. |
-| System `print:` / `println:` | Write exact String bytes, or send `printString` once and require an exact String result. Append a newline only for `println:`, flush, and return the receiver. |
+`print:` and `println:` use exact String bytes directly; other values receive
+`printString` once and must return an exact String. Wrong arity or an unavailable
+rendering returns language nil. A missing argument reference is invalid. Current
+`bytes` and byte-provider application remain observable. A private Method receives
+byte Oops plus an output mode, then performs the OS write without language sends
+while the output lock is held. Incoming objects use Id call roots.
 
-An unavailable/non-String rendering and wrong language arity return nil. Output
-keeps its existing policy of ignoring OS write/flush errors. Malformed native
-operands fail admission; native send failures propagate unchanged. Printing does
-not escape bytes or impose UTF-8 decoding, and exact Strings bypass `printString`.
+Stdout preserves binary bytes. Only `println:` adds LF; both methods flush and
+return their receiver. `printErrorText:` accepts an exact String, writes UTF-8-lossy
+text to stderr, adds no newline, and flushes. The existing policy of ignoring OS
+write/flush failures is preserved. Id failures still propagate.
 
-Construction, retention, Namespace access, method installation, String construction
-and byte access all use current Id sends. Receivers, inputs and rendered Strings
-remain rooted across collecting methods. Borrowed names/bytes are copied before
-another send can invalidate them. Rendering finishes before stdout is locked, so
-`printString` can itself print. The native stdout write/flush is private I/O owned
-by this module; there is no cross-module native callback or text-view service table.
-
-Run `bash scripts/native-message-test.sh`. The `system_output` integration binary
-captures a subprocess's actual stdout and compares exact bytes, including NUL and
-non-UTF-8 data. It tests source output, aliases, fresh Object text, Symbol text,
-conversion rejection, current lookup, collecting factories/renderers/byte methods,
-reentrant output, exact native failures and reload preservation. The existing
-unit test checks flushing of a newline-free prompt:
-
-```
-cargo test --offline --locked -p birnam-system-output --lib
-```
-
-The install manifest uses `libbirnam_prelude.dylib`, matching Bootstrap's path.
-Input and environment now use the same prefix; see their [contract](../birnam-system-input/README.md).
-[File I/O](../birnam-file-io/README.md) is also connected. Full Host/CLI startup,
-image round trips and loaders remain separate migration work. Historical image smoke tests
-are not evidence for those unfinished paths.
-
-`printErrorText:` accepts an exact String, copies its bytes, writes UTF-8-lossy text
-to stderr and flushes. It adds no newline or diagnostic formatting; callers own
-those choices. Wrong arity/type returns nil, and native dependency failures
-propagate. No language send crosses the OS output lock.
+`bash scripts/oop-id-slice-test.sh` checks actual subprocess stdout/stderr bytes,
+NUL/non-UTF-8 output, numeric rendering, reentrant printing with GC, malformed
+results, private String rejection, live byte methods, captured Methods and reload.
+The unit check verifies a newline-free prompt is flushed. Full source, Host/CLI,
+image and worker acceptance remain pending.

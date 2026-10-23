@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 7],
+    modules: [Oop; 8],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -852,6 +852,91 @@ pub(super) unsafe fn check(
         .unwrap();
         println!(
             "Environment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert!(id.send(modules[7], id.load, &[args]).unwrap().is_null());
+        let printer = keep(send(system_type, b"lookup", &[sel(b"println:")]).unwrap());
+        send(system_type, b"removeMethod:", &[sel(b"println:")]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        id.send(modules[7], id.load, &[args]).unwrap();
+        assert!(
+            send(system_type, b"lookup", &[sel(b"println:")])
+                .unwrap()
+                .is_null()
+        );
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        let args = send(id.root, b"sequence", &[text(b"OOP_STDOUT:\0\xff")]).unwrap();
+        assert_eq!(
+            send(printer, b"invokeOn:arguments:", &[system, args]).unwrap(),
+            system
+        );
+        send(system_type, b"addMethod", &[sel(b"println:"), printer]).unwrap();
+        assert_eq!(
+            send(system, b"print:", &[text(b"OOP_NUMBER:")]).unwrap(),
+            system
+        );
+        assert_eq!(send(system, b"println:", &[two]).unwrap(), system);
+        assert_eq!(
+            send(system, b"printErrorText:", &[text(b"OOP_STDERR:\0\xff")]).unwrap(),
+            system
+        );
+        let rendered_type = keep(send(base, b"delegated", &[]).unwrap());
+        let render = send(actor_type, b"lookup", &[sel(b"renderOutput")]).unwrap();
+        send(rendered_type, b"addMethod", &[sel(b"printString"), render]).unwrap();
+        let rendered = keep(send(rendered_type, b"allocate", &[abi::size(0).unwrap()]).unwrap());
+        keep(expected);
+        send(
+            actor,
+            b"at:put:",
+            &[abi::size(6).unwrap(), text(b"OOP_REENTRY;")],
+        )
+        .unwrap();
+        assert_eq!(send(system, b"println:", &[rendered]).unwrap(), system);
+        send(actor, b"at:put:", &[abi::size(6).unwrap(), expected]).unwrap();
+        assert_eq!(send(system, b"print:", &[]).unwrap(), nil);
+        assert!(send(system, b"print:", &[core::ptr::null_mut()]).is_err());
+        assert_eq!(send(system, b"printErrorText:", &[two]).unwrap(), nil);
+        send(
+            rendered_type,
+            b"addMethod",
+            &[sel(b"printString"), replacement],
+        )
+        .unwrap();
+        assert_eq!(send(system, b"print:", &[rendered]).unwrap(), nil);
+        let rejected = send(actor_type, b"lookup", &[sel(b"rethrow:")]).unwrap();
+        send(
+            rendered_type,
+            b"addMethod",
+            &[sel(b"printString"), rejected],
+        )
+        .unwrap();
+        assert!(send(system, b"print:", &[rendered]).is_err());
+        send(string_type, b"addMethod", &[sel(b"bytes"), absent_value]).unwrap();
+        assert_eq!(send(system, b"print:", &[present]).unwrap(), nil);
+        send(string_type, b"addMethod", &[sel(b"bytes"), original_bytes]).unwrap();
+        send(id.root, b"ensurePrivateVtableFor:", &[present]).unwrap();
+        assert_eq!(send(system, b"print:", &[present]).unwrap(), nil);
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[present, string_type],
+        )
+        .unwrap();
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        println!(
+            "System output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

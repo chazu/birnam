@@ -550,3 +550,19 @@ non-Unicode names and values, replaced byte/factory methods, private String vtab
 a factory published during diagnostic construction, removal/reload and captured
 Methods with GC. Prior native and stdin error gates pass. No throughput claim.
 [Qualification receipts](../measurements/oop-environment-20261023.json).
+
+## Piece 23: System output writes Oop byte sequences
+
+Output now uses Oop contexts and one bulk byte-provider call. Exact Strings still
+bypass rendering; other values use the current `printString` and must return an
+exact String. Native writes occur only after rendering and byte transfer, with no
+Id send under an OS output lock. Binary stdout, newline selection, flushing,
+UTF-8-lossy stderr, ignored OS write failures and propagated Id failures remain.
+
+One root Sequence retains completed dependencies and the private writer. Removed
+per-call root-token loops and borrowed byte-pointer transport. The native gate
+compares actual binary stdout/stderr markers, exercises numeric and reentrant
+rendering with collection, unavailable/malformed renderings, private String
+vtables, current byte methods, captured Methods and reload preservation. The
+prompt-flush unit check and all prior native gates pass.
+[Qualification receipts](../measurements/oop-system-output-20261023.json).

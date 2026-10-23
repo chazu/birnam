@@ -8,13 +8,13 @@ export BIRNAM_OOP_TARGET="$CARGO_TARGET_DIR"
 fixture="$CARGO_TARGET_DIR/fixtures"
 logs="$CARGO_TARGET_DIR/qualification"
 mkdir -p "$fixture" "$logs"
-mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment --lib > "$logs/unit.log" 2>&1
-mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage -p birnam-boolean -p birnam-nil -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment > "$logs/build.log" 2>&1
+mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment -p birnam-system-output --lib > "$logs/unit.log" 2>&1
+mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage -p birnam-boolean -p birnam-nil -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment -p birnam-system-output > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_slice > "$logs/caller-build.log" 2>&1
 python3 - "$CARGO_TARGET_DIR/release" <<'PY_EXPORTS'
 from pathlib import Path
 import json,subprocess,sys
-for name in ['id','root-registry','collect','namespace','storage','boolean','nil','object-model','word','bytes','string','float','integer','vector','map','prelude','system-input','environment']:
+for name in ['id','root-registry','collect','namespace','storage','boolean','nil','object-model','word','bytes','string','float','integer','vector','map','prelude','system-input','environment','system-output']:
     manifest=json.loads(Path('rust/birnam-'+name+'/exports.json').read_text())
     library=Path(sys.argv[1])/('libbirnam_'+name.replace('-','_')+'.dylib')
     actual=set(subprocess.check_output(['nm','-gjU',str(library)],text=True).splitlines())
@@ -68,7 +68,10 @@ from pathlib import Path
 import sys
 p=Path(sys.argv[1])
 assert 'OOP_SLICE_OK' in (p/'runtime.log').read_text()
-assert 'NUMERIC_INTEGRATION_OK' in (p/'numeric-integration.log').read_text()
+numeric=(p/'numeric-integration.log').read_bytes()
+assert b'NUMERIC_INTEGRATION_OK' in numeric
+for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
+    assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()
 assert 'FINALIZER_FAILURE_CONTAINED' in (p/'finalizer-failure.log').read_text()
 assert 'STORAGE_PUBLICATION_FAILURE_CONTAINED' in (p/'storage-init-failure.log').read_text()
