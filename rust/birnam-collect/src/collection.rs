@@ -253,6 +253,10 @@ unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {
         let objects: Vec<_> = dead.iter().map(|a| a.object).collect();
         // Pass the dead objects as Oop arguments. No managed object is created
         // after marking to hold references that will become invalid on release.
+        // Owners remove weak records while every object's allocation is still
+        // present. The same Oop argument slice is borrowed by each callback.
+        let retirement = s.retirement.borrow().clone();
+        for owner in retirement { s.send(owner, b"retire:", &objects)?; }
         s.send(s.id.root, b"removeDeadObjects", &objects)?;
         {
             let mut owners = s.tracers.borrow_mut();

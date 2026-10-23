@@ -34,6 +34,8 @@ BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
     "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" finalizer-failure > "$logs/finalizer-failure.log" 2>&1
 BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
     "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" storage-init-failure > "$logs/storage-init-failure.log" 2>&1
+BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
+    "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" retirement-failure > "$logs/retirement-failure.log" 2>&1
 "$fixture/bench-v2" "$CARGO_TARGET_DIR/release/libbirnam_id.dylib" \
     "$CARGO_TARGET_DIR/release/libbirnam_root_registry.dylib" \
     "$CARGO_TARGET_DIR/release/libbirnam_collect.dylib" > "$logs/independent-c.log" 2>&1
@@ -44,6 +46,7 @@ p=Path(sys.argv[1])
 assert 'OOP_SLICE_OK' in (p/'runtime.log').read_text()
 assert 'FINALIZER_FAILURE_CONTAINED' in (p/'finalizer-failure.log').read_text()
 assert 'STORAGE_PUBLICATION_FAILURE_CONTAINED' in (p/'storage-init-failure.log').read_text()
+assert 'RETIREMENT_FAILURE_CONTAINED' in (p/'retirement-failure.log').read_text()
 assert 'collect-garbage' in (p/'independent-c.log').read_text()
 print((p/'runtime.log').read_text(),end='')
 print((p/'finalizer-failure.log').read_text(),end='')

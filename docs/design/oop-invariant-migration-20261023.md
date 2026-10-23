@@ -162,3 +162,20 @@ Method's subsequent call. The seven migrated dylibs pass the export audit.
 The broad probes change -3.1%, +1.9%, -0.8%, +1.4%; no clear broad regression is
 established, and these are not Boolean-specific throughput measurements.
 [Evidence](../measurements/oop-boolean-nil-20261023.json).
+
+## Piece 7: retire owner metadata before releasing objects
+
+Restored `registerRetirement:` for owners such as ObjectModel and Bytes. Each
+registered owner receives `retire:` with the dead Oops as arguments before Id
+removes its records or releases storage. Registration is idempotent, owners are
+rooted, selection remains live, and no registry borrow crosses a callback. This
+reuses the existing dead-object vector instead of allocating an address packet or
+a temporary managed container.
+
+The independent callback verifies every supplied object still has an allocation,
+requests a nested collection (a no-op), and counts each object exactly once even
+when the owner was registered twice. A separate process makes retirement fail;
+storage remains allocated and further collection is refused. All native gates,
+unit tests and export checks pass. The only new normal collection work is the
+previously required callback for each registered owner; an empty owner list does
+not allocate. [Receipts](../measurements/oop-retirement-20261023.json).

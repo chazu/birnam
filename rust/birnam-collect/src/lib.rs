@@ -40,6 +40,7 @@ struct Memory {
     phase: Cell<Phase>,
     tracers: RefCell<HashMap<usize, Owner>>,
     finalizers: RefCell<HashMap<usize, Owner>>,
+    retirement: RefCell<Vec<Oop>>,
     walk: RefCell<Option<collection::Walk>>,
     inventory: RefCell<Option<collection::Inventory>>,
 }
@@ -106,6 +107,7 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
     values.extend([s.receiver, s.roots, s.core_visitor]);
     values.extend(s.tracers.borrow().values().map(|v| v.object));
     values.extend(s.finalizers.borrow().values().map(|v| v.object));
+    values.extend(s.retirement.borrow().iter().copied());
     for o in values {
         if let Err(e) = unsafe { s.send(*visitor, b"visit:", &[o]) } {
             return e;
@@ -160,6 +162,17 @@ unsafe extern "C" fn reference_owner(_id: Oop,c: Oop,_: Oop,a: *const Oop,n: usi
         Ok(s.trace_owner(*behavior)?.unwrap_or(core::ptr::null_mut()))
     })().unwrap_or_else(|e|e)
 }
+unsafe extern "C" fn register_retirement(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = memory(c)?;
+        if s.phase.get() != Phase::Idle { return Err(s.invalid()); }
+        let Some([owner]) = abi::borrowed_slice(a, n) else { return Err(s.invalid()); };
+        s.identity(*owner)?;
+        let mut owners = s.retirement.borrow_mut();
+        if !owners.contains(owner) { owners.push(*owner); }
+        Ok(core::ptr::null_mut())
+    })().unwrap_or_else(|e|e)
+}
 macro_rules! literals {($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
     b"objectBehavior",
@@ -190,7 +203,9 @@ literals![
     b"allocationEpoch",
     b"referenceOwnersDo:",
     b"referenceOwnerOf:",
-    b"isBehavior:"
+    b"isBehavior:",
+    b"registerRetirement:",
+    b"retire:"
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -210,6 +225,7 @@ const fn index(name: &[u8]) -> usize {
     panic!("missing collector name")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name:index(b"registerRetirement:"), entry:Some(register_retirement) },
     MethodSpec { name:index(b"referenceOwnerOf:"), entry:Some(reference_owner) },
     MethodSpec {
         name: index(b"rootsDo:"),
@@ -294,6 +310,7 @@ unsafe extern "C" fn initialize(
                 phase: Cell::new(Phase::Idle),
                 tracers: RefCell::new(HashMap::new()),
                 finalizers: RefCell::new(HashMap::new()),
+                retirement: RefCell::new(Vec::new()),
                 walk: RefCell::new(None),
                 inventory: RefCell::new(None),
             });

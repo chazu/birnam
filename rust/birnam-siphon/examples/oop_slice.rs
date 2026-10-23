@@ -89,6 +89,7 @@ unsafe fn run() {
             b"GC",
             b"observe:",
             b"visit:",
+            b"registerRetirement:",
             b"true", b"false", b"not", b"==", b"&", b"|", b"ifTrue:", b"ifFalse:",
             b"ifTrue:ifFalse:", b"and:", b"or:", b"value", b"valueProbe", b"echoName",
             b"isNil", b"notNil", b"installPrinting:", b"printString", b"fromBytes:", b"size",
@@ -585,6 +586,22 @@ unsafe fn run() {
         assert_eq!(send(printing, b"invokeOn:arguments:", &[truth, no_args]).unwrap(), expected);
         for token in [block_token, untaken_token, printing_token] { send(roots, b"release:", &[token]).unwrap(); }
         println!("Boolean/nil identities, selected branches, live dependencies and captured printing contexts: passed");
+
+        send(gc, b"registerRetirement:", &[actor]).unwrap();
+        send(gc, b"registerRetirement:", &[actor]).unwrap();
+        let dead = send(base, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        if std::env::args().nth(2).as_deref() == Some("retirement-failure") {
+            send(actor, b"at:put:", &[abi::size(26).unwrap(), abi::size(1).unwrap()]).unwrap();
+            assert!(send(gc, b"collectPrecisely", &[]).is_err());
+            send(id.root, b"identityOf:", &[dead]).unwrap();
+            assert!(send(gc, b"collectPrecisely", &[]).is_err());
+            println!("RETIREMENT_FAILURE_CONTAINED");
+            return;
+        }
+        let reclaimed = send(gc, b"collectPrecisely", &[]).unwrap();
+        assert_eq!(send(actor, b"at:", &[abi::size(25).unwrap()]).unwrap(), reclaimed);
+        assert!(send(id.root, b"identityOf:", &[dead]).is_err());
+        println!("retirement owners see live Oops before release and are registered once: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();
