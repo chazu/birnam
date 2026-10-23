@@ -45,6 +45,8 @@ struct Memory {
     precise_payloads: Cell<bool>,
     charged: Cell<usize>,
     constructing: Cell<bool>,
+    allocation_method: Cell<Oop>,
+    prepare_method: Cell<Oop>,
     core_visitor: Oop,
     names: HashMap<&'static [u8], Oop>,
     phase: Cell<Phase>,
@@ -115,7 +117,7 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
         return s.invalid();
     };
     let mut values: Vec<_> = s.names.values().copied().collect();
-    values.extend([s.receiver, s.roots, s.core_visitor, s.image]);
+    values.extend([s.receiver, s.roots, s.core_visitor, s.image, s.allocation_method.get(), s.prepare_method.get()]);
     values.extend(s.temporary.borrow().iter().copied());
     values.extend(s.tracers.borrow().values().map(|v| v.object));
     values.extend(s.finalizers.borrow().values().map(|v| v.object));
@@ -234,7 +236,7 @@ literals![
     b"rawNameWithBytes", b"rawSequence", b"rawWithContext:", b"rawNewMethodAt:",
     b"managedAllocate", b"managedDelegated", b"managedIntern", b"managedName", b"managedSequence",
     b"managedContext", b"managedNativeMethod", b"activate", b"prepareAllocation", b"budget:",
-    b"automaticCollection:", b"precisePayloads:", b"precisePayloads", b"allocationBytes", b"chargeExternalAllocation:", b"collect", b"memoryManager", b"roots"
+    b"automaticCollection:", b"precisePayloads:", b"precisePayloads", b"allocationBytes", b"chargeExternalAllocation:", b"collect", b"memoryManager", b"roots", b"canOmitAllocationFor:", b"usesDefaultAllocation", b"behaviorEpoch", b"nativeBindingsMatch:"
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -254,6 +256,7 @@ const fn index(name: &[u8]) -> usize {
     panic!("missing collector name")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec{name:index(b"canOmitAllocationFor:"),entry:Some(construction::can_omit)},
     MethodSpec{name:index(b"memoryManager"),entry:Some(manager)},
     MethodSpec{name:index(b"roots"),entry:Some(root_registry)},
     MethodSpec{name:index(b"managedAllocate"),entry:Some(construction::allocate)},
@@ -358,6 +361,8 @@ unsafe extern "C" fn initialize(
                 precise_payloads:Cell::new(false),
                 charged:Cell::new(0),
                 constructing:Cell::new(false),
+                allocation_method:Cell::new(core::ptr::null_mut()),
+                prepare_method:Cell::new(core::ptr::null_mut()),
                 roots: *root_registry,
                 core_visitor,
                 names,
@@ -390,6 +395,8 @@ unsafe extern "C" fn initialize(
                     symbols[spec.name]
                 };
                 s.send(target, b"addMethod", &[selector, m])?;
+                if spec.name==index(b"managedAllocate") { s.allocation_method.set(m); }
+                if spec.name==index(b"prepareAllocation") { s.prepare_method.set(m); }
             }
             // Native payloads are interpreted only by their own registered owners.
             for (behavior, owner) in [

@@ -280,3 +280,17 @@ by ordinary heap references. Catching/rethrowing needs no wrapper allocation.
 The failure-bit changes affect the error path; broader performance recovery
 remains deferred until the language migration is complete.
 [Reproduction and qualification receipts](../measurements/oop-error-data-20261023.json).
+
+## Piece 11: allocation-omission permission uses Method objects
+
+Restored `canOmitAllocationFor:` over current Method bindings. The collector keeps
+two Method witnesses as ordinary traced references, compares the current allocation
+and preparation methods, verifies default storage meanings and checks the mutation
+epoch before admitting omission. It performs no allocation charge or reservation.
+There is no serialized native-entry/context packet or separate binding-guard cache.
+
+Native checks accept the default allocation path and an equivalent Method clone,
+decline after replacement of raw allocation, and accept again after restoration.
+All existing gates pass. Regression inspection found no new work in ordinary
+allocation; this is the optional permission query used by the pending compiler
+and ObjectModel migration. [Receipts](../measurements/oop-allocation-permission-20261023.json).

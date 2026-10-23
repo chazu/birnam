@@ -92,6 +92,7 @@ unsafe fn run() {
             b"registerRetirement:",
             b"globalLookup", b"setGlobalLookup:", b"globalLookupCalls",
             b"caughtFailure", b"rethrow:", b"fault:detail:", b"allocationAt:",
+            b"canOmitAllocationFor:", b"allocate:bytes:", b"nativeBindingsMatch:", b"bind:to:",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
             b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
             b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
@@ -704,6 +705,19 @@ unsafe fn run() {
         assert_eq!(send(id.root, b"identityOf:", &[value]).unwrap(), send(id.root, b"identityOf:", &[abi::fault_reference(value)]).unwrap());
         send(roots, b"release:", &[token]).unwrap();
         println!("caught failures are ordinary data, survive GC and rethrow with the same identity: passed");
+
+        assert_eq!(abi::as_size(send(gc, b"canOmitAllocationFor:", &[base]).unwrap()), Some(1));
+        let allocation = send(id.root, b"bind:to:", &[sel(b"allocate"), base]).unwrap();
+        let witness = send(allocation, b"withContext:", &[gc]).unwrap();
+        assert_eq!(abi::as_size(send(id.root, b"nativeBindingsMatch:", &[base, sel(b"allocate"), witness]).unwrap()), Some(1));
+        let root_type = send(id.root, b"behaviorOf:", &[id.root]).unwrap();
+        let raw = send(root_type, b"lookup", &[sel(b"allocate:bytes:")]).unwrap();
+        let replacement = send(actor_vt, b"lookup", &[sel(b"doesNotUnderstand:")]).unwrap();
+        send(root_type, b"addMethod", &[sel(b"allocate:bytes:"), replacement]).unwrap();
+        assert_eq!(abi::as_size(send(gc, b"canOmitAllocationFor:", &[base]).unwrap()), Some(0));
+        send(root_type, b"addMethod", &[sel(b"allocate:bytes:"), raw]).unwrap();
+        assert_eq!(abi::as_size(send(gc, b"canOmitAllocationFor:", &[base]).unwrap()), Some(1));
+        println!("allocation omission checks current Method objects and raw storage meanings: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

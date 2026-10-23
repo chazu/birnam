@@ -661,6 +661,7 @@ impl State {
             }
             Action::UsesDefaultLookup => Ok(abi::size(usize::from(self.uses_default_lookup(one()?)?)).unwrap()),
             Action::NativeBindingsMatch => {
+                if !self.uses_default_lookup(self.root)? { return Ok(abi::size(0).unwrap()); }
                 let current=self.tables.borrow().lookup(self.behavior(self.root)?,self.selector(b"nativeBindingsMatch:"));
                 if !current.is_some_and(|m|self.method_is_builtin(m,Action::NativeBindingsMatch)) || a.len()%3!=0 {
                     return Ok(abi::size(0).unwrap());
@@ -685,7 +686,7 @@ impl State {
                 for (name,action) in [(b"usesDefaultAllocation".as_slice(),Action::DefaultAllocation),
                     (b"allocate:bytes:",Action::AllocateRaw),(b"allocationSizeOf:",Action::Extent),
                     (b"allocationChargeFor:",Action::AllocationCharge),(b"behaviorOf:",Action::Behavior),
-                    (b"identityOf:",Action::Identity),(b"tryRepresentationIdentityOf:behavior:bytes:",Action::Representation),
+                    (b"identityOf:",Action::Identity),(b"isBehavior:",Action::IsBehavior),(b"tryRepresentationIdentityOf:behavior:bytes:",Action::Representation),
                     (b"representationsMatch",Action::Representations)] {
                     let method=self.tables.borrow().lookup(self.behavior(self.root)?,self.selector(name));
                     if !method.is_some_and(|m|self.method_is_builtin(m,action)) { return Ok(abi::size(0).unwrap()); }

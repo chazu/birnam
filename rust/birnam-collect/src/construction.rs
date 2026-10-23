@@ -302,3 +302,20 @@ pub(super) unsafe extern "C" fn collect(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+
+/// A permission query over current Method objects, with no allocation effects.
+pub(super) unsafe extern "C" fn can_omit(_id:Oop,c:Oop,_r:Oop,a:*const Oop,n:usize)->Oop{
+    (||unsafe{
+        let s=memory(c)?;
+        let Some([behavior])=abi::borrowed_slice(a,n)else{return Err(s.invalid());};
+        let no=abi::size(0).unwrap();let yes=abi::size(1).unwrap();
+        if s.phase.get()!=Phase::Idle{return Ok(no);}
+        let epoch=s.send(s.id.root,b"behaviorEpoch",&[])?;
+        if s.send(s.id.root,b"usesDefaultAllocation",&[])?!=yes{return Ok(no);}
+        if s.send(s.id.root,b"isBehavior:",&[*behavior])?!=yes{return Ok(no);}
+        let rows=[*behavior,s.names[b"allocate".as_slice()],s.allocation_method.get(),
+            s.receiver,s.names[b"prepareAllocation".as_slice()],s.prepare_method.get()];
+        if s.send(s.id.root,b"nativeBindingsMatch:",&rows)?!=yes{return Ok(no);}
+        Ok(abi::size(usize::from(s.phase.get()==Phase::Idle && s.send(s.id.root,b"behaviorEpoch",&[])?==epoch)).unwrap())
+    })().unwrap_or_else(abi::fault_reference)
+}
