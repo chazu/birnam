@@ -8,9 +8,19 @@ export BIRNAM_OOP_TARGET="$CARGO_TARGET_DIR"
 fixture="$CARGO_TARGET_DIR/fixtures"
 logs="$CARGO_TARGET_DIR/qualification"
 mkdir -p "$fixture" "$logs"
-mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry --lib > "$logs/unit.log" 2>&1
-mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect > "$logs/build.log" 2>&1
+mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace --lib > "$logs/unit.log" 2>&1
+mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_slice > "$logs/caller-build.log" 2>&1
+python3 - "$CARGO_TARGET_DIR/release" <<'PY_EXPORTS'
+from pathlib import Path
+import json,subprocess,sys
+for name in ['id','root-registry','collect','namespace']:
+    manifest=json.loads(Path('rust/birnam-'+name+'/exports.json').read_text())
+    library=Path(sys.argv[1])/('libbirnam_'+name.replace('-','_')+'.dylib')
+    actual=set(subprocess.check_output(['nm','-gjU',str(library)],text=True).splitlines())
+    assert actual == {'_'+s for s in manifest['exported_symbols']}, (name,actual)
+print('Oop module export audit: passed')
+PY_EXPORTS
 for name in fixture failure rejected rejected-null; do
     clang -dynamiclib -O2 -Itests/fixtures/oop-id-v2 "tests/fixtures/oop-id-v2/$name.c" -o "$fixture/$name.dylib"
 done

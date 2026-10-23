@@ -63,3 +63,30 @@ CPU medians against piece 1: allocation/rooting -1.8%, existing-name interning
 0.0%, fresh-name production -0.1%, collection +1.3%. No clear broad regression;
 startup factory costs are not included in these timed workloads. See
 [raw trials and checks](../measurements/oop-module-owners-20261023.json).
+
+## Piece 3: Namespace uses Oops
+
+Namespace no longer imports or sends Operand, Outcome or NativeEntry. Its existing
+ordered binding storage and reverse-alias rules are retained. Missing bindings
+return the bootstrap nil reference; `valueAt:` and source-global resolution retain
+their separate language-nil handling and current dependency lookup. Counts and
+indices are immediate Oops, and canonical lookup recognition compares a retained
+Method object rather than a native entry/context pair. This is conservative for
+cloned methods, so it does not authorize a false optimization.
+
+The new `isSymbol:` method belongs to Id's Symbol implementation; Namespace asks
+it to validate keys without reading Symbol payloads. Key validation completes
+before borrowing Namespace storage, allowing validation methods to reenter.
+
+Three Namespace storage tests pass (the timing probe remains explicitly ignored),
+along with 17 Id tests and the native gate. Added native checks cover reverse alias
+order, invalid keys, live `at:` replacement, absent-value handling, and enumeration
+that removes every binding and collects inside every callback. Snapshot values
+survive; subsequent live-only enumeration reports no removed values.
+
+The gate now audits actual exported symbols for all four migrated libraries;
+stale v1 export manifests were corrected. Regression inspection retains existing
+ordered storage/indexes and avoids additional per-lookup managed allocations.
+Broad microprobe changes are -1.7%, -0.4%, -0.1%, +1.5% in the four existing
+workloads; these do not measure Namespace throughput. See
+[raw evidence](../measurements/oop-namespace-20261023.json).

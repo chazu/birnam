@@ -116,6 +116,7 @@ pub(crate) enum Action {
     NewNativeMethod,
     NewName,
     Intern,
+    IsSymbol,
     Load,
     At,
     Put,
@@ -182,6 +183,7 @@ core_primitives![
     (b"newMethodAt:", NewNativeMethod),
     (b"nameWithBytes", NewName),
     (b"intern", Intern),
+    (b"isSymbol:", IsSymbol),
     (b"loadNative:", Load),
     (b"at:", At),
     (b"at:put:", Put),
@@ -555,6 +557,7 @@ impl State {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
             Action::NewName => self.name_from_values(a),
+            Action::IsSymbol => Ok(abi::size(usize::from(self.symbols.borrow().bytes_of(one()?).is_some())).unwrap()),
             Action::Intern => {
                 if !a.is_empty() {
                     return Err(invalid);

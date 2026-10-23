@@ -19,6 +19,7 @@ unsafe fn run() {
             fixtures.join("failure.dylib"),
             fixtures.join("rejected.dylib"),
             fixtures.join("rejected-null.dylib"),
+            library.join("libbirnam_namespace.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"sequence",
@@ -69,6 +70,14 @@ unsafe fn run() {
             b"methodFactory",
             b"moduleBehavior",
             b"newMethodAt:",
+            b"count",
+            b"nameAt:",
+            b"nameOf:",
+            b"valueAt:",
+            b"nil",
+            b"bindingsDo:",
+            b"liveBindingsDo:",
+            b"isCanonicalLookup:",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -415,6 +424,30 @@ unsafe fn run() {
         assert_eq!(abi::as_size(send(collect_method, b"invokeOn:arguments:", &[actor, proxy]).unwrap()), Some(2));
         send(roots, b"release:", &[proxy_token]).unwrap();
         println!("argument containers use current application behavior and survive GC: passed");
+
+        let ns_args = send(id.root, b"sequence", &[roots]).unwrap();
+        let namespace = id.send(names[6], id.load, &[ns_args]).unwrap();
+        send(actor, b"at:put:", &[abi::size(17).unwrap(), namespace]).unwrap();
+        let ns_type = send(id.root, b"behaviorOf:", &[namespace]).unwrap();
+        let lookup = send(ns_type, b"lookup", &[sel(b"at:")]).unwrap();
+        assert_eq!(abi::as_size(send(namespace, b"isCanonicalLookup:", &[lookup]).unwrap()), Some(1));
+        let value = send(actor, b"dynamicName:", &[abi::size(37).unwrap()]).unwrap();
+        send(namespace, b"at:put:", &[sel(b"missingProbe"), value]).unwrap();
+        send(namespace, b"at:put:", &[sel(b"nil"), value]).unwrap();
+        assert_eq!(send(namespace, b"nameOf:", &[value]).unwrap(), sel(b"missingProbe"));
+        assert_eq!(send(namespace, b"valueAt:", &[sel(b"contextRun")]).unwrap(), value);
+        assert!(send(namespace, b"at:put:", &[value, value]).is_err());
+        let replacement = send(actor_vt, b"lookup", &[sel(b"replacement")]).unwrap();
+        send(ns_type, b"addMethod", &[sel(b"at:"), replacement]).unwrap();
+        assert_eq!(send(namespace, b"valueAt:", &[sel(b"missingProbe")]).unwrap(), send(actor, b"at:", &[abi::size(6).unwrap()]).unwrap());
+        send(ns_type, b"addMethod", &[sel(b"at:"), lookup]).unwrap();
+        let count = send(namespace, b"count", &[]).unwrap();
+        send(namespace, b"bindingsDo:", &[actor]).unwrap();
+        assert_eq!(send(actor, b"at:", &[abi::size(18).unwrap()]).unwrap(), count);
+        send(namespace, b"liveBindingsDo:", &[actor]).unwrap();
+        assert_eq!(send(actor, b"at:", &[abi::size(18).unwrap()]).unwrap(), count);
+        assert!(send(namespace, b"at:", &[sel(b"missingProbe")]).unwrap().is_null());
+        println!("Namespace Oop bindings, live lookup and enumeration mutation with GC: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();
