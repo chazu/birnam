@@ -1,12 +1,17 @@
+//! Ordinary object storage. Layouts and allocation ownership belong to this owner.
 use crate::layout::{Layout, OOP, UNKNOWN};
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::RefCell, ffi::c_void, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
+    sync::atomic::{AtomicPtr, Ordering},
 };
 #[derive(Clone)]
 struct Record<T> {
@@ -15,824 +20,787 @@ struct Record<T> {
 }
 struct Model {
     id: Protocol,
-    binding_guard: birnam_abi::binding_guard::BindingGuard,
     namespace: Oop,
     roots: Oop,
     gc: Oop,
     receiver: Oop,
+    image: Oop,
+    meta: Oop,
+    meta_owner: Oop,
     truth: Oop,
     falsity: Oop,
-    thread: std::thread::ThreadId,
     names: HashMap<&'static [u8], Oop>,
-    // Same retained Symbol as the inventory entry; never a cached method.
-    representation_query: Oop,
+    allocate_method: Cell<Oop>,
+    clone_method: Cell<Oop>,
     owners: RefCell<HashMap<usize, Record<Oop>>>,
     instances: RefCell<HashMap<usize, Record<usize>>>,
     layouts: RefCell<HashMap<usize, Record<Layout>>>,
     copies: RefCell<Vec<Rc<[u8]>>>,
     scoped: RefCell<Vec<Oop>>,
+    ready: Cell<bool>,
 }
-struct Scope<'a> { values: &'a RefCell<Vec<Oop>>, start: usize }
+struct Scope<'a> {
+    values: &'a RefCell<Vec<Oop>>,
+    start: usize,
+}
 impl Drop for Scope<'_> {
-    fn drop(&mut self) { self.values.borrow_mut().truncate(self.start); }
-}
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
-}
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)
-}
-fn done(v: Result<Operand, Outcome>) -> Outcome {
-    v.map_or_else(|e| e, Outcome::loaded)
-}
-unsafe fn model<'a>(context: *mut c_void) -> Result<&'a Model, Outcome> {
-    let model = unsafe { &*context.cast::<Model>() };
-    if model.thread != std::thread::current().id() {
-        return Err(invalid());
+    fn drop(&mut self) {
+        self.values.borrow_mut().truncate(self.start);
     }
-    Ok(model)
+}
+static INSTANCE: AtomicPtr<Model> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+unsafe fn model<'a>(c: Oop) -> Result<&'a Model, Oop> {
+    let raw = INSTANCE.load(Ordering::Acquire);
+    if raw.is_null() {
+        let api = API.load(Ordering::Acquire);
+        if api.is_null() {
+            std::process::abort();
+        }
+        return Err(unsafe { (*api).invalid });
+    }
+    let m = unsafe { &*raw };
+    if c == m.receiver {
+        Ok(m)
+    } else {
+        Err(m.id.invalid)
+    }
 }
 impl Model {
-    unsafe fn send(
-        &self,
-        receiver: Oop,
-        name: &'static [u8],
-        args: &[Operand],
-    ) -> Result<Operand, Outcome> {
-        unsafe { self.id.send(receiver, self.names[name], args) }
+    fn invalid(&self) -> Oop {
+        abi::object_reference(self.id.invalid)
     }
-    unsafe fn identity(&self, value: Oop) -> Result<usize, Outcome> {
-        unsafe { self.send(self.id.receiver, b"identityOf:", &[Operand::object(value)]) }?
-            .as_word()
+    unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[name], a) }
+    }
+    unsafe fn named(&self, name: &[u8]) -> Result<Oop, Oop> {
+        let v = unsafe { self.send(self.namespace, b"at:", &[self.names[name]]) }?;
+        if v.is_null() {
+            Err(self.invalid())
+        } else {
+            Ok(v)
+        }
+    }
+    unsafe fn identity(&self, v: Oop) -> Result<usize, Oop> {
+        abi::as_size(unsafe { self.send(self.id.root, b"identityOf:", &[v]) }?)
             .filter(|n| *n != 0)
-            .ok_or_else(invalid)
+            .ok_or(self.invalid())
     }
-    unsafe fn behavior(&self, value: Oop) -> Result<Oop, Outcome> {
-        object(unsafe { self.send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)]) }?)
+    unsafe fn behavior(&self, v: Oop) -> Result<Oop, Oop> {
+        unsafe { self.send(self.id.root, b"behaviorOf:", &[v]) }
     }
-    unsafe fn is_behavior(&self, value: Oop) -> Result<bool, Outcome> {
-        Ok(
-            unsafe { self.send(self.id.receiver, b"isBehavior:", &[Operand::object(value)]) }?
-                .as_word()
-                .ok_or_else(invalid)?
-                == 1,
-        )
+    unsafe fn is_behavior(&self, v: Oop) -> Result<bool, Oop> {
+        Ok(unsafe { self.send(self.id.root, b"isBehavior:", &[v]) }? == abi::size(1).unwrap())
     }
-    unsafe fn rooted(
-        &self,
-        values: &[Oop],
-        operation: impl FnOnce() -> Result<Operand, Outcome>,
-    ) -> Result<Operand, Outcome> {
-        // This owner is a registered root provider. Publish the entire scope
-        // before any callback, and restore exactly the parent's scope on every
-        // return path. No send occurs between popping a result and returning it.
-        let start = self.scoped.borrow().len();
-        self.scoped.borrow_mut().extend(values.iter().copied().filter(|v| !v.is_null()));
-        let _scope = Scope { values: &self.scoped, start };
-        operation()
+    fn scope(&self) -> Scope<'_> {
+        Scope {
+            values: &self.scoped,
+            start: self.scoped.borrow().len(),
+        }
     }
-
-    unsafe fn owner(&self, behavior: Oop) -> Result<Option<Oop>, Outcome> {
-        let record = self.owners.borrow().get(&behavior.addr()).cloned();
-        match record {
-            Some(r) if unsafe { self.identity(behavior) }? == r.identity => Ok(Some(r.value)),
-            Some(_) => Err(invalid()),
+    fn keep(&self, v: Oop) -> Oop {
+        self.scoped.borrow_mut().push(v);
+        v
+    }
+    unsafe fn owner(&self, b: Oop) -> Result<Option<Oop>, Oop> {
+        let row = self.owners.borrow().get(&b.addr()).cloned();
+        match row {
+            Some(row) if unsafe { self.identity(b) }? == row.identity => Ok(Some(row.value)),
+            Some(_) => Err(self.invalid()),
             None => Ok(None),
         }
     }
-    unsafe fn layout(&self, behavior: Oop) -> Result<Option<Layout>, Outcome> {
-        let record = self.layouts.borrow().get(&behavior.addr()).cloned();
-        match record {
-            Some(r) if unsafe { self.identity(behavior) }? == r.identity => Ok(Some(r.value)),
-            Some(_) => Err(invalid()),
+    unsafe fn layout(&self, b: Oop) -> Result<Option<Layout>, Oop> {
+        let row = self.layouts.borrow().get(&b.addr()).cloned();
+        match row {
+            Some(row) if unsafe { self.identity(b) }? == row.identity => Ok(Some(row.value)),
+            Some(_) => Err(self.invalid()),
             None => Ok(None),
         }
     }
-    unsafe fn image_layout(&self, value: Oop) -> Result<Layout, Outcome> {
+    unsafe fn inherited_layout(&self, v: Oop) -> Result<Option<Layout>, Oop> {
         unsafe {
-            // Behavior sharing and additional private layers preserve the
-            // representation layout inherited from the nearest registered owner.
-            let mut behavior = self.behavior(value)?;
-            let mut seen = std::collections::HashSet::new();
-            loop {
-                if !seen.insert(behavior) {
-                    return Err(invalid());
+            let _scope = self.scope();
+            let mut b = self.behavior(v)?;
+            let mut seen = HashSet::new();
+            while !b.is_null() {
+                self.keep(b);
+                if !seen.insert(b) {
+                    return Ok(None);
                 }
-                if let Some(layout) = self.layout(behavior)? {
-                    return Ok(layout);
+                if let Some(layout) = self.layout(b)? {
+                    return Ok(Some(layout));
                 }
-                behavior = object(self.send(
-                    self.id.receiver,
-                    b"parentOf:",
-                    &[Operand::object(behavior)],
-                )?)?;
+                b = self.send(self.id.root, b"parentOf:", &[b])?;
             }
+            Ok(None)
         }
     }
-    unsafe fn extent(&self, value: Oop) -> Result<usize, Outcome> {
-        let record = self.instances.borrow().get(&value.addr()).cloned();
-        if let Some(r) = record {
-            if unsafe { self.identity(value) }? == r.identity {
-                return Ok(r.value);
-            }
-            return Err(invalid());
+    unsafe fn extent(&self, v: Oop) -> Result<usize, Oop> {
+        let row = self.instances.borrow().get(&v.addr()).cloned();
+        if let Some(row) = row {
+            return if unsafe { self.identity(v) }? == row.identity {
+                Ok(row.value)
+            } else {
+                Err(self.invalid())
+            };
         }
-        // The default clone may copy empty ordinary objects, never foreign data.
-        if unsafe { self.is_behavior(value) }? {
-            return Err(invalid());
+        if unsafe { self.is_behavior(v) }? {
+            return Err(self.invalid());
         }
-        match unsafe {
-            self.send(
-                self.id.receiver,
-                b"allocationSizeOf:",
-                &[Operand::object(value)],
-            )
-        }?
-        .as_word()
-        {
+        match abi::as_size(unsafe { self.send(self.id.root, b"allocationSizeOf:", &[v]) }?) {
             Some(0) => Ok(0),
-            _ => Err(invalid()),
+            _ => Err(self.invalid()),
         }
     }
-    unsafe fn allocate(&self, behavior: Oop, bytes: usize) -> Result<Operand, Outcome> {
+    unsafe fn allocate(&self, behavior: Oop, bytes: usize) -> Result<Oop, Oop> {
         unsafe {
-            // The caller keeps the behavior argument live. The fresh result
-            // needs this owner's traced local scope before validation callbacks.
-            let value = self.send(behavior, b"allocate", &[Operand::word(bytes)])?;
-            let object = object(value)?;
-            let start = self.scoped.borrow().len();
-            self.scoped.borrow_mut().push(object);
-            let _scope = Scope { values: &self.scoped, start };
-            let identity = match self.id.send(self.id.receiver, self.representation_query,
-                &[value, Operand::object(behavior), Operand::word(bytes)]) {
-                Ok(result) if result.kind() == native::UNIT => None,
-                Err(error) if error.status == native::UNBOUND => None,
-                Ok(result) => Some(result.as_word().filter(|id| *id != 0).ok_or_else(invalid)?),
-                Err(error) => return Err(error),
-            };
-            let identity = if let Some(identity) = identity { identity } else {
-                let identity = self.identity(object)?;
-                if self.behavior(object)? != behavior
-                    || self.send(self.id.receiver, b"allocationSizeOf:", &[value])?.as_word() != Some(bytes)
-                { return Err(invalid()); }
+            let _scope = self.scope();
+            let size = abi::size(bytes).ok_or(self.invalid())?;
+            let value = self.keep(self.send(behavior, b"allocate", &[size])?);
+            let query = self.send(
+                self.id.root,
+                b"tryRepresentationIdentityOf:behavior:bytes:",
+                &[value, behavior, size],
+            )?;
+            let identity = if query.is_null() {
+                let identity = self.identity(value)?;
+                if self.behavior(value)? != behavior
+                    || self.send(self.id.root, b"allocationSizeOf:", &[value])? != size
+                {
+                    return Err(self.invalid());
+                }
                 identity
+            } else {
+                abi::as_size(query)
+                    .filter(|n| *n != 0)
+                    .ok_or(self.invalid())?
             };
-            self.instances.borrow_mut().insert(object.addr(), Record { identity, value: bytes });
+            self.instances.borrow_mut().insert(
+                value.addr(),
+                Record {
+                    identity,
+                    value: bytes,
+                },
+            );
             Ok(value)
         }
     }
-
-}
-unsafe extern "C" fn enumerate_roots(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([visitor]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let visitor = object(*visitor)?;
-        let mut roots = vec![m.receiver, m.namespace, m.roots, m.gc, m.truth, m.falsity];
-        roots.extend(m.names.values().copied());
-        roots.extend(m.scoped.borrow().iter().copied());
-        // Ownership/instance/layout keys are weak. Owners are reached only from
-        // their live behaviors, never from the module's own root inventory.
-        for value in roots {
-            m.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
+    unsafe fn number(&self, value: Oop) -> Result<usize, Oop> {
+        if let Some(n) = abi::as_size(value) {
+            return Ok(n);
         }
-        // A clone's payload snapshot remains rooted even if an allocating method
-        // changes the source before collecting. Copies are this owner's storage.
-        let copies = m.copies.borrow().clone();
-        for copy in copies {
-            for word in copy.chunks_exact(size_of::<usize>()) {
-                let word = usize::from_ne_bytes(word.try_into().unwrap());
-                if let Some(value) = m
-                    .send(m.id.receiver, b"allocationAt:", &[Operand::word(word)])?
-                    .as_object()
-                {
-                    m.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
-                }
-            }
+        unsafe {
+            let lo = abi::as_size(self.send(value, b"low32", &[])?)
+                .filter(|n| *n <= u32::MAX as usize)
+                .ok_or(self.invalid())?;
+            let hi = abi::as_size(self.send(value, b"high32", &[])?)
+                .filter(|n| *n <= u32::MAX as usize)
+                .ok_or(self.invalid())?;
+            Ok(lo | (hi << 32))
         }
-        Ok(Operand::unit())
-    })())
-}
-unsafe extern "C" fn retire(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([bytes]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let bytes = bytes.as_bytes().ok_or_else(invalid)?;
-        let bytes = borrowed_bytes(bytes.pointer, bytes.length).ok_or_else(invalid)?;
-        if bytes.len() % size_of::<usize>() != 0 {
-            return Err(invalid());
+    }
+    unsafe fn word(&self, bits: usize) -> Result<Oop, Oop> {
+        unsafe {
+            let word = self.named(b"Word")?;
+            self.send(
+                word,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(bits & u32::MAX as usize).unwrap(),
+                    abi::size(bits >> 32).unwrap(),
+                ],
+            )
         }
-        let mut owners = m.owners.borrow_mut();
-        let mut instances = m.instances.borrow_mut();
-        let mut layouts = m.layouts.borrow_mut();
-        for address in bytes.chunks_exact(size_of::<usize>()) {
-            let address = usize::from_ne_bytes(address.try_into().unwrap());
-            owners.remove(&address);
-            instances.remove(&address);
-            layouts.remove(&address);
+    }
+    unsafe fn reference_word(&self, word: usize, precise: bool) -> Result<Oop, Oop> {
+        let value: Oop = ptr::without_provenance_mut(word);
+        if value.is_null() || abi::as_size(value).is_some() {
+            return Ok(value);
         }
-        Ok(Operand::unit())
-    })())
-}
-unsafe extern "C" fn references(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([value, visitor]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let value = object(*value)?;
-        let visitor = object(*visitor)?;
-        let emit = |edge| {
-            m.id.send_named(visitor, b"visit:", &[Operand::object(edge)])
-        };
-        if m.is_behavior(value)? {
-            if let Some(owner) = m.owner(value)? {
-                emit(owner)?;
-            }
-        } else {
-            let bytes = m.extent(value)?;
-            let precise = m
-                .send(m.gc, b"precisePayloads", &[])?
-                .as_word()
-                .ok_or_else(invalid)?
-                != 0;
-            let layout = if precise {
-                m.layout(m.behavior(value)?)?
+        let Some(address) = abi::size(word) else {
+            return if precise {
+                Err(self.invalid())
             } else {
-                None
+                Ok(ptr::null_mut())
             };
-            for index in 0..bytes.div_ceil(size_of::<Oop>()) {
-                let kind = layout.as_ref().map_or(UNKNOWN, |l| l.kind(index));
-                if layout.is_some() && kind != OOP {
-                    continue;
-                }
-                // Only this owner's ordinary storage is read here. With no exact
-                // layout, preserve conservative admission of complete padded words.
-                let word = value.cast::<usize>().add(index).read();
-                if let Some(edge) = m
-                    .send(m.id.receiver, b"allocationAt:", &[Operand::word(word)])?
-                    .as_object()
-                {
-                    emit(edge)?;
-                } else if layout.is_some() && word != 0 {
-                    return Err(invalid());
-                }
-            }
-        }
-        Ok(Operand::unit())
-    })())
-}
-unsafe extern "C" fn query_owner(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([b]) = borrowed_slice(args, count) else {
-            return Err(invalid());
         };
-        Ok(m.owner(b.as_object().ok_or_else(invalid)?)?
-            .map(Operand::object)
-            .unwrap_or_else(Operand::unit))
-    })())
-}
-unsafe extern "C" fn assign_owner(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([b, v]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let b = object(*b)?;
-        let v = if v.kind() == native::UNIT {
-            ptr::null_mut()
+        let object = unsafe { self.send(self.id.root, b"allocationAt:", &[address]) }?;
+        if precise && object.is_null() {
+            Err(self.invalid())
         } else {
-            object(*v)?
-        };
-        m.rooted(&[b, v], || {
-            m.send(m.gc, b"prepareAllocation", &[])?;
-            if !m.is_behavior(b)? {
-                return Err(invalid());
-            }
-            let identity = m.identity(b)?;
-            if !v.is_null() {
-                m.identity(v)?;
-                m.owners
-                    .borrow_mut()
-                    .insert(b.addr(), Record { identity, value: v });
-            } else {
-                m.owners.borrow_mut().remove(&b.addr());
-            }
-            Ok(Operand::object(b))
-        })
-    })())
-}
-unsafe extern "C" fn prepare(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([v]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let v = object(*v)?;
-        m.rooted(&[v], || {
-            m.send(m.gc, b"prepareAllocation", &[])?;
-            Ok(Operand::object(m.behavior(v)?))
-        })
-    })())
-}
-unsafe extern "C" fn ensure(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([v]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let v = object(*v)?;
-        m.rooted(&[v], || {
-            let behavior = object(m.send(
-                m.id.receiver,
-                b"prepareBehaviorMutationOf:",
-                &[Operand::object(v)],
-            )?)?;
-            if behavior == m.id.receiver {
-                return Ok(Operand::object(v));
-            }
-            m.rooted(&[behavior], || {
-                if m.send(m.id.receiver, b"ownerOf:", &[Operand::object(behavior)])?
-                    .as_object()
-                    == Some(v)
-                {
-                    return Ok(Operand::object(behavior));
-                }
-                let private = object(m.send(behavior, b"delegated", &[])?)?;
-                m.rooted(&[private], || {
-                    m.send(
-                        m.id.receiver,
-                        b"ownerOf:put:",
-                        &[Operand::object(private), Operand::object(v)],
-                    )?;
-                    m.send(
-                        m.id.receiver,
-                        b"reassociateBehaviorOf:with:",
-                        &[Operand::object(v), Operand::object(private)],
-                    )?;
-                    Ok(Operand::object(private))
-                })
-            })
-        })
-    })())
-}
-unsafe extern "C" fn clone_object(
-    context: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if count != 0 {
-            return Err(invalid());
+            Ok(object)
         }
-        let m = model(context)?;
-        m.rooted(&[receiver], || {
-            m.send(m.gc, b"prepareAllocation", &[])?;
-            let bytes = m.extent(receiver)?.div_ceil(size_of::<Oop>()) * size_of::<Oop>();
-            let behavior = m.behavior(receiver)?;
-            // Snapshot before the allocating send; the source remains rooted.
-            let payload: Rc<[u8]> = borrowed_bytes(receiver.cast(), bytes)
-                .ok_or_else(invalid)?
-                .into();
-            m.copies.borrow_mut().push(payload.clone());
-            let answer = (|| {
-                let copy = m.allocate(behavior, bytes)?;
-                ptr::copy_nonoverlapping(payload.as_ptr(), object(copy)?.cast(), bytes);
-                Ok(copy)
-            })();
-            m.copies.borrow_mut().pop();
-            answer
-        })
-    })())
-}
-unsafe extern "C" fn allocate(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([behavior, bytes]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        m.allocate(object(*behavior)?, bytes.as_word().ok_or_else(invalid)?)
-    })())
-}
-unsafe extern "C" fn set_layout(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([behavior, kinds, rest]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let behavior = object(*behavior)?;
-        let kinds = kinds.as_bytes().ok_or_else(invalid)?;
-        let kinds = borrowed_bytes(kinds.pointer, kinds.length)
-            .ok_or_else(invalid)?
-            .to_vec();
-        let rest = u8::try_from(rest.as_word().ok_or_else(invalid)?).map_err(|_| invalid())?;
-        m.rooted(&[behavior], || {
-            // Replacing owned metadata allocates no language object. Trace hooks
-            // may change a later object's layout during the current collection.
-            if !m.is_behavior(behavior)? {
-                return Err(invalid());
+    }
+    unsafe fn check_slot(&self, value: Oop, index: usize) -> Result<(), Oop> {
+        unsafe {
+            if index >= self.extent(value)?.div_ceil(size_of::<Oop>()) {
+                return Err(self.invalid());
             }
-            let identity = m.identity(behavior)?;
-            m.layouts.borrow_mut().insert(
-                behavior.addr(),
-                Record {
-                    identity,
-                    value: Layout::new(&kinds, rest),
-                },
-            );
-            Ok(Operand::unit())
-        })
-    })())
-}
-unsafe extern "C" fn slot_kind(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([behavior, index]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let behavior = object(*behavior)?;
-        if !m.is_behavior(behavior)? {
-            return Err(invalid());
+            let layout = self.inherited_layout(value)?;
+            if layout.as_ref().is_some_and(|l| l.kind(index) != OOP) {
+                return Err(self.invalid());
+            }
+            Ok(())
         }
-        let index = index.as_word().ok_or_else(invalid)?;
-        Ok(Operand::word(
-            m.layout(behavior)?
-                .as_ref()
-                .map_or(UNKNOWN, |l| l.kind(index)) as usize,
-        ))
-    })())
-}
-unsafe extern "C" fn all_oop(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([behavior, words]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let behavior = object(*behavior)?;
-        if !m.is_behavior(behavior)? {
-            return Err(invalid());
+    }
+    unsafe fn can_omit(&self, behavior: Oop) -> Result<bool, Oop> {
+        unsafe {
+            let witness = self.allocate_method.get();
+            if self.send(
+                self.id.root,
+                b"nativeBindingsMatch:",
+                &[
+                    self.receiver,
+                    self.names[b"allocate:bytes:".as_slice()],
+                    witness,
+                ],
+            )? != abi::size(1).unwrap()
+            {
+                return Ok(false);
+            }
+            Ok(self.send(self.gc, b"canOmitAllocationFor:", &[behavior])? == abi::size(1).unwrap())
         }
-        let words = words.as_word().ok_or_else(invalid)?;
-        Ok(Operand::word(usize::from(
-            m.layout(behavior)?
-                .as_ref()
-                .is_some_and(|l| l.all_oop(words)),
-        )))
-    })())
-}
-// Language-facing reference storage. Vector/Integer representations remain
-// opaque; this owner alone allocates, describes and accesses ordinary slots.
-unsafe fn named(m: &Model, name: &[u8]) -> Result<Oop, Outcome> {
-    unsafe { object(m.send(m.namespace, b"at:", &[Operand::object(m.names[name])])?) }
-}
-unsafe extern "C" fn new_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let [values, parent] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let (values, parent) = (object(*values)?, object(*parent)?);
-        m.rooted(&[r, values, parent], || {
-            let integer = named(m, b"Integer")?;
-            let size = object(m.id.send_named(values, b"size", &[])?)?;
-            m.rooted(&[integer, size], || {
-                let count = m.id.send_named(integer, b"wordOf:", &[Operand::object(size)])?.as_word().filter(|n| *n <= 1_048_576).ok_or_else(invalid)?;
-                let behavior = object(m.id.send_named(parent, b"delegated", &[])?)?;
-                m.rooted(&[behavior], || {
-                    let kinds = vec![OOP; count];
-                    m.send(m.receiver, b"setLayoutOf:to:rest:", &[Operand::object(behavior), Operand::bytes(&kinds), Operand::word(UNKNOWN as usize)])?;
-                    let result = object(m.allocate(behavior, count.checked_mul(size_of::<Oop>()).ok_or_else(invalid)?)?)?;
-                    m.rooted(&[result], || {
-                        for i in 0..count {
-                            let index = object(m.id.send_named(integer, b"fromWord:", &[Operand::word(i)])?)?;
-                            m.rooted(&[index], || {
-                                let value = object(m.id.send_named(values, b"at:", &[Operand::object(index)])?)?;
-                                m.rooted(&[value], || m.send(m.receiver, b"slotAt:in:put:", &[Operand::word(i), Operand::object(result), Operand::object(value)]))
-                            })?;
+    }
+    unsafe fn perform(&self, op: Op, r: Oop, a: &[Oop]) -> Result<Oop, Oop> {
+        let invalid = self.invalid();
+        let nil = ptr::null_mut();
+        let one = || if let [v] = a { Ok(*v) } else { Err(invalid) };
+        unsafe {
+            match op {
+                Op::Roots => {
+                    let visitor = one()?;
+                    let mut values = vec![
+                        self.receiver,
+                        self.namespace,
+                        self.roots,
+                        self.gc,
+                        self.image,
+                        self.meta,
+                        self.meta_owner,
+                        self.truth,
+                        self.falsity,
+                    ];
+                    values.extend(self.names.values().copied());
+                    values.extend([self.allocate_method.get(), self.clone_method.get()]);
+                    values.extend(self.scoped.borrow().iter().copied());
+                    for v in values {
+                        self.send(visitor, b"visit:", &[v])?;
+                    }
+                    let copies = self.copies.borrow().clone();
+                    for copy in copies {
+                        for word in copy.chunks_exact(size_of::<usize>()) {
+                            let word = usize::from_ne_bytes(word.try_into().unwrap());
+                            let value = self.reference_word(word, false)?;
+                            if !value.is_null() {
+                                self.send(visitor, b"visit:", &[value])?;
+                            }
                         }
-                        m.send(m.id.receiver, b"ownerOf:put:", &[Operand::object(behavior), Operand::object(result)])?;
-                        Ok(Operand::object(result))
-                    })
-                })
-            })
-        })
-    })())
-}
-// Snapshot the owned reference-slot indices before allocating language results.
-// Foreign payloads are never read; private vtables inherit their nearest layout.
-unsafe extern "C" fn reference_slots(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let value = object(*value)?;
-        m.rooted(&[r, value], || {
-            let owned = m.instances.borrow().contains_key(&value.addr());
-            if !owned && (m.is_behavior(value)? || m.send(m.id.receiver, b"allocationSizeOf:",
-                &[Operand::object(value)])?.as_word() != Some(0)) {
-                return Ok(Operand::object(named(m, b"nil")?));
+                    }
+                    Ok(nil)
+                }
+                Op::Retire => {
+                    let mut owners = self.owners.borrow_mut();
+                    let mut instances = self.instances.borrow_mut();
+                    let mut layouts = self.layouts.borrow_mut();
+                    for value in a {
+                        owners.remove(&value.addr());
+                        instances.remove(&value.addr());
+                        layouts.remove(&value.addr());
+                    }
+                    Ok(nil)
+                }
+                Op::References => {
+                    let [value, visitor] = a else {
+                        return Err(invalid);
+                    };
+                    if self.is_behavior(*value)? {
+                        // Native tables retain responsibility for their own payload.
+                        self.send(self.meta_owner, b"referencesOf:do:", &[*value, *visitor])?;
+                        if let Some(owner) = self.owner(*value)? {
+                            self.send(*visitor, b"visit:", &[owner])?;
+                        }
+                    } else {
+                        let bytes = self.extent(*value)?;
+                        let precise =
+                            self.number(self.send(self.gc, b"precisePayloads", &[])?)? != 0;
+                        let layout = if precise {
+                            self.inherited_layout(*value)?
+                        } else {
+                            None
+                        };
+                        for i in 0..bytes.div_ceil(size_of::<Oop>()) {
+                            if layout.as_ref().is_some_and(|l| l.kind(i) != OOP) {
+                                continue;
+                            }
+                            let word = value.cast::<usize>().add(i).read();
+                            let edge = self.reference_word(word, layout.is_some())?;
+                            if !edge.is_null() {
+                                self.send(*visitor, b"visit:", &[edge])?;
+                            }
+                        }
+                    }
+                    Ok(nil)
+                }
+                Op::Owner => Ok(self.owner(one()?)?.unwrap_or(nil)),
+                Op::OwnerPut => {
+                    let [behavior, value] = a else {
+                        return Err(invalid);
+                    };
+                    let _scope = self.scope();
+                    self.keep(*behavior);
+                    self.keep(*value);
+                    self.send(self.gc, b"prepareAllocation", &[])?;
+                    if !self.is_behavior(*behavior)? {
+                        return Err(invalid);
+                    }
+                    let identity = self.identity(*behavior)?;
+                    if value.is_null() {
+                        self.owners.borrow_mut().remove(&behavior.addr());
+                    } else {
+                        self.identity(*value)?;
+                        self.owners.borrow_mut().insert(
+                            behavior.addr(),
+                            Record {
+                                identity,
+                                value: *value,
+                            },
+                        );
+                    }
+                    Ok(*behavior)
+                }
+                Op::Prepare => {
+                    let value = one()?;
+                    let _scope = self.scope();
+                    self.keep(value);
+                    self.send(self.gc, b"prepareAllocation", &[])?;
+                    self.behavior(value)
+                }
+                Op::Ensure => {
+                    let value = one()?;
+                    let _scope = self.scope();
+                    self.keep(value);
+                    let behavior = self.keep(self.send(
+                        self.id.root,
+                        b"prepareBehaviorMutationOf:",
+                        &[value],
+                    )?);
+                    if behavior == self.meta {
+                        return Ok(value);
+                    }
+                    if self.send(self.id.root, b"ownerOf:", &[behavior])? == value {
+                        return Ok(behavior);
+                    }
+                    let private = self.keep(self.send(behavior, b"delegated", &[])?);
+                    self.send(self.id.root, b"ownerOf:put:", &[private, value])?;
+                    self.send(
+                        self.id.root,
+                        b"reassociateBehaviorOf:with:",
+                        &[value, private],
+                    )?;
+                    Ok(private)
+                }
+                Op::Clone => {
+                    if !a.is_empty() {
+                        return Err(invalid);
+                    }
+                    let _scope = self.scope();
+                    self.keep(r);
+                    self.send(self.gc, b"prepareAllocation", &[])?;
+                    let bytes = self.extent(r)?.div_ceil(size_of::<Oop>()) * size_of::<Oop>();
+                    let behavior = self.behavior(r)?;
+                    let payload: Rc<[u8]> =
+                        core::slice::from_raw_parts(r.cast::<u8>(), bytes).into();
+                    self.copies.borrow_mut().push(payload.clone());
+                    let answer = (|| {
+                        let copy = self.allocate(behavior, bytes)?;
+                        ptr::copy_nonoverlapping(payload.as_ptr(), copy.cast(), bytes);
+                        Ok(copy)
+                    })();
+                    self.copies.borrow_mut().pop();
+                    answer
+                }
+                Op::Allocate => {
+                    let [behavior, bytes] = a else {
+                        return Err(invalid);
+                    };
+                    self.allocate(*behavior, self.number(*bytes)?)
+                }
+                Op::SetLayout => {
+                    let [behavior, kinds, rest] = a else {
+                        return Err(invalid);
+                    };
+                    let _scope = self.scope();
+                    self.keep(*behavior);
+                    self.keep(*kinds);
+                    let count = self.number(self.send(*kinds, b"size", &[])?)?;
+                    if count > 1_048_576 {
+                        return Err(invalid);
+                    }
+                    let mut bytes = Vec::with_capacity(count);
+                    for i in 0..count {
+                        let value = self.send(*kinds, b"at:", &[abi::size(i).unwrap()])?;
+                        bytes.push(u8::try_from(self.number(value)?).map_err(|_| invalid)?);
+                    }
+                    let rest = u8::try_from(self.number(*rest)?).map_err(|_| invalid)?;
+                    if !self.is_behavior(*behavior)? {
+                        return Err(invalid);
+                    }
+                    let identity = self.identity(*behavior)?;
+                    self.layouts.borrow_mut().insert(
+                        behavior.addr(),
+                        Record {
+                            identity,
+                            value: Layout::new(&bytes, rest),
+                        },
+                    );
+                    Ok(nil)
+                }
+                Op::SlotKind => {
+                    let [behavior, index] = a else {
+                        return Err(invalid);
+                    };
+                    if !self.is_behavior(*behavior)? {
+                        return Err(invalid);
+                    }
+                    let i = self.number(*index)?;
+                    Ok(abi::size(
+                        self.layout(*behavior)?
+                            .as_ref()
+                            .map_or(UNKNOWN, |l| l.kind(i)) as usize,
+                    )
+                    .unwrap())
+                }
+                Op::AllOop => {
+                    let [behavior, count] = a else {
+                        return Err(invalid);
+                    };
+                    if !self.is_behavior(*behavior)? {
+                        return Err(invalid);
+                    }
+                    let n = self.number(*count)?;
+                    Ok(abi::size(usize::from(
+                        self.layout(*behavior)?
+                            .as_ref()
+                            .is_some_and(|l| l.all_oop(n)),
+                    ))
+                    .unwrap())
+                }
+                Op::SlotAt => {
+                    let [index, value] = a else {
+                        return Err(invalid);
+                    };
+                    let i = self.number(*index)?;
+                    self.check_slot(*value, i)?;
+                    self.reference_word(value.cast::<usize>().add(i).read(), true)
+                }
+                Op::SlotPut => {
+                    let [index, value, edge] = a else {
+                        return Err(invalid);
+                    };
+                    let i = self.number(*index)?;
+                    let _scope = self.scope();
+                    self.keep(*value);
+                    self.keep(*edge);
+                    self.send(self.gc, b"prepareAllocation", &[])?;
+                    self.check_slot(*value, i)?;
+                    if !edge.is_null() && abi::as_size(*edge).is_none() {
+                        self.identity(*edge)?;
+                    }
+                    value.cast::<Oop>().add(i).write(*edge);
+                    Ok(*value)
+                }
+                Op::ImageSize => Ok(abi::size(self.extent(one()?)?).ok_or(invalid)?),
+                Op::ImageSlot => {
+                    let [index, value] = a else {
+                        return Err(invalid);
+                    };
+                    let i = self.number(*index)?;
+                    let _scope = self.scope();
+                    self.keep(*value);
+                    if i >= self.extent(*value)? / size_of::<usize>() {
+                        return Err(invalid);
+                    }
+                    let layout = self.inherited_layout(*value)?.ok_or(invalid)?;
+                    let word = value.cast::<usize>().add(i).read();
+                    match layout.kind(i) {
+                        OOP => self.reference_word(word, true),
+                        UNKNOWN => self.word(word),
+                        _ => Err(invalid),
+                    }
+                }
+                Op::ImagePut => {
+                    let [index, value, x] = a else {
+                        return Err(invalid);
+                    };
+                    let i = self.number(*index)?;
+                    let _scope = self.scope();
+                    self.keep(*value);
+                    self.keep(*x);
+                    self.send(self.gc, b"prepareAllocation", &[])?;
+                    if i >= self.extent(*value)? / size_of::<usize>() {
+                        return Err(invalid);
+                    }
+                    let layout = self.inherited_layout(*value)?.ok_or(invalid)?;
+                    let word = match layout.kind(i) {
+                        OOP => {
+                            if !x.is_null() && abi::as_size(*x).is_none() {
+                                self.identity(*x)?;
+                            }
+                            x.addr()
+                        }
+                        UNKNOWN => self.number(*x)?,
+                        _ => return Err(invalid),
+                    };
+                    value.cast::<usize>().add(i).write(word);
+                    Ok(*value)
+                }
+                Op::CollectionEqual => Ok(if r == one()? {
+                    self.truth
+                } else {
+                    self.falsity
+                }),
+                Op::CollectionHash => {
+                    if !a.is_empty() {
+                        return Err(invalid);
+                    }
+                    Ok(abi::size(mix(r.addr() as u64)).unwrap())
+                }
+                Op::SymbolHash => {
+                    if !a.is_empty() {
+                        return Err(invalid);
+                    }
+                    self.send(r, b"nameHash", &[])
+                }
+                Op::CanOmit => Ok(abi::size(usize::from(self.can_omit(one()?)?)).unwrap()),
+                Op::CanDiscard => {
+                    let [selected, value] = a else {
+                        return Err(invalid);
+                    };
+                    let no = abi::size(0).unwrap();
+                    let clone = self.clone_method.get();
+                    if self.send(self.id.root, b"sameNativeMethod:as:", &[*selected, clone])?
+                        != abi::size(1).unwrap()
+                    {
+                        return Ok(no);
+                    }
+                    let _scope = self.scope();
+                    self.keep(*value);
+                    let epoch = self.send(self.id.root, b"behaviorEpoch", &[])?;
+                    if self.send(self.id.root, b"usesDefaultLookup:", &[*value])?
+                        != abi::size(1).unwrap()
+                        || self.extent(*value).ok() != Some(0)
+                    {
+                        return Ok(no);
+                    }
+                    let permitted = self.can_omit(self.behavior(*value)?)?;
+                    Ok(abi::size(usize::from(
+                        permitted && self.send(self.id.root, b"behaviorEpoch", &[])? == epoch,
+                    ))
+                    .unwrap())
+                }
+                Op::NewSlots
+                | Op::ReferenceSlots
+                | Op::LanguageSlot
+                | Op::LanguagePut
+                | Op::Replace => self.language(op, r, a),
             }
-            let words = m.extent(value)?.div_ceil(size_of::<Oop>());
-            let indices = if words == 0 { Vec::new() } else {
-                let start = m.scoped.borrow().len();
-                let _scope = Scope { values: &m.scoped, start };
-                let mut behavior = m.behavior(value)?;
-                let mut seen = HashSet::new();
-                let layout = loop {
-                    // A live metadata callback may detach this behavior from the
-                    // object before collecting. The traversal owns its snapshot.
-                    m.scoped.borrow_mut().push(behavior);
-                    if !seen.insert(behavior) { break None; }
-                    if let Some(layout) = m.layout(behavior)? { break Some(layout); }
-                    let parent = m.send(m.id.receiver, b"parentOf:", &[Operand::object(behavior)])?;
-                    match parent.as_object().filter(|p| !p.is_null()) {
-                        Some(parent) => behavior = parent,
-                        None if parent.kind() == native::UNIT => break None,
-                        _ => return Err(invalid()),
+        }
+    }
+    unsafe fn language(&self, op: Op, r: Oop, a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe {
+            let invalid = self.invalid();
+            let _scope = self.scope();
+            self.keep(r);
+            for &v in a {
+                self.keep(v);
+            }
+            match op {
+                Op::NewSlots => {
+                    let [values, parent] = a else {
+                        return Err(invalid);
+                    };
+                    let integer = self.keep(self.named(b"Integer")?);
+                    let size = self.keep(self.send(*values, b"size", &[])?);
+                    let count = self.number(self.send(integer, b"wordOf:", &[size])?)?;
+                    if count > 1_048_576 {
+                        return Err(invalid);
                     }
-                };
-                let Some(layout) = layout else { return Ok(Operand::object(named(m, b"nil")?)); };
-                (0..words).filter(|index| layout.kind(*index) == OOP).collect::<Vec<_>>()
-            };
-            let vector = named(m, b"Vector")?;
-            m.rooted(&[vector], || {
-                let integer = named(m, b"Integer")?;
-                m.rooted(&[integer], || {
-                    let mut result = object(m.send(vector, b"new", &[])?)?;
-                    // Keep all intermediates in this owner's nested scope before
-                    // constructors or persistent Vector additions can collect.
-                    let start = m.scoped.borrow().len();
-                    let _scope = Scope { values: &m.scoped, start };
-                    m.scoped.borrow_mut().push(result);
-                    for index in indices {
-                        let index = object(m.send(integer, b"fromWord:", &[Operand::word(index)])?)?;
-                        m.scoped.borrow_mut().push(index);
-                        result = object(m.send(result, b"add:", &[Operand::object(index)])?)?;
-                        m.scoped.borrow_mut().push(result);
+                    let behavior = self.keep(self.send(*parent, b"delegated", &[])?);
+                    let kinds = self.keep(self.send(
+                        self.id.root,
+                        b"sequence",
+                        &vec![abi::size(OOP as usize).unwrap(); count],
+                    )?);
+                    self.send(
+                        self.receiver,
+                        b"setLayoutOf:to:rest:",
+                        &[behavior, kinds, abi::size(UNKNOWN as usize).unwrap()],
+                    )?;
+                    let result = self.keep(self.allocate(
+                        behavior,
+                        count.checked_mul(size_of::<Oop>()).ok_or(invalid)?,
+                    )?);
+                    for i in 0..count {
+                        let _element = self.scope();
+                        let index = self.keep(self.send(
+                            integer,
+                            b"fromWord:",
+                            &[abi::size(i).unwrap()],
+                        )?);
+                        let value = self.keep(self.send(*values, b"at:", &[index])?);
+                        self.send(
+                            self.receiver,
+                            b"slotAt:in:put:",
+                            &[abi::size(i).unwrap(), result, value],
+                        )?;
                     }
-                    Ok(Operand::object(result))
-                })
-            })
-        })
-    })())
-}
-
-unsafe fn language_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize, put: bool) -> Result<Operand, Outcome> {
-    unsafe {
-        let m = model(c)?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        if n != if put { 3 } else { 2 } { return Err(invalid()); }
-        let values = [r, object(args[0])?, object(args[1])?,
-            if put { object(args[2])? } else { ptr::null_mut() }];
-        m.rooted(&values, || {
-            let integer = named(m, b"Integer")?;
-            m.rooted(&[integer], || {
-                let index = m.send(integer, b"wordOf:", &args[..1])?.as_word().ok_or_else(invalid)?;
-                let raw = [Operand::word(index), args[1], if put { args[2] } else { Operand::unit() }];
-                let value = m.send(r, if put { b"slotAt:in:put:" } else { b"slotAt:in:" }, &raw[..n])?;
-                if value.kind() == native::UNIT { Ok(Operand::object(named(m, b"nil")?)) } else { Ok(value) }
-            })
-        })
+                    self.send(self.id.root, b"ownerOf:put:", &[behavior, result])?;
+                    Ok(result)
+                }
+                Op::ReferenceSlots => {
+                    let [value] = a else {
+                        return Err(invalid);
+                    };
+                    let owned = self.instances.borrow().contains_key(&value.addr());
+                    if !owned
+                        && (self.is_behavior(*value)?
+                            || self.number(self.send(
+                                self.id.root,
+                                b"allocationSizeOf:",
+                                &[*value],
+                            )?)? != 0)
+                    {
+                        return self.named(b"nil");
+                    }
+                    let words = self.extent(*value)?.div_ceil(size_of::<Oop>());
+                    let indices = if words == 0 {
+                        Vec::new()
+                    } else {
+                        let Some(layout) = self.inherited_layout(*value)? else {
+                            return self.named(b"nil");
+                        };
+                        (0..words)
+                            .filter(|&i| layout.kind(i) == OOP)
+                            .collect::<Vec<_>>()
+                    };
+                    let vector = self.keep(self.named(b"Vector")?);
+                    let integer = self.keep(self.named(b"Integer")?);
+                    let mut result = self.keep(self.send(vector, b"new", &[])?);
+                    for i in indices {
+                        let i = self.keep(self.send(
+                            integer,
+                            b"fromWord:",
+                            &[abi::size(i).unwrap()],
+                        )?);
+                        result = self.keep(self.send(result, b"add:", &[i])?);
+                    }
+                    Ok(result)
+                }
+                Op::LanguageSlot | Op::LanguagePut => {
+                    let put = matches!(op, Op::LanguagePut);
+                    if a.len() != if put { 3 } else { 2 } {
+                        return Err(invalid);
+                    }
+                    let integer = self.keep(self.named(b"Integer")?);
+                    let index = self.number(self.send(integer, b"wordOf:", &a[..1])?)?;
+                    let args = [
+                        abi::size(index).ok_or(invalid)?,
+                        a[1],
+                        if put { a[2] } else { ptr::null_mut() },
+                    ];
+                    let value = self.send(
+                        r,
+                        if put {
+                            b"slotAt:in:put:"
+                        } else {
+                            b"slotAt:in:"
+                        },
+                        &args[..a.len()],
+                    )?;
+                    if value.is_null() {
+                        self.named(b"nil")
+                    } else {
+                        Ok(value)
+                    }
+                }
+                Op::Replace => {
+                    let [index, value, expected, replacement] = a else {
+                        return Err(invalid);
+                    };
+                    if expected.is_null() || replacement.is_null() {
+                        return Err(invalid);
+                    }
+                    let integer = self.keep(self.named(b"Integer")?);
+                    let i = self.number(self.send(integer, b"wordOf:", &[*index])?)?;
+                    let yes = self.keep(self.named(b"true")?);
+                    let no = self.keep(self.named(b"false")?);
+                    self.send(self.gc, b"prepareAllocation", &[])?;
+                    self.check_slot(*value, i)?;
+                    for &edge in [expected, replacement] {
+                        if abi::as_size(edge).is_none() {
+                            self.identity(edge)?;
+                        }
+                    }
+                    let slot = value.cast::<Oop>().add(i);
+                    let matches = slot.read() == *expected;
+                    if matches {
+                        slot.write(*replacement);
+                    }
+                    Ok(if matches { yes } else { no })
+                }
+                _ => Err(invalid),
+            }
+        }
     }
 }
-unsafe extern "C" fn boxed_slot(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome { done(unsafe { language_slot(c, r, a, n, false) }) }
-unsafe extern "C" fn boxed_slot_put(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome { done(unsafe { language_slot(c, r, a, n, true) }) }
-
-unsafe extern "C" fn slot_at(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([index, value]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let index = index.as_word().ok_or_else(invalid)?;
-        let value = object(*value)?;
-        if index >= m.extent(value)?.div_ceil(size_of::<Oop>()) {
-            return Err(invalid());
-        }
-        if m.layout(m.behavior(value)?)?
-            .as_ref()
-            .is_some_and(|l| l.kind(index) != OOP)
-        {
-            return Err(invalid());
-        }
-        let word = value.cast::<usize>().add(index).read();
-        if word == 0 {
-            return Ok(Operand::unit());
-        }
-        let value = m.send(m.id.receiver, b"allocationAt:", &[Operand::word(word)])?;
-        object(value)?;
-        Ok(value)
-    })())
+fn mix(mut value: u64) -> usize {
+    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    (value ^ (value >> 31)) as u32 as usize
 }
-unsafe extern "C" fn slot_put(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(context)?;
-        let Some([index, value, edge]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let index = index.as_word().ok_or_else(invalid)?;
-        let value = object(*value)?;
-        let edge = if edge.kind() == native::UNIT {
-            ptr::null_mut()
-        } else {
-            object(*edge)?
-        };
-        m.rooted(&[value, edge], || {
-            m.send(m.gc, b"prepareAllocation", &[])?;
-            if index >= m.extent(value)?.div_ceil(size_of::<Oop>()) {
-                return Err(invalid());
-            }
-            if m.layout(m.behavior(value)?)?
-                .as_ref()
-                .is_some_and(|l| l.kind(index) != OOP)
-            {
-                return Err(invalid());
-            }
-            if !edge.is_null() {
-                m.identity(edge)?;
-            }
-            value.cast::<Oop>().add(index).write(edge);
-            Ok(Operand::object(value))
-        })
-    })())
-}
-// A generic owner-thread conditional replacement of one reference slot. All
-// collecting/reentrant sends finish before comparing and publishing the edge.
-// No Globals, Store, scheduler, or transaction policy belongs in this primitive.
-unsafe extern "C" fn replace_slot(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([index, value, expected, replacement]) = borrowed_slice(a, n) else { return Err(invalid()) };
-        let [index, value, expected, replacement] = [object(*index)?, object(*value)?, object(*expected)?, object(*replacement)?];
-        m.rooted(&[index, value, expected, replacement], || {
-            let integer = named(m, b"Integer")?;
-            m.rooted(&[integer], || {
-                let index = m.send(integer, b"wordOf:", &[Operand::object(index)])?.as_word().ok_or_else(invalid)?;
-                let yes = named(m, b"true")?;
-                m.rooted(&[yes], || {
-                    let no = named(m, b"false")?;
-                    m.rooted(&[no], || {
-                        m.send(m.gc, b"prepareAllocation", &[])?;
-                        if index >= m.extent(value)?.div_ceil(size_of::<Oop>()) || m.image_layout(value)?.kind(index) != OOP {
-                            return Err(invalid());
-                        }
-                        m.identity(expected)?;
-                        m.identity(replacement)?;
-                        let slot = value.cast::<Oop>().add(index);
-                        let matches = slot.read() == expected;
-                        if matches { slot.write(replacement); }
-                        Ok(Operand::object(if matches { yes } else { no }))
-                    })
-                })
-            })
-        })
-    })())
-}
-// Image transports typed slots; Object Model alone reads its owned storage.
-unsafe extern "C" fn image_size(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([v]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        Ok(Operand::word(m.extent(object(*v)?)?))
-    })())
-}
-unsafe extern "C" fn image_slot(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([i, v]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let i = i.as_word().ok_or_else(invalid)?;
-        let v = object(*v)?;
-        m.rooted(&[v], || {
-            if i >= m.extent(v)? / size_of::<usize>() {
-                return Err(invalid());
-            }
-            let kind = m.image_layout(v)?.kind(i);
-            let word = v.cast::<usize>().add(i).read();
-            match kind {
-                1 if word == 0 => Ok(Operand::unit()),
-                1 => {
-                    let value = m.send(m.id.receiver, b"allocationAt:", &[Operand::word(word)])?;
-                    object(value)?;
-                    Ok(value)
-                }
-                0 => Ok(Operand::word(word)),
-                _ => Err(invalid()),
-            }
-        })
-    })())
-}
-unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([i, v, x]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let i = i.as_word().ok_or_else(invalid)?;
-        let v = object(*v)?;
-        m.rooted(&[v, x.as_object().unwrap_or(ptr::null_mut())], || {
-            m.send(m.gc, b"prepareAllocation", &[])?;
-            if i >= m.extent(v)? / size_of::<usize>() {
-                return Err(invalid());
-            }
-            let kind = m.image_layout(v)?.kind(i);
-            let word = match (kind, x.kind()) {
-                (1, native::OBJECT) => object(*x)?.addr(),
-                (1, native::UNIT) => 0,
-                (0, native::WORD) => x.as_word().ok_or_else(invalid)?,
-                _ => return Err(invalid()),
-            };
-            v.cast::<usize>().add(i).write(word);
-            Ok(Operand::object(v))
-        })
-    })())
-}
-const NAMES: &[&[u8]] = &[
-    b"Integer", b"nil", b"true", b"false", b"Vector", b"at:", b"wordOf:", b"fromWord:", b"add:",
+macro_rules! operations{($(($name:literal,$op:ident)),*$(,)?)=>{
+    #[derive(Clone,Copy)]enum Op{$($op),*}
+    #[allow(non_snake_case)]mod entries{use super::*;$(pub unsafe extern "C" fn $op(_id:Oop,c:Oop,r:Oop,a:*const Oop,n:usize)->Oop{
+        (||unsafe{let m=model(c)?;let a=abi::borrowed_slice(a,n).ok_or(m.invalid())?;m.perform(Op::$op,r,a)})().unwrap_or_else(abi::fault_reference)
+    })*}
+    static METHODS:&[MethodSpec]=&[$(MethodSpec{name:index($name),entry:Some(entries::$op)}),*];
+};}
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"Integer",
+    b"Word",
+    b"Symbol",
+    b"sequence",
+    b"nil",
+    b"true",
+    b"false",
+    b"Vector",
+    b"at:",
+    b"at:put:",
+    b"wordOf:",
+    b"fromWord:",
+    b"add:",
+    b"size",
+    b"low32",
+    b"high32",
+    b"fromUnsignedLow:high:",
     b"referenceSlotsOf:",
     b"replaceSlot:in:expected:with:",
-    b"newSlots:parent:", b"slot:in:", b"slot:in:put:",
+    b"newSlots:parent:",
+    b"slot:in:",
+    b"slot:in:put:",
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",
     b"usesDefaultLookup:",
     b"behaviorEpoch",
-    b"bind:to:",
     b"nativeBindingsMatch:",
-    b"nativeBindingQuerySemantics:for:",
+    b"sameNativeMethod:as:",
     b"collectionEquals:",
     b"collectionHash",
-    b"symbolBytesOf:",
+    b"nameHash",
+    b"symbolHash",
     b"identityOf:",
     b"behaviorOf:",
     b"isBehavior:",
@@ -869,339 +837,215 @@ const NAMES: &[&[u8]] = &[
     b"trace:with:",
     b"precisePayloads",
     b"registerRetirement:",
+    b"referenceOwnerOf:",
+    b"objectBehavior",
+    b"objectPrototype",
+    b"vtableBehavior",
+    b"symbolBehavior",
+    b"methodAt:",
+    b"withContext:",
+    b"Roots",
+    b"GC",
+    b"ObjectModel",
+    b"Object",
+    b"ObjectVt",
+    b"Vtable",
+    b"visit:"
 ];
-unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| -> Result<Oop, Outcome> {
-            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+const fn index(name: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        if NAMES[i].len() == name.len() {
+            let mut j = 0;
+            while j < name.len() && NAMES[i][j] == name[j] {
+                j += 1;
+            }
+            if j == name.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+operations![
+    (b"rootsDo:", Roots),
+    (b"referencesOf:do:", References),
+    (b"retire:", Retire),
+    (b"allocate:bytes:", Allocate),
+    (b"canDiscardClone:of:", CanDiscard),
+    (b"canOmitAllocationFor:", CanOmit),
+    (b"setLayoutOf:to:rest:", SetLayout),
+    (b"slotAt:in:", SlotAt),
+    (b"newSlots:parent:", NewSlots),
+    (b"slot:in:", LanguageSlot),
+    (b"referenceSlotsOf:", ReferenceSlots),
+    (b"slot:in:put:", LanguagePut),
+    (b"replaceSlot:in:expected:with:", Replace),
+    (b"imageSizeOf:", ImageSize),
+    (b"imageSlotAt:in:", ImageSlot),
+    (b"restoreImageSlotAt:in:put:", ImagePut),
+    (b"slotAt:in:put:", SlotPut),
+    (b"slotKindOf:at:", SlotKind),
+    (b"allOopLayoutOf:words:", AllOop),
+    (b"ownerOf:", Owner),
+    (b"ownerOf:put:", OwnerPut),
+    (b"prepareBehaviorMutationOf:", Prepare),
+    (b"ensurePrivateVtableFor:", Ensure),
+    (b"collectionEquals:", CollectionEqual),
+    (b"collectionHash", CollectionHash),
+    (b"symbolHash", SymbolHash),
+    (b"clone", Clone)
+];
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    argc: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([namespace]) = (unsafe { abi::borrowed_slice(a, argc) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { abi::borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if symbols.len() != NAMES.len() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let m = unsafe { &*old };
+        return if m.ready.get() && m.namespace == *namespace {
+            m.receiver
+        } else {
+            id.invalid
         };
+    }
+    (|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |name: &[u8]| send(*namespace, b"at:", &[names[name]]);
         let roots = named(b"Roots")?;
         let gc = named(b"GC")?;
-        let retain = id.intern_name(b"retain:")?;
-        let release = id.intern_name(b"release:")?;
+        let truth = named(b"true")?;
+        let falsity = named(b"false")?;
+        if [roots, gc, truth, falsity].iter().any(|o| o.is_null()) {
+            return Err(abi::object_reference(id.invalid));
+        }
+        let object = send(id.root, b"objectPrototype", &[])?;
+        let base = send(id.root, b"objectBehavior", &[])?;
+        let meta = send(id.root, b"vtableBehavior", &[])?;
+        let symbol_type = send(id.root, b"symbolBehavior", &[])?;
+        let meta_owner = send(gc, b"referenceOwnerOf:", &[meta])?;
         let mut tokens = Vec::new();
-        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
-            tokens.push(
-                id.send(roots, retain, &[Operand::object(v)])?
-                    .as_word()
-                    .ok_or_else(invalid)?,
-            );
-            Ok(v)
-        };
-        let mut names = HashMap::new();
-        for name in NAMES {
-            names.insert(*name, keep(id.intern_name(name)?)?);
-        }
-        let prototype = object(id.send_named(id.receiver, b"objectPrototype", &[])?)?;
-        let object_behavior =
-            object(id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(prototype)])?)?;
-        let behavior = keep(object(id.send_named(
-            object_behavior,
-            b"delegated",
-            &[],
-        )?)?)?;
-        let receiver = keep(object(id.send_named(
-            behavior,
-            b"allocate",
-            &[Operand::word(0)],
-        )?)?)?;
-        let binding_guard = birnam_abi::binding_guard::BindingGuard::discover(id,
-            birnam_abi::binding_guard::SERVICES.map(|name| names[name]),
-            names[b"nativeBindingQuerySemantics:for:".as_slice()]);
-        let pointer = Box::into_raw(Box::new(Model {
-            id,
-            binding_guard,
-            namespace,
-            roots,
-            gc,
-            receiver,
-            truth: named(b"true")?,
-            falsity: named(b"false")?,
-            thread: std::thread::current().id(),
-            representation_query: names[b"tryRepresentationIdentityOf:behavior:bytes:".as_slice()],
-            names,
-            owners: RefCell::new(HashMap::new()),
-            instances: RefCell::new(HashMap::new()),
-            layouts: RefCell::new(HashMap::new()),
-            copies: RefCell::new(Vec::new()),
-            scoped: RefCell::new(Vec::new()),
-        }));
-        for (target, name, method) in [
-            (behavior, b"rootsDo:".as_slice(), enumerate_roots as Method),
-            (behavior, b"referencesOf:do:", references),
-            (behavior, b"retire:", retire),
-            (behavior, b"allocate:bytes:", allocate),
-            (behavior, b"canDiscardClone:of:", can_discard_clone),
-            (behavior, b"canOmitAllocationFor:", can_omit_allocation),
-            (behavior, b"setLayoutOf:to:rest:", set_layout),
-            (behavior, b"slotAt:in:", slot_at),
-            (behavior, b"newSlots:parent:", new_slots),
-            (behavior, b"slot:in:", boxed_slot),
-            (behavior, b"referenceSlotsOf:", reference_slots),
-            (behavior, b"slot:in:put:", boxed_slot_put),
-            (behavior, b"replaceSlot:in:expected:with:", replace_slot),
-            (behavior, b"imageSizeOf:", image_size),
-            (behavior, b"imageSlotAt:in:", image_slot),
-            (behavior, b"restoreImageSlotAt:in:put:", image_put),
-            (behavior, b"slotAt:in:put:", slot_put),
-            (behavior, b"slotKindOf:at:", slot_kind),
-            (behavior, b"allOopLayoutOf:words:", all_oop),
-            (id.receiver, b"ownerOf:", query_owner),
-            (id.receiver, b"ownerOf:put:", assign_owner),
-            (id.receiver, b"prepareBehaviorMutationOf:", prepare),
-            (id.receiver, b"ensurePrivateVtableFor:", ensure),
-            (object_behavior, b"collectionEquals:", collection_equal),
-            (object_behavior, b"collectionHash", collection_hash),
-            (
-                (*pointer).behavior(keep(id.intern_name(b"Symbol")?)?)?,
-                b"collectionHash",
-                symbol_hash,
-            ),
-            (object_behavior, b"clone", clone_object),
-            (object_behavior, b"new", clone_object),
-        ] {
-            id.send_named(
-                target,
-                b"addMethod",
-                &[
-                    Operand::object((&(*pointer).names)[name]),
-                    Operand::entry(NativeEntry::new(method, pointer.cast())),
-                ],
-            )?;
-        }
-        // Canonical associations are made only from completed, already rooted objects.
-        for value in [
-            prototype,
-            keep(id.intern_name(b"Symbol")?)?,
-            keep(named(b"nil")?)?,
-            keep(named(b"true")?)?,
-            namespace,
-        ] {
-            let b = (*pointer).behavior(value)?;
-            let identity = (*pointer).identity(b)?;
-            (*pointer)
-                .owners
-                .borrow_mut()
-                .insert(b.addr(), Record { identity, value });
-        }
-        id.send_named(roots, b"register:", &[Operand::object(receiver)])?;
-        id.send_named(gc, b"registerRetirement:", &[Operand::object(receiver)])?;
-        for target in [object_behavior, id.receiver] {
-            id.send_named(
+        let result = (|| {
+            let mut keep = |v| -> Result<Oop, Oop> {
+                tokens.push(send(roots, b"retain:", &[v])?);
+                Ok(v)
+            };
+            let behavior = keep(send(base, b"delegated", &[])?)?;
+            let receiver = keep(send(behavior, b"allocate", &[abi::size(0).unwrap()])?)?;
+            let m = Box::into_raw(Box::new(Model {
+                id,
+                namespace: *namespace,
+                roots,
                 gc,
-                b"trace:with:",
-                &[Operand::object(target), Operand::object(receiver)],
-            )?;
-        }
-        id.send_named(
-            namespace,
-            b"at:put:",
-            &[
-                Operand::object(id.intern_name(b"ObjectModel")?),
-                Operand::object(receiver),
-            ],
-        )?;
+                receiver,
+                image,
+                meta,
+                meta_owner,
+                truth,
+                falsity,
+                names: names.clone(),
+                allocate_method: Cell::new(ptr::null_mut()),
+                clone_method: Cell::new(ptr::null_mut()),
+                owners: RefCell::new(HashMap::new()),
+                instances: RefCell::new(HashMap::new()),
+                layouts: RefCell::new(HashMap::new()),
+                copies: RefCell::new(Vec::new()),
+                scoped: RefCell::new(Vec::new()),
+                ready: Cell::new(false),
+            }));
+            INSTANCE.store(m, Ordering::Release);
+            let m = &*m;
+            for spec in METHODS {
+                let name = NAMES[spec.name];
+                let method = m.send(image, b"methodAt:", &[symbols[spec.name]])?;
+                let method = m.send(method, b"withContext:", &[receiver])?;
+                let target = match name {
+                    b"ownerOf:"
+                    | b"ownerOf:put:"
+                    | b"prepareBehaviorMutationOf:"
+                    | b"ensurePrivateVtableFor:" => m.behavior(id.root)?,
+                    b"collectionEquals:" | b"collectionHash" | b"clone" => base,
+                    b"symbolHash" => symbol_type,
+                    _ => behavior,
+                };
+                let selector = if name == b"symbolHash" {
+                    m.names[b"collectionHash".as_slice()]
+                } else {
+                    symbols[spec.name]
+                };
+                m.send(target, b"addMethod", &[selector, method])?;
+                if name == b"allocate:bytes:" {
+                    m.allocate_method.set(method);
+                }
+                if name == b"clone" {
+                    m.clone_method.set(method);
+                }
+                if name == b"clone" {
+                    m.send(target, b"addMethod", &[m.names[b"new".as_slice()], method])?;
+                }
+            }
+            for value in [object, truth, named(b"nil")?, *namespace] {
+                let b = m.behavior(value)?;
+                let identity = m.identity(b)?;
+                m.owners
+                    .borrow_mut()
+                    .insert(b.addr(), Record { identity, value });
+            }
+            let identity = m.identity(symbol_type)?;
+            m.owners.borrow_mut().insert(
+                symbol_type.addr(),
+                Record {
+                    identity,
+                    value: symbols[index(b"Symbol")],
+                },
+            );
+            m.send(roots, b"register:", &[receiver])?;
+            m.send(gc, b"registerRetirement:", &[receiver])?;
+            for target in [base, meta] {
+                m.send(gc, b"trace:with:", &[target, receiver])?;
+            }
+            for (name, value) in [
+                (b"ObjectModel".as_slice(), receiver),
+                (b"Object", object),
+                (b"ObjectVt", base),
+                (b"Vtable", meta),
+            ] {
+                m.send(*namespace, b"at:put:", &[m.names[name], value])?;
+            }
+            m.ready.set(true);
+            Ok(receiver)
+        })();
         for token in tokens {
-            id.send(roots, release, &[Operand::word(token)])?;
+            send(roots, b"release:", &[token])?;
         }
-        Ok(Operand::object(receiver))
-    }
-}
-unsafe extern "C" fn initialize(
-    id: *const Protocol,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([namespace]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let namespace = object(*namespace)?;
-        let id = *id;
-        let current = id.send_named(
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"ObjectModel")?)],
-        )?;
-        if current.kind() == native::OBJECT {
-            return Ok(current);
-        }
-        construct(id, namespace)
-    })())
+        result
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
-
-unsafe extern "C" fn collection_equal(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([other]) = borrowed_slice(a, count) else {
-            return Err(invalid());
-        };
-        Ok(Operand::object(if r == object(*other)? {
-            m.truth
-        } else {
-            m.falsity
-        }))
-    })())
-}
-unsafe extern "C" fn collection_hash(
-    c: *mut c_void,
-    r: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        model(c)?;
-        if count != 0 {
-            return Err(invalid());
-        }
-        Ok(Operand::word(mix(r.addr() as u64)))
-    })())
-}
-unsafe extern "C" fn symbol_hash(
-    c: *mut c_void,
-    r: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        if count != 0 {
-            return Err(invalid());
-        }
-        // The caller keeps the Symbol alive. Consume its owner's byte borrow
-        // before any other message; no registry cleanup is needed for an input.
-        let raw = m.send(m.id.receiver, b"symbolBytesOf:", &[Operand::object(r)])?
-            .as_bytes().ok_or_else(invalid)?;
-        let mut hash = 2_166_136_261u32;
-        for byte in borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?
-            .iter().take_while(|b| **b != 0)
-        { hash = (hash ^ u32::from(*byte)).wrapping_mul(16_777_619); }
-        Ok(Operand::word(hash as usize))
-    })())
-}
-fn mix(mut value: u64) -> usize {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    (value ^ (value >> 31)) as u32 as usize
-}
-
-impl Model {
-    unsafe fn can_omit_allocation(
-        &self,
-        behavior: Oop,
-        context: *mut c_void,
-    ) -> Result<bool, Outcome> {
-        unsafe {
-            let admitted = self.binding_guard.admits(self.id, &[(
-                self.receiver, self.names[b"allocate:bytes:".as_slice()],
-                NativeEntry::new(allocate, context),
-            )])?;
-            if !admitted && (self
-                .send(
-                    self.id.receiver,
-                    b"usesDefaultLookup:",
-                    &[Operand::object(self.receiver)],
-                )?
-                .as_word()
-                != Some(1)
-                || self
-                    .send(
-                        self.id.receiver,
-                        b"bind:to:",
-                        &[
-                            Operand::object(self.names[b"allocate:bytes:".as_slice()]),
-                            Operand::object(self.receiver),
-                        ],
-                    )?
-                    .as_entry()
-                    != Some(NativeEntry::new(allocate, context)))
-            {
-                return Ok(false);
-            }
-            Ok(self
-                .send(
-                    self.gc,
-                    b"canOmitAllocationFor:",
-                    &[Operand::object(behavior)],
-                )?
-                .as_word()
-                == Some(1))
-        }
-    }
-}
-unsafe extern "C" fn can_omit_allocation(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([behavior]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let behavior = object(*behavior)?;
-        // This fixed permission query only uses its caller-covered argument.
-        Ok(Operand::word(usize::from(m.can_omit_allocation(behavior, c)?)))
-    })())
-}
-unsafe extern "C" fn can_discard_clone(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = model(c)?;
-        let Some([selected, receiver]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let selected = selected.as_entry().ok_or_else(invalid)?;
-        let receiver = object(*receiver)?;
-        if selected != NativeEntry::new(clone_object, c) {
-            return Ok(Operand::word(0));
-        }
-        m.rooted(&[receiver], || {
-            let epoch = m
-                .send(m.id.receiver, b"behaviorEpoch", &[])?
-                .as_word()
-                .ok_or_else(invalid)?;
-            if epoch == usize::MAX
-                || m.send(
-                    m.id.receiver,
-                    b"usesDefaultLookup:",
-                    &[Operand::object(receiver)],
-                )?
-                .as_word()
-                    != Some(1)
-            {
-                return Ok(Operand::word(0));
-            }
-            // Restrict this first consumer to ordinary zero-slot instances.
-            // Unsupported shapes decline; the actual clone owns their errors.
-            if m.extent(receiver).ok() != Some(0) {
-                return Ok(Operand::word(0));
-            }
-            let behavior = m.behavior(receiver)?;
-            let permitted = m.can_omit_allocation(behavior, c)?;
-            Ok(Operand::word(usize::from(
-                permitted && m.send(m.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch),
-            )))
-        })
-    })())
-}

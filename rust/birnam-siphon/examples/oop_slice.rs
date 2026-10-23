@@ -23,6 +23,7 @@ unsafe fn run() {
             library.join("libbirnam_storage.dylib"),
             library.join("libbirnam_boolean.dylib"),
             library.join("libbirnam_nil.dylib"),
+            library.join("libbirnam_object_model.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"sequence",
@@ -93,6 +94,9 @@ unsafe fn run() {
             b"globalLookup", b"setGlobalLookup:", b"globalLookupCalls",
             b"caughtFailure", b"rethrow:", b"fault:detail:", b"allocationAt:",
             b"canOmitAllocationFor:", b"allocate:bytes:", b"nativeBindingsMatch:", b"bind:to:",
+            b"setLayoutOf:to:rest:", b"slotAt:in:", b"slotAt:in:put:", b"clone", b"objectPrototype",
+            b"ownerOf:", b"ownerOf:put:", b"ensurePrivateVtableFor:", b"cloneAllocate", b"convertIndex",
+            b"Integer", b"wordOf:", b"slot:in:", b"imageSizeOf:", b"slotKindOf:at:",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
             b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
             b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
@@ -718,6 +722,59 @@ unsafe fn run() {
         send(root_type, b"addMethod", &[sel(b"allocate:bytes:"), raw]).unwrap();
         assert_eq!(abi::as_size(send(gc, b"canOmitAllocationFor:", &[base]).unwrap()), Some(1));
         println!("allocation omission checks current Method objects and raw storage meanings: passed");
+
+        let model_args=send(id.root,b"sequence",&[namespace]).unwrap();
+        let model=id.send(names[10],id.load,&[model_args]).unwrap();
+        send(actor,b"at:put:",&[abi::size(28).unwrap(),model]).unwrap();
+        let record_type=send(base,b"delegated",&[]).unwrap();
+        let layout=send(id.root,b"sequence",&[abi::size(1).unwrap(),abi::size(0).unwrap()]).unwrap();
+        send(model,b"setLayoutOf:to:rest:",&[record_type,layout,abi::size(0).unwrap()]).unwrap();
+        let record=send(model,b"allocate:bytes:",&[record_type,abi::size(16).unwrap()]).unwrap();
+        send(actor,b"at:put:",&[abi::size(29).unwrap(),record]).unwrap();
+        let child=send(actor,b"dynamicName:",&[abi::size(49).unwrap()]).unwrap();
+        send(model,b"slotAt:in:put:",&[abi::size(0).unwrap(),record,child]).unwrap();
+        // The fixture defines this record's second field as raw machine bits.
+        record.cast::<u64>().add(1).write(0xfedc_ba98_7654_3210);
+        assert!(send(model,b"slotAt:in:",&[abi::size(1).unwrap(),record]).is_err());
+        let replacement_child=send(actor,b"dynamicName:",&[abi::size(51).unwrap()]).unwrap();
+        send(actor,b"at:put:",&[abi::size(31).unwrap(),replacement_child]).unwrap();
+        let meta=send(id.root,b"behaviorOf:",&[record_type]).unwrap();
+        let original_allocate=send(meta,b"lookup",&[sel(b"allocate")]).unwrap();
+        send(actor,b"at:put:",&[abi::size(30).unwrap(),original_allocate]).unwrap();
+        let custom_meta=send(meta,b"delegated",&[]).unwrap();
+        let replacing=send(actor_vt,b"lookup",&[sel(b"cloneAllocate")]).unwrap();
+        send(custom_meta,b"addMethod",&[sel(b"allocate"),replacing]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[record_type,custom_meta]).unwrap();
+        let copy=send(record,b"clone",&[]).unwrap();
+        let copy_token=send(roots,b"retain:",&[copy]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[record_type,meta]).unwrap();
+        assert_eq!(send(model,b"slotAt:in:",&[abi::size(0).unwrap(),record]).unwrap(),replacement_child);
+        assert_eq!(send(model,b"slotAt:in:",&[abi::size(0).unwrap(),copy]).unwrap(),child);
+        assert_eq!(copy.cast::<u64>().add(1).read(),0xfedc_ba98_7654_3210);
+        let private=send(id.root,b"ensurePrivateVtableFor:",&[record]).unwrap();
+        assert_eq!(send(id.root,b"ownerOf:",&[private]).unwrap(),record);
+        assert_eq!(send(id.root,b"ensurePrivateVtableFor:",&[record]).unwrap(),private);
+        record.cast::<usize>().add(1).write(replacement_child.addr());
+        assert!(send(model,b"slotAt:in:",&[abi::size(1).unwrap(),record]).is_err(), "private behavior must preserve the inherited raw-word layout");
+        let integer_type=send(base,b"delegated",&[]).unwrap();
+        let conversion=send(actor_vt,b"lookup",&[sel(b"convertIndex")]).unwrap();
+        send(integer_type,b"addMethod",&[sel(b"wordOf:"),conversion]).unwrap();
+        let integer=send(integer_type,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+        send(namespace,b"at:put:",&[sel(b"Integer"),integer]).unwrap();
+        let index=send(base,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+        send(actor,b"at:put:",&[abi::size(33).unwrap(),index]).unwrap();
+        assert_eq!(send(model,b"slot:in:",&[index,record]).unwrap(),replacement_child);
+        let raw_only=send(base,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+        record.cast::<usize>().add(1).write(raw_only.addr());
+        let precision=send(gc,b"precisePayloads",&[]).unwrap();
+        send(gc,b"precisePayloads:",&[abi::size(1).unwrap()]).unwrap();
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        assert!(send(id.root,b"identityOf:",&[raw_only]).is_err(), "raw words in inherited layouts are not references");
+        send(gc,b"precisePayloads:",&[precision]).unwrap();
+        send(gc,b"collectPrecisely",&[]).unwrap();
+        assert_eq!(abi::as_size(send(model,b"imageSizeOf:",&[copy]).unwrap()),Some(16));
+        send(roots,b"release:",&[copy_token]).unwrap();
+        println!("ObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed");
 
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();

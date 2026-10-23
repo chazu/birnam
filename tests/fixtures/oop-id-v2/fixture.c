@@ -4,8 +4,8 @@
    through messages. No foreign payload or Id registry is inspected. */
 typedef struct Node {Oop child;Oop size;} Node;
 static IdProtocol id;
-enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,APPLYVALUE,APPLY,ARGPROXY,NAMEFACTORY,METHODFACTORY,NSBIND,PREPAREOWNER,NODECHILD,OBSERVE,STOREROOT,STOREEDGE,STORECOMPLETE,VALUEPROBE,ECHONAME,RETIRE,CHARGEGC,GLOBALLOOKUP,SETGLOBALLOOKUP,GLOBALLOOKUPCOUNT,ERRORVALUE,RETHROW,NAMES};
-static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("applyValue"),LIT("apply"),LIT("argumentProxy"),LIT("nameFactory"),LIT("methodFactory"),LIT("binding:value:"),LIT("prepareOwner:"),LIT("nodeWithChild:"),LIT("observe:"),LIT("root:"),LIT("edgeFrom:to:"),LIT("complete:"),LIT("valueProbe"),LIT("echoName"),LIT("retire:"),LIT("chargeAfterGC"),LIT("globalLookup"),LIT("setGlobalLookup:"),LIT("globalLookupCalls"),LIT("caughtFailure"),LIT("rethrow:")};
+enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,APPLYVALUE,APPLY,ARGPROXY,NAMEFACTORY,METHODFACTORY,NSBIND,PREPAREOWNER,NODECHILD,OBSERVE,STOREROOT,STOREEDGE,STORECOMPLETE,VALUEPROBE,ECHONAME,RETIRE,CHARGEGC,GLOBALLOOKUP,SETGLOBALLOOKUP,GLOBALLOOKUPCOUNT,ERRORVALUE,RETHROW,MODELPUT,MODELBOXED,CLONEALLOC,CONVERTINDEX,ROOTSDO,NAMES};
+static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("applyValue"),LIT("apply"),LIT("argumentProxy"),LIT("nameFactory"),LIT("methodFactory"),LIT("binding:value:"),LIT("prepareOwner:"),LIT("nodeWithChild:"),LIT("observe:"),LIT("root:"),LIT("edgeFrom:to:"),LIT("complete:"),LIT("valueProbe"),LIT("echoName"),LIT("retire:"),LIT("chargeAfterGC"),LIT("globalLookup"),LIT("setGlobalLookup:"),LIT("globalLookupCalls"),LIT("caughtFailure"),LIT("rethrow:"),LIT("slotAt:in:put:"),LIT("slot:in:"),LIT("cloneAllocate"),LIT("convertIndex"),LIT("rootsDo:")};
 static Oop names[NAMES];
 static Oop pending_owner;
 static Oop call(Oop r,int name,const Oop *a,size_t n){return id.message(id.root,r,names[name],a,n);}
@@ -223,13 +223,38 @@ static Oop error_value(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
 static Oop rethrow_value(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)c;(void)r;return n==1?id_failure(a[0]):id.invalid;
 }
-static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{APPLYVALUE,apply_value},{ARGPROXY,argument_proxy},{NAMEFACTORY,name_factory},{METHODFACTORY,method_factory},{NSBIND,namespace_binding},{PREPAREOWNER,prepare_owner},{NODECHILD,node_child},{ALLOCATION,storage_allocation},{STOREROOT,storage_edge},{STOREEDGE,storage_edge},{STORECOMPLETE,storage_complete},{VALUEPROBE,value_probe},{ECHONAME,echo_name},{RETIRE,retire_objects},{CHARGEGC,charge_after_gc},{GLOBALLOOKUP,global_lookup},{SETGLOBALLOOKUP,set_global_lookup},{GLOBALLOOKUPCOUNT,global_lookup_count},{ERRORVALUE,error_value},{RETHROW,rethrow_value}};
+static Oop clone_allocate(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;if(n!=1)return id.invalid;
+ Oop edit[]={id_size(0),get(c,29),get(c,31)};REQUIRE(call(get(c,28),MODELPUT,edit,3));
+ REQUIRE(zero(get(c,1),COLLECT));
+ return two(get(c,30),APPLY,r,a[0]);
+}
+static Oop root_observer(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;(void)r;if(n!=1)return id.invalid;
+ if(a[0]==get(c,33))REQUIRE(put(c,34,id_size(id_unbox(get(c,34))+1)));
+ return 0;
+}
+static Oop root_occurrences(Oop c){
+ REQUIRE(put(c,34,id_size(0)));REQUIRE(one(get(c,28),ROOTSDO,c));return get(c,34);
+}
+static Oop convert_index(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root_;(void)r;if(n!=1)return id.invalid;
+ Oop before=root_occurrences(c);if(id_fault(before)||!id_unbox(before))return id.invalid;
+ REQUIRE(zero(get(c,1),COLLECT));
+ if(!id_unbox(get(c,32))){
+  REQUIRE(put(c,32,id_size(1)));REQUIRE(two(get(c,28),MODELBOXED,a[0],get(c,29)));
+  REQUIRE(put(c,32,id_size(0)));
+  if(root_occurrences(c)!=before)return id.invalid;
+ }
+ return id_size(0);
+}
+static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{APPLYVALUE,apply_value},{ARGPROXY,argument_proxy},{NAMEFACTORY,name_factory},{METHODFACTORY,method_factory},{NSBIND,namespace_binding},{PREPAREOWNER,prepare_owner},{NODECHILD,node_child},{ALLOCATION,storage_allocation},{STOREROOT,storage_edge},{STOREEDGE,storage_edge},{STORECOMPLETE,storage_complete},{VALUEPROBE,value_probe},{ECHONAME,echo_name},{RETIRE,retire_objects},{CHARGEGC,charge_after_gc},{GLOBALLOOKUP,global_lookup},{SETGLOBALLOOKUP,set_global_lookup},{GLOBALLOOKUPCOUNT,global_lookup_count},{ERRORVALUE,error_value},{RETHROW,rethrow_value},{CLONEALLOC,clone_allocate},{CONVERTINDEX,convert_index},{VISIT,root_observer}};
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t ns,const Oop*a,size_t n){
  id=*p;if(ns!=NAMES||n!=2)return id.invalid;for(size_t i=0;i<ns;i++)names[i]=s[i];
  Oop base=zero(id.root,OBJECT);if(id_fault(base))return base;
  Oop vt=zero(base,DELEGATED);if(id_fault(vt))return vt;
- Oop actor_values[]={a[0],a[1],vt,id_size(0),id_size(0),0,0,0,id_size(0),id_size(0),0,0,0,0,0,id_size(0),id_size(0),0,id_size(0),0,0,id_size(0),id_size(0),id_size(0),id_size(0),id_size(0),id_size(0),0};
- Oop actor=call(id.root,SEQUENCE,actor_values,28);if(id_fault(actor))return actor;
+ Oop actor_values[]={a[0],a[1],vt,id_size(0),id_size(0),0,0,0,id_size(0),id_size(0),0,0,0,0,0,id_size(0),id_size(0),0,id_size(0),0,0,id_size(0),id_size(0),id_size(0),id_size(0),id_size(0),id_size(0),0,0,0,0,0,id_size(0),0,id_size(0)};
+ Oop actor=call(id.root,SEQUENCE,actor_values,35);if(id_fault(actor))return actor;
  /* A separate behavior on an ordinary opaque actor would need an owner too.
     Use a dedicated behavior inheriting Sequence behavior for these methods. */
  Oop actor_vt=zero(one(id.root,BEHAVIOR,actor),DELEGATED);if(id_fault(actor_vt))return actor_vt;

@@ -2,8 +2,7 @@
   "schema_version": 1,
   "scope": "Ordinary storage, private behaviors, and exact slot metadata through Id/Roots/GC messages",
   "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ],
   "library_name": "libbirnam_object_model.dylib",
   "install_name_policy": "cargo-output-path"

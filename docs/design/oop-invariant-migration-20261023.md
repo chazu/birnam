@@ -294,3 +294,29 @@ decline after replacement of raw allocation, and accept again after restoration.
 All existing gates pass. Regression inspection found no new work in ordinary
 allocation; this is the optional permission query used by the pending compiler
 and ObjectModel migration. [Receipts](../measurements/oop-allocation-permission-20261023.json).
+
+## Piece 12: ObjectModel uses Oop messages
+
+ObjectModel now uses object-valued layouts, Method witnesses, allocation facts and
+retirement arguments. Its ordinary-slot ownership and weak layout/owner metadata
+remain local to ObjectModel. Native table references are reported by their existing
+owner before ObjectModel reports its additional behavior-owner links.
+
+Native checks cover raw/reference layouts, generic cloning while an allocating
+callback changes the source and collects, private behaviors, and a replacement
+Integer conversion that reenters slot access and collects. Clone snapshots retain
+the original reference and full-width raw bits. Nested scopes restore the parent
+root inventory. All existing native gates and export audits pass.
+
+The new test also reproduced an inherited-layout defect: after creating a private
+behavior, raw slot access could treat a declared raw-word field as an object
+reference. Slot access and precise tracing now use the same inherited-layout
+interpretation as image/reference-slot queries. The test rejects that read and
+checks that an address stored only in a raw field does not retain an object.
+
+Regression review removed an unnecessary table of bound Methods from the port;
+only the two actual witnesses are retained. Per-element construction scopes avoid
+retaining every temporary index until a slot-construction loop ends. No additional
+Id hot-path bookkeeping is introduced. High-level Integer/Vector adapters and
+raw-word image transport await integration with those owners; this checkpoint does
+not claim their complete acceptance. [Receipts](../measurements/oop-object-model-20261023.json).
