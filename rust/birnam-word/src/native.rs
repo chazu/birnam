@@ -26,7 +26,6 @@ pub(crate) struct Number {
     scoped: RefCell<Vec<Oop>>,
     pub(crate) witnesses: [Cell<Oop>; 19],
     pub(crate) expression_meanings: Cell<(usize, u32)>,
-    pub(crate) expression_entry: Cell<Oop>,
     ready: Cell<bool>,
 }
 struct Scope<'a> {
@@ -286,7 +285,6 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -
         values.extend(s.names.values().copied());
         values.extend(s.scoped.borrow().iter().copied());
         values.extend(s.witnesses.iter().map(Cell::get));
-        values.push(s.expression_entry.get());
         for value in values {
             s.send(*visitor, b"visit:", &[value])?;
         }
@@ -328,7 +326,6 @@ macro_rules! operations{($(($name:literal,$entry:ident,$op:expr)),*$(,)?)=>{
     })*
     static METHODS:&[MethodSpec]=&[$(MethodSpec{name:index($name),entry:Some($entry)}),*,
         MethodSpec{name:index(b"rootsDo:"),entry:Some(roots)},MethodSpec{name:index(b"referencesOf:do:"),entry:Some(references)},
-        MethodSpec{name:index(b"evaluateWordProgram"),entry:Some(crate::expression::program)},
         MethodSpec{name:index(b"tryPrimitiveExpression:"),entry:Some(crate::expression::evaluate)},
         MethodSpec{name:index(b"tryPrimitiveExpressionAtEpoch:"),entry:Some(crate::expression::evaluate_at_epoch)}];
 };}
@@ -396,8 +393,8 @@ literals![
     b"fromUnsignedLow:high:",
     b"low32",
     b"high32",
-    b"apply:to:with:",
-    b"evaluateWordProgram"
+    b"sizeWord",
+    b"atWord:"
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -514,7 +511,6 @@ unsafe extern "C" fn initialize(
                 scoped: RefCell::new(Vec::new()),
                 witnesses: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
                 expression_meanings: Cell::new((usize::MAX, 0)),
-                expression_entry: Cell::new(ptr::null_mut()),
                 ready: Cell::new(false),
             }));
             INSTANCE.store(s, Ordering::Release);
@@ -523,11 +519,7 @@ unsafe extern "C" fn initialize(
                 let name = NAMES[spec.name];
                 let method = s.send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = s.send(method, b"withContext:", &[prototype])?;
-                if name == b"evaluateWordProgram" {
-                    s.expression_entry.set(method);
-                } else {
-                    s.send(behavior, b"addMethod", &[symbols[spec.name], method])?;
-                }
+                s.send(behavior, b"addMethod", &[symbols[spec.name], method])?;
                 if let Some(code) = crate::expression::code_for(name) {
                     s.witnesses[code as usize].set(method);
                 }

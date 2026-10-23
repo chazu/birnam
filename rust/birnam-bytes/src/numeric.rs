@@ -57,11 +57,9 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Oop], op: usize) -> Result<Oop, Oop> {
                 if t.send(t.id.root, b"isSymbol:", args)? != abi::size(1).unwrap() {
                     return Ok(t.nil);
                 }
-                let value = t.make(t.copy(r)?)?;
-                return t.rooted(&[value], || {
-                    t.send(args[0], b"appendTo:", &[value])?;
-                    Ok(value)
-                });
+                let mut bytes = t.copy(r)?;
+                bytes.extend_from_slice(&t.read_bytes(args[0])?);
+                return t.make(bytes);
             }
             if op == 22 {
                 let mut values = Vec::new();

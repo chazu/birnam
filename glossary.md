@@ -37,9 +37,11 @@ use either term for the whole message send without saying so.
 - **Malleability:** the ability to replace and rewrite behavior and implementation
   through the language's supported protocols. A storage optimization must not
   quietly freeze a binding or bypass a supported replacement.
-- **Method:** an object used as a callable through its application protocol.
-  The bootstrap native implementation stores a code declaration index, context
-  and code owner; other implementations may use different payload layouts.
+- **Method:** the implementation selected by message lookup. `send` enters it
+  directly; there is no separate application protocol. The bootstrap owner stores
+  its code declaration index, context and code owner and interprets that format.
+- **Send:** the message operation: find the receiver's current method for the
+  selector, then enter that selected implementation with Oop arguments/results.
 - **Context:** the object supplied to a method implementation for its own state.
 - **Code owner:** the object that keeps the selected executable code and associated
   resources alive while they are needed.

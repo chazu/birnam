@@ -31,9 +31,8 @@ Consumers use live messages. Calls run on the owning Id thread.
 
 Operations producing text send the current `fromBytes:` method. Resource-aware
 String cloning constructs its own buffer and installs its own GC finalizer.
-Printing callbacks and allocating sends hold no byte-map borrow. Providers transfer
-byte Oops in one `apply:to:with:` message; Names, Symbols, Sequences and Bytes
-supply that protocol. Internal construction uses a Sequence so embedded zero
+Printing callbacks and allocating sends hold no byte-map borrow. Byte providers are read through
+ordinary `sizeWord` and `atWord:` messages. Internal construction uses a Sequence so embedded zero
 bytes remain valid. Id keeps incoming arguments alive; scoped roots protect
 intermediate results. Builder mutation observes GC allocation policy and charges
 capacity growth through the current collector method.
@@ -98,5 +97,6 @@ native extension records or permanently retained dependency tokens.
 
 Bytes has its own module, [birnam-bytes](../birnam-bytes/README.md). String `bytes`
 and `asBytes` produce independent copies through its current `fromBytes:` method.
-String `appendTo:` supplies byte Oops to the destination's `appendByteValues`.
+Names, Symbols, argument Sequences, Strings and Bytes expose the indexed byte
+operations used by conversion.
 There are no borrowed native byte pointers in Id messages.

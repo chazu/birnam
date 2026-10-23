@@ -76,7 +76,6 @@ struct State {
     permanent: Vec<Oop>,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
-    byte_operation: Cell<Oop>,
     ready: Cell<bool>,
 }
 struct Scope<'a> {
@@ -107,20 +106,17 @@ impl State {
     unsafe fn named(&self, n: &[u8]) -> Result<Oop, Oop> {
         object(unsafe { self.send(self.ns, b"at:", &[*self.names.get(n).ok_or_else(invalid)?]) }?)
     }
-    unsafe fn bytes_call(&self, v: Oop, r: Oop, mode: usize, extra: Oop) -> Result<Oop, Oop> {
+    unsafe fn read_bytes(&self, v: Oop) -> Result<Vec<u8>, Oop> {
         unsafe {
-            let bytes = self.send(v, b"bytes", &[])?;
-            self.send(
-                bytes,
-                b"apply:to:with:",
-                &[
-                    self.byte_operation.get(),
-                    r,
-                    abi::size(mode).unwrap(),
-                    extra,
-                ],
+            self.id.read_bytes(
+                v,
+                self.names[b"sizeWord".as_slice()],
+                self.names[b"atWord:".as_slice()],
             )
         }
+    }
+    unsafe fn bytes(&self, v: Oop) -> Result<Vec<u8>, Oop> {
+        unsafe { self.read_bytes(self.send(v, b"bytes", &[])?) }
     }
     unsafe fn number(&self, v: usize) -> Result<Oop, Oop> {
         unsafe {
@@ -162,9 +158,7 @@ impl State {
             if !integer.is_null() {
                 return Ok(self.word_bits(integer)? as u8);
             }
-            abi::as_size(self.bytes_call(v, self.prototype, 3, ptr::null_mut())?)
-                .and_then(|v| u8::try_from(v).ok())
-                .ok_or_else(invalid)
+            Ok(self.bytes(v)?.first().copied().unwrap_or(0))
         }
     }
     unsafe fn symbol(&self, v: Oop) -> Result<Oop, Oop> {
@@ -177,9 +171,16 @@ impl State {
             {
                 return Ok(v);
             }
-            self.bytes_call(v, self.prototype, 4, ptr::null_mut())
+            let bytes = self.bytes(v)?;
+            let values: Vec<_> = bytes
+                .iter()
+                .map(|&b| abi::size(b as usize).unwrap())
+                .collect();
+            let name = self.send(self.id.root, b"nameWithBytes", &values)?;
+            self.id.send(name, self.id.intern, &[])
         }
     }
+
     unsafe fn allocate(&self, scope: &Scope<'_>, v: Value) -> Result<Oop, Oop> {
         unsafe {
             for r in v.refs() {
@@ -315,17 +316,9 @@ impl State {
                 ),
             ] {
                 if !name.is_null() {
-                    let mode = if kind == b"undefinedRule" { 5 } else { 6 };
-                    return self.send(
-                        name,
-                        b"apply:to:with:",
-                        &[
-                            self.byte_operation.get(),
-                            self.prototype,
-                            abi::size(mode).unwrap(),
-                            ptr::null_mut(),
-                        ],
-                    );
+                    let mut message = _prefix.to_vec();
+                    message.extend_from_slice(&self.read_bytes(name)?);
+                    return self.error(scope, kind, &message);
                 }
             }
             let (line, col) = syntax_position(&m.source, m.furthest);
@@ -379,7 +372,7 @@ unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
             Op::Grammar => {
                 return Ok(s.allocate(&scope, Value::Grammar(Vec::new(), 0))?);
             }
-            Op::Literal => return s.bytes_call(a[0], r, 0, ptr::null_mut()),
+            Op::Literal => p.literal = s.bytes(a[0])?,
             Op::RuleRef => {
                 p.kind = Kind::RuleRef;
                 p.rule_name = s.symbol(a[0])?
@@ -399,7 +392,14 @@ unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
                 s.pattern(v)?;
                 p.children.push(v)
             }
-            Op::AnyOf => return s.bytes_call(a[0], r, 1, ptr::null_mut()),
+            Op::AnyOf => {
+                p.kind = Kind::Charset;
+                p.ranges = s
+                    .bytes(a[0])?
+                    .into_iter()
+                    .map(|b| Range { lo: b, hi: b })
+                    .collect();
+            }
             Op::Range | Op::FromTo => {
                 let (lo, hi) = if matches!(op, Op::Range) {
                     (s.byte(a[0])?, s.byte(a[1])?)
@@ -441,7 +441,7 @@ unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
                 }
                 return Ok(r);
             }
-            Op::Parse => return s.bytes_call(a[0], r, 2, a[1]),
+            Op::Parse => return s.parse(&scope, r, s.bytes(a[0])?, a[1]),
             Op::Fail => {
                 let Value::Grammar(_, v) = s.value(r)? else {
                     return Err(invalid());
@@ -478,63 +478,6 @@ unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
     }
 }
 
-unsafe extern "C" fn byte_operation(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    done((|| unsafe {
-        let s = state(c)?;
-        let scope = s.scope();
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
-        let mode = abi::as_size(a[end]).ok_or_else(invalid)?;
-        let extra = a[end + 1];
-        let bytes = a[..end]
-            .iter()
-            .map(|&v| {
-                abi::as_size(v)
-                    .and_then(|v| u8::try_from(v).ok())
-                    .ok_or_else(invalid)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        match mode {
-            0 | 1 => {
-                let mut p = PatternState::new(if mode == 0 {
-                    Kind::Literal
-                } else {
-                    Kind::Charset
-                });
-                if mode == 0 {
-                    p.literal = bytes;
-                } else {
-                    p.ranges = bytes.into_iter().map(|b| Range { lo: b, hi: b }).collect();
-                }
-                s.allocate(&scope, Value::Pattern(p))
-            }
-            2 => s.parse(&scope, r, bytes, extra),
-            3 => Ok(abi::size(bytes.first().copied().unwrap_or(0) as usize).unwrap()),
-            4 => {
-                let name = s.send(s.id.root, b"nameWithBytes", &a[..end])?;
-                s.id.send(name, s.id.intern, &[])
-            }
-            5 | 6 => {
-                let mut msg = if mode == 5 {
-                    b"undefined rule: ".to_vec()
-                } else {
-                    b"left-recursive rule: ".to_vec()
-                };
-                msg.extend_from_slice(&bytes);
-                s.error(
-                    &scope,
-                    if mode == 5 {
-                        b"undefinedRule"
-                    } else {
-                        b"leftRecursion"
-                    },
-                    &msg,
-                )
-            }
-            _ => Err(invalid()),
-        }
-    })())
-}
 unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
         let s = state(c)?;
@@ -562,7 +505,6 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
         let mut values = s.permanent.clone();
         values.extend(s.names.values().copied());
         values.extend(s.scoped.borrow().iter().copied());
-        values.push(s.byte_operation.get());
         for r in values {
             s.send(*v, b"visit:", &[r])?;
         }
@@ -648,11 +590,11 @@ literals![
     b"any",
     b"anyByte",
     b"anyOf:",
-    b"apply:to:with:",
+    b"sizeWord",
+    b"atWord:",
     b"at:",
     b"at:put:",
     b"behaviorOf:",
-    b"byteOperation",
     b"bytes",
     b"charset",
     b"childAt:",
@@ -888,10 +830,6 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"retire:"),
         entry: Some(retire),
     },
-    MethodSpec {
-        name: index(b"byteOperation"),
-        entry: Some(byte_operation),
-    },
 ];
 const BINDINGS: &[(usize, &[u8])] = &[
     (3, b"literal:"),
@@ -1009,7 +947,6 @@ unsafe extern "C" fn initialize(
                 ],
                 names: names.clone(),
                 scoped: RefCell::new(Vec::new()),
-                byte_operation: Cell::new(ptr::null_mut()),
                 ready: Cell::new(false),
             }));
             INSTANCE.store(s, Ordering::Release);
@@ -1018,10 +955,6 @@ unsafe extern "C" fn initialize(
                 let name = NAMES[spec.name];
                 let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = send(method, b"withContext:", &[receiver])?;
-                if name == b"byteOperation" {
-                    s.byte_operation.set(keep(method)?);
-                    continue;
-                }
                 let target = BINDINGS
                     .iter()
                     .find(|(_, n)| *n == name)

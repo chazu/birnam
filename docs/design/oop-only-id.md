@@ -1,5 +1,11 @@
 # Oop-only Id
 
+> **Dispatch correction:** the unapproved `apply` protocol and its forwarding
+> helpers have been removed. Ordinary sends perform lookup and enter the selected
+> Method directly. Earlier descriptions of application dispatch below are historical
+> implementation mistakes, not architectural authority. See the
+> [correction and current evidence](id-send-correction-20261023.md).
+
 Decision: accepted user direction, 2026-10-22. Highest-priority runtime work.
 Status: the [isolated bootstrap-to-GC slice](oop-only-id-slice-20261023.md)
 now starts cold, loads independent native modules and performs precise collection
@@ -14,9 +20,9 @@ removes the four redundant tables and per-call argument copying. Native checks
 pass and costs fall, but the migration remains isolated and incomplete.
 
 Latest: [opaque payloads without Storage classification](oop-payload-opacity-20261023.md)
-removes the fixed payload catalog and makes application and payload tracing object
-protocols. Native correctness checks pass, but measured costs rise; this supersedes
-the previous report's storage-classification design, not its historical measurements.
+removed the fixed payload catalog. Its added application protocol was subsequently
+rejected and removed; its measurements describe that earlier implementation.
+Payload tracing remains an owner responsibility.
 
 Current implementation work is tracked in the [invariant migration log](oop-invariant-migration-20261023.md).
 Namespace, Storage, Boolean, nil, ObjectModel, Word, Bytes, String, Float, Integer, Vector and Map now join the

@@ -1,5 +1,5 @@
 //! Live method lookup. Callers keep the receiver and arguments alive before
-//! lookup can call user code; application follows the selected object's protocol.
+//! lookup can call user code; the selected method is then entered directly.
 use super::{native_id::State, object_memory::ObjectMemory};
 use crate::abi::Oop;
 pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Oop>, Oop> {
@@ -39,16 +39,16 @@ pub(crate) unsafe fn send(s: &State, r: Oop, selector: Oop, args: &[Oop]) -> Res
     s.check()?;
     let scope = s.scope(r, selector, args);
     if let Some(method) = unsafe { bind(s, r, selector) }? {
-        return unsafe { s.invoke(method, r, args, &scope) };
+        return unsafe { s.enter_method(method, r, args, &scope) };
     }
     if selector == s.dnu || (selector == s.lookup && s.behavior(r)? == s.meta) {
         return Err(s.unbound());
     }
-    let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {
+    let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {
         return Err(s.unbound());
     };
     let mut forwarded = Vec::with_capacity(args.len() + 1);
     forwarded.push(selector);
     forwarded.extend_from_slice(args);
-    unsafe { s.invoke(handler, r, &forwarded, &scope) }
+    unsafe { s.enter_method(handler, r, &forwarded, &scope) }
 }

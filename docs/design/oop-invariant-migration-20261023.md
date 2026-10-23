@@ -1,5 +1,11 @@
 # Completing the Oop-only invariant migration
 
+> **Dispatch correction:** the unapproved `apply` protocol and its forwarding
+> helpers have been removed. Ordinary sends perform lookup and enter the selected
+> Method directly. Earlier descriptions of application dispatch below are historical
+> implementation mistakes, not architectural authority. See the
+> [correction and current evidence](id-send-correction-20261023.md).
+
 The working branch is `codex/oop-only-id-slice`. The installed runtime is not
 changed. Each completed piece is tested and committed separately. After each
 piece, inspect new work and duplication; fix obvious regressions immediately.
@@ -8,7 +14,7 @@ Broader performance recovery follows the completed migration.
 ## Remaining acceptance work
 
 - Finish ownership boundaries between generic Id and bootstrap payload owners.
-- Convert remaining native modules, including Storage, to ordinary Oop messages.
+- Convert the remaining compiler, execution and support modules to Oop messages.
 - Migrate generated calls and execution together, retaining stackless frames.
 - Qualify behavior changes, entered calls, owner replacement and GC together.
 - Migrate images, code lifetime, host and workers; run their existing acceptance
@@ -633,3 +639,22 @@ byte providers, constructor replacement, missing/invalid descriptors, compatibil
 failures and adjacent native libraries. Full Codegen activation and executable
 compatibility remain part of the unfinished compiler/execution/image migration.
 [Qualification receipts](../measurements/oop-artifact-20261023.json).
+
+## Correction: remove the invented application protocol
+
+The universal `apply` dispatch, argument/byte forwarding helpers, extra native
+Method metavtable and private callback/evaluator Methods have been removed.
+Generic send now performs current lookup and enters the selected method. Its
+bootstrap owner validates the declaration and retains code/context for the call.
+Owner-local functions perform byte consumption and evaluation using ordinary data
+messages. The existing explicit captured-Method reflection operation consumes its
+bootstrap argument Sequence; it is not a universal callable protocol.
+
+The contract gate rejects any secondary lookup on the selected Method, regardless
+of selector spelling, and confirms that Id installs no `apply` method. The full
+native gate passes, including global/metacircular lookup, DNU, replacement, entered
+and captured lifetime, tracing/retirement failures, allocation policy, callback GC,
+I/O, PEG and artifact inspection. The C fixtures delegate saved implementations
+through ordinary sends, without allocation inside allocation-accounting callbacks.
+Earlier steps that claimed application-protocol compliance are retracted above.
+[Details and receipts](id-send-correction-20261023.md).

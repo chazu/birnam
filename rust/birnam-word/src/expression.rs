@@ -65,49 +65,22 @@ unsafe fn inner(
         if inputs.len() > 32 || inputs.iter().any(|o| o.is_null()) {
             return Err(s.invalid());
         }
-        // The container supplies its snapshot in one object message. No byte-
-        // by-byte sends or temporary managed input object are required.
-        let mut args = Vec::with_capacity(inputs.len() + 3);
-        args.extend([
-            s.expression_entry.get(),
-            r,
-            expected.and_then(abi::size).unwrap_or(ptr::null_mut()),
-        ]);
-        args.extend_from_slice(inputs);
-        s.send(*program, b"apply:to:with:", &args)
-    }
-}
-pub(crate) unsafe extern "C" fn program(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { program_inner(c, r, a, n) }.unwrap_or_else(abi::fault_reference)
-}
-unsafe fn program_inner(c: Oop, r: Oop, a: *const Oop, n: usize) -> Result<Oop, Oop> {
-    unsafe {
-        let s = state(c)?;
-        let a = abi::borrowed_slice(a, n).ok_or(s.invalid())?;
-        if a.len() < 5 {
+        let bytes = s.id.read_bytes(
+            *program,
+            s.names[b"sizeWord".as_slice()],
+            s.names[b"atWord:".as_slice()],
+        )?;
+        if bytes.len() < 4 {
             return Err(s.invalid());
         }
-        let operations = abi::as_size(a[2])
-            .filter(|n| *n > 0 && *n <= 32)
-            .ok_or(s.invalid())?;
+        let operations = bytes[2] as usize;
+        if operations == 0 || operations > 32 {
+            return Err(s.invalid());
+        }
         let count = 4 + 3 * operations;
-        if a.len() <= count {
+        if bytes.len() != count {
             return Err(s.invalid());
         }
-        let (code, tail) = a.split_at(count);
-        let (expected, inputs) = tail.split_first().unwrap();
-        let expected = if expected.is_null() {
-            None
-        } else {
-            Some(abi::as_size(*expected).ok_or(s.invalid())?)
-        };
-        let mut bytes = [0u8; 100];
-        for (byte, &value) in bytes[..count].iter_mut().zip(code) {
-            *byte = abi::as_size(value)
-                .and_then(|v| u8::try_from(v).ok())
-                .ok_or(s.invalid())?;
-        }
-        let bytes = &bytes[..count];
         if bytes[0] != 1
             || bytes[1] as usize != inputs.len()
             || inputs.len() > 32

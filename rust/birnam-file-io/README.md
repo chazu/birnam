@@ -49,14 +49,12 @@ that captures bytes into code. See [embedded files](../../docs/design/56-embedde
 failure. Both byte values own their data before allocating/sending results. The
 read limit is one GiB. It performs no source registration, evaluation or diagnostics.
 
-All Id arguments and results are Oops. Filename byte values are passed to contents
-application as an immutable argument suffix, preserving the earlier snapshot and
-error order. Private Methods receive fresh snapshot objects as their receivers,
-so Id protects them through later constructors without per-call root-token tables.
-One root Sequence retains completed module dependencies and helper Methods.
-Sequence `appendTo:` supplies its values to the destination's current
-`appendByteValues`; Bytes validates them. This preserves live Bytes `fromBytes:`
-construction without adding a String conversion for binary data.
+All Id arguments and results are Oops. Byte copies use ordinary `sizeWord` and
+`atWord:` sends. Filename copying completes before contents are read. File work,
+conversion and descriptor construction are local functions, without callback
+Method objects or argument-forwarding protocols. One registered owner Sequence
+keeps completed dependencies alive and reports scoped temporary roots. Current
+String/Bytes/Vector constructors remain ordinary messages.
 
 `removeFile:ifContents:` removes only a file matching the supplied bytes. Missing
 files already satisfy removal; changed files produce an Error and remain intact.

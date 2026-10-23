@@ -29,7 +29,38 @@ impl Protocol {
     /// callers protect other values they retain across subsequent sends.
     pub unsafe fn send(&self, r: Oop, s: Oop, a: &[Oop]) -> Result<Oop, Oop> {
         let v = unsafe { (self.message)(self.root, r, s, a.as_ptr(), a.len()) };
-        if is_fault(v) { Err(object_reference(v)) } else { Ok(v) }
+        if is_fault(v) {
+            Err(object_reference(v))
+        } else {
+            Ok(v)
+        }
+    }
+    /// Read byte values through the existing indexed-object messages. The
+    /// receiver owns its representation; this helper never reads its payload.
+    /// # Safety
+    /// The receiver and selectors are live Oops in this runtime. Both selectors
+    /// follow the sizeWord/atWord: contract and return immediate sizes/bytes.
+    pub unsafe fn read_bytes(
+        &self,
+        receiver: Oop,
+        size_selector: Oop,
+        at_selector: Oop,
+    ) -> Result<Vec<u8>, Oop> {
+        unsafe {
+            let invalid = object_reference(self.invalid);
+            let count = crate::as_size(self.send(receiver, size_selector, &[])?).ok_or(invalid)?;
+            let mut bytes = Vec::new();
+            bytes.try_reserve_exact(count).map_err(|_| invalid)?;
+            for i in 0..count {
+                let value = self.send(receiver, at_selector, &[crate::size(i).unwrap()])?;
+                bytes.push(
+                    crate::as_size(value)
+                        .and_then(|v| u8::try_from(v).ok())
+                        .ok_or(invalid)?,
+                );
+            }
+            Ok(bytes)
+        }
     }
     pub unsafe fn literal(&self, index: usize) -> Result<Oop, Oop> {
         unsafe { self.send(self.seeds, self.at, &[crate::size(index).unwrap()]) }

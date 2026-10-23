@@ -1,11 +1,10 @@
 # System input over Oop messages
 
-System input now uses the v2 Oop-only module interface. Method contexts are the
-owning Namespace object. One ordinary root Sequence retains the completed native
-module dependencies and private error-construction Method, including after public
-method replacement or partial publication. Id keeps incoming call objects alive.
-The error helper receives its message as receiver, protecting it through lazy Error
-lookup without retain/release cleanup calls. Environment migration is separate.
+System input uses the v2 Oop-only module interface and Namespace Method contexts.
+A registered owner Sequence retains completed dependencies and reports scoped
+temporary roots. Id protects incoming call objects. Error construction is a local
+function with an ordinary send to the current Error factory; no private callback
+Method is involved.
 
 - `System readLine` reads binary stdin through the existing buffered reader, removes
   only a final LF, and constructs a String through current `String fromBytes:`.

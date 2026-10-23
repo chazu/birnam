@@ -27,7 +27,6 @@ struct Number {
     extended: Cell<bool>,
     witnesses: [Cell<Oop>; 12],
     mixed_witnesses: [Cell<Oop>; 8],
-    mixed_evaluator: Cell<Oop>,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     ready: Cell<bool>,
@@ -232,8 +231,8 @@ impl Number {
     }
     unsafe fn operation(&self, selected: Oop) -> Result<Option<(usize, bool)>, Oop> {
         unsafe {
-            // The common case compares identity locally, then checks current apply
-            // semantics once. Equivalent copied native Methods remain recognizable.
+            // Compare the entered code, context and owner. Equivalent copied native
+            // Methods remain recognizable without consulting their message bindings.
             for (mixed, ws) in [
                 (false, &self.witnesses[..10]),
                 (true, &self.mixed_witnesses[..]),
@@ -335,7 +334,6 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, count: usize) 
             n.falsity,
             n.nil,
             n.image,
-            n.mixed_evaluator.get(),
         ];
         values.extend(n.names.values().copied());
         values.extend(n.witnesses.iter().map(Cell::get));
@@ -582,12 +580,9 @@ unsafe extern "C" fn evaluate_numeric(_: Oop, c: Oop, _: Oop, a: *const Oop, cou
         let Some((op, mixed)) = n.operation(*selected)?.filter(|(op, _)| *op < 5) else {
             return Ok(ptr::null_mut());
         };
-        if mixed {
-            return n.send(
-                n.mixed_evaluator.get(),
-                b"apply",
-                &[*left, abi::size(op).unwrap(), *right, *visitor],
-            );
+        if mixed && (n.read(*left)?.is_none() || n.read(*right)?.is_none()) {
+            let args = n.send(n.id.root, b"sequence", &[*right])?;
+            return n.send(*selected, b"invokeOn:arguments:", &[*left, args]);
         }
         let Some(left) = n.read(*left)? else {
             return Ok(n.nil);
@@ -677,7 +672,7 @@ literals![
     b"allocate:bytes:",
     b"allocationAt:",
     b"allocationSizeOf:",
-    b"apply",
+    b"invokeOn:arguments:",
     b"asFloat",
     b"at:",
     b"at:put:",
@@ -712,7 +707,6 @@ literals![
     b"mixed::add",
     b"mixed::as_float",
     b"mixed::div",
-    b"mixed::evaluate",
     b"mixed::ge",
     b"mixed::gt",
     b"mixed::le",
@@ -908,10 +902,6 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"mixed::as_float"),
         entry: Some(mixed::as_float),
     },
-    MethodSpec {
-        name: index(b"mixed::evaluate"),
-        entry: Some(mixed::evaluate),
-    },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -988,7 +978,6 @@ unsafe extern "C" fn initialize(
                 extended: Cell::new(false),
                 witnesses: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
                 mixed_witnesses: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
-                mixed_evaluator: Cell::new(ptr::null_mut()),
                 names: names.clone(),
                 scoped: RefCell::new(Vec::new()),
                 ready: Cell::new(false),

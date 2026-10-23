@@ -1,22 +1,24 @@
-//! System output transfers bytes as Oops; OS writes remain private here.
+//! Native I/O uses ordinary Id sends and owner-local temporary roots.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
     id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::Cell, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 use std::{
     collections::HashMap,
-    io::{self, Write},
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 struct State {
     id: Protocol,
     ns: Oop,
-    string_vt: Oop,
     nil: Oop,
     names: HashMap<&'static [u8], Oop>,
-    writer: Oop,
+    scoped: RefCell<Vec<Oop>>,
     ready: Cell<bool>,
+    string_vt: Oop,
 }
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
@@ -34,6 +36,9 @@ fn invalid() -> Oop {
     }
     unsafe { abi::object_reference((*p).invalid) }
 }
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
 unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let p = INSTANCE.load(Ordering::Acquire);
     if p.is_null() {
@@ -42,11 +47,34 @@ unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let s = unsafe { &*p };
     if c == s.ns { Ok(s) } else { Err(invalid()) }
 }
-impl State {
-    unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
-        unsafe { self.id.send(r, self.names[name], a) }
+struct Scope<'a> {
+    s: &'a State,
+    start: usize,
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.s.scoped.borrow_mut().truncate(self.start);
     }
-    unsafe fn emit(&self, value: Oop, receiver: Oop, mode: usize) -> Result<Option<Oop>, Oop> {
+}
+impl State {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn rooted<T>(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<T, Oop>,
+    ) -> Result<T, Oop> {
+        let scope = Scope {
+            s: self,
+            start: self.scoped.borrow().len(),
+        };
+        self.scoped.borrow_mut().extend_from_slice(values);
+        let result = f();
+        drop(scope);
+        result
+    }
+    unsafe fn bytes(&self, value: Oop) -> Result<Option<Vec<u8>>, Oop> {
         unsafe {
             if self.send(self.id.root, b"behaviorOf:", &[value])? != self.string_vt {
                 return Ok(None);
@@ -55,15 +83,17 @@ impl State {
             if bytes.is_null() {
                 return Ok(None);
             }
-            self.send(
-                bytes,
-                b"apply:to:with:",
-                &[self.writer, receiver, abi::size(mode).unwrap()],
-            )
-            .map(Some)
+            self.id
+                .read_bytes(
+                    bytes,
+                    self.names[b"sizeWord".as_slice()],
+                    self.names[b"atWord:".as_slice()],
+                )
+                .map(Some)
         }
     }
 }
+use std::io::{self, Write};
 fn write_system_output_to<W: Write>(writer: &mut W, bytes: &[u8], newline: bool) -> io::Result<()> {
     writer.write_all(bytes)?;
     if newline {
@@ -71,87 +101,117 @@ fn write_system_output_to<W: Write>(writer: &mut W, bytes: &[u8], newline: bool)
     }
     writer.flush()
 }
-unsafe extern "C" fn write_bytes(_: Oop, c: Oop, r: Oop, a: *const Oop, count: usize) -> Oop {
+fn write_system_output(bytes: &[u8], newline: bool) {
+    // No language send runs while the OS output lock or a borrowed String is held.
+    let mut stdout = io::stdout().lock();
+    let _ = write_system_output_to(&mut stdout, bytes, newline);
+}
+unsafe fn output(c: Oop, r: Oop, a: *const Oop, n: usize, newline: bool) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let a = borrowed_slice(a, count).ok_or_else(invalid)?;
-        let Some((mode, values)) = a.split_last() else {
+        if n != 1 {
+            return Ok(s.nil);
+        }
+        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let mode = abi::as_size(*mode).filter(|n| *n < 3).ok_or_else(invalid)?;
-        let Some(bytes) = values
-            .iter()
-            .map(|&v| abi::as_size(v).and_then(|v| u8::try_from(v).ok()))
-            .collect::<Option<Vec<_>>>()
-        else {
+        let value = object(*value)?;
+        (|| {
+            if let Some(bytes) = s.bytes(value)? {
+                write_system_output(&bytes, newline);
+                return Ok(r);
+            }
+            let rendered = s.send(value, b"printString", &[])?;
+            let Some(rendered) = (!rendered.is_null()).then_some(rendered) else {
+                return Ok(s.nil);
+            };
+            s.rooted(&[rendered], || {
+                let Some(bytes) = s.bytes(rendered)? else {
+                    return Ok(s.nil);
+                };
+                write_system_output(&bytes, newline);
+                Ok(r)
+            })
+        })()
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn print(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { output(c, r, a, n, false) }
+}
+unsafe extern "C" fn println(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { output(c, r, a, n, true) }
+}
+// Generic UTF-8 diagnostic output; message composition belongs to callers.
+unsafe extern "C" fn print_error_text(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([value]) = borrowed_slice(a, n) else {
             return Ok(s.nil);
         };
-        // No language send occurs while holding an OS output lock. Preserve the
-        // existing ignored-write-error and explicit-flush behavior.
-        if mode == 2 {
+        let value = object(*value)?;
+        (|| {
+            let Some(bytes) = s.bytes(value)? else {
+                return Ok(s.nil);
+            };
             let text = String::from_utf8_lossy(&bytes);
-            let _ = write_system_output_to(&mut io::stderr().lock(), text.as_bytes(), false);
-        } else {
-            let _ = write_system_output_to(&mut io::stdout().lock(), &bytes, mode == 1);
-        }
-        Ok(r)
+            let mut stderr = io::stderr().lock();
+            let _ = write_system_output_to(&mut stderr, text.as_bytes(), false);
+            Ok(r)
+        })()
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-unsafe fn output(c: Oop, r: Oop, a: *const Oop, count: usize, mode: usize) -> Oop {
+unsafe extern "C" fn roots_do(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let Some([value]) = borrowed_slice(a, count) else {
-            return Ok(s.nil);
-        };
-        if value.is_null() {
+        let [visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
+        };
+        let values = s.scoped.borrow().clone();
+        for value in values {
+            s.send(*visitor, b"visit:", &[value])?;
         }
-        if let Some(result) = s.emit(*value, r, mode)? {
-            return Ok(result);
-        }
-        if mode == 2 {
-            return Ok(s.nil);
-        }
-        let rendered = s.send(*value, b"printString", &[])?;
-        if rendered.is_null() {
-            return Ok(s.nil);
-        }
-        Ok(s.emit(rendered, r, mode)?.unwrap_or(s.nil))
+        Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn print(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { output(c, r, a, n, 0) }
-}
-unsafe extern "C" fn println(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { output(c, r, a, n, 1) }
-}
-unsafe extern "C" fn print_error(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { output(c, r, a, n, 2) }
 }
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
-    b"at:",
-    b"at:put:",
+    b"Bytes",
+    b"Error",
     b"Roots",
+    b"String",
     b"StringVt",
     b"System",
-    b"nil",
-    b"behaviorOf:",
-    b"sequence",
-    b"retain:",
-    b"release:",
-    b"methodAt:",
-    b"withContext:",
+    b"Vector",
+    b"add:",
     b"addMethod",
-    b"apply:to:with:",
+    b"at:",
+    b"at:put:",
+    b"atWord:",
+    b"behaviorOf:",
     b"bytes",
-    b"printString",
+    b"delegated",
+    b"fromBytes:",
+    b"ioError",
+    b"kind:message:",
+    b"methodAt:",
+    b"new",
+    b"nil",
     b"print:",
-    b"println:",
     b"printErrorText:",
-    b"writeBytes"
+    b"printString",
+    b"println:",
+    b"reassociateBehaviorOf:with:",
+    b"register:",
+    b"release:",
+    b"retain:",
+    b"rootsDo:",
+    b"sequence",
+    b"sizeWord",
+    b"visit:",
+    b"withContext:"
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -181,11 +241,11 @@ static METHODS: &[MethodSpec] = &[
     },
     MethodSpec {
         name: index(b"printErrorText:"),
-        entry: Some(print_error),
+        entry: Some(print_error_text),
     },
     MethodSpec {
-        name: index(b"writeBytes"),
-        entry: Some(write_bytes),
+        name: index(b"rootsDo:"),
+        entry: Some(roots_do),
     },
 ];
 unsafe extern "C" fn initialize(
@@ -210,7 +270,7 @@ unsafe extern "C" fn initialize(
     let old = INSTANCE.load(Ordering::Acquire);
     if !old.is_null() {
         let s = unsafe { &*old };
-        return if s.ready.get() && s.id.root == id.root && s.ns == *ns {
+        return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
             ptr::null_mut()
         } else {
             id.invalid
@@ -223,58 +283,52 @@ unsafe extern "C" fn initialize(
     (|| unsafe {
         let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
         let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
-        let named = |n: &[u8]| -> Result<Oop, Oop> {
-            let v = send(*ns, b"at:", &[names[n]])?;
-            if v.is_null() { Err(invalid()) } else { Ok(v) }
-        };
+        let named = |n: &[u8]| object(send(*ns, b"at:", &[names[n]])?);
         let roots = named(b"Roots")?;
-        let string_vt = named(b"StringVt")?;
         let nil = named(b"nil")?;
         let system = named(b"System")?;
         let vt = send(id.root, b"behaviorOf:", &[system])?;
-        // Complete the private root Sequence before publishing any System method.
+        let string_vt = named(b"StringVt")?;
         let owner = send(
             id.root,
             b"sequence",
-            &[*ns, roots, string_vt, nil, system, vt, ptr::null_mut()],
+            &[*ns, roots, nil, system, vt, string_vt],
         )?;
         let token = send(roots, b"retain:", &[owner])?;
-        let prepared = (|| {
-            let method = send(image, b"methodAt:", &[names[b"writeBytes".as_slice()]])?;
-            let helper = send(method, b"withContext:", &[*ns])?;
-            send(owner, b"at:put:", &[abi::size(6).unwrap(), helper])?;
-            Ok(helper)
-        })();
-        let writer = match prepared {
-            Ok(helper) => helper,
-            Err(error) => {
-                send(roots, b"release:", &[token])?;
-                return Err(error);
-            }
-        };
         let s = Box::into_raw(Box::new(State {
             id,
             ns: *ns,
-            string_vt,
             nil,
             names: names.clone(),
-            writer,
+            scoped: RefCell::new(Vec::new()),
             ready: Cell::new(false),
+            string_vt,
         }));
         INSTANCE.store(s, Ordering::Release);
         let s = &*s;
-        let result = (|| {
-            for name in [b"print:".as_slice(), b"println:", b"printErrorText:"] {
-                let method = s.send(image, b"methodAt:", &[s.names[name]])?;
-                let method = s.send(method, b"withContext:", &[*ns])?;
-                s.send(vt, b"addMethod", &[s.names[name], method])?;
-            }
-            s.ready.set(true);
-            Ok(ptr::null_mut())
-        })();
-        // Publication can fail after a replacement addMethod has exposed the
-        // Method. Its dependencies must remain live with the resident state.
-        result
+        let owner_type = send(id.root, b"behaviorOf:", &[owner])?;
+        let private = send(owner_type, b"delegated", &[])?;
+        send(id.root, b"reassociateBehaviorOf:with:", &[owner, private])?;
+        let method = send(image, b"methodAt:", &[names[b"rootsDo:".as_slice()]])?;
+        let method = send(method, b"withContext:", &[*ns])?;
+        send(
+            private,
+            b"addMethod",
+            &[names[b"rootsDo:".as_slice()], method],
+        )?;
+        send(roots, b"register:", &[owner])?;
+        for name in [
+            b"print:".as_slice(),
+            b"println:".as_slice(),
+            b"printErrorText:".as_slice(),
+        ] {
+            let method = send(image, b"methodAt:", &[names[name]])?;
+            let method = send(method, b"withContext:", &[*ns])?;
+            send(vt, b"addMethod", &[names[name], method])?;
+        }
+        send(roots, b"release:", &[token])?;
+        s.ready.set(true);
+        Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
 }

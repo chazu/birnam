@@ -42,6 +42,7 @@ unsafe fn run() {
             library.join("libbirnam_artifact.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"savedAllocationCharge:",b"savedAllocate",b"savedExternalCharge:",b"savedStringConstructor:",b"savedStringBytes",
             b"Artifact",b"ArtifactDescriptorVt",b"inspect:",b"inspectBytes:from:",b"lastFailure",b"kind",b"identity",b"artifactAbi",b"target",b"sourceDigest",b"revisionDigest",b"path",b"roots",b"rootsCount",b"rootAt:",b"requires",b"requiresCount",b"requireAt:",b"nativeRequires",b"nativeRequiresCount",b"nativeRequireAt:",b"capabilities",b"capabilitiesCount",b"capabilityAt:",b"artifactPathInvalid",b"artifactUnavailable",b"artifactAbiMismatch",b"artifactTargetMismatch",b"artifactDescriptionMissing",b"nativeRequirementUnavailable",
             b"Peg",b"PegPatternVt",b"PegGrammarVt",b"PegCstVt",b"literal:",b"grammar",b"rule:is:",b"parse:from:",b"ruleName",b"rule",b"start",b"end",b"childCount",b"childAt:",b"children",b"anyOf:",b"plus",b"seq",b"seqOf:",b"eof",b"ruleRef:",b"furthestFail",b"range:to:",b"syntaxError",b"undefinedRule",b"leftRecursion",
             b"Bytes",
@@ -98,9 +99,6 @@ unsafe fn run() {
             b"collectArguments",
             b"snapshotArgument:",
             b"apply",
-            b"applyValue",
-            b"apply:to:",
-            b"argumentProxy",
             b"nameFactory",
             b"methodFactory",
             b"moduleBehavior",
@@ -130,8 +128,8 @@ unsafe fn run() {
             b"Integer", b"wordOf:", b"slot:in:", b"imageSizeOf:", b"slotKindOf:at:",
             b"fromUnsignedLow:high:", b"low32", b"high32", b"fromBits:", b"bits", b"wrappingAdd:", b"wrappingSubtract:",
             b"shiftLeft:", b"unsignedDivide:", b"tryPrimitiveExpression:", b"tryPrimitiveExpressionAtEpoch:",
-            b"imageSlotAt:in:", b"restoreImageSlotAt:in:put:", b"apply:to:with:",
-            b"fromByteValues", b"appendByteValues", b"appendBytes:", b"appendTo:", b"bytes", b"length", b"byteAtWord:",
+            b"imageSlotAt:in:", b"restoreImageSlotAt:in:put:", b"atWord:",
+            b"fromByteValues", b"appendByteValues", b"appendBytes:", b"sizeWord", b"bytes", b"length", b"byteAtWord:",
             b"sliceFromWord:toWord:", b"sha256", b"readU64At:", b"readTaggedTableWithSchema:limit:", b"withSymbolName:",
             b"fromWord:", b"numberIdentity", b"externalCharge",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
@@ -190,6 +188,22 @@ unsafe fn run() {
             .send(names[2], id.load, &[load_args])
             .expect("independent native module loaded");
         println!("cold bootstrap and three native modules: passed");
+        if std::env::args().nth(2).as_deref() == Some("dispatch-contract") {
+            let actor_type=send(id.root,b"behaviorOf:",&[actor]).unwrap();
+            let selected=send(actor_type,b"lookup",&[sel(b"numberIdentity")]).unwrap();
+            let method_type=send(id.root,b"behaviorOf:",&[selected]).unwrap();
+            assert!(send(method_type,b"lookup",&[sel(b"apply")]).unwrap().is_null(),"Id must not install apply");
+            let expected=send(actor,b"at:",&[abi::size(6).unwrap()]).unwrap();
+            let private_type=send(method_type,b"delegated",&[]).unwrap();
+            let meta=send(id.root,b"behaviorOf:",&[private_type]).unwrap();
+            let private_meta=send(meta,b"delegated",&[]).unwrap();
+            let reject=send(actor_type,b"lookup",&[sel(b"rethrow:")]).unwrap();
+            send(private_meta,b"addMethod",&[sel(b"lookup"),reject]).unwrap();
+            send(id.root,b"reassociateBehaviorOf:with:",&[private_type,private_meta]).unwrap();
+            send(id.root,b"reassociateBehaviorOf:with:",&[selected,private_type]).unwrap();
+            assert_eq!(send(actor,b"numberIdentity",&[expected]),Ok(expected),"ordinary send must not look up another selector on its selected Method");
+            println!("DISPATCH_CONTRACT_OK");return;
+        }
         if std::env::args().nth(2).as_deref() == Some("global-lookup") {
             let base=send(id.root,b"objectBehavior",&[]).unwrap();
             let meta=send(id.root,b"behaviorOf:",&[base]).unwrap();
@@ -489,47 +503,6 @@ unsafe fn run() {
             Some(20)
         );
         println!("custom metacircular lookup and full-arity DNU: passed");
-        // A different callable layout is ordinary object behavior, not a new Id type.
-        let value = send(actor, b"dynamicName:", &[abi::size(21).unwrap()]).unwrap();
-        let callable = send(id.root, b"sequence", &[value]).unwrap();
-        let token = send(roots, b"retain:", &[callable]).unwrap();
-        let original_type = send(id.root, b"behaviorOf:", &[callable]).unwrap();
-        let callable_type = send(original_type, b"delegated", &[]).unwrap();
-        let applier = send(actor_vt, b"lookup", &[sel(b"applyValue")]).unwrap();
-        send(callable_type, b"addMethod", &[sel(b"apply"), applier]).unwrap();
-        send(
-            id.root,
-            b"reassociateBehaviorOf:with:",
-            &[callable, callable_type],
-        )
-        .unwrap();
-        let receiver_type = send(base, b"delegated", &[]).unwrap();
-        send(
-            receiver_type,
-            b"addMethod",
-            &[sel(b"missingProbe"), callable],
-        )
-        .unwrap();
-        let receiver = send(receiver_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
-        assert_eq!(send(receiver, b"missingProbe", &[]).unwrap(), value);
-        send(roots, b"release:", &[token]).unwrap();
-        println!(
-            "non-native callable layout applies through live Id lookup and survives GC: passed"
-        );
-
-        let proxy_type = send(base, b"delegated", &[]).unwrap();
-        let proxy_method = send(actor_vt, b"lookup", &[sel(b"argumentProxy")]).unwrap();
-        send(proxy_type, b"addMethod", &[sel(b"apply:to:"), proxy_method]).unwrap();
-        let proxy = send(proxy_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
-        let proxy_token = send(roots, b"retain:", &[proxy]).unwrap();
-        let collect_method = send(actor_vt, b"lookup", &[sel(b"collectArguments")]).unwrap();
-        assert_eq!(abi::as_size(send(collect_method, b"invokeOn:arguments:", &[actor, proxy]).unwrap()), Some(1));
-        let count_method = send(actor_vt, b"lookup", &[sel(b"doesNotUnderstand:")]).unwrap();
-        send(proxy_type, b"addMethod", &[sel(b"apply:to:"), count_method]).unwrap();
-        assert_eq!(abi::as_size(send(collect_method, b"invokeOn:arguments:", &[actor, proxy]).unwrap()), Some(2));
-        send(roots, b"release:", &[proxy_token]).unwrap();
-        println!("argument containers use current application behavior and survive GC: passed");
-
         // A tracer can replace a later owner. The new owner is deliberately
         // unrooted until registration inside the tracer adds it to the mark walk.
         let child = send(actor, b"dynamicName:", &[abi::size(43).unwrap()]).unwrap();
@@ -718,6 +691,7 @@ unsafe fn run() {
             assert_eq!(abi::as_size(send(gc, b"allocationBytes", &[]).unwrap()), Some(1));
             send(root_type, b"addMethod", &[sel(b"allocationChargeFor:"), original]).unwrap();
             send(actor, b"at:put:", &[abi::size(27).unwrap(), original]).unwrap();
+            send(root_type,b"addMethod",&[sel(b"savedAllocationCharge:"),original]).unwrap();
             let collecting_charge = send(actor_vt, b"lookup", &[sel(b"chargeAfterGC")]).unwrap();
             send(root_type, b"addMethod", &[sel(b"allocationChargeFor:"), collecting_charge]).unwrap();
             send(gc, b"chargeExternalAllocation:", &[abi::size(9).unwrap()]).unwrap();
@@ -777,6 +751,7 @@ unsafe fn run() {
         send(actor,b"at:put:",&[abi::size(31).unwrap(),replacement_child]).unwrap();
         let meta=send(id.root,b"behaviorOf:",&[record_type]).unwrap();
         let original_allocate=send(meta,b"lookup",&[sel(b"allocate")]).unwrap();
+        send(meta,b"addMethod",&[sel(b"savedAllocate"),original_allocate]).unwrap();
         send(actor,b"at:put:",&[abi::size(30).unwrap(),original_allocate]).unwrap();
         let custom_meta=send(meta,b"delegated",&[]).unwrap();
         let replacing=send(actor_vt,b"lookup",&[sel(b"cloneAllocate")]).unwrap();
@@ -843,9 +818,9 @@ unsafe fn run() {
         send(word_type,b"addMethod",&[sel(b"wrappingAdd:"),addition]).unwrap();
         let program_type=send(id.root,b"behaviorOf:",&[program]).unwrap();
         let custom_program=send(program_type,b"delegated",&[]).unwrap();
-        send(custom_program,b"addMethod",&[sel(b"apply:to:with:"),replacement]).unwrap();
+        send(custom_program,b"addMethod",&[sel(b"atWord:"),replacement]).unwrap();
         send(id.root,b"reassociateBehaviorOf:with:",&[program,custom_program]).unwrap();
-        assert_eq!(abi::as_size(send(word,b"tryPrimitiveExpression:",&[program,max,one]).unwrap()),Some(5));
+        assert!(send(word,b"tryPrimitiveExpression:",&[program,max,one]).is_err());
         send(id.root,b"reassociateBehaviorOf:with:",&[program,program_type]).unwrap();
         send(model,b"restoreImageSlotAt:in:put:",&[abi::size(1).unwrap(),record,max]).unwrap();
         let restored=send(model,b"imageSlotAt:in:",&[abi::size(1).unwrap(),record]).unwrap();
@@ -863,6 +838,7 @@ unsafe fn run() {
         let bytes=id.send(names[12],id.load,&[bytes_args]).unwrap();
         let gc_type=send(id.root,b"behaviorOf:",&[gc]).unwrap();
         let original_charge=send(gc_type,b"lookup",&[sel(b"chargeExternalAllocation:")]).unwrap();
+        send(gc_type,b"addMethod",&[sel(b"savedExternalCharge:"),original_charge]).unwrap();
         send(actor,b"at:put:",&[abi::size(35).unwrap(),original_charge]).unwrap();
         let collecting_charge=send(actor_vt,b"lookup",&[sel(b"externalCharge")]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),collecting_charge]).unwrap();
@@ -878,23 +854,23 @@ unsafe fn run() {
         let text=send(bytes,b"fromBytes:",&[name]).unwrap();
         assert_eq!(abi::as_size(send(text,b"length",&[]).unwrap()),Some(2));
         let name_type=send(id.root,b"behaviorOf:",&[name]).unwrap();
-        let original_append=send(name_type,b"lookup",&[sel(b"appendTo:")]).unwrap();
+        let original_append=send(name_type,b"lookup",&[sel(b"sizeWord")]).unwrap();
         let alternate=send(actor_vt,b"lookup",&[sel(b"doesNotUnderstand:")]).unwrap();
-        send(name_type,b"addMethod",&[sel(b"appendTo:"),alternate]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"sizeWord"),alternate]).unwrap();
         let changed=send(bytes,b"fromBytes:",&[name]).unwrap();
         assert_eq!(abi::as_size(send(changed,b"length",&[]).unwrap()),Some(0));
-        send(name_type,b"addMethod",&[sel(b"appendTo:"),original_append]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"sizeWord"),original_append]).unwrap();
         let sequence=send(id.root,b"sequence",&[abi::size(65).unwrap(),abi::size(0).unwrap(),abi::size(255).unwrap()]).unwrap();
         let sequence_token=send(roots,b"retain:",&[sequence]).unwrap();
         let sequence_bytes=send(bytes,b"fromBytes:",&[sequence]).unwrap();
         assert_eq!(send(sequence_bytes,b"length",&[]).unwrap(),abi::size(3).unwrap());
         let sequence_type=send(id.root,b"behaviorOf:",&[sequence]).unwrap();
-        let append=send(sequence_type,b"lookup",&[sel(b"appendTo:")]).unwrap();
+        let append=send(sequence_type,b"lookup",&[sel(b"sizeWord")]).unwrap();
         let append_token=send(roots,b"retain:",&[append]).unwrap();
-        send(sequence_type,b"addMethod",&[sel(b"appendTo:"),alternate]).unwrap();
+        send(sequence_type,b"addMethod",&[sel(b"sizeWord"),alternate]).unwrap();
         let sequence_bytes=send(bytes,b"fromBytes:",&[sequence]).unwrap();
         assert_eq!(send(sequence_bytes,b"length",&[]).unwrap(),abi::size(0).unwrap());
-        send(sequence_type,b"addMethod",&[sel(b"appendTo:"),append]).unwrap();
+        send(sequence_type,b"addMethod",&[sel(b"sizeWord"),append]).unwrap();
         for token in [sequence_token,append_token]{send(roots,b"release:",&[token]).unwrap();}
         let symbol_copy=send(text,b"withSymbolName:",&[sel(b"missingProbe")]).unwrap();
         assert_eq!(abi::as_size(send(symbol_copy,b"length",&[]).unwrap()),Some(14));
@@ -977,11 +953,11 @@ unsafe fn run() {
         let name=send(id.root,b"nameWithBytes",&[abi::size(97).unwrap()]).unwrap();
         let name_token=send(roots,b"retain:",&[name]).unwrap();
         let name_type=send(id.root,b"behaviorOf:",&[name]).unwrap();
-        let apply=send(name_type,b"lookup",&[sel(b"apply:to:with:")]).unwrap();
-        let apply_token=send(roots,b"retain:",&[apply]).unwrap();
-        send(name_type,b"addMethod",&[sel(b"apply:to:with:"),replacement]).unwrap();
-        assert_eq!(send(string,b"fromBytes:",&[name]).unwrap(),expected);
-        send(name_type,b"addMethod",&[sel(b"apply:to:with:"),apply]).unwrap();
+        let original_at=send(name_type,b"lookup",&[sel(b"atWord:")]).unwrap();
+        let at_token=send(roots,b"retain:",&[original_at]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"atWord:"),identity_number]).unwrap();
+        assert_eq!(text_bytes(send(string,b"fromBytes:",&[name]).unwrap()),b"\0");
+        send(name_type,b"addMethod",&[sel(b"atWord:"),original_at]).unwrap();
         let factory=send(string_type,b"lookup",&[sel(b"fromBytes:")]).unwrap();
         let factory_token=send(roots,b"retain:",&[factory]).unwrap();
         send(string_type,b"addMethod",&[sel(b"fromBytes:"),replacement]).unwrap();
@@ -1050,7 +1026,7 @@ unsafe fn run() {
         assert!(send(split_text,b"split:",&[insert]).is_err());
         send(vector_type,b"addMethod",&[sel(b"new"),vector_new]).unwrap();
         send(sequence_type,b"removeMethod:",&[sel(b"add:")]).unwrap();
-        for token in [original_token,trimmed_token,copy_token,needle_token,insert_token,source_token,builder_token,name_token,apply_token,factory_token,numeric_token,split_token,parts_token]{send(roots,b"release:",&[token]).unwrap();}
+        for token in [original_token,trimmed_token,copy_token,needle_token,insert_token,source_token,builder_token,name_token,at_token,factory_token,numeric_token,split_token,parts_token]{send(roots,b"release:",&[token]).unwrap();}
         send(gc,b"collectPrecisely",&[]).unwrap();
         assert!(send(id.root,b"identityOf:",&[original]).is_err());
         println!("String Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed");

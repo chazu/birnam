@@ -106,21 +106,6 @@ mixed!(le, 7);
 mixed!(gt, 8);
 mixed!(ge, 9);
 mixed!(as_float, 10);
-pub(super) unsafe extern "C" fn evaluate(
-    _: Oop,
-    c: Oop,
-    r: Oop,
-    a: *const Oop,
-    count: usize,
-) -> Oop {
-    done((|| unsafe {
-        let [op, right, visitor] = borrowed_slice(a, count).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let op = abi::as_size(*op).filter(|op| *op < 4).ok_or_else(invalid)?;
-        run(instance()?, c, r, &[*right], op, Some(*visitor))
-    })())
-}
 pub(super) unsafe extern "C" fn install(
     _: Oop,
     c: Oop,
@@ -138,7 +123,6 @@ pub(super) unsafe extern "C" fn install(
             return Err(invalid());
         }
         n.word_bits(n.send(float, b"bitsOf:", &[float])?)?;
-        n.mixed_evaluator.set(n.method(b"mixed::evaluate", float)?);
         for (i, (name, implementation)) in [
             (b"+".as_slice(), b"mixed::add".as_slice()),
             (b"-", b"mixed::sub"),

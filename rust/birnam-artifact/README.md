@@ -23,7 +23,7 @@ through ObjectModel with an all-reference layout. ObjectModel supplies the
 existing clone and GC behavior. Artifact exposes `rootsDo:` and sends `visit:`
 to the GC visitor. Each new descriptor edge is installed before another
 constructor send; inputs and temporary list results are rooted across sends.
-Byte-provider application copies byte values before later callbacks. Vector lookup remains
+Ordinary indexed byte reads copy values before later callbacks. Vector lookup remains
 live, and method replacement is observed through fresh dispatch.
 
 `bash scripts/oop-id-slice-test.sh` runs the v2 module export audit, the unchanged

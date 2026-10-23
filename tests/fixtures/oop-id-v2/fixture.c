@@ -4,8 +4,8 @@
    through messages. No foreign payload or Id registry is inspected. */
 typedef struct Node {Oop child;Oop size;} Node;
 static IdProtocol id;
-enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,APPLYVALUE,APPLY,ARGPROXY,NAMEFACTORY,METHODFACTORY,NSBIND,PREPAREOWNER,NODECHILD,OBSERVE,STOREROOT,STOREEDGE,STORECOMPLETE,VALUEPROBE,ECHONAME,RETIRE,CHARGEGC,GLOBALLOOKUP,SETGLOBALLOOKUP,GLOBALLOOKUPCOUNT,ERRORVALUE,RETHROW,MODELPUT,MODELBOXED,CLONEALLOC,CONVERTINDEX,ROOTSDO,NUMBERIDENTITY,EXTERNALCHARGE,NUMERICWORD,VECTORNEW,VECTORADD,INTEGERINPUT,ERRORFACTORY,NUMERICALLOCATE,NUMERICDECLINE,NUMERICCOMMIT,LOOPVALUE,SUMVALUES,VECTORKEY,PLUS,CLONE,REVERSED,COLLISIONHASH,PUBLISHERRORSTRING,ERRORNAME,ABSENTVALUE,RENDEROUTPUT,PRINTSYSTEM,SYSTEMNAME,FILEBYTES,APPENDVALUES,NAMES};
-static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("applyValue"),LIT("apply"),LIT("argumentProxy"),LIT("nameFactory"),LIT("methodFactory"),LIT("binding:value:"),LIT("prepareOwner:"),LIT("nodeWithChild:"),LIT("observe:"),LIT("root:"),LIT("edgeFrom:to:"),LIT("complete:"),LIT("valueProbe"),LIT("echoName"),LIT("retire:"),LIT("chargeAfterGC"),LIT("globalLookup"),LIT("setGlobalLookup:"),LIT("globalLookupCalls"),LIT("caughtFailure"),LIT("rethrow:"),LIT("slotAt:in:put:"),LIT("slot:in:"),LIT("cloneAllocate"),LIT("convertIndex"),LIT("rootsDo:"),LIT("numberIdentity"),LIT("externalCharge"),LIT("numericWord"),LIT("vectorNew"),LIT("vectorAdd"),LIT("integerInput"),LIT("errorFactory"),LIT("numericAllocate"),LIT("numericDecline"),LIT("numericCommit"),LIT("loopValue"),LIT("sumValues"),LIT("vectorKey"),LIT("+"),LIT("clone"),LIT("reversed"),LIT("collisionHash"),LIT("publishErrorString"),LIT("Error"),LIT("absentValue"),LIT("renderOutput"),LIT("print:"),LIT("System"),LIT("fileBytes"),LIT("appendByteValues")};
+enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,NAMEFACTORY,METHODFACTORY,NSBIND,PREPAREOWNER,NODECHILD,OBSERVE,STOREROOT,STOREEDGE,STORECOMPLETE,VALUEPROBE,ECHONAME,RETIRE,CHARGEGC,GLOBALLOOKUP,SETGLOBALLOOKUP,GLOBALLOOKUPCOUNT,ERRORVALUE,RETHROW,MODELPUT,MODELBOXED,CLONEALLOC,CONVERTINDEX,ROOTSDO,NUMBERIDENTITY,EXTERNALCHARGE,NUMERICWORD,VECTORNEW,VECTORADD,INTEGERINPUT,ERRORFACTORY,NUMERICALLOCATE,NUMERICDECLINE,NUMERICCOMMIT,LOOPVALUE,SUMVALUES,VECTORKEY,PLUS,CLONE,REVERSED,COLLISIONHASH,PUBLISHERRORSTRING,ERRORNAME,ABSENTVALUE,RENDEROUTPUT,PRINTSYSTEM,SYSTEMNAME,FILEBYTES,APPENDVALUES,SAVEDCHARGE,SAVEDALLOCATE,SAVEDEXTERNAL,SAVEDSTRING,SAVEDBYTES,FORWARDLOOKUP,NAMES};
+static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("nameFactory"),LIT("methodFactory"),LIT("binding:value:"),LIT("prepareOwner:"),LIT("nodeWithChild:"),LIT("observe:"),LIT("root:"),LIT("edgeFrom:to:"),LIT("complete:"),LIT("valueProbe"),LIT("echoName"),LIT("retire:"),LIT("chargeAfterGC"),LIT("globalLookup"),LIT("setGlobalLookup:"),LIT("globalLookupCalls"),LIT("caughtFailure"),LIT("rethrow:"),LIT("slotAt:in:put:"),LIT("slot:in:"),LIT("cloneAllocate"),LIT("convertIndex"),LIT("rootsDo:"),LIT("numberIdentity"),LIT("externalCharge"),LIT("numericWord"),LIT("vectorNew"),LIT("vectorAdd"),LIT("integerInput"),LIT("errorFactory"),LIT("numericAllocate"),LIT("numericDecline"),LIT("numericCommit"),LIT("loopValue"),LIT("sumValues"),LIT("vectorKey"),LIT("+"),LIT("clone"),LIT("reversed"),LIT("collisionHash"),LIT("publishErrorString"),LIT("Error"),LIT("absentValue"),LIT("renderOutput"),LIT("print:"),LIT("System"),LIT("fileBytes"),LIT("appendByteValues"),LIT("savedAllocationCharge:"),LIT("savedAllocate"),LIT("savedExternalCharge:"),LIT("savedStringConstructor:"),LIT("savedStringBytes"),LIT("forwardLookup")};
 static Oop names[NAMES];
 static Oop pending_owner;
 static Oop call(Oop r,int name,const Oop *a,size_t n){return id.message(id.root,r,names[name],a,n);}
@@ -125,17 +125,6 @@ static Oop snapshot_argument(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  REQUIRE(zero(get(c,1),COLLECT));
  REQUIRE(one(id.root,IDENTITY,a[0]));return a[0];
 }
-static Oop apply_value(Oop root_,Oop context,Oop receiver,const Oop*args,size_t n){
- (void)root_;(void)args;if(n<1)return id.invalid;
- /* receiver is a reference-storage object, not a native Method record. */
- REQUIRE(zero(get(context,1),COLLECT));
- return get(receiver,0);
-}
-static Oop argument_proxy(Oop root_,Oop context,Oop receiver,const Oop*args,size_t n){
- (void)root_;(void)receiver;if(n!=2)return id.invalid;
- /* This argument container has no Sequence payload. */
- return two(args[0],APPLY,args[1],get(context,6));
-}
 static Oop construct_with(Oop context,Oop receiver,const Oop*args,size_t n,size_t saved,size_t counter){
  REQUIRE(put(context,counter,id_size(id_unbox(get(context,counter))+1)));
  REQUIRE(zero(get(context,1),COLLECT));
@@ -203,7 +192,7 @@ static Oop retire_objects(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
 static Oop charge_after_gc(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)r;if(n!=1)return id.invalid;
  REQUIRE(zero(get(c,1),COLLECT));
- return two(get(c,27),APPLY,id.root,a[0]);
+ return one(id.root,SAVEDCHARGE,a[0]);
 }
 static Oop original_global_lookup;
 static size_t global_lookup_calls;
@@ -212,7 +201,8 @@ static Oop set_global_lookup(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
 }
 static Oop global_lookup(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)c;if(n!=1)return id.invalid;global_lookup_calls++;
- return two(original_global_lookup,APPLY,r,a[0]);
+ if(a[0]==names[FORWARDLOOKUP])return original_global_lookup;
+ return one(r,FORWARDLOOKUP,a[0]);
 }
 static Oop global_lookup_count(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)c;(void)r;(void)a;return n?id.invalid:id_size(global_lookup_calls);
@@ -227,7 +217,7 @@ static Oop clone_allocate(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;if(n!=1)return id.invalid;
  Oop edit[]={id_size(0),get(c,29),get(c,31)};REQUIRE(call(get(c,28),MODELPUT,edit,3));
  REQUIRE(zero(get(c,1),COLLECT));
- return two(get(c,30),APPLY,r,a[0]);
+ return one(r,SAVEDALLOCATE,a[0]);
 }
 static Oop root_observer(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)r;if(n!=1)return id.invalid;
@@ -253,7 +243,7 @@ static Oop number_identity(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
 }
 static Oop external_charge(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)r;if(n!=1)return id.invalid;
- REQUIRE(zero(get(c,1),COLLECT));return two(get(c,35),APPLY,get(c,1),a[0]);
+ REQUIRE(zero(get(c,1),COLLECT));return one(get(c,1),SAVEDEXTERNAL,a[0]);
 }
 
 static Oop numeric_word(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
@@ -283,7 +273,7 @@ static Oop error_factory(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
 }
 static Oop numeric_allocate(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;if(n!=1)return id.invalid;REQUIRE(zero(get(c,1),COLLECT));
- return two(get(c,30),APPLY,r,a[0]);
+ return one(r,SAVEDALLOCATE,a[0]);
 }
 
 static Oop numeric_decline(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
@@ -312,7 +302,7 @@ static Oop collision_hash(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
 static Oop publish_error_string(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;if(n!=1)return id.invalid;
  REQUIRE(two(get(c,17),PUT,names[ERRORNAME],get(c,40)));REQUIRE(zero(get(c,1),COLLECT));
- return two(get(c,39),APPLY,r,a[0]);
+ return one(r,SAVEDSTRING,a[0]);
 }
 static Oop absent_value(Oop root_,Oop c,Oop r,const Oop*a,size_t n){(void)root_;(void)c;(void)r;(void)a;(void)n;return 0;}
 static Oop render_output(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
@@ -327,10 +317,10 @@ static Oop file_bytes(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
   Oop suffix[]={id_size('.'),id_size('r'),id_size('e'),id_size('d'),id_size('i'),id_size('r'),id_size('e'),id_size('c'),id_size('t')};
   REQUIRE(call(get(c,43),APPENDVALUES,suffix,sizeof(suffix)/sizeof(*suffix)));REQUIRE(zero(get(c,1),COLLECT));
  }
- Oop result=one(get(c,41),APPLY,r);if(id_fault(result))return result;
+ Oop result=zero(r,SAVEDBYTES);if(id_fault(result))return result;
  if(r==get(c,42))REQUIRE(put(c,43,result));return result;
 }
-static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{APPLYVALUE,apply_value},{ARGPROXY,argument_proxy},{NAMEFACTORY,name_factory},{METHODFACTORY,method_factory},{NSBIND,namespace_binding},{PREPAREOWNER,prepare_owner},{NODECHILD,node_child},{ALLOCATION,storage_allocation},{STOREROOT,storage_edge},{STOREEDGE,storage_edge},{STORECOMPLETE,storage_complete},{VALUEPROBE,value_probe},{ECHONAME,echo_name},{RETIRE,retire_objects},{CHARGEGC,charge_after_gc},{GLOBALLOOKUP,global_lookup},{SETGLOBALLOOKUP,set_global_lookup},{GLOBALLOOKUPCOUNT,global_lookup_count},{ERRORVALUE,error_value},{RETHROW,rethrow_value},{CLONEALLOC,clone_allocate},{CONVERTINDEX,convert_index},{VISIT,root_observer},{NUMBERIDENTITY,number_identity},{EXTERNALCHARGE,external_charge},{NUMERICWORD,numeric_word},{VECTORNEW,vector_new},{VECTORADD,vector_add},{INTEGERINPUT,integer_input},{ERRORFACTORY,error_factory},{NUMERICALLOCATE,numeric_allocate},{NUMERICDECLINE,numeric_decline},{NUMERICCOMMIT,numeric_commit},{LOOPVALUE,loop_value},{SUMVALUES,sum_values},{VECTORKEY,vector_key},{COLLISIONHASH,collision_hash},{PUBLISHERRORSTRING,publish_error_string},{ABSENTVALUE,absent_value},{RENDEROUTPUT,render_output},{FILEBYTES,file_bytes}};
+static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{NAMEFACTORY,name_factory},{METHODFACTORY,method_factory},{NSBIND,namespace_binding},{PREPAREOWNER,prepare_owner},{NODECHILD,node_child},{ALLOCATION,storage_allocation},{STOREROOT,storage_edge},{STOREEDGE,storage_edge},{STORECOMPLETE,storage_complete},{VALUEPROBE,value_probe},{ECHONAME,echo_name},{RETIRE,retire_objects},{CHARGEGC,charge_after_gc},{GLOBALLOOKUP,global_lookup},{SETGLOBALLOOKUP,set_global_lookup},{GLOBALLOOKUPCOUNT,global_lookup_count},{ERRORVALUE,error_value},{RETHROW,rethrow_value},{CLONEALLOC,clone_allocate},{CONVERTINDEX,convert_index},{VISIT,root_observer},{NUMBERIDENTITY,number_identity},{EXTERNALCHARGE,external_charge},{NUMERICWORD,numeric_word},{VECTORNEW,vector_new},{VECTORADD,vector_add},{INTEGERINPUT,integer_input},{ERRORFACTORY,error_factory},{NUMERICALLOCATE,numeric_allocate},{NUMERICDECLINE,numeric_decline},{NUMERICCOMMIT,numeric_commit},{LOOPVALUE,loop_value},{SUMVALUES,sum_values},{VECTORKEY,vector_key},{COLLISIONHASH,collision_hash},{PUBLISHERRORSTRING,publish_error_string},{ABSENTVALUE,absent_value},{RENDEROUTPUT,render_output},{FILEBYTES,file_bytes}};
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t ns,const Oop*a,size_t n){
  id=*p;if(ns!=NAMES||n!=2)return id.invalid;for(size_t i=0;i<ns;i++)names[i]=s[i];
  Oop base=zero(id.root,OBJECT);if(id_fault(base))return base;

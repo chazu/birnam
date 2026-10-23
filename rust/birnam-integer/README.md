@@ -35,7 +35,6 @@ it does not inspect foreign layouts or cache dependency executables.
 | Integer `installFloat:` | completed Float Object | Absent reference; install mixed arithmetic/comparisons and `asFloat`. |
 
 Mixed arithmetic Methods capture the completed Float object as their Oop context.
-A private evaluator Method captures the same object for numeric visitor calls.
 There is no leaked native extension record or permanent Roots token.
 It reads Float through `bitsOf:` and constructs through `fromBits:`. It replaces
 only its own original Integer implementations and preserves prior user changes;
@@ -72,7 +71,7 @@ public `=`. Private behaviors use identity; see [Map's key contract](../birnam-m
 `evaluate:receiver:argument:with:` recognizes ordinary Method objects against this
 owner's retained bootstrap Methods, including installed mixed arithmetic. These
 witnesses support optimization checks; ordinary dispatch still uses current Id
-lookup. Current Method application semantics must match too. Copied native Methods
+lookup. Their code, context and owner must match. Copied native Methods
 can match without sharing identity. Unknown Methods decline before reading inputs.
 
 The evaluator receives three Oops: operation (1 add, 2 subtract, 3 multiply,
@@ -84,8 +83,8 @@ propagate failure returns separately from ordinary Error objects.
 
 The native Method owner implements a bulk comparison for copied/unknown Methods.
 It reads the selected Method once and checks candidates without per-candidate Id
-messages or a new registry. Canonical witness identity takes the direct path,
-followed by a current application check.
+messages or a new registry. Comparison checks the selected code, context and owner; it does not consult an
+application selector on the Method.
 
 ## Arithmetic predicates
 

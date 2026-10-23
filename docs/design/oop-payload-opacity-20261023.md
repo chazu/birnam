@@ -1,5 +1,11 @@
 # Opaque payloads without Storage classification
 
+> **Dispatch correction:** the unapproved `apply` protocol and its forwarding
+> helpers have been removed. Ordinary sends perform lookup and enter the selected
+> Method directly. Earlier descriptions of application dispatch below are historical
+> implementation mistakes, not architectural authority. See the
+> [correction and current evidence](id-send-correction-20261023.md).
+
 2026-10-23. Implemented in the isolated `codex/oop-only-id-slice` branch.
 This is a correctness/design checkpoint, not a performance improvement or a
 completed language migration. [Evidence](../measurements/oop-payload-opacity-20261023.json)
@@ -27,13 +33,10 @@ arbitrary payload bytes never become an unchecked function pointer. The index
 selects from immutable declarations in the resident code image, not a new table
 classifying individual objects.
 
-Binding returns an object. Application looks up its current `apply` implementation.
-The rooted bootstrap native `apply` object provides the initial stopping case;
-other callable objects may have different layouts. A custom implementation receives
-the callable object as receiver and the original receiver followed by arguments.
-Current lookup, replacement and call roots still apply. The independent native
-fixture now binds a reference-array object as a method, invokes its `apply`, runs
-GC during the call and returns its stored value.
+The original implementation added an `apply` lookup after binding. That violated
+the intended dispatch contract and has been removed, along with the test that
+endorsed it. Current `send` enters the selected Method directly. The measurements
+below retain their historical scope and are not acceptance evidence for that design.
 
 Id reports the object's vtable to GC. Payload references come from owners registered
 with Collect through ordinary objects and `referencesOf:do:`. Initial registrations

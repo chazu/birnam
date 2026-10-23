@@ -42,7 +42,8 @@ messages. Allocation protects references in a newly constructed private Value
 before any allocating callback and validates its zero-byte handle before storing
 owner data. The Value classification belongs solely to PEG; Id never interprets it.
 
-Source/literal text arrives through byte-provider application. Symbols are checked
-and interned by their owner; diagnostic names use Symbol's byte application.
+Source/literal text and Symbol names use ordinary indexed byte messages. Symbols
+are checked and interned by their owner. Parsing and conversion are local functions,
+without callback Method objects or an application protocol.
 GC retirement receives dead Oops directly, with no packed-address byte buffer.
 The matcher and its independent comparison tests remain unchanged.

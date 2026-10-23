@@ -24,8 +24,6 @@ pub(crate) struct State {
     pub symbols: RefCell<Symbols>,
     pub root: Oop,
     pub root_behavior: Oop,
-    pub native_apply: Cell<Oop>,
-    pub native_meta: Oop,
     pub reference_owners: RefCell<Vec<(Oop, Oop)>>,
     pub meta: Oop,
     pub object: Oop,
@@ -86,7 +84,6 @@ impl Drop for Scope<'_> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Action {
     Lookup,
-    ApplyNative,
     ReferenceOwners,
     NoReferences,
     TableReferences,
@@ -133,16 +130,14 @@ pub(crate) enum Action {
     NativeBindingSemantics,
     DefaultAllocation,
     SymbolHash,
+    SymbolSize,
+    SymbolAt,
     CoreName,
     ModuleBehavior,
     NewNativeMethod,
     NewName,
     NameSize,
     NameAt,
-    NameAppend,
-    NameApply,
-    SymbolApply,
-    SymbolAppend,
     Intern,
     IsSymbol,
     IsBehavior,
@@ -154,10 +149,7 @@ pub(crate) enum Action {
     MethodAt,
     LiteralAt,
     Invoke,
-    ApplyArguments,
-    ApplyArgumentsWith,
     LoadArguments,
-    AppendArguments,
     LoadNative,
     WithContext,
     FaultKind,
@@ -189,7 +181,6 @@ macro_rules! core_primitives {
 core_primitives![
     (b"lookup", Lookup),
     (b"addMethod", Add),
-    (b"apply", ApplyNative),
     (b"referenceOwnersDo:", ReferenceOwners),
     (b"removeMethod:", Remove),
     (b"allocate", Allocate),
@@ -229,16 +220,14 @@ core_primitives![
     (b"nativeBindingQuerySemantics:for:", NativeBindingSemantics),
     (b"usesDefaultAllocation", DefaultAllocation),
     (b"nameHash", SymbolHash),
+    (b"sizeWord", SymbolSize),
+    (b"atWord:", SymbolAt),
     (b"nameBehavior", CoreName),
     (b"moduleBehavior", ModuleBehavior),
     (b"newMethodAt:", NewNativeMethod),
     (b"nameWithBytes", NewName),
     (b"size", NameSize),
     (b"at:", NameAt),
-    (b"appendTo:", NameAppend),
-    (b"apply:to:with:", NameApply),
-    (b"apply:to:with:", SymbolApply),
-    (b"appendTo:", SymbolAppend),
     (b"intern", Intern),
     (b"isSymbol:", IsSymbol),
     (b"isBehavior:", IsBehavior),
@@ -249,10 +238,7 @@ core_primitives![
     (b"size", SequenceSize),
     (b"methodAt:", MethodAt),
     (b"invokeOn:arguments:", Invoke),
-    (b"apply:to:", ApplyArguments),
-    (b"apply:to:with:", ApplyArgumentsWith),
     (b"load:", LoadArguments),
-    (b"appendTo:", AppendArguments),
     (b"loadNative", LoadNative),
     (b"literalAt:", LiteralAt),
     (b"withContext:", WithContext),
@@ -379,21 +365,6 @@ impl State {
         }
         roots
     }
-    pub unsafe fn invoke(&self, m: Oop, r: Oop, a: &[Oop], scope: &Scope<'_>) -> Result<Oop, Oop> {
-        scope.entered(m, core::ptr::null_mut(), core::ptr::null_mut());
-        let apply = self.selector(b"apply");
-        let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {
-            return Err(self.unbound());
-        };
-        if applier == self.native_apply.get() {
-            return unsafe { self.apply_native(m, r, a, scope) };
-        }
-        let mut forwarded = Vec::with_capacity(a.len() + 1);
-        forwarded.push(r);
-        forwarded.extend_from_slice(a);
-        let call = self.scope(m, apply, &forwarded);
-        unsafe { self.invoke(applier, m, &forwarded, &call) }
-    }
     pub(super) unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
         unsafe { id_dispatch::send(self, r, self.selector(name), a) }
     }
@@ -434,26 +405,21 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol | Action::NameAppend | Action::NameApply => self.name,
+                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol => self.name,
                 Action::At | Action::Put | Action::SequenceSize
-                | Action::ApplyArguments | Action::ApplyArgumentsWith | Action::LoadArguments | Action::AppendArguments => self.sequence,
+                | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
-                Action::SymbolHash | Action::SymbolAppend | Action::SymbolApply => self.symbol,
-                Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
+                Action::SymbolHash | Action::SymbolSize | Action::SymbolAt => self.symbol,
+                Action::WithContext | Action::Invoke => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
             };
-            if matches!(action, Action::Lookup | Action::Add | Action::ApplyNative) {
+            if matches!(action, Action::Lookup | Action::Add) {
                 self.tables.borrow_mut().add_method(vt, sel, m);
             } else {
                 unsafe { self.send(vt, b"addMethod", &[sel, m]) }.unwrap();
             }
-            if matches!(action, Action::ApplyNative) {
-                self.native_apply.set(m);
-                self.permanent.borrow_mut().push(m);
-            }
             if matches!(action, Action::Lookup) {
-                self.tables.borrow_mut().add_method(self.native_meta, sel, m);
                 self.default_lookup.set(m);
                 self.permanent.borrow_mut().push(m);
             }
@@ -467,6 +433,12 @@ impl State {
         ] {
             let method = self.tables.borrow().lookup(behavior, self.selector(public)).unwrap();
             self.tables.borrow_mut().add_method(behavior, self.selector(raw), method);
+        }
+        for behavior in [self.name,self.sequence]{
+            for (source,alias) in [(b"size".as_slice(),b"sizeWord".as_slice()),(b"at:",b"atWord:")]{
+                let method=self.tables.borrow().lookup(behavior,self.selector(source)).unwrap();
+                self.tables.borrow_mut().add_method(behavior,self.selector(alias),method);
+            }
         }
         self.install_reference_owners();
     }
@@ -483,13 +455,6 @@ impl State {
             }
         };
         match action {
-            Action::ApplyNative => {
-                let Some((&receiver, args)) = a.split_first() else {
-                    return Err(invalid);
-                };
-                let call = self.scope(receiver, nil, args);
-                unsafe { self.apply_native(r, receiver, args, &call) }
-            }
             Action::ReferenceOwners => {
                 let visitor = one()?;
                 let owners = self.reference_owners.borrow().clone();
@@ -727,19 +692,14 @@ impl State {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
             Action::NewName => self.name_from_values(a),
-            Action::NameAppend | Action::SymbolAppend | Action::NameApply | Action::SymbolApply => {
-                let applying=matches!(action,Action::NameApply|Action::SymbolApply);
-                if applying && a.len()<2 {return Err(invalid);}
-                let target=if applying {a[0]}else{one()?};
-                let mut values:Vec<Oop>=if matches!(action,Action::NameAppend|Action::NameApply) {
-                    let (p,n)=self.name_data(r)?;
-                    unsafe{core::slice::from_raw_parts(p,n)}.iter().map(|&b|abi::size(b as usize).unwrap()).collect()
-                } else {
-                    let symbols=self.symbols.borrow();
-                    symbols.bytes_of(r).ok_or(invalid)?.iter().map(|&b|abi::size(b as usize).unwrap()).collect()
-                };
-                if applying {values.insert(0,a[1]);values.extend_from_slice(&a[2..]);unsafe{self.send(target,b"apply",&values)}}
-                else {unsafe{self.send(target,b"appendByteValues",&values)}}
+            Action::SymbolSize => {
+                if !a.is_empty(){return Err(invalid);}
+                abi::size(self.symbols.borrow().bytes_of(r).ok_or(invalid)?.len()).ok_or(invalid)
+            }
+            Action::SymbolAt => {
+                let i=abi::as_size(one()?).ok_or(invalid)?;
+                let symbols=self.symbols.borrow();let bytes=symbols.bytes_of(r).ok_or(invalid)?;
+                Ok(abi::size(*bytes.get(i).ok_or(invalid)? as usize).unwrap())
             }
             Action::NameSize => {
                 if !a.is_empty() { return Err(invalid); }
@@ -778,10 +738,10 @@ impl State {
             }
             Action::Invoke => {
                 let (receiver, seq) = pair()?;
-                unsafe { self.send(seq, b"apply:to:", &[r, receiver]) }
+                unsafe { self.invoke_captured(r, receiver, seq) }
             }
-            Action::ApplyArguments | Action::ApplyArgumentsWith | Action::LoadArguments | Action::AppendArguments => {
-                unsafe { self.apply_arguments(action, r, a) }
+            Action::LoadArguments => {
+                unsafe { self.load_arguments(r, a) }
             }
             Action::WithContext => self.clone_method(r, one()?),
             Action::LiteralAt => self.modules.literal(r, abi::as_size(one()?).ok_or(invalid)?)

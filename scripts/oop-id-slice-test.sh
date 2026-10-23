@@ -63,11 +63,19 @@ BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
 "$fixture/bench-v2" "$CARGO_TARGET_DIR/release/libbirnam_id.dylib" \
     "$CARGO_TARGET_DIR/release/libbirnam_root_registry.dylib" \
     "$CARGO_TARGET_DIR/release/libbirnam_collect.dylib" > "$logs/independent-c.log" 2>&1
+# Architectural contract: feature tests above cannot waive this requirement.
+# Ordinary sends must enter their selected Method without a second lookup.
+if ! BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
+    "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" dispatch-contract > "$logs/dispatch-contract.log" 2>&1; then
+    cat "$logs/dispatch-contract.log"
+    exit 1
+fi
 python3 - "$logs" <<'PY'
 from pathlib import Path
 import sys
 p=Path(sys.argv[1])
 assert 'OOP_SLICE_OK' in (p/'runtime.log').read_text()
+assert 'DISPATCH_CONTRACT_OK' in (p/'dispatch-contract.log').read_text()
 numeric=(p/'numeric-integration.log').read_bytes()
 assert b'NUMERIC_INTEGRATION_OK' in numeric
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:

@@ -1,22 +1,24 @@
-//! System input uses Oop messages and completed owner-local dependencies.
+//! Native I/O uses ordinary Id sends and owner-local temporary roots.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
     id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::Cell, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 use std::{
     collections::HashMap,
-    io::{self, BufRead},
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 struct State {
     id: Protocol,
     ns: Oop,
-    string: Oop,
     nil: Oop,
     names: HashMap<&'static [u8], Oop>,
-    finish_error: Oop,
+    scoped: RefCell<Vec<Oop>>,
     ready: Cell<bool>,
+    string: Oop,
 }
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
@@ -34,6 +36,9 @@ fn invalid() -> Oop {
     }
     unsafe { abi::object_reference((*p).invalid) }
 }
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
 unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let p = INSTANCE.load(Ordering::Acquire);
     if p.is_null() {
@@ -42,9 +47,32 @@ unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let s = unsafe { &*p };
     if c == s.ns { Ok(s) } else { Err(invalid()) }
 }
+struct Scope<'a> {
+    s: &'a State,
+    start: usize,
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.s.scoped.borrow_mut().truncate(self.start);
+    }
+}
 impl State {
-    unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
-        unsafe { self.id.send(r, self.names[name], a) }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn rooted<T>(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<T, Oop>,
+    ) -> Result<T, Oop> {
+        let scope = Scope {
+            s: self,
+            start: self.scoped.borrow().len(),
+        };
+        self.scoped.borrow_mut().extend_from_slice(values);
+        let result = f();
+        drop(scope);
+        result
     }
     unsafe fn make_string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
         unsafe {
@@ -56,87 +84,99 @@ impl State {
             self.send(self.string, b"fromBytes:", &[source])
         }
     }
-    unsafe fn error(&self, text: &[u8]) -> Result<Oop, Oop> {
+    unsafe fn error(&self, message: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let message = self.make_string(text)?;
-            if message.is_null() {
-                return Err(invalid());
-            }
-            // The diagnostic is the helper's receiver, so Id protects it through
-            // lazy Error lookup and construction, with no root-token cleanup send.
-            self.send(self.finish_error, b"apply", &[message])
+            let message = object(self.make_string(message)?)?;
+            self.rooted(&[message], || {
+                let factory = self.send(self.ns, b"at:", &[self.names[b"Error".as_slice()]])?;
+                if factory.is_null() {
+                    return Ok(self.nil);
+                }
+                self.send(
+                    factory,
+                    b"kind:message:",
+                    &[self.names[b"ioError".as_slice()], message],
+                )
+            })
         }
     }
 }
-unsafe extern "C" fn finish_error(_: Oop, c: Oop, message: Oop, _: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        if n != 0 || message.is_null() {
-            return Err(invalid());
-        }
-        let factory = s.send(s.ns, b"at:", &[s.names[b"Error".as_slice()]])?;
-        if factory.is_null() {
-            return Ok(s.nil);
-        }
-        s.send(
-            factory,
-            b"kind:message:",
-            &[s.names[b"ioError".as_slice()], message],
-        )
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn read_line(_: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
+use std::io::{self, BufRead};
+unsafe extern "C" fn read_line(_id: Oop, c: Oop, _r: Oop, _: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         if n != 0 {
             return Ok(s.nil);
         }
-        let stdin = io::stdin();
-        let mut stdin = stdin.lock();
-        let mut line = Vec::new();
-        // Preserve the existing lock lifetime through String/Error callbacks.
-        let result = match stdin.read_until(b'\n', &mut line) {
-            Ok(0) => Ok(s.nil),
-            Ok(_) => {
-                if line.last() == Some(&b'\n') {
-                    line.pop();
+        (|| {
+            let stdin = io::stdin();
+            let mut stdin = stdin.lock();
+            let mut line = Vec::new();
+            // Preserve the original lock lifetime through String/Error sends.
+            let result = match stdin.read_until(b'\n', &mut line) {
+                Ok(0) => Ok(s.nil),
+                Ok(_) => {
+                    if line.last() == Some(&b'\n') {
+                        line.pop();
+                    }
+                    s.make_string(&line)
                 }
-                s.make_string(&line)
-            }
-            Err(_) => s.error(b"stdin read failed"),
+                Err(_) => s.error(b"stdin read failed"),
+            };
+            drop(stdin);
+            result
+        })()
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn roots_do(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
         };
-        drop(stdin);
-        result
+        let values = s.scoped.borrow().clone();
+        for value in values {
+            s.send(*visitor, b"visit:", &[value])?;
+        }
+        Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
 }
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
-    b"at:",
-    b"at:put:",
+    b"Bytes",
+    b"Error",
     b"Roots",
     b"String",
     b"StringVt",
     b"System",
-    b"nil",
-    b"Error",
-    b"ioError",
-    b"behaviorOf:",
-    b"fromBytes:",
-    b"sequence",
-    b"kind:message:",
-    b"retain:",
-    b"release:",
-    b"methodAt:",
-    b"withContext:",
+    b"Vector",
+    b"add:",
     b"addMethod",
-    b"apply",
-    b"apply:to:with:",
+    b"at:",
+    b"at:put:",
+    b"atWord:",
+    b"behaviorOf:",
     b"bytes",
+    b"delegated",
+    b"fromBytes:",
+    b"ioError",
+    b"kind:message:",
+    b"methodAt:",
+    b"new",
+    b"nil",
     b"printString",
     b"readLine",
-    b"finishError"
+    b"reassociateBehaviorOf:with:",
+    b"register:",
+    b"release:",
+    b"retain:",
+    b"rootsDo:",
+    b"sequence",
+    b"sizeWord",
+    b"visit:",
+    b"withContext:"
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -161,11 +201,10 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(read_line),
     },
     MethodSpec {
-        name: index(b"finishError"),
-        entry: Some(finish_error),
+        name: index(b"rootsDo:"),
+        entry: Some(roots_do),
     },
 ];
-
 unsafe extern "C" fn initialize(
     p: *const Protocol,
     image: Oop,
@@ -188,7 +227,7 @@ unsafe extern "C" fn initialize(
     let old = INSTANCE.load(Ordering::Acquire);
     if !old.is_null() {
         let s = unsafe { &*old };
-        return if s.ready.get() && s.id.root == id.root && s.ns == *ns {
+        return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
             ptr::null_mut()
         } else {
             id.invalid
@@ -201,56 +240,44 @@ unsafe extern "C" fn initialize(
     (|| unsafe {
         let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
         let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
-        let named = |n: &[u8]| -> Result<Oop, Oop> {
-            let v = send(*ns, b"at:", &[names[n]])?;
-            if v.is_null() { Err(invalid()) } else { Ok(v) }
-        };
+        let named = |n: &[u8]| object(send(*ns, b"at:", &[names[n]])?);
         let roots = named(b"Roots")?;
-        let string = named(b"String")?;
         let nil = named(b"nil")?;
         let system = named(b"System")?;
         let vt = send(id.root, b"behaviorOf:", &[system])?;
-        // Complete the private root Sequence before publishing any System method.
-        let owner = send(
-            id.root,
-            b"sequence",
-            &[*ns, roots, string, nil, system, vt, ptr::null_mut()],
-        )?;
+        let string = named(b"String")?;
+        let owner = send(id.root, b"sequence", &[*ns, roots, nil, system, vt, string])?;
         let token = send(roots, b"retain:", &[owner])?;
-        let prepared = (|| {
-            let method = send(image, b"methodAt:", &[names[b"finishError".as_slice()]])?;
-            let helper = send(method, b"withContext:", &[*ns])?;
-            send(owner, b"at:put:", &[abi::size(6).unwrap(), helper])?;
-            Ok(helper)
-        })();
-        let finish_error = match prepared {
-            Ok(helper) => helper,
-            Err(error) => {
-                send(roots, b"release:", &[token])?;
-                return Err(error);
-            }
-        };
         let s = Box::into_raw(Box::new(State {
             id,
             ns: *ns,
-            string,
             nil,
             names: names.clone(),
-            finish_error,
+            scoped: RefCell::new(Vec::new()),
             ready: Cell::new(false),
+            string,
         }));
         INSTANCE.store(s, Ordering::Release);
         let s = &*s;
-        let result = (|| {
-            let method = s.send(image, b"methodAt:", &[s.names[b"readLine".as_slice()]])?;
-            let method = s.send(method, b"withContext:", &[*ns])?;
-            s.send(vt, b"addMethod", &[s.names[b"readLine".as_slice()], method])?;
-            s.ready.set(true);
-            Ok(ptr::null_mut())
-        })();
-        // Publication can fail after a replacement addMethod has exposed the
-        // Method. Its dependencies must remain live with the resident state.
-        result
+        let owner_type = send(id.root, b"behaviorOf:", &[owner])?;
+        let private = send(owner_type, b"delegated", &[])?;
+        send(id.root, b"reassociateBehaviorOf:with:", &[owner, private])?;
+        let method = send(image, b"methodAt:", &[names[b"rootsDo:".as_slice()]])?;
+        let method = send(method, b"withContext:", &[*ns])?;
+        send(
+            private,
+            b"addMethod",
+            &[names[b"rootsDo:".as_slice()], method],
+        )?;
+        send(roots, b"register:", &[owner])?;
+        for name in [b"readLine".as_slice()] {
+            let method = send(image, b"methodAt:", &[names[name]])?;
+            let method = send(method, b"withContext:", &[*ns])?;
+            send(vt, b"addMethod", &[names[name], method])?;
+        }
+        send(roots, b"release:", &[token])?;
+        s.ready.set(true);
+        Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
 }

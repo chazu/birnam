@@ -275,15 +275,6 @@ pub(super) unsafe fn check(
         assert!(fold().is_null());
         assert_eq!(send(two, b"+", &[three]).unwrap(), expected);
         send(integer_type, b"addMethod", &[sel(b"fromWord:"), from_word]).unwrap();
-        let private = send(id.root, b"ensurePrivateVtableFor:", &[from_word]).unwrap();
-        send(private, b"addMethod", &[sel(b"apply"), replacement]).unwrap();
-        assert_eq!(
-            send(integer, b"canOmitIndexing", &[]).unwrap(),
-            abi::size(0).unwrap()
-        );
-        assert!(fold().is_null());
-        send(private, b"removeMethod:", &[sel(b"apply")]).unwrap();
-        assert_eq!(fold(), truth);
         send(namespace, b"at:put:", &[sel(b"ErrorVt"), integer_type]).unwrap();
         assert!(fold().is_null());
         send(namespace, b"at:put:", &[sel(b"ErrorVt"), error_type]).unwrap();
@@ -804,6 +795,7 @@ pub(super) unsafe fn check(
         assert_eq!(send(system, b"getEnv:", &[present]).unwrap(), expected);
         send(string_type, b"addMethod", &[sel(b"fromBytes:"), factory]).unwrap();
         let malformed = text(b"\xff");
+        send(string_type,b"addMethod",&[sel(b"savedStringConstructor:"),factory]).unwrap();
         send(
             string_type,
             b"addMethod",
@@ -1005,6 +997,7 @@ pub(super) unsafe fn check(
         send(actor, b"at:put:", &[abi::size(42).unwrap(), filename]).unwrap();
         send(actor, b"at:put:", &[abi::size(44).unwrap(), contents]).unwrap();
         let file_bytes = send(actor_type, b"lookup", &[sel(b"fileBytes")]).unwrap();
+        send(string_type,b"addMethod",&[sel(b"savedStringBytes"),original_bytes]).unwrap();
         send(string_type, b"addMethod", &[sel(b"bytes"), file_bytes]).unwrap();
         assert_eq!(
             send(system, b"writeFile:contents:", &[filename, contents]).unwrap(),

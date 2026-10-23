@@ -49,7 +49,6 @@ struct State {
     last_failure: Cell<Oop>,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
-    helpers: [Cell<Oop>; 3],
     ready: Cell<bool>,
 }
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
@@ -137,6 +136,16 @@ impl State {
             )
         }?)
     }
+    unsafe fn bytes(&self, r: Oop) -> Result<Vec<u8>, Oop> {
+        unsafe {
+            let buffer = self.send(r, b"bytes", &[])?;
+            self.id.read_bytes(
+                buffer,
+                self.names[b"sizeWord".as_slice()],
+                self.names[b"atWord:".as_slice()],
+            )
+        }
+    }
     unsafe fn symbol(&self, b: &[u8]) -> Result<Oop, Oop> {
         unsafe {
             let end = b.iter().position(|b| *b == 0).unwrap_or(b.len());
@@ -212,17 +221,15 @@ impl State {
                 ListKind::Capabilities => CAPABILITIES,
             };
             let buffer = self.slot(r, slot)?;
-            let bytes = self.send(buffer, b"bytes", &[])?;
-            self.send(
-                bytes,
-                b"apply:to:with:",
-                &[
-                    self.helpers[2].get(),
-                    r,
-                    abi::size(index).ok_or_else(invalid)?,
-                    abi::size(usize::from(kind == ListKind::NativeRequires)).unwrap(),
-                ],
-            )
+            let bytes = self.bytes(buffer)?;
+            let Some(value) = list_field(&bytes, index) else {
+                return Ok(self.nil);
+            };
+            if kind == ListKind::NativeRequires {
+                self.string(value)
+            } else {
+                self.symbol(value)
+            }
         }
     }
     unsafe fn vector(&self, r: Oop, kind: ListKind) -> Result<Oop, Oop> {
@@ -249,17 +256,12 @@ impl State {
             if path.is_null() || !self.family(*path, self.string_vt)? {
                 return self.fail(b"artifactPathInvalid");
             }
-            let provider = self.send(*path, b"bytes", &[])?;
-            self.send(
-                provider,
-                b"apply:to:with:",
-                &[
-                    self.helpers[0].get(),
-                    self.artifact,
-                    ptr::null_mut(),
-                    abi::size(0).unwrap(),
-                ],
-            )
+            let path = self.bytes(*path)?;
+            let bytes = match read_artifact(path_from_bytes(&path)) {
+                Ok(v) => v,
+                Err(()) => return self.fail(b"artifactUnavailable"),
+            };
+            self.inspect_bytes(&bytes, &path)
         }
     }
     unsafe fn inspect_snapshot(&self, args: &[Oop]) -> Result<Oop, Oop> {
@@ -272,17 +274,9 @@ impl State {
             if !self.family(path, self.string_vt)? {
                 return self.fail(b"artifactPathInvalid");
             }
-            let provider = self.send(path, b"bytes", &[])?;
-            self.send(
-                provider,
-                b"apply:to:with:",
-                &[
-                    self.helpers[0].get(),
-                    self.artifact,
-                    *bytes,
-                    abi::size(1).unwrap(),
-                ],
-            )
+            let path = self.bytes(path)?;
+            let bytes = self.bytes(*bytes)?;
+            self.inspect_bytes(&bytes, &path)
         }
     }
     unsafe fn inspect_bytes(&self, bytes: &[u8], path: &[u8]) -> Result<Oop, Oop> {
@@ -478,78 +472,6 @@ entry!(capabilities, 18);
 entry!(capabilities_count, 19);
 entry!(capability_at, 20);
 
-fn decode(values: &[Oop]) -> Result<Vec<u8>, Oop> {
-    values
-        .iter()
-        .map(|&v| {
-            abi::as_size(v)
-                .and_then(|v| u8::try_from(v).ok())
-                .ok_or_else(invalid)
-        })
-        .collect()
-}
-unsafe extern "C" fn inspect_path(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
-        let mode = abi::as_size(a[end + 1])
-            .filter(|v| *v < 2)
-            .ok_or_else(invalid)?;
-        if mode == 1 {
-            let provider = s.send(a[end], b"bytes", &[])?;
-            let mut args = vec![s.helpers[1].get(), r];
-            args.extend_from_slice(&a[..end]);
-            args.push(abi::size(end).unwrap());
-            return s.send(provider, b"apply:to:with:", &args);
-        }
-        let path = decode(&a[..end])?;
-        let bytes = match read_artifact(path_from_bytes(&path)) {
-            Ok(v) => v,
-            Err(()) => return s.fail(b"artifactUnavailable"),
-        };
-        s.inspect_bytes(&bytes, &path)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn inspect_snapshot_bytes(
-    _: Oop,
-    c: Oop,
-    _: Oop,
-    a: *const Oop,
-    n: usize,
-) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let (length, values) = a.split_last().ok_or_else(invalid)?;
-        let length = abi::as_size(*length).ok_or_else(invalid)?;
-        let split = values.len().checked_sub(length).ok_or_else(invalid)?;
-        s.inspect_bytes(&decode(&values[..split])?, &decode(&values[split..])?)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn list_value(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
-        let index = abi::as_size(a[end]).ok_or_else(invalid)?;
-        let native = abi::as_size(a[end + 1])
-            .filter(|v| *v < 2)
-            .ok_or_else(invalid)?;
-        let bytes = decode(&a[..end])?;
-        let Some(value) = list_field(&bytes, index) else {
-            return Ok(s.nil);
-        };
-        if native == 1 {
-            s.string(value)
-        } else {
-            s.symbol(value)
-        }
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
 unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -571,7 +493,6 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.last_failure.get(),
         ];
         values.extend(s.names.values().copied());
-        values.extend(s.helpers.iter().map(Cell::get));
         values.extend(s.scoped.borrow().iter().copied());
         for value in values {
             s.send(*visitor, b"visit:", &[value])?;
@@ -597,7 +518,8 @@ literals![
     b"addMethod",
     b"allocate",
     b"allocate:bytes:",
-    b"apply:to:with:",
+    b"sizeWord",
+    b"atWord:",
     b"artifactAbi",
     b"artifactAbiMismatch",
     b"artifactDescriptionMissing",
@@ -618,12 +540,9 @@ literals![
     b"identity",
     b"inspect:",
     b"inspectBytes:from:",
-    b"inspectPathBytes",
-    b"inspectSnapshotBytes",
     b"kind",
     b"kind:message:",
     b"lastFailure",
-    b"listValueBytes",
     b"low32",
     b"methodAt:",
     b"nameWithBytes",
@@ -766,18 +685,6 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"capabilityAt:"),
         entry: Some(capability_at),
     },
-    MethodSpec {
-        name: index(b"inspectPathBytes"),
-        entry: Some(inspect_path),
-    },
-    MethodSpec {
-        name: index(b"inspectSnapshotBytes"),
-        entry: Some(inspect_snapshot_bytes),
-    },
-    MethodSpec {
-        name: index(b"listValueBytes"),
-        entry: Some(list_value),
-    },
 ];
 const DESCRIPTOR_METHODS: &[&[u8]] = &[
     b"kind",
@@ -878,7 +785,6 @@ unsafe extern "C" fn initialize(
                 last_failure: Cell::new(nil),
                 names: names.clone(),
                 scoped: RefCell::new(Vec::new()),
-                helpers: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
                 ready: Cell::new(false),
             }));
             INSTANCE.store(s, Ordering::Release);
@@ -887,26 +793,15 @@ unsafe extern "C" fn initialize(
                 let name = NAMES[spec.name];
                 let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = send(method, b"withContext:", &[artifact])?;
-                if let Some(i) = [
-                    b"inspectPathBytes".as_slice(),
-                    b"inspectSnapshotBytes",
-                    b"listValueBytes",
-                ]
-                .iter()
-                .position(|&n| n == name)
-                {
-                    s.helpers[i].set(keep(method)?);
-                } else {
-                    send(
-                        if DESCRIPTOR_METHODS.contains(&name) {
-                            descriptor_vt
-                        } else {
-                            artifact_vt
-                        },
-                        b"addMethod",
-                        &[symbols[spec.name], method],
-                    )?;
-                }
+                send(
+                    if DESCRIPTOR_METHODS.contains(&name) {
+                        descriptor_vt
+                    } else {
+                        artifact_vt
+                    },
+                    b"addMethod",
+                    &[symbols[spec.name], method],
+                )?;
             }
             send(roots, b"register:", &[artifact])?;
             send(id.root, b"ownerOf:put:", &[artifact_vt, artifact])?;

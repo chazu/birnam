@@ -100,9 +100,18 @@ impl Bytes {
             .map(|b| b.bytes.clone())
             .ok_or_else(invalid)
     }
+    pub(crate) unsafe fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
+        unsafe {
+            self.id.read_bytes(
+                value,
+                self.selector(b"sizeWord")?,
+                self.selector(b"atWord:")?,
+            )
+        }
+    }
     pub(crate) unsafe fn input_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
         let buffer = unsafe { self.send(value, b"bytes", &[]) }?;
-        self.copy(buffer)
+        unsafe { self.read_bytes(buffer) }
     }
     pub(crate) unsafe fn number(&self, value: Oop) -> Result<usize, Oop> {
         if let Some(n) = abi::as_size(value) {
@@ -254,11 +263,7 @@ unsafe fn run(t: &Bytes, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 let [source] = a else {
                     return Err(invalid());
                 };
-                let value = t.make(Vec::new())?;
-                t.rooted(&[value], || {
-                    t.send(*source, b"appendTo:", &[value])?;
-                    Ok(value)
-                })
+                t.make(t.read_bytes(*source)?)
             }
             1 => {
                 if !a.is_empty() {
@@ -306,12 +311,8 @@ unsafe fn run(t: &Bytes, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 let [source] = a else {
                     return Err(invalid());
                 };
-                if t.buffers.borrow().contains_key(&source.addr()) {
-                    let bytes = t.copy(*source)?;
-                    t.append(r, &bytes)
-                } else {
-                    t.send(*source, b"appendTo:", &[r])
-                }
+                let bytes = t.read_bytes(*source)?;
+                t.append(r, &bytes)
             }
             8 | 9 => {
                 let bytes = a
@@ -327,24 +328,6 @@ unsafe fn run(t: &Bytes, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 } else {
                     t.append(r, &bytes)
                 }
-            }
-            10 => {
-                let [target] = a else {
-                    return Err(invalid());
-                };
-                t.length(r)?;
-                t.send(*target, b"appendBytes:", &[r])
-            }
-            11 => {
-                let [callable, receiver, extra @ ..] = a else {
-                    return Err(invalid());
-                };
-                let bytes = t.copy(r)?;
-                let mut args = Vec::with_capacity(1 + bytes.len() + extra.len());
-                args.push(*receiver);
-                args.extend(bytes.iter().map(|&b| abi::size(b as usize).unwrap()));
-                args.extend_from_slice(extra);
-                t.send(*callable, b"apply", &args)
             }
             _ => Err(invalid()),
         }
@@ -368,8 +351,6 @@ primitive!(slice_words, 6);
 primitive!(append_bytes, 7);
 primitive!(from_values, 8);
 primitive!(append_values, 9);
-primitive!(append_to, 10);
-primitive!(apply_bytes, 11);
 
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
@@ -388,17 +369,12 @@ literals![
     b"allocate",
     b"appendByteValues",
     b"appendBytes:",
-    b"appendTo:",
-    b"apply",
-    b"apply:to:with:",
     b"at:",
     b"at:put:",
     b"byteAtWord:",
     b"bytes",
     b"bytes:appendByteValues",
     b"bytes:appendBytes:",
-    b"bytes:appendTo:",
-    b"bytes:apply:to:with:",
     b"bytes:at:",
     b"bytes:byteAtWord:",
     b"bytes:bytes",
@@ -463,6 +439,8 @@ literals![
     b"rootsDo:",
     b"sha256",
     b"size",
+    b"sizeWord",
+    b"atWord:",
     b"sliceFromWord:toWord:",
     b"sourceIndex",
     b"trace:with:",
@@ -602,14 +580,6 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(append_values),
     },
     MethodSpec {
-        name: index(b"bytes:appendTo:"),
-        entry: Some(append_to),
-    },
-    MethodSpec {
-        name: index(b"bytes:apply:to:with:"),
-        entry: Some(apply_bytes),
-    },
-    MethodSpec {
         name: index(b"view:size"),
         entry: Some(crate::tagged_view::size),
     },
@@ -691,6 +661,8 @@ static METHODS: &[MethodSpec] = &[
     },
 ];
 const BINDINGS: &[(bool, &[u8], &[u8])] = &[
+    (false, b"sizeWord", b"bytes:length"),
+    (false, b"atWord:", b"bytes:byteAtWord:"),
     (false, b"fromBytes:", b"bytes:fromBytes:"),
     (false, b"bytes", b"bytes:bytes"),
     (false, b"length", b"bytes:length"),
@@ -734,8 +706,6 @@ const BINDINGS: &[(bool, &[u8], &[u8])] = &[
     ),
     (false, b"fromByteValues", b"bytes:fromByteValues"),
     (false, b"appendByteValues", b"bytes:appendByteValues"),
-    (false, b"appendTo:", b"bytes:appendTo:"),
-    (false, b"apply:to:with:", b"bytes:apply:to:with:"),
     (true, b"size", b"view:size"),
     (true, b"at:", b"view:at:"),
     (true, b"sourceIndex", b"view:sourceIndex"),

@@ -38,7 +38,6 @@ struct Text {
     scoped: RefCell<Vec<Oop>>,
     numeric: Cell<bool>,
     ready: Cell<bool>,
-    constructor: Cell<Oop>,
 }
 struct Scope<'a> {
     values: &'a RefCell<Vec<Oop>>,
@@ -187,11 +186,12 @@ impl Text {
     }
     unsafe fn from_provider(&self, provider: Oop) -> Result<Oop, Oop> {
         unsafe {
-            self.send(
+            let bytes = self.id.read_bytes(
                 provider,
-                b"apply:to:with:",
-                &[self.constructor.get(), self.prototype],
-            )
+                self.selector(b"sizeWord")?,
+                self.selector(b"atWord:")?,
+            )?;
+            self.make(bytes, Kind::String)
         }
     }
     unsafe fn printable(&self, value: Oop) -> Result<Vec<u8>, Oop> {
@@ -268,7 +268,6 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             t.truth,
             t.falsity,
             t.nil,
-            t.constructor.get(),
         ];
         values.extend(t.names.values().copied());
         values.extend(t.scoped.borrow().iter().copied());
@@ -304,9 +303,9 @@ unsafe extern "C" fn finalize(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -
 unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
     unsafe {
         let expected = match op {
-            0 | 5 | 6 | 11 | 14 | 17 => Some(1),
+            0 | 5 | 6 | 11 | 13 | 17 => Some(1),
             8 => Some(2),
-            13 | 15 => None,
+
             _ => Some(0),
         };
         if expected.is_some_and(|n| a.len() != n) {
@@ -369,36 +368,16 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
             }
             12 => t.string(&t.copy(r, Kind::Builder)?),
             13 => {
-                let bytes = a
-                    .iter()
-                    .map(|&v| {
-                        abi::as_size(v)
-                            .and_then(|n| u8::try_from(n).ok())
-                            .ok_or_else(invalid)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                t.make(bytes, Kind::String)
-            }
-            14 => {
-                let values: Vec<_> = t
-                    .copy(r, Kind::String)?
-                    .iter()
-                    .map(|&b| abi::size(b as usize).unwrap())
-                    .collect();
-                t.send(a[0], b"appendByteValues", &values)
-            }
-            15 => {
-                let [callable, receiver, extra @ ..] = a else {
-                    return Err(invalid());
-                };
-                let mut values = vec![*receiver];
-                values.extend(
-                    t.copy(r, Kind::String)?
-                        .iter()
-                        .map(|&b| abi::size(b as usize).unwrap()),
-                );
-                values.extend_from_slice(extra);
-                t.send(*callable, b"apply", &values)
+                let index = abi::as_size(a[0]).ok_or_else(invalid)?;
+                let buffers = t.buffers.borrow();
+                let b = buffers
+                    .get(&r.addr())
+                    .filter(|b| b.kind == Kind::String)
+                    .ok_or_else(invalid)?;
+                b.bytes
+                    .get(index)
+                    .and_then(|&v| abi::size(v as usize))
+                    .ok_or_else(invalid)
             }
             16 => {
                 let hash = if t.send(t.id.root, b"behaviorOf:", &[r])? != t.behavior {
@@ -451,11 +430,9 @@ entry!(as_symbol, 9);
 entry!(new_builder, 10);
 entry!(add, 11);
 entry!(as_string, 12);
-entry!(from_values, 13);
-entry!(append_to, 14);
-entry!(apply_bytes, 15);
 entry!(collection_hash, 16);
 entry!(collection_equal, 17);
+entry!(byte_value, 13);
 #[path = "numeric.rs"]
 mod numeric;
 #[path = "split.rs"]
@@ -481,11 +458,6 @@ literals![
     b"allocate",
     b"allocationSizeOf:",
     b"appendByteValues",
-    b"appendTo:",
-    b"append_to",
-    b"apply",
-    b"apply:to:with:",
-    b"apply_bytes",
     b"asBytes",
     b"asInteger",
     b"asNumber",
@@ -521,7 +493,6 @@ literals![
     b"fromUnsignedLow:high:",
     b"fromWord:",
     b"from_bytes",
-    b"from_values",
     b"high32",
     b"indexOf:",
     b"installCollections:",
@@ -560,6 +531,9 @@ literals![
     b"rootsDo:",
     b"sequence",
     b"size",
+    b"sizeWord",
+    b"atWord:",
+    b"byte_value",
     b"split:",
     b"split::install",
     b"split::split",
@@ -588,6 +562,10 @@ const fn index(n: &[u8]) -> usize {
     panic!("missing literal")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"byte_value"),
+        entry: Some(byte_value),
+    },
     MethodSpec {
         name: index(b"numeric::install"),
         entry: Some(numeric::install),
@@ -645,14 +623,6 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(as_symbol),
     },
     MethodSpec {
-        name: index(b"append_to"),
-        entry: Some(append_to),
-    },
-    MethodSpec {
-        name: index(b"apply_bytes"),
-        entry: Some(apply_bytes),
-    },
-    MethodSpec {
         name: index(b"roots"),
         entry: Some(roots),
     },
@@ -675,10 +645,6 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: index(b"as_string"),
         entry: Some(as_string),
-    },
-    MethodSpec {
-        name: index(b"from_values"),
-        entry: Some(from_values),
     },
     MethodSpec {
         name: index(b"numeric::size"),
@@ -726,6 +692,8 @@ static METHODS: &[MethodSpec] = &[
     },
 ];
 const BINDINGS: &[(bool, &[u8], &[u8])] = &[
+    (false, b"sizeWord", b"length"),
+    (false, b"atWord:", b"byte_value"),
     (false, b"installNumbers:", b"numeric::install"),
     (false, b"installCollections:", b"split::install"),
     (false, b"fromBytes:", b"from_bytes"),
@@ -742,8 +710,6 @@ const BINDINGS: &[(bool, &[u8], &[u8])] = &[
     (false, b"trimmed", b"trimmed"),
     (false, b"replace:with:", b"replace"),
     (false, b"asSymbol", b"as_symbol"),
-    (false, b"appendTo:", b"append_to"),
-    (false, b"apply:to:with:", b"apply_bytes"),
     (false, b"rootsDo:", b"roots"),
     (false, b"referencesOf:do:", b"references"),
     (false, b"finalize:", b"finalize"),
@@ -830,7 +796,6 @@ unsafe extern "C" fn initialize(
                 scoped: RefCell::new(Vec::new()),
                 numeric: Cell::new(false),
                 ready: Cell::new(false),
-                constructor: Cell::new(ptr::null_mut()),
             }));
             INSTANCE.store(t, Ordering::Release);
             let t = &*t;
@@ -842,8 +807,6 @@ unsafe extern "C" fn initialize(
                     &[t.selector(name)?, method],
                 )?;
             }
-            t.constructor
-                .set(keep(t.method(b"from_values", prototype)?)?);
             t.send(roots, b"register:", &[prototype])?;
             for target in [behavior, builder_behavior] {
                 t.send(gc, b"trace:with:", &[target, prototype])?;

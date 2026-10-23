@@ -22,13 +22,7 @@ pub(super) struct FaultData {
     pub detail: Oop,
 }
 impl State {
-    fn native_application(&self,m:Oop)->bool{
-        if self.uses_default_lookup(m)!=Ok(true) { return false; }
-        let Ok(behavior)=self.behavior(m) else { return false; };
-        self.tables.borrow().lookup(behavior,self.selector(b"apply"))==Some(self.native_apply.get())
-    }
     pub(super) fn method_is_builtin(&self,m:Oop,action:Action)->bool{
-        if !self.native_application(m) { return false; }
         let Ok(fields)=self.native_method_fields(m) else { return false; };
         fields.context==self.root && fields.owner==self.root
             && OPERATIONS.get(fields.entry_index).is_some_and(|(_,found,_)|*found==action)
@@ -37,10 +31,8 @@ impl State {
         self.native_method_index(a,&[b]).is_some()
     }
     pub(super) fn native_method_index(&self,selected:Oop,candidates:&[Oop])->Option<usize>{
-        if !self.native_application(selected) { return None; }
         let selected=self.method_data(selected).ok()?;
         candidates.iter().position(|&candidate|{
-            if !self.native_application(candidate) { return false; }
             let Ok(candidate)=self.method_data(candidate) else { return false; };
             selected.entry as usize==candidate.entry as usize
                 && selected.context==candidate.context && selected.owner==candidate.owner
@@ -159,49 +151,25 @@ impl State {
         }
         Ok((unsafe { p.add(size_of::<usize>()) }.cast(), len))
     }
-    pub(super) fn sequence_values(&self, o: Oop) -> Result<Vec<Oop>, Oop> {
-        self.sequence_snapshot(o, &[])
-    }
-    fn sequence_snapshot(&self, o: Oop, prefix: &[Oop]) -> Result<Vec<Oop>, Oop> {
-        self.sequence_snapshot_with(o, prefix, &[])
-    }
-    fn sequence_snapshot_with(&self, o: Oop, prefix: &[Oop], suffix: &[Oop]) -> Result<Vec<Oop>, Oop> {
-        let (p, n) = self.sequence_storage(o)?;
-        let mut values = Vec::with_capacity(prefix.len() + n + suffix.len());
-        values.extend_from_slice(prefix);
-        values.extend_from_slice(unsafe { core::slice::from_raw_parts(p, n) });
-        values.extend_from_slice(suffix);
-        for &v in &values {
-            self.behavior(v)?;
-        }
+    pub(super) fn sequence_values(&self,o:Oop)->Result<Vec<Oop>,Oop>{
+        let (p,n)=self.sequence_storage(o)?;
+        let values=unsafe{core::slice::from_raw_parts(p,n)}.to_vec();
+        for &value in &values{self.behavior(value)?;}
         Ok(values)
     }
-    pub(super) unsafe fn apply_arguments(
-        &self, operation: Action, sequence: Oop, args: &[Oop],
-    ) -> Result<Oop, Oop> {
-        // This is the argument container's implementation. Other containers
-        // implement these messages without exposing their payload to Id.
-        match (operation, args) {
-            (Action::ApplyArguments, &[callable, receiver]) => {
-                let forwarded = self.sequence_snapshot(sequence, &[receiver])?;
-                unsafe { self.send(callable, b"apply", &forwarded) }
-            }
-            (Action::ApplyArgumentsWith, [callable, receiver, suffix @ ..]) => {
-                let forwarded = self.sequence_snapshot_with(sequence, &[*receiver], suffix)?;
-                unsafe { self.send(*callable, b"apply", &forwarded) }
-            }
-            (Action::AppendArguments, &[target]) => {
-                let values = self.sequence_values(sequence)?;
-                // The destination owns validation and interpretation of byte values.
-                unsafe { self.send(target, b"appendByteValues", &values) }
-            }
-            (Action::LoadArguments, &[path]) => {
-                let values = self.sequence_values(sequence)?;
-                unsafe { self.send(path, b"loadNative", &values) }
-            },
-            _ => Err(self.invalid()),
-        }
+    pub(super) unsafe fn load_arguments(&self, sequence: Oop, args: &[Oop]) -> Result<Oop,Oop> {
+        let [path]=args else{return Err(self.invalid());};
+        let values=self.sequence_values(sequence)?;
+        unsafe{self.send(*path,b"loadNative",&values)}
     }
+    // Method and Sequence are both implemented by this bootstrap owner.
+    // This explicit reflection operation takes its own argument Sequence; it
+    // does not define a second dispatch or arbitrary-container callback protocol.
+    pub(super) unsafe fn invoke_captured(&self, method:Oop, receiver:Oop, arguments:Oop)->Result<Oop,Oop>{unsafe{
+        let values=self.sequence_values(arguments)?;
+        let call=self.scope(receiver,self.selector(b"invokeOn:arguments:"),&values);
+        self.enter_method(method,receiver,&values,&call)
+    }}
     pub(super) fn new_sequence(&self, values: &[Oop]) -> Result<Oop, Oop> {
         let n = values
             .len()
@@ -237,7 +205,7 @@ impl State {
         unsafe { o.cast::<FaultData>().write(FaultData { kind:abi::object_reference(kind), detail:abi::object_reference(detail) }) };
         o
     }
-    pub(super) unsafe fn apply_native(
+    pub(super) unsafe fn enter_method(
         &self,
         m: Oop,
         r: Oop,
@@ -343,11 +311,7 @@ mod tests {
         assert!(unsafe { id.send(s.root, query, &[value, s.object, size]) }.unwrap().is_null());
         assert_eq!(unsafe { id.send(s.root, matches, &[s.root, identity, witness]) }.unwrap(), abi::size(0).unwrap());
         s.tables.borrow_mut().add_method(root_type, identity, original);
-        let private = s.tables.borrow_mut().create(&mut s.heap.borrow_mut(), s.method, s.native_meta);
-        s.tables.borrow_mut().add_method(private, s.selector(b"apply"), replacement);
-        s.heap.borrow_mut().set_vtable(witness, private);
-        s.tables.borrow_mut().note_mutation();
-        assert_eq!(unsafe { id.send(s.root, matches, &[s.root, identity, witness]) }.unwrap(), abi::size(0).unwrap());
+
     }
     #[test]
     fn failure_can_be_caught_and_stored_as_data() {

@@ -1,9 +1,12 @@
-//! File I/O uses Oop messages and completed owner-local dependencies.
+//! Native I/O uses ordinary Id sends and owner-local temporary roots.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
     id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::Cell, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
@@ -11,18 +14,12 @@ use std::{
 struct State {
     id: Protocol,
     ns: Oop,
-    string: Oop,
-    string_vt: Oop,
-    path_bytes: Oop,
-    content_bytes: Oop,
-    construct_bytes: Oop,
-    snapshot_start: Oop,
-    snapshot_contents: Oop,
-    finish_snapshot: Oop,
     nil: Oop,
     names: HashMap<&'static [u8], Oop>,
-    finish_error: Oop,
+    scoped: RefCell<Vec<Oop>>,
     ready: Cell<bool>,
+    string: Oop,
+    string_vt: Oop,
 }
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
@@ -40,6 +37,9 @@ fn invalid() -> Oop {
     }
     unsafe { abi::object_reference((*p).invalid) }
 }
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
 unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let p = INSTANCE.load(Ordering::Acquire);
     if p.is_null() {
@@ -48,30 +48,49 @@ unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let s = unsafe { &*p };
     if c == s.ns { Ok(s) } else { Err(invalid()) }
 }
-impl State {
-    unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
-        unsafe { self.id.send(r, self.names[name], a) }
+struct Scope<'a> {
+    s: &'a State,
+    start: usize,
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.s.scoped.borrow_mut().truncate(self.start);
     }
-    unsafe fn container(&self, value: Oop) -> Result<Option<Oop>, Oop> {
+}
+impl State {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn rooted<T>(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<T, Oop>,
+    ) -> Result<T, Oop> {
+        let scope = Scope {
+            s: self,
+            start: self.scoped.borrow().len(),
+        };
+        self.scoped.borrow_mut().extend_from_slice(values);
+        let result = f();
+        drop(scope);
+        result
+    }
+    unsafe fn bytes(&self, value: Oop) -> Result<Option<Vec<u8>>, Oop> {
         unsafe {
-            if value.is_null() {
-                return Err(invalid());
-            }
             if self.send(self.id.root, b"behaviorOf:", &[value])? != self.string_vt {
                 return Ok(None);
             }
-            let v = self.send(value, b"bytes", &[])?;
-            Ok((!v.is_null()).then_some(v))
-        }
-    }
-    unsafe fn binding(&self, name: &[u8]) -> Result<Oop, Oop> {
-        unsafe {
-            let value = self.send(self.ns, b"at:", &[self.names[name]])?;
-            if value.is_null() {
-                Err(invalid())
-            } else {
-                Ok(value)
+            let bytes = self.send(value, b"bytes", &[])?;
+            if bytes.is_null() {
+                return Ok(None);
             }
+            self.id
+                .read_bytes(
+                    bytes,
+                    self.names[b"sizeWord".as_slice()],
+                    self.names[b"atWord:".as_slice()],
+                )
+                .map(Some)
         }
     }
     unsafe fn make_string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
@@ -84,35 +103,34 @@ impl State {
             self.send(self.string, b"fromBytes:", &[source])
         }
     }
-    unsafe fn error(&self, text: &[u8]) -> Result<Oop, Oop> {
+    unsafe fn error(&self, message: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let message = self.make_string(text)?;
-            if message.is_null() {
-                return Err(invalid());
-            }
-            // The diagnostic is the helper's receiver, so Id protects it through
-            // lazy Error lookup and construction, with no root-token cleanup send.
-            self.send(self.finish_error, b"apply", &[message])
+            let message = object(self.make_string(message)?)?;
+            self.rooted(&[message], || {
+                let factory = self.send(self.ns, b"at:", &[self.names[b"Error".as_slice()]])?;
+                if factory.is_null() {
+                    return Ok(self.nil);
+                }
+                self.send(
+                    factory,
+                    b"kind:message:",
+                    &[self.names[b"ioError".as_slice()], message],
+                )
+            })
         }
     }
-}
-unsafe extern "C" fn finish_error(_: Oop, c: Oop, message: Oop, _: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        if n != 0 || message.is_null() {
-            return Err(invalid());
+    unsafe fn make_bytes(&self, factory: Oop, bytes: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            self.rooted(&[factory], || {
+                let values: Vec<_> = bytes
+                    .iter()
+                    .map(|&b| abi::size(b as usize).unwrap())
+                    .collect();
+                let source = self.send(self.id.root, b"sequence", &values)?;
+                self.send(factory, b"fromBytes:", &[source])
+            })
         }
-        let factory = s.send(s.ns, b"at:", &[s.names[b"Error".as_slice()]])?;
-        if factory.is_null() {
-            return Ok(s.nil);
-        }
-        s.send(
-            factory,
-            b"kind:message:",
-            &[s.names[b"ioError".as_slice()], message],
-        )
-    })()
-    .unwrap_or_else(abi::fault_reference)
+    }
 }
 use std::{
     fs,
@@ -133,321 +151,230 @@ fn read_bounded(reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-
-fn decode(a: &[Oop]) -> Option<Vec<u8>> {
-    a.iter()
-        .map(|&v| abi::as_size(v).and_then(|v| u8::try_from(v).ok()))
-        .collect()
-}
-unsafe fn operation(c: Oop, r: Oop, a: *const Oop, count: usize, mode: usize) -> Oop {
+unsafe extern "C" fn read_file(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let args = borrowed_slice(a, count).ok_or_else(invalid)?;
-        if args.len() != if mode < 3 { 1 } else { 2 } {
-            return if matches!(mode, 2 | 4) {
-                Err(invalid())
-            } else {
-                Ok(s.nil)
-            };
+        if n != 1 {
+            return Ok(s.nil);
         }
-        if args.iter().any(|v| v.is_null()) {
+        let [path] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
-        }
-        let Some(path) = s.container(args[0])? else {
-            return match mode {
-                2 => s.error(b"embedFile: expected a String path"),
-                4 => s.error(b"removeFile: expected a String path"),
-                _ => Ok(s.nil),
-            };
         };
-        s.send(
-            path,
-            b"apply:to:with:",
-            &[
-                s.path_bytes,
-                r,
-                abi::size(mode).unwrap(),
-                args.get(1).copied().unwrap_or(ptr::null_mut()),
-            ],
-        )
+        let path = object(*path)?;
+        (|| {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return Ok(s.nil);
+            };
+            let Some(path) = path_from_bytes(&path_bytes) else {
+                return s.error(b"could not read file");
+            };
+            let Ok(file) = fs::File::open(path) else {
+                return s.error(b"could not read file");
+            };
+            let Ok(bytes) = read_bounded(file, MAX_FILE_BYTES) else {
+                return s.error(b"could not read file");
+            };
+            s.make_string(&bytes)
+        })()
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-macro_rules! entry {
-    ($name:ident,$mode:expr) => {
-        unsafe extern "C" fn $name(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-            unsafe { operation(c, r, a, n, $mode) }
-        }
-    };
-}
-entry!(read_file, 0);
-entry!(read_snapshot, 1);
-entry!(embed_file, 2);
-entry!(write_file, 3);
-entry!(remove_matching, 4);
-unsafe extern "C" fn path_bytes(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+// Reusable bounded binary I/O: nil on file/encoding failure. The snapshot
+// carries owned path/content Bytes, with no source evaluation or registration.
+unsafe extern "C" fn read_snapshot(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let split = a.len().checked_sub(2).ok_or_else(invalid)?;
-        let mode = abi::as_size(a[split])
-            .filter(|v| *v < 5)
-            .ok_or_else(invalid)?;
-        let path_values = &a[..split];
-        if mode >= 3 {
-            if !path_values
-                .iter()
-                .all(|&v| abi::as_size(v).is_some_and(|v| v <= u8::MAX as usize))
-            {
-                return if mode == 4 {
-                    s.error(b"removeFile: expected a String path")
-                } else {
-                    Ok(s.nil)
+        let Some([path]) = borrowed_slice(a, n) else {
+            return Ok(s.nil);
+        };
+        let path = object(*path)?;
+        (|| {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return Ok(s.nil);
+            };
+            let Some(name) = path_from_bytes(&path_bytes) else {
+                return Ok(s.nil);
+            };
+            let bytes =
+                match fs::File::open(name).and_then(|file| read_bounded(file, MAX_FILE_BYTES)) {
+                    Ok(bytes) => bytes,
+                    Err(_) => return Ok(s.nil),
                 };
+            let named = |name: &[u8]| -> Result<Oop, Oop> {
+                object(s.send(s.ns, b"at:", &[s.names[name]])?)
+            };
+            let factory = named(b"Bytes")?;
+            s.rooted(&[factory], || {
+                let name = object(s.make_bytes(factory, &path_bytes)?)?;
+                s.rooted(&[name], || {
+                    let contents = object(s.make_bytes(factory, &bytes)?)?;
+                    s.rooted(&[contents], || {
+                        let vector = named(b"Vector")?;
+                        s.rooted(&[vector], || {
+                            let out = object(s.send(vector, b"new", &[])?)?;
+                            s.rooted(&[out], || {
+                                let out = object(s.send(out, b"add:", &[name])?)?;
+                                s.rooted(&[out], || s.send(out, b"add:", &[contents]))
+                            })
+                        })
+                    })
+                })
+            })
+        })()
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// The compiler sends this operation with a resolved filename. Source-relative
+// validation belongs to the compilation form; this owner only performs bounded I/O.
+unsafe extern "C" fn embed_file(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([path]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let path = object(*path)?;
+        (|| {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return s.error(b"embedFile: expected a String path");
+            };
+            let Some(path) = path_from_bytes(&path_bytes) else {
+                return s.error(b"embedFile: invalid path");
+            };
+            let Ok(file) = fs::File::open(path) else {
+                return s.error(b"embedFile: could not read the file");
+            };
+            let Ok(bytes) = read_bounded(file, 16 * 1024 * 1024) else {
+                return s.error(b"embedFile: could not read the file within the 16 MiB limit");
+            };
+            let factory = object(s.send(s.ns, b"at:", &[s.names[b"Bytes".as_slice()]])?)?;
+            s.rooted(&[factory], || s.make_bytes(factory, &bytes))
+        })()
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn write_file(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 2 {
+            return Ok(s.nil);
+        }
+        let [path, contents] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let path = object(*path)?;
+        let contents = object(*contents)?;
+        (|| {
+            // Copy the filename before the next send. Contents callbacks cannot
+            // redirect this write by mutating the earlier borrowed byte view.
+            let Some(path_bytes) = s.bytes(path)? else {
+                return Ok(s.nil);
+            };
+            let Some(contents) = s.bytes(contents)? else {
+                return Ok(s.nil);
+            };
+            // Preserve argument-read/error precedence: validate after both reads.
+            let Some(path) = path_from_bytes(&path_bytes) else {
+                return s.error(b"could not write file");
+            };
+            if fs::write(path, contents).is_err() {
+                return s.error(b"could not write file");
             }
-            // Snapshot the filename as byte Oops before reading contents. The
-            // contents provider receives those immutable values as a suffix.
-            let Some(contents) = s.container(a[split + 1])? else {
-                return if mode == 4 {
-                    s.error(b"removeFile: expected String contents")
-                } else {
-                    Ok(s.nil)
-                };
-            };
-            let mut arguments = Vec::with_capacity(path_values.len() + 4);
-            arguments.extend([s.content_bytes, r]);
-            arguments.extend_from_slice(path_values);
-            arguments.extend([
-                abi::size(path_values.len()).ok_or_else(invalid)?,
-                abi::size(mode).unwrap(),
-            ]);
-            return s.send(contents, b"apply:to:with:", &arguments);
-        }
-        let Some(path_bytes) = decode(path_values) else {
-            return match mode {
-                2 => s.error(b"embedFile: expected a String path"),
-                4 => s.error(b"removeFile: expected a String path"),
-                _ => Ok(s.nil),
-            };
+            Ok(r)
+        })()
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// Candidate cleanup only removes the exact bytes that its caller admitted.
+// A missing path is already removed; a replaced author file is left untouched.
+unsafe extern "C" fn remove_matching(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([path, contents]) = borrowed_slice(a, n) else {
+            return Err(invalid());
         };
-        let Some(path) = path_from_bytes(&path_bytes) else {
-            return match mode {
-                1 => Ok(s.nil),
-                2 => s.error(b"embedFile: invalid path"),
-                _ => s.error(b"could not read file"),
+        let path = object(*path)?;
+        let contents = object(*contents)?;
+        (|| {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return s.error(b"removeFile: expected a String path");
             };
-        };
-        let file = match fs::File::open(path) {
-            Ok(file) => file,
-            Err(_) => {
-                return match mode {
-                    1 => Ok(s.nil),
-                    2 => s.error(b"embedFile: could not read the file"),
-                    _ => s.error(b"could not read file"),
-                };
+            let Some(expected) = s.bytes(contents)? else {
+                return s.error(b"removeFile: expected String contents");
+            };
+            let Some(path) = path_from_bytes(&path_bytes) else {
+                return s.error(b"could not remove file");
+            };
+            let file = match fs::File::open(path) {
+                Ok(file) => file,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(r),
+                Err(_) => return s.error(b"could not inspect file for removal"),
+            };
+            match read_bounded(file, MAX_FILE_BYTES) {
+                Ok(actual) if actual == expected => (),
+                Ok(_) => return s.error(b"file changed since candidate admission"),
+                Err(_) => return s.error(b"could not inspect file for removal"),
             }
-        };
-        let bytes = match read_bounded(
-            file,
-            if mode == 2 {
-                16 * 1024 * 1024
-            } else {
-                MAX_FILE_BYTES
-            },
-        ) {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                return match mode {
-                    1 => Ok(s.nil),
-                    2 => s.error(b"embedFile: could not read the file within the 16 MiB limit"),
-                    _ => s.error(b"could not read file"),
-                };
+            match fs::remove_file(path) {
+                Ok(()) => Ok(r),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(r),
+                Err(_) => s.error(b"could not remove file"),
             }
-        };
-        if mode == 0 {
-            return s.make_string(&bytes);
-        }
-        let factory = s.binding(b"Bytes")?;
-        let mut args =
-            Vec::with_capacity(1 + bytes.len() + if mode == 1 { path_values.len() + 1 } else { 0 });
-        args.push(factory);
-        args.extend(bytes.iter().map(|&b| abi::size(b as usize).unwrap()));
-        if mode == 1 {
-            args.extend_from_slice(path_values);
-            args.push(abi::size(path_values.len()).unwrap());
-        }
-        s.send(
-            if mode == 1 {
-                s.snapshot_start
-            } else {
-                s.construct_bytes
-            },
-            b"apply",
-            &args,
-        )
+        })()
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn content_bytes(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+unsafe extern "C" fn roots_do(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let end = a.len().checked_sub(2).ok_or_else(invalid)?;
-        let path_len = abi::as_size(a[end]).ok_or_else(invalid)?;
-        let mode = abi::as_size(a[end + 1])
-            .filter(|v| matches!(v, 3 | 4))
-            .ok_or_else(invalid)?;
-        let split = end.checked_sub(path_len).ok_or_else(invalid)?;
-        let Some(contents) = decode(&a[..split]) else {
-            return if mode == 4 {
-                s.error(b"removeFile: expected String contents")
-            } else {
-                Ok(s.nil)
-            };
-        };
-        let path_bytes = decode(&a[split..end]).ok_or_else(invalid)?;
-        // Preserve error precedence: validate the filename after both reads.
-        let Some(path) = path_from_bytes(&path_bytes) else {
-            return s.error(if mode == 3 {
-                b"could not write file"
-            } else {
-                b"could not remove file"
-            });
-        };
-        if mode == 3 {
-            return if fs::write(path, contents).is_err() {
-                s.error(b"could not write file")
-            } else {
-                Ok(r)
-            };
-        }
-        let file = match fs::File::open(path) {
-            Ok(file) => file,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(r),
-            Err(_) => return s.error(b"could not inspect file for removal"),
-        };
-        match read_bounded(file, MAX_FILE_BYTES) {
-            Ok(actual) if actual == contents => (),
-            Ok(_) => return s.error(b"file changed since candidate admission"),
-            Err(_) => return s.error(b"could not inspect file for removal"),
-        };
-        match fs::remove_file(path) {
-            Ok(()) => Ok(r),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(r),
-            Err(_) => s.error(b"could not remove file"),
-        }
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-// These receivers are the newly constructed objects. Ordinary Id call roots
-// keep them alive through later constructors, avoiding a separate temporary table.
-unsafe extern "C" fn construct_bytes(_: Oop, c: Oop, factory: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let values = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let source = s.send(s.id.root, b"sequence", values)?;
-        s.send(factory, b"fromBytes:", &[source])
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn snapshot_start(_: Oop, c: Oop, factory: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let (last, values) = a.split_last().ok_or_else(invalid)?;
-        let path_len = abi::as_size(*last).ok_or_else(invalid)?;
-        let split = values.len().checked_sub(path_len).ok_or_else(invalid)?;
-        let source = s.send(s.id.root, b"sequence", &values[split..])?;
-        let name = s.send(factory, b"fromBytes:", &[source])?;
-        if name.is_null() {
-            return Err(invalid());
-        }
-        let mut args = Vec::with_capacity(split + 2);
-        args.extend([name, factory]);
-        args.extend_from_slice(&values[..split]);
-        s.send(s.snapshot_contents, b"apply", &args)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn snapshot_contents(_: Oop, c: Oop, name: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let [factory, values @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+        let [visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let source = s.send(s.id.root, b"sequence", values)?;
-        let contents = s.send(*factory, b"fromBytes:", &[source])?;
-        if contents.is_null() {
-            return Err(invalid());
+        let values = s.scoped.borrow().clone();
+        for value in values {
+            s.send(*visitor, b"visit:", &[value])?;
         }
-        s.send(s.finish_snapshot, b"apply", &[contents, name])
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn finish_snapshot(
-    _: Oop,
-    c: Oop,
-    contents: Oop,
-    a: *const Oop,
-    n: usize,
-) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let [name] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let vector = s.binding(b"Vector")?;
-        let out = s.send(vector, b"new", &[])?;
-        if out.is_null() {
-            return Err(invalid());
-        }
-        let out = s.send(out, b"add:", &[*name])?;
-        if out.is_null() {
-            return Err(invalid());
-        }
-        s.send(out, b"add:", &[contents])
+        Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
 }
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
-    b"at:",
-    b"at:put:",
+    b"Bytes",
+    b"Error",
     b"Roots",
     b"String",
     b"StringVt",
     b"System",
-    b"nil",
-    b"Error",
-    b"ioError",
-    b"Bytes",
     b"Vector",
-    b"new",
     b"add:",
-    b"behaviorOf:",
-    b"fromBytes:",
-    b"sequence",
-    b"kind:message:",
-    b"retain:",
-    b"release:",
-    b"methodAt:",
-    b"withContext:",
     b"addMethod",
-    b"apply",
-    b"apply:to:with:",
+    b"at:",
+    b"at:put:",
+    b"atWord:",
+    b"behaviorOf:",
     b"bytes",
+    b"delegated",
+    b"embedFile:",
+    b"fromBytes:",
+    b"ioError",
+    b"kind:message:",
+    b"methodAt:",
+    b"new",
+    b"nil",
+    b"printString",
     b"readFile:",
     b"readFileSnapshot:",
-    b"embedFile:",
-    b"writeFile:contents:",
+    b"reassociateBehaviorOf:with:",
+    b"register:",
+    b"release:",
     b"removeFile:ifContents:",
-    b"pathBytes",
-    b"contentBytes",
-    b"constructBytes",
-    b"snapshotStart",
-    b"snapshotContents",
-    b"finishSnapshot",
-    b"finishError"
+    b"retain:",
+    b"rootsDo:",
+    b"sequence",
+    b"sizeWord",
+    b"visit:",
+    b"withContext:",
+    b"writeFile:contents:"
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -488,32 +415,8 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(remove_matching),
     },
     MethodSpec {
-        name: index(b"pathBytes"),
-        entry: Some(path_bytes),
-    },
-    MethodSpec {
-        name: index(b"contentBytes"),
-        entry: Some(content_bytes),
-    },
-    MethodSpec {
-        name: index(b"constructBytes"),
-        entry: Some(construct_bytes),
-    },
-    MethodSpec {
-        name: index(b"snapshotStart"),
-        entry: Some(snapshot_start),
-    },
-    MethodSpec {
-        name: index(b"snapshotContents"),
-        entry: Some(snapshot_contents),
-    },
-    MethodSpec {
-        name: index(b"finishSnapshot"),
-        entry: Some(finish_snapshot),
-    },
-    MethodSpec {
-        name: index(b"finishError"),
-        entry: Some(finish_error),
+        name: index(b"rootsDo:"),
+        entry: Some(roots_do),
     },
 ];
 unsafe extern "C" fn initialize(
@@ -538,7 +441,7 @@ unsafe extern "C" fn initialize(
     let old = INSTANCE.load(Ordering::Acquire);
     if !old.is_null() {
         let s = unsafe { &*old };
-        return if s.ready.get() && s.id.root == id.root && s.ns == *ns {
+        return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
             ptr::null_mut()
         } else {
             id.invalid
@@ -551,91 +454,56 @@ unsafe extern "C" fn initialize(
     (|| unsafe {
         let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
         let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
-        let named = |n: &[u8]| -> Result<Oop, Oop> {
-            let v = send(*ns, b"at:", &[names[n]])?;
-            if v.is_null() { Err(invalid()) } else { Ok(v) }
-        };
+        let named = |n: &[u8]| object(send(*ns, b"at:", &[names[n]])?);
         let roots = named(b"Roots")?;
-        let string = named(b"String")?;
-        let string_vt = named(b"StringVt")?;
         let nil = named(b"nil")?;
         let system = named(b"System")?;
         let vt = send(id.root, b"behaviorOf:", &[system])?;
-        let mut captures = vec![*ns, roots, string, nil, system, vt, string_vt];
-        captures.extend([ptr::null_mut(); 7]);
-        let owner = send(id.root, b"sequence", &captures)?;
+        let string = named(b"String")?;
+        let string_vt = named(b"StringVt")?;
+        let owner = send(
+            id.root,
+            b"sequence",
+            &[*ns, roots, nil, system, vt, string, string_vt],
+        )?;
         let token = send(roots, b"retain:", &[owner])?;
-        let prepared = (|| {
-            let mut helpers = [ptr::null_mut(); 7];
-            for (i, name) in [
-                b"finishError".as_slice(),
-                b"pathBytes",
-                b"contentBytes",
-                b"constructBytes",
-                b"snapshotStart",
-                b"snapshotContents",
-                b"finishSnapshot",
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let method = send(image, b"methodAt:", &[names[name]])?;
-                helpers[i] = send(method, b"withContext:", &[*ns])?;
-                send(owner, b"at:put:", &[abi::size(i + 7).unwrap(), helpers[i]])?;
-            }
-            Ok(helpers)
-        })();
-        let [
-            finish_error,
-            path_bytes,
-            content_bytes,
-            construct_bytes,
-            snapshot_start,
-            snapshot_contents,
-            finish_snapshot,
-        ] = match prepared {
-            Ok(h) => h,
-            Err(e) => {
-                send(roots, b"release:", &[token])?;
-                return Err(e);
-            }
-        };
         let s = Box::into_raw(Box::new(State {
             id,
             ns: *ns,
-            string,
-            string_vt,
-            path_bytes,
-            content_bytes,
-            construct_bytes,
-            snapshot_start,
-            snapshot_contents,
-            finish_snapshot,
             nil,
             names: names.clone(),
-            finish_error,
+            scoped: RefCell::new(Vec::new()),
             ready: Cell::new(false),
+            string,
+            string_vt,
         }));
         INSTANCE.store(s, Ordering::Release);
         let s = &*s;
-        let result = (|| {
-            for name in [
-                b"readFile:".as_slice(),
-                b"readFileSnapshot:",
-                b"embedFile:",
-                b"writeFile:contents:",
-                b"removeFile:ifContents:",
-            ] {
-                let method = s.send(image, b"methodAt:", &[s.names[name]])?;
-                let method = s.send(method, b"withContext:", &[*ns])?;
-                s.send(vt, b"addMethod", &[s.names[name], method])?;
-            }
-            s.ready.set(true);
-            Ok(ptr::null_mut())
-        })();
-        // Publication can fail after a replacement addMethod has exposed the
-        // Method. Its dependencies must remain live with the resident state.
-        result
+        let owner_type = send(id.root, b"behaviorOf:", &[owner])?;
+        let private = send(owner_type, b"delegated", &[])?;
+        send(id.root, b"reassociateBehaviorOf:with:", &[owner, private])?;
+        let method = send(image, b"methodAt:", &[names[b"rootsDo:".as_slice()]])?;
+        let method = send(method, b"withContext:", &[*ns])?;
+        send(
+            private,
+            b"addMethod",
+            &[names[b"rootsDo:".as_slice()], method],
+        )?;
+        send(roots, b"register:", &[owner])?;
+        for name in [
+            b"readFile:".as_slice(),
+            b"readFileSnapshot:".as_slice(),
+            b"embedFile:".as_slice(),
+            b"writeFile:contents:".as_slice(),
+            b"removeFile:ifContents:".as_slice(),
+        ] {
+            let method = send(image, b"methodAt:", &[names[name]])?;
+            let method = send(method, b"withContext:", &[*ns])?;
+            send(vt, b"addMethod", &[names[name], method])?;
+        }
+        send(roots, b"release:", &[token])?;
+        s.ready.set(true);
+        Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
 }
