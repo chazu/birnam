@@ -144,7 +144,7 @@ pub(crate) struct Vtables {
     // source method. Addresses identify the checked metabehavior, selector and
     // registry context; they retain no objects. Every existing-graph mutation
     // clears this fact, including mutations after epoch counters saturate.
-    default_lookup: Cell<Option<(usize, usize, usize)>>,
+    default_lookup: [Cell<Option<(usize, usize, usize, bool)>>; 2],
 }
 
 impl Vtables {
@@ -155,7 +155,7 @@ impl Vtables {
             mutation_epoch: 0,
             binding_epoch: 0,
             slot_hints: std::array::from_fn(|_| Cell::new(None)),
-            default_lookup: Cell::new(None),
+            default_lookup: std::array::from_fn(|_| Cell::new(None)),
         }
     }
     pub(crate) fn mutation_epoch(&self) -> u64 {
@@ -163,7 +163,7 @@ impl Vtables {
     }
 
     pub(crate) fn note_mutation(&mut self) {
-        self.default_lookup.set(None);
+        for fact in &self.default_lookup { fact.set(None); }
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         self.binding_epoch = self.binding_epoch.saturating_add(1);
     }
@@ -334,17 +334,29 @@ impl Vtables {
     /// receiver's current metabehavior is still checked by each dispatch, and
     /// its requested method is still selected from the current dictionaries.
     #[inline]
-    pub(crate) fn has_default_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
+    fn default_lookup_fact(&self, meta: Oop, selector: Oop, expected: Oop) -> Option<bool> {
         let key = (meta.addr(), selector.addr(), expected.addr());
-        if self.default_lookup.get() == Some(key) {
-            return true;
+        for fact in &self.default_lookup {
+            if let Some((m, s, e, root)) = fact.get()
+                && (m, s, e) == key { return Some(root); }
         }
-
-        if self.lookup(meta, selector) == Some(expected) {
-            self.default_lookup.set(Some(key));
-            return true;
+        if !self.is_registered(meta) || self.lookup(meta, selector) != Some(expected) {
+            return None;
         }
-        false
+        // This owner controls every vtable/parent/binding mutation. The root
+        // relation can share the same explicitly invalidated fact as lookup.
+        let root = unsafe { ObjectMemory::vtable_of_valid_object(meta) } == meta;
+        self.default_lookup.iter().find(|fact| fact.get().is_none())
+            .unwrap_or(&self.default_lookup[0]).set(Some((key.0, key.1, key.2, root)));
+        Some(root)
+    }
+    #[inline]
+    pub(crate) fn has_default_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
+        self.default_lookup_fact(meta, selector, expected).is_some()
+    }
+    #[inline]
+    pub(crate) fn has_default_root_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
+        self.default_lookup_fact(meta, selector, expected) == Some(true)
     }
     // Expose this callback-free walk to its callers so the optimizer can
     // eliminate helper call/return work. Values and parents are still read live.
@@ -450,7 +462,7 @@ impl Vtables {
         self.ordered
             .retain(|vtable| self.by_address.contains_key(&vtable.addr()));
         if !dead.is_empty() {
-            self.default_lookup.set(None);
+            for fact in &self.default_lookup { fact.set(None); }
             self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         }
     }
@@ -495,6 +507,23 @@ impl Vtables {
 #[cfg(test)]
 mod core_tests {
     use super::*;
+    #[test]
+    fn default_lookup_fact_tracks_the_current_root_relation() {
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let nil = core::ptr::null_mut();
+        let meta = tables.create(&mut memory, nil, nil);
+        let parent = tables.create(&mut memory, nil, nil);
+        let selector = memory.allocate(0);
+        let method = memory.allocate(0);
+        memory.set_vtable(meta, meta);
+        tables.add_method(meta, selector, method);
+        assert!(tables.has_default_root_lookup(meta, selector, method));
+        memory.set_vtable(meta, parent);
+        tables.note_mutation();
+        assert!(tables.has_default_lookup(meta, selector, method));
+        assert!(!tables.has_default_root_lookup(meta, selector, method));
+    }
     #[test]
     fn default_lookup_fact_tracks_context_inheritance_retirement_and_saturation() {
         let mut memory = ObjectMemory::new();

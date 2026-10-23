@@ -22,6 +22,11 @@ pub(crate) fn construct() -> Box<State> {
     let module = family();
     let root_behavior = family();
     let registry_behavior = family();
+    // Native implementations must remain applicable while ordinary lookup is
+    // being replaced. This is a second ordinary, self-metavtable bootstrap root.
+    let native_meta = tables.create(&mut heap, meta, meta);
+    assert!(heap.set_vtable(native_meta, native_meta));
+    assert!(heap.set_vtable(method, native_meta));
     let registry = heap.allocate(0);
     assert!(heap.set_vtable(registry, registry_behavior));
     let root = heap.allocate(size_of::<usize>());
@@ -48,6 +53,7 @@ pub(crate) fn construct() -> Box<State> {
         root,
         root_behavior,
         native_apply: Cell::new(nil),
+        native_meta,
         reference_owners: RefCell::new(Vec::new()),
         meta,
         object,
@@ -67,7 +73,7 @@ pub(crate) fn construct() -> Box<State> {
         active: RefCell::new(Vec::new()),
         permanent: RefCell::new(vec![
             root, meta, object, symbol, name, size, none, method, fault, sequence, module, lookup,
-            dnu, registry,
+            dnu, registry, native_meta,
         ]),
         default_lookup: Cell::new(nil),
         invalid_fault: Cell::new(nil),

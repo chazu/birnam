@@ -18,6 +18,11 @@ removes the fixed payload catalog and makes application and payload tracing obje
 protocols. Native correctness checks pass, but measured costs rise; this supersedes
 the previous report's storage-classification design, not its historical measurements.
 
+Current implementation work is tracked in the [invariant migration log](oop-invariant-migration-20261023.md).
+Namespace, Storage, Boolean and nil now join the Oop-only native closure; collector
+activation/accounting and live root-lookup replacement are tested. ObjectModel,
+the remaining value owners, execution/compiler, images and workers are still pending.
+
 ## Required end state
 
 Every receiver, selector, argument and result crossing an ordinary Id message is

@@ -1,0 +1,437 @@
+{
+  "baseline": "eaed1bef",
+  "scope": "Pre-activation common calls; no GC or active allocation-policy timing.",
+  "reproduction_before": "cold bootstrap and three native modules: passed\nGLOBAL_LOOKUP_INSTALLED\n\nthread 'main' (12796842) has overflowed its stack\nfatal runtime error: stack overflow, aborting\n",
+  "qualification": {
+    "unit.log": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-id)\nwarning: unnecessary parentheses around assigned value\n  --> rust/birnam-id/src/id/id_dispatch.rs:45:25\n   |\n45 |     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n   |                         ^                             ^\n   |\n   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default\nhelp: remove these parentheses\n   |\n45 -     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n45 +     let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n   |\n\nwarning: unnecessary parentheses around assigned value\n   --> rust/birnam-id/src/id/native_id.rs:342:29\n    |\n342 |         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n    |                             ^                                             ^\n    |\nhelp: remove these parentheses\n    |\n342 -         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n342 +         let Some(applier) = unsafe { id_dispatch::bind(self, m, apply) }? else {\n    |\n\nwarning: method `vtable_of` is never used\n   --> rust/birnam-id/src/id/object_memory.rs:162:19\n    |\n141 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n162 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-id` (lib test) generated 3 warnings (run `cargo fix --lib -p birnam-id --tests` to apply 2 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 19 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::object_memory::tests::reference_encoding_does_not_change_extent_identity_or_record_size ... ok\ntest id::bootstrap_values::tests::payload_meaning_can_be_supplied_after_allocation ... ok\ntest id::bootstrap_values::tests::malformed_native_method_bytes_are_not_called ... ok\ntest id::native_id::lifetime_tests::detached_receiver_with_released_metavtable_is_not_dispatched ... ok\ntest id::native_id::lifetime_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::bootstrap_values::tests::detached_payloads_keep_their_reference_and_contents ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_the_current_root_relation ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::native_id::lifetime_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::bootstrap_values::tests::reference_storage_rejects_invalid_lengths_and_non_object_words ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_namespace-2615a98622bf5575)\n\nrunning 4 tests\ntest state::tests::global_lookup_scaling ... ignored, diagnostic scaling probe; host-gated timing acceptance is separate\ntest state::tests::rebinding_preserves_order_and_reverse_lookup_chooses_first_alias ... ok\ntest state::tests::indexed_imports_track_current_values_without_cross_runtime_state ... ok\ntest state::tests::large_export_churn_preserves_order_and_current_reverse_authority ... ok\n\ntest result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "global-lookup.log": "cold bootstrap and three native modules: passed\nGLOBAL_LOOKUP_INSTALLED\nGLOBAL_LOOKUP_OK\n",
+    "allocation-policy.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\nALLOCATION_POLICY_OK\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "retirement-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nRETIREMENT_FAILURE_CONTAINED\n",
+    "storage-init-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nSTORAGE_PUBLICATION_FAILURE_CONTAINED\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":3427459,\"ns_per_op\":85.686475}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":22149083,\"ns_per_op\":73.830277}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2776334,\"ns_per_op\":338.907959}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":23208750,\"ns_per_op\":23208750.000000}\n{\"heap_before\":56764,\"heap_after\":2876,\"reclaimed\":53888}\n"
+  },
+  "initial_timing": {
+    "runs": [
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3572292,
+            "ns_per_op": 89.3073
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 22607500,
+            "ns_per_op": 75.358333
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2694666,
+            "ns_per_op": 328.938721
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3326000,
+            "ns_per_op": 83.15
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 22839792,
+            "ns_per_op": 76.13264
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2837833,
+            "ns_per_op": 346.415161
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3135000,
+            "ns_per_op": 78.375
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21667042,
+            "ns_per_op": 72.223473
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 3039042,
+            "ns_per_op": 370.976807
+          }
+        ]
+      },
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3168875,
+            "ns_per_op": 79.221875
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21233500,
+            "ns_per_op": 70.778333
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2750958,
+            "ns_per_op": 335.810303
+          }
+        ]
+      },
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3133792,
+            "ns_per_op": 78.3448
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 20858583,
+            "ns_per_op": 69.52861
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2742083,
+            "ns_per_op": 334.726929
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3120125,
+            "ns_per_op": 78.003125
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 22980792,
+            "ns_per_op": 76.60264
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2787334,
+            "ns_per_op": 340.250732
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3188041,
+            "ns_per_op": 79.701025
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 22309292,
+            "ns_per_op": 74.364307
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2734917,
+            "ns_per_op": 333.852173
+          }
+        ]
+      },
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3094459,
+            "ns_per_op": 77.361475
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 20895375,
+            "ns_per_op": 69.65125
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2941375,
+            "ns_per_op": 359.054565
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "allocate-and-retain-eighth": {
+        "median_ns": {
+          "before": 78.7833375,
+          "after": 79.03801250000001
+        },
+        "change_percent": 0.32325997867252987
+      },
+      "intern-existing-64": {
+        "median_ns": {
+          "before": 70.2147915,
+          "after": 75.24847349999999
+        },
+        "change_percent": 7.168976639345259
+      },
+      "produce-and-intern-new-64": {
+        "median_ns": {
+          "before": 335.26861599999995,
+          "after": 343.33294650000005
+        },
+        "change_percent": 2.4053341455616772
+      }
+    }
+  },
+  "final_timing": {
+    "runs": [
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3189834,
+            "ns_per_op": 79.74585
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21311791,
+            "ns_per_op": 71.039303
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2862166,
+            "ns_per_op": 349.385498
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3307416,
+            "ns_per_op": 82.6854
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21953459,
+            "ns_per_op": 73.178197
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2745708,
+            "ns_per_op": 335.169434
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3148583,
+            "ns_per_op": 78.714575
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21589291,
+            "ns_per_op": 71.964303
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2987375,
+            "ns_per_op": 364.6698
+          }
+        ]
+      },
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3130709,
+            "ns_per_op": 78.267725
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 22085666,
+            "ns_per_op": 73.618887
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2746083,
+            "ns_per_op": 335.21521
+          }
+        ]
+      },
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3236041,
+            "ns_per_op": 80.901025
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21433333,
+            "ns_per_op": 71.444443
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2756666,
+            "ns_per_op": 336.50708
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3159083,
+            "ns_per_op": 78.977075
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 22247333,
+            "ns_per_op": 74.157777
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2773333,
+            "ns_per_op": 338.541626
+          }
+        ]
+      },
+      {
+        "variant": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3181042,
+            "ns_per_op": 79.52605
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21904625,
+            "ns_per_op": 73.015417
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2774583,
+            "ns_per_op": 338.694214
+          }
+        ]
+      },
+      {
+        "variant": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 3190250,
+            "ns_per_op": 79.75625
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 21545416,
+            "ns_per_op": 71.818053
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2808708,
+            "ns_per_op": 342.859863
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "allocate-and-retain-eighth": {
+        "median_ns": {
+          "before": 79.75104999999999,
+          "after": 79.2515625
+        },
+        "change_percent": -0.6263083683537563
+      },
+      "intern-existing-64": {
+        "median_ns": {
+          "before": 71.631248,
+          "after": 73.096807
+        },
+        "change_percent": 2.045977196990889
+      },
+      "produce-and-intern-new-64": {
+        "median_ns": {
+          "before": 339.6834715,
+          "after": 338.61792
+        },
+        "change_percent": -0.31368953434638414
+      }
+    }
+  }
+}

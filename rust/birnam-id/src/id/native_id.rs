@@ -25,6 +25,7 @@ pub(crate) struct State {
     pub root: Oop,
     pub root_behavior: Oop,
     pub native_apply: Cell<Oop>,
+    pub native_meta: Oop,
     pub reference_owners: RefCell<Vec<(Oop, Oop)>>,
     pub meta: Oop,
     pub object: Oop,
@@ -408,6 +409,7 @@ impl State {
                 self.permanent.borrow_mut().push(m);
             }
             if matches!(action, Action::Lookup) {
+                self.tables.borrow_mut().add_method(self.native_meta, sel, m);
                 self.default_lookup.set(m);
                 self.permanent.borrow_mut().push(m);
             }
@@ -915,4 +917,17 @@ mod lifetime_tests {
         drop(s.heap.borrow_mut().detach(vt.addr()).unwrap());
         assert!(unsafe { s.send(object, b"yourself", &[]) }.is_err());
     }
+    #[test]
+    fn detached_receiver_with_released_metavtable_is_not_dispatched() {
+        let s = super::super::initial_objects::construct();
+        let meta = s.tables.borrow_mut().create(&mut s.heap.borrow_mut(), s.meta, s.meta);
+        let vt = s.tables.borrow_mut().create(&mut s.heap.borrow_mut(), s.object, meta);
+        let object = s.allocate(vt, 0).unwrap();
+        let storage = s.heap.borrow_mut().detach(object.addr()).unwrap();
+        s.detached.borrow_mut().insert(storage.identity() as usize, storage);
+        s.retire(&[meta]).unwrap();
+        drop(s.heap.borrow_mut().detach(meta.addr()).unwrap());
+        assert!(unsafe { s.send(object, b"yourself", &[]) }.is_err());
+    }
+
 }

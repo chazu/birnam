@@ -221,3 +221,30 @@ reusing a physical fact would bypass supported replacement behavior. No new cach
 or side table was added to justify the shortcut.
 
 [Measurements and receipts](../measurements/oop-allocation-policy-20261023.json).
+
+## Piece 9: preserve root lookup replacement
+
+A new independent test reproduced a stack overflow after replacing the root
+`lookup` method with a forwarding native implementation. Applying that method
+needed lookup again, through the same replacement, before its body could execute.
+
+Native Methods now have an ordinary bootstrap metavtable of their own. A
+metavtable controls lookup for a vtable. The lookup base case follows the
+self-metavtable relation, allowing additional roots to be created through normal
+messages. Default lookup is optimized only when that root relation and the
+current lookup binding both hold; other meta-level lookups remain observable.
+The native bootstrap root and its methods remain editable objects.
+
+The existing positive-fact cache now accommodates both bootstrap roots and shares
+its invalidation with the root-relation check. This removes repeated header reads
+introduced by the first fix. Binding, parent and association mutation, retirement,
+and epoch-saturation checks remain covered. Added finalization coverage rejects a
+detached receiver whose metavtable has already been released.
+
+The test now replaces global lookup, sends messages and collects successfully,
+restores it, constructs a third lookup root through messages, and observes that
+root's replacement. All native gates pass; 19 Id and 3 Namespace unit tests pass.
+Final common-path CPU changes versus `eaed1bef`: -0.6% allocation/rooting, +2.0%
+existing-name interning, -0.3% fresh names. The initial fix's +7.2% existing-name
+result and final measurements are both retained in
+[the evidence](../measurements/oop-metacircular-lookup-20261023.json).

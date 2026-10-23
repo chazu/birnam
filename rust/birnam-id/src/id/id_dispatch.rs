@@ -10,16 +10,18 @@ pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Oop
     // A detached receiver's former vtable may already have been released.
     // Keep the checked path during finalization; the live path has the
     // receiver's strong reference to its admitted vtable.
-    let meta = if s.detached.borrow().is_empty() {
+    let has_detached = !s.detached.borrow().is_empty();
+    let meta = if !has_detached {
         unsafe { ObjectMemory::vtable_of_valid_object(behavior) }
     } else {
         s.behavior(behavior)?
     };
-    if (behavior == s.meta && selector == s.lookup)
-        || (meta == s.meta
-            && s.tables
-                .borrow()
-                .has_default_lookup(s.meta, s.lookup, s.default_lookup.get()))
+    // A self-metavtable supplies the bootstrap base case for lookup. The
+    // default fast path is valid only at such a root; a custom meta-meta lookup
+    // must still be consulted for other objects in the behavior graph.
+    if has_detached { s.behavior(meta)?; }
+    if (behavior == meta && selector == s.lookup)
+        || s.tables.borrow().has_default_root_lookup(meta, s.lookup, s.default_lookup.get())
     {
         let method = s.tables.borrow().lookup(behavior, selector);
         return Ok(method);

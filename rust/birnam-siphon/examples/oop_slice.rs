@@ -90,6 +90,7 @@ unsafe fn run() {
             b"observe:",
             b"visit:",
             b"registerRetirement:",
+            b"globalLookup", b"setGlobalLookup:", b"globalLookupCalls",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
             b"allocationChargeFor:", b"chargeExternalAllocation:", b"prepareAllocation",
             b"precisePayloads", b"precisePayloads:", b"chargeAfterGC",
@@ -146,6 +147,33 @@ unsafe fn run() {
             .send(names[2], id.load, &[load_args])
             .expect("independent native module loaded");
         println!("cold bootstrap and three native modules: passed");
+        if std::env::args().nth(2).as_deref() == Some("global-lookup") {
+            let base=send(id.root,b"objectBehavior",&[]).unwrap();
+            let meta=send(id.root,b"behaviorOf:",&[base]).unwrap();
+            let original=send(meta,b"lookup",&[sel(b"lookup")]).unwrap();
+            let actor_type=send(id.root,b"behaviorOf:",&[actor]).unwrap();
+            let replacement=send(actor_type,b"lookup",&[sel(b"globalLookup")]).unwrap();
+            send(actor,b"setGlobalLookup:",&[original]).unwrap();
+            send(meta,b"addMethod",&[sel(b"lookup"),replacement]).unwrap();
+            println!("GLOBAL_LOOKUP_INSTALLED");
+            send(id.root,b"allocationCount",&[]).unwrap();
+            send(gc,b"collectPrecisely",&[]).unwrap();
+            send(meta,b"addMethod",&[sel(b"lookup"),original]).unwrap();
+            let before=abi::as_size(send(actor,b"globalLookupCalls",&[]).unwrap()).unwrap();
+            assert!(before>0);
+            // The base case is an object graph relation, not a fixed list of
+            // recognized metavtables. A newly constructed root works too.
+            let independent=send(meta,b"delegated",&[]).unwrap();
+            send(independent,b"addMethod",&[sel(b"lookup"),replacement]).unwrap();
+            send(id.root,b"reassociateBehaviorOf:with:",&[independent,independent]).unwrap();
+            let behavior=send(base,b"delegated",&[]).unwrap();
+            send(id.root,b"reassociateBehaviorOf:with:",&[behavior,independent]).unwrap();
+            let receiver=send(behavior,b"allocate",&[abi::size(0).unwrap()]).unwrap();
+            assert_eq!(send(receiver,b"yourself",&[]).unwrap(),receiver);
+            assert!(abi::as_size(send(actor,b"globalLookupCalls",&[]).unwrap()).unwrap()>before);
+            println!("GLOBAL_LOOKUP_OK");
+            return;
+        }
         let before = send(id.root, b"allocationCount", &[]).unwrap();
         let object_type = send(id.root, b"objectBehavior", &[]).unwrap();
         assert!(
