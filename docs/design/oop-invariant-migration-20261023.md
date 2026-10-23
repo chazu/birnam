@@ -534,3 +534,19 @@ process, checking binary/empty/unterminated lines, arity, EOF, absent Error, cap
 Methods after removal, live String replacement, reload behavior and callback GC.
 Broad performance work and full-language qualification remain pending.
 [Qualification receipts](../measurements/oop-system-input-20261023.json).
+
+## Piece 22: Environment lookup receives byte Oops
+
+Environment now uses Oop Method contexts and the current String byte provider's
+bulk application protocol. Exact String recognition, UTF-8 validation, missing and
+empty values, live String construction and lazy Error publication are preserved.
+One completed root Sequence owns dependencies and private Methods; incoming calls
+and the diagnostic helper's receiver use Id's existing roots.
+
+Regression review restored absence handling: a missing byte result returns
+language nil, while a missing diagnostic String fails. The same diagnostic guard
+was applied to System input. The gate checks controlled subprocess environments,
+non-Unicode names and values, replaced byte/factory methods, private String vtables,
+a factory published during diagnostic construction, removal/reload and captured
+Methods with GC. Prior native and stdin error gates pass. No throughput claim.
+[Qualification receipts](../measurements/oop-environment-20261023.json).

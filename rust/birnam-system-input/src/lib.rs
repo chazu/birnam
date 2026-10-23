@@ -59,6 +59,9 @@ impl State {
     unsafe fn error(&self, text: &[u8]) -> Result<Oop, Oop> {
         unsafe {
             let message = self.make_string(text)?;
+            if message.is_null() {
+                return Err(invalid());
+            }
             // The diagnostic is the helper's receiver, so Id protects it through
             // lazy Error lookup and construction, with no root-token cleanup send.
             self.send(self.finish_error, b"apply", &[message])
@@ -68,7 +71,7 @@ impl State {
 unsafe extern "C" fn finish_error(_: Oop, c: Oop, message: Oop, _: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        if n != 0 {
+        if n != 0 || message.is_null() {
             return Err(invalid());
         }
         let factory = s.send(s.ns, b"at:", &[s.names[b"Error".as_slice()]])?;

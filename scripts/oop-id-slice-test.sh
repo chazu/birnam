@@ -8,13 +8,13 @@ export BIRNAM_OOP_TARGET="$CARGO_TARGET_DIR"
 fixture="$CARGO_TARGET_DIR/fixtures"
 logs="$CARGO_TARGET_DIR/qualification"
 mkdir -p "$fixture" "$logs"
-mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input --lib > "$logs/unit.log" 2>&1
-mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage -p birnam-boolean -p birnam-nil -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input > "$logs/build.log" 2>&1
+mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment --lib > "$logs/unit.log" 2>&1
+mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage -p birnam-boolean -p birnam-nil -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_slice > "$logs/caller-build.log" 2>&1
 python3 - "$CARGO_TARGET_DIR/release" <<'PY_EXPORTS'
 from pathlib import Path
 import json,subprocess,sys
-for name in ['id','root-registry','collect','namespace','storage','boolean','nil','object-model','word','bytes','string','float','integer','vector','map','prelude','system-input']:
+for name in ['id','root-registry','collect','namespace','storage','boolean','nil','object-model','word','bytes','string','float','integer','vector','map','prelude','system-input','environment']:
     manifest=json.loads(Path('rust/birnam-'+name+'/exports.json').read_text())
     library=Path(sys.argv[1])/('libbirnam_'+name.replace('-','_')+'.dylib')
     actual=set(subprocess.check_output(['nm','-gjU',str(library)],text=True).splitlines())
@@ -46,7 +46,17 @@ import sys
 Path(sys.argv[1]).write_bytes(b'a\x00\xff\r\n\nchanged\nlast')
 PY_INPUT
 BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
-    "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" numeric-integration < "$logs/input.bin" > "$logs/numeric-integration.log" 2>&1
+python3 - "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" "$logs" <<'PY_NUMERIC'
+import os,subprocess,sys
+from pathlib import Path
+exe,root,logs=sys.argv[1:]
+env=dict(os.environb)
+for name in [b'BIRNAM_OOP_TEST_MISSING',b'fixture-hello']:
+    env.pop(name,None)
+env.update({b'BIRNAM_OOP_TEST_PRESENT':'héllo'.encode(),b'BIRNAM_OOP_TEST_EMPTY':b'',b'BIRNAM_OOP_TEST_BINARY':b'\xff'})
+with open(Path(logs)/'input.bin','rb') as source,open(Path(logs)/'numeric-integration.log','wb') as output:
+    subprocess.run([exe,root,'numeric-integration'],stdin=source,stdout=output,stderr=subprocess.STDOUT,env=env,check=True)
+PY_NUMERIC
 BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
     "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" numeric-input-error < "$root" > "$logs/input-error.log" 2>&1
 

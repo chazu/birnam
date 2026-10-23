@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 6],
+    modules: [Oop; 7],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -741,6 +741,117 @@ pub(super) unsafe fn check(
         .unwrap();
         println!(
             "System readLine binary input, EOF, detached Method, live constructor and callback GC: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert!(id.send(modules[6], id.load, &[args]).unwrap().is_null());
+        let getter = keep(send(system_type, b"lookup", &[sel(b"getEnv:")]).unwrap());
+        let present = text(b"BIRNAM_OOP_TEST_PRESENT");
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        assert_eq!(
+            text_bytes(send(system, b"getEnv:", &[present]).unwrap()),
+            "héllo".as_bytes()
+        );
+        assert_eq!(
+            text_bytes(send(system, b"getEnv:", &[text(b"BIRNAM_OOP_TEST_EMPTY")]).unwrap()),
+            b""
+        );
+        assert_eq!(
+            send(system, b"getEnv:", &[text(b"BIRNAM_OOP_TEST_MISSING")]).unwrap(),
+            nil
+        );
+        assert_eq!(send(system, b"getEnv:", &[]).unwrap(), nil);
+        assert_eq!(send(system, b"getEnv:", &[one]).unwrap(), nil);
+        for name in [text(b"\xff"), text(b"BIRNAM_OOP_TEST_BINARY")] {
+            let e = keep(send(system, b"getEnv:", &[name]).unwrap());
+            assert_eq!(
+                send(e, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+                sel(b"ioError")
+            );
+            assert_eq!(
+                text_bytes(send(e, b"at:", &[abi::size(1).unwrap()]).unwrap()),
+                b"could not read environment"
+            );
+        }
+        let original_bytes = keep(send(string_type, b"lookup", &[sel(b"bytes")]).unwrap());
+        let absent_value = send(actor_type, b"lookup", &[sel(b"absentValue")]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"bytes"), absent_value]).unwrap();
+        assert_eq!(send(system, b"getEnv:", &[present]).unwrap(), nil);
+        assert!(send(system, b"getEnv:", &[core::ptr::null_mut()]).is_err());
+
+        send(string_type, b"addMethod", &[sel(b"bytes"), replacement]).unwrap();
+        assert_eq!(send(system, b"getEnv:", &[present]).unwrap(), nil);
+        send(string_type, b"addMethod", &[sel(b"bytes"), original_bytes]).unwrap();
+        send(id.root, b"ensurePrivateVtableFor:", &[present]).unwrap();
+        assert_eq!(send(system, b"getEnv:", &[present]).unwrap(), nil);
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[present, string_type],
+        )
+        .unwrap();
+        send(
+            string_type,
+            b"addMethod",
+            &[sel(b"fromBytes:"), replacement],
+        )
+        .unwrap();
+        assert_eq!(send(system, b"getEnv:", &[present]).unwrap(), expected);
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), factory]).unwrap();
+        let malformed = text(b"\xff");
+        send(
+            string_type,
+            b"addMethod",
+            &[sel(b"fromBytes:"), absent_value],
+        )
+        .unwrap();
+        assert!(send(system, b"getEnv:", &[malformed]).is_err());
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), factory]).unwrap();
+
+        send(actor, b"at:put:", &[abi::size(39).unwrap(), factory]).unwrap();
+        send(actor, b"at:put:", &[abi::size(40).unwrap(), error]).unwrap();
+        send(
+            namespace,
+            b"at:put:",
+            &[sel(b"Error"), core::ptr::null_mut()],
+        )
+        .unwrap();
+        let publish = send(actor_type, b"lookup", &[sel(b"publishErrorString")]).unwrap();
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), publish]).unwrap();
+        let e = send(system, b"getEnv:", &[malformed]).unwrap();
+        assert_eq!(
+            send(e, b"at:", &[abi::size(0).unwrap()]).unwrap(),
+            sel(b"ioError")
+        );
+        send(string_type, b"addMethod", &[sel(b"fromBytes:"), factory]).unwrap();
+        send(system_type, b"removeMethod:", &[sel(b"getEnv:")]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert!(id.send(modules[6], id.load, &[args]).unwrap().is_null());
+        assert!(
+            send(system_type, b"lookup", &[sel(b"getEnv:")])
+                .unwrap()
+                .is_null()
+        );
+        let args = send(id.root, b"sequence", &[present]).unwrap();
+        assert_eq!(
+            text_bytes(send(getter, b"invokeOn:arguments:", &[system, args]).unwrap()),
+            "héllo".as_bytes()
+        );
+        send(system_type, b"addMethod", &[sel(b"getEnv:"), getter]).unwrap();
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        println!(
+            "Environment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }
