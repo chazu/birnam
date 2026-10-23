@@ -61,6 +61,8 @@ unsafe fn run() {
             b"referencesOf:do:",
             b"collectArguments",
             b"snapshotArgument:",
+            b"apply",
+            b"applyValue",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
@@ -351,6 +353,34 @@ unsafe fn run() {
             Some(20)
         );
         println!("custom metacircular lookup and full-arity DNU: passed");
+        // A different callable layout is ordinary object behavior, not a new Id type.
+        let value = send(actor, b"dynamicName:", &[abi::size(21).unwrap()]).unwrap();
+        let callable = send(id.root, b"sequence", &[value]).unwrap();
+        let token = send(roots, b"retain:", &[callable]).unwrap();
+        let original_type = send(id.root, b"behaviorOf:", &[callable]).unwrap();
+        let callable_type = send(original_type, b"delegated", &[]).unwrap();
+        let applier = send(actor_vt, b"lookup", &[sel(b"applyValue")]).unwrap();
+        send(callable_type, b"addMethod", &[sel(b"apply"), applier]).unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[callable, callable_type],
+        )
+        .unwrap();
+        let receiver_type = send(base, b"delegated", &[]).unwrap();
+        send(
+            receiver_type,
+            b"addMethod",
+            &[sel(b"missingProbe"), callable],
+        )
+        .unwrap();
+        let receiver = send(receiver_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
+        assert_eq!(send(receiver, b"missingProbe", &[]).unwrap(), value);
+        send(roots, b"release:", &[token]).unwrap();
+        println!(
+            "non-native callable layout applies through live Id lookup and survives GC: passed"
+        );
+
         let boxed = Box::new(id);
         let address = (&*boxed as *const Protocol).addr();
         let selector = sel(b"allocationCount").addr();

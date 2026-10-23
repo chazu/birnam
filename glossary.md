@@ -14,7 +14,7 @@ what they mean rather than silently rewriting evidence.
 | retained-name call | **interning an existing Name** | Interning a Name that was created earlier and is kept alive. In a benchmark, explicitly say that creation is outside the timer. |
 | allocation-table lookup | **reading the allocation record** | Looking up the object's allocation size, identity, or storage information. This reads existing bookkeeping; it does not allocate an object. |
 | method-record lookup | **reading Method data** | Obtaining a Method's code, context, and code owner. If a separate table is involved, say **looking up Method data in a separate table**. |
-| name-owner lookup | **checking Name storage** | Checking that an object has the representation created by the Name implementation before reading its bytes. This is distinct from checking its current vtable: changing behavior does not resize an object. |
+| name-owner lookup | **checking Name storage** | Checking that the payload satisfies the Name implementation's format before reading its bytes. This does not require a constructor-origin tag. This is distinct from checking its current vtable: changing behavior does not resize an object. |
 | invocation-root references | **objects kept alive for a call** | The receiver, arguments, selected Method, context, and owner that must survive any GC during the call. **Call roots** is acceptable after this definition. |
 | census delivery / allocation census | **listing allocated objects for GC** / **allocated-object list** | Supplying the collector with the objects that currently occupy managed storage, including the facts it needs about them. Say whether this uses callbacks, a snapshot, or both. |
 | retirement preparation / metadata retirement | **removing dead objects from runtime tables** | Removing records that must not outlive an object, before its address can be reused. This is separate from freeing its memory. |
@@ -37,8 +37,9 @@ use either term for the whole message send without saying so.
 - **Malleability:** the ability to replace and rewrite behavior and implementation
   through the language's supported protocols. A storage optimization must not
   quietly freeze a binding or bypass a supported replacement.
-- **Method:** an object identifying callable code together with its context and
-  code owner. Describe where these contents live if that matters to the cost.
+- **Method:** an object used as a callable through its application protocol.
+  The bootstrap native implementation stores a code declaration index, context
+  and code owner; other implementations may use different payload layouts.
 - **Context:** the object supplied to a method implementation for its own state.
 - **Code owner:** the object that keeps the selected executable code and associated
   resources alive while they are needed.

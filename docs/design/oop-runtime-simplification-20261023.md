@@ -1,5 +1,9 @@
 # Simpler Oop-only object storage and call roots
 
+Historical checkpoint. The fixed storage classification described below was
+subsequently rejected and [removed](oop-payload-opacity-20261023.md). Keep these
+measurements as evidence of that earlier implementation, not as design guidance.
+
 2026-10-23. This changes the isolated Oop-only worktree, not the installed runtime.
 See [the glossary](../../glossary.md) for terminology and
 [the measurements](../measurements/oop-runtime-simplification-20261023.json) for evidence.

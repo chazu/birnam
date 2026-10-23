@@ -9,56 +9,28 @@ use crate::{abi::Oop, boundary, raw::AddressMap};
 const BLOCK_ALIGNMENT: usize = 16;
 const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
 
-// Storage layout is independent of the object's replaceable vtable. The low
-// three bits of the rounded extent are free, so this adds no allocation-record
-// field and does not reduce the allocation identity range.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(usize)]
-pub(crate) enum Storage {
-    Opaque = 0,
-    Name = 1,
-    Method = 2,
-    Fault = 3,
-    References = 4,
-}
-
 /// Owns exactly one allocation, including when detached from the registry.
 /// Dropping it releases storage and never invokes a language callback.
 pub(crate) struct Allocation {
     pub(crate) base: NonNull<u8>,
-    extent_and_storage: usize,
+    total_size: usize,
     // Preserve the existing identity bound and requested-size geometry. Low
-    // two bits are unused here; collection state belongs to the upper owner.
+    // two bits preserve the canonical reference; GC state belongs to its owner.
     pub(crate) geometry: u64,
 }
 
 impl Allocation {
     pub(crate) fn object(&self) -> Oop {
-        let object = self.payload().as_ptr().cast();
-        if self.storage() == Storage::Fault {
-            crate::abi::fault_reference(object)
-        } else {
-            object
-        }
-    }
-    pub(crate) fn storage(&self) -> Storage {
-        match self.extent_and_storage & 7 {
-            0 => Storage::Opaque,
-            1 => Storage::Name,
-            2 => Storage::Method,
-            3 => Storage::Fault,
-            4 => Storage::References,
-            _ => unreachable!("owned storage kind"),
-        }
-    }
-    fn total_size(&self) -> usize {
-        self.extent_and_storage & !7
+        self.payload()
+            .as_ptr()
+            .cast::<core::ffi::c_void>()
+            .map_addr(|p| p | (self.geometry as usize & 3))
     }
     pub(crate) fn identity(&self) -> u64 {
         self.geometry >> 5
     }
     pub(crate) fn requested_size(&self) -> usize {
-        self.total_size() - VTABLE_HEADER_SIZE - ((self.geometry >> 2) & 7) as usize
+        self.total_size - VTABLE_HEADER_SIZE - ((self.geometry >> 2) & 7) as usize
     }
     pub(crate) fn payload(&self) -> NonNull<u8> {
         // SAFETY: this owner retains the nonempty header allocation.
@@ -68,7 +40,7 @@ impl Allocation {
 
 impl Drop for Allocation {
     fn drop(&mut self) {
-        let layout = Layout::from_size_align(self.total_size(), BLOCK_ALIGNMENT)
+        let layout = Layout::from_size_align(self.total_size, BLOCK_ALIGNMENT)
             .expect("stored block layout must remain valid");
         // SAFETY: allocation and detachment transfer this sole owner, retaining
         // the exact layout originally passed to alloc_zeroed.
@@ -117,7 +89,7 @@ impl ObjectMemory {
             .unwrap_or_else(|| boundary::fatal_invariant("allocation identity exhausted"));
         let allocation = Allocation {
             base,
-            extent_and_storage: total_size,
+            total_size,
             geometry: (self.next_identity << 5)
                 | (((total_size - VTABLE_HEADER_SIZE - payload_size) as u64) << 2),
         };
@@ -138,19 +110,15 @@ impl ObjectMemory {
             .iter()
             .map(|(address, allocation)| (*address, allocation))
     }
-    // Called only after the owner has initialized the payload, before it can
-    // escape or any message can reenter the runtime.
-    pub(crate) fn set_storage(&mut self, object: Oop, storage: Storage) {
+    // Remember the actual reference chosen by the owner, without interpreting
+    // its payload or giving the allocation a language type.
+    pub(crate) fn set_reference(&mut self, reference: Oop) {
+        assert!(crate::abi::as_size(reference).is_none());
         let record = self
             .allocations
-            .get_mut(&crate::abi::heap_address(object))
-            .expect("owned storage");
-        assert_eq!(
-            record.storage(),
-            Storage::Opaque,
-            "storage layout is immutable"
-        );
-        record.extent_and_storage |= storage as usize;
+            .get_mut(&crate::abi::heap_address(reference))
+            .expect("owned reference");
+        record.geometry = (record.geometry & !3) | (reference.addr() as u64 & 3);
     }
     pub(crate) fn allocation_epoch(&self) -> u64 {
         self.next_identity
@@ -224,18 +192,18 @@ impl ObjectMemory {
 mod tests {
     use super::*;
     #[test]
-    fn storage_layout_does_not_change_extents_identities_or_record_size() {
+    fn reference_encoding_does_not_change_extent_identity_or_record_size() {
         assert_eq!(size_of::<Allocation>(), 24);
-        let mut heap = ObjectMemory::new();
-        for bytes in 0..128 {
-            let object = heap.allocate(bytes);
-            let identity = heap.get(object.addr()).unwrap().identity();
-            heap.set_storage(object, Storage::Name);
-            let record = heap.get(object.addr()).unwrap();
-            assert_eq!(record.requested_size(), bytes);
-            assert_eq!(record.identity(), identity);
-            assert_eq!(record.object(), object);
-            assert_eq!(record.storage(), Storage::Name);
+        let mut h = ObjectMemory::new();
+        for n in 0..128 {
+            let o = h.allocate(n);
+            let id = h.get(o.addr()).unwrap().identity();
+            let reference = crate::abi::fault_reference(o);
+            h.set_reference(reference);
+            let a = h.get(o.addr()).unwrap();
+            assert_eq!(a.requested_size(), n);
+            assert_eq!(a.identity(), id);
+            assert_eq!(a.object(), reference);
         }
     }
 }

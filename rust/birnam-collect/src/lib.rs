@@ -197,7 +197,8 @@ literals![
     b"releaseDetachedAllocation:",
     b"register:",
     b"allocationCount",
-    b"allocationEpoch"
+    b"allocationEpoch",
+    b"referenceOwnersDo:"
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -341,6 +342,7 @@ unsafe extern "C" fn initialize(
                     },
                 );
             }
+            s.send(id.root, b"referenceOwnersDo:", &[receiver])?;
             s.send(*root_registry, b"register:", &[receiver])?;
             Ok(receiver)
         })()

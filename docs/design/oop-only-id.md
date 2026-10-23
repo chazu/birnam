@@ -13,6 +13,11 @@ Follow-up: [simpler object storage and call roots](oop-runtime-simplification-20
 removes the four redundant tables and per-call argument copying. Native checks
 pass and costs fall, but the migration remains isolated and incomplete.
 
+Latest: [opaque payloads without Storage classification](oop-payload-opacity-20261023.md)
+removes the fixed payload catalog and makes application and payload tracing object
+protocols. Native correctness checks pass, but measured costs rise; this supersedes
+the previous report's storage-classification design, not its historical measurements.
+
 ## Required end state
 
 Every receiver, selector, argument and result crossing an ordinary Id message is

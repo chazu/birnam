@@ -1,7 +1,7 @@
 //! Oop-only production floor for the vertical migration slice.
 use super::{
     id_dispatch,
-    object_memory::{Allocation, ObjectMemory, Storage},
+    object_memory::{Allocation, ObjectMemory},
     symbol::Symbols,
     vtable::Vtables,
 };
@@ -18,31 +18,13 @@ use std::{
     collections::HashMap,
     ffi::c_void,
 };
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct MethodRecord {
-    pub entry: Method,
-    pub context: Oop,
-    pub owner: Oop,
-}
-// Private result of method selection, not an Id argument/result carrier.
-// The method body is immutable; the selected copy remains valid across callbacks.
-pub(crate) struct SelectedMethod {
-    object: Oop,
-    data: MethodRecord,
-}
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct FaultRecord {
-    kind: Oop,
-    detail: Oop,
-}
 pub(crate) struct ModuleRecord {
     _handle: *mut c_void,
-    literals: Vec<Oop>,
-    symbols: Vec<Oop>,
-    methods: Vec<(Oop, Oop)>,
-    result: Oop,
+    pub(super) declarations: &'static [native::MethodSpec],
+    pub(super) literals: Vec<Oop>,
+    pub(super) symbols: Vec<Oop>,
+    pub(super) methods: Vec<(Oop, Oop)>,
+    pub(super) result: Oop,
 }
 pub(crate) struct State {
     pub protocol: Protocol,
@@ -50,6 +32,9 @@ pub(crate) struct State {
     pub tables: RefCell<Vtables>,
     pub symbols: RefCell<Symbols>,
     pub root: Oop,
+    pub root_behavior: Oop,
+    pub native_apply: Cell<Oop>,
+    pub reference_owners: RefCell<Vec<(Oop, Oop)>>,
     pub meta: Oop,
     pub object: Oop,
     pub symbol: Oop,
@@ -90,7 +75,7 @@ pub(crate) struct Scope<'a> {
     _arguments: core::marker::PhantomData<&'a [Oop]>,
 }
 impl Scope<'_> {
-    fn entered(&self, method: Oop, context: Oop, owner: Oop) {
+    pub(super) fn entered(&self, method: Oop, context: Oop, owner: Oop) {
         let mut frames = self.s.active.borrow_mut();
         let frame = &mut frames[self.start];
         frame.method = method;
@@ -108,6 +93,14 @@ impl Drop for Scope<'_> {
 #[derive(Clone, Copy)]
 pub(crate) enum Action {
     Lookup,
+    ApplyNative,
+    ReferenceOwners,
+    NoReferences,
+    TableReferences,
+    MethodReferences,
+    FaultReferences,
+    SequenceReferences,
+    ModuleReferences,
     Add,
     Remove,
     Allocate,
@@ -162,12 +155,14 @@ macro_rules! core_primitives {
                 unsafe{s.perform(Action::$action,r,a)}.unwrap_or_else(|e|e)
             })*
         }
-        const OPERATIONS:&[(&[u8],Action,Method)]=&[$(($name,Action::$action,primitive::$action)),*];
+        pub(super) const OPERATIONS:&[(&[u8],Action,Method)]=&[$(($name,Action::$action,primitive::$action)),*];
     };
 }
 core_primitives![
     (b"lookup", Lookup),
     (b"addMethod", Add),
+    (b"apply", ApplyNative),
+    (b"referenceOwnersDo:", ReferenceOwners),
     (b"removeMethod:", Remove),
     (b"allocate", Allocate),
     (b"delegated", Delegated),
@@ -205,6 +200,12 @@ core_primitives![
     (b"bindingsDo:", Bindings),
     (b"behaviorEpoch", Epoch),
     (b"bindingEpoch", BindingEpoch),
+    (b"noReferences", NoReferences),
+    (b"tableReferences", TableReferences),
+    (b"methodReferences", MethodReferences),
+    (b"faultReferences", FaultReferences),
+    (b"sequenceReferences", SequenceReferences),
+    (b"moduleReferences", ModuleReferences),
 ];
 impl State {
     pub fn check(&self) -> Result<(), Oop> {
@@ -229,7 +230,7 @@ impl State {
             .intern(&mut self.heap.borrow_mut(), self.symbol, b)
             .unwrap()
     }
-    fn allocate(&self, behavior: Oop, size: usize) -> Result<Oop, Oop> {
+    pub(super) fn allocate(&self, behavior: Oop, size: usize) -> Result<Oop, Oop> {
         if !ObjectMemory::valid_payload_size(size) || !self.tables.borrow().is_registered(behavior)
         {
             return Err(self.invalid());
@@ -239,11 +240,11 @@ impl State {
         assert!(h.set_vtable(o, behavior));
         Ok(o)
     }
-    // Native owners only interpret their own storage. Vtable replacement does
-    // not change this layout or turn another object into a Name/Method.
-    fn storage(&self, o: Oop, expected: Storage) -> Result<(*mut u8, usize), Oop> {
+    // Allocation facts only. Payload interpretation belongs to the selected
+    // owner implementation, never to the allocator or generic dispatcher.
+    pub(super) fn payload(&self, o: Oop) -> Result<(*mut u8, usize), Oop> {
         let check = |a: &Allocation| {
-            if a.object() != o || a.storage() != expected {
+            if a.object() != o {
                 return Err(self.invalid());
             }
             Ok((a.payload().as_ptr(), a.requested_size()))
@@ -258,77 +259,6 @@ impl State {
             .map(check)
             .unwrap_or(Err(self.invalid()))
     }
-    pub fn is_method(&self, o: Oop) -> bool {
-        self.storage(o, Storage::Method).is_ok()
-    }
-    fn method_data(&self, o: Oop) -> Result<MethodRecord, Oop> {
-        let (p, n) = self.storage(o, Storage::Method)?;
-        if n != size_of::<MethodRecord>() {
-            return Err(self.invalid());
-        }
-        Ok(unsafe { p.cast::<MethodRecord>().read() })
-    }
-    fn fault_data(&self, o: Oop) -> Result<FaultRecord, Oop> {
-        let (p, n) = self.storage(o, Storage::Fault)?;
-        if n != size_of::<FaultRecord>() {
-            return Err(self.invalid());
-        }
-        Ok(unsafe { p.cast::<FaultRecord>().read() })
-    }
-    pub fn make_name(&self, b: &[u8]) -> Result<Oop, Oop> {
-        if b.contains(&0) {
-            return Err(self.invalid());
-        }
-        let o = self.allocate(self.name, b.len())?;
-        unsafe { core::ptr::copy_nonoverlapping(b.as_ptr(), o.cast::<u8>(), b.len()) };
-        self.heap.borrow_mut().set_storage(o, Storage::Name);
-        Ok(o)
-    }
-    fn name_data(&self, o: Oop) -> Result<(*const u8, usize), Oop> {
-        self.storage(o, Storage::Name)
-            .map(|(p, n)| (p.cast_const(), n))
-    }
-    fn sequence_storage(&self, o: Oop) -> Result<(*mut Oop, usize), Oop> {
-        let (p, n) = self.storage(o, Storage::References)?;
-        if n % size_of::<Oop>() != 0 {
-            return Err(self.invalid());
-        }
-        Ok((p.cast(), n / size_of::<Oop>()))
-    }
-    fn sequence_values(&self, o: Oop) -> Result<Vec<Oop>, Oop> {
-        let (p, n) = self.sequence_storage(o)?;
-        Ok(unsafe { core::slice::from_raw_parts(p, n) }.to_vec())
-    }
-    fn new_sequence(&self, values: &[Oop]) -> Result<Oop, Oop> {
-        let size = values
-            .len()
-            .checked_mul(size_of::<Oop>())
-            .ok_or(self.invalid())?;
-        let o = self.allocate(self.sequence, size)?;
-        unsafe { core::ptr::copy_nonoverlapping(values.as_ptr(), o.cast::<Oop>(), values.len()) };
-        self.heap.borrow_mut().set_storage(o, Storage::References);
-        Ok(o)
-    }
-    fn new_method(&self, entry: Method, context: Oop, owner: Oop) -> Result<Oop, Oop> {
-        let o = self.allocate(self.method, size_of::<MethodRecord>())?;
-        unsafe {
-            o.cast::<MethodRecord>().write(MethodRecord {
-                entry,
-                context,
-                owner,
-            })
-        };
-        self.heap.borrow_mut().set_storage(o, Storage::Method);
-        Ok(o)
-    }
-    fn make_fault(&self, kind: Oop, detail: Oop) -> Oop {
-        let o = self
-            .allocate(self.fault, size_of::<FaultRecord>())
-            .expect("core fault allocation");
-        unsafe { o.cast::<FaultRecord>().write(FaultRecord { kind, detail }) };
-        self.heap.borrow_mut().set_storage(o, Storage::Fault);
-        abi::fault_reference(o)
-    }
     pub fn behavior(&self, o: Oop) -> Result<Oop, Oop> {
         if o.is_null() {
             return Ok(self.none);
@@ -338,12 +268,14 @@ impl State {
         }
         self.heap
             .borrow()
-            .vtable_of(o)
+            .get(o.addr())
+            .filter(|a| a.object() == o)
+            .map(|_| unsafe { ObjectMemory::vtable_of_valid_object(o) })
             .or_else(|| {
                 self.detached
                     .borrow()
                     .values()
-                    .find(|a| a.payload().as_ptr().addr() == abi::heap_address(o))
+                    .find(|a| a.object() == o)
                     .map(|_| unsafe { ObjectMemory::vtable_of_valid_object(o) })
             })
             .ok_or(self.invalid())
@@ -382,42 +314,22 @@ impl State {
         }
         roots
     }
-    pub fn checked_method(&self, m: Oop) -> Result<SelectedMethod, Oop> {
-        Ok(SelectedMethod {
-            object: m,
-            data: self.method_data(m)?,
-        })
-    }
-    // Only private dictionary entries admitted by addMethod reach this path.
-    // A live binding keeps the immutable Method alive; no callback intervenes.
-    pub unsafe fn bound_method(&self, m: Oop) -> SelectedMethod {
-        SelectedMethod {
-            object: m,
-            data: unsafe { m.cast::<MethodRecord>().read() },
+    pub unsafe fn invoke(&self, m: Oop, r: Oop, a: &[Oop], scope: &Scope<'_>) -> Result<Oop, Oop> {
+        scope.entered(m, core::ptr::null_mut(), core::ptr::null_mut());
+        let apply = self.selector(b"apply");
+        let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {
+            return Err(self.unbound());
+        };
+        if applier == self.native_apply.get() {
+            return unsafe { self.apply_native(m, r, a, scope) };
         }
+        let mut forwarded = Vec::with_capacity(a.len() + 1);
+        forwarded.push(r);
+        forwarded.extend_from_slice(a);
+        let call = self.scope(m, apply, &forwarded);
+        unsafe { self.invoke(applier, m, &forwarded, &call) }
     }
-    pub unsafe fn invoke(
-        &self,
-        selected: SelectedMethod,
-        r: Oop,
-        a: &[Oop],
-        scope: &Scope<'_>,
-    ) -> Result<Oop, Oop> {
-        let m = selected.object;
-        let record = selected.data;
-        scope.entered(m, record.context, record.owner);
-        let value = unsafe { (record.entry)(self.root, record.context, r, a.as_ptr(), a.len()) };
-        if abi::is_fault(value) {
-            if self.fault_data(value).is_err() {
-                return Err(self.invalid());
-            }
-            Err(value)
-        } else {
-            self.behavior(value)?;
-            Ok(value)
-        }
-    }
-    unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+    pub(super) unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
         unsafe { id_dispatch::send(self, r, self.selector(name), a) }
     }
     pub fn initialize(&self) {
@@ -435,6 +347,7 @@ impl State {
             b"mappingFailed",
             b"incompatibleModule",
             b"initializerFailed",
+            b"trace:with:",
         ] {
             let symbol = self.seed_symbol(name);
             self.names.borrow_mut().insert(name, symbol);
@@ -458,19 +371,25 @@ impl State {
                 Action::Intern | Action::Load => self.name,
                 Action::At | Action::Put | Action::SequenceSize => self.sequence,
                 Action::MethodAt | Action::LiteralAt => self.module,
-                Action::WithContext | Action::Invoke => self.method,
+                Action::WithContext | Action::Invoke | Action::ApplyNative => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
             };
-            if matches!(action, Action::Lookup | Action::Add) {
+            if matches!(action, Action::Lookup | Action::Add | Action::ApplyNative) {
                 self.tables.borrow_mut().add_method(vt, sel, m);
             } else {
                 unsafe { self.send(vt, b"addMethod", &[sel, m]) }.unwrap();
             }
+            if matches!(action, Action::ApplyNative) {
+                self.native_apply.set(m);
+                self.permanent.borrow_mut().push(m);
+            }
             if matches!(action, Action::Lookup) {
                 self.default_lookup.set(m);
+                self.permanent.borrow_mut().push(m);
             }
         }
+        self.install_reference_owners();
     }
     #[inline(always)]
     unsafe fn perform(&self, action: Action, r: Oop, a: &[Oop]) -> Result<Oop, Oop> {
@@ -485,6 +404,34 @@ impl State {
             }
         };
         match action {
+            Action::ApplyNative => {
+                let Some((&receiver, args)) = a.split_first() else {
+                    return Err(invalid);
+                };
+                let call = self.scope(receiver, nil, args);
+                unsafe { self.apply_native(r, receiver, args, &call) }
+            }
+            Action::ReferenceOwners => {
+                let visitor = one()?;
+                let owners = self.reference_owners.borrow().clone();
+                for (behavior, owner) in owners {
+                    unsafe { self.send(visitor, b"trace:with:", &[behavior, owner]) }?;
+                }
+                Ok(nil)
+            }
+            Action::NoReferences
+            | Action::TableReferences
+            | Action::MethodReferences
+            | Action::FaultReferences
+            | Action::SequenceReferences
+            | Action::ModuleReferences => {
+                let (object, visitor) = pair()?;
+                let edges = self.owned_references(action, object)?;
+                for edge in edges {
+                    unsafe { self.send(visitor, b"visit:", &[edge]) }?;
+                }
+                Ok(nil)
+            }
             Action::Lookup => {
                 let sel = one()?;
                 if !self.tables.borrow().is_registered(r) {
@@ -494,7 +441,7 @@ impl State {
             }
             Action::Add => {
                 let (sel, m) = pair()?;
-                if !self.tables.borrow().is_registered(r) || !self.is_method(m) {
+                if !self.tables.borrow().is_registered(r) || m.is_null() {
                     return Err(invalid);
                 }
                 self.tables.borrow_mut().add_method(r, sel, m);
@@ -601,23 +548,7 @@ impl State {
             }
             Action::CoreObject => Ok(self.object),
             Action::CoreName => Ok(self.name),
-            Action::NewName => {
-                if a.iter()
-                    .any(|&v| abi::as_size(v).is_none_or(|b| b == 0 || b > 255))
-                {
-                    return Err(invalid);
-                }
-                let name = self.allocate(self.name, a.len())?;
-                unsafe {
-                    for (i, &v) in a.iter().enumerate() {
-                        name.cast::<u8>()
-                            .add(i)
-                            .write(abi::as_size(v).unwrap() as u8);
-                    }
-                }
-                self.heap.borrow_mut().set_storage(name, Storage::Name);
-                Ok(name)
-            }
+            Action::NewName => self.name_from_values(a),
             Action::Intern => {
                 if !a.is_empty() {
                     return Err(invalid);
@@ -636,30 +567,17 @@ impl State {
                 }
                 abi::size(self.sequence_storage(r)?.1).ok_or(invalid)
             }
-            Action::At => {
-                let at = abi::as_size(one()?).ok_or(invalid)?;
-                let (p, n) = self.sequence_storage(r)?;
-                if at >= n {
-                    return Err(invalid);
-                }
-                Ok(unsafe { p.add(at).read() })
-            }
+            Action::At => self.reference_at(r, abi::as_size(one()?).ok_or(invalid)?),
             Action::Put => {
-                let (at, v) = pair()?;
-                let at = abi::as_size(at).ok_or(invalid)?;
-                let (p, n) = self.sequence_storage(r)?;
-                if at >= n {
-                    return Err(invalid);
-                }
-                unsafe { p.add(at).write(v) };
-                Ok(v)
+                let (index, value) = pair()?;
+                self.reference_put(r, abi::as_size(index).ok_or(invalid)?, value)
             }
             Action::Invoke => {
                 let (receiver, seq) = pair()?;
                 // Snapshot before a callback can mutate the source's fields.
                 let args = self.sequence_values(seq)?;
                 let scope = self.scope(receiver, nil, &args);
-                unsafe { self.invoke(self.checked_method(r)?, receiver, &args, &scope) }
+                unsafe { self.invoke(r, receiver, &args, &scope) }
             }
             Action::WithContext => {
                 let ctx = one()?;
@@ -701,6 +619,14 @@ impl State {
                 let visitor = one()?;
                 let mut roots = self.permanent.borrow().clone();
                 roots.extend(self.call_roots());
+                for module in self.modules.borrow().values() {
+                    roots.extend(&module.literals);
+                    roots.extend(&module.symbols);
+                    for (k, v) in &module.methods {
+                        roots.extend([*k, *v]);
+                    }
+                    roots.push(module.result);
+                }
                 for v in roots {
                     unsafe { self.send(visitor, b"visit:", &[v]) }?;
                 }
@@ -726,12 +652,12 @@ impl State {
                 Ok(nil)
             }
             Action::References => {
-                let (o, visitor) = pair()?;
-                let (edges, kind) = self.edges(o)?;
-                for edge in edges {
-                    unsafe { self.send(visitor, b"visit:", &[edge]) }?;
-                }
-                Ok(abi::size(kind).unwrap())
+                let (object, visitor) = pair()?;
+                // The floor reports only the vtable. Payload references are
+                // supplied by the registered owner's current methods.
+                let behavior = self.behavior(object)?;
+                unsafe { self.send(visitor, b"visit:", &[behavior]) }?;
+                Ok(nil)
             }
             Action::Bindings => {
                 let visitor = one()?;
@@ -781,62 +707,6 @@ impl State {
                 unsafe { self.load_module(r, &args) }
             }
         }
-    }
-    fn edges(&self, o: Oop) -> Result<(Vec<Oop>, usize), Oop> {
-        let mut edges = vec![self.behavior(o)?];
-        let address = abi::heap_address(o);
-        if o.is_null() || abi::as_size(o).is_some() {
-            return Ok((edges, 2));
-        }
-        if self.tables.borrow().is_registered(o) {
-            let t = self.tables.borrow();
-            let rec = t.record(o);
-            edges.push(rec.parent);
-            for ((k, v), weak) in rec.keys.iter().zip(&rec.values).zip(&rec.weak_keys) {
-                if !weak {
-                    edges.push(*k);
-                    edges.push(*v)
-                }
-            }
-            return Ok((edges, 1));
-        }
-        match self
-            .heap
-            .borrow()
-            .get(o.addr())
-            .ok_or(self.invalid())?
-            .storage()
-        {
-            Storage::Method => {
-                let m = self.method_data(o)?;
-                edges.extend([m.context, m.owner]);
-                return Ok((edges, 2));
-            }
-            Storage::Fault => {
-                let f = self.fault_data(o)?;
-                edges.extend([f.kind, f.detail]);
-                return Ok((edges, 2));
-            }
-            Storage::References => {
-                edges.extend(self.sequence_values(o)?);
-                return Ok((edges, 2));
-            }
-            Storage::Name => return Ok((edges, 2)),
-            Storage::Opaque => {}
-        }
-        if let Some(m) = self.modules.borrow().get(&address) {
-            edges.extend(&m.literals);
-            edges.extend(&m.symbols);
-            for (k, v) in &m.methods {
-                edges.extend([*k, *v]);
-            }
-            edges.push(m.result);
-            return Ok((edges, 2));
-        }
-        if o == self.root || self.symbols.borrow().bytes_of(o).is_some() {
-            return Ok((edges, 2));
-        }
-        Ok((edges, 0))
     }
     fn retire(&self, objects: &[Oop]) -> Result<(), Oop> {
         let mut dead = AddressMap::default();
@@ -901,6 +771,7 @@ impl State {
             image.addr(),
             ModuleRecord {
                 _handle: handle,
+                declarations: methods,
                 literals: Vec::new(),
                 symbols: Vec::new(),
                 methods: Vec::new(),
@@ -983,6 +854,7 @@ impl State {
             .get_mut(&image.addr())
             .unwrap()
             .result = result;
+        self.behavior(result)?;
         if abi::is_fault(result) {
             Err(result)
         } else {
@@ -1068,20 +940,8 @@ pub(crate) unsafe fn bootstrap(seeds: *const native::Seed, n: usize) -> *const P
 }
 
 #[cfg(test)]
-mod oop_tests {
+mod lifetime_tests {
     use super::*;
-    #[test]
-    fn fault_identity_survives_index_retirement_and_detachment() {
-        let s = super::super::initial_objects::construct();
-        let fault = s.make_fault(s.selector(b"invalidRequest"), abi::size(7).unwrap());
-        assert!(abi::is_fault(fault));
-        let id = s.heap.borrow().get(fault.addr()).unwrap().identity();
-        s.retire(&[fault]).unwrap();
-        assert_eq!(s.heap.borrow().get(fault.addr()).unwrap().object(), fault);
-        let detached = s.heap.borrow_mut().detach(fault.addr()).unwrap();
-        assert_eq!(detached.object(), fault);
-        assert_eq!(detached.identity(), id);
-    }
     #[test]
     fn contents_survive_index_cleanup_and_detachment() {
         let s = super::super::initial_objects::construct();
@@ -1089,7 +949,7 @@ mod oop_tests {
         let fields = s.new_sequence(&[name]).unwrap();
         let empty = s.new_sequence(&[]).unwrap();
         let fault = s.make_fault(s.selector(b"invalidRequest"), fields);
-        let method = s.new_method(primitive::SelfValue, s.root, s.root).unwrap();
+        let method = s.new_method(s.method_data(s.tables.borrow().lookup(s.object, s.selector(b"yourself")).unwrap()).unwrap().entry, s.root, s.root).unwrap();
         let objects = [name, fields, fault, method];
         s.retire(&objects).unwrap();
         let check = || unsafe {
@@ -1118,33 +978,6 @@ mod oop_tests {
         assert!(s.method_data(method).is_err());
         assert!(s.fault_data(fault).is_err());
         assert!(s.sequence_values(fields).is_err());
-    }
-    #[test]
-    fn vtable_changes_do_not_forge_or_destroy_storage_layouts() {
-        let s = super::super::initial_objects::construct();
-        let name = s.make_name(b"same storage").unwrap();
-        let original = s
-            .tables
-            .borrow()
-            .lookup(s.name, s.selector(b"intern"))
-            .unwrap();
-        let empty = s.new_sequence(&[]).unwrap();
-        assert!(s.heap.borrow_mut().set_vtable(name, s.object));
-        assert!(unsafe { s.send(name, b"intern", &[]) }.is_err());
-        let answer = unsafe { s.send(original, b"invokeOn:arguments:", &[name, empty]) }.unwrap();
-        assert_eq!(
-            s.symbols.borrow().bytes_of(answer),
-            Some(b"same storage".as_slice())
-        );
-        let fake_name = s.allocate(s.name, b"same storage".len()).unwrap();
-        assert!(s.name_data(fake_name).is_err());
-        let fake_method = s.allocate(s.method, size_of::<MethodRecord>()).unwrap();
-        assert!(unsafe { s.send(fake_method, b"invokeOn:arguments:", &[name, empty]) }.is_err());
-        let fake_fields = s.allocate(s.sequence, size_of::<Oop>()).unwrap();
-        assert!(unsafe { s.send(fake_fields, b"at:", &[abi::size(0).unwrap()]) }.is_err());
-        let fake_fault =
-            abi::fault_reference(s.allocate(s.fault, size_of::<FaultRecord>()).unwrap());
-        assert!(s.fault_data(fake_fault).is_err());
     }
     #[test]
     fn detached_object_with_released_vtable_is_not_dispatched() {

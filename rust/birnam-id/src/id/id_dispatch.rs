@@ -1,11 +1,8 @@
 //! Live method lookup. Callers keep the receiver and arguments alive before
-//! lookup can call user code; selected Method data is read once.
-use super::{
-    native_id::{SelectedMethod, State},
-    object_memory::ObjectMemory,
-};
+//! lookup can call user code; application follows the selected object's protocol.
+use super::{native_id::State, object_memory::ObjectMemory};
 use crate::abi::Oop;
-pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<SelectedMethod>, Oop> {
+pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Oop>, Oop> {
     let behavior = s.behavior(r)?;
     // The validated receiver's vtable was admitted when assigned and is kept
     // alive by that receiver. Read its current vtable, without a second check
@@ -25,13 +22,13 @@ pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Sel
                 .has_default_lookup(s.meta, s.lookup, s.default_lookup.get()))
     {
         let method = s.tables.borrow().lookup(behavior, selector);
-        return Ok(method.map(|m| unsafe { s.bound_method(m) }));
+        return Ok(method);
     }
     let method = unsafe { send(s, behavior, s.lookup, &[selector]) }?;
     if method.is_null() {
         Ok(None)
     } else {
-        s.checked_method(method).map(Some)
+        Ok(Some(method))
     }
 }
 pub(crate) unsafe fn send(s: &State, r: Oop, selector: Oop, args: &[Oop]) -> Result<Oop, Oop> {

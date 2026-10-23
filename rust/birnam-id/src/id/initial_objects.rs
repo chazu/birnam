@@ -20,8 +20,9 @@ pub(crate) fn construct() -> Box<State> {
     let fault = family();
     let sequence = family();
     let module = family();
+    let root_behavior = family();
     let root = heap.allocate(size_of::<usize>());
-    assert!(heap.set_vtable(root, object));
+    assert!(heap.set_vtable(root, root_behavior));
     let lookup = symbols.intern(&mut heap, symbol, b"lookup").unwrap();
     let dnu = symbols
         .intern(&mut heap, symbol, b"doesNotUnderstand:")
@@ -42,6 +43,9 @@ pub(crate) fn construct() -> Box<State> {
         tables: RefCell::new(tables),
         symbols: RefCell::new(symbols),
         root,
+        root_behavior,
+        native_apply: Cell::new(nil),
+        reference_owners: RefCell::new(Vec::new()),
         meta,
         object,
         symbol,

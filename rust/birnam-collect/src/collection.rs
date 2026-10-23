@@ -201,34 +201,27 @@ unsafe fn mark(s: &Memory) -> Result<Vec<Allocation>, Oop> {
             if let Some(e) = s.walk.borrow().as_ref().unwrap().core.failure {
                 return Err(e);
             }
-            let kind = abi::as_size(result?)
-                .filter(|k| *k <= 2)
-                .ok_or(s.invalid())?;
+            if !result?.is_null() {
+                return Err(s.invalid());
+            }
             let count = s.walk.borrow().as_ref().unwrap().core.values.len();
-            if count < if kind == 1 { 2 } else { 1 } {
+            if count == 0 {
                 return Err(s.invalid());
             }
             let behavior = s.walk.borrow().as_ref().unwrap().core.values[0];
-            let prefix = if kind == 1 { 2 } else { count };
-            for i in 0..prefix {
+            for i in 0..count {
                 let edge = s.walk.borrow().as_ref().unwrap().core.values[i];
                 emit(s, edge)?;
             }
-            if kind != 2 {
-                if let Some(owner) = s.trace_owner(behavior)? {
-                    emit(s, owner)?;
-                    s.send(owner, b"referencesOf:do:", &[value, s.receiver])?;
-                } else if kind == 0 {
-                    let walk = s.walk.borrow();
-                    let w = walk.as_ref().unwrap();
-                    if w.allocations[w.indices[&value.addr()]].size != 0 {
-                        return Err(s.invalid());
-                    }
+            if let Some(owner) = s.trace_owner(behavior)? {
+                emit(s, owner)?;
+                s.send(owner, b"referencesOf:do:", &[value, s.receiver])?;
+            } else {
+                let walk = s.walk.borrow();
+                let w = walk.as_ref().unwrap();
+                if w.allocations[w.indices[&value.addr()]].size != 0 {
+                    return Err(s.invalid());
                 }
-            }
-            for i in prefix..count {
-                let edge = s.walk.borrow().as_ref().unwrap().core.values[i];
-                emit(s, edge)?;
             }
             if let Some(error) = s.walk.borrow().as_ref().unwrap().failure {
                 return Err(error);

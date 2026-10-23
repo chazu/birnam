@@ -4,8 +4,8 @@
    through messages. No foreign payload or Id registry is inspected. */
 typedef struct Node {Oop child;Oop size;} Node;
 static IdProtocol id;
-enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,NAMES};
-static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:")};
+enum {OBJECT,DELEGATED,ALLOCATE,METHOD,CONTEXT,ADD,BEHAVIOR,SEQUENCE,AT,PUT,REGISTER,RETAIN,RELEASE,TRACE,FINALIZER,COLLECT,REFERENCES,VISIT,FINALIZE,EXERCISE,COUNT,DYNAMIC,SETFAIL,OVERRIDE,LOOKUP,REMOVE,IDENTITY,NEWNAME,LITERAL,INVOKE,FAULTKIND,DETAIL,FAULTMAKE,HELLO,REASSOC,CONTEXT_RUN,EXTENT,NEWFINAL,LOOKUPOVERRIDE,DNU,MISSING,BADREFS,BADALLOC,ALLOCATION,COLLECTARGS,SNAPSHOTARG,APPLYVALUE,NAMES};
+static const IdLiteral literals[]={LIT("objectBehavior"),LIT("delegated"),LIT("allocate"),LIT("methodAt:"),LIT("withContext:"),LIT("addMethod"),LIT("behaviorOf:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("register:"),LIT("retain:"),LIT("release:"),LIT("trace:with:"),LIT("finalize:with:"),LIT("collectPrecisely"),LIT("referencesOf:do:"),LIT("visit:"),LIT("finalize:"),LIT("exercise:"),LIT("finalized"),LIT("dynamicName:"),LIT("failTracing:"),LIT("replacement"),LIT("lookup"),LIT("removeMethod:"),LIT("identityOf:"),LIT("nameWithBytes"),LIT("literalAt:"),LIT("invokeOn:arguments:"),LIT("faultKind"),LIT("detail"),LIT("fault:detail:"),LIT("fixture-hello"),LIT("reassociateBehaviorOf:with:"),LIT("contextRun"),LIT("allocationSizeOf:"),LIT("newFinalizable"),LIT("lookupOverride"),LIT("doesNotUnderstand:"),LIT("missingProbe"),LIT("badCoreReferences"),LIT("badAllocations"),LIT("allocation:bytes:identity:"),LIT("collectArguments"),LIT("snapshotArgument:"),LIT("applyValue")};
 static Oop names[NAMES];
 static Oop call(Oop r,int name,const Oop *a,size_t n){return id.message(id.root,r,names[name],a,n);}
 static Oop zero(Oop r,int n){return call(r,n,0,0);}
@@ -118,7 +118,13 @@ static Oop snapshot_argument(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  REQUIRE(zero(get(c,1),COLLECT));
  REQUIRE(one(id.root,IDENTITY,a[0]));return a[0];
 }
-static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument}};
+static Oop apply_value(Oop root_,Oop context,Oop receiver,const Oop*args,size_t n){
+ (void)root_;(void)args;if(n<1)return id.invalid;
+ /* receiver is a reference-storage object, not a native Method record. */
+ REQUIRE(zero(get(context,1),COLLECT));
+ return get(receiver,0);
+}
+static const IdMethodSpec methods[]={{REFERENCES,references},{FINALIZE,finalize},{EXERCISE,exercise},{COUNT,finalized},{DYNAMIC,dynamic},{SETFAIL,fail_tracing},{OVERRIDE,replacement},{CONTEXT_RUN,context_run},{NEWFINAL,new_finalizable},{LOOKUPOVERRIDE,lookup_override},{DNU,dnu},{BADREFS,bad_refs},{BADALLOC,bad_allocations},{COLLECTARGS,collect_arguments},{SNAPSHOTARG,snapshot_argument},{APPLYVALUE,apply_value}};
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t ns,const Oop*a,size_t n){
  id=*p;if(ns!=NAMES||n!=2)return id.invalid;for(size_t i=0;i<ns;i++)names[i]=s[i];
  Oop base=zero(id.root,OBJECT);if(id_fault(base))return base;
