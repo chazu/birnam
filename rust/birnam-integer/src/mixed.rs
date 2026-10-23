@@ -1,110 +1,95 @@
-//! A complete extension created only after Float exists; no future dependency slot.
+//! Completed mixed-number Methods capture the Float object as their context.
 use super::*;
-pub(super) struct Mixed {
-    integer: *const Number,
-    float: Oop,
-}
 unsafe fn run(
-    m: &Mixed,
+    n: &Number,
+    float: Oop,
     r: Oop,
-    args: &[Operand],
+    a: &[Oop],
     op: usize,
     visitor: Option<Oop>,
-) -> Result<Operand, Outcome> {
+) -> Result<Oop, Oop> {
     unsafe {
-        let n = state(m.integer.cast_mut().cast())?;
-        if args.len() != if op == 10 { 0 } else { 1 } {
+        if a.len() != if op == 10 { 0 } else { 1 } {
             return Err(invalid());
         }
-        let mut values = vec![r];
-        for arg in args {
-            values.push(object(*arg)?);
+        let left = n.read(r)?;
+        if op == 10 {
+            return match left {
+                Some(v) => n.send(float, b"fromBits:", &[n.word((v as f64).to_bits())?]),
+                None => Ok(n.nil),
+            };
         }
-        if let Some(visitor) = visitor {
-            values.push(visitor);
-        }
-        n.rooted(&values, || {
-            let left = n.read(r)?;
-            if op == 10 {
-                return match left {
-                    Some(v) => n.send(
-                        m.float,
-                        b"fromBits:",
-                        &[Operand::word((v as f64).to_bits() as usize)],
-                    ),
-                    None => Ok(Operand::object(n.nil)),
-                };
+        let read_float = |v| -> Result<Option<f64>, Oop> {
+            let bits = n.send(float, b"bitsOf:", &[v])?;
+            if bits.is_null() {
+                Ok(None)
+            } else {
+                Ok(Some(f64::from_bits(n.word_bits(bits)?)))
             }
-            let read_float = |value| -> Result<Option<f64>, Outcome> {
-                let result = n.send(m.float, b"bitsOf:", &[Operand::object(value)])?;
-                if result.kind() == native::UNIT {
-                    return Ok(None);
+        };
+        let left_float = match left {
+            Some(v) => v as f64,
+            None => match read_float(r)? {
+                Some(v) => v,
+                None => return Ok(n.nil),
+            },
+        };
+        let right = a[0];
+        if n.is_error(right)? {
+            return Ok(right);
+        }
+        let integer = n.read(right)?;
+        if let (Some(a), Some(b)) = (left, integer) {
+            return n.calculate_with(a, b, op, visitor);
+        }
+        let right_float = match integer {
+            Some(v) => v as f64,
+            None => match read_float(right)? {
+                Some(v) => v,
+                None => {
+                    return n.error(
+                        b"typeMismatch",
+                        if op > 5 {
+                            b"comparison needs a number"
+                        } else {
+                            b"Integer arithmetic needs a number"
+                        },
+                    );
                 }
-                Ok(Some(f64::from_bits(
-                    result.as_word().ok_or_else(invalid)? as u64
-                )))
-            };
-            let a = match left {
-                Some(v) => v as f64,
-                None => match read_float(r)? {
-                    Some(v) => v,
-                    None => return Ok(Operand::object(n.nil)),
-                },
-            };
-            let right = values[1];
-            if n.is_error(right)? {
-                return Ok(Operand::object(right));
-            }
-            let integer = n.read(right)?;
-            if let (Some(a), Some(b)) = (left, integer) {
-                return n.calculate_with(a, b, op, visitor);
-            }
-            let b = match integer {
-                Some(v) => v as f64,
-                None => match read_float(right)? {
-                    Some(v) => v,
-                    None => {
-                        return n.error(
-                            b"typeMismatch",
-                            if op > 5 {
-                                b"comparison needs a number"
-                            } else {
-                                b"Integer arithmetic needs a number"
-                            },
-                        );
-                    }
-                },
-            };
-            if op == 3 && b == 0.0 {
-                return n.error(b"zeroDivide", b"division by zero");
-            }
-            let v = match op {
-                0 => a + b,
-                1 => a - b,
-                2 => a * b,
-                3 => a / b,
-                6 => return Ok(n.boolean(a < b)),
-                7 => return Ok(n.boolean(a <= b)),
-                8 => return Ok(n.boolean(a > b)),
-                9 => return Ok(n.boolean(a >= b)),
-                _ => return Err(invalid()),
-            };
-            n.send(
-                m.float,
-                b"fromBits:",
-                &[Operand::word(v.to_bits() as usize)],
-            )
-        })
+            },
+        };
+        if op == 3 && right_float == 0.0 {
+            return n.error(b"zeroDivide", b"division by zero");
+        }
+        let value = match op {
+            0 => left_float + right_float,
+            1 => left_float - right_float,
+            2 => left_float * right_float,
+            3 => left_float / right_float,
+            6 => return Ok(n.boolean(left_float < right_float)),
+            7 => return Ok(n.boolean(left_float <= right_float)),
+            8 => return Ok(n.boolean(left_float > right_float)),
+            9 => return Ok(n.boolean(left_float >= right_float)),
+            _ => return Err(invalid()),
+        };
+        n.send(float, b"fromBits:", &[n.word(value.to_bits())?])
     }
 }
 macro_rules! mixed {
     ($name:ident,$op:expr) => {
-        unsafe extern "C" fn $name(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+        pub(super) unsafe extern "C" fn $name(
+            _: Oop,
+            c: Oop,
+            r: Oop,
+            a: *const Oop,
+            count: usize,
+        ) -> Oop {
             done((|| unsafe {
                 run(
-                    &*c.cast::<Mixed>(),
+                    instance()?,
+                    c,
                     r,
-                    borrowed_slice(a, n).ok_or_else(invalid)?,
+                    borrowed_slice(a, count).ok_or_else(invalid)?,
                     $op,
                     None,
                 )
@@ -121,92 +106,68 @@ mixed!(le, 7);
 mixed!(gt, 8);
 mixed!(ge, 9);
 mixed!(as_float, 10);
-pub(super) unsafe extern "C" fn install(
-    context: *mut c_void,
+pub(super) unsafe extern "C" fn evaluate(
+    _: Oop,
+    c: Oop,
     r: Oop,
-    args: *const Operand,
+    a: *const Oop,
     count: usize,
-) -> Outcome {
+) -> Oop {
     done((|| unsafe {
-        let n = state(context)?;
-        let Some([float]) = borrowed_slice(args, count) else {
+        let [op, right, visitor] = borrowed_slice(a, count).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let op = abi::as_size(*op).filter(|op| *op < 4).ok_or_else(invalid)?;
+        run(instance()?, c, r, &[*right], op, Some(*visitor))
+    })())
+}
+pub(super) unsafe extern "C" fn install(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    done((|| unsafe {
+        let n = state(c)?;
+        let [float] = borrowed_slice(a, count).ok_or_else(invalid)? else {
             return Err(invalid());
         };
         let float = object(*float)?;
         if r != n.prototype || n.extended.get() {
             return Err(invalid());
         }
-        n.rooted(&[float], || {
-            let zero = n.send(float, b"bitsOf:", &[Operand::object(float)])?;
-            zero.as_word().ok_or_else(invalid)?;
-            // The completed extension retains Float for the installed methods' lifetime.
-            n.send(n.roots, b"retain:", &[Operand::object(float)])?;
-            let m = Box::into_raw(Box::new(Mixed { integer: n, float }));
-            for (name, method) in [
-                (b"+".as_slice(), add as Method),
-                (b"-", sub),
-                (b"*", mul),
-                (b"/", div),
-                (b"<", lt),
-                (b"<=", le),
-                (b">", gt),
-                (b">=", ge),
-                (b"asFloat", as_float),
-            ] {
-                let selected = n.send(n.behavior, b"lookup", &[Operand::object(n.names[name])])?;
-                let replace = if name == b"asFloat" {
-                    selected.kind() == native::UNIT
-                } else {
-                    METHODS.iter().any(|(base, method)| {
-                        *base == name
-                            && selected.as_entry() == Some(NativeEntry::new(*method, context))
-                    })
-                };
-                if replace {
-                    n.send(
-                        n.behavior,
-                        b"addMethod",
-                        &[
-                            Operand::object(n.names[name]),
-                            Operand::entry(NativeEntry::new(method, m.cast())),
-                        ],
-                    )?;
+        n.word_bits(n.send(float, b"bitsOf:", &[float])?)?;
+        n.mixed_evaluator.set(n.method(b"mixed::evaluate", float)?);
+        for (i, (name, implementation)) in [
+            (b"+".as_slice(), b"mixed::add".as_slice()),
+            (b"-", b"mixed::sub"),
+            (b"*", b"mixed::mul"),
+            (b"/", b"mixed::div"),
+            (b"<", b"mixed::lt"),
+            (b"<=", b"mixed::le"),
+            (b">", b"mixed::gt"),
+            (b">=", b"mixed::ge"),
+            (b"asFloat", b"mixed::as_float"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let selected = n.send(n.behavior, b"lookup", &[n.names[name]])?;
+            let replace = if i == 8 {
+                selected.is_null()
+            } else {
+                n.same_method(selected, n.witnesses[if i < 4 { i } else { i + 2 }].get())?
+            };
+            if replace {
+                let method = n.method(implementation, float)?;
+                n.send(n.behavior, b"addMethod", &[n.names[name], method])?;
+                if i < 8 {
+                    n.mixed_witnesses[i].set(method);
                 }
             }
-            n.mixed.set(m);
-            n.extended.set(true);
-            Ok(Operand::unit())
-        })
-    })())
-}
-
-pub(super) fn operation(n: &Number, selected: NativeEntry) -> Option<usize> {
-    let m = n.mixed.get();
-    if m.is_null() {
-        return None;
-    }
-    [add as Method, sub, mul, div, lt, le, gt, ge]
-        .iter()
-        .position(|method| selected == NativeEntry::new(*method, m.cast()))
-        .map(|i| if i < 4 { i } else { i + 2 })
-}
-
-pub(super) unsafe fn evaluate(
-    n: &Number,
-    selected: NativeEntry,
-    left: Operand,
-    right: Operand,
-    visitor: Operand,
-) -> Option<Result<Operand, Outcome>> {
-    unsafe {
-        let m = n.mixed.get();
-        if m.is_null() {
-            return None;
         }
-        let op = operation(n, selected).filter(|op| *op < 4)?;
-        Some((|| {
-            let visitor = object(visitor)?;
-            run(&*m, object(left)?, &[right], op, Some(visitor))
-        })())
-    }
+        n.extended.set(true);
+        Ok(ptr::null_mut())
+    })())
 }

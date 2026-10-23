@@ -2,8 +2,6 @@
   "schema_version": 1,
   "scope": "Integer arithmetic and callable iteration through Id messages; complete mixed extension after Float",
   "exported_symbols": [
-    "birnam_integer_rust_identity",
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ]
 }

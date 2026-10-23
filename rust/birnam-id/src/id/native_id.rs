@@ -129,6 +129,7 @@ pub(crate) enum Action {
     UsesDefaultLookup,
     NativeBindingsMatch,
     SameNativeMethod,
+    NativeMethodIndex,
     NativeBindingSemantics,
     DefaultAllocation,
     SymbolHash,
@@ -223,6 +224,7 @@ core_primitives![
     (b"usesDefaultLookup:", UsesDefaultLookup),
     (b"nativeBindingsMatch:", NativeBindingsMatch),
     (b"sameNativeMethod:as:", SameNativeMethod),
+    (b"nativeMethodIndex", NativeMethodIndex),
     (b"nativeBindingQuerySemantics:for:", NativeBindingSemantics),
     (b"usesDefaultAllocation", DefaultAllocation),
     (b"nameHash", SymbolHash),
@@ -672,6 +674,10 @@ impl State {
                 Ok(unsafe{id_dispatch::bind(self,receiver,selector)}?.unwrap_or(nil))
             }
             Action::UsesDefaultLookup => Ok(abi::size(usize::from(self.uses_default_lookup(one()?)?)).unwrap()),
+            Action::NativeMethodIndex => {
+                let [selected,candidates @ ..]=a else {return Err(invalid);};
+                Ok(self.native_method_index(*selected,candidates).and_then(abi::size).unwrap_or(nil))
+            }
             Action::SameNativeMethod => { let (a,b)=pair()?; Ok(abi::size(usize::from(self.same_native_method(a,b))).unwrap()) },
             Action::NativeBindingsMatch => {
                 if !self.uses_default_lookup(self.root)? { return Ok(abi::size(0).unwrap()); }

@@ -415,3 +415,36 @@ invalid extent/private-vtable rejection; and collection inside allocation and
 numeric conversion. All prior gates pass. Integer and Error are independent C
 providers here; the full-language integration and performance work remain pending.
 [Qualification receipts](../measurements/oop-float-20261023.json).
+
+## Piece 17: Integer and mixed arithmetic use ordinary Methods
+
+Integer receives and returns Oops, preserving its eight-byte signed payload,
+full-width Word transport, checked arithmetic, Error propagation and constructor
+replacement. Numeric evaluation and predicates accept Method objects instead of
+native-entry carriers. Retained original Methods are witnesses for optimization
+assumptions, not an alternate dispatch table. Guards check current application
+semantics, allocation policy, live ErrorVt and the epoch; they decline on changes.
+
+Mixed arithmetic Methods capture Float directly as context. A completed private
+evaluator Method captures Float for the existing synchronous numeric visitor path.
+Removed the leaked native Mixed record and its permanent dependency root. Incoming
+call objects use Id's existing roots; new boxed words and diagnostics are protected
+only across callbacks that can collect them.
+
+Regression review found an avoidable chain of up to twenty comparison messages
+for copied or unknown Methods. The native Method owner now compares a supplied
+candidate list in one message, reading the selected Method once, without another
+registry. Canonical witness identity still needs only one application check.
+The two-Method comparison uses that same implementation. Predicate validation also
+checks the epoch after input reads, and respects the Oop size encoding's epoch cap.
+
+A fresh-process integration check loads the real Integer, Float, String and Bytes
+owners. It covers signed limits, overflow and zero-divide Error values, exact
+signed comparison, mixed arithmetic in both directions, pre-install replacements,
+copied Methods, parsing and byte indexing, inclusive iteration with collecting
+callbacks, live ErrorVt, evaluator fallback with GC while boxing negative values,
+and predicate refusal after constructor, application or arithmetic replacement.
+All earlier gates and the independent C/TinyCC callers pass. Error is still an
+independent C provider; full Execution/compiler/image/worker qualification and
+performance recovery remain pending.
+[Qualification receipts](../measurements/oop-integer-20261023.json).

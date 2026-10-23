@@ -1,6 +1,8 @@
 //! Cold process acceptance driver. Upper Birnam libraries/images are absent.
 use birnam_abi::{self as abi, Oop, id_protocol::Protocol};
 use std::{os::unix::ffi::OsStrExt, path::PathBuf};
+#[path="oop_slice/numeric.rs"]
+mod numeric;
 fn main() {
     unsafe { run() }
 }
@@ -28,8 +30,11 @@ unsafe fn run() {
             library.join("libbirnam_bytes.dylib"),
             library.join("libbirnam_string.dylib"),
             library.join("libbirnam_float.dylib"),
+            library.join("libbirnam_integer.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"value:",b"behaviorEpoch",
+            b"installFloat:",b"integerValue:",b"compareInteger:with:",b"word",b"mod:",b"to:do:",b"asFloat",b"hasBootstrapArithmetic:",b"canOmitIndexing",b"evaluate:receiver:argument:with:",b"evaluatePredicate:then:left:right:limit:in:epoch:with:",b"numericOperation:left:right:",b"commitNumericPredicate:",b"numericDecline",b"numericCommit",b"loopValue",
             b"Float",b"FloatVt",b"integerInput",b"errorFactory",b"numericAllocate",b"Error",b"ErrorVt",b"kind:message:",b"overflow",b"zeroDivide",b"domain",b"typeMismatch",b"+",b"-",b"*",b"/",b"<",b"<=",b">",b">=",b"negated",b"abs",b"floor",b"ceiling",b"rounded",b"sqrt",
             b"String",b"StringBuilder",b"asBytes",b"bytes",b"trimmed",b"replace:with:",b"asSymbol",b"asString",b"add:",b"new",b"clone",b",",b"=",b"installNumbers:",b"installCollections:",b"byteAt:",b"copyFrom:to:",b"indexOf:",b"bracketDepth",b"asInteger",b"asNumber",b"addByte:",b"split:",b"bitsOf:",b"numericWord",b"vectorNew",b"vectorAdd",b"collectionEquals:",b"collectionHash",
             b"sequence",
@@ -958,6 +963,10 @@ unsafe fn run() {
         send(bytes_type,b"addMethod",&[sel(b"fromBytes:"),bytes_factory]).unwrap();
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
+        if std::env::args().nth(2).as_deref()==Some("numeric-integration") {
+            numeric::check(&id,&send,&sel,[names[15],names[14]],[namespace,roots,gc,actor,base,word,string]);
+            return;
+        }
         // Numeric and collection adapters are independent C objects for this slice.
         let numeric_type=send(base,b"delegated",&[]).unwrap();
         let numeric_word=send(actor_vt,b"lookup",&[sel(b"numericWord")]).unwrap();

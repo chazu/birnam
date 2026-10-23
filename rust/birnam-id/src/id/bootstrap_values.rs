@@ -34,9 +34,17 @@ impl State {
             && OPERATIONS.get(fields.entry_index).is_some_and(|(_,found,_)|*found==action)
     }
     pub(super) fn same_native_method(&self,a:Oop,b:Oop)->bool{
-        if !self.native_application(a) || !self.native_application(b) { return false; }
-        let (Ok(a),Ok(b))=(self.method_data(a),self.method_data(b)) else { return false; };
-        a.entry as usize==b.entry as usize && a.context==b.context && a.owner==b.owner
+        self.native_method_index(a,&[b]).is_some()
+    }
+    pub(super) fn native_method_index(&self,selected:Oop,candidates:&[Oop])->Option<usize>{
+        if !self.native_application(selected) { return None; }
+        let selected=self.method_data(selected).ok()?;
+        candidates.iter().position(|&candidate|{
+            if !self.native_application(candidate) { return false; }
+            let Ok(candidate)=self.method_data(candidate) else { return false; };
+            selected.entry as usize==candidate.entry as usize
+                && selected.context==candidate.context && selected.owner==candidate.owner
+        })
     }
     pub(super) fn representation_queries_current(&self, receiver: Oop) -> bool {
         if receiver != self.root || self.uses_default_lookup(receiver) != Ok(true) { return false; }
