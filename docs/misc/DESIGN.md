@@ -12,6 +12,38 @@ applies that boundary to the next proposed ownership migration.
 
 ## Current Invariants
 
+### Malleability and a minimal Id floor
+
+Malleability is a primary invariant. Preserve current message lookup, delegation,
+replacement, reflection, and the supported execution/control protocols. A faster
+or smaller implementation must not silently freeze their meaning. Entered calls
+retain the code and objects they require; subsequent sends observe current lookup.
+
+The payload of an ordinary object is opaque to minimal Id. Allocation and generic
+dispatch must not contain a fixed catalog of payload types such as Name, Method,
+Fault, or reference array, whether expressed as an enum, numeric tags, or parallel
+per-type tables. Owners above that floor define their payload formats, validate
+those formats, and report references through replaceable object protocols.
+Bootstrap primitives may implement the initial object graph; they do not make
+those initial representations the only representations the system can support.
+
+Ordinary heap objects have contiguous allocations containing their header and
+payload. Their owners may refer to other objects or separately allocated storage;
+that choice does not authorize Id to interpret the contents. Moving an allocated
+object must preserve its identity and all supported references. Calling `realloc`
+on an escaped Oop without such a mechanism is not a valid resizing implementation.
+
+Id's message receivers, selectors, arguments, and results are Oops. Native calling
+conventions and object-file metadata must not introduce a second runtime value
+system. Oop reference encoding and allocation facts are distinct from payload
+meaning: recording an address, extent, identity or canonical reference does not
+permit the allocator to decide the object's language type.
+
+Use [the glossary](../../glossary.md) for terminology. These requirements govern
+new work; older migration descriptions below are not permission to contradict them.
+
+### Bootstrap and executable authority
+
 Birnam must cold-bootstrap from a source checkout using its declared non-Birnam
 implementation toolchains, with no prebuilt Birnam binary, image, compiled
 module, or other Birnam artifact. The implementation language is not itself an
