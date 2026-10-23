@@ -21,8 +21,8 @@ the previous report's storage-classification design, not its historical measurem
 Current implementation work is tracked in the [invariant migration log](oop-invariant-migration-20261023.md).
 Namespace, Storage, Boolean, nil, ObjectModel, Word, Bytes, String, Float, Integer, Vector and Map now join the
 Oop-only native closure; collector activation/accounting and live root-lookup
-replacement are tested. The remaining value owners, execution/compiler, images
-and workers are still pending.
+replacement are tested. Prelude now constructs System through Oops. The remaining bootstrap/support
+owners, execution/compiler, images and workers are still pending.
 
 ## Required end state
 

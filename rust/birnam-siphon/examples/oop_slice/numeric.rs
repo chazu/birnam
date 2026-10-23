@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 4],
+    modules: [Oop; 5],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -652,6 +652,28 @@ pub(super) unsafe fn check(
         send(gc, b"collectPrecisely", &[]).unwrap();
         println!(
             "Map persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed"
+        );
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        let system = id
+            .send(modules[4], id.load, &[args])
+            .expect("System constructed by Prelude");
+        let system_type = send(namespace, b"at:", &[sel(b"SystemVt")]).unwrap();
+        assert_eq!(
+            send(id.root, b"behaviorOf:", &[system]).unwrap(),
+            system_type
+        );
+        assert_eq!(send(id.root, b"ownerOf:", &[system_type]).unwrap(), system);
+        assert_eq!(
+            send(id.root, b"allocationSizeOf:", &[system]).unwrap(),
+            abi::size(0).unwrap()
+        );
+        send(namespace, b"at:put:", &[sel(b"System"), nil]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        assert_eq!(id.send(modules[4], id.load, &[args]).unwrap(), system);
+        send(namespace, b"at:put:", &[sel(b"System"), system]).unwrap();
+        println!(
+            "Prelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

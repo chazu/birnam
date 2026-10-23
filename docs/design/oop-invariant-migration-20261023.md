@@ -500,3 +500,19 @@ hashing, node allocation and byte accounting. The prior gates and independent C
 and TinyCC callers pass. Performance recovery and full compiler/execution/image/
 worker acceptance remain pending.
 [Qualification receipts](../measurements/oop-map-20261023.json).
+
+## Piece 20: Prelude constructs System with Oops
+
+Prelude now uses the v2 Oop initializer and immutable selector declarations.
+Removed Operand/Outcome transport, dynamic selector interning during construction,
+and obsolete native identity/borrow exports. System remains an ordinary zero-payload
+object allocated through ObjectModel, with its vtable ownership and Namespace
+publication unchanged. Reentrant initialization is still refused.
+
+The completed module retains its initial Namespace and System because repeated
+loading must return the original object even after Namespace rebinding. Those
+references implement the existing cache lifetime, not future service slots. The
+native check verifies payload size, vtable ownership, rebinding, precise GC and
+repeated-load identity. All earlier gates pass. Full Bootstrap and application
+qualification remain pending.
+[Qualification receipts](../measurements/oop-prelude-20261023.json).

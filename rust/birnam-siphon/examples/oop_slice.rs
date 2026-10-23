@@ -33,8 +33,10 @@ unsafe fn run() {
             library.join("libbirnam_integer.dylib"),
             library.join("libbirnam_vector.dylib"),
             library.join("libbirnam_map.dylib"),
+            library.join("libbirnam_prelude.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"System",b"SystemVt",
             b"Map",b"MapNode",b"includesKey:",b"at:ifAbsent:",b"keys",b"values",b"keysAndValuesDo:",b"rehashImage:",b"collisionHash",
             b"CollectionVt",b"collectionProbe",
             b"Vector",b"VectorNode",b"sizeWord",b"atWord:",b"reversed",b"sortBy:",b"mergeSortBy:",b"inject:into:",b"do:",b"sumValues",b"vectorKey",b"value:value:",
@@ -969,7 +971,7 @@ unsafe fn run() {
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
         if std::env::args().nth(2).as_deref()==Some("numeric-integration") {
-            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17]],[namespace,roots,gc,actor,base,word,string]);
+            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18]],[namespace,roots,gc,actor,base,word,string]);
             return;
         }
         // Numeric and collection adapters are independent C objects for this slice.
