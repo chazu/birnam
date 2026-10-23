@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 3],
+    modules: [Oop; 4],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -492,6 +492,166 @@ pub(super) unsafe fn check(
         send(gc, b"collectPrecisely", &[]).unwrap();
         println!(
             "Vector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed"
+        );
+
+        let args = send(id.root, b"sequence", &[namespace]).unwrap();
+        let map = id
+            .send(modules[3], id.load, &[args])
+            .expect("real Map loaded");
+        assert_eq!(send(map, b"collectionProbe", &[]).unwrap(), expected);
+        let map_type = send(id.root, b"behaviorOf:", &[map]).unwrap();
+        let map_node = send(namespace, b"at:", &[sel(b"MapNode")]).unwrap();
+        let single = keep(send(map, b"at:put:", &[one, two]).unwrap());
+        assert_eq!(
+            send(single, b"at:put:", &[make_int(1), two]).unwrap(),
+            single
+        );
+        let replaced = keep(send(single, b"at:put:", &[make_int(1), three]).unwrap());
+        assert_eq!(send(single, b"at:", &[one]).unwrap(), two);
+        assert_eq!(send(replaced, b"at:", &[one]).unwrap(), three);
+        let keys = send(replaced, b"keys", &[]).unwrap();
+        assert_eq!(
+            send(keys, b"atWord:", &[abi::size(0).unwrap()]).unwrap(),
+            one
+        );
+        let values = send(replaced, b"values", &[]).unwrap();
+        assert_eq!(
+            send(values, b"atWord:", &[abi::size(0).unwrap()]).unwrap(),
+            three
+        );
+        assert_eq!(send(single, b"includesKey:", &[one]).unwrap(), truth);
+        assert_eq!(send(single, b"includesKey:", &[three]).unwrap(), falsity);
+        let absent_type = send(base, b"delegated", &[]).unwrap();
+        send(absent_type, b"addMethod", &[sel(b"value"), replacement]).unwrap();
+        let absent = keep(send(absent_type, b"allocate", &[abi::size(0).unwrap()]).unwrap());
+        assert_eq!(
+            send(single, b"at:ifAbsent:", &[three, absent]).unwrap(),
+            expected
+        );
+        assert_eq!(send(single, b"at:ifAbsent:", &[one, absent]).unwrap(), two);
+        let binary_key = text(b"x\0y");
+        let with_string = keep(send(single, b"at:put:", &[binary_key, minus]).unwrap());
+        assert_eq!(send(with_string, b"at:", &[text(b"x\0y")]).unwrap(), minus);
+        let float_zero = make_float(0.0);
+        let with_float = keep(send(with_string, b"at:put:", &[float_zero, max]).unwrap());
+        assert_eq!(send(with_float, b"at:", &[make_float(-0.0)]).unwrap(), max);
+        let nan = make_float(f64::NAN);
+        let with_nan = keep(send(with_float, b"at:put:", &[nan, three]).unwrap());
+        assert_eq!(send(with_nan, b"at:", &[nan]).unwrap(), three);
+        assert_eq!(
+            send(with_nan, b"at:", &[make_float(f64::NAN)]).unwrap(),
+            nil
+        );
+        let mut large = map;
+        let mut large_token = send(roots, b"retain:", &[large]).unwrap();
+        for i in 0..128 {
+            let next = send(large, b"at:put:", &[make_int(i), make_int(i * 2)]).unwrap();
+            let token = send(roots, b"retain:", &[next]).unwrap();
+            send(roots, b"release:", &[large_token]).unwrap();
+            large = next;
+            large_token = token;
+        }
+        assert_eq!(int_value(send(large, b"size", &[]).unwrap()), 128);
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        for i in 0..128 {
+            assert_eq!(
+                int_value(send(large, b"at:", &[make_int(i)]).unwrap()),
+                i * 2
+            );
+        }
+        assert_eq!(int_value(send(single, b"size", &[]).unwrap()), 1);
+        let map_meta = send(id.root, b"behaviorOf:", &[map_type]).unwrap();
+        let private_meta = send(map_meta, b"delegated", &[]).unwrap();
+        send(private_meta, b"addMethod", &[sel(b"allocate"), allocating]).unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[map_type, private_meta],
+        )
+        .unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[map_node, private_meta],
+        )
+        .unwrap();
+        let key_type = keep(send(base, b"delegated", &[]).unwrap());
+        let hashing = send(actor_type, b"lookup", &[sel(b"collisionHash")]).unwrap();
+        send(key_type, b"addMethod", &[sel(b"collectionHash"), hashing]).unwrap();
+        let mut collisions = map;
+        let mut keys = Vec::new();
+        for value in [one, two, three] {
+            let key = keep(send(key_type, b"allocate", &[abi::size(0).unwrap()]).unwrap());
+            keys.push(key);
+            collisions = keep(send(collisions, b"at:put:", &[key, value]).unwrap());
+        }
+        assert_eq!(int_value(send(collisions, b"size", &[]).unwrap()), 3);
+        for (&key, value) in keys.iter().zip([one, two, three]) {
+            assert_eq!(send(collisions, b"at:", &[key]).unwrap(), value);
+        }
+        // Changing hashing requires explicit rehash; identity and aliases remain.
+        send(
+            actor,
+            b"at:put:",
+            &[abi::size(38).unwrap(), abi::size(1).unwrap()],
+        )
+        .unwrap();
+        assert_eq!(send(collisions, b"at:", &[keys[0]]).unwrap(), nil);
+        send(id.root, b"ensurePrivateVtableFor:", &[collisions]).unwrap();
+        assert_eq!(
+            send(map, b"rehashImage:", &[collisions]).unwrap(),
+            collisions
+        );
+        for (&key, value) in keys.iter().zip([one, two, three]) {
+            assert_eq!(send(collisions, b"at:", &[key]).unwrap(), value);
+        }
+        let collision_values = keep(send(collisions, b"values", &[]).unwrap());
+        assert_eq!(int_value(send(collision_values, b"size", &[]).unwrap()), 3);
+        assert_eq!(
+            int_value(send(collisions, b"inject:into:", &[zero, reducer]).unwrap()),
+            6
+        );
+        assert_eq!(send(collisions, b"do:", &[block]).unwrap(), collisions);
+        assert_eq!(
+            send(collisions, b"keysAndValuesDo:", &[absent]).is_err(),
+            true
+        );
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), collecting_charge],
+        )
+        .unwrap();
+        assert_eq!(
+            text_bytes(send(single, b"printString", &[]).unwrap()),
+            b"{1 -> 2}"
+        );
+        send(
+            gc_type,
+            b"addMethod",
+            &[sel(b"chargeExternalAllocation:"), original_charge],
+        )
+        .unwrap();
+        let vector_new = keep(send(vector_type, b"lookup", &[sel(b"new")]).unwrap());
+        send(vector_type, b"addMethod", &[sel(b"new"), replacement]).unwrap();
+        assert!(send(single, b"keys", &[]).is_err());
+        send(vector_type, b"addMethod", &[sel(b"new"), vector_new]).unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[map_type, map_meta],
+        )
+        .unwrap();
+        send(
+            id.root,
+            b"reassociateBehaviorOf:with:",
+            &[map_node, map_meta],
+        )
+        .unwrap();
+        send(roots, b"release:", &[large_token]).unwrap();
+        send(gc, b"collectPrecisely", &[]).unwrap();
+        println!(
+            "Map persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed"
         );
         println!("NUMERIC_INTEGRATION_OK");
     }

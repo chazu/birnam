@@ -476,3 +476,27 @@ the inherited-method check now protects that contract. All prior native gates pa
 Broad throughput work remains deferred. The concrete removed costs are root-token
 allocation and retain/release dispatch for each temporary reference; no application
 speedup is claimed yet. [Qualification receipts](../measurements/oop-vector-20261023.json).
+
+## Piece 19: Map uses Oops and direct scoped roots
+
+Map keeps its persistent hash trie, collision nodes, original-key retention and
+unchanged-value identity behavior. Payload tags remain private to Map; ObjectModel
+traces its declared reference slots. CollectionVt inheritance is preserved.
+Full-width hash inputs use Word messages, and printing assembles an owned Bytes
+object through current printing/byte protocols and String construction.
+
+Removed per-temporary root tokens, retain/release cleanup dispatch, incoming-call
+reference copies, and the carrier copy used when forwarding traversal arguments
+to Vector. Scope reset/drop operates only on the current suffix of one owner-local
+root list. Rehashing explicitly keeps the old root along with its pair snapshot
+until the new nodes have been constructed and the target is updated.
+
+The integrated native gate checks 128 keys, old-version preservation, equal-key
+replacement with original-key retention, unchanged-value identity, absent-key
+callbacks, binary String keys, signed Float zeros, NaN identity, forced hash
+collisions, hash changes followed by identity-preserving rehash through a private
+vtable, Vector keys/values, folds, printing, constructor replacement, and GC inside
+hashing, node allocation and byte accounting. The prior gates and independent C
+and TinyCC callers pass. Performance recovery and full compiler/execution/image/
+worker acceptance remain pending.
+[Qualification receipts](../measurements/oop-map-20261023.json).
