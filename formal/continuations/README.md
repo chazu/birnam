@@ -1,4 +1,7 @@
-# Continuation-aware Id: first formal model
+# Continuation-aware Id: formal models
+
+The package now includes [metacircular lookup, bootstrap and native callback
+boundaries](BOUNDARIES.md), in addition to the first model described below.
 
 This is a proposed semantic boundary, not an implementation or a frozen ABI.
 The user explicitly reopened additions to Id, preferring a small public contract
@@ -26,11 +29,11 @@ C or Rust implementation actually does so.
 
 The new required mechanism is the public continuation-aware calling/transfer
 contract. No payload-type catalog, private Id/Execution pairing, shared layout,
-or new implicit application protocol is proposed. The exact ABI, bootstrap base
-case for continuation-aware metacircular lookup, and operation names are still
-design work. The mathematical owner interface in Lean is not a proposed native
-service table: it specifies the observable obligations of an owner reached through
-the eventual public object protocol.
+or new implicit application protocol is proposed. The exact ABI and operation
+names are still design work. The boundary extension models a concrete bootstrap
+base case and its mutable lookup binding. The mathematical owner interface in
+Lean is not a proposed native service table: it specifies the observable
+obligations of an owner reached through the eventual public object protocol.
 
 ## What is checked
 
@@ -52,9 +55,10 @@ The checks require:
 - consumed wakeups do not acquire ownership again;
 - finite computations eventually complete under the stated fairness assumptions.
 
-Lookup is represented by explicit phases and one binding read, not by a complete
-metacircular interpreter. The model does not impose a transactional snapshot on
-arbitrary lookup: mutations before its read are observed; mutations after its
+In this first model, lookup is represented by explicit phases and one binding
+read. The boundary extension expands the recursive metacircular sends. The model
+does not impose a transactional snapshot on arbitrary lookup: mutations before
+its read are observed; mutations after its
 selection do not rewrite that selected invocation. A replacement Method is held
 by its publisher before installation. Omitting that lifetime initially produced
 a real model counterexample; publication cannot create a reference to code that
@@ -120,9 +124,10 @@ completed behavior; the explicit temporal completion property is still checked.
 Collection is an abstract code-retention check, not a complete heap collector.
 Ready/waiting membership specifies scheduler ownership, not a proof that a native
 root provider reports every reference. Oop address reuse, allocation failures,
-full DNU/error semantics, native callback barriers, cancellation/cleanup,
-continuation cloning, thread-hosted domains and executable mapping retirement
-are outside this first model. One-shot wakeup is the scheduler policy modeled,
+full DNU/error semantics, cancellation/cleanup, continuation cloning,
+thread-hosted domains and executable mapping retirement
+are outside this first model. Native callback barriers and bootstrap are covered
+by the boundary extension. One-shot wakeup is the scheduler policy modeled,
 not a fixed type or restriction imposed on every continuation object by Id.
 
 There is no proved refinement between the TLA+ model and the Lean model, nor from
@@ -149,10 +154,10 @@ and `receipt.json` are written to `.cargo-target/continuations/check/`.
 
 These models can support an initial design decision about opaque owner state and
 explicit transfer. They do not yet establish a complete continuation-aware Id.
-Before choosing an ABI, extend the operational model to the actual metacircular
-lookup/base-case and native boundary. Then implement a small executable model
-using the public Oop protocol and compare its traces with the specification,
-including suspending lookup and its callbacks. Only after that should the
+The boundary extension supplies finite metacircular lookup and native callback
+models plus unbounded native-scope proofs. Before choosing an ABI, implement a
+small executable model using the public Oop protocol and compare its traces with
+the specification, including suspending lookup and its callbacks. Only then should the
 compiler and existing Execution machinery be migrated.
 
 Reference tool guidance: [TLC behavior and fairness checks](https://dl.tlapl.us/tlatoolbox/doc/model/overview-page.html)

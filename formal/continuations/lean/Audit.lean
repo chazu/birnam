@@ -1,4 +1,5 @@
 import Continuation
+import Boundary
 
 #print axioms Birnam.Continuation.listOwner_implements
 #print axioms Birnam.Continuation.endOwner_implements
@@ -19,3 +20,25 @@ import Continuation
 #print axioms Birnam.Continuation.representation_example
 #print axioms Birnam.Continuation.wake_example
 #print axioms Birnam.Continuation.trace_example
+#print axioms Birnam.Boundary.lookup_uses_vtable
+#print axioms Birnam.Boundary.selected_preserves_complete_request
+#print axioms Birnam.Boundary.anchor_observes_replacement
+#print axioms Birnam.Boundary.metaPath_length
+#print axioms Birnam.Boundary.metaPath_anchor
+#print axioms Birnam.Boundary.boot_step_safe
+#print axioms Birnam.Boundary.bootstrap_no_early_publication
+#print axioms Birnam.Boundary.cold_bootstrap_safe
+#print axioms Birnam.Boundary.native_step_safe
+#print axioms Birnam.Boundary.native_history_safe
+#print axioms Birnam.Boundary.inner_return_keeps_ancestors
+#print axioms Birnam.Boundary.foreign_return_rejected
+#print axioms Birnam.Boundary.enclosing_native_blocks_suspend
+#print axioms Birnam.Boundary.wrong_owner_cannot_complete
+#print axioms Birnam.Boundary.completion_preserves_destination
+#print axioms Birnam.Boundary.completion_cannot_repeat
+#print axioms Birnam.Boundary.bootstrap_example
+#print axioms Birnam.Boundary.anchor_example
+#print axioms Birnam.Boundary.native_ancestor_example
+#print axioms Birnam.Boundary.native_foreign_example
+#print axioms Birnam.Boundary.completion_owner_example
+#print axioms Birnam.Boundary.completion_used_example

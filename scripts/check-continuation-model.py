@@ -34,6 +34,45 @@ CASES = {
     "NoBodyPause": "Invariant NoBodyPause is violated.",
     "NoTwoWaiting": "Invariant NoTwoWaiting is violated.",
 }
+BOUNDARY_CASES = {
+    "MetaSync": None, "MetaAsync": None, "MetaDeep": None,
+    "MetaEarlyPublish": "Invariant BootstrapReady is violated.",
+    "MetaNoAnchor": "Invariant ResolutionBound is violated.",
+    "MetaFrozenAnchor": "Invariant SelectionPreserved is violated.",
+    "MetaShortcut": "Invariant CompletedCorrectly is violated.",
+    "MetaReselect": "Invariant SelectionPreserved is violated.",
+    "MetaLoseRequest": "Invariant RequestPreserved is violated.",
+    "MetaLookupReplay": "Invariant NoLookupReplay is violated.",
+    "MetaSelectedLookup": "Invariant DirectEntry is violated.",
+    "MetaDropLookupCode": "Invariant CodeAlive is violated.",
+    "MetaNativeEscape": "Invariant NativeBarrier is violated.",
+    "MetaNativeTail": "Invariant CompletedCorrectly is violated.",
+    "MetaDoubleCompletion": "Invariant Once is violated.",
+    "MetaCallbackTail": "Invariant NoLookupReplay is violated.",
+    "MetaNoLookupCallback": "Invariant NoLookupCallback is violated.",
+    "MetaOverlap": "Invariant SingleDriver is violated.",
+    "MetaNoSuspendedLookup": "Invariant NoSuspendedLookup is violated.",
+    "MetaNoSuspendedNativeCallback": "Invariant NoSuspendedNativeCallback is violated.",
+    "MetaNoDeniedNativeSuspend": "Invariant NoDeniedNativeSuspend is violated.",
+    "MetaNoReplacedLookupEntry": "Invariant NoReplacedLookupEntry is violated.",
+    "MetaNoStaleCompletion": "Invariant NoStaleCompletion is violated.",
+    "ScopeSafe": None,
+    "ScopeClearAncestors": "Invariant NativeFrames is violated.",
+    "ScopeForeignReturn": "Invariant NativeFrames is violated.",
+    "ScopeIgnoreOwner": "Invariant OwnerOnly is violated.",
+    "ScopeReuseTicket": "Invariant AtMostOnce is violated.",
+    "ScopeIgnoreBarrier": "Invariant NoEscape is violated.",
+    "ScopeNoDetachedWait": "Invariant NoDetachedWait is violated.",
+    "ScopeNoRefusal": "Invariant NoRefusal is violated.",
+}
+BOUNDARY_MUTATIONS = {
+    "early-publication": ("if s.graph && s.seeded then { s with published := true } else s", "{ s with published := true }"),
+    "broad-anchor": ("r.receiver == root && r.selector == lookup", "r.receiver == root || r.selector == lookup"),
+    "clear-ancestors": ("{ s with frames := rest }", "{ s with frames := [] }"),
+    "ignore-barrier": ("if s.frames.isEmpty then { s with parked := true } else s", "{ s with parked := true }"),
+    "ignore-owner": ("caller = t.owner ∧ t.used = false", "t.used = false"),
+    "reuse-completion": ("caller = t.owner ∧ t.used = false", "caller = t.owner"),
+}
 MUTATIONS = {
     "tail-push": ("(⟨m, f.destination⟩ :: fs, .entered m f.destination)",
                   "(⟨m, f.destination⟩ :: f :: fs, .entered m f.destination)"),
@@ -64,19 +103,22 @@ def main():
     parser.add_argument("--tla-jar")
     parser.add_argument("--java")
     parser.add_argument("--fetch-tools", action="store_true")
+    parser.add_argument("--suite", choices=["all", "boundaries"], default="all")
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     jar, lean, java, version = TOOLS.tools(args)
     report = {"status": "incomplete", "baseline": subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "tools": {"lean_version": version, "lean_sha256": digest(lean),
-                  "tlc_sha256": digest(jar)}, "tla": {}, "lean": {}}
+                  "tlc_sha256": digest(jar)}, "suite": args.suite, "tla": {}, "lean": {}}
     (OUT / "receipt.json").write_text(json.dumps(report, indent=2) + "\n")
-    for name, expected in CASES.items():
+    cases = BOUNDARY_CASES if args.suite == "boundaries" else {**CASES, **BOUNDARY_CASES}
+    for name, expected in cases.items():
+        module = "Metacircular" if name.startswith("Meta") else "NativeScopes" if name.startswith("Scope") else "ContinuationSend"
         command = [java, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC", "-Xmx768m",
                    "-cp", str(jar), "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "1",
                    "-metadir", str(OUT / ("states-" + name)), "-config",
-                   str(MODEL / "tla" / (name + ".cfg")), str(MODEL / "tla/ContinuationSend.tla")]
+                   str(MODEL / "tla" / (name + ".cfg")), str(MODEL / "tla" / (module + ".tla"))]
         code, output, seconds = run(command, OUT / (name + ".log"))
         if expected:
             assert code != 0 and expected in output and "State 1:" in output, (name, code, output[-3000:])
@@ -88,31 +130,37 @@ def main():
             "log_sha256": digest(OUT / (name + ".log")),
             "counterexample": output[output.index("Error:"):] if expected else None}
         print(name, "confirmed counterexample" if expected else "passed", states[-1:] or "", flush=True)
-    source = (MODEL / "lean/Continuation.lean").read_text()
-    assert not re.search(r"\b(sorry|admit|axiom|native_decide)\b", source)
     build = OUT / "lean"
     build.mkdir(exist_ok=True)
     env = dict(os.environ, LEAN_PATH=str(build))
-    code, output, seconds = run([str(lean), "-o", str(build / "Continuation.olean"),
-        "Continuation.lean"], OUT / "lean.log", cwd=MODEL / "lean", env=env)
-    assert code == 0 and "warning:" not in output, output
+    modules = {"Continuation": MUTATIONS, "Boundary": BOUNDARY_MUTATIONS}
+    names = []
+    for module in modules:
+        source = (MODEL / "lean" / (module + ".lean")).read_text()
+        assert not re.search(r"\b(sorry|admit|axiom|native_decide)\b", source)
+        code, output, seconds = run([str(lean), "-o", str(build / (module + ".olean")),
+            module + ".lean"], OUT / ("lean-" + module + ".log"), cwd=MODEL / "lean", env=env)
+        assert code == 0 and "warning:" not in output, output
+        names.extend("Birnam." + module + "." + name for name in re.findall(r"^theorem (\w+)", source, re.M))
     code, audit, _ = run([str(lean), "Audit.lean"], OUT / "audit.log", cwd=MODEL / "lean", env=env)
     assert code == 0, audit
-    names = re.findall(r"^theorem (\w+)", source, re.M)
     for name in names:
-        assert "Birnam.Continuation." + name in audit, name
+        assert name in audit, name
     for group in re.findall(r"depends on axioms:\s*\[([^]]*)\]", audit):
         assert set(filter(None, re.split(r"[,\s]+", group))) <= TOOLS.ALLOWED_AXIOMS, group
     assert "sorryAx" not in audit
-    report["lean"] = {"theorems": names, "audit": audit, "seconds": seconds, "mutations": {}}
-    for name, (before, after) in MUTATIONS.items():
-        assert source.count(before) == 1, name
-        file = build / ("Mutant_" + name.replace("-", "_") + ".lean")
-        file.write_text(source.replace(before, after))
-        code, output, _ = run([str(lean), str(file)], OUT / ("lean-" + name + ".log"), env=env)
-        assert code != 0 and "Tactic `decide` proved that the proposition" in output, (name, output)
-        report["lean"]["mutations"][name] = {"returncode": code, "errors": output}
-        print("Lean", name, "rejected", flush=True)
+    report["lean"] = {"theorems": names, "audit": audit, "mutations": {}}
+    for module, mutations in modules.items():
+        source = (MODEL / "lean" / (module + ".lean")).read_text()
+        for mutation, (before, after) in mutations.items():
+            name = module + "-" + mutation
+            assert source.count(before) == 1, name
+            file = build / ("Mutant_" + name.replace("-", "_") + ".lean")
+            file.write_text(source.replace(before, after))
+            code, output, _ = run([str(lean), str(file)], OUT / ("lean-" + name + ".log"), env=env)
+            assert code != 0 and "Tactic `decide` proved that the proposition" in output, (name, output)
+            report["lean"]["mutations"][name] = {"returncode": code, "errors": output}
+            print("Lean", name, "rejected", flush=True)
     files = sorted(p for p in MODEL.rglob("*") if p.is_file() and ".lake" not in p.parts)
     files.append(Path(__file__).resolve())
     report["source_sha256"] = {str(p.relative_to(ROOT)): digest(p) for p in files}
