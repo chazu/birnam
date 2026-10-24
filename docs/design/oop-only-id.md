@@ -7,29 +7,32 @@
 > [correction and current evidence](id-send-correction-20261023.md).
 
 Decision: accepted user direction, 2026-10-22. Highest-priority runtime work.
-Status: the [isolated bootstrap-to-GC slice](oop-only-id-slice-20261023.md)
-now starts cold, loads independent native modules and performs precise collection
-through Oop-only Id. The tested closure contains no Operand/Outcome adapter.
-Correctness checks pass; measured full-path performance regresses. This is a
-migration checkpoint, not a completed language cutover or an install candidate.
-Stackless execution, source compilation, images and workers remain unmigrated.
-The initial ownership question is revised by the Piumarta comparison below.
 
-Follow-up: [simpler object storage and call roots](oop-runtime-simplification-20261023.md)
-removes the four redundant tables and per-call argument copying. Native checks
-pass and costs fall, but the migration remains isolated and incomplete.
+## Current checkpoint: `683c9fc2`
 
-Latest: [opaque payloads without Storage classification](oop-payload-opacity-20261023.md)
-removed the fixed payload catalog. Its added application protocol was subsequently
-rejected and removed; its measurements describe that earlier implementation.
-Payload tracing remains an owner responsibility.
+The Oop-only native closure passes its check, including the corrected direct-send
+contract. The full language migration is unfinished. Work is on
+`codex/oop-only-id-slice` in `/Users/chazu/dev/zig/birnam-oop-id`; it is unmerged and
+uninstalled. The current installed runtime has not been replaced by this branch.
 
-Current implementation work is tracked in the [invariant migration log](oop-invariant-migration-20261023.md).
-Namespace, Storage, Boolean, nil, ObjectModel, Word, Bytes, String, Float, Integer, Vector and Map now join the
-Oop-only native closure; collector activation/accounting and live root-lookup
-replacement are tested. Prelude now constructs System through Oops; input, output, environment and file I/O
-also use the Oop-only interface. PEG and Artifact inspection now join the qualified native closure. The remaining bootstrap/support
-owners, execution/compiler, images and workers are still pending.
+Read the [complete work summary and continuation boundary](logue-runtime-work-summary.md)
+for the Logue findings, retained/rejected optimizations, commit map, corrected
+architecture and outstanding acceptance work. The
+[migration log](oop-invariant-migration-20261023.md) preserves per-piece evidence;
+its older application-protocol descriptions are superseded by the
+[send correction](id-send-correction-20261023.md).
+
+Id/Siphon, Roots, Collect, Namespace, Storage diagnostics, Boolean/nil, ObjectModel,
+Word, Bytes/String, Float/Integer, Vector/Map, Prelude, input/output/environment/file
+I/O, PEG and Artifact inspection participate in the qualified native closure.
+TCC, generated code, compiler/Execution integration, full Bootstrap, images, host
+and workers remain unfinished. No TCC callable proposal was implemented or accepted.
+
+Latest recorded check: `bash scripts/oop-id-slice-test.sh`, with
+[receipts](../measurements/id-send-correction-20261023.json). This does not qualify
+an installed runtime or establish a Logue speedup. Earlier prototype regressions
+and intermediate improvements are historical measurements, not timings of the
+corrected current branch. Broad performance work follows the complete migration.
 
 ## Required end state
 
@@ -89,9 +92,10 @@ Carrier helpers are replaceable implementation mechanisms, not perpetual source
 semantics. Redesign/delete their actual consumers together. This does not permit
 bypassing a source-level operation that remains in the new implementation.
 
-## Current implementation and why a signature edit is insufficient
+## Baseline inventory and why a signature edit is insufficient
 
-The baseline is `a271e4c5`. [Inventory](../measurements/oop-only-id-inventory-20261022.json)
+This section describes the pre-cutover baseline `a271e4c5`, not the current
+native closure. The current status is above. [Inventory](../measurements/oop-only-id-inventory-20261022.json)
 records tracked file references and the existing release-validation dependency
 plan. Counts are source occurrences, not work estimates or dynamic costs. Most
 references in Siphon are integration tests of production modules.
@@ -111,7 +115,7 @@ references in Siphon are integration tests of production modules.
 | Image/Generation/Artifact | Native entries, metadata, relocation and compiled ABI assumptions | Updated executable admission and explicit rebuild; independent format/relocation checks |
 | Host/Isolate | Load paths, diagnostics, callbacks and worker initialization use carriers | Real CLI/worker startup through the new boundary and preserved diagnostics/control behavior |
 
-Live signatures currently include:
+At that baseline, the signatures included:
 
 ```text
 Method(context, receiver, Operand*, count) -> Outcome
@@ -303,6 +307,6 @@ MISE_TRUSTED_CONFIG_PATHS="$PWD" CARGO_TARGET_DIR=.cargo-target/simplifications 
   mise exec -- cargo test --offline --locked -p birnam-abi -p birnam-id --lib
 ```
 
-Both suites pass. The recorded baseline log is included in the inventory. This
-checks the current carrier implementation only. No new ABI, loader, concurrency,
-image or stackless migration has been validated yet.
+Both suites passed at that baseline; its log is included in the inventory. That
+run checked the carrier implementation only. Current native qualification is
+linked above; complete concurrency, image and stackless migration remain pending.

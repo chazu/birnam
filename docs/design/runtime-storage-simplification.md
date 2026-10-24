@@ -1,5 +1,8 @@
 # Runtime storage simplification with unchanged malleability
 
+> **Historical scope:** These are the earlier storage experiments, including rejected candidates. They are not measurements or design instructions for the corrected Oop-only branch. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 Approved 2026-10-22 after the first [runtime simplification batch](runtime-simplification-results.md).
 This batch changes internal storage only. It preserves current selectors, Id
 lookup, allocation/representation hooks, logical frames, selected code ownership,

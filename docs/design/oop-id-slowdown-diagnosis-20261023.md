@@ -1,5 +1,8 @@
 # Why the Oop-only native slice is slower
 
+> **Historical scope:** This diagnosis applies to `4c8e5937`. Its tables and repeated work were investigated and partly removed in later commits; it does not describe the current dispatcher. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 2026-10-23, runtime revision `4c8e5937`. The regression reproduces. Its principal
 causes are extra metadata/liveness work per send and construction of temporary
 Names, not the cost of passing an Oop. GC additionally processes more objects and

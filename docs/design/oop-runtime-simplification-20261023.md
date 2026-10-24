@@ -1,5 +1,8 @@
 # Simpler Oop-only object storage and call roots
 
+> **Historical scope:** This is an intermediate storage/rooting checkpoint. Later work removed its Storage classification and the subsequently introduced application protocol. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 Historical checkpoint. The fixed storage classification described below was
 subsequently rejected and [removed](oop-payload-opacity-20261023.md). Keep these
 measurements as evidence of that earlier implementation, not as design guidance.

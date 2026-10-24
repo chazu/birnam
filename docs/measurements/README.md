@@ -1,5 +1,13 @@
 # Historical measurement evidence
 
+For the Logue/runtime work through `683c9fc2`, start with the
+[work summary](../design/logue-runtime-work-summary.md). The latest corrected native
+qualification is [id-send-correction-20261023.json](id-send-correction-20261023.json).
+Earlier Logue timings, Oop prototypes and owner-migration receipts retain their
+original baselines and acceptance limits. In particular, receipts from the removed
+`apply` design are historical observations, not architectural approval or current
+performance evidence.
+
 New raw measurements belong under `.cargo-target/measurements` or the validation
 runner's output directory. Check in a compact decision and reproducible command;
 CI retains logs as artifacts. Do not embed complete child matrices repeatedly in

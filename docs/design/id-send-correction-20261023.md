@@ -1,5 +1,9 @@
 # Restore the Id send contract
 
+Implemented in **`683c9fc2`** on the isolated `codex/oop-only-id-slice` branch.
+The [complete work summary](logue-runtime-work-summary.md) connects this correction
+to the original Logue investigation, prior decisions and remaining migration.
+
 The `apply` protocol was an implementation mistake, not an approved design choice.
 It has been removed from Id and from the migrated native owners. Historical logs
 that described it as architectural compliance are retracted in the migration log.

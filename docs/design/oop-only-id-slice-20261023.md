@@ -1,5 +1,8 @@
 # Oop-only Id: bootstrap-to-GC qualification
 
+> **Historical scope:** This is the initial native checkpoint, before subsequent ownership, error-reference and dispatch corrections. Its performance rejection and implementation descriptions apply to that revision. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 2026-10-23. Isolated branch: `codex/oop-only-id-slice`, based on `a271e4c5`.
 Worktree: `/Users/chazu/dev/zig/birnam-oop-id`.
 
@@ -31,8 +34,10 @@ marking, ordered retirement, detachment and finalization sequence.
   by sending byte-valued Oops; retained names are interned directly. Loaded-file
   literals are created from descriptor data during loading. Ordinary calls have
   no C-string/byte-span argument exception.
-- Native failures are messageable Fault objects, represented with a failure-reference
-  tag. The tag remains part of allocation identity through retirement/detachment.
+- At this checkpoint, native failures were messageable Fault objects represented
+  with a failure-reference tag tied to allocation identity. **Superseded:** later
+  work removed that classification; the marker belongs only to a failure return,
+  and a caught error is an ordinary reference.
   Kind and detail are Oops. There is no success envelope. Ordinary object results
   remain data; the existing language Error module is not yet migrated or qualified.
 - Id protects receiver, selector, arguments, selected Method, context and owner in

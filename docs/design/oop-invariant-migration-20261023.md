@@ -11,6 +11,19 @@ changed. Each completed piece is tested and committed separately. After each
 piece, inspect new work and duplication; fix obvious regressions immediately.
 Broader performance recovery follows the completed migration.
 
+## Current summary
+
+The latest runtime commit is **`683c9fc2`**. The corrected native gate passes;
+the work remains isolated and uninstalled. The
+[complete work summary](logue-runtime-work-summary.md) connects the original Logue
+investigation, retained/rejected optimizations, Oop boundary experiments, all owner
+migrations and the current continuation boundary.
+
+Pieces 1–26 below are a chronological record of their respective revisions. Their
+original timings and test counts remain historical. The final correction changes
+parts of their implementation; it does not retroactively validate rejected design
+choices. Use the summary and current module READMEs for the retained behavior.
+
 ## Remaining acceptance work
 
 - Finish ownership boundaries between generic Id and bootstrap payload owners.
@@ -24,6 +37,8 @@ Broader performance recovery follows the completed migration.
   malleability or reintroducing a payload catalog.
 
 ## Piece 1: argument containers own argument application
+
+> **Current status:** The generic argument-application protocol and its fixture were removed in `683c9fc2`. Explicit captured-Method reflection uses the bootstrap owner's own argument Sequence. The single-field write simplification remains.
 
 `invokeOn:arguments:` now asks the supplied container to `apply:to:`. Likewise,
 `loadNative:` asks the supplied container to `load:`, which invokes the Name
@@ -230,6 +245,8 @@ or side table was added to justify the shortcut.
 
 ## Piece 9: preserve root lookup replacement
 
+> **Current status:** The extra native-Method metavtable described here was removed in `683c9fc2`. Global and metacircular lookup replacement now pass with ordinary sends and direct method entry.
+
 A new independent test reproduced a stack overflow after replacing the root
 `lookup` method with a forwarding native implementation. Applying that method
 needed lookup again, through the same replacement, before its body could execute.
@@ -329,6 +346,8 @@ not claim their complete acceptance. [Receipts](../measurements/oop-object-model
 
 ## Piece 13: Word values and expression evaluation use Oops
 
+> **Current status:** The private evaluator Method and application forwarding were removed in `683c9fc2`. Evaluation is a local function; program bytes use indexed messages and the arithmetic guards remain.
+
 Word now receives and returns objects throughout. Constructed Words retain their
 fresh identity and full eight-byte unsigned payload. Boundary sizes participate
 in unsigned operations; full-width values remain Word objects. Explicit low/high
@@ -349,6 +368,8 @@ verifies. Broader throughput measurement remains deferred with the compiler and
 full-language integration. [Receipts](../measurements/oop-word-20261023.json).
 
 ## Piece 14: Bytes and decoded views use Oops
+
+> **Current status:** The storage simplifications remain. `apply`/`appendTo:` forwarding was removed in `683c9fc2`; conversion uses ordinary indexed byte messages.
 
 Bytes transfers data through object protocols. Its own buffer objects remain the
 storage authority; other owners supply bytes through `appendTo:` and bulk byte
@@ -371,6 +392,8 @@ provider; full Integer/Vector integration remains in the migration queue.
 [Qualification receipts](../measurements/oop-bytes-20261023.json).
 
 ## Piece 15: String owns bytes and uses object-valued extensions
+
+> **Current status:** Direct byte ownership and ordinary extension contexts remain. The private constructor callback and byte-application helpers were removed in `683c9fc2`.
 
 String and StringBuilder now own their native byte arrays directly. Removed the
 separate Bytes backing object and payload mirror; handles have zero payload.
@@ -423,6 +446,8 @@ providers here; the full-language integration and performance work remain pendin
 [Qualification receipts](../measurements/oop-float-20261023.json).
 
 ## Piece 17: Integer and mixed arithmetic use ordinary Methods
+
+> **Current status:** The private mixed evaluator Method and application checks were removed in `683c9fc2`. Method witnesses compare code, context and owner; ordinary dispatch enters selected code directly.
 
 Integer receives and returns Oops, preserving its eight-byte signed payload,
 full-width Word transport, checked arithmetic, Error propagation and constructor
@@ -525,6 +550,8 @@ qualification remain pending.
 
 ## Piece 21: System input uses Oop contexts and byte objects
 
+> **Current status:** The private error-construction Method was removed in `683c9fc2`. Local functions and registered scoped roots preserve the tested I/O behavior.
+
 `readLine` now transfers arbitrary bytes as an ordinary argument Sequence to the
 current String constructor. It preserves binary input, LF-only removal, EOF, lazy
 Error lookup and the existing stdin-lock lifetime. Method context is an Oop; native
@@ -543,6 +570,8 @@ Broad performance work and full-language qualification remain pending.
 
 ## Piece 22: Environment lookup receives byte Oops
 
+> **Current status:** The bulk application protocol and private callbacks were removed in `683c9fc2`. Environment lookup uses indexed byte messages and local error construction.
+
 Environment now uses Oop Method contexts and the current String byte provider's
 bulk application protocol. Exact String recognition, UTF-8 validation, missing and
 empty values, live String construction and lazy Error publication are preserved.
@@ -559,6 +588,8 @@ Methods with GC. Prior native and stdin error gates pass. No throughput claim.
 
 ## Piece 23: System output writes Oop byte sequences
 
+> **Current status:** The private writing Method and byte-application protocol were removed in `683c9fc2`. Local functions perform output after ordinary byte reads.
+
 Output now uses Oop contexts and one bulk byte-provider call. Exact Strings still
 bypass rendering; other values use the current `printString` and must return an
 exact String. Native writes occur only after rendering and byte transfer, with no
@@ -574,6 +605,8 @@ prompt-flush unit check and all prior native gates pass.
 [Qualification receipts](../measurements/oop-system-output-20261023.json).
 
 ## Piece 24: File I/O transfers byte values through ordinary Methods
+
+> **Current status:** The forwarding stages and `appendTo:` operation were removed in `683c9fc2`. Local filename/content snapshots, ordinary indexed byte reads and scoped roots preserve the tested ordering.
 
 File operations now use Oop contexts and byte-provider application, preserving
 exact String arguments, UTF-8 paths, binary contents, read limits, diagnostic text,
@@ -600,6 +633,8 @@ remain pending. [Qualification receipts](../measurements/oop-file-io-20261023.js
 
 ## Piece 25: PEG uses Oop methods, byte providers and direct retirement
 
+> **Current status:** The matcher is unchanged. Byte-operation callbacks were removed in `683c9fc2`; local functions use ordinary indexed byte reads.
+
 PEG now declares native methods once and uses its ordinary Peg object as context.
 Removed the 36 leaked native Entry records and the per-call root-token/release
 loop. One scoped reference list protects newly constructed graphs and parser
@@ -620,6 +655,8 @@ and performance recovery remain pending.
 [Qualification receipts](../measurements/oop-peg-20261023.json).
 
 ## Piece 26: Artifact inspection uses Oop data and scoped roots
+
+> **Current status:** The codecs and descriptor layout are unchanged. Inspection/list callbacks were removed in `683c9fc2`; local functions use ordinary indexed byte reads.
 
 Artifact's runtime module now uses v2 declarations, an Oop Method context and
 byte-provider application. The descriptor parsers and binary formats are unchanged.

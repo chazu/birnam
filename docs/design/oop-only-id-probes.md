@@ -1,5 +1,8 @@
 # Oop-only Id: allocation and interning probes
 
+> **Historical scope:** These are focused representation/calling-convention probes, not whole-runtime or application qualification. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 Historical pre-cutover probe. Its source is preserved in the linked evidence; the
 commands below describe that earlier tree. The current branch is qualified by
 [scripts/oop-id-slice-test.sh](../../scripts/oop-id-slice-test.sh) instead.

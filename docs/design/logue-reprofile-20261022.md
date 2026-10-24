@@ -1,5 +1,8 @@
 # Logue runtime reprofile, 2026-10-22
 
+> **Historical scope:** This profile records the installed `a271e4c5` baseline. The subsequent work prioritizes eliminating the carrier architecture while preserving the invariants. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 **Priority superseded:** The subsequent [Oop-only Id decision](oop-only-id.md)
 puts removal of the carrier architecture ahead of the optimization experiments
 below. The measurements remain baseline evidence. In particular, do not optimize

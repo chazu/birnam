@@ -1,5 +1,49 @@
 # Validation
 
+## Oop-only native migration
+
+Current runtime checkpoint: **`683c9fc2`**, branch `codex/oop-only-id-slice`, worktree
+`/Users/chazu/dev/zig/birnam-oop-id`. This is an isolated, uninstalled migration.
+The [work summary](design/logue-runtime-work-summary.md) and
+[accepted plan](design/oop-only-id.md) describe its scope and remaining work.
+
+From that worktree, run:
+
+```sh
+bash scripts/oop-id-slice-test.sh
+```
+
+The [latest recorded receipt](measurements/id-send-correction-20261023.json) passes.
+The script builds the native closure listed in its package/export inventory and
+runs Id/value/collection/I/O/PEG/artifact unit and integration checks. Its explicit
+library paths and nonexistent module-search directories keep the installed prefix
+and upper language artifacts out of this acceptance boundary.
+
+| Evidence | Coverage |
+| --- | --- |
+| Native runtime, independent C and TinyCC callers | Bootstrap calling convention, actual loading, live lookup/DNU, entered/captured references and owner-thread refusal |
+| Failure subprocesses | Finalization, partial Storage publication and retirement failure containment |
+| Allocation/global-lookup subprocesses | Allocation policy/accounting and metacircular lookup replacement |
+| Numeric integration and stdin-error subprocesses | Actual numeric/text/collection owners, binary I/O, controlled environment values, file snapshots, PEG and artifact inspection; independent C Error/callback fixtures |
+| `dispatch-contract` subprocess | Id installs no `apply`; an ordinary send succeeds even when all lookup on the selected Method is rejected |
+| Export audit | Actual dylib exports match the migrated manifests |
+
+The architectural contract is mandatory; passing the other checks cannot waive
+it. The old tests that endorsed application/forwarding protocols were removed or
+replaced by tests of actual data operations and ordinary sends. Receipts are in
+`.cargo-target/oop-slice/qualification/` by default; `BIRNAM_OOP_TARGET` selects a
+separate target. The numeric integration log includes binary stdout/stderr, so
+read it as bytes or with explicit decoding-error handling.
+
+This does **not** qualify full Bootstrap, authored Error, generated language code,
+Execution/stackless integration, code reclamation, images, host/CLI, workers,
+installed behavior or Logue performance. Those remain required by the plan. The
+commands and results below describe the earlier production migration and must be
+ported/re-run for the Oop-only candidate; they are not current passing results for
+this branch.
+
+## Earlier production-migration validation reference
+
 [Design 90](design/90-functional-modules.md) has moved the production Rust
 modules to Id messages and removed the aggregate Runtime. Workspace and native
 integration tests are runnable. The validation planner also covers the installed

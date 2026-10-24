@@ -1,5 +1,8 @@
 # Language-wide costs exposed by Logue — 2026-10-22
 
+> **Historical scope:** This diagnosis records the earlier installed baseline. Its proposals were followed by retained optimizations and the later Oop-only migration. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 The [first Id improvement](id-default-lookup-fact.md) reduced Logue CPU by 4–6%,
 but addressed only a small repeated native dictionary read. The larger finding
 is how much execution machinery a small Birnam operation invokes. Dispatch is
