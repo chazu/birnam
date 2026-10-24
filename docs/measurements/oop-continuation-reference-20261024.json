@@ -1,0 +1,691 @@
+{
+  "date": "2026-10-24",
+  "baseline": "72e1423057d59570023f00a94088a95d9fe62dee",
+  "original_checkout_checkpoint": "f503c183",
+  "reference": {
+    "status": "passed executable reference tests and two finite trace comparisons; not production or ABI acceptance",
+    "formal_receipt_sha256": "9d4d20fbbc2e3fc23f9f7566f9c1aecadbd81179eaa56099fc16e8a49bf74ade",
+    "comparisons": {
+      "Sync": {
+        "model": [
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|work",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|argument",
+          "ENTRY|native0|0|work|argument",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|"
+        ],
+        "executable": [
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|work",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|argument",
+          "ENTRY|native0|0|work|argument",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|"
+        ],
+        "stdout": "ENTRY|lookup0|2|lookup|lookup\nENTRY|lookup0|1|lookup|work\nENTRY|lookup0|2|lookup|lookup\nENTRY|lookup0|1|lookup|helper\nENTRY|helperBody|0|helper|argument\nENTRY|native0|0|work|argument\nENTRY|lookup0|2|lookup|lookup\nENTRY|lookup0|1|lookup|helper\nENTRY|helperBody|0|helper|\nRESULT|answer\nSTATS|peak_entry_depth|2\n"
+      },
+      "Async": {
+        "model": [
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|work",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|argument",
+          "ENTRY|native0|0|work|argument",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|"
+        ],
+        "executable": [
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|work",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|argument",
+          "ENTRY|native0|0|work|argument",
+          "ENTRY|lookup0|2|lookup|lookup",
+          "ENTRY|lookup0|1|lookup|helper",
+          "ENTRY|helperBody|0|helper|"
+        ],
+        "stdout": "ENTRY|lookup0|2|lookup|lookup\nENTRY|lookup0|1|lookup|work\nENTRY|lookup0|2|lookup|lookup\nENTRY|lookup0|1|lookup|helper\nENTRY|helperBody|0|helper|argument\nENTRY|native0|0|work|argument\nENTRY|lookup0|2|lookup|lookup\nENTRY|lookup0|1|lookup|helper\nENTRY|helperBody|0|helper|\nRESULT|answer\nSTATS|peak_entry_depth|1\n"
+      }
+    },
+    "tests": "\nrunning 1 test\ntest tests::unavailable_before_publication ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 11 tests\ntest continuation_oop_can_be_returned_as_ordinary_data ... ok\ntest asynchronous_child_cannot_escape_a_synchronous_native_ancestor ... ok\ntest completion_ownership_and_consumption_belong_to_the_owner ... ok\ntest captured_continuation_can_choose_live_object_behavior_when_resumed ... ok\ntest dnu_keeps_original_selector_and_arguments ... ok\ntest later_sends_observe_replacement_without_rewriting_captured_entry ... ok\ntest bootstrap_lookup_binding_is_live ... ok\ntest selected_method_is_entered_despite_binding_and_method_behavior_changes ... ok\ntest scheduler_owns_two_interleaved_computations_and_wakeup_is_not_replayed ... ok\ntest suspending_metacircular_lookup_and_native_callback ... ok\ntest long_tail_chain_uses_one_native_entry_activation ... ok\n\ntest result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Compiling birnam-continuation-reference v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/formal/continuations/reference)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s\n     Running unittests src/lib.rs (.cargo-target/continuation-reference/debug/deps/continuation_id-98a09a144f97d170)\n     Running unittests src/main.rs (.cargo-target/continuation-reference/debug/deps/birnam_continuation_reference-e9c2619dee1025c7)\n     Running tests/acceptance.rs (.cargo-target/continuation-reference/debug/deps/acceptance-e4bd5ce72689a4bf)\n   Doc-tests continuation_id\n",
+    "tests_passed": 12,
+    "source_sha256": {
+      "formal/continuations/reference/Cargo.lock": "fdd1de18de6cd56e2ab0590022136e30b49e3e907f4c0b005c8ecdaf1cc0912b",
+      "formal/continuations/reference/Cargo.toml": "38993c2bc1822c9b86585c506fa76b5e0dcecc69335a4386f500de1a5eb261ae",
+      "formal/continuations/reference/src/lib.rs": "69b53a6ae8a3d45a5a77e6c259990cf48406f09f526d4b44aa06d604ed87b421",
+      "formal/continuations/reference/src/main.rs": "fe332565291aeff41112b2b9aa3924651331d84c45731e3179b2eecae4b10b35",
+      "formal/continuations/reference/src/scenarios.rs": "a64a18191f06aa1f487e3bf0a7378b5fb795c546df19e061728157dd108be16c",
+      "formal/continuations/reference/tests/acceptance.rs": "aa63958a6af46fbb0a717165695b511e0d9f1458bedabeb80e3346d00b6af385",
+      "scripts/check-continuation-reference.py": "3bd71811c86fb664fdc5491727678cc07309b9f793a8ce4234016e9a84a6f0fb"
+    }
+  },
+  "formal": {
+    "status": "passed abstract checks and required counterexamples; no implementation proof",
+    "suite": "all",
+    "case_count": 49,
+    "theorem_count": 41,
+    "receipt_sha256": "9d4d20fbbc2e3fc23f9f7566f9c1aecadbd81179eaa56099fc16e8a49bf74ade",
+    "source_sha256": {
+      "formal/continuations/BOUNDARIES.md": "7dc732102854760fea6955f8b94770e79be4d82131152c243d15fe85487dfc15",
+      "formal/continuations/README.md": "643d2571c6cf861832eef8a989252e1a358e3d2b0fb28e49f79998d1c62ba027",
+      "formal/continuations/lean/Audit.lean": "6bbeb757e469dd5ef78e503610395b9cfff3220d0bcb76d54cf4b18a175447d9",
+      "formal/continuations/lean/Boundary.lean": "8b080784a6cd2d00604675f6663e8f3e8be894a49bf6a17e23b8bb94c5b27eba",
+      "formal/continuations/lean/Continuation.lean": "87abfeef37c146e4b6c60290a983d643cd25d74da306036cc8308ec135715bc1",
+      "formal/continuations/lean/lakefile.toml": "828072ad8cf18d1f53893dafeddaef747a1c17284546bace7fd033512586eb9f",
+      "formal/continuations/lean/lean-toolchain": "42779d67b81608af8a12aa4328d2ab47ca201925b3b2bd68369587b5340bb434",
+      "formal/continuations/reference/Cargo.lock": "fdd1de18de6cd56e2ab0590022136e30b49e3e907f4c0b005c8ecdaf1cc0912b",
+      "formal/continuations/reference/Cargo.toml": "38993c2bc1822c9b86585c506fa76b5e0dcecc69335a4386f500de1a5eb261ae",
+      "formal/continuations/reference/src/lib.rs": "69b53a6ae8a3d45a5a77e6c259990cf48406f09f526d4b44aa06d604ed87b421",
+      "formal/continuations/reference/src/main.rs": "fe332565291aeff41112b2b9aa3924651331d84c45731e3179b2eecae4b10b35",
+      "formal/continuations/reference/src/scenarios.rs": "a64a18191f06aa1f487e3bf0a7378b5fb795c546df19e061728157dd108be16c",
+      "formal/continuations/reference/tests/acceptance.rs": "aa63958a6af46fbb0a717165695b511e0d9f1458bedabeb80e3346d00b6af385",
+      "formal/continuations/tla/CachedLookup.cfg": "7cbdc77104b51a03c8bed24060fe51ea71e99d68baf6050f5d7d3f905c370d53",
+      "formal/continuations/tla/ContinuationSend.tla": "ad1183df4841fde51bb432b856465101cb6f73f25df6b46dafbfd322cd909af4",
+      "formal/continuations/tla/CrossAnswer.cfg": "92a0bb1f9ad5b99b1126323c8a95672468b582a74e78705f26bb58f40758ea4d",
+      "formal/continuations/tla/DoubleWake.cfg": "ef3d230b639119ca91b6278133351e282f25076d06f8c6ccbb637989d2a91517",
+      "formal/continuations/tla/DropCode.cfg": "3516459cf8ae58c74ece7029c1301e61c92c08d62efe29aea4100f4932049040",
+      "formal/continuations/tla/MetaAsync.cfg": "2c10fb5b9ce09f9d5150d43bd82eb8d5cfbe5fa2af17a83ad8e401a1d7ad9c8d",
+      "formal/continuations/tla/MetaCallbackTail.cfg": "3a476d1b7619e6d89918d6f85c3ff82749828473dc0468f5c23362f4ffd8d8db",
+      "formal/continuations/tla/MetaCompletedAsync.cfg": "0b1598eb68081f407ae9009af4695fced84644a71b8abe6adcc0d876c8747f64",
+      "formal/continuations/tla/MetaCompletedSync.cfg": "e86b5e9fd98bd43e5e0a539fcb73cdcbb3eb78b40468e09d5803f190df4ffe7a",
+      "formal/continuations/tla/MetaDeep.cfg": "a01f15cbb1e427c275f913052c053fdecc6661b649971079aa5d8bfeea80188d",
+      "formal/continuations/tla/MetaDoubleCompletion.cfg": "43625610cedfea71d31e3a9a339660bd38de8ecb0892b9eddbeb38456c5f877d",
+      "formal/continuations/tla/MetaDropLookupCode.cfg": "ef3ee836b42ad0053e4da8cbe4c4a38406c315f965bd74fb36092a88e9cd6ba6",
+      "formal/continuations/tla/MetaEarlyPublish.cfg": "e1f779010f1bb863b4ac8ba11379c2940f456cc1534d7ae03717606db00075bb",
+      "formal/continuations/tla/MetaFrozenAnchor.cfg": "816d6cbce0014729022a5a8109cd033757a10b4429cdcf8857e6362826c0f267",
+      "formal/continuations/tla/MetaLookupReplay.cfg": "c41ae14fdf65357a69b9520fedb0af5bcd877cb19cc8a133f436e12657b27974",
+      "formal/continuations/tla/MetaLoseRequest.cfg": "d4432b86c67c9309a8be90b3c26e4551261073f922a867627f66007c832cd83c",
+      "formal/continuations/tla/MetaNativeEscape.cfg": "fae628b5943e1360fb295d6b38a361c15dae7f28608f684776fe2399ef5a1963",
+      "formal/continuations/tla/MetaNativeTail.cfg": "ad0ac230fc9f3c8744278e8c81a4085ebdca5cb5254f2849ace5dce79f47fe4d",
+      "formal/continuations/tla/MetaNoAnchor.cfg": "acd7a1a1b4bf14af97dc1419eeb76231fe2a567d0c77fcc610c487de4e6caeba",
+      "formal/continuations/tla/MetaNoDeniedNativeSuspend.cfg": "3adfad2c060fbe8b9a250c15db924c44ce8df55cfdaa8f2d92611ddf0796664f",
+      "formal/continuations/tla/MetaNoLookupCallback.cfg": "baf79569eff27b9676f347532398b6b344a59191ac19fa698d165d625e29a7b1",
+      "formal/continuations/tla/MetaNoReplacedLookupEntry.cfg": "1acf4860c61358de05569c48899f63c32e6b6888b3ab920238f42dad9ff6aef6",
+      "formal/continuations/tla/MetaNoStaleCompletion.cfg": "3a2ac2aff98815491f14915b48b6895a24c2b18e48f8aca1434f07772ef08659",
+      "formal/continuations/tla/MetaNoSuspendedLookup.cfg": "f43e4bd3e4c03f2bd7bc47de187b87bddf604be84517f381d9373a1687e36fec",
+      "formal/continuations/tla/MetaNoSuspendedNativeCallback.cfg": "1e2f8e5a244e9ca04c907eef10fb0ea077e659f88d13bd5da70cbd164411b356",
+      "formal/continuations/tla/MetaOverlap.cfg": "8d8aec330fdd9d9878d3d647e9af150488725816cc7257448b6dd1c95bc7701e",
+      "formal/continuations/tla/MetaReselect.cfg": "df4387ee8f4cc7fa993454b55750a03ba01b13b5667981551f667c1d7c737cdf",
+      "formal/continuations/tla/MetaSelectedLookup.cfg": "79a8204b8530c129e9ed96ef7be166a9613d97ddcfac85e25ae378c19af30931",
+      "formal/continuations/tla/MetaShortcut.cfg": "c51448d98efd4341e17d577be59e34454ab63f92ad0b9e4238720041f1740883",
+      "formal/continuations/tla/MetaSync.cfg": "1947c5a533aa0189fcd7564799b48e50ef6e8340a3bf94070c93b11e9f9eed85",
+      "formal/continuations/tla/Metacircular.tla": "ef5f65ded1c275c197352f09bbf7fd96881149d5981e86c79475e14f7afc361c",
+      "formal/continuations/tla/NativeLookup.cfg": "2cbce17a20635df5760a96c28beac9e91fa0e5f710c58c6efc7a5e82609d44f9",
+      "formal/continuations/tla/NativeScopes.tla": "7b3b5a028d1a53355dd5455f0bb0548895774f08b257df8c650dae4c53936256",
+      "formal/continuations/tla/NoBodyPause.cfg": "19accf170fb986b07ee9e03e4812661b7a59a8e4bd2674b69ffa68b4fb0bde92",
+      "formal/continuations/tla/NoLookupPause.cfg": "67b1bb3aefadda8e8048dc89aeb6be7ab654cca5cae44819050598dc4e734927",
+      "formal/continuations/tla/NoSelectedReplacement.cfg": "7a8b90b6a0ba50f30f7edd4437a36d938bc6bb2e5aab730b225966c7e5035f92",
+      "formal/continuations/tla/NoTwoWaiting.cfg": "4192a967cecabddadb2abf4a0d4b29302d3170f886f3373cd8cfad41dd592999",
+      "formal/continuations/tla/Relookup.cfg": "44a808ec09e2bc90f46f4fd12be6135ae412c604a5ce01063ec81c08e62d2b6f",
+      "formal/continuations/tla/Replay.cfg": "a3f400e3b05a1c90de91aa670cc5fe540cc3f3f61e816e966b4aac38441c5642",
+      "formal/continuations/tla/Safe.cfg": "63c032047c00b27e7a792cdad125057cb4d285e4a13c5b27138ec5636aec846e",
+      "formal/continuations/tla/ScopeClearAncestors.cfg": "504f3e06a1423c6b35f5fc4d2153ff409965d0937f42b9f40e112585c85fe31d",
+      "formal/continuations/tla/ScopeForeignReturn.cfg": "1c11c870b1cd7dfd02947575308b1a5da9d12da746129559b4fc9b484aff17f5",
+      "formal/continuations/tla/ScopeIgnoreBarrier.cfg": "f3eab50d49cd4892ff23038837aaffc7e6d4931f574d3c2309adde4d342edaf1",
+      "formal/continuations/tla/ScopeIgnoreOwner.cfg": "4d6604b27852f9fe30efe423164568874799889baf0e47d00d55f3329f67eb63",
+      "formal/continuations/tla/ScopeNoDetachedWait.cfg": "e6d92668ff64427847c7ddad928649232bde43e339cc7df845988af4cd536f8e",
+      "formal/continuations/tla/ScopeNoRefusal.cfg": "4e4a602cbe639a0bb05ddfa761544b0c7a108ed9a065c870ec5eba29878f6e56",
+      "formal/continuations/tla/ScopeReuseTicket.cfg": "482a1d8a4f2d612579f1cee2b9e42df74b7edd0f97c8f03488f3a3d3a2e02b7f",
+      "formal/continuations/tla/ScopeSafe.cfg": "2bce9713e6fdcc4ca33a9b249d17afba1f82c8da7efe4b1cf046ee9134f7dcc2",
+      "formal/continuations/tla/Tail.cfg": "1d979e20be45bb6ac22b1105dc4b1b3bf8adfaf2be34a94f5d21db9782566648",
+      "formal/continuations/tla/TailPush.cfg": "63d605f5683d775371dc368e99e6530eda3b9f79f4fa121904c1ff1e86bb1e35",
+      "formal/continuations/tla/ThreeTasks.cfg": "a188c0fdc7a3948fbd290aaa5797fd7b5ddc3bd7db133c9edf2342d9f65e1145",
+      "formal/continuations/tla/Unfair.cfg": "9cbd98cd1fe7a8c10161715e127337c3c744cc981c32148d3ecfd34f5fc613c5",
+      "scripts/check-continuation-model.py": "8247f05e9772fb8fd9ccb88324496d2689d93d38083e1144e93843937691386a"
+    },
+    "cases": {
+      "Safe": {
+        "returncode": 0,
+        "seconds": 43.098,
+        "expected_failure": null,
+        "states": [
+          "2928305",
+          "942564"
+        ],
+        "log_sha256": "1d3e1976518460584ec7fdcce9822cb84a881a5eccf298d75b5d955d08210b09"
+      },
+      "Tail": {
+        "returncode": 0,
+        "seconds": 3.184,
+        "expected_failure": null,
+        "states": [
+          "233368",
+          "105866"
+        ],
+        "log_sha256": "532f4ae356b7c1ef563a365c38364ae71780d9e4b8108359f4dd99f7f1abdd9c"
+      },
+      "ThreeTasks": {
+        "returncode": 0,
+        "seconds": 39.169,
+        "expected_failure": null,
+        "states": [
+          "2266973",
+          "579816"
+        ],
+        "log_sha256": "f25293a02fc3c85f2e2b9deb1425ba223e0171abf946026839882563a30696c9"
+      },
+      "Relookup": {
+        "returncode": 12,
+        "seconds": 0.614,
+        "expected_failure": "Invariant SelectedEntry is violated.",
+        "states": [
+          "130",
+          "67"
+        ],
+        "log_sha256": "a949ba9cfb3cd577124c9efd92a38586bdf2539b4e9631da04ebb60bfc142646"
+      },
+      "CachedLookup": {
+        "returncode": 12,
+        "seconds": 0.617,
+        "expected_failure": "Invariant LookupCurrent is violated.",
+        "states": [
+          "62",
+          "35"
+        ],
+        "log_sha256": "d4115fd824fe92ba17e7b0498d6d2627abf5a5afa31b9798851278fc5ad41647"
+      },
+      "Replay": {
+        "returncode": 12,
+        "seconds": 0.624,
+        "expected_failure": "Invariant NoReplay is violated.",
+        "states": [
+          "52",
+          "28"
+        ],
+        "log_sha256": "cdcf483dca75a017796fb900702ee05a336d96d7c6a2a695e41902cb64150977"
+      },
+      "TailPush": {
+        "returncode": 12,
+        "seconds": 0.632,
+        "expected_failure": "Invariant TailBound is violated.",
+        "states": [
+          "234",
+          "107"
+        ],
+        "log_sha256": "e0f383dc32d9eecfb7acdb038b526208336df5f8d103174a5ad7f69b67ac45b8"
+      },
+      "CrossAnswer": {
+        "returncode": 12,
+        "seconds": 0.626,
+        "expected_failure": "Invariant AnswerDestination is violated.",
+        "states": [
+          "234",
+          "107"
+        ],
+        "log_sha256": "1ba3790a1e8ef47b527b3ff38cd2f4fb04cb8f920661a12d6c474454b838edf4"
+      },
+      "DropCode": {
+        "returncode": 12,
+        "seconds": 0.612,
+        "expected_failure": "Invariant CodeAlive is violated.",
+        "states": [
+          "133",
+          "67"
+        ],
+        "log_sha256": "9e3047dbebe1b68cf182710dc77e817fced2a5ff5f3cc7094532a1a0af9fde52"
+      },
+      "DoubleWake": {
+        "returncode": 12,
+        "seconds": 0.62,
+        "expected_failure": "Invariant OneShotWake is violated.",
+        "states": [
+          "66",
+          "38"
+        ],
+        "log_sha256": "35a3e6bd388e3409032566b41020ddc1353cd49c51695ed2702efa5a8edbe145"
+      },
+      "NativeLookup": {
+        "returncode": 13,
+        "seconds": 1.086,
+        "expected_failure": "Temporal properties were violated.",
+        "states": [
+          "29432",
+          "9654"
+        ],
+        "log_sha256": "6c7ce9308165d77f87bce45e5e969b0288421c8b4cc139d5c47b5faa27d01344"
+      },
+      "Unfair": {
+        "returncode": 13,
+        "seconds": 3.912,
+        "expected_failure": "Temporal properties were violated.",
+        "states": [
+          "445837",
+          "154238"
+        ],
+        "log_sha256": "86d161e572c6a287b768de82579b1fdcfbc1e0b3889e2e2cb2ce093c398a49a7"
+      },
+      "NoLookupPause": {
+        "returncode": 12,
+        "seconds": 0.588,
+        "expected_failure": "Invariant NoLookupPause is violated.",
+        "states": [
+          "7",
+          "6"
+        ],
+        "log_sha256": "00d2fc6382e6fb0156f1fe89c695cdee1c0de172e3e34cf5388202e11330227c"
+      },
+      "NoSelectedReplacement": {
+        "returncode": 12,
+        "seconds": 0.628,
+        "expected_failure": "Invariant NoSelectedReplacement is violated.",
+        "states": [
+          "122",
+          "63"
+        ],
+        "log_sha256": "36c9c97c2e87e4a1aadf347165b23e6cba87235552ee68d988715b59ac45c2d3"
+      },
+      "NoBodyPause": {
+        "returncode": 12,
+        "seconds": 0.626,
+        "expected_failure": "Invariant NoBodyPause is violated.",
+        "states": [
+          "116",
+          "58"
+        ],
+        "log_sha256": "f35c079ddfa439ed9eb97005d69e98c9d0c75d19c53045661ff50f0b28d9b36b"
+      },
+      "NoTwoWaiting": {
+        "returncode": 12,
+        "seconds": 0.61,
+        "expected_failure": "Invariant NoTwoWaiting is violated.",
+        "states": [
+          "71",
+          "41"
+        ],
+        "log_sha256": "1200da3c55eff0065d8c9a43cd7c9c72b6a33acc892466e68f10de9c24124c60"
+      },
+      "MetaCompletedSync": {
+        "returncode": 12,
+        "seconds": 0.767,
+        "expected_failure": "Invariant NoCompletedSend is violated.",
+        "states": [
+          "8875",
+          "2898"
+        ],
+        "log_sha256": "c10768ec36d631c5a991542cc1f90cc2f77cdc8be957e6a95da26caf395c9ab9"
+      },
+      "MetaCompletedAsync": {
+        "returncode": 12,
+        "seconds": 0.763,
+        "expected_failure": "Invariant NoCompletedSend is violated.",
+        "states": [
+          "8614",
+          "3027"
+        ],
+        "log_sha256": "aa78ad0da2616daeaf5d728a123c812adc0a86dc015d26132e7038251fceeda5"
+      },
+      "MetaSync": {
+        "returncode": 0,
+        "seconds": 0.978,
+        "expected_failure": null,
+        "states": [
+          "14024",
+          "4371"
+        ],
+        "log_sha256": "1af85496311bfcbd68de965d6775787a6e12f8e58303e7644bfb7f5f15865098"
+      },
+      "MetaAsync": {
+        "returncode": 0,
+        "seconds": 0.935,
+        "expected_failure": null,
+        "states": [
+          "12134",
+          "4107"
+        ],
+        "log_sha256": "d01c0cbfcccb1a52f746d5930ae89de9bbf4b67816c307c9826b8db2657338e2"
+      },
+      "MetaDeep": {
+        "returncode": 0,
+        "seconds": 1.422,
+        "expected_failure": null,
+        "states": [
+          "41646",
+          "11208"
+        ],
+        "log_sha256": "f0536c539f2854256b23c718e2c3f8e00454352a16586cc01eb5869087dd2008"
+      },
+      "MetaEarlyPublish": {
+        "returncode": 12,
+        "seconds": 0.588,
+        "expected_failure": "Invariant BootstrapReady is violated.",
+        "states": [
+          "2",
+          "2"
+        ],
+        "log_sha256": "117c0ba91177fd63177d461e7b6f8a152dfc9840eb7fc2530e4f5288810b7160"
+      },
+      "MetaNoAnchor": {
+        "returncode": 12,
+        "seconds": 0.648,
+        "expected_failure": "Invariant ResolutionBound is violated.",
+        "states": [
+          "148",
+          "59"
+        ],
+        "log_sha256": "17eec479637d17eac22e47924621ea5c55a5bc3d03bdfb4a07dbe27cb258940d"
+      },
+      "MetaFrozenAnchor": {
+        "returncode": 12,
+        "seconds": 0.637,
+        "expected_failure": "Invariant SelectionPreserved is violated.",
+        "states": [
+          "110",
+          "50"
+        ],
+        "log_sha256": "f63a22f4e17ba2339a812e3038dfd1feb5371577eb90be575b5845890d6c8529"
+      },
+      "MetaShortcut": {
+        "returncode": 12,
+        "seconds": 0.651,
+        "expected_failure": "Invariant CompletedCorrectly is violated.",
+        "states": [
+          "264",
+          "104"
+        ],
+        "log_sha256": "406d361239e0d015a8309763f64ca2994d839b92875312fa018a194b98e29772"
+      },
+      "MetaReselect": {
+        "returncode": 12,
+        "seconds": 0.662,
+        "expected_failure": "Invariant SelectionPreserved is violated.",
+        "states": [
+          "275",
+          "111"
+        ],
+        "log_sha256": "cf4725996562aa3f53a0ceb3627db4a0911f4663acc0cad881c54cdeea7a4663"
+      },
+      "MetaLoseRequest": {
+        "returncode": 12,
+        "seconds": 0.744,
+        "expected_failure": "Invariant RequestPreserved is violated.",
+        "states": [
+          "2597",
+          "909"
+        ],
+        "log_sha256": "e0b09766664fbea7d1277bea62bac22f87c8c5884b185a3b35c88f57f03db513"
+      },
+      "MetaLookupReplay": {
+        "returncode": 12,
+        "seconds": 0.64,
+        "expected_failure": "Invariant NoLookupReplay is violated.",
+        "states": [
+          "205",
+          "83"
+        ],
+        "log_sha256": "836002b6033296aad31ab244dd3177b4f453848c863198e41409571c76019969"
+      },
+      "MetaSelectedLookup": {
+        "returncode": 12,
+        "seconds": 0.642,
+        "expected_failure": "Invariant DirectEntry is violated.",
+        "states": [
+          "101",
+          "44"
+        ],
+        "log_sha256": "67d851b525064d35fa7302906986a1e3fd8d55d37be1c5066c351b1035d18d54"
+      },
+      "MetaDropLookupCode": {
+        "returncode": 12,
+        "seconds": 0.643,
+        "expected_failure": "Invariant CodeAlive is violated.",
+        "states": [
+          "227",
+          "93"
+        ],
+        "log_sha256": "8c590301126b8a5939124786e0816a142c989a88813da7fae03373f4b3bb2574"
+      },
+      "MetaNativeEscape": {
+        "returncode": 12,
+        "seconds": 0.792,
+        "expected_failure": "Invariant NativeBarrier is violated.",
+        "states": [
+          "4284",
+          "1495"
+        ],
+        "log_sha256": "958c62a2c5baad595ba67eeb73dee2c8689c0253dc74aa3e32c68838d3d1e795"
+      },
+      "MetaNativeTail": {
+        "returncode": 12,
+        "seconds": 0.857,
+        "expected_failure": "Invariant CompletedCorrectly is violated.",
+        "states": [
+          "7847",
+          "2559"
+        ],
+        "log_sha256": "cd4332bb4f5f220f91d9129ea8b7809e7f78dd4601518e330e58d3b0ef8e4938"
+      },
+      "MetaDoubleCompletion": {
+        "returncode": 12,
+        "seconds": 0.886,
+        "expected_failure": "Invariant Once is violated.",
+        "states": [
+          "8880",
+          "2902"
+        ],
+        "log_sha256": "939083cc41b2947faaf06576b068bb2ceecfa1b3771b93cee012f50b8f0dd523"
+      },
+      "MetaCallbackTail": {
+        "returncode": 12,
+        "seconds": 0.658,
+        "expected_failure": "Invariant NoLookupReplay is violated.",
+        "states": [
+          "359",
+          "140"
+        ],
+        "log_sha256": "43c4d6024aab25dda1266526bba14b7e575d08610690cd31d2a91d4e7af31d26"
+      },
+      "MetaNoLookupCallback": {
+        "returncode": 12,
+        "seconds": 0.634,
+        "expected_failure": "Invariant NoLookupCallback is violated.",
+        "states": [
+          "359",
+          "140"
+        ],
+        "log_sha256": "a4c1af0cf288982ce7970c2a883279480bdb3c734bea55bef04e400d7206229e"
+      },
+      "MetaOverlap": {
+        "returncode": 12,
+        "seconds": 0.769,
+        "expected_failure": "Invariant SingleDriver is violated.",
+        "states": [
+          "3089",
+          "1079"
+        ],
+        "log_sha256": "04618252bb99c08fd19a4ecb40814a27f02584d6388bf39712bada16c349b331"
+      },
+      "MetaNoSuspendedLookup": {
+        "returncode": 12,
+        "seconds": 0.618,
+        "expected_failure": "Invariant NoSuspendedLookup is violated.",
+        "states": [
+          "149",
+          "61"
+        ],
+        "log_sha256": "c11a20702ed2abd25ff47de2c4ccae3fb794a94b29dbc6dcca4d56133bf45d5a"
+      },
+      "MetaNoSuspendedNativeCallback": {
+        "returncode": 12,
+        "seconds": 0.691,
+        "expected_failure": "Invariant NoSuspendedNativeCallback is violated.",
+        "states": [
+          "4647",
+          "1643"
+        ],
+        "log_sha256": "0fff7edbe5a3fc9829decafe6bcd64ab8e3e63c182a6e52553fb03eb045e7fc2"
+      },
+      "MetaNoDeniedNativeSuspend": {
+        "returncode": 12,
+        "seconds": 0.688,
+        "expected_failure": "Invariant NoDeniedNativeSuspend is violated.",
+        "states": [
+          "4284",
+          "1495"
+        ],
+        "log_sha256": "959b779e2a1c503edae192cc3b9cc95d2872984fdf23031059423d05982d3b5f"
+      },
+      "MetaNoReplacedLookupEntry": {
+        "returncode": 12,
+        "seconds": 0.615,
+        "expected_failure": "Invariant NoReplacedLookupEntry is violated.",
+        "states": [
+          "172",
+          "73"
+        ],
+        "log_sha256": "6ca36b78f3af0d6f512b66655a24340af8675c114a665d626b8382f94f9dda44"
+      },
+      "MetaNoStaleCompletion": {
+        "returncode": 12,
+        "seconds": 0.748,
+        "expected_failure": "Invariant NoStaleCompletion is violated.",
+        "states": [
+          "8880",
+          "2902"
+        ],
+        "log_sha256": "2ebb21e7b08de1aadd45a54fca065096865bfa2311d3db1bdbbeaeffaef59891"
+      },
+      "ScopeSafe": {
+        "returncode": 0,
+        "seconds": 0.577,
+        "expected_failure": null,
+        "states": [
+          "22",
+          "22"
+        ],
+        "log_sha256": "ec0116c5d3bdda214ac74351a8e6bef052864c5017a855b4a8d79746abb3700e"
+      },
+      "ScopeClearAncestors": {
+        "returncode": 12,
+        "seconds": 0.565,
+        "expected_failure": "Invariant NativeFrames is violated.",
+        "states": [
+          "4",
+          "4"
+        ],
+        "log_sha256": "d5ca48bfd95238bf70c45586d0441709bb5dff79c64f44e19eef328d4f2ec157"
+      },
+      "ScopeForeignReturn": {
+        "returncode": 12,
+        "seconds": 0.58,
+        "expected_failure": "Invariant NativeFrames is violated.",
+        "states": [
+          "5",
+          "5"
+        ],
+        "log_sha256": "c3d0affb30b0c25dbdfea9096b11ae97bbfd5ac39bc254a5e853c5cb6561638f"
+      },
+      "ScopeIgnoreOwner": {
+        "returncode": 12,
+        "seconds": 0.571,
+        "expected_failure": "Invariant OwnerOnly is violated.",
+        "states": [
+          "14",
+          "13"
+        ],
+        "log_sha256": "b66213453d17cded6f0c9ad3dae3cfd2d36cbe9ea4d6219d81a22611ed0b06b5"
+      },
+      "ScopeReuseTicket": {
+        "returncode": 12,
+        "seconds": 0.557,
+        "expected_failure": "Invariant AtMostOnce is violated.",
+        "states": [
+          "16",
+          "15"
+        ],
+        "log_sha256": "41309375004cb22016123ee116d06b7f0758364b5058e4245869a4144bf4b1a1"
+      },
+      "ScopeIgnoreBarrier": {
+        "returncode": 12,
+        "seconds": 0.562,
+        "expected_failure": "Invariant NoEscape is violated.",
+        "states": [
+          "6",
+          "6"
+        ],
+        "log_sha256": "382aa102500dbfc52e3ec8663ee4a378e3529ef9836adb09c3f146f2af92ccbd"
+      },
+      "ScopeNoDetachedWait": {
+        "returncode": 12,
+        "seconds": 0.566,
+        "expected_failure": "Invariant NoDetachedWait is violated.",
+        "states": [
+          "10",
+          "10"
+        ],
+        "log_sha256": "f949225b3d3089bc722cb6a64d9a7d1558885e57171b5cf6275edd4112c2d94c"
+      },
+      "ScopeNoRefusal": {
+        "returncode": 12,
+        "seconds": 0.565,
+        "expected_failure": "Invariant NoRefusal is violated.",
+        "states": [
+          "6",
+          "6"
+        ],
+        "log_sha256": "75d92ff0359c699cedec7bee807cfac53fb20b66a4145e940d152609cb9ce92b"
+      }
+    },
+    "completion_witnesses": {
+      "MetaCompletedSync": {
+        "returncode": 12,
+        "seconds": 0.767,
+        "expected_failure": "Invariant NoCompletedSend is violated.",
+        "states": [
+          "8875",
+          "2898"
+        ],
+        "log_sha256": "c10768ec36d631c5a991542cc1f90cc2f77cdc8be957e6a95da26caf395c9ab9",
+        "counterexample": "Error: Invariant NoCompletedSend is violated.\nError: The behavior up to this point is:\nState 1: <Initial predicate>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = FALSE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 0\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = FALSE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 2: <Bootstrap line 46, col 14 to line 52, col 93 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = FALSE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 1\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = FALSE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 3: <Bootstrap line 46, col 14 to line 52, col 93 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 2\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = FALSE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 4: <Bootstrap line 46, col 14 to line 52, col 93 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 5: <Start line 53, col 10 to line 57, col 109 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 6: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 7: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 8: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 9: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 1\n\nState 10: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 1\n\nState 11: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 1\n\nState 12: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-callback\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 13: <CallLookupHelper line 83, col 5 to line 87, col 339 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 14: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 15: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 16: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 17: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 3\n\nState 18: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 2\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 3\n\nState 19: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 2\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 3\n\nState 20: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 2\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 4\n\nState 21: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 4\n\nState 22: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 4\n\nState 23: <EnterHelper line 123, col 16 to line 128, col 124 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 4\n\nState 24: <ResumeLookupHelper line 89, col 5 to line 93, col 310 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 4\n\nState 25: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 26: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 27: <EnterNative line 110, col 16 to line 117, col 95 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 28: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 29: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 30: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 31: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 5\n\nState 32: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 5\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 5\n\nState 33: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 5\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 5\n\nState 34: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 5\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 6\n\nState 35: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 6\n\nState 36: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 6\n\nState 37: <EnterHelper line 123, col 16 to line 128, col 124 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 6\n\nState 38: <ResumeNative line 129, col 17 to line 136, col 59 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 1\n/\\ boot = 3\n/\\ callbackDone = TRUE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 6\n\nState 39: <Finish line 137, col 11 to line 142, col 96 of module Metacircular>\n/\\ done = TRUE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"done\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 1\n/\\ boot = 3\n/\\ callbackDone = TRUE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = 0\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 6\n\n8875 states generated, 2898 distinct states found, 220 states left on queue.\nThe depth of the complete state graph search is 39.\nThe average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 4).\nFinished in 00s at (2026-10-24 19:07:22)\n"
+      },
+      "MetaCompletedAsync": {
+        "returncode": 12,
+        "seconds": 0.763,
+        "expected_failure": "Invariant NoCompletedSend is violated.",
+        "states": [
+          "8614",
+          "3027"
+        ],
+        "log_sha256": "aa78ad0da2616daeaf5d728a123c812adc0a86dc015d26132e7038251fceeda5",
+        "counterexample": "Error: Invariant NoCompletedSend is violated.\nError: The behavior up to this point is:\nState 1: <Initial predicate>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = FALSE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 0\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = FALSE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 2: <Bootstrap line 46, col 14 to line 52, col 93 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = FALSE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 1\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = FALSE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 3: <Bootstrap line 46, col 14 to line 52, col 93 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 2\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = FALSE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 4: <Bootstrap line 46, col 14 to line 52, col 93 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"idle\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 5: <Start line 53, col 10 to line 57, col 109 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 6: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 7: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"none\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 0\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"none\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 8: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 0\n\nState 9: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 0\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"none\"\n/\\ effects = 1\n\nState 10: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 1\n\nState 11: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 1\n\nState 12: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-callback\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 13: <CallLookupHelper line 83, col 5 to line 87, col 339 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 14: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 15: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 1\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 16: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 2\n\nState 17: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 1\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 3\n\nState 18: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 2\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 4]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 3\n\nState 19: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 2\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 3\n\nState 20: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 2\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 4\n\nState 21: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 4\n\nState 22: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 4\n\nState 23: <EnterHelper line 123, col 16 to line 128, col 124 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<\"argument\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup-resume\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1],\n     owner |-> \"lookup0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 4\n\nState 24: <ResumeLookupHelper line 89, col 5 to line 93, col 310 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 3\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 4\n\nState 25: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"work\">>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 26: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 27: <EnterNative line 110, col 16 to line 117, col 95 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"native-detach\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 0\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 1\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 28: <DetachNative line 118, col 17 to line 122, col 96 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 29: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 30: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"send\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"native0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 2\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"native0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 31: <Send line 58, col 9 to line 69, col 89 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 4\n\nState 32: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 4\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"native0\"\n/\\ effects = 5\n\nState 33: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 5\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 2, s |-> \"lookup\", args |-> <<\"lookup\">>, k |-> 3]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 5\n\nState 34: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 5\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 5\n\nState 35: <EnterLookup line 71, col 5 to line 81, col 67 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 5\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"lookup-read\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"lookup0\"\n/\\ effects = 6\n\nState 36: <LookupRead line 94, col 15 to line 99, col 123 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 1, s |-> \"lookup\", args |-> <<\"helper\">>, k |-> 2]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"lookup0\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"lookup0\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ],\n   [ kind |-> \"lookup\",\n     request |-> [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1],\n     owner |-> \"none\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 6\n\nState 37: <ResumeLookup line 100, col 17 to line 109, col 110 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"enter\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"helperBody\"\n/\\ effects = 6\n\nState 38: <EnterHelper line 123, col 16 to line 128, col 124 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"helper\", args |-> <<>>, k |-> 1]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 0\n/\\ boot = 3\n/\\ callbackDone = FALSE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = << [ kind |-> \"native\",\n     request |-> [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0],\n     owner |-> \"native0\" ] >>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 6\n\nState 39: <ResumeNative line 129, col 17 to line 136, col 59 of module Metacircular>\n/\\ done = FALSE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"return\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 1\n/\\ boot = 3\n/\\ callbackDone = TRUE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = \"none\"\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 1\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 6\n\nState 40: <Finish line 137, col 11 to line 142, col 96 of module Metacircular>\n/\\ done = TRUE\n/\\ reads = 6\n/\\ paused = FALSE\n/\\ lookupChanged = {}\n/\\ cur = [r |-> 0, s |-> \"work\", args |-> <<\"argument\">>, k |-> 0]\n/\\ alive = {\"lookup0\", \"lookup1\", \"native0\", \"native1\", \"helperBody\"}\n/\\ op = \"done\"\n/\\ seeded = TRUE\n/\\ lookupEffects = {\"lookup0\"}\n/\\ selected = \"helperBody\"\n/\\ overlapSeen = FALSE\n/\\ duplicateSeen = FALSE\n/\\ lookupBinding = <<\"lookup0\", \"lookup0\">>\n/\\ baseReads = 3\n/\\ nativeAnswers = 1\n/\\ boot = 3\n/\\ callbackDone = TRUE\n/\\ workChanged = FALSE\n/\\ foreignReturns = 1\n/\\ parked = FALSE\n/\\ metaEntries = {1, 2}\n/\\ published = TRUE\n/\\ authority = \"helperBody\"\n/\\ denied = FALSE\n/\\ finalK = 0\n/\\ frames = <<>>\n/\\ workBinding = \"native0\"\n/\\ drivers = 0\n/\\ nativeLive = 0\n/\\ selectedLookups = 0\n/\\ value = \"answer\"\n/\\ effects = 6\n\n8614 states generated, 3027 distinct states found, 197 states left on queue.\nThe depth of the complete state graph search is 40.\nThe average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).\nFinished in 00s at (2026-10-24 19:07:23)\n"
+      }
+    },
+    "audit": "'Birnam.Continuation.listOwner_implements' depends on axioms: [propext]\n'Birnam.Continuation.endOwner_implements' depends on axioms: [propext]\n'Birnam.Continuation.drive_refines' does not depend on any axioms\n'Birnam.Continuation.drive_trace_length' depends on axioms: [propext]\n'Birnam.Continuation.representation_independence' depends on axioms: [propext]\n'Birnam.Continuation.tailChain_shape' does not depend on any axioms\n'Birnam.Continuation.tailChain_bounded' depends on axioms: [propext]\n'Birnam.Continuation.tailChain_answer' depends on axioms: [propext]\n'Birnam.Continuation.consumed_cannot_resume_again' depends on axioms: [propext]\n'Birnam.Continuation.consumption_monotone' depends on axioms: [propext]\n'Birnam.Continuation.remember_keeps' depends on axioms: [propext]\n'Birnam.Continuation.consumeMany_keeps' depends on axioms: [propext]\n'Birnam.Continuation.stale_wakeup_rejected_after_any_history' depends on axioms: [propext]\n'Birnam.Continuation.continuation_can_be_returned_as_data' does not depend on any axioms\n'Birnam.Continuation.call_answer_restores' does not depend on any axioms\n'Birnam.Continuation.tail_example' does not depend on any axioms\n'Birnam.Continuation.representation_example' does not depend on any axioms\n'Birnam.Continuation.wake_example' depends on axioms: [propext]\n'Birnam.Continuation.trace_example' does not depend on any axioms\n'Birnam.Boundary.lookup_uses_vtable' does not depend on any axioms\n'Birnam.Boundary.selected_preserves_complete_request' does not depend on any axioms\n'Birnam.Boundary.anchor_observes_replacement' does not depend on any axioms\n'Birnam.Boundary.metaPath_length' depends on axioms: [propext]\n'Birnam.Boundary.metaPath_anchor' depends on axioms: [propext]\n'Birnam.Boundary.boot_step_safe' depends on axioms: [propext]\n'Birnam.Boundary.bootstrap_no_early_publication' depends on axioms: [propext]\n'Birnam.Boundary.cold_bootstrap_safe' depends on axioms: [propext]\n'Birnam.Boundary.native_step_safe' depends on axioms: [propext]\n'Birnam.Boundary.native_history_safe' depends on axioms: [propext]\n'Birnam.Boundary.inner_return_keeps_ancestors' depends on axioms: [propext]\n'Birnam.Boundary.foreign_return_rejected' depends on axioms: [propext]\n'Birnam.Boundary.enclosing_native_blocks_suspend' depends on axioms: [propext]\n'Birnam.Boundary.wrong_owner_cannot_complete' depends on axioms: [propext]\n'Birnam.Boundary.completion_preserves_destination' does not depend on any axioms\n'Birnam.Boundary.completion_cannot_repeat' depends on axioms: [propext]\n'Birnam.Boundary.bootstrap_example' does not depend on any axioms\n'Birnam.Boundary.anchor_example' does not depend on any axioms\n'Birnam.Boundary.native_ancestor_example' does not depend on any axioms\n'Birnam.Boundary.native_foreign_example' does not depend on any axioms\n'Birnam.Boundary.completion_owner_example' does not depend on any axioms\n'Birnam.Boundary.completion_used_example' does not depend on any axioms\n"
+  },
+  "workspace_audit": {
+    "command": "cargo check --workspace --offline --locked",
+    "exit_code": 101,
+    "first_reported_failures": [
+      [
+        "birnam-alien",
+        "39"
+      ],
+      [
+        "birnam-image",
+        "73"
+      ],
+      [
+        "birnam-store",
+        "93"
+      ]
+    ],
+    "log_sha256": "350850d608be9d9033bd557f882d305bbbfc7f6ee18295663d2f9d459907aa2f",
+    "not_exhaustive": true
+  },
+  "limits": [
+    "Executable semantic reference, not a production Id or frozen native ABI.",
+    "Rust fixture Methods represent language bodies; no Birnam source compiler integration.",
+    "Allocations/native declarations retained until Id destruction; no GC/address reuse/native mapping reclamation qualification.",
+    "Two completed finite trace projections matched; no general refinement theorem.",
+    "Production custom-lookup tail regression and whole-workspace migration remain open."
+  ]
+}

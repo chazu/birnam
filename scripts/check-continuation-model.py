@@ -35,6 +35,8 @@ CASES = {
     "NoTwoWaiting": "Invariant NoTwoWaiting is violated.",
 }
 BOUNDARY_CASES = {
+    "MetaCompletedSync": "Invariant NoCompletedSend is violated.",
+    "MetaCompletedAsync": "Invariant NoCompletedSend is violated.",
     "MetaSync": None, "MetaAsync": None, "MetaDeep": None,
     "MetaEarlyPublish": "Invariant BootstrapReady is violated.",
     "MetaNoAnchor": "Invariant ResolutionBound is violated.",

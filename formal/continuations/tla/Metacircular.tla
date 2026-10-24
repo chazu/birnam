@@ -205,6 +205,7 @@ CompletedCorrectly == done => /\ value = "answer" /\ finalK = 0 /\ nativeLive = 
                               /\ Len(frames) = 0 /\ nativeAnswers = 1 /\ foreignReturns = 1
                               /\ metaEntries = 1..Depth
 Progress == <>done
+NoCompletedSend == ~done
 NoLookupCallback == ~\E i \in 1..Len(frames) : frames[i].kind = "lookup-resume"
 NoSuspendedLookup == ~parked
 NoSuspendedNativeCallback == ~(parked /\ NativeMode = "async" /\ foreignReturns = 1)
