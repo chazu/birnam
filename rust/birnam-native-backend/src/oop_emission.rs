@@ -1,5 +1,7 @@
 //! Synchronous emission from the existing canonical portable program. No parser,
 //! alternate lowering or runtime representation is defined here.
+#[path = "oop_resumable.rs"]
+mod resumable;
 use birnam_artifact::portable_program::{self, NodeKind, StatementKind};
 use std::fmt::Write;
 #[derive(Debug)]
@@ -11,6 +13,7 @@ pub enum Error {
 struct Emitter {
     names: Vec<Vec<u8>>,
     functions: Vec<String>,
+    descriptors: Vec<Option<(Vec<u8>, Vec<u8>)>>,
 }
 impl Emitter {
     fn name(&mut self, n: &[u8]) -> Result<usize, Error> {
@@ -30,6 +33,7 @@ impl Emitter {
         let p = portable_program::inspect(bytes).map_err(|_| Error::InvalidProgram)?;
         let index = self.functions.len();
         self.functions.push(String::new());
+        self.descriptors.push(None);
         let nil = self.name(b"nil")?;
         let mut out = format!(
             "static O function_{index}(O root,O context,O self,const O*args,size_t n){{(void)root;(void)context;Call c={{0}};if(n!={}){{O result=named(&c,{nil});return finish(&c,result);}}\n",
@@ -145,9 +149,16 @@ impl Emitter {
     }
 }
 pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    compile_mode(bytes, &[], false)
+}
+pub fn compile_resumable(bytes: &[u8], source: &[u8]) -> Result<Vec<u8>, Error> {
+    compile_mode(bytes, source, true)
+}
+fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>, Error> {
     let mut e = Emitter {
         names: Vec::new(),
         functions: Vec::new(),
+        descriptors: Vec::new(),
     };
     let mut definitions = String::new();
     for (key, name) in [
@@ -159,6 +170,9 @@ pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         ("FLOAT", b"Float"),
         ("FROM_PARTS", b"fromUnsignedLow:high:"),
         ("FROM_WORD", b"fromWord:"),
+        ("WORD_OF", b"wordOf:"),
+        ("LOW32", b"low32"),
+        ("HIGH32", b"high32"),
         ("FROM_BITS", b"fromBits:"),
         ("STRING", b"String"),
         ("SEQUENCE", b"sequence"),
@@ -169,7 +183,13 @@ pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     }
     let roots = e.name(b"Roots")?;
     let declared = e.name(b"declaredMethodAt:")?;
-    e.function(bytes, 0)?;
+    if resumable {
+        e.resumable_function(bytes, source, 0)?;
+    } else {
+        e.function(bytes, 0)?;
+    }
+    let execution = e.name(b"Execution")?;
+    let register = e.name(b"fromStep:descriptor:selection:owner:")?;
     let method_names = (0..e.functions.len())
         .map(|i| e.name(format!("compiledFunction{i}").as_bytes()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -186,6 +206,22 @@ pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     }
     for f in &e.functions {
         out.push_str(f);
+    }
+    for (i, descriptor) in e.descriptors.iter().enumerate() {
+        if let Some((descriptor, selection)) = descriptor {
+            for (label, bytes) in [("descriptor", descriptor), ("selection", selection)] {
+                writeln!(
+                    out,
+                    "static const unsigned char {label}_{i}[]={{{}}};",
+                    bytes
+                        .iter()
+                        .map(u8::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+                .unwrap();
+            }
+        }
     }
     out.push_str("static const Literal literals[]={\n");
     for name in &e.names {
@@ -205,6 +241,22 @@ pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         writeln!(out, "{{{name},function_{i}}},").unwrap();
     }
     out.push_str("};\n");
-    writeln!(out,"static O initialize(const P*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->version!=2||p->byte_size!=sizeof(P))return 0;if(n!=1||count!=SYMBOL_COUNT)return p->invalid;id=*p;ns=args[0];owner=unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};for(size_t i=0;i<METHOD_COUNT;i++){{O at=size_oop(i);methods[i]=call(&c,owner,{declared},&at,1);raw(&c,owner,S_RETAIN,&methods[i],1);if(c.error)return finish(&c,0);}}return finish(&c,methods[0]);}}\nconst Module birnam_native_module_v2={{2,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,initialize}};").unwrap();
+    writeln!(out,"static O initialize(const P*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->version!=2||p->byte_size!=sizeof(P))return 0;if(n!=1||count!=SYMBOL_COUNT)return p->invalid;id=*p;ns=args[0];owner=unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
+    for i in 0..e.functions.len() {
+        writeln!(
+            out,
+            "{{O at=size_oop({i});O method=call(&c,owner,{declared},&at,1);"
+        )
+        .unwrap();
+        if e.descriptors[i].is_some() {
+            writeln!(out,"O descriptor=string(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=string(&c,selection_{i},sizeof(selection_{i}));O a[]={{method,descriptor,selection,owner}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,4);").unwrap();
+        }
+        writeln!(
+            out,
+            "methods[{i}]=method;raw(&c,owner,S_RETAIN,&method,1);if(c.error)return finish(&c,0);}}"
+        )
+        .unwrap();
+    }
+    out.push_str("return finish(&c,methods[0]);}\nconst Module birnam_native_module_v2={2,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,initialize};\n");
     Ok(out.into_bytes())
 }

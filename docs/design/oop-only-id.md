@@ -10,7 +10,14 @@ Decision: accepted user direction, 2026-10-22. Highest-priority runtime work.
 
 ## Continuing compiler and Execution integration
 
-The latest connected milestone adds explicit `Codegen compileSynchronous:` with
+The latest milestone connects explicit resumable source compilation to the
+retained Machine engine with bounded runnable stops. GC, entered-code retention,
+method replacement, nonreplayed effects, native/custom dispatch and code retirement
+pass the native gate. See the [resumable report](oop-resumable-milestone.md).
+This is not full control/suspension, compiler, image, worker or installed acceptance.
+
+
+The preceding synchronous milestone added explicit `Codegen compileSynchronous:` with
 real parsing, lowering, emission, TCC compilation and Execution Block invocation.
 It passes the separate-build-target native gate, including current lookup/GC,
 fresh captured Methods, failure distinctions and mapping retirement. See the

@@ -1,5 +1,13 @@
 # Oop compiler and Execution integration
 
+Latest checkpoint: the explicit resumable compiler is now connected to the retained
+Machine engine. Source-level bounded pause/resume, GC, entered-code replacement,
+current later sends, native/custom dispatch, and final code lifetime pass the native
+gate. See the [resumable milestone](oop-resumable-milestone.md) and
+[current receipt](../measurements/oop-resumable-20261023.json). The synchronous
+checkpoint below remains part of that gate. Full language/control/image/worker
+integration remains unfinished.
+
 The Oop-only branch is the committed development direction. The work preserves
 explicit language features and the Current Invariants; removing carrier machinery
 must simplify responsibilities rather than add a replacement value system.
@@ -67,10 +75,10 @@ It must reject incompatible descriptors before initializer entry and prove no
 lookup on the selected Method is required. An independent checkpoint fixture is
 not proof that real Execution has been migrated.
 
-Next integrate generated entry declaration emission and real Execution together,
-retaining the frame engine and changing its message-facing owners. Port the real
-language seed and Codegen consumers, then run the existing language and stackless
-preservation tests. Do not claim a working language from the native closure gate.
+That initial checkpoint has since been extended by the connected synchronous and
+bounded-resumable milestones. Complete language/control and default compiler
+acceptance remain separate; the native closure gate is not a working-language
+qualification.
 
 ## Frame engine checkpoint
 
@@ -89,10 +97,10 @@ tests the actual Execution crate; that temporary harness has been removed. The m
 identity and trace its step/implementation Methods when constructing registrations.
 It must not manufacture keys from addresses alone or revive raw native entries.
 
-Remaining connected work: Execution's message entrypoints and constructors,
-generated C and descriptors, portable code, Codegen and the language seed, followed
-by the real language/stackless tests. The new TCC and pure engine gates do not
-replace any of those acceptance requirements.
+The core Method/Machine entrypoints and step emission are now connected for the
+bounded milestone. Remaining work includes portable/named/optimized consumers,
+full control/recovery and default compiler/bootstrap orchestration, followed by
+the complete language/stackless preservation gates.
 
 ## Connected synchronous milestone
 
@@ -122,12 +130,13 @@ No managed argument container or per-value carrier is needed for cleanup.
 The old Execution message facade is kept as pending migration source in
 `pending_message_integration.rs`; it is not compiled as an alternate runtime or
 compatibility path. The retained frame/continuation engine continues to compile
-and its tests remain mandatory. The synchronous milestone must not be described
-as having ported the still-pending Machine/control/recovery facade.
+and its tests remain mandatory. At the synchronous checkpoint the Machine/control/recovery facade remained
+pending. The resumable report now records the bounded Machine subset; full
+control/recovery is still pending.
 
-The synchronous source entry is explicit. The ordinary `compile:`/resumable
-compiler remains pending; this milestone does not silently change its scheduling
-contract to C-stack execution. NativeBackend likewise exposes `emitSynchronous:`
+The synchronous source entry is explicit. Ordinary `compile:` orchestration
+remains pending; the later `compileResumable:` entry retains logical frames.
+Neither entry silently changes the other scheduling contract. NativeBackend likewise exposes `emitSynchronous:`
 for this path. No existing suspension/continuation implementation is replaced by
 the synchronous emitter. Full compiler promotion still requires reconnecting the
 retained Machine/control/recovery facade and its existing acceptance tests.

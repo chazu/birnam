@@ -80,6 +80,7 @@ numeric=(p/'numeric-integration.log').read_bytes()
 assert b'NUMERIC_INTEGRATION_OK' in numeric
 assert b'TCC_OOP_OK' in numeric
 assert b'COMPILER_EXECUTION_OOP_OK' in numeric
+assert b'RESUMABLE_EXECUTION_OOP_OK' in numeric
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()

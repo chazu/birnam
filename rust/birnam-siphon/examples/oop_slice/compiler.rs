@@ -263,6 +263,7 @@ pub(super) unsafe fn check(
             abi::as_size(send(tcc, b"liveNativeUnits", &[]).unwrap()),
             Some(before)
         );
+        super::resumable::check(id,send,sel,[ns,roots,gc,string,actor,integer,blocks]);
         println!("COMPILER_EXECUTION_OOP_OK");
     }
 }

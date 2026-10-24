@@ -200,7 +200,7 @@ impl State {
         }
     }
 }
-unsafe extern "C" fn compile(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+unsafe fn compile_source(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let [source] = borrowed_slice(a, n).ok_or_else(invalid)? else {
@@ -229,7 +229,16 @@ unsafe extern "C" fn compile(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
             Err(e) => return s.error(format!("portable lowering: {e:?}").as_bytes()),
         };
         let encoded = q.keep(s.text(&portable)?);
-        let native = q.keep(s.send(s.named(b"NativeBackend")?, b"emitSynchronous:", &[encoded])?);
+        let native = q.keep(if resumable {
+            let source_snapshot = q.keep(s.text(&bytes)?);
+            s.send(
+                s.named(b"NativeBackend")?,
+                b"emitResumable:source:",
+                &[encoded, source_snapshot],
+            )?
+        } else {
+            s.send(s.named(b"NativeBackend")?, b"emitSynchronous:", &[encoded])?
+        });
         if s.is_error(native)? {
             return Ok(native);
         }
@@ -242,6 +251,12 @@ unsafe extern "C" fn compile(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
     .unwrap_or_else(abi::fault_reference)
 }
 
+unsafe extern "C" fn compile(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { compile_source(c, a, n, false) }
+}
+unsafe extern "C" fn compile_resumable(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { compile_source(c, a, n, true) }
+}
 const OWNER_NAME: &[u8] = b"Codegen";
 const NAMES: &[&[u8]] = &[
     b"Block",
@@ -294,6 +309,8 @@ const NAMES: &[&[u8]] = &[
     b"isError",
     b"true",
     b"compileSynchronous:",
+    b"compileResumable:",
+    b"emitResumable:source:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -346,6 +363,8 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"isError"),
     Literal::new(b"true"),
     Literal::new(b"compileSynchronous:"),
+    Literal::new(b"compileResumable:"),
+    Literal::new(b"emitResumable:source:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -355,6 +374,10 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 38,
         entry: Some(roots),
+    },
+    MethodSpec {
+        name: 50,
+        entry: Some(compile_resumable),
     },
 ];
 unsafe extern "C" fn initialize(

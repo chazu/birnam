@@ -145,6 +145,21 @@ unsafe extern "C" fn emit(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oo
     .unwrap_or_else(abi::fault_reference)
 }
 
+unsafe extern "C" fn emit_resumable(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [program, source] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let bytes = s.bytes(*program)?;
+        let source = s.bytes(*source)?;
+        match oop_emission::compile_resumable(&bytes, &source) {
+            Ok(c) => s.text(&c),
+            Err(e) => s.error(format!("resumable emission: {e:?}").as_bytes()),
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 const OWNER_NAME: &[u8] = b"NativeBackend";
 const NAMES: &[&[u8]] = &[
     b"Error",
@@ -172,6 +187,7 @@ const NAMES: &[&[u8]] = &[
     b"sizeWord",
     b"visit:",
     b"withContext:",
+    b"emitResumable:source:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Error"),
@@ -199,6 +215,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"sizeWord"),
     Literal::new(b"visit:"),
     Literal::new(b"withContext:"),
+    Literal::new(b"emitResumable:source:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -208,6 +225,10 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 20,
         entry: Some(roots),
+    },
+    MethodSpec {
+        name: 25,
+        entry: Some(emit_resumable),
     },
 ];
 unsafe extern "C" fn initialize(

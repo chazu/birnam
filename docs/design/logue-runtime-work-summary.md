@@ -1,6 +1,15 @@
 # Logue runtime work: current state and continuation
 
-Latest continuation: the explicit synchronous compiler milestone now passes:
+Latest continuation: `Codegen compileResumable:` now runs through the retained
+Machine frame/registration engine. Bounded runnable stops survive GC and method
+replacement without replaying effects, and completed/abandoned frames release
+their code mappings. The native fallback was corrected to preserve direct Id
+dispatch; custom lookup is not replayed. See the
+[resumable milestone and limits](oop-resumable-milestone.md). This remains isolated,
+uninstalled work; explicit suspension/control/recovery and full runtime acceptance
+are still pending. The entries below describe preceding checkpoints.
+
+Earlier continuation: the explicit synchronous compiler milestone now passes:
 real source -> Lang seed/PEG -> existing lowering -> NativeBackend -> TCC ->
 actual Execution. It covers collection, live replacement, captures, Error/failure
 distinctions, direct dispatch and final mapping retirement. The temporary frame

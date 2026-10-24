@@ -1,4 +1,6 @@
-//! Synchronous Execution over ordinary Methods and owner-managed Block payloads.
+//! Shared Execution owner, synchronous Blocks, and resumable driver connection.
+#[path = "resumable_runtime.rs"]
+mod resumable;
 use crate::{execution::ExecutionState, objects::Objects};
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
@@ -24,6 +26,7 @@ struct State {
     scoped: RefCell<Vec<Oop>>,
     storage: RefCell<Objects>,
     engine: RefCell<ExecutionState>,
+    resume: RefCell<resumable::Runtime>,
     depth: Cell<usize>,
     draining: Cell<bool>,
     preserve: Cell<bool>,
@@ -135,6 +138,7 @@ impl State {
             let block = self.send(behavior, b"allocate", &[bytes])?;
             let mut storage = self.storage.borrow_mut();
             storage.insert(block, behavior, values.len());
+            storage.set_family(block, self.block_vt);
             for (i, v) in values.iter().enumerate() {
                 assert!(storage.write_payload_word(block, i, v.expose_provenance()));
             }
@@ -274,7 +278,9 @@ unsafe extern "C" fn method_for(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize)
         if method.is_null() {
             Ok(s.nil)
         } else {
-            s.send(method, b"captured", &[])
+            let captured = scope.keep(s.send(method, b"captured", &[])?);
+            resumable::capture_alias(s, method, captured)?;
+            Ok(captured)
         }
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -299,6 +305,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
         };
         let mut values = vec![s.ns, s.gc, s.nil, s.receiver, s.block, s.block_vt];
         values.extend_from_slice(&s.scoped.borrow());
+        values.extend_from_slice(&s.resume.borrow().roots);
         for value in values {
             s.send(*v, b"visit:", &[value])?;
         }
@@ -312,6 +319,12 @@ unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
         let [block, v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
+        if let Some(values) = resumable::references(s, *block)? {
+            for value in values {
+                s.send(*v, b"visit:", &[value])?;
+            }
+            return Ok(ptr::null_mut());
+        }
         for value in if *block == s.block {
             Vec::new()
         } else {
@@ -327,6 +340,7 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
     (|| unsafe {
         let s = state(c)?;
         let values = borrowed_slice(a, n).ok_or_else(invalid)?;
+        resumable::retire(s, values)?;
         let mut storage = s.storage.borrow_mut();
         for &v in values {
             storage.remove(v);
@@ -344,7 +358,9 @@ unsafe extern "C" fn checkpoint(_: Oop, c: Oop, _: Oop, _: *const Oop, n: usize)
         if s.depth.get() != 0 || s.draining.replace(true) {
             return Ok(ptr::null_mut());
         }
-        let result = s.send(s.gc, b"prepareAllocation", &[]);
+        let result = s
+            .send(s.gc, b"prepareAllocation", &[])
+            .and_then(|_| resumable::checkpoint(s));
         s.draining.set(false);
         result.map(|_| ptr::null_mut())
     })()
@@ -418,6 +434,59 @@ const NAMES: &[&[u8]] = &[
     b"isBehavior:",
     b"lookup",
     b"captured",
+    b"fromStep:descriptor:selection:owner:",
+    b"resumableEntry",
+    b"runBlockStep",
+    b"new",
+    b"runBlock:",
+    b"runBlock:budget:",
+    b"continueWithBudget:",
+    b"destroy",
+    b"executionState",
+    b"isRunnable",
+    b"liveFrameCount",
+    b"oopAt:",
+    b"oopAt:put:",
+    b"continueAt:",
+    b"callSite:",
+    b"tailCallSite:",
+    b"returnAt:",
+    b"Machine",
+    b"MachineVt",
+    b"identityOf:",
+    b"bytes",
+    b"sizeWord",
+    b"atWord:",
+    b"wordOf:",
+    b"low32",
+    b"high32",
+    b"sameNativeMethod:as:",
+    b"doesNotUnderstand:",
+    b"true",
+    b"false",
+    b"running",
+    b"runnable",
+    b"completed",
+    b"suspended",
+    b"failed",
+    b"destroyed",
+    b"continue",
+    b"call",
+    b"tailCall",
+    b"return",
+    b"suspend",
+    b"capture",
+    b"restore",
+    b"abort",
+    b"boundaryCall",
+    b"exitBoundary",
+    b"oop",
+    b"staleFrameView",
+    b"invalidFrameSlot",
+    b"allocationSizeOf:",
+    b"usesDefaultLookup:",
+    b"nativeBindingsMatch:",
+    b"nativeBindingQuerySemantics:for:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -477,6 +546,59 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"isBehavior:"),
     Literal::new(b"lookup"),
     Literal::new(b"captured"),
+    Literal::new(b"fromStep:descriptor:selection:owner:"),
+    Literal::new(b"resumableEntry"),
+    Literal::new(b"runBlockStep"),
+    Literal::new(b"new"),
+    Literal::new(b"runBlock:"),
+    Literal::new(b"runBlock:budget:"),
+    Literal::new(b"continueWithBudget:"),
+    Literal::new(b"destroy"),
+    Literal::new(b"executionState"),
+    Literal::new(b"isRunnable"),
+    Literal::new(b"liveFrameCount"),
+    Literal::new(b"oopAt:"),
+    Literal::new(b"oopAt:put:"),
+    Literal::new(b"continueAt:"),
+    Literal::new(b"callSite:"),
+    Literal::new(b"tailCallSite:"),
+    Literal::new(b"returnAt:"),
+    Literal::new(b"Machine"),
+    Literal::new(b"MachineVt"),
+    Literal::new(b"identityOf:"),
+    Literal::new(b"bytes"),
+    Literal::new(b"sizeWord"),
+    Literal::new(b"atWord:"),
+    Literal::new(b"wordOf:"),
+    Literal::new(b"low32"),
+    Literal::new(b"high32"),
+    Literal::new(b"sameNativeMethod:as:"),
+    Literal::new(b"doesNotUnderstand:"),
+    Literal::new(b"true"),
+    Literal::new(b"false"),
+    Literal::new(b"running"),
+    Literal::new(b"runnable"),
+    Literal::new(b"completed"),
+    Literal::new(b"suspended"),
+    Literal::new(b"failed"),
+    Literal::new(b"destroyed"),
+    Literal::new(b"continue"),
+    Literal::new(b"call"),
+    Literal::new(b"tailCall"),
+    Literal::new(b"return"),
+    Literal::new(b"suspend"),
+    Literal::new(b"capture"),
+    Literal::new(b"restore"),
+    Literal::new(b"abort"),
+    Literal::new(b"boundaryCall"),
+    Literal::new(b"exitBoundary"),
+    Literal::new(b"oop"),
+    Literal::new(b"staleFrameView"),
+    Literal::new(b"invalidFrameSlot"),
+    Literal::new(b"allocationSizeOf:"),
+    Literal::new(b"usesDefaultLookup:"),
+    Literal::new(b"nativeBindingsMatch:"),
+    Literal::new(b"nativeBindingQuerySemantics:for:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -563,6 +685,74 @@ static METHODS: &[MethodSpec] = &[
         name: 51,
         entry: Some(value),
     },
+    MethodSpec {
+        name: 57,
+        entry: Some(resumable::from_step),
+    },
+    MethodSpec {
+        name: 58,
+        entry: Some(resumable::entry),
+    },
+    MethodSpec {
+        name: 59,
+        entry: Some(resumable::run_step),
+    },
+    MethodSpec {
+        name: 60,
+        entry: Some(resumable::new),
+    },
+    MethodSpec {
+        name: 61,
+        entry: Some(resumable::run),
+    },
+    MethodSpec {
+        name: 62,
+        entry: Some(resumable::run_bounded),
+    },
+    MethodSpec {
+        name: 63,
+        entry: Some(resumable::continue_drive),
+    },
+    MethodSpec {
+        name: 64,
+        entry: Some(resumable::destroy),
+    },
+    MethodSpec {
+        name: 65,
+        entry: Some(resumable::lifecycle),
+    },
+    MethodSpec {
+        name: 66,
+        entry: Some(resumable::is_runnable),
+    },
+    MethodSpec {
+        name: 67,
+        entry: Some(resumable::frame_count),
+    },
+    MethodSpec {
+        name: 68,
+        entry: Some(resumable::read),
+    },
+    MethodSpec {
+        name: 69,
+        entry: Some(resumable::write),
+    },
+    MethodSpec {
+        name: 70,
+        entry: Some(resumable::continue_at),
+    },
+    MethodSpec {
+        name: 71,
+        entry: Some(resumable::call_site),
+    },
+    MethodSpec {
+        name: 72,
+        entry: Some(resumable::tail_call_site),
+    },
+    MethodSpec {
+        name: 73,
+        entry: Some(resumable::return_at),
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -623,6 +813,7 @@ unsafe extern "C" fn initialize(
             scoped: RefCell::new(Vec::new()),
             storage: RefCell::new(Objects::default()),
             engine: RefCell::new(ExecutionState::new(1)),
+            resume: RefCell::new(resumable::Runtime::default()),
             depth: Cell::new(0),
             draining: Cell::new(false),
             preserve: Cell::new(false),
@@ -638,11 +829,15 @@ unsafe extern "C" fn initialize(
                 }
                 b"methodFor:" | b"addMethod:as:" => base,
                 n if n.starts_with(b"value") => block_vt,
+                _ if resumable::METHOD_NAMES.contains(&name) => continue,
                 _ => behavior,
             };
             let method = send(image, b"methodAt:", &[names[name]])?;
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[names[name], method])?;
+            if name.starts_with(b"value") {
+                s.resume.borrow_mut().block_values.push(method);
+            }
         }
         // The factory has no Block fields; it is a rooted ordinary object. Only actual
         // constructed Blocks are tracked and traced by this representation owner.
@@ -656,6 +851,7 @@ unsafe extern "C" fn initialize(
         ] {
             send(*ns, b"at:put:", &[names[name], value])?;
         }
+        resumable::install(s, image, base)?;
         for token in tokens {
             send(roots, b"release:", &[token])?;
         }
