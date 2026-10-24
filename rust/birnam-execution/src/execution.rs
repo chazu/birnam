@@ -14,7 +14,8 @@ use std::sync::Arc;
 
 use crate::entry::EntryKey as MethodAddress;
 use crate::objects::Objects as Heap;
-use birnam_abi::{Oop, id_protocol::NativeEntry as Method};
+use birnam_abi::Oop;
+type Method = MethodAddress;
 use std::collections::HashMap;
 
 #[path = "execution/boundary.rs"]
@@ -26,6 +27,7 @@ mod inline_recovery_experiment;
 pub(crate) mod loop_iteration;
 #[path = "execution/recovery.rs"]
 pub(crate) mod recovery;
+#[path = "execution/scheduling.rs"]
 mod scheduling;
 #[path = "execution/tail_entry.rs"]
 pub(crate) mod tail_entry;
@@ -2056,8 +2058,8 @@ pub(crate) enum StacklessTarget {
         initial_oops: Vec<(usize, Oop)>,
         entry: Option<ResumableEntryCapability>,
     },
-    Synchronous(birnam_abi::id_protocol::NativeEntry),
-    NativeFailure(birnam_abi::id_protocol::Outcome),
+    Synchronous(Method),
+    NativeFailure(Oop),
     Unbound,
 }
 
@@ -2637,7 +2639,7 @@ pub(crate) struct ExecutionState {
     free_continuation_slots: Vec<usize>,
     resumable_entries: Vec<ResumableEntrySlot>,
     free_resumable_entry_slots: Vec<usize>,
-    resumable_by_thunk: HashMap<(usize, usize), ResumableEntryCapability>,
+    resumable_by_thunk: HashMap<usize, ResumableEntryCapability>,
     generation_leases: Vec<GenerationLeaseSlot>,
     free_generation_lease_slots: Vec<usize>,
     managed_turn_depth: usize,
@@ -2773,8 +2775,8 @@ impl ExecutionState {
         {
             return Err(RegistrationError::InvalidDescriptor);
         }
-        let thunk = MethodAddress::from_method(carrier.thunk);
-        if thunk == MethodAddress::from_method(carrier.descriptor.step_method()) {
+        let thunk = carrier.thunk;
+        if thunk == carrier.descriptor.step_method() {
             return Err(RegistrationError::StepMethodInstalledAsThunk);
         }
         let thunk_key = thunk.key();
@@ -5149,27 +5151,9 @@ mod tests {
     };
     use core::ffi::c_void;
 
-    const INERT_STEP: Method = Method::new(inert_step_entry, core::ptr::null_mut());
-    unsafe extern "C" fn inert_step_entry(
-        _: *mut core::ffi::c_void,
-        _: Oop,
-        _: *const birnam_abi::id_protocol::Operand,
-        _: usize,
-    ) -> birnam_abi::id_protocol::Outcome {
-        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
-    }
-
-    const INERT_THUNK: Method = Method::new(inert_thunk_entry, core::ptr::null_mut());
-    unsafe extern "C" fn inert_thunk_entry(
-        _: *mut core::ffi::c_void,
-        _: Oop,
-        _: *const birnam_abi::id_protocol::Operand,
-        _: usize,
-    ) -> birnam_abi::id_protocol::Outcome {
-        // Registration requires distinct entry and step addresses, also in release.
-        std::hint::black_box(60_001usize);
-        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
-    }
+    // The pure engine retains opaque identities; it never calls these values.
+    const INERT_STEP: Method = Method::new(core::ptr::without_provenance_mut(0x1000), 1);
+    const INERT_THUNK: Method = Method::new(core::ptr::without_provenance_mut(0x2000), 2);
 
     fn oop(value: usize) -> Oop {
         core::ptr::with_exposed_provenance_mut(value)
@@ -5680,7 +5664,7 @@ mod tests {
         let mut engine = ExecutionState::new(owner);
         let callee = descriptor(vec![SlotKind::Oop], 1);
         engine.register_resumable(owner, SemanticRegistrationV1::new(INERT_THUNK, callee, 0, 0, 1)).unwrap();
-        let method = MethodAddress::from_method(INERT_THUNK);
+        let method = INERT_THUNK;
         engine.note_direct_binding_added(method).unwrap();
         let Some(StacklessTarget::Registered { entry }) = engine.classify_resumable(method).unwrap() else { panic!("registered") };
         let caller_descriptor = descriptor_v2(4, vec![7, 8], vec![CallSiteDescriptor {
@@ -5775,14 +5759,12 @@ mod tests {
     }
 
     #[test]
-    fn owned_publication_keeps_exact_contexts_without_synthetic_bindings() {
+    fn owned_publication_keeps_exact_methods_without_synthetic_bindings() {
         let mut engine = ExecutionState::new(1);
         let mut registrations = Vec::new();
-        for context in [1usize, 2] {
-            let thunk = Method::new(
-                INERT_THUNK.method.unwrap(),
-                core::ptr::with_exposed_provenance_mut(context),
-            );
+        for identity in [0x3000usize, 0x4000] {
+            // Old and new Methods may occupy the same address across collection.
+            let thunk = Method::new(core::ptr::without_provenance_mut(0x3000), identity);
             let cap = engine
                 .register_resumable(
                     1,
@@ -5802,7 +5784,7 @@ mod tests {
         );
         for (thunk, cap, _) in &registrations {
             let Some(StacklessTarget::Registered { entry }) = engine
-                .classify_resumable(MethodAddress::from_method(*thunk))
+                .classify_resumable(*thunk)
                 .unwrap()
             else {
                 panic!("owned registration must acquire");
@@ -5839,7 +5821,7 @@ mod tests {
             execution.acquired_entry_descriptor(capability),
             Err(RegistrationError::StaleCapability)
         ));
-        let method = MethodAddress::from_method(INERT_THUNK);
+        let method = INERT_THUNK;
         execution.note_direct_binding_added(method).unwrap();
         let Some(StacklessTarget::Registered { entry }) =
             execution.classify_resumable(method).unwrap()
@@ -5892,7 +5874,7 @@ mod tests {
                     SemanticRegistrationV1::new(INERT_THUNK, descriptor, 0, 0, 1),
                 )
                 .unwrap();
-            let method = MethodAddress::from_method(INERT_THUNK);
+            let method = INERT_THUNK;
             execution.note_direct_binding_added(method).unwrap();
             let mut lease = None;
             match holder {
@@ -5973,7 +5955,7 @@ mod tests {
                 SemanticRegistrationV1::new(INERT_THUNK, descriptor, 0, 0, 1),
             )
             .unwrap();
-        let method = MethodAddress::from_method(INERT_THUNK);
+        let method = INERT_THUNK;
         execution.note_direct_binding_added(method).unwrap();
         execution
             .note_collected_block_binding_removed(method)
@@ -5991,7 +5973,7 @@ mod tests {
         execution
             .register_resumable(owner, carrier)
             .expect("registration");
-        let method = MethodAddress::from_method(INERT_THUNK);
+        let method = INERT_THUNK;
         execution
             .note_direct_binding_added(method)
             .expect("initial publication");

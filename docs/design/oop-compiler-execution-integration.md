@@ -69,3 +69,25 @@ Next integrate generated entry declaration emission and real Execution together,
 retaining the frame engine and changing its message-facing owners. Port the real
 language seed and Codegen consumers, then run the existing language and stackless
 preservation tests. Do not claim a working language from the native closure gate.
+
+## Frame engine checkpoint
+
+The production frame/continuation engine now carries opaque Method references
+with allocation identities instead of native function/context pairs. Its pending
+registration map uses the identity, preserving distinction when an address is
+reused before checkpoint. Native failures carry ordinary caught error references.
+The transition, scheduling, tail-entry, recovery and descriptor algorithms remain
+unchanged. Their existing assertions are retained; inert test entries are opaque
+identities because the pure engine never enters them.
+
+`bash scripts/oop-execution-engine-test.sh` compiles these production modules in a
+standalone test harness while the message-facing Execution module still uses the
+removed ABI. This is an intermediate source migration, not a build of the entire
+Execution crate. The message-facing owner must obtain and retain the exact Method
+identity and trace its step/implementation Methods when constructing registrations.
+It must not manufacture keys from addresses alone or revive raw native entries.
+
+Remaining connected work: Execution's message entrypoints and constructors,
+generated C and descriptors, portable code, Codegen and the language seed, followed
+by the real language/stackless tests. The new TCC and pure engine gates do not
+replace any of those acceptance requirements.

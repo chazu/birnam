@@ -168,32 +168,15 @@ impl ExecutionState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const STEP: Method = Method::new(step_entry, core::ptr::null_mut());
-    unsafe extern "C" fn step_entry(
-        _: *mut core::ffi::c_void,
-        _: Oop,
-        _: *const birnam_abi::id_protocol::Operand,
-        _: usize,
-    ) -> birnam_abi::id_protocol::Outcome {
-        std::hint::black_box(741701usize);
-        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
-    }
-    const THUNK: Method = Method::new(thunk_entry, core::ptr::null_mut());
-    unsafe extern "C" fn thunk_entry(
-        _: *mut core::ffi::c_void,
-        _: Oop,
-        _: *const birnam_abi::id_protocol::Operand,
-        _: usize,
-    ) -> birnam_abi::id_protocol::Outcome {
-        std::hint::black_box(741702usize);
-        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
-    }
+    const STEP: Method = Method::new(core::ptr::without_provenance_mut(0x1000), 1);
+    const THUNK: Method = Method::new(core::ptr::without_provenance_mut(0x2000), 2);
+
     fn oop(value: usize) -> Oop {
         core::ptr::with_exposed_provenance_mut(value)
     }
     fn acquire(state: &mut ExecutionState) -> ResumableEntryCapability {
         let Some(StacklessTarget::Registered { entry }) = state
-            .classify_resumable(MethodAddress::from_method(THUNK))
+            .classify_resumable(THUNK)
             .unwrap()
         else {
             panic!("registered target")
@@ -227,7 +210,7 @@ mod tests {
             .with_implementation_anchor(oop(88));
         state.register_resumable(owner, carrier).unwrap();
         state
-            .note_direct_binding_added(MethodAddress::from_method(THUNK))
+            .note_direct_binding_added(THUNK)
             .unwrap();
         let baseline = state.create_machine(owner).unwrap();
         let candidate = state.create_machine(owner).unwrap();

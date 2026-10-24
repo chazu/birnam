@@ -3,15 +3,8 @@
 //! code. Conservative all-Oop root maps are convenient for hand-written steps.
 use super::*;
 
-const UNUSED_STEP: Method = Method::new(unused_step_entry, core::ptr::null_mut());
-unsafe extern "C" fn unused_step_entry(
-    _: *mut core::ffi::c_void,
-    _: Oop,
-    _: *const birnam_abi::id_protocol::Operand,
-    _: usize,
-) -> birnam_abi::id_protocol::Outcome {
-    birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
-}
+// No code is entered by these pure transition tests.
+const UNUSED_STEP: Method = Method::new(core::ptr::without_provenance_mut(0x1000), 1);
 
 pub(crate) fn probe_spec(slot_count: usize, pc_count: usize) -> FrameDescriptorV2Spec {
     let mut roots = vec![u64::MAX; slot_count.div_ceil(64)];
