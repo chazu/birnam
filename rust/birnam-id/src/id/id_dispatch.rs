@@ -15,6 +15,10 @@ pub(crate) struct Context {
     pub(crate) metavtable: Oop,
     pub(crate) lookup: Oop,
     pub(crate) does_not_understand: Oop,
+    // Experimental size-immediate receiver support, confined to unit probes.
+    // No production ABI, object representation or collector is changed.
+    #[cfg(test)]
+    pub(crate) size_probe_behavior: Oop,
 }
 #[cfg(test)]
 pub(crate) const fn entry(method: native::Method) -> NativeEntry {
@@ -35,6 +39,13 @@ pub(crate) unsafe fn bind(
     receiver: Oop,
     selector: Oop,
 ) -> Result<Option<NativeEntry>, Outcome> {
+    #[cfg(test)]
+    let behavior = if !context.size_probe_behavior.is_null() && receiver.addr() & 1 != 0 {
+        context.size_probe_behavior
+    } else {
+        unsafe { ObjectMemory::vtable_of_valid_object(receiver) }
+    };
+    #[cfg(not(test))]
     let behavior = unsafe { ObjectMemory::vtable_of_valid_object(receiver) };
     if behavior.is_null() {
         return Ok(None);

@@ -1,0 +1,5601 @@
+{
+  "base_revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+  "platform": "aarch64 macOS; pinned Rust 1.95.0",
+  "purpose": "Focused strict size/name value probes using production Id algorithms and test-only immediate receiver recognition; no production ABI migration.",
+  "source_sha256": {
+    "rust/birnam-id/src/id/native_id/oop_boundary_probe.rs": "b443d4233010a8effa6aa483752f4e85a850571edcc935792c32f0fbc1918463",
+    "rust/birnam-id/src/id/id_dispatch.rs": "bb0a5106ab0509a608d04a24f1b7adae899198e45f84ae9b2f752fbcd4074a92",
+    "rust/birnam-id/src/id/initial_objects.rs": "db2cc4c3d30f7a34afba6d760993151d665f9ffccfde1d492038a9d5630637e6",
+    "rust/birnam-id/src/id/native_id.rs": "fb6eae74be18e9011527aa438ddb55e1736760ef983ba98c3819d5be5275a303",
+    "rust/birnam-id/src/id/object_memory.rs": "de98dc46205be69c4254a835a67f282b85b28f3a50ed7a6db3748b831011dbb0",
+    "rust/birnam-id/src/id/symbol.rs": "882c6ea3d806157ad4b2602c4530d1ad26f6a442d95c5ee086d6af6a6f2179fc"
+  },
+  "test_only_fixture_source": "//! Experimental strict-value probes, compiled ONLY by `cargo test`.\n//!\n//! Reuses production ObjectMemory, Symbols, dictionaries, bootstrap and dispatch.\n//! Existing Operand/Outcome glue remains around semantic test sends; timings\n//! isolate the proposed value representations using the same production algorithms.\n//! This is not a migrated ABI, production immediate support, or a GC/image proof.\nuse super::*;\nuse crate::id::initial_objects::InitialObjects;\nuse std::{ffi::CStr, hint::black_box};\n\nfn size_oop(bytes: usize) -> Option<Oop> {\n    (bytes <= usize::MAX >> 1).then(|| core::ptr::without_provenance_mut((bytes << 1) | 1))\n}\nfn size_value(value: Oop) -> Option<usize> {\n    (value.addr() & 1 == 1).then(|| value.addr() >> 1)\n}\n\nstruct Probe {\n    initial: InitialObjects,\n    name_behavior: Oop,\n    size_behavior: Oop,\n    intern_selector: Oop,\n    allocate_selector: Oop,\n    identity_selector: Oop,\n}\nimpl Probe {\n    fn new() -> Box<Self> {\n        let initial = InitialObjects::new();\n        let p = initial.protocol.protocol;\n        let intern = |name: &[u8]| unsafe { p.intern_name(name).unwrap() };\n        let delegated = intern(b\"delegated\");\n        let behavior = || unsafe {\n            p.send(initial.object_vt, delegated, &[]).unwrap().as_object().unwrap()\n        };\n        let name_behavior = behavior();\n        let size_behavior = behavior();\n        let intern_selector = intern(b\"probeIntern\");\n        let allocate_selector = intern(b\"probeAllocate:\");\n        let identity_selector = intern(b\"probeIdentity\");\n        let mut probe = Box::new(Self { initial, name_behavior, size_behavior,\n            intern_selector, allocate_selector, identity_selector });\n        let context = core::ptr::from_mut(&mut *probe).cast();\n        probe.install(name_behavior, intern_selector, strict_intern, context);\n        probe.install(probe.initial.object_vt, allocate_selector, strict_allocate, context);\n        probe.install(size_behavior, identity_selector, identity, context);\n        probe\n    }\n    fn state(&self) -> &State { &self.initial.protocol }\n    fn context(&self) -> id_dispatch::Context {\n        let mut c = self.state().dispatch_context();\n        c.size_probe_behavior = self.size_behavior;\n        c\n    }\n    fn install(&self, behavior: Oop, selector: Oop, method: native::Method, context: *mut c_void) {\n        let p = self.state().protocol;\n        let add = unsafe { p.intern_name(b\"addMethod\").unwrap() };\n        unsafe { p.send(behavior, add, &[Operand::object(selector),\n            Operand::entry(NativeEntry::new(method, context))]).unwrap(); }\n    }\n    fn send(&self, receiver: Oop, selector: Oop, args: &[Operand]) -> Result<Operand, Outcome> {\n        unsafe { id_dispatch::send(self.context(), receiver, selector, args).into_result() }\n    }\n    // One real Id allocation containing immutable length + inline name bytes.\n    // The byte/name owner creates and interprets its own representation. There\n    // is no borrowed native pointer in the value sent to the interner.\n    fn name(&self, bytes: &[u8]) -> Oop {\n        let memory = unsafe { &mut *self.state().memory };\n        let object = memory.allocate(size_of::<usize>() + bytes.len());\n        assert!(memory.set_vtable(object, self.name_behavior));\n        unsafe {\n            object.cast::<usize>().write(bytes.len());\n            core::ptr::copy_nonoverlapping(bytes.as_ptr(),\n                object.cast::<u8>().add(size_of::<usize>()), bytes.len());\n        }\n        object\n    }\n    fn release(&self, object: Oop) {\n        assert!(unsafe { (&mut *self.state().memory).detach(object.addr()) }.is_some());\n    }\n    #[inline(always)]\n    fn allocation(&self, bytes: usize) -> Option<Oop> {\n        if !ObjectMemory::valid_payload_size(bytes) { return None; }\n        let memory = unsafe { &mut *self.state().memory };\n        let object = memory.allocate(bytes);\n        assert!(memory.set_vtable(object, self.initial.object_vt));\n        Some(object)\n    }\n    #[inline(never)]\n    fn allocate_raw(&self, bytes: usize) -> Option<Oop> { self.allocation(bytes) }\n    #[inline(never)]\n    fn allocate_object(&self, size: Oop) -> Option<Oop> {\n        self.allocation(size_value(size)?)\n    }\n    #[inline(never)]\n    fn intern_raw(&self, bytes: &[u8]) -> Option<Oop> {\n        let s = self.state();\n        unsafe { (&mut *s.symbols).intern(&mut *s.memory, s.symbol_vtable, bytes).ok() }\n    }\n    #[inline(never)]\n    fn intern_cstr(&self, bytes: &CStr) -> Option<Oop> {\n        // Model a raw const-char* interface, including its length scan.\n        let bytes = unsafe { CStr::from_ptr(black_box(bytes.as_ptr())) };\n        self.intern_raw(bytes.to_bytes())\n    }\n    #[inline(never)]\n    fn intern_object(&self, name: Oop) -> Option<Oop> {\n        let bytes = {\n            let memory = unsafe { &*self.state().memory };\n            // Shape validation prevents an ordinary reassociated short object\n            // or a non-Name from being read as an unbounded native buffer.\n            let allocation = memory.get(name.addr())?;\n            if allocation.requested_size() < size_of::<usize>() ||\n                unsafe { ObjectMemory::vtable_of_valid_object(name) } != self.name_behavior {\n                return None;\n            }\n            let len = unsafe { name.cast::<usize>().read() };\n            if len != allocation.requested_size() - size_of::<usize>() { return None; }\n            unsafe { core::slice::from_raw_parts(name.cast::<u8>().add(size_of::<usize>()), len) }\n        };\n        // The Id allocator stores each payload separately; adding a Symbol\n        // cannot move Name bytes. No registry borrow spans this operation,\n        // and this baseline core interner does not invoke callbacks/automatic GC.\n        self.intern_raw(bytes)\n    }\n}\nunsafe extern \"C\" fn strict_allocate(c: *mut c_void, _: Oop, args: *const Operand, n: usize) -> Outcome {\n    let p = unsafe { &*c.cast::<Probe>() };\n    let result = (|| {\n        let [arg] = (unsafe { crate::abi::borrowed_slice(args, n) })? else { return None };\n        p.allocate_object(arg.as_object()?)\n    })();\n    answer(result)\n}\nunsafe extern \"C\" fn strict_intern(c: *mut c_void, receiver: Oop, _: *const Operand, n: usize) -> Outcome {\n    answer((n == 0).then(|| unsafe { &*c.cast::<Probe>() }.intern_object(receiver)).flatten())\n}\nfn answer(value: Option<Oop>) -> Outcome {\n    value.map(|o| Outcome::loaded(Operand::object(o)))\n        .unwrap_or_else(|| Outcome::failed(native::INVALID_REQUEST, 0))\n}\nunsafe extern \"C\" fn identity(_: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {\n    answer((n == 0).then_some(r))\n}\nunsafe extern \"C\" fn replacement(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {\n    answer(Some(c))\n}\n\n#[test]\nfn size_boundary_and_real_dispatch_preserve_replacement() {\n    let p = Probe::new();\n    let count = unsafe { (&*p.state().memory).len() };\n    // Include all representable unsigned-63-bit endpoints, without attempting\n    // huge allocations. Check the actual allocator geometry independently.\n    for n in [0, 1, 7, 8, 4096, usize::MAX >> 1] {\n        let size = size_oop(n).unwrap();\n        assert_eq!(size_value(size), Some(n));\n        assert_eq!(p.send(size, p.identity_selector, &[]).unwrap().as_object(), Some(size));\n    }\n    assert_eq!(unsafe { (&*p.state().memory).len() }, count, \"size values must not allocate\");\n    assert!(size_oop((usize::MAX >> 1) + 1).is_none());\n    assert!(size_value(core::ptr::null_mut()).is_none());\n    assert!(size_value(p.initial.object_prototype).is_none());\n    assert!(p.allocate_object(size_oop(usize::MAX >> 1).unwrap()).is_none());\n    // Id allocations have 16-byte alignment; Layout's rounded size must fit\n    // isize::MAX, including the Oop header. No huge allocation is performed.\n    let max_layout_payload = (isize::MAX as usize & !15) - size_of::<Oop>();\n    assert!(ObjectMemory::valid_payload_size(max_layout_payload));\n    assert!(size_oop(max_layout_payload).is_some());\n    assert!(!ObjectMemory::valid_payload_size(max_layout_payload + 1));\n    for n in [0, 1, 8, 31, 1024] {\n        let object = p.send(p.initial.object_prototype, p.allocate_selector,\n            &[Operand::object(size_oop(n).unwrap())]).unwrap().as_object().unwrap();\n        assert_eq!(unsafe { (&*p.state().memory).get(object.addr()).unwrap().requested_size() }, n);\n        p.release(object);\n    }\n    let sentinel = p.initial.object_prototype;\n    p.install(p.size_behavior, p.identity_selector, replacement, sentinel);\n    assert_eq!(p.send(size_oop(32).unwrap(), p.identity_selector, &[]).unwrap().as_object(), Some(sentinel));\n    p.install(p.initial.object_vt, p.allocate_selector, replacement, sentinel);\n    assert_eq!(p.send(sentinel, p.allocate_selector, &[Operand::object(size_oop(32).unwrap())])\n        .unwrap().as_object(), Some(sentinel));\n}\n\n#[test]\nfn names_preserve_canonical_identity_content_lifetime_and_validation() {\n    let p = Probe::new();\n    for bytes in [b\"\".as_slice(), b\"drawFullMap\", \"m\\u{00e9}thode:\".as_bytes(), &[b'x'; 4096]] {\n        let mut source = bytes.to_vec();\n        let first = p.name(&source);\n        source.fill(b'?');\n        drop(source);\n        let second = p.name(bytes);\n        assert_ne!(first, second);\n        let a = p.send(first, p.intern_selector, &[]).unwrap().as_object().unwrap();\n        let b = p.send(second, p.intern_selector, &[]).unwrap().as_object().unwrap();\n        assert_eq!(a, b);\n        assert_eq!(a, p.intern_raw(bytes).unwrap());\n        p.release(first);\n        p.release(second);\n        assert_eq!(unsafe { (&*p.state().symbols).bytes_of(a) }, Some(bytes));\n        assert_eq!(a, p.intern_raw(bytes).unwrap());\n    }\n    let bad = p.name(b\"not\\0a-selector\");\n    assert!(p.intern_object(bad).is_none());\n    p.release(bad);\n    // A different behavior, a short object re-associated to Name, and a\n    // corrupted declared length must all fail before unbounded byte access.\n    assert!(p.intern_object(p.initial.object_prototype).is_none());\n    let short = p.allocation(0).unwrap();\n    assert!(unsafe { (&mut *p.state().memory).set_vtable(short, p.name_behavior) });\n    assert!(p.intern_object(short).is_none());\n    p.release(short);\n    let malformed = p.name(b\"x\");\n    unsafe { malformed.cast::<usize>().write(usize::MAX) };\n    assert!(p.intern_object(malformed).is_none());\n    p.release(malformed);\n}\n\nstruct Reentry { probe: *const Probe, name: Oop, selector: Oop, sentinel: Oop }\nunsafe extern \"C\" fn reentrant_name(c: *mut c_void, receiver: Oop, _: *const Operand, _: usize) -> Outcome {\n    let r = unsafe { &*c.cast::<Reentry>() };\n    let p = unsafe { &*r.probe };\n    // No interner/registry borrow may span this replacement and nested send.\n    p.install(p.name_behavior, r.selector, replacement, r.sentinel);\n    let nested = p.send(r.name, r.selector, &[]).unwrap().as_object().unwrap();\n    assert_eq!(nested, r.sentinel);\n    answer(p.intern_object(receiver))\n}\n#[test]\nfn name_dispatch_observes_live_replacement_and_reentry() {\n    let p = Probe::new();\n    let name = p.name(b\"live-name\");\n    let symbol = p.intern_raw(b\"live-name\").unwrap();\n    let mut reentry = Reentry { probe: &*p, name, selector: p.intern_selector,\n        sentinel: p.initial.object_prototype };\n    p.install(p.name_behavior, p.intern_selector, reentrant_name,\n        core::ptr::from_mut(&mut reentry).cast());\n    assert_eq!(p.send(name, p.intern_selector, &[]).unwrap().as_object(), Some(symbol));\n    assert_eq!(p.send(name, p.intern_selector, &[]).unwrap().as_object(), Some(reentry.sentinel));\n    p.release(name);\n}\n\nstruct LookupProbe {\n    original: NativeEntry,\n    selector: Oop,\n    selected: NativeEntry,\n    calls: Cell<usize>,\n}\nunsafe extern \"C\" fn custom_lookup(c: *mut c_void, receiver: Oop, a: *const Operand, n: usize) -> Outcome {\n    let p = unsafe { &*c.cast::<LookupProbe>() };\n    p.calls.set(p.calls.get() + 1);\n    if n == 1 && unsafe { a.read() }.as_object() == Some(p.selector) {\n        return Outcome::loaded(Operand::entry(p.selected));\n    }\n    unsafe { p.original.method.unwrap()(p.original.context, receiver, a, n) }\n}\n#[test]\nfn name_custom_lookup_and_immediate_dnu_use_actual_id() {\n    let p = Probe::new();\n    let name = p.name(b\"custom-lookup-probe\");\n    let sentinel = p.initial.object_prototype;\n    let original = unsafe { (&*p.state().dictionaries).lookup(p.initial.vtable_vt, p.state().lookup) }.unwrap();\n    let mut lookup = LookupProbe { original, selector: p.intern_selector,\n        selected: NativeEntry::new(replacement, sentinel), calls: Cell::new(0) };\n    p.install(p.initial.vtable_vt, p.state().lookup, custom_lookup,\n        core::ptr::from_mut(&mut lookup).cast());\n    assert_eq!(p.send(name, p.intern_selector, &[]).unwrap().as_object(), Some(sentinel));\n    assert!(lookup.calls.get() > 0);\n    p.install(p.size_behavior, p.state().does_not_understand, replacement, sentinel);\n    let missing = unsafe { p.state().protocol.intern_name(b\"unimplementedSizeMessage\").unwrap() };\n    assert_eq!(p.send(size_oop(48).unwrap(), missing, &[]).unwrap().as_object(), Some(sentinel));\n    p.release(name);\n}\n\n#[test]\nfn name_survives_symbol_retirement_and_reinterns_with_new_identity() {\n    let p = Probe::new();\n    let name = p.name(b\"retire-probe-with-kept-name\");\n    let first = p.intern_object(name).unwrap();\n    let old_identity = unsafe { (&*p.state().memory).get(first.addr()).unwrap().identity() };\n    let mut dead = crate::raw::AddressMap::default();\n    dead.insert(first.addr(), ());\n    assert_eq!(unsafe { (&mut *p.state().symbols).remove_objects(&dead) }, 1);\n    p.release(first);\n    let second = p.send(name, p.intern_selector, &[]).unwrap().as_object().unwrap();\n    let new_identity = unsafe { (&*p.state().memory).get(second.addr()).unwrap().identity() };\n    assert_ne!(old_identity, new_identity, \"allocator address reuse is not identity reuse\");\n    assert_eq!(p.intern_raw(b\"retire-probe-with-kept-name\"), Some(second));\n    p.release(name);\n}\n\n#[cfg(target_os = \"macos\")]\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: i32) -> u64; }\n#[cfg(target_os = \"macos\")]\nfn time() -> u64 { unsafe { clock_gettime_nsec_np(16) } }\n#[cfg(target_os = \"macos\")]\nfn record(case: &str, lane: &str, round: usize, n: usize, start: u64) {\n    let elapsed = time() - start;\n    println!(\"OOP_PROBE={{\\\"case\\\":\\\"{case}\\\",\\\"lane\\\":\\\"{lane}\\\",\\\"round\\\":{round},\\\"iterations\\\":{n},\\\"cpu_ns\\\":{elapsed},\\\"cpu_ns_per_op\\\":{}}}\", elapsed as f64 / n as f64);\n}\nfn names(n: usize, length: usize, round: usize) -> Vec<Vec<u8>> {\n    (0..n).map(|i| {\n        let mut s = format!(\"{round:03x}{i:05x}\").into_bytes();\n        s.resize(length.max(8), b'x'); s\n    }).collect()\n}\n\n#[test]\n#[ignore = \"serial release-only timing experiment; not a correctness gate\"]\n#[cfg(target_os = \"macos\")]\nfn timed_strict_boundary_designs() {\n    assert!(!cfg!(debug_assertions), \"run this experiment with --release\");\n    let p = Probe::new();\n    let sizes = [0, 8, 24, 64, 256, 1024, 4096];\n    let tagged = sizes.map(|n| size_oop(n).unwrap());\n    for round in 0..10 {\n        for lane in if round % 2 == 0 { [\"raw\", \"oop\"] } else { [\"oop\", \"raw\"] } {\n            let n = 16_384;\n            let mut objects = Vec::with_capacity(n);\n            let start = time();\n            for i in 0..n {\n                let object = if lane == \"raw\" { p.allocate_raw(black_box(sizes[i % sizes.len()])) }\n                    else { p.allocate_object(black_box(tagged[i % tagged.len()])) }.unwrap();\n                objects.push(black_box(object));\n            }\n            record(\"allocation-burst\", lane, round, n, start);\n            for object in objects { p.release(object); }\n        }\n    }\n    for length in [8, 32, 128, 1024] {\n        let data = names(128, length, 0);\n        let cstrings: Vec<_> = data.iter().map(|b| std::ffi::CString::new(b.clone()).unwrap()).collect();\n        let objects: Vec<_> = data.iter().map(|b| p.name(b)).collect();\n        for bytes in &data { p.intern_raw(bytes).unwrap(); }\n        for round in 0..10 {\n            let orders = [[\"raw\", \"oop\", \"cstr\"], [\"cstr\", \"oop\", \"raw\"], [\"oop\", \"raw\", \"cstr\"]];\n            for lane in orders[round % orders.len()] {\n                let n = 250_000;\n                let start = time();\n                for i in 0..n {\n                    let at = i % data.len();\n                    black_box(match lane {\n                        \"raw\" => p.intern_raw(black_box(&data[at])),\n                        \"cstr\" => p.intern_cstr(black_box(&cstrings[at])),\n                        _ => p.intern_object(black_box(objects[at])),\n                    }.unwrap());\n                }\n                record(&format!(\"intern-hit-{length}\"), lane, round, n, start);\n            }\n        }\n        for object in objects { p.release(object); }\n    }\n    // Matched fresh floors eliminate hits and keep inventory sizes comparable.\n    // Both prepared lanes own source Name objects, isolating consumption cost.\n    for case in [\"intern-miss-prepared\", \"intern-hit-fresh-name\", \"intern-miss-fresh-name\"] {\n        for round in 0..10 {\n            for lane in if round % 2 == 0 { [\"raw\", \"oop\"] } else { [\"oop\", \"raw\"] } {\n                let p = Probe::new();\n                let n = 8192;\n                let data = names(n, 32, round + 1);\n                let objects: Vec<_> = if case == \"intern-miss-prepared\" {\n                    data.iter().map(|b| p.name(b)).collect()\n                } else { Vec::new() };\n                if case == \"intern-hit-fresh-name\" {\n                    for bytes in &data { p.intern_raw(bytes).unwrap(); }\n                }\n                let start = time();\n                for (i, bytes) in data.iter().enumerate() {\n                    if lane == \"raw\" { black_box(p.intern_raw(black_box(bytes)).unwrap()); }\n                    else if case == \"intern-miss-prepared\" {\n                        black_box(p.intern_object(black_box(objects[i])).unwrap());\n                    } else {\n                        let name = p.name(black_box(bytes));\n                        black_box(p.intern_object(name).unwrap());\n                        p.release(name);\n                    }\n                }\n                record(case, lane, round, n, start);\n                for object in objects { p.release(object); }\n            }\n        }\n    }\n}\n",
+  "test_only_integration_patch": "diff --git a/rust/birnam-id/src/id/id_dispatch.rs b/rust/birnam-id/src/id/id_dispatch.rs\nindex 3f7437b8..dc8035b0 100644\n--- a/rust/birnam-id/src/id/id_dispatch.rs\n+++ b/rust/birnam-id/src/id/id_dispatch.rs\n@@ -15,6 +15,10 @@ pub(crate) struct Context {\n     pub(crate) metavtable: Oop,\n     pub(crate) lookup: Oop,\n     pub(crate) does_not_understand: Oop,\n+    // Experimental size-immediate receiver support, confined to unit probes.\n+    // No production ABI, object representation or collector is changed.\n+    #[cfg(test)]\n+    pub(crate) size_probe_behavior: Oop,\n }\n #[cfg(test)]\n pub(crate) const fn entry(method: native::Method) -> NativeEntry {\n@@ -35,6 +39,13 @@ pub(crate) unsafe fn bind(\n     receiver: Oop,\n     selector: Oop,\n ) -> Result<Option<NativeEntry>, Outcome> {\n+    #[cfg(test)]\n+    let behavior = if !context.size_probe_behavior.is_null() && receiver.addr() & 1 != 0 {\n+        context.size_probe_behavior\n+    } else {\n+        unsafe { ObjectMemory::vtable_of_valid_object(receiver) }\n+    };\n+    #[cfg(not(test))]\n     let behavior = unsafe { ObjectMemory::vtable_of_valid_object(receiver) };\n     if behavior.is_null() {\n         return Ok(None);\ndiff --git a/rust/birnam-id/src/id/initial_objects.rs b/rust/birnam-id/src/id/initial_objects.rs\nindex a80ad184..fdb8223e 100644\n--- a/rust/birnam-id/src/id/initial_objects.rs\n+++ b/rust/birnam-id/src/id/initial_objects.rs\n@@ -43,6 +43,8 @@ impl InitialObjects {\n         let context = crate::id::id_dispatch::Context {\n             dictionaries: dictionaries.pointer(), metavtable: vtable_vt,\n             lookup, does_not_understand,\n+            #[cfg(test)]\n+            size_probe_behavior: core::ptr::null_mut(),\n         };\n         let entry = |method| NativeEntry::new(method, context.dictionaries.cast());\n         dictionaries.add_method(vtable_vt, lookup, entry(crate::id::id_dispatch::vtable_lookup_method));\ndiff --git a/rust/birnam-id/src/id/native_id.rs b/rust/birnam-id/src/id/native_id.rs\nindex 995a596b..1bcd49a5 100644\n--- a/rust/birnam-id/src/id/native_id.rs\n+++ b/rust/birnam-id/src/id/native_id.rs\n@@ -2,6 +2,8 @@\n pub(crate) mod objects;\n mod storage;\n mod registries;\n+#[cfg(test)]\n+mod oop_boundary_probe;\n #[cfg(feature=\"dispatch-metrics\")]\n mod metrics;\n \n@@ -128,6 +130,8 @@ impl State {\n             metavtable: self.protocol.receiver,\n             lookup: self.lookup,\n             does_not_understand: self.does_not_understand,\n+            #[cfg(test)]\n+            size_probe_behavior: core::ptr::null_mut(),\n         }\n     }\n     pub(crate) fn roots(&self) -> Vec<Oop> {\n",
+  "rows": [
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 16384,
+      "cpu_ns": 1678083,
+      "cpu_ns_per_op": 102.42205810546875,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 16384,
+      "cpu_ns": 1198125,
+      "cpu_ns_per_op": 73.12774658203125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 16384,
+      "cpu_ns": 1391750,
+      "cpu_ns_per_op": 84.9456787109375,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 16384,
+      "cpu_ns": 1210125,
+      "cpu_ns_per_op": 73.86016845703125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 16384,
+      "cpu_ns": 1166875,
+      "cpu_ns_per_op": 71.22039794921875,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 16384,
+      "cpu_ns": 1142708,
+      "cpu_ns_per_op": 69.745361328125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 16384,
+      "cpu_ns": 1164375,
+      "cpu_ns_per_op": 71.06781005859375,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 16384,
+      "cpu_ns": 1223708,
+      "cpu_ns_per_op": 74.689208984375,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 16384,
+      "cpu_ns": 1233542,
+      "cpu_ns_per_op": 75.2894287109375,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 16384,
+      "cpu_ns": 1129417,
+      "cpu_ns_per_op": 68.93414306640625,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 16384,
+      "cpu_ns": 1251584,
+      "cpu_ns_per_op": 76.390625,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 16384,
+      "cpu_ns": 1362666,
+      "cpu_ns_per_op": 83.1705322265625,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 16384,
+      "cpu_ns": 1183541,
+      "cpu_ns_per_op": 72.23760986328125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 16384,
+      "cpu_ns": 1158083,
+      "cpu_ns_per_op": 70.68377685546875,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 16384,
+      "cpu_ns": 1274875,
+      "cpu_ns_per_op": 77.81219482421875,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 16384,
+      "cpu_ns": 1245459,
+      "cpu_ns_per_op": 76.01678466796875,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 16384,
+      "cpu_ns": 1475792,
+      "cpu_ns_per_op": 90.0751953125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 16384,
+      "cpu_ns": 1407666,
+      "cpu_ns_per_op": 85.9171142578125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 16384,
+      "cpu_ns": 1279125,
+      "cpu_ns_per_op": 78.07159423828125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 16384,
+      "cpu_ns": 1319500,
+      "cpu_ns_per_op": 80.535888671875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 4430917,
+      "cpu_ns_per_op": 17.723668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5676584,
+      "cpu_ns_per_op": 22.706336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5616542,
+      "cpu_ns_per_op": 22.466168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5622667,
+      "cpu_ns_per_op": 22.490668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5711083,
+      "cpu_ns_per_op": 22.844332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 4401542,
+      "cpu_ns_per_op": 17.606168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5216750,
+      "cpu_ns_per_op": 20.867,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 4417334,
+      "cpu_ns_per_op": 17.669336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5980458,
+      "cpu_ns_per_op": 23.921832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 4435000,
+      "cpu_ns_per_op": 17.74,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5460875,
+      "cpu_ns_per_op": 21.8435,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5713792,
+      "cpu_ns_per_op": 22.855168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 5614583,
+      "cpu_ns_per_op": 22.458332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 5712083,
+      "cpu_ns_per_op": 22.848332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 4349750,
+      "cpu_ns_per_op": 17.399,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5404375,
+      "cpu_ns_per_op": 21.6175,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 4491000,
+      "cpu_ns_per_op": 17.964,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5515417,
+      "cpu_ns_per_op": 22.061668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 4442292,
+      "cpu_ns_per_op": 17.769168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5323875,
+      "cpu_ns_per_op": 21.2955,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5377166,
+      "cpu_ns_per_op": 21.508664,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5515875,
+      "cpu_ns_per_op": 22.0635,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 6157584,
+      "cpu_ns_per_op": 24.630336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 4527208,
+      "cpu_ns_per_op": 18.108832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 5523584,
+      "cpu_ns_per_op": 22.094336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 4304750,
+      "cpu_ns_per_op": 17.219,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 5215792,
+      "cpu_ns_per_op": 20.863168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 4252583,
+      "cpu_ns_per_op": 17.010332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5021959,
+      "cpu_ns_per_op": 20.087836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5483083,
+      "cpu_ns_per_op": 21.932332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5937541,
+      "cpu_ns_per_op": 23.750164,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 6422542,
+      "cpu_ns_per_op": 25.690168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 6633541,
+      "cpu_ns_per_op": 26.534164,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 6585709,
+      "cpu_ns_per_op": 26.342836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 6463750,
+      "cpu_ns_per_op": 25.855,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5913709,
+      "cpu_ns_per_op": 23.654836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 6469125,
+      "cpu_ns_per_op": 25.8765,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5964042,
+      "cpu_ns_per_op": 23.856168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 6654000,
+      "cpu_ns_per_op": 26.616,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5970791,
+      "cpu_ns_per_op": 23.883164,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 6469250,
+      "cpu_ns_per_op": 25.877,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 6579417,
+      "cpu_ns_per_op": 26.317668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6616583,
+      "cpu_ns_per_op": 26.466332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6474000,
+      "cpu_ns_per_op": 25.896,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 5912333,
+      "cpu_ns_per_op": 23.649332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 6530416,
+      "cpu_ns_per_op": 26.121664,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5973584,
+      "cpu_ns_per_op": 23.894336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 6553584,
+      "cpu_ns_per_op": 26.214336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5985708,
+      "cpu_ns_per_op": 23.942832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 6350750,
+      "cpu_ns_per_op": 25.403,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 6583250,
+      "cpu_ns_per_op": 26.333,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 6584542,
+      "cpu_ns_per_op": 26.338168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 6463125,
+      "cpu_ns_per_op": 25.8525,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5858833,
+      "cpu_ns_per_op": 23.435332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6516167,
+      "cpu_ns_per_op": 26.064668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 5838250,
+      "cpu_ns_per_op": 23.353,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6531084,
+      "cpu_ns_per_op": 26.124336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5922042,
+      "cpu_ns_per_op": 23.688168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6467833,
+      "cpu_ns_per_op": 25.871332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6467125,
+      "cpu_ns_per_op": 25.8685,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 10769375,
+      "cpu_ns_per_op": 43.0775,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 11351458,
+      "cpu_ns_per_op": 45.405832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 12138083,
+      "cpu_ns_per_op": 48.552332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 11971750,
+      "cpu_ns_per_op": 47.887,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 11340875,
+      "cpu_ns_per_op": 45.3635,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 10965000,
+      "cpu_ns_per_op": 43.86,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 11445583,
+      "cpu_ns_per_op": 45.782332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 10815666,
+      "cpu_ns_per_op": 43.262664,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 12091583,
+      "cpu_ns_per_op": 48.366332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 10928000,
+      "cpu_ns_per_op": 43.712,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 11358959,
+      "cpu_ns_per_op": 45.435836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 11964792,
+      "cpu_ns_per_op": 47.859168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 12011625,
+      "cpu_ns_per_op": 48.0465,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 11391917,
+      "cpu_ns_per_op": 45.567668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 10793750,
+      "cpu_ns_per_op": 43.175,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 11290791,
+      "cpu_ns_per_op": 45.163164,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 10975042,
+      "cpu_ns_per_op": 43.900168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 11820750,
+      "cpu_ns_per_op": 47.283,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 10943959,
+      "cpu_ns_per_op": 43.775836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 11404834,
+      "cpu_ns_per_op": 45.619336,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 11851917,
+      "cpu_ns_per_op": 47.407668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 11994750,
+      "cpu_ns_per_op": 47.979,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 11173041,
+      "cpu_ns_per_op": 44.692164,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 10958458,
+      "cpu_ns_per_op": 43.833832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 11268958,
+      "cpu_ns_per_op": 45.075832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 10929958,
+      "cpu_ns_per_op": 43.719832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 11824625,
+      "cpu_ns_per_op": 47.2985,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 10747625,
+      "cpu_ns_per_op": 42.9905,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 11433875,
+      "cpu_ns_per_op": 45.7355,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 11781791,
+      "cpu_ns_per_op": 47.127164,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 80303250,
+      "cpu_ns_per_op": 321.213,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 82750916,
+      "cpu_ns_per_op": 331.003664,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 85221583,
+      "cpu_ns_per_op": 340.886332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 85267125,
+      "cpu_ns_per_op": 341.0685,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 82653375,
+      "cpu_ns_per_op": 330.6135,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 79302542,
+      "cpu_ns_per_op": 317.210168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 81833792,
+      "cpu_ns_per_op": 327.335168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 78455958,
+      "cpu_ns_per_op": 313.823832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 84518792,
+      "cpu_ns_per_op": 338.075168,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 80223250,
+      "cpu_ns_per_op": 320.893,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 85098708,
+      "cpu_ns_per_op": 340.394832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 84413250,
+      "cpu_ns_per_op": 337.653,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 84712000,
+      "cpu_ns_per_op": 338.848,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 85706667,
+      "cpu_ns_per_op": 342.826668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 81546209,
+      "cpu_ns_per_op": 326.184836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 81264500,
+      "cpu_ns_per_op": 325.058,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 80910375,
+      "cpu_ns_per_op": 323.6415,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 91539125,
+      "cpu_ns_per_op": 366.1565,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 83759083,
+      "cpu_ns_per_op": 335.036332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 82276458,
+      "cpu_ns_per_op": 329.105832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 85562250,
+      "cpu_ns_per_op": 342.249,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 85513083,
+      "cpu_ns_per_op": 342.052332,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 86274958,
+      "cpu_ns_per_op": 345.099832,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 82785959,
+      "cpu_ns_per_op": 331.143836,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 85788667,
+      "cpu_ns_per_op": 343.154668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 83207250,
+      "cpu_ns_per_op": 332.829,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 89440417,
+      "cpu_ns_per_op": 357.761668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 83425750,
+      "cpu_ns_per_op": 333.703,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 87589417,
+      "cpu_ns_per_op": 350.357668,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 87840458,
+      "cpu_ns_per_op": 351.361832,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 842708,
+      "cpu_ns_per_op": 102.86962890625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 754208,
+      "cpu_ns_per_op": 92.06640625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 756625,
+      "cpu_ns_per_op": 92.3614501953125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 849750,
+      "cpu_ns_per_op": 103.729248046875,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 712292,
+      "cpu_ns_per_op": 86.94970703125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 702250,
+      "cpu_ns_per_op": 85.723876953125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 716750,
+      "cpu_ns_per_op": 87.493896484375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 742041,
+      "cpu_ns_per_op": 90.5811767578125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 700000,
+      "cpu_ns_per_op": 85.44921875,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 735125,
+      "cpu_ns_per_op": 89.7369384765625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 738875,
+      "cpu_ns_per_op": 90.1947021484375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 716417,
+      "cpu_ns_per_op": 87.4532470703125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 730250,
+      "cpu_ns_per_op": 89.141845703125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 760458,
+      "cpu_ns_per_op": 92.829345703125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 737541,
+      "cpu_ns_per_op": 90.0318603515625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 711209,
+      "cpu_ns_per_op": 86.8175048828125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 738833,
+      "cpu_ns_per_op": 90.1895751953125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 739500,
+      "cpu_ns_per_op": 90.27099609375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 735291,
+      "cpu_ns_per_op": 89.7572021484375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 715042,
+      "cpu_ns_per_op": 87.285400390625,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 219041,
+      "cpu_ns_per_op": 26.7384033203125,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 453500,
+      "cpu_ns_per_op": 55.35888671875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 458334,
+      "cpu_ns_per_op": 55.948974609375,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 214958,
+      "cpu_ns_per_op": 26.239990234375,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 208042,
+      "cpu_ns_per_op": 25.395751953125,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 449375,
+      "cpu_ns_per_op": 54.8553466796875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 454416,
+      "cpu_ns_per_op": 55.470703125,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 207708,
+      "cpu_ns_per_op": 25.35498046875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 211833,
+      "cpu_ns_per_op": 25.8585205078125,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 454875,
+      "cpu_ns_per_op": 55.5267333984375,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 452666,
+      "cpu_ns_per_op": 55.257080078125,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 215042,
+      "cpu_ns_per_op": 26.250244140625,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 207542,
+      "cpu_ns_per_op": 25.334716796875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 454334,
+      "cpu_ns_per_op": 55.460693359375,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 462167,
+      "cpu_ns_per_op": 56.4168701171875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 214833,
+      "cpu_ns_per_op": 26.2247314453125,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 205583,
+      "cpu_ns_per_op": 25.0955810546875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 453542,
+      "cpu_ns_per_op": 55.364013671875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 453375,
+      "cpu_ns_per_op": 55.3436279296875,
+      "process": 2
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 205750,
+      "cpu_ns_per_op": 25.115966796875,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 656625,
+      "cpu_ns_per_op": 80.1544189453125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 892500,
+      "cpu_ns_per_op": 108.94775390625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 899083,
+      "cpu_ns_per_op": 109.7513427734375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 681375,
+      "cpu_ns_per_op": 83.1756591796875,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 660459,
+      "cpu_ns_per_op": 80.6224365234375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 895209,
+      "cpu_ns_per_op": 109.2784423828125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 903625,
+      "cpu_ns_per_op": 110.3057861328125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 662792,
+      "cpu_ns_per_op": 80.9072265625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 663625,
+      "cpu_ns_per_op": 81.0089111328125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 915667,
+      "cpu_ns_per_op": 111.7757568359375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 918042,
+      "cpu_ns_per_op": 112.065673828125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 669291,
+      "cpu_ns_per_op": 81.7005615234375,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 662833,
+      "cpu_ns_per_op": 80.9122314453125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 894917,
+      "cpu_ns_per_op": 109.2427978515625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 921583,
+      "cpu_ns_per_op": 112.4979248046875,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 662417,
+      "cpu_ns_per_op": 80.8614501953125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 667833,
+      "cpu_ns_per_op": 81.5225830078125,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 891959,
+      "cpu_ns_per_op": 108.8817138671875,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 926125,
+      "cpu_ns_per_op": 113.0523681640625,
+      "process": 2
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 674625,
+      "cpu_ns_per_op": 82.3516845703125,
+      "process": 2
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 16384,
+      "cpu_ns": 1599000,
+      "cpu_ns_per_op": 97.59521484375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 16384,
+      "cpu_ns": 1085459,
+      "cpu_ns_per_op": 66.25115966796875,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 16384,
+      "cpu_ns": 1039542,
+      "cpu_ns_per_op": 63.4486083984375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 16384,
+      "cpu_ns": 1039208,
+      "cpu_ns_per_op": 63.42822265625,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 16384,
+      "cpu_ns": 1180916,
+      "cpu_ns_per_op": 72.077392578125,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 16384,
+      "cpu_ns": 977625,
+      "cpu_ns_per_op": 59.66949462890625,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 16384,
+      "cpu_ns": 929167,
+      "cpu_ns_per_op": 56.71185302734375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 16384,
+      "cpu_ns": 901208,
+      "cpu_ns_per_op": 55.00537109375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 16384,
+      "cpu_ns": 925750,
+      "cpu_ns_per_op": 56.5032958984375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 16384,
+      "cpu_ns": 876542,
+      "cpu_ns_per_op": 53.4998779296875,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 16384,
+      "cpu_ns": 1024417,
+      "cpu_ns_per_op": 62.52545166015625,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 16384,
+      "cpu_ns": 918375,
+      "cpu_ns_per_op": 56.05316162109375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 16384,
+      "cpu_ns": 895250,
+      "cpu_ns_per_op": 54.6417236328125,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 16384,
+      "cpu_ns": 868959,
+      "cpu_ns_per_op": 53.03704833984375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 16384,
+      "cpu_ns": 940583,
+      "cpu_ns_per_op": 57.40863037109375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 16384,
+      "cpu_ns": 977000,
+      "cpu_ns_per_op": 59.63134765625,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 16384,
+      "cpu_ns": 861375,
+      "cpu_ns_per_op": 52.57415771484375,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 16384,
+      "cpu_ns": 873417,
+      "cpu_ns_per_op": 53.30914306640625,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 16384,
+      "cpu_ns": 852792,
+      "cpu_ns_per_op": 52.05029296875,
+      "process": 3
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 16384,
+      "cpu_ns": 944583,
+      "cpu_ns_per_op": 57.65277099609375,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 4146042,
+      "cpu_ns_per_op": 16.584168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 4840958,
+      "cpu_ns_per_op": 19.363832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 4897625,
+      "cpu_ns_per_op": 19.5905,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 4854875,
+      "cpu_ns_per_op": 19.4195,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 4906500,
+      "cpu_ns_per_op": 19.626,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 4124625,
+      "cpu_ns_per_op": 16.4985,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5442792,
+      "cpu_ns_per_op": 21.771168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 4132125,
+      "cpu_ns_per_op": 16.5285,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 4852958,
+      "cpu_ns_per_op": 19.411832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 4250792,
+      "cpu_ns_per_op": 17.003168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 4801917,
+      "cpu_ns_per_op": 19.207668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5022834,
+      "cpu_ns_per_op": 20.091336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 4923792,
+      "cpu_ns_per_op": 19.695168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 5660666,
+      "cpu_ns_per_op": 22.642664,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 4627125,
+      "cpu_ns_per_op": 18.5085,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5404917,
+      "cpu_ns_per_op": 21.619668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 4132375,
+      "cpu_ns_per_op": 16.5295,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 4903708,
+      "cpu_ns_per_op": 19.614832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 4192458,
+      "cpu_ns_per_op": 16.769832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5131958,
+      "cpu_ns_per_op": 20.527832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5173125,
+      "cpu_ns_per_op": 20.6925,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5213541,
+      "cpu_ns_per_op": 20.854164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5188500,
+      "cpu_ns_per_op": 20.754,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 4224167,
+      "cpu_ns_per_op": 16.896668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 4999667,
+      "cpu_ns_per_op": 19.998668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 4271125,
+      "cpu_ns_per_op": 17.0845,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 4919541,
+      "cpu_ns_per_op": 19.678164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 4245208,
+      "cpu_ns_per_op": 16.980832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5249750,
+      "cpu_ns_per_op": 20.999,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5269666,
+      "cpu_ns_per_op": 21.078664,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5344209,
+      "cpu_ns_per_op": 21.376836,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5911000,
+      "cpu_ns_per_op": 23.644,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 6282666,
+      "cpu_ns_per_op": 25.130664,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 6318459,
+      "cpu_ns_per_op": 25.273836,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5923583,
+      "cpu_ns_per_op": 23.694332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5372125,
+      "cpu_ns_per_op": 21.4885,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5892458,
+      "cpu_ns_per_op": 23.569832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5296458,
+      "cpu_ns_per_op": 21.185832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 6326708,
+      "cpu_ns_per_op": 25.306832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5408291,
+      "cpu_ns_per_op": 21.633164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5929250,
+      "cpu_ns_per_op": 23.717,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 6237167,
+      "cpu_ns_per_op": 24.948668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6283292,
+      "cpu_ns_per_op": 25.133168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6030917,
+      "cpu_ns_per_op": 24.123668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 5350959,
+      "cpu_ns_per_op": 21.403836,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5911292,
+      "cpu_ns_per_op": 23.645168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5469792,
+      "cpu_ns_per_op": 21.879168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 6223875,
+      "cpu_ns_per_op": 24.8955,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5437000,
+      "cpu_ns_per_op": 21.748,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5964792,
+      "cpu_ns_per_op": 23.859168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 6314041,
+      "cpu_ns_per_op": 25.256164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 6340625,
+      "cpu_ns_per_op": 25.3625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5928208,
+      "cpu_ns_per_op": 23.712832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5314209,
+      "cpu_ns_per_op": 21.256836,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 5871333,
+      "cpu_ns_per_op": 23.485332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 5376958,
+      "cpu_ns_per_op": 21.507832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6384917,
+      "cpu_ns_per_op": 25.539668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5382834,
+      "cpu_ns_per_op": 21.531336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6132375,
+      "cpu_ns_per_op": 24.5295,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6316333,
+      "cpu_ns_per_op": 25.265332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 10339000,
+      "cpu_ns_per_op": 41.356,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 10903250,
+      "cpu_ns_per_op": 43.613,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 11627292,
+      "cpu_ns_per_op": 46.509168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 11583334,
+      "cpu_ns_per_op": 46.333336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 11080791,
+      "cpu_ns_per_op": 44.323164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 10302834,
+      "cpu_ns_per_op": 41.211336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 10691417,
+      "cpu_ns_per_op": 42.765668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 10384792,
+      "cpu_ns_per_op": 41.539168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 11480292,
+      "cpu_ns_per_op": 45.921168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 10280292,
+      "cpu_ns_per_op": 41.121168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 10950584,
+      "cpu_ns_per_op": 43.802336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 11553833,
+      "cpu_ns_per_op": 46.215332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 11482958,
+      "cpu_ns_per_op": 45.931832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 10989708,
+      "cpu_ns_per_op": 43.958832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 10447375,
+      "cpu_ns_per_op": 41.7895,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 10853791,
+      "cpu_ns_per_op": 43.415164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 10402667,
+      "cpu_ns_per_op": 41.610668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 11475500,
+      "cpu_ns_per_op": 45.902,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 10303500,
+      "cpu_ns_per_op": 41.214,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 10959334,
+      "cpu_ns_per_op": 43.837336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 11502041,
+      "cpu_ns_per_op": 46.008164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 11535667,
+      "cpu_ns_per_op": 46.142668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 10940417,
+      "cpu_ns_per_op": 43.761668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 10260125,
+      "cpu_ns_per_op": 41.0405,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 10864750,
+      "cpu_ns_per_op": 43.459,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 10394792,
+      "cpu_ns_per_op": 41.579168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 11503500,
+      "cpu_ns_per_op": 46.014,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 10302583,
+      "cpu_ns_per_op": 41.210332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 10940333,
+      "cpu_ns_per_op": 43.761332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 11732917,
+      "cpu_ns_per_op": 46.931668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 79611750,
+      "cpu_ns_per_op": 318.447,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 82597708,
+      "cpu_ns_per_op": 330.390832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 84693667,
+      "cpu_ns_per_op": 338.774668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 84727333,
+      "cpu_ns_per_op": 338.909332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 81076541,
+      "cpu_ns_per_op": 324.306164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 78789792,
+      "cpu_ns_per_op": 315.159168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 81883667,
+      "cpu_ns_per_op": 327.534668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 79393125,
+      "cpu_ns_per_op": 317.5725,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 84060666,
+      "cpu_ns_per_op": 336.242664,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 78894708,
+      "cpu_ns_per_op": 315.578832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 81248708,
+      "cpu_ns_per_op": 324.994832,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 83852125,
+      "cpu_ns_per_op": 335.4085,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 84130959,
+      "cpu_ns_per_op": 336.523836,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 82671333,
+      "cpu_ns_per_op": 330.685332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 79768125,
+      "cpu_ns_per_op": 319.0725,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 82777000,
+      "cpu_ns_per_op": 331.108,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 79395000,
+      "cpu_ns_per_op": 317.58,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 84738083,
+      "cpu_ns_per_op": 338.952332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 78734250,
+      "cpu_ns_per_op": 314.937,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 81013583,
+      "cpu_ns_per_op": 324.054332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 84074250,
+      "cpu_ns_per_op": 336.297,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 84075416,
+      "cpu_ns_per_op": 336.301664,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 81078083,
+      "cpu_ns_per_op": 324.312332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 78740333,
+      "cpu_ns_per_op": 314.961332,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 81416166,
+      "cpu_ns_per_op": 325.664664,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 78945791,
+      "cpu_ns_per_op": 315.783164,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 83811084,
+      "cpu_ns_per_op": 335.244336,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 78762417,
+      "cpu_ns_per_op": 315.049668,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 81296542,
+      "cpu_ns_per_op": 325.186168,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 83961750,
+      "cpu_ns_per_op": 335.847,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 825416,
+      "cpu_ns_per_op": 100.7587890625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 705375,
+      "cpu_ns_per_op": 86.1053466796875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 688083,
+      "cpu_ns_per_op": 83.9945068359375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 670959,
+      "cpu_ns_per_op": 81.9041748046875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 686875,
+      "cpu_ns_per_op": 83.8470458984375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 715041,
+      "cpu_ns_per_op": 87.2852783203125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 751958,
+      "cpu_ns_per_op": 91.791748046875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 668042,
+      "cpu_ns_per_op": 81.548095703125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 697917,
+      "cpu_ns_per_op": 85.1949462890625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 744084,
+      "cpu_ns_per_op": 90.83056640625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 700417,
+      "cpu_ns_per_op": 85.5001220703125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 695166,
+      "cpu_ns_per_op": 84.859130859375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 708125,
+      "cpu_ns_per_op": 86.4410400390625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 712375,
+      "cpu_ns_per_op": 86.9598388671875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 718916,
+      "cpu_ns_per_op": 87.75830078125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 715541,
+      "cpu_ns_per_op": 87.3463134765625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 707834,
+      "cpu_ns_per_op": 86.405517578125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 681083,
+      "cpu_ns_per_op": 83.1400146484375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 739417,
+      "cpu_ns_per_op": 90.2608642578125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 673875,
+      "cpu_ns_per_op": 82.2601318359375,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 218125,
+      "cpu_ns_per_op": 26.6265869140625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 458292,
+      "cpu_ns_per_op": 55.94384765625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 426583,
+      "cpu_ns_per_op": 52.0731201171875,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 210958,
+      "cpu_ns_per_op": 25.751708984375,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 201833,
+      "cpu_ns_per_op": 24.6378173828125,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 424292,
+      "cpu_ns_per_op": 51.79345703125,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 453916,
+      "cpu_ns_per_op": 55.40966796875,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 199333,
+      "cpu_ns_per_op": 24.3326416015625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 188792,
+      "cpu_ns_per_op": 23.0458984375,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 451292,
+      "cpu_ns_per_op": 55.08935546875,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 451000,
+      "cpu_ns_per_op": 55.0537109375,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 184916,
+      "cpu_ns_per_op": 22.57275390625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 187458,
+      "cpu_ns_per_op": 22.883056640625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 459291,
+      "cpu_ns_per_op": 56.0657958984375,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 454125,
+      "cpu_ns_per_op": 55.4351806640625,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 205375,
+      "cpu_ns_per_op": 25.0701904296875,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 198833,
+      "cpu_ns_per_op": 24.2716064453125,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 462500,
+      "cpu_ns_per_op": 56.45751953125,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 440166,
+      "cpu_ns_per_op": 53.731201171875,
+      "process": 3
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 187625,
+      "cpu_ns_per_op": 22.9034423828125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 613125,
+      "cpu_ns_per_op": 74.8443603515625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 913834,
+      "cpu_ns_per_op": 111.552001953125,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 902584,
+      "cpu_ns_per_op": 110.1787109375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 653709,
+      "cpu_ns_per_op": 79.7984619140625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 615000,
+      "cpu_ns_per_op": 75.0732421875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 888375,
+      "cpu_ns_per_op": 108.4442138671875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 904000,
+      "cpu_ns_per_op": 110.3515625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 652958,
+      "cpu_ns_per_op": 79.706787109375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 606375,
+      "cpu_ns_per_op": 74.0203857421875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 873084,
+      "cpu_ns_per_op": 106.57763671875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 900709,
+      "cpu_ns_per_op": 109.9498291015625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 647416,
+      "cpu_ns_per_op": 79.0302734375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 648875,
+      "cpu_ns_per_op": 79.2083740234375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 858083,
+      "cpu_ns_per_op": 104.7464599609375,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 952166,
+      "cpu_ns_per_op": 116.231201171875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 647250,
+      "cpu_ns_per_op": 79.010009765625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 607666,
+      "cpu_ns_per_op": 74.177978515625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 921084,
+      "cpu_ns_per_op": 112.43701171875,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 920125,
+      "cpu_ns_per_op": 112.3199462890625,
+      "process": 3
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 600917,
+      "cpu_ns_per_op": 73.3541259765625,
+      "process": 3
+    }
+  ],
+  "summary": {
+    "allocation-burst": {
+      "median_cpu_ns_per_op": {
+        "raw": 72.15750122070312,
+        "oop": 67.5926513671875
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 75.65310668945312,
+          "oop": 74.75918579101562
+        },
+        "3": {
+          "raw": 57.078033447265625,
+          "oop": 57.06024169921875
+        }
+      },
+      "paired_oop_minus_raw_ns_median": -2.343505859375,
+      "paired_oop_change_pct_median": -3.3936510371356645
+    },
+    "intern-hit-8": {
+      "median_cpu_ns_per_op": {
+        "raw": 17.15175,
+        "oop": 21.4565,
+        "cstr": 20.970916000000003
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 17.696502000000002,
+          "oop": 21.968918,
+          "cstr": 22.260916
+        },
+        "3": {
+          "raw": 16.83325,
+          "oop": 20.640916,
+          "cstr": 19.686666
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 3.937750000000001,
+      "paired_oop_change_pct_median": 22.619119476413573
+    },
+    "intern-hit-32": {
+      "median_cpu_ns_per_op": {
+        "raw": 22.616084,
+        "oop": 24.96625,
+        "cstr": 25.704084
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 23.719166,
+          "oop": 25.873916,
+          "cstr": 26.335583999999997
+        },
+        "3": {
+          "raw": 21.498165999999998,
+          "oop": 23.703581999999997,
+          "cstr": 25.260748
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 2.202998000000001,
+      "paired_oop_change_pct_median": 9.56626044295682
+    },
+    "intern-hit-128": {
+      "median_cpu_ns_per_op": {
+        "raw": 42.39,
+        "oop": 44.507664,
+        "cstr": 47.029416
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 43.715916,
+          "oop": 45.420834,
+          "cstr": 47.873084
+        },
+        "3": {
+          "raw": 41.285,
+          "oop": 43.7615,
+          "cstr": 46.078334
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 2.213166000000001,
+      "paired_oop_change_pct_median": 5.298038748441291
+    },
+    "intern-hit-1024": {
+      "median_cpu_ns_per_op": {
+        "raw": 318.0135,
+        "oop": 329.748332,
+        "cstr": 338.811334
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 324.91316800000004,
+          "oop": 335.699248,
+          "cstr": 341.560416
+        },
+        "3": {
+          "raw": 315.680998,
+          "oop": 325.42541600000004,
+          "cstr": 336.29933200000005
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 10.23108400000001,
+      "paired_oop_change_pct_median": 3.1772017938160646
+    },
+    "intern-miss-prepared": {
+      "median_cpu_ns_per_op": {
+        "raw": 86.88360595703125,
+        "oop": 89.7470703125
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 88.29754638671875,
+          "oop": 90.11328125
+        },
+        "3": {
+          "raw": 85.02703857421875,
+          "oop": 87.12255859375
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 1.36566162109375,
+      "paired_oop_change_pct_median": 1.6537635094071024
+    },
+    "intern-hit-fresh-name": {
+      "median_cpu_ns_per_op": {
+        "raw": 25.225341796875,
+        "oop": 55.3868408203125
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 25.62713623046875,
+          "oop": 55.412353515625
+        },
+        "3": {
+          "raw": 24.3021240234375,
+          "oop": 55.24951171875
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 30.1590576171875,
+      "paired_oop_change_pct_median": 118.84409691625346
+    },
+    "intern-miss-fresh-name": {
+      "median_cpu_ns_per_op": {
+        "raw": 79.9764404296875,
+        "oop": 110.24224853515625
+      },
+      "per_process_medians": {
+        "2": {
+          "raw": 80.9605712890625,
+          "oop": 110.028564453125
+        },
+        "3": {
+          "raw": 77.0416259765625,
+          "oop": 110.26513671875
+        }
+      },
+      "paired_oop_minus_raw_ns_median": 30.6727294921875,
+      "paired_oop_change_pct_median": 38.02540156740476
+    }
+  },
+  "exploratory_first_process": [
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 16384,
+      "cpu_ns": 1925792,
+      "cpu_ns_per_op": 117.541015625,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 16384,
+      "cpu_ns": 1932541,
+      "cpu_ns_per_op": 117.95294189453125,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 16384,
+      "cpu_ns": 1119750,
+      "cpu_ns_per_op": 68.3441162109375,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 16384,
+      "cpu_ns": 1463917,
+      "cpu_ns_per_op": 89.35040283203125,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 16384,
+      "cpu_ns": 957334,
+      "cpu_ns_per_op": 58.4310302734375,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 16384,
+      "cpu_ns": 943916,
+      "cpu_ns_per_op": 57.612060546875,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 16384,
+      "cpu_ns": 915292,
+      "cpu_ns_per_op": 55.864990234375,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 16384,
+      "cpu_ns": 1015916,
+      "cpu_ns_per_op": 62.006591796875,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 16384,
+      "cpu_ns": 1032042,
+      "cpu_ns_per_op": 62.9908447265625,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 16384,
+      "cpu_ns": 1120833,
+      "cpu_ns_per_op": 68.41021728515625,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 16384,
+      "cpu_ns": 1323958,
+      "cpu_ns_per_op": 80.8079833984375,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 16384,
+      "cpu_ns": 1289166,
+      "cpu_ns_per_op": 78.6844482421875,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 16384,
+      "cpu_ns": 1008334,
+      "cpu_ns_per_op": 61.5438232421875,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 16384,
+      "cpu_ns": 1486834,
+      "cpu_ns_per_op": 90.7491455078125,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 16384,
+      "cpu_ns": 927125,
+      "cpu_ns_per_op": 56.58721923828125,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 16384,
+      "cpu_ns": 1045208,
+      "cpu_ns_per_op": 63.79443359375,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 16384,
+      "cpu_ns": 977375,
+      "cpu_ns_per_op": 59.65423583984375,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 16384,
+      "cpu_ns": 989667,
+      "cpu_ns_per_op": 60.40447998046875,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 16384,
+      "cpu_ns": 994125,
+      "cpu_ns_per_op": 60.67657470703125,
+      "process": 1
+    },
+    {
+      "case": "allocation-burst",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 16384,
+      "cpu_ns": 1044917,
+      "cpu_ns_per_op": 63.77667236328125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 4950792,
+      "cpu_ns_per_op": 19.803168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5576417,
+      "cpu_ns_per_op": 22.305668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 5653125,
+      "cpu_ns_per_op": 22.6125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5876583,
+      "cpu_ns_per_op": 23.506332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 5644333,
+      "cpu_ns_per_op": 22.577332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 4704542,
+      "cpu_ns_per_op": 18.818168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5718458,
+      "cpu_ns_per_op": 22.873832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 4801833,
+      "cpu_ns_per_op": 19.207332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 5722500,
+      "cpu_ns_per_op": 22.89,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 4954625,
+      "cpu_ns_per_op": 19.8185,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5618625,
+      "cpu_ns_per_op": 22.4745,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 5635125,
+      "cpu_ns_per_op": 22.5405,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6134417,
+      "cpu_ns_per_op": 24.537668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 5737458,
+      "cpu_ns_per_op": 22.949832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 4753000,
+      "cpu_ns_per_op": 19.012,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 6059833,
+      "cpu_ns_per_op": 24.239332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 4734958,
+      "cpu_ns_per_op": 18.939832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 5719083,
+      "cpu_ns_per_op": 22.876332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 4881792,
+      "cpu_ns_per_op": 19.527168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5506458,
+      "cpu_ns_per_op": 22.025832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 5926500,
+      "cpu_ns_per_op": 23.706,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 6070042,
+      "cpu_ns_per_op": 24.280168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5948875,
+      "cpu_ns_per_op": 23.7955,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 4794542,
+      "cpu_ns_per_op": 19.178168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6037459,
+      "cpu_ns_per_op": 24.149836,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 4817583,
+      "cpu_ns_per_op": 19.270332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 5634875,
+      "cpu_ns_per_op": 22.5395,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 4922750,
+      "cpu_ns_per_op": 19.691,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5591166,
+      "cpu_ns_per_op": 22.364664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-8",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 5649417,
+      "cpu_ns_per_op": 22.597668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 6036875,
+      "cpu_ns_per_op": 24.1475,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 6199125,
+      "cpu_ns_per_op": 24.7965,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 6692542,
+      "cpu_ns_per_op": 26.770168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 7023541,
+      "cpu_ns_per_op": 28.094164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 6646667,
+      "cpu_ns_per_op": 26.586668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 6011750,
+      "cpu_ns_per_op": 24.047,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 6719875,
+      "cpu_ns_per_op": 26.8795,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 6056917,
+      "cpu_ns_per_op": 24.227668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 6969542,
+      "cpu_ns_per_op": 27.878168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 6016792,
+      "cpu_ns_per_op": 24.067168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 6610916,
+      "cpu_ns_per_op": 26.443664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 6935916,
+      "cpu_ns_per_op": 27.743664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6809833,
+      "cpu_ns_per_op": 27.239332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6966959,
+      "cpu_ns_per_op": 27.867836,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 6306875,
+      "cpu_ns_per_op": 25.2275,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 8012792,
+      "cpu_ns_per_op": 32.051168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 6482583,
+      "cpu_ns_per_op": 25.930332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 7631208,
+      "cpu_ns_per_op": 30.524832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 6288875,
+      "cpu_ns_per_op": 25.1555,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 7097458,
+      "cpu_ns_per_op": 28.389832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 7006083,
+      "cpu_ns_per_op": 28.024332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 7027083,
+      "cpu_ns_per_op": 28.108332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 6791084,
+      "cpu_ns_per_op": 27.164336,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 5971750,
+      "cpu_ns_per_op": 23.887,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6845083,
+      "cpu_ns_per_op": 27.380332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6110750,
+      "cpu_ns_per_op": 24.443,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 6842750,
+      "cpu_ns_per_op": 27.371,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6237125,
+      "cpu_ns_per_op": 24.9485,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6578834,
+      "cpu_ns_per_op": 26.315336,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-32",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 6774375,
+      "cpu_ns_per_op": 27.0975,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 11084875,
+      "cpu_ns_per_op": 44.3395,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 11743042,
+      "cpu_ns_per_op": 46.972168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 12571292,
+      "cpu_ns_per_op": 50.285168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 12173958,
+      "cpu_ns_per_op": 48.695832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 11391875,
+      "cpu_ns_per_op": 45.5675,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 11099000,
+      "cpu_ns_per_op": 44.396,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 11895125,
+      "cpu_ns_per_op": 47.5805,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 11305292,
+      "cpu_ns_per_op": 45.221168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 12835166,
+      "cpu_ns_per_op": 51.340664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 13030333,
+      "cpu_ns_per_op": 52.121332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 11896792,
+      "cpu_ns_per_op": 47.587168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 12602541,
+      "cpu_ns_per_op": 50.410164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 12466958,
+      "cpu_ns_per_op": 49.867832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 11807833,
+      "cpu_ns_per_op": 47.231332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 11263042,
+      "cpu_ns_per_op": 45.052168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 11775167,
+      "cpu_ns_per_op": 47.100668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 11335125,
+      "cpu_ns_per_op": 45.3405,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 12253667,
+      "cpu_ns_per_op": 49.014668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 11151458,
+      "cpu_ns_per_op": 44.605832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 11709208,
+      "cpu_ns_per_op": 46.836832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 12305916,
+      "cpu_ns_per_op": 49.223664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 12251625,
+      "cpu_ns_per_op": 49.0065,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 11638500,
+      "cpu_ns_per_op": 46.554,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 11039792,
+      "cpu_ns_per_op": 44.159168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 11426125,
+      "cpu_ns_per_op": 45.7045,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 11060542,
+      "cpu_ns_per_op": 44.242168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 12299250,
+      "cpu_ns_per_op": 49.197,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 11002125,
+      "cpu_ns_per_op": 44.0085,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 11420875,
+      "cpu_ns_per_op": 45.6835,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-128",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 12261208,
+      "cpu_ns_per_op": 49.044832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 80247292,
+      "cpu_ns_per_op": 320.989168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 81863208,
+      "cpu_ns_per_op": 327.452832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 0,
+      "iterations": 250000,
+      "cpu_ns": 84493958,
+      "cpu_ns_per_op": 337.975832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 83887000,
+      "cpu_ns_per_op": 335.548,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 80722291,
+      "cpu_ns_per_op": 322.889164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 250000,
+      "cpu_ns": 79367292,
+      "cpu_ns_per_op": 317.469168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 81631250,
+      "cpu_ns_per_op": 326.525,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 79466041,
+      "cpu_ns_per_op": 317.864164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 2,
+      "iterations": 250000,
+      "cpu_ns": 84552833,
+      "cpu_ns_per_op": 338.211332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 82651916,
+      "cpu_ns_per_op": 330.607664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 86846291,
+      "cpu_ns_per_op": 347.385164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 3,
+      "iterations": 250000,
+      "cpu_ns": 89436792,
+      "cpu_ns_per_op": 357.747168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 89448750,
+      "cpu_ns_per_op": 357.795,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 87540125,
+      "cpu_ns_per_op": 350.1605,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 250000,
+      "cpu_ns": 84781666,
+      "cpu_ns_per_op": 339.126664,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 86958958,
+      "cpu_ns_per_op": 347.835832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 80840375,
+      "cpu_ns_per_op": 323.3615,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 5,
+      "iterations": 250000,
+      "cpu_ns": 84305875,
+      "cpu_ns_per_op": 337.2235,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 79345083,
+      "cpu_ns_per_op": 317.380332,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 82232708,
+      "cpu_ns_per_op": 328.930832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 6,
+      "iterations": 250000,
+      "cpu_ns": 84704000,
+      "cpu_ns_per_op": 338.816,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 84907500,
+      "cpu_ns_per_op": 339.63,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 82396167,
+      "cpu_ns_per_op": 329.584668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 250000,
+      "cpu_ns": 79691458,
+      "cpu_ns_per_op": 318.765832,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 82484875,
+      "cpu_ns_per_op": 329.9395,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 80447291,
+      "cpu_ns_per_op": 321.789164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 8,
+      "iterations": 250000,
+      "cpu_ns": 84544167,
+      "cpu_ns_per_op": 338.176668,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 78669541,
+      "cpu_ns_per_op": 314.678164,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 81984792,
+      "cpu_ns_per_op": 327.939168,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-1024",
+      "lane": "cstr",
+      "round": 9,
+      "iterations": 250000,
+      "cpu_ns": 85094708,
+      "cpu_ns_per_op": 340.378832,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 786208,
+      "cpu_ns_per_op": 95.97265625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 750958,
+      "cpu_ns_per_op": 91.669677734375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 761625,
+      "cpu_ns_per_op": 92.9718017578125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 726791,
+      "cpu_ns_per_op": 88.7196044921875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 725500,
+      "cpu_ns_per_op": 88.56201171875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 771542,
+      "cpu_ns_per_op": 94.182373046875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 716041,
+      "cpu_ns_per_op": 87.4073486328125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 711584,
+      "cpu_ns_per_op": 86.86328125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 730417,
+      "cpu_ns_per_op": 89.1622314453125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 743250,
+      "cpu_ns_per_op": 90.728759765625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 758209,
+      "cpu_ns_per_op": 92.5548095703125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 721750,
+      "cpu_ns_per_op": 88.104248046875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 733583,
+      "cpu_ns_per_op": 89.5487060546875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 755209,
+      "cpu_ns_per_op": 92.1885986328125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 768708,
+      "cpu_ns_per_op": 93.83642578125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 723916,
+      "cpu_ns_per_op": 88.36865234375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 738667,
+      "cpu_ns_per_op": 90.1693115234375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 754459,
+      "cpu_ns_per_op": 92.0970458984375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 755458,
+      "cpu_ns_per_op": 92.218994140625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-prepared",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 719209,
+      "cpu_ns_per_op": 87.7940673828125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 216500,
+      "cpu_ns_per_op": 26.42822265625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 471792,
+      "cpu_ns_per_op": 57.591796875,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 489958,
+      "cpu_ns_per_op": 59.809326171875,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 213917,
+      "cpu_ns_per_op": 26.1129150390625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 227000,
+      "cpu_ns_per_op": 27.7099609375,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 450917,
+      "cpu_ns_per_op": 55.0435791015625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 461625,
+      "cpu_ns_per_op": 56.3507080078125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 228833,
+      "cpu_ns_per_op": 27.9337158203125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 221292,
+      "cpu_ns_per_op": 27.01318359375,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 467333,
+      "cpu_ns_per_op": 57.0474853515625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 463708,
+      "cpu_ns_per_op": 56.60498046875,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 227875,
+      "cpu_ns_per_op": 27.8167724609375,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 209333,
+      "cpu_ns_per_op": 25.5533447265625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 464417,
+      "cpu_ns_per_op": 56.6915283203125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 461042,
+      "cpu_ns_per_op": 56.279541015625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 236292,
+      "cpu_ns_per_op": 28.84423828125,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 205541,
+      "cpu_ns_per_op": 25.0904541015625,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 459750,
+      "cpu_ns_per_op": 56.121826171875,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 469292,
+      "cpu_ns_per_op": 57.28662109375,
+      "process": 1
+    },
+    {
+      "case": "intern-hit-fresh-name",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 214500,
+      "cpu_ns_per_op": 26.18408203125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 687209,
+      "cpu_ns_per_op": 83.8878173828125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 0,
+      "iterations": 8192,
+      "cpu_ns": 977000,
+      "cpu_ns_per_op": 119.2626953125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 934125,
+      "cpu_ns_per_op": 114.0289306640625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 1,
+      "iterations": 8192,
+      "cpu_ns": 698792,
+      "cpu_ns_per_op": 85.3017578125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 693875,
+      "cpu_ns_per_op": 84.7015380859375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 2,
+      "iterations": 8192,
+      "cpu_ns": 954250,
+      "cpu_ns_per_op": 116.485595703125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 935792,
+      "cpu_ns_per_op": 114.232421875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 3,
+      "iterations": 8192,
+      "cpu_ns": 676958,
+      "cpu_ns_per_op": 82.636474609375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 690375,
+      "cpu_ns_per_op": 84.2742919921875,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 4,
+      "iterations": 8192,
+      "cpu_ns": 949917,
+      "cpu_ns_per_op": 115.9566650390625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 965833,
+      "cpu_ns_per_op": 117.8995361328125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 5,
+      "iterations": 8192,
+      "cpu_ns": 676042,
+      "cpu_ns_per_op": 82.524658203125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 684750,
+      "cpu_ns_per_op": 83.587646484375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 6,
+      "iterations": 8192,
+      "cpu_ns": 933458,
+      "cpu_ns_per_op": 113.947509765625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 932584,
+      "cpu_ns_per_op": 113.8408203125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 7,
+      "iterations": 8192,
+      "cpu_ns": 676041,
+      "cpu_ns_per_op": 82.5245361328125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 683125,
+      "cpu_ns_per_op": 83.3892822265625,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 8,
+      "iterations": 8192,
+      "cpu_ns": 924542,
+      "cpu_ns_per_op": 112.859130859375,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "oop",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 958625,
+      "cpu_ns_per_op": 117.0196533203125,
+      "process": 1
+    },
+    {
+      "case": "intern-miss-fresh-name",
+      "lane": "raw",
+      "round": 9,
+      "iterations": 8192,
+      "cpu_ns": 695917,
+      "cpu_ns_per_op": 84.9508056640625,
+      "process": 1
+    }
+  ],
+  "exploratory_note": "First timing process preceded two extra semantic tests; no algorithm change. Excluded from reported final medians. First debug run also exposed a test expectation that omitted 16-byte allocation alignment at the maximum Layout extent; corrected before timing.",
+  "validation_logs": {
+    "birnam-oop-design-tests.log": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s\n     Running unittests src/lib.rs (.cargo-target/simplifications/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 21 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::id_dispatch::tests::specialized_lookup_falls_back_for_replacement_and_custom_metabehavior ... ok\ntest id::native_id::oop_boundary_probe::name_dispatch_observes_live_replacement_and_reentry ... ok\ntest id::native_id::oop_boundary_probe::name_survives_symbol_retirement_and_reinterns_with_new_identity ... ok\ntest id::id_dispatch::tests::actual_initial_graph_installs_invokes_and_forwards_without_runtime ... ok\ntest id::native_id::oop_boundary_probe::timed_strict_boundary_designs ... ignored, serial release-only timing experiment; not a correctness gate\ntest id::native_id::oop_boundary_probe::name_custom_lookup_and_immediate_dnu_use_actual_id ... ok\ntest id::native_id::oop_boundary_probe::size_boundary_and_real_dispatch_preserve_replacement ... ok\ntest id::id_dispatch::tests::saved_primitives_work_without_an_active_message_and_keep_their_registry ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::native_id::oop_boundary_probe::names_preserve_canonical_identity_content_lifetime_and_validation ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::native_id::thread_identity_tests::cached_thread_identity_agrees_and_never_crosses_thread_lifetimes ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest id::id_dispatch::tests::c_native_entry_round_trips_typed_operands_through_actual_id ... ok\n\ntest result: ok. 20 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n",
+    "birnam-oop-design-release-tests.log": "    Finished `release` profile [optimized] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/simplifications/release/deps/birnam_id-aa41ccbc816a1541)\n\nrunning 21 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::id_dispatch::tests::actual_initial_graph_installs_invokes_and_forwards_without_runtime ... ok\ntest id::native_id::oop_boundary_probe::name_custom_lookup_and_immediate_dnu_use_actual_id ... ok\ntest id::id_dispatch::tests::saved_primitives_work_without_an_active_message_and_keep_their_registry ... ok\ntest id::native_id::oop_boundary_probe::name_dispatch_observes_live_replacement_and_reentry ... ok\ntest id::native_id::oop_boundary_probe::name_survives_symbol_retirement_and_reinterns_with_new_identity ... ok\ntest id::id_dispatch::tests::specialized_lookup_falls_back_for_replacement_and_custom_metabehavior ... ok\ntest id::native_id::oop_boundary_probe::timed_strict_boundary_designs ... ignored, serial release-only timing experiment; not a correctness gate\ntest id::native_id::oop_boundary_probe::names_preserve_canonical_identity_content_lifetime_and_validation ... ok\ntest id::native_id::oop_boundary_probe::size_boundary_and_real_dispatch_preserve_replacement ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest id::native_id::thread_identity_tests::cached_thread_identity_agrees_and_never_crosses_thread_lifetimes ... ok\ntest id::id_dispatch::tests::c_native_entry_round_trips_typed_operands_through_actual_id ... ok\n\ntest result: ok. 20 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n",
+    "birnam-oop-design-production-build.log": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n    Finished `release` profile [optimized] target(s) in 0.40s\n"
+  },
+  "artifact_comparison": {
+    "path": ".cargo-target/simplifications/release/libbirnam_id.dylib",
+    "sha256": "5fa284fdcf4d688999111a4facfc694fa5553474efeed66d2e812037a8b66f2c",
+    "after_sha256": "eeda569cf0dd9eac285d94a3f08cc93cddd9b89a1cf1b1ec4db550ad1244bacc",
+    "identical": false
+  },
+  "limits": [
+    "Not a production Oop-only ABI; the semantic fixture still uses old packet entry glue and bootstrap registration.",
+    "Only test dispatch contexts enable size immediates. Production reflection, GC, root enumeration, images, stackless slots and native loading are not adapted or qualified.",
+    "Benchmarks compare core algorithms, excluding message lookup/packet glue; the earlier separate C/Rust transport experiment covers ABI feasibility only.",
+    "All lanes use real ObjectMemory and Symbols. Name validation reads Id allocation geometry because this test owner is colocated inside Id; the final functional ownership boundary remains to be designed and measured.",
+    "Allocation benchmark includes actual object allocation and preallocated result-vector pushes, excludes retirement; no automatic GC.",
+    "Prepared names are constructed outside timers in both prepared-miss lanes; fresh-name cases include construction, byte copy and immediate disposal only in the Oop lane.",
+    "No compiler CPU competitor was started during final serial timing runs. Other desktop processes were active.",
+    "Two independent processes, ten rounds per case with alternating or rotated lane order; no confidence interval or Logue speedup claim.",
+    "Release build passes but was not byte-identical to the preexisting build artifact; that artifact was not an independently reconstructed matched baseline. No installation performed."
+  ],
+  "clock": "Darwin CLOCK_THREAD_CPUTIME_ID = 16, verified against the local SDK; thread CPU, not whole-process CPU"
+}

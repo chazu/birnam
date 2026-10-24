@@ -43,6 +43,8 @@ impl InitialObjects {
         let context = crate::id::id_dispatch::Context {
             dictionaries: dictionaries.pointer(), metavtable: vtable_vt,
             lookup, does_not_understand,
+            #[cfg(test)]
+            size_probe_behavior: core::ptr::null_mut(),
         };
         let entry = |method| NativeEntry::new(method, context.dictionaries.cast());
         dictionaries.add_method(vtable_vt, lookup, entry(crate::id::id_dispatch::vtable_lookup_method));

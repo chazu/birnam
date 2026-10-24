@@ -2,6 +2,8 @@
 pub(crate) mod objects;
 mod storage;
 mod registries;
+#[cfg(test)]
+mod oop_boundary_probe;
 #[cfg(feature="dispatch-metrics")]
 mod metrics;
 
@@ -128,6 +130,8 @@ impl State {
             metavtable: self.protocol.receiver,
             lookup: self.lookup,
             does_not_understand: self.does_not_understand,
+            #[cfg(test)]
+            size_probe_behavior: core::ptr::null_mut(),
         }
     }
     pub(crate) fn roots(&self) -> Vec<Oop> {

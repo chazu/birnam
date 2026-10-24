@@ -1,5 +1,10 @@
 # Runtime and ABI simplification
 
+**Superseding decision, 2026-10-22:** [Oop-only Id](oop-only-id.md) rejects the
+tagged `Operand`/`Outcome` convention described below. The implementation and
+measurements here are historical evidence, not a requirement to preserve those
+carriers. The semantic and lifetime obligations remain.
+
 Date: 2026-10-07.
 Status: design inventory and proposed work plan. Existing root/guard reductions
 and diagnostic tooling are distinguished from work still to do. This document
