@@ -8,7 +8,17 @@
 
 Decision: accepted user direction, 2026-10-22. Highest-priority runtime work.
 
-## Current checkpoint: `683c9fc2`
+## Continuing compiler and Execution integration
+
+The committed development direction continues in
+[compiler/Execution integration](oop-compiler-execution-integration.md).
+TCC passes native generated-code/lifetime checks at `c23240cf`; the retained
+frame engine passes 22 standalone checks with Oop Method identities at `4b5e8a00`.
+The message-facing Execution module, generated language C and full compiler
+integration remain unfinished. The earlier TCC application-protocol proposal
+remains rejected; current TCC Methods enter code directly without another lookup.
+
+## Previous native checkpoint: `683c9fc2`
 
 The Oop-only native closure passes its check, including the corrected direct-send
 contract. The full language migration is unfinished. Work is on

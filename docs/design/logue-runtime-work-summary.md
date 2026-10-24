@@ -1,5 +1,14 @@
 # Logue runtime work: current state and continuation
 
+Continuation, 2026-10-23: the Oop branch is now the committed development direction.
+`c23240cf` migrates TCC and validates generated Oop C, collection, captured code,
+object loading and mapping retirement. `4b5e8a00` moves the retained frame engine
+to Method references plus allocation identities; 22 pure engine checks pass.
+See [compiler/Execution integration](oop-compiler-execution-integration.md).
+Execution message entrypoints, emitted language C and the compiler consumers still
+need migration. These checkpoints do not qualify a complete language or installed
+runtime. The narrative below describes the preceding `683c9fc2` checkpoint.
+
 This summary covers the Logue investigation, retained language-wide optimizations,
 Oop-only experiments and migration, and the dispatch correction through runtime
 commit **`683c9fc2`**. It describes `codex/oop-only-id-slice` in
