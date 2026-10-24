@@ -1,5 +1,8 @@
 # Tail-call regression: routing diagnosis
 
+Later continuation: [isolated entry experiments](oop-entry-seam-experiments.md)
+now demonstrate a passing candidate. This document records the earlier diagnosis.
+
 2026-10-24. Diagnosis complete; production repair is not implemented. The user
 requested determination of the cause, so no runtime fix or architecture change
 was attempted. Id and the tracked runtime sources are unchanged.

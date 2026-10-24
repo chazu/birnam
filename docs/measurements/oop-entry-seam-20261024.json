@@ -1,0 +1,1372 @@
+{
+  "date": "2026-10-24",
+  "baseline_commit": "5ec962ff6583658a003f79e278bed79a69d0943d",
+  "platform": "macOS-14.6-arm64-arm-64bit",
+  "status": "isolated candidate passes; tracked runtime unchanged; production hold remains",
+  "reports": {
+    "counts.json": {
+      "literals": 110,
+      "methods": 38
+    },
+    "invocation-comparison.json": {
+      "rows": [
+        {
+          "lane": "original",
+          "samples": [
+            {
+              "case": "identity",
+              "compile_cpu_ns": 3918667,
+              "compile_wall_ns": 8356084,
+              "iterations": 50000,
+              "samples": [
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 17478167,
+                  "heap_before": 6063,
+                  "wall_ns": 17478125
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 17389875,
+                  "heap_before": 6063,
+                  "wall_ns": 17394833
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 17510375,
+                  "heap_before": 6063,
+                  "wall_ns": 17513208
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 18025084,
+                  "heap_before": 6063,
+                  "wall_ns": 18025042
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 17210292,
+                  "heap_before": 6063,
+                  "wall_ns": 17210292
+                }
+              ],
+              "source": "[:x | x]"
+            },
+            {
+              "case": "increment",
+              "compile_cpu_ns": 3493584,
+              "compile_wall_ns": 3493625,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 21433166,
+                  "heap_before": 6071,
+                  "wall_ns": 21433125
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 21026750,
+                  "heap_before": 6071,
+                  "wall_ns": 21026875
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 20600125,
+                  "heap_before": 6071,
+                  "wall_ns": 20600083
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 20727792,
+                  "heap_before": 6071,
+                  "wall_ns": 20727834
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 20880625,
+                  "heap_before": 6071,
+                  "wall_ns": 20880875
+                }
+              ],
+              "source": "[:x | [x + 1]]"
+            },
+            {
+              "case": "captured-add",
+              "compile_cpu_ns": 3746958,
+              "compile_wall_ns": 3747083,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 9988750,
+                  "heap_before": 6083,
+                  "wall_ns": 9991792
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 9946417,
+                  "heap_before": 6083,
+                  "wall_ns": 9949500
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 9804708,
+                  "heap_before": 6083,
+                  "wall_ns": 9801625
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 9821458,
+                  "heap_before": 6083,
+                  "wall_ns": 9824750
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 9792542,
+                  "heap_before": 6083,
+                  "wall_ns": 9789583
+                }
+              ],
+              "source": "[:x | [:y | [x + y]]]"
+            }
+          ]
+        },
+        {
+          "lane": "shared-direct",
+          "samples": [
+            {
+              "case": "identity",
+              "compile_cpu_ns": 3252459,
+              "compile_wall_ns": 3252375,
+              "iterations": 50000,
+              "samples": [
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4432292,
+                  "heap_before": 6063,
+                  "wall_ns": 4432291
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4117708,
+                  "heap_before": 6063,
+                  "wall_ns": 4117583
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4342583,
+                  "heap_before": 6063,
+                  "wall_ns": 4342541
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4570042,
+                  "heap_before": 6063,
+                  "wall_ns": 4570042
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4555334,
+                  "heap_before": 6063,
+                  "wall_ns": 4555334
+                }
+              ],
+              "source": "[:x | x]"
+            },
+            {
+              "case": "increment",
+              "compile_cpu_ns": 3371583,
+              "compile_wall_ns": 3371625,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 20325750,
+                  "heap_before": 6071,
+                  "wall_ns": 20325750
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 19825125,
+                  "heap_before": 6071,
+                  "wall_ns": 19828125
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 19598667,
+                  "heap_before": 6071,
+                  "wall_ns": 19598667
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 19662042,
+                  "heap_before": 6071,
+                  "wall_ns": 19661958
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 20299125,
+                  "heap_before": 6071,
+                  "wall_ns": 20299125
+                }
+              ],
+              "source": "[:x | [x + 1]]"
+            },
+            {
+              "case": "captured-add",
+              "compile_cpu_ns": 3796834,
+              "compile_wall_ns": 3797042,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9112625,
+                  "heap_before": 6083,
+                  "wall_ns": 9112334
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9074500,
+                  "heap_before": 6083,
+                  "wall_ns": 9074333
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9084833,
+                  "heap_before": 6083,
+                  "wall_ns": 9084792
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9120250,
+                  "heap_before": 6083,
+                  "wall_ns": 9120208
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9173708,
+                  "heap_before": 6083,
+                  "wall_ns": 9173500
+                }
+              ],
+              "source": "[:x | [:y | [x + y]]]"
+            }
+          ]
+        },
+        {
+          "lane": "shared-direct",
+          "samples": [
+            {
+              "case": "identity",
+              "compile_cpu_ns": 3228291,
+              "compile_wall_ns": 3228125,
+              "iterations": 50000,
+              "samples": [
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4439334,
+                  "heap_before": 6063,
+                  "wall_ns": 4439459
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4374166,
+                  "heap_before": 6063,
+                  "wall_ns": 4374125
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4370833,
+                  "heap_before": 6063,
+                  "wall_ns": 4373959
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4399459,
+                  "heap_before": 6063,
+                  "wall_ns": 4399458
+                },
+                {
+                  "allocations": 0,
+                  "cpu_ns": 4384292,
+                  "heap_before": 6063,
+                  "wall_ns": 4387417
+                }
+              ],
+              "source": "[:x | x]"
+            },
+            {
+              "case": "increment",
+              "compile_cpu_ns": 3254958,
+              "compile_wall_ns": 3254958,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 19883292,
+                  "heap_before": 6071,
+                  "wall_ns": 19888833
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 20100917,
+                  "heap_before": 6071,
+                  "wall_ns": 20100791
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 19995333,
+                  "heap_before": 6071,
+                  "wall_ns": 19995250
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 20235875,
+                  "heap_before": 6071,
+                  "wall_ns": 20232750
+                },
+                {
+                  "allocations": 15000,
+                  "cpu_ns": 20133209,
+                  "heap_before": 6071,
+                  "wall_ns": 20136250
+                }
+              ],
+              "source": "[:x | [x + 1]]"
+            },
+            {
+              "case": "captured-add",
+              "compile_cpu_ns": 3795041,
+              "compile_wall_ns": 3795083,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9069666,
+                  "heap_before": 6083,
+                  "wall_ns": 9072792
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9082167,
+                  "heap_before": 6083,
+                  "wall_ns": 9082042
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9040084,
+                  "heap_before": 6083,
+                  "wall_ns": 9043208
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9019375,
+                  "heap_before": 6083,
+                  "wall_ns": 9019375
+                },
+                {
+                  "allocations": 5000,
+                  "cpu_ns": 9096791,
+                  "heap_before": 6083,
+                  "wall_ns": 9099083
+                }
+              ],
+              "source": "[:x | [:y | [x + y]]]"
+            }
+          ]
+        },
+        {
+          "lane": "original",
+          "samples": [
+            {
+              "case": "identity",
+              "compile_cpu_ns": 3263208,
+              "compile_wall_ns": 3263083,
+              "iterations": 50000,
+              "samples": [
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 18394625,
+                  "heap_before": 6063,
+                  "wall_ns": 18397667
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 18161458,
+                  "heap_before": 6063,
+                  "wall_ns": 18164583
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 17996500,
+                  "heap_before": 6063,
+                  "wall_ns": 17996291
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 18227000,
+                  "heap_before": 6063,
+                  "wall_ns": 18227000
+                },
+                {
+                  "allocations": 50000,
+                  "cpu_ns": 17981792,
+                  "heap_before": 6063,
+                  "wall_ns": 17981875
+                }
+              ],
+              "source": "[:x | x]"
+            },
+            {
+              "case": "increment",
+              "compile_cpu_ns": 4191958,
+              "compile_wall_ns": 4191916,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 22769208,
+                  "heap_before": 6071,
+                  "wall_ns": 22769083
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 22347000,
+                  "heap_before": 6071,
+                  "wall_ns": 22346959
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 22059375,
+                  "heap_before": 6071,
+                  "wall_ns": 22059375
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 22155958,
+                  "heap_before": 6071,
+                  "wall_ns": 22159458
+                },
+                {
+                  "allocations": 20000,
+                  "cpu_ns": 22133833,
+                  "heap_before": 6071,
+                  "wall_ns": 22133792
+                }
+              ],
+              "source": "[:x | [x + 1]]"
+            },
+            {
+              "case": "captured-add",
+              "compile_cpu_ns": 3785083,
+              "compile_wall_ns": 3785125,
+              "iterations": 5000,
+              "samples": [
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 10649583,
+                  "heap_before": 6083,
+                  "wall_ns": 10649583
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 10660333,
+                  "heap_before": 6083,
+                  "wall_ns": 10657458
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 10658167,
+                  "heap_before": 6083,
+                  "wall_ns": 10661417
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 10615625,
+                  "heap_before": 6083,
+                  "wall_ns": 10618667
+                },
+                {
+                  "allocations": 10000,
+                  "cpu_ns": 10724500,
+                  "heap_before": 6083,
+                  "wall_ns": 10721417
+                }
+              ],
+              "source": "[:x | [:y | [x + y]]]"
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "identity": {
+          "original": {
+            "cpu_ns_per_call": 356.39625,
+            "allocations_per_call": 1.0
+          },
+          "shared-direct": {
+            "cpu_ns_per_call": 88.16584,
+            "allocations_per_call": 0.0
+          }
+        },
+        "increment": {
+          "original": {
+            "cpu_ns_per_call": 4303.6583,
+            "allocations_per_call": 4.0
+          },
+          "shared-direct": {
+            "cpu_ns_per_call": 3992.6041999999998,
+            "allocations_per_call": 3.0
+          }
+        },
+        "captured-add": {
+          "original": {
+            "cpu_ns_per_call": 2047.9625,
+            "allocations_per_call": 2.0
+          },
+          "shared-direct": {
+            "cpu_ns_per_call": 1818.2291,
+            "allocations_per_call": 1.0
+          }
+        }
+      },
+      "library_sha256": {
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_lang_seed.dylib": "0c3d6f9d87934db1107e72308adb2352ba51641c31763b89556a193827bbb09a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_storage.dylib": "2f226e45f37a7d589e40b2eb0640229411301ec8c253a10c984a22d5dd9f9f43",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_environment.dylib": "3243a8248b9f066a2ff7b428b05374e4edc84a56c10f00f6c23158d3b16bb621",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_peg.dylib": "1cf1e247db50905f4ba04729f974a551e41ba65037803c5eccd9b21bb223852a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_object_model.dylib": "42d21833f6acea5ae4e32ebee5143cec48796a5c9f9a2f7982b1cbee24b41c81",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_prelude.dylib": "05481336067edb2ca1a978ac5b39c120eed35a97ba9fd969a68a3e36c79c989d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_integer.dylib": "343a256a366f4e7a2ee9a8abc0a96bfb3f2f7f04e0ba5db35d461765f4863b30",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib": "f9c1d7bec8bbccc48a03da8bd919a2ae56daa22ec76b53be51bf5a0b88152210",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_system_input.dylib": "10d2a58789444200dcd64b3d17907b9332ee0a1a763edc3365284972c3abaace",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_execution.dylib": "10d23a87f526b62b43e8cdcadeb27f002b2488e54c615fad3fe0d8d0ec1f0b94",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib": "44008b4abef0477ee1059818919530e948064bc8452e5dec60bad6c10890b15d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_file_io.dylib": "fd1ae2fdfcf36ffa8c84b4446e27e4dced7d5ae2eb4f70afbb54fe295f54ac8b",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_tcc.dylib": "7ab1e55fdc0aa1fd4e4e0715db0ceaede601d41e3618f95ac2e4597f79036894",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_bytes.dylib": "c9adf4ab54871809f1727fc30127c7f36b84d0baf264446e4863871f3188118e",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_float.dylib": "06b8895d54f6e8a23f2d2a2fc0a0f908c45ba07e68f876740a4af8fe75eb778a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_artifact.dylib": "0eca2643961c28a60985e2bad712b2568047d7128b5800b9264824cea92b900b",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_word.dylib": "91da3ea6e4aab1238cb670ca45015481803cd81d2146506e634ddd0a8a33d01d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_native_backend.dylib": "6861494fa30c76e099720dcfef763315e74fcf86be3390ec142b1209e8e4752a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib": "e5aa65c246f160a6c670b5b1053681c4225805446e731ed75a1b00f3f34f6147",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_codegen_runtime.dylib": "1e2fea0393bf5965ee8077c0b7ba166e9b31edd806bc680ab0fd9c7aeb68387d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_system_output.dylib": "64bd8be5136fa857138697def689b0e59c9ad618651d9696f6a543d3a50fbe31",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_lang_seed.dylib": "0c3d6f9d87934db1107e72308adb2352ba51641c31763b89556a193827bbb09a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_storage.dylib": "2f226e45f37a7d589e40b2eb0640229411301ec8c253a10c984a22d5dd9f9f43",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_environment.dylib": "3243a8248b9f066a2ff7b428b05374e4edc84a56c10f00f6c23158d3b16bb621",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_peg.dylib": "1cf1e247db50905f4ba04729f974a551e41ba65037803c5eccd9b21bb223852a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_object_model.dylib": "42d21833f6acea5ae4e32ebee5143cec48796a5c9f9a2f7982b1cbee24b41c81",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_prelude.dylib": "05481336067edb2ca1a978ac5b39c120eed35a97ba9fd969a68a3e36c79c989d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_integer.dylib": "343a256a366f4e7a2ee9a8abc0a96bfb3f2f7f04e0ba5db35d461765f4863b30",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_id.dylib": "1364278c10869412edd1068946ace8a25f51254d7f6cbc225114c694a01d9920",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_system_input.dylib": "10d2a58789444200dcd64b3d17907b9332ee0a1a763edc3365284972c3abaace",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_execution.dylib": "686f2e1b5a9c9bbc8584b80e0cdcc19da019e4cc5157a1be27ba00e18ee18b26",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_root_registry.dylib": "44008b4abef0477ee1059818919530e948064bc8452e5dec60bad6c10890b15d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_file_io.dylib": "fd1ae2fdfcf36ffa8c84b4446e27e4dced7d5ae2eb4f70afbb54fe295f54ac8b",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_tcc.dylib": "7ab1e55fdc0aa1fd4e4e0715db0ceaede601d41e3618f95ac2e4597f79036894",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_bytes.dylib": "c9adf4ab54871809f1727fc30127c7f36b84d0baf264446e4863871f3188118e",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_float.dylib": "06b8895d54f6e8a23f2d2a2fc0a0f908c45ba07e68f876740a4af8fe75eb778a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_artifact.dylib": "0eca2643961c28a60985e2bad712b2568047d7128b5800b9264824cea92b900b",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_word.dylib": "91da3ea6e4aab1238cb670ca45015481803cd81d2146506e634ddd0a8a33d01d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_native_backend.dylib": "6861494fa30c76e099720dcfef763315e74fcf86be3390ec142b1209e8e4752a",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_collect.dylib": "e5aa65c246f160a6c670b5b1053681c4225805446e731ed75a1b00f3f34f6147",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_codegen_runtime.dylib": "1e2fea0393bf5965ee8077c0b7ba166e9b31edd806bc680ab0fd9c7aeb68387d",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_callable_core.dylib": "dc81024e13d2bb9a7d21c80fc256f63c6b87bfd00fb65d876576828d90822875",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-prefix/release/libbirnam_system_output.dylib": "64bd8be5136fa857138697def689b0e59c9ad618651d9696f6a543d3a50fbe31"
+      },
+      "limits": [
+        "Two fresh processes per variant in ABBA order; five CPU samples per process.",
+        "Small synchronous source probes only; setup and explicit GC outside timers.",
+        "Experiment versus current Oop branch, not a full-runtime or Logue comparison."
+      ]
+    },
+    "mixed-owner-rejected.json": {
+      "label": "mixed-owner-rejected",
+      "returncode": -6,
+      "elapsed_seconds": 0.994802792,
+      "markers": []
+    },
+    "process-a.json": {
+      "label": "process-a",
+      "returncode": 0,
+      "elapsed_seconds": 1.927887959,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed",
+        "SEAM=lookup_source_callback_same_receiver_and_arity_passed",
+        "SEAM=interleaved_machines_passed iterations_per_machine=2000 transitions=8002",
+        "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=24 peak_frames=2"
+      ]
+    },
+    "process-b.json": {
+      "label": "process-b",
+      "returncode": 0,
+      "elapsed_seconds": 1.921654542,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed",
+        "SEAM=lookup_source_callback_same_receiver_and_arity_passed",
+        "SEAM=interleaved_machines_passed iterations_per_machine=2000 transitions=8002",
+        "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=24 peak_frames=2"
+      ]
+    },
+    "shared-direct-extra.json": {
+      "label": "shared-direct-extra",
+      "returncode": 0,
+      "elapsed_seconds": 1.6420984580000002,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed",
+        "SEAM=lookup_source_callback_same_receiver_and_arity_passed",
+        "SEAM=interleaved_machines_passed iterations_per_machine=1000 transitions=4002",
+        "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=24 peak_frames=2"
+      ]
+    },
+    "shared-direct-final-million.json": {
+      "label": "shared-direct-final-million",
+      "returncode": 0,
+      "elapsed_seconds": 25.291427834,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed",
+        "SEAM=lookup_source_callback_same_receiver_and_arity_passed",
+        "SEAM=interleaved_machines_passed iterations_per_machine=250000 transitions=1000002",
+        "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=24 peak_frames=2"
+      ]
+    },
+    "shared-direct-final-results.json": {
+      "results": [
+        {
+          "mode": "runtime",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "dispatch-contract",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "global-lookup",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "allocation-policy",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "finalizer-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "storage-init-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "retirement-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "numeric-integration",
+          "returncode": 0,
+          "tail_rows": [
+            {
+              "custom": false,
+              "calls": 8,
+              "peak_frames": 2
+            },
+            {
+              "custom": false,
+              "calls": 24,
+              "peak_frames": 2
+            },
+            {
+              "custom": true,
+              "calls": 8,
+              "peak_frames": 2
+            },
+            {
+              "custom": true,
+              "calls": 24,
+              "peak_frames": 2
+            }
+          ]
+        }
+      ],
+      "exports": {
+        "id": {
+          "actual": [
+            "_birnam_id_bootstrap_v2"
+          ],
+          "expected": [
+            "_birnam_id_bootstrap_v2"
+          ],
+          "match": true
+        },
+        "execution": {
+          "actual": [
+            "_birnam_native_module_v2"
+          ],
+          "expected": [
+            "_birnam_native_module_v2"
+          ],
+          "match": true
+        }
+      },
+      "library_sha256": {
+        "libbirnam_lang_seed.dylib": "0c3d6f9d87934db1107e72308adb2352ba51641c31763b89556a193827bbb09a",
+        "libbirnam_storage.dylib": "2f226e45f37a7d589e40b2eb0640229411301ec8c253a10c984a22d5dd9f9f43",
+        "libbirnam_environment.dylib": "3243a8248b9f066a2ff7b428b05374e4edc84a56c10f00f6c23158d3b16bb621",
+        "libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+        "libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+        "libbirnam_peg.dylib": "1cf1e247db50905f4ba04729f974a551e41ba65037803c5eccd9b21bb223852a",
+        "libbirnam_object_model.dylib": "42d21833f6acea5ae4e32ebee5143cec48796a5c9f9a2f7982b1cbee24b41c81",
+        "libbirnam_prelude.dylib": "05481336067edb2ca1a978ac5b39c120eed35a97ba9fd969a68a3e36c79c989d",
+        "libbirnam_integer.dylib": "343a256a366f4e7a2ee9a8abc0a96bfb3f2f7f04e0ba5db35d461765f4863b30",
+        "libbirnam_id.dylib": "1364278c10869412edd1068946ace8a25f51254d7f6cbc225114c694a01d9920",
+        "libbirnam_system_input.dylib": "10d2a58789444200dcd64b3d17907b9332ee0a1a763edc3365284972c3abaace",
+        "libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+        "libbirnam_execution.dylib": "686f2e1b5a9c9bbc8584b80e0cdcc19da019e4cc5157a1be27ba00e18ee18b26",
+        "libbirnam_root_registry.dylib": "44008b4abef0477ee1059818919530e948064bc8452e5dec60bad6c10890b15d",
+        "libbirnam_file_io.dylib": "fd1ae2fdfcf36ffa8c84b4446e27e4dced7d5ae2eb4f70afbb54fe295f54ac8b",
+        "libbirnam_tcc.dylib": "7ab1e55fdc0aa1fd4e4e0715db0ceaede601d41e3618f95ac2e4597f79036894",
+        "libbirnam_bytes.dylib": "c9adf4ab54871809f1727fc30127c7f36b84d0baf264446e4863871f3188118e",
+        "libbirnam_float.dylib": "06b8895d54f6e8a23f2d2a2fc0a0f908c45ba07e68f876740a4af8fe75eb778a",
+        "libbirnam_artifact.dylib": "0eca2643961c28a60985e2bad712b2568047d7128b5800b9264824cea92b900b",
+        "libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+        "libbirnam_word.dylib": "91da3ea6e4aab1238cb670ca45015481803cd81d2146506e634ddd0a8a33d01d",
+        "libbirnam_native_backend.dylib": "6861494fa30c76e099720dcfef763315e74fcf86be3390ec142b1209e8e4752a",
+        "libbirnam_collect.dylib": "e5aa65c246f160a6c670b5b1053681c4225805446e731ed75a1b00f3f34f6147",
+        "libbirnam_codegen_runtime.dylib": "1e2fea0393bf5965ee8077c0b7ba166e9b31edd806bc680ab0fd9c7aeb68387d",
+        "libbirnam_callable_core.dylib": "d7761710dd3084c315e12cb0cf6477c88c39aa8ab811ed9ccaf54b1c14f7ef69",
+        "libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+        "libbirnam_system_output.dylib": "64bd8be5136fa857138697def689b0e59c9ad618651d9696f6a543d3a50fbe31"
+      }
+    },
+    "shared-direct-million.json": {
+      "label": "shared-direct-million",
+      "returncode": 0,
+      "elapsed_seconds": 25.920562667,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed",
+        "SEAM=lookup_source_callback_same_receiver_and_arity_passed",
+        "SEAM=interleaved_machines_passed iterations_per_machine=250000 transitions=1000002",
+        "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=24 peak_frames=2"
+      ]
+    },
+    "shared-direct-results.json": {
+      "results": [
+        {
+          "mode": "runtime",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "dispatch-contract",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "global-lookup",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "allocation-policy",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "finalizer-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "storage-init-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "retirement-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "numeric-integration",
+          "returncode": 0,
+          "tail_rows": [
+            {
+              "custom": false,
+              "calls": 8,
+              "peak_frames": 2
+            },
+            {
+              "custom": false,
+              "calls": 24,
+              "peak_frames": 2
+            },
+            {
+              "custom": true,
+              "calls": 8,
+              "peak_frames": 2
+            },
+            {
+              "custom": true,
+              "calls": 24,
+              "peak_frames": 2
+            }
+          ]
+        }
+      ],
+      "exports": {
+        "id": {
+          "actual": [
+            "_birnam_id_bootstrap_v2"
+          ],
+          "expected": [
+            "_birnam_id_bootstrap_v2"
+          ],
+          "match": true
+        },
+        "execution": {
+          "actual": [
+            "_birnam_native_module_v2"
+          ],
+          "expected": [
+            "_birnam_native_module_v2"
+          ],
+          "match": true
+        }
+      },
+      "library_sha256": {
+        "libbirnam_lang_seed.dylib": "0c3d6f9d87934db1107e72308adb2352ba51641c31763b89556a193827bbb09a",
+        "libbirnam_storage.dylib": "2f226e45f37a7d589e40b2eb0640229411301ec8c253a10c984a22d5dd9f9f43",
+        "libbirnam_environment.dylib": "3243a8248b9f066a2ff7b428b05374e4edc84a56c10f00f6c23158d3b16bb621",
+        "libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+        "libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+        "libbirnam_peg.dylib": "1cf1e247db50905f4ba04729f974a551e41ba65037803c5eccd9b21bb223852a",
+        "libbirnam_object_model.dylib": "42d21833f6acea5ae4e32ebee5143cec48796a5c9f9a2f7982b1cbee24b41c81",
+        "libbirnam_prelude.dylib": "05481336067edb2ca1a978ac5b39c120eed35a97ba9fd969a68a3e36c79c989d",
+        "libbirnam_integer.dylib": "343a256a366f4e7a2ee9a8abc0a96bfb3f2f7f04e0ba5db35d461765f4863b30",
+        "libbirnam_id.dylib": "1364278c10869412edd1068946ace8a25f51254d7f6cbc225114c694a01d9920",
+        "libbirnam_system_input.dylib": "10d2a58789444200dcd64b3d17907b9332ee0a1a763edc3365284972c3abaace",
+        "libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+        "libbirnam_execution.dylib": "686f2e1b5a9c9bbc8584b80e0cdcc19da019e4cc5157a1be27ba00e18ee18b26",
+        "libbirnam_root_registry.dylib": "44008b4abef0477ee1059818919530e948064bc8452e5dec60bad6c10890b15d",
+        "libbirnam_file_io.dylib": "fd1ae2fdfcf36ffa8c84b4446e27e4dced7d5ae2eb4f70afbb54fe295f54ac8b",
+        "libbirnam_tcc.dylib": "7ab1e55fdc0aa1fd4e4e0715db0ceaede601d41e3618f95ac2e4597f79036894",
+        "libbirnam_bytes.dylib": "c9adf4ab54871809f1727fc30127c7f36b84d0baf264446e4863871f3188118e",
+        "libbirnam_float.dylib": "06b8895d54f6e8a23f2d2a2fc0a0f908c45ba07e68f876740a4af8fe75eb778a",
+        "libbirnam_artifact.dylib": "0eca2643961c28a60985e2bad712b2568047d7128b5800b9264824cea92b900b",
+        "libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+        "libbirnam_word.dylib": "91da3ea6e4aab1238cb670ca45015481803cd81d2146506e634ddd0a8a33d01d",
+        "libbirnam_native_backend.dylib": "6861494fa30c76e099720dcfef763315e74fcf86be3390ec142b1209e8e4752a",
+        "libbirnam_collect.dylib": "e5aa65c246f160a6c670b5b1053681c4225805446e731ed75a1b00f3f34f6147",
+        "libbirnam_codegen_runtime.dylib": "1e2fea0393bf5965ee8077c0b7ba166e9b31edd806bc680ab0fd9c7aeb68387d",
+        "libbirnam_callable_core.dylib": "dc81024e13d2bb9a7d21c80fc256f63c6b87bfd00fb65d876576828d90822875",
+        "libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+        "libbirnam_system_output.dylib": "64bd8be5136fa857138697def689b0e59c9ad618651d9696f6a543d3a50fbe31"
+      }
+    },
+    "shared-extra.json": {
+      "label": "shared-extra",
+      "returncode": 0,
+      "elapsed_seconds": 1.7122955,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed",
+        "SEAM=lookup_source_callback_same_receiver_and_arity_passed",
+        "SEAM=interleaved_machines_passed iterations_per_machine=1000 transitions=4002",
+        "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+        "TAIL_CONTRACT custom=true calls=24 peak_frames=2"
+      ]
+    },
+    "shared-results.json": {
+      "results": [
+        {
+          "mode": "runtime",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "dispatch-contract",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "global-lookup",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "allocation-policy",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "finalizer-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "storage-init-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "retirement-failure",
+          "returncode": 0,
+          "tail_rows": []
+        },
+        {
+          "mode": "numeric-integration",
+          "returncode": 0,
+          "tail_rows": [
+            {
+              "custom": false,
+              "calls": 8,
+              "peak_frames": 2
+            },
+            {
+              "custom": false,
+              "calls": 24,
+              "peak_frames": 2
+            },
+            {
+              "custom": true,
+              "calls": 8,
+              "peak_frames": 2
+            },
+            {
+              "custom": true,
+              "calls": 24,
+              "peak_frames": 2
+            }
+          ]
+        }
+      ],
+      "exports": {
+        "id": {
+          "actual": [
+            "_birnam_id_bootstrap_v2"
+          ],
+          "expected": [
+            "_birnam_id_bootstrap_v2"
+          ],
+          "match": true
+        },
+        "execution": {
+          "actual": [
+            "_birnam_native_module_v2"
+          ],
+          "expected": [
+            "_birnam_native_module_v2"
+          ],
+          "match": true
+        }
+      },
+      "library_sha256": {
+        "libbirnam_lang_seed.dylib": "0c3d6f9d87934db1107e72308adb2352ba51641c31763b89556a193827bbb09a",
+        "libbirnam_storage.dylib": "2f226e45f37a7d589e40b2eb0640229411301ec8c253a10c984a22d5dd9f9f43",
+        "libbirnam_environment.dylib": "3243a8248b9f066a2ff7b428b05374e4edc84a56c10f00f6c23158d3b16bb621",
+        "libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+        "libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+        "libbirnam_peg.dylib": "1cf1e247db50905f4ba04729f974a551e41ba65037803c5eccd9b21bb223852a",
+        "libbirnam_object_model.dylib": "42d21833f6acea5ae4e32ebee5143cec48796a5c9f9a2f7982b1cbee24b41c81",
+        "libbirnam_prelude.dylib": "05481336067edb2ca1a978ac5b39c120eed35a97ba9fd969a68a3e36c79c989d",
+        "libbirnam_integer.dylib": "343a256a366f4e7a2ee9a8abc0a96bfb3f2f7f04e0ba5db35d461765f4863b30",
+        "libbirnam_id.dylib": "1364278c10869412edd1068946ace8a25f51254d7f6cbc225114c694a01d9920",
+        "libbirnam_system_input.dylib": "10d2a58789444200dcd64b3d17907b9332ee0a1a763edc3365284972c3abaace",
+        "libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+        "libbirnam_execution.dylib": "686f2e1b5a9c9bbc8584b80e0cdcc19da019e4cc5157a1be27ba00e18ee18b26",
+        "libbirnam_root_registry.dylib": "44008b4abef0477ee1059818919530e948064bc8452e5dec60bad6c10890b15d",
+        "libbirnam_file_io.dylib": "fd1ae2fdfcf36ffa8c84b4446e27e4dced7d5ae2eb4f70afbb54fe295f54ac8b",
+        "libbirnam_tcc.dylib": "7ab1e55fdc0aa1fd4e4e0715db0ceaede601d41e3618f95ac2e4597f79036894",
+        "libbirnam_bytes.dylib": "c9adf4ab54871809f1727fc30127c7f36b84d0baf264446e4863871f3188118e",
+        "libbirnam_float.dylib": "06b8895d54f6e8a23f2d2a2fc0a0f908c45ba07e68f876740a4af8fe75eb778a",
+        "libbirnam_artifact.dylib": "0eca2643961c28a60985e2bad712b2568047d7128b5800b9264824cea92b900b",
+        "libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+        "libbirnam_word.dylib": "91da3ea6e4aab1238cb670ca45015481803cd81d2146506e634ddd0a8a33d01d",
+        "libbirnam_native_backend.dylib": "6861494fa30c76e099720dcfef763315e74fcf86be3390ec142b1209e8e4752a",
+        "libbirnam_collect.dylib": "e5aa65c246f160a6c670b5b1053681c4225805446e731ed75a1b00f3f34f6147",
+        "libbirnam_codegen_runtime.dylib": "1e2fea0393bf5965ee8077c0b7ba166e9b31edd806bc680ab0fd9c7aeb68387d",
+        "libbirnam_callable_core.dylib": "69e93675abd966c806b21fdf8d82549a7d5cfde8659720e3b6bb04b2135d0912",
+        "libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+        "libbirnam_system_output.dylib": "64bd8be5136fa857138697def689b0e59c9ad618651d9696f6a543d3a50fbe31"
+      }
+    },
+    "tail-hint-extra.json": {
+      "label": "tail-hint-extra",
+      "returncode": -6,
+      "elapsed_seconds": 1.239672084,
+      "markers": [
+        "SEAM=native_callback_and_recursive_drive_rejection_passed"
+      ]
+    }
+  },
+  "preparation_files": {
+    "build_shared.py": "from pathlib import Path\nimport shutil,re,subprocess,json\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/seam-experiments';source=out/'shared-core';prefix=out/'shared-prefix'\n(source/'src').mkdir(parents=True,exist_ok=True)\nshutil.copytree(root/'rust/birnam-id/src',source/'src',dirs_exist_ok=True)\nshutil.copytree(root/'rust/birnam-execution/src',source/'src',dirs_exist_ok=True)\n(source/'Cargo.toml').write_text(f'''[package]\nname=\"birnam-callable-core\"\nversion=\"0.0.0\"\nedition=\"2024\"\nrust-version=\"1.95\"\n[workspace]\n[dependencies]\nbirnam-abi={{path=\"{root}/rust/birnam-abi\"}}\nbirnam-artifact-codec={{path=\"{root}/rust/birnam-artifact-codec\"}}\n[features]\ndispatch-metrics=[]\n[lib]\nname=\"birnam_callable_core\"\ncrate-type=[\"cdylib\"]\n[profile.release]\npanic=\"abort\"\n''')\n(source/'build.rs').write_text('fn main(){println!(\"cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libbirnam_callable_core.dylib\");}\\n')\n(source/'src/lib.rs').write_text('''//! Isolated shared implementation experiment, not an Id protocol extension.\npub(crate) use birnam_abi as abi;\nmod boundary; mod raw; mod id;\nmod entry; mod entry_plan; mod word_index; mod objects; mod execution; mod synchronous;\n#[unsafe(no_mangle)]\npub unsafe extern \"C\" fn birnam_private_id_bootstrap_v2(seeds:*const abi::id_protocol::Seed,n:usize)->*const abi::id_protocol::Protocol{\n unsafe{id::bootstrap(seeds,n)}\n}\n''')\n# The Method owner retains and enters the exact selected native declaration.\np=source/'src/id/bootstrap_values.rs';s=p.read_text();start=s.index('    pub(super) unsafe fn enter_method(');end=s.index('    pub(super) fn install_reference_owners',start)\ns=s[:start]+'''    pub(super) unsafe fn enter_method(\n        &self,m:Oop,r:Oop,args:&[Oop],scope:&Scope<'_>,\n    )->Result<Oop,Oop>{\n        unsafe{self.enter_or_transfer(m,r,args,scope,|_,_,_|Ok(false))}.map(|v|v.expect(\"native entry produces a result\"))\n    }\n    pub(super) unsafe fn enter_or_transfer(\n        &self,m:Oop,r:Oop,args:&[Oop],scope:&Scope<'_>,\n        transfer:impl FnOnce(Oop,Oop,&[Oop])->Result<bool,Oop>,\n    )->Result<Option<Oop>,Oop>{\n        let method=self.method_data(m)?;\n        scope.entered(m,method.context,method.owner);\n        if transfer(m,r,args)? {return Ok(None);}\n        let result=unsafe{(method.entry)(self.root,method.context,r,args.as_ptr(),args.len())};\n        self.behavior(result)?;\n        if abi::is_fault(result){Err(abi::object_reference(result))}else{Ok(Some(result))}\n    }\n'''+s[end:];p.write_text(s)\np=source/'src/id/id_dispatch.rs';s=p.read_text();start=s.index('pub(crate) unsafe fn send(')\ns=s[:start]+'''// Both ordinary sends and the Machine driver use this exact selection path.\n// The transfer continuation is a private Rust call within this implementation,\n// not an object protocol, exported entry point, or stored service callback.\npub(crate) unsafe fn with_resolved(\n    s:&State,r:Oop,selector:Oop,args:&[Oop],\n    transfer:impl FnOnce(Oop,Oop,&[Oop])->Result<bool,Oop>,\n)->Result<Option<Oop>,Oop>{\n    let r=crate::abi::object_reference(r);let selector=crate::abi::object_reference(selector);\n    s.check()?;let scope=s.scope(r,selector,args);\n    if let Some(method)=unsafe{bind(s,r,selector)}?{\n        return unsafe{s.enter_or_transfer(method,r,args,&scope,transfer)};\n    }\n    if selector==s.dnu || (selector==s.lookup && s.behavior(r)?==s.meta){return Err(s.unbound());}\n    let Some(handler)=(unsafe{bind(s,r,s.dnu)})?else{return Err(s.unbound());};\n    let mut forwarded=Vec::with_capacity(args.len()+1);forwarded.push(selector);forwarded.extend_from_slice(args);\n    unsafe{s.enter_or_transfer(handler,r,&forwarded,&scope,transfer)}\n}\npub(crate) unsafe fn send(s:&State,r:Oop,selector:Oop,args:&[Oop])->Result<Oop,Oop>{\n    unsafe{with_resolved(s,r,selector,args,|_,_,_|Ok(false))}.map(|v|v.expect(\"ordinary send enters its Method\"))\n}\n''';p.write_text(s)\np=source/'src/id/native_id.rs';s=p.read_text();pos=s.index('pub(crate) unsafe extern \"C\" fn message(');s=s[:pos]+'''pub(crate) unsafe fn with_resolved(\n    root:Oop,r:Oop,selector:Oop,args:&[Oop],\n    transfer:impl FnOnce(Oop,Oop,&[Oop])->Result<bool,Oop>,\n)->Result<Option<Oop>,Oop>{\n    let s=unsafe{&*root.cast::<*const State>().read()};\n    unsafe{id_dispatch::with_resolved(s,r,selector,args,transfer)}\n}\n'''+s[pos:];p.write_text(s)\np=source/'src/id/mod.rs';p.write_text(p.read_text()+'\\npub(crate) use native_id::with_resolved;\\n')\np=source/'src/resumable_runtime.rs';s=p.read_text();start=s.index('                        // A preliminary lookup');end=s.index('\\n                    }\\n                    _ =>',start)\ns=s[:start]+'''                        let mut native_boundary=false;\n                        let result=crate::id::with_resolved(s.id.root,operands.receiver,operands.selector,&operands.arguments,|selected,receiver,args|{\n                            q.keep(selected);\n                            let registered=registration(s,selected).or_else(||{\n                                if s.resume.borrow().block_values.contains(&selected){registration(s,s.field(receiver,0).ok()?)}else{None}\n                            });\n                            if let Some(r)=registered{\n                                let(entry,value)=acquire(s,&r,receiver,args)?;\n                                let destination=if tail{None}else{Some(ReturnDestination{result_slot})};\n                                push(s,cap,entry,value,destination,tail)?;\n                                Ok(true)\n                            }else{\n                                checked(checked(s.engine.borrow_mut().machine_mut(OWNER,cap))?.enter_synchronous_boundary(OWNER))?;\n                                native_boundary=true;Ok(false)\n                            }\n                        });\n                        if native_boundary{checked(checked(s.engine.borrow_mut().machine_mut(OWNER,cap))?.leave_synchronous_boundary(OWNER))?;}\n                        match result{\n                            Ok(None)=>(),\n                            value=>{\n                                let value=q.keep(s.language_result(value.map(|v|v.expect(\"native result\")))?);\n                                if tail{if let Some(v)=finish(s,cap,value)?{return Ok(v);}}\n                                else{checked(s.engine.borrow_mut().commit_current_call_result(OWNER,cap,result_slot,s.nil,value))?;}\n                            }\n                        }\n'''+s[end:]\ns=s.replace('    default_queries: Vec<Oop>,','')\nstart=s.index('// These retained Methods');end=s.index('unsafe fn number(',start);s=s[:start]+s[end:]\nstart=s.index('        let mut witnesses = Vec::new();');end=s.index('        for (name, value) in [',start);s=s[:start]+s[end:];p.write_text(s)\n# Two thin ABI views retain their original exported names. The implementation\n# image exports only bootstrap plus immutable Execution declaration data/init.\np=source/'src/synchronous.rs';s=p.read_text()\na=s.index('static LITERALS:');b=s.index('];',a);literals=len(re.findall(r'Literal::new\\(',s[a:b]))\ns=s.replace('static LITERALS: &[Literal] = &[',f'#[unsafe(export_name=\"birnam_private_execution_literals\")]\\npub static LITERALS: [Literal; {literals}] = [')\na=s.index('static METHODS:');b=s.index('];',a);methods=len(re.findall(r'MethodSpec\\s*\\{',s[a:b]))\ns=s.replace('static METHODS: &[MethodSpec] = &[',f'#[unsafe(export_name=\"birnam_private_execution_methods\")]\\npub static METHODS: [MethodSpec; {methods}] = [')\ns=s.replace('for spec in METHODS {','for spec in &METHODS {')\ns=s.replace('unsafe extern \"C\" fn initialize(', '#[unsafe(export_name=\"birnam_private_execution_initialize\")]\\npub unsafe extern \"C\" fn initialize(')\na=s.index('#[unsafe(no_mangle)]\\npub static birnam_native_module_v2');s=s[:a]\np.write_text(s)\n(out/'counts.json').write_text(json.dumps({'literals':literals,'methods':methods}))\n(out/'id-view.c').write_text('''#include \"id.h\"\nextern const IdProtocol *birnam_private_id_bootstrap_v2(const IdSeed*,size_t);\nconst IdProtocol *birnam_id_bootstrap_v2(const IdSeed*s,size_t n){return birnam_private_id_bootstrap_v2(s,n);}\n''')\n(out/'execution-view.c').write_text(f'''#include \"id.h\"\nextern const IdLiteral birnam_private_execution_literals[{literals}];\nextern const IdMethodSpec birnam_private_execution_methods[{methods}];\nextern Oop birnam_private_execution_initialize(const IdProtocol*,Oop,const Oop*,size_t,const Oop*,size_t);\nconst IdModule birnam_native_module_v2={{2,sizeof(IdModule),birnam_private_execution_literals,{literals},birnam_private_execution_methods,{methods},birnam_private_execution_initialize}};\n''')\n(prefix/'release').mkdir(parents=True,exist_ok=True);(prefix/'fixtures').mkdir(exist_ok=True)\nbase=root/'.cargo-target/oop-slice'\nfor lib in (base/'release').glob('*.dylib'):\n if lib.name in ['libbirnam_id.dylib','libbirnam_execution.dylib']:continue\n dst=prefix/'release'/lib.name\n if not dst.exists():dst.symlink_to(lib)\nfor file in (base/'fixtures').iterdir():\n dst=prefix/'fixtures'/file.name\n if not dst.exists():dst.symlink_to(file)\nprint('prepared',source,literals,methods)\n",
+    "build_variants.py": "from pathlib import Path\nimport shutil\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/seam-experiments';base=root/'.cargo-target/oop-slice'\n# A: scope a tail hint around the existing fallback, then reuse on source re-entry.\nsource=out/'tail-hint-source';shutil.copytree(root/'rust/birnam-execution/src',source/'src',dirs_exist_ok=True);shutil.copy(root/'rust/birnam-execution/build.rs',source/'build.rs')\n(source/'Cargo.toml').write_text(f'''[package]\nname=\"birnam-execution\"\nversion=\"0.0.0\"\nedition=\"2024\"\nrust-version=\"1.95\"\n[workspace]\n[dependencies]\nbirnam-abi={{path=\"{root}/rust/birnam-abi\"}}\nbirnam-artifact-codec={{path=\"{root}/rust/birnam-artifact-codec\"}}\n[lib]\nname=\"birnam_execution\"\ncrate-type=[\"cdylib\"]\n[profile.release]\npanic=\"abort\"\n''')\np=source/'src/resumable_runtime.rs';s=p.read_text().replace('    pending: HashSet<u64>,','    pending: HashSet<u64>,\\n    pending_tail: bool,')\nold='''                            let value = s.id.send(operands.receiver, operands.selector, &args);''';assert old in s\ns=s.replace(old,'''                            let previous=s.resume.borrow().pending_tail;\n                            s.resume.borrow_mut().pending_tail=tail;\n                            let value = s.id.send(operands.receiver, operands.selector, &args);\n                            s.resume.borrow_mut().pending_tail=previous;''')\nold='''        push(s, cap, entry, value, None, false)?;''';assert old in s\ns=s.replace(old,'''        let tail_hint=inherited.is_some() && s.resume.borrow().pending_tail;\n        push(s, cap, entry, value, None, tail_hint)?;''');p.write_text(s)\nprefix=out/'tail-hint-prefix';(prefix/'release').mkdir(parents=True,exist_ok=True);(prefix/'fixtures').mkdir(exist_ok=True)\nfor lib in (base/'release').glob('*.dylib'):\n if lib.name=='libbirnam_execution.dylib':continue\n dst=prefix/'release'/lib.name\n if not dst.exists():dst.symlink_to(lib)\nfor file in (base/'fixtures').iterdir():\n dst=prefix/'fixtures'/file.name\n if not dst.exists():dst.symlink_to(file)\nshutil.copy2(out/'shared-prefix/fixtures/seam.dylib',prefix/'fixtures/seam.dylib')\n# B2: same private core, reuse direct captured entry for Block/step invocation too.\nsource=out/'shared-direct-source';shutil.copytree(out/'shared-core',source,dirs_exist_ok=True)\np=source/'src/id/native_id.rs';s=p.read_text();pos=s.index('pub(crate) unsafe fn with_resolved(');s=s[:pos]+'''pub(crate) unsafe fn enter_captured(root:Oop,method:Oop,receiver:Oop,args:&[Oop])->Result<Oop,Oop>{\n    let s=unsafe{&*root.cast::<*const State>().read()};s.check()?;\n    let method=abi::object_reference(method);\n    let scope=s.scope(receiver,s.selector(b\"invokeOn:arguments:\"),args);\n    unsafe{s.enter_method(method,receiver,args,&scope)}\n}\n'''+s[pos:];p.write_text(s)\np=source/'src/id/mod.rs';p.write_text(p.read_text()+'\\npub(crate) use native_id::enter_captured;\\n')\np=source/'src/synchronous.rs';s=p.read_text();start=s.index('    unsafe fn invoke(&self,');end=s.index('    unsafe fn language_result',start);s=s[:start]+'''    unsafe fn invoke(&self,method:Oop,receiver:Oop,args:&[Oop])->Result<Oop,Oop>{unsafe{\n        self.engine.borrow_mut().begin_managed_turn().map_err(|_|invalid())?;\n        self.depth.set(self.depth.get()+1);let _entered=Invocation(self);\n        crate::id::enter_captured(self.id.root,method,receiver,args)\n    }}\n'''+s[end:];p.write_text(s)\nprefix=out/'shared-direct-prefix';(prefix/'release').mkdir(parents=True,exist_ok=True);(prefix/'fixtures').mkdir(exist_ok=True)\nfor lib in (out/'shared-prefix/release').iterdir():\n if lib.name=='libbirnam_callable_core.dylib':continue\n dst=prefix/'release'/lib.name\n if lib.name in ['libbirnam_id.dylib','libbirnam_execution.dylib']:shutil.copy2(lib,dst)\n elif not dst.exists():dst.symlink_to(lib.resolve())\nfor file in (out/'shared-prefix/fixtures').iterdir():\n dst=prefix/'fixtures'/file.name\n if not dst.exists():dst.symlink_to(file.resolve())\n\n# Refuse mixed implementation views before accessing private state or publishing.\np=source/'src/id/mod.rs';p.write_text(p.read_text()+\"\\npub(crate) fn owns_protocol(protocol: &crate::abi::id_protocol::Protocol) -> bool {\\n    protocol.message as usize == native_id::message as usize\\n}\\n\")\np=source/'src/synchronous.rs';s=p.read_text();needle='    API.store(p.cast_mut(), Ordering::Release);';assert needle in s\ns=s.replace(needle,\"    let protocol = unsafe { &*p };\\n    if protocol.version != 2 || protocol.byte_size as usize != std::mem::size_of::<Protocol>() || !crate::id::owns_protocol(protocol) { return protocol.invalid; }\\n\"+needle,1);p.write_text(s)\n",
+    "prepare_driver.py": "from pathlib import Path\nimport shutil,re\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/seam-experiments';driver=out/'driver';(driver/'oop_slice').mkdir(parents=True,exist_ok=True)\nfor name in ['oop_slice.rs','oop_slice/numeric.rs','oop_slice/compiler.rs','oop_slice/tcc.rs','oop_slice/resumable.rs']:\n s=(root/'rust/birnam-siphon/examples'/name).read_text();base=root/'rust/birnam-siphon/examples'/Path(name).parent\n s=re.sub(r'include_str!\\(\"([^\\\"]+)\"\\)',lambda m:'include_str!(\"'+str((base/m.group(1)).resolve())+'\")',s)\n (driver/name).write_text(s)\np=driver/'oop_slice.rs';s=p.read_text().replace('mod resumable;','mod resumable;\\n#[path=\"oop_slice/seam.rs\"]\\nmod seam;').replace('let words: &[&[u8]] = &[','let words: &[&[u8]] = &[\\n b\"methodAt:\",b\"loadNative\",b\"SeamProbe\",b\"SeamA\",b\"SeamB\",b\"nativeCallback\",b\"lookupCallback\",b\"seamTarget\",b\"duringLookup\",b\"mark:\",b\"callback\",b\"lookupMark\",b\"targetMark\",b\"counts\",b\"reset\",b\"tick\",b\"loop\",');p.write_text(s)\np=driver/'oop_slice/compiler.rs';s=p.read_text();needle='        super::resumable::check(id,send,sel,[ns,roots,gc,string,actor,integer,blocks]);';assert needle in s;s=s.replace(needle,'        super::seam::check(id, send, sel, [ns, roots, gc, string, actor, integer, blocks]);\\n        if std::env::var_os(\"BIRNAM_SEAM_ONLY\").is_none(){\\n'+needle+'\\n        }');p.write_text(s)\n",
+    "run.py": "from pathlib import Path\nimport subprocess,os,json,re,hashlib,sys\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/seam-experiments';base=root/'.cargo-target/oop-slice';prefix=Path(sys.argv[1]).resolve();label=sys.argv[2]\nenv=dict(os.environb);env.update({b'BIRNAM_OOP_TARGET':str(prefix).encode(),b'BIRNAM_MODULES_DIR':b'/nonexistent',b'BIRNAM_TEST_MODULE_DIRECTORY':b'/nonexistent',b'BIRNAM_OOP_TEST_PRESENT':'h\u00e9llo'.encode(),b'BIRNAM_OOP_TEST_EMPTY':b'',b'BIRNAM_OOP_TEST_BINARY':b'\\xff'});env.pop(b'BIRNAM_OOP_TEST_MISSING',None);env.pop(b'fixture-hello',None)\nexe=str(base/'release/examples/oop_slice');results=[]\nfor mode in ['', 'dispatch-contract','global-lookup','allocation-policy','finalizer-failure','storage-init-failure','retirement-failure','numeric-integration']:\n result=subprocess.run([exe,str(root)]+([mode]if mode else[]),cwd=root,env=env,input=(base/'qualification/input.bin').read_bytes()if mode=='numeric-integration'else b'',capture_output=True,timeout=180)\n name=mode or 'runtime';(out/f'{label}-{name}.stdout').write_bytes(result.stdout);(out/f'{label}-{name}.stderr').write_bytes(result.stderr)\n rows=[{'custom':c=='true','calls':int(n),'peak_frames':int(p)}for c,n,p in re.findall(r'TAIL_CONTRACT custom=(true|false) calls=(\\d+) peak_frames=(\\d+)',result.stdout.decode(errors='replace'))]\n item={'mode':name,'returncode':result.returncode,'tail_rows':rows};results.append(item);print(json.dumps(item),flush=True)\n if result.returncode:print(result.stderr.decode(errors='replace')[-2000:],flush=True);break\nexports={}\nfor name in ['id','execution']:\n actual=set(subprocess.check_output(['nm','-gjU',str(prefix/'release'/f'libbirnam_{name}.dylib')],text=True).splitlines())\n expected={'_'+s for s in json.loads((root/'rust'/('birnam-'+name)/'exports.json').read_text())['exported_symbols']}\n exports[name]={'actual':sorted(actual),'expected':sorted(expected),'match':actual==expected}\nreport={'results':results,'exports':exports,'library_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in (prefix/'release').glob('*.dylib')}}\n(out/f'{label}-results.json').write_text(json.dumps(report,indent=2)+'\\n')\nassert all(v['match']for v in exports.values()),exports\n",
+    "run_extra.py": "from pathlib import Path\nimport os,subprocess,json,sys,re,time\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/seam-experiments';base=root/'.cargo-target/oop-slice';prefix=Path(sys.argv[1]).resolve();label=sys.argv[2];iterations=sys.argv[3]if len(sys.argv)>3 else'1000'\nenv=dict(os.environb);env.update({b'BIRNAM_OOP_TARGET':str(prefix).encode(),b'BIRNAM_SEAM_ITERATIONS':iterations.encode(),b'BIRNAM_MODULES_DIR':b'/nonexistent',b'BIRNAM_TEST_MODULE_DIRECTORY':b'/nonexistent',b'BIRNAM_OOP_TEST_PRESENT':'h\u00e9llo'.encode(),b'BIRNAM_OOP_TEST_EMPTY':b'',b'BIRNAM_OOP_TEST_BINARY':b'\\xff'});env.pop(b'BIRNAM_OOP_TEST_MISSING',None);env.pop(b'fixture-hello',None)\nif '--only'in sys.argv:env[b'BIRNAM_SEAM_ONLY']=b'1'\nstart=time.monotonic();result=subprocess.run([str(out/'seam-driver'),str(root),'numeric-integration'],cwd=root,env=env,input=(base/'qualification/input.bin').read_bytes(),capture_output=True,timeout=900)\n(out/f'{label}.stdout').write_bytes(result.stdout);(out/f'{label}.stderr').write_bytes(result.stderr)\ntext=result.stdout.decode(errors='replace');markers=[s for s in text.splitlines()if s.startswith(('SEAM=','TAIL_CONTRACT'))]\nreport={'label':label,'returncode':result.returncode,'elapsed_seconds':time.monotonic()-start,'markers':markers}\n(out/f'{label}.json').write_text(json.dumps(report,indent=2)+'\\n');print(json.dumps(report),flush=True)\nif result.returncode:print(result.stderr.decode(errors='replace')[-2500:])\n",
+    "compare_invocation.py": "from pathlib import Path\nimport subprocess,os,json,statistics,hashlib\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/seam-experiments';base=root/'.cargo-target/oop-slice';exe=root/'.cargo-target/performance-4ce71040/candidate'\ninputs=(base/'qualification/input.bin').read_bytes();rows=[]\nprefixes={'original':base,'shared-direct':out/'shared-direct-prefix'}\nhashes={str(p):hashlib.sha256(p.read_bytes()).hexdigest()for prefix in prefixes.values()for p in (prefix/'release').glob('*.dylib')}\nfor i,lane in enumerate(['original','shared-direct','shared-direct','original']):\n env=dict(os.environb);env.update({b'BIRNAM_OOP_TARGET':str(prefixes[lane]).encode(),b'BIRNAM_MODULES_DIR':b'/nonexistent',b'BIRNAM_TEST_MODULE_DIRECTORY':b'/nonexistent',b'BIRNAM_OOP_TEST_PRESENT':'h\u00e9llo'.encode(),b'BIRNAM_OOP_TEST_EMPTY':b'',b'BIRNAM_OOP_TEST_BINARY':b'\\xff'});env.pop(b'BIRNAM_OOP_TEST_MISSING',None);env.pop(b'fixture-hello',None)\n result=subprocess.run([str(exe),str(root),'numeric-integration'],cwd=root,env=env,input=inputs,capture_output=True,timeout=180);assert result.returncode==0,(lane,result.stderr[-1500:])\n (out/f'perf-{i}-{lane}.stdout').write_bytes(result.stdout)\n samples=[json.loads(l[5:])for l in result.stdout.decode(errors='replace').splitlines()if l.startswith('PERF=')];assert len(samples)==3\n rows.append({'lane':lane,'samples':samples})\nsummary={}\nfor case in ['identity','increment','captured-add']:\n summary[case]={}\n for lane in prefixes:\n  samples=[r for run in rows if run['lane']==lane for r in run['samples']if r['case']==case]\n  summary[case][lane]={'cpu_ns_per_call':statistics.median(statistics.median(s['cpu_ns']/r['iterations']for s in r['samples'])for r in samples),'allocations_per_call':statistics.median(s['allocations']/r['iterations']for r in samples for s in r['samples'])}\nfor p,d in hashes.items():assert hashlib.sha256(Path(p).read_bytes()).hexdigest()==d\n(out/'invocation-comparison.json').write_text(json.dumps({'rows':rows,'summary':summary,'library_sha256':hashes,'limits':['Two fresh processes per variant in ABBA order; five CPU samples per process.','Small synchronous source probes only; setup and explicit GC outside timers.','Experiment versus current Oop branch, not a full-runtime or Logue comparison.']},indent=2)+'\\n')\nprint(json.dumps(summary,indent=2))\n",
+    "id-view.c": "#include \"id.h\"\nextern const IdProtocol *birnam_private_id_bootstrap_v2(const IdSeed*,size_t);\nconst IdProtocol *birnam_id_bootstrap_v2(const IdSeed*s,size_t n){return birnam_private_id_bootstrap_v2(s,n);}\n",
+    "execution-view.c": "#include \"id.h\"\nextern const IdLiteral birnam_private_execution_literals[110];\nextern const IdMethodSpec birnam_private_execution_methods[38];\nextern Oop birnam_private_execution_initialize(const IdProtocol*,Oop,const Oop*,size_t,const Oop*,size_t);\nconst IdModule birnam_native_module_v2={2,sizeof(IdModule),birnam_private_execution_literals,110,birnam_private_execution_methods,38,birnam_private_execution_initialize};\n",
+    "seam_fixture.c": "#include \"id.h\"\n#include <string.h>\nstatic IdProtocol id;\nenum{AT,PUT,SEQUENCE,INVOKE,VALUE,CONTINUE,FROMWORD,FRAMES,WORDOF,LOW32,ADD,LOOP,MARK,CALLBACK,LOOKUPMARK,TARGETMARK,NATIVE_CALLBACK,LOOKUP_CALLBACK,TARGET,HELPER,COUNTS,RESET,TICK,NAMES};\nstatic const IdLiteral literals[]={LIT(\"at:\"),LIT(\"at:put:\"),LIT(\"sequence\"),LIT(\"invokeOn:arguments:\"),LIT(\"value\"),LIT(\"continueWithBudget:\"),LIT(\"fromWord:\"),LIT(\"liveFrameCount\"),LIT(\"wordOf:\"),LIT(\"low32\"),LIT(\"addMethod\"),LIT(\"loop\"),LIT(\"mark:\"),LIT(\"callback\"),LIT(\"lookupMark\"),LIT(\"targetMark\"),LIT(\"nativeCallback\"),LIT(\"lookupCallback\"),LIT(\"seamTarget\"),LIT(\"duringLookup\"),LIT(\"counts\"),LIT(\"reset\"),LIT(\"tick\")};\nstatic Oop names[NAMES];static size_t marks[3],reentry_rejections;\nstatic Oop call(Oop r,size_t sel,const Oop*a,size_t n){return id.message(id.root,r,names[sel],a,n);}\nstatic Oop get(Oop c,size_t i){Oop n=id_size(i);return call(c,AT,&n,1);}\nstatic Oop put(Oop c,size_t i,Oop v){Oop a[]={id_size(i),v};return call(c,PUT,a,2);}\n#define CHECK(v) do{Oop failed_=(v);if(id_fault(failed_))return failed_;}while(0)\nstatic Oop mark(Oop root,Oop c,Oop r,const Oop*a,size_t n){if(n!=1)return id.invalid;for(size_t i=0;i<3;i++)if(a[0]==names[CALLBACK+i]){marks[i]++;return r;}return id.invalid;}\nstatic Oop reset(Oop root,Oop c,Oop r,const Oop*a,size_t n){if(n)return id.invalid;memset(marks,0,sizeof(marks));reentry_rejections=0;return r;}\nstatic Oop counts(Oop root,Oop c,Oop r,const Oop*a,size_t n){if(n)return id.invalid;Oop v[]={id_size(marks[0]),id_size(marks[1]),id_size(marks[2]),id_size(reentry_rejections)};return call(id.root,SEQUENCE,v,4);}\n/* c = [running Machine, source callback Block, Integer factory]. */\nstatic Oop native_callback(Oop root,Oop c,Oop r,const Oop*a,size_t n){\n if(n)return id.invalid;Oop one=id_size(1);Oop budget=call(get(c,2),FROMWORD,&one,1);if(id_fault(budget))return budget;\n Oop rejected=call(get(c,0),CONTINUE,&budget,1);if(!id_fault(rejected))return id.invalid;reentry_rejections++;\n return call(get(c,1),VALUE,0,0);\n}\n/* c = [original lookup Method, original receiver]. A callback runs on the\n   SAME receiver/arity as the pending source call, before its method is chosen. */\nstatic Oop lookup_callback(Oop root,Oop c,Oop r,const Oop*a,size_t n){\n if(n!=1)return id.invalid;\n if(a[0]==names[TARGET]){CHECK(call(get(c,1),HELPER,0,0));}\n Oop args=call(id.root,SEQUENCE,a,n);if(id_fault(args))return args;\n Oop input[]={r,args};return call(get(c,0),INVOKE,input,2);\n}\n/* Per-Machine context = [remaining, type, stop Method, ticks]. */\nstatic Oop tick(Oop root,Oop c,Oop r,const Oop*a,size_t n){\n if(n)return id.invalid;Oop remaining=get(c,0);if(id_fault(remaining)||!((uintptr_t)remaining&1)||id_unbox(remaining)==0)return id.invalid;\n size_t next=id_unbox(remaining)-1;CHECK(put(c,0,id_size(next)));\n Oop count=get(c,3);if(id_fault(count))return count;CHECK(put(c,3,id_size(id_unbox(count)+1)));\n if(next==0){Oop update[]={names[LOOP],get(c,2)};CHECK(call(get(c,1),ADD,update,2));}return r;\n}\nstatic const IdMethodSpec methods[]={{MARK,mark},{RESET,reset},{COUNTS,counts},{NATIVE_CALLBACK,native_callback},{LOOKUP_CALLBACK,lookup_callback},{TICK,tick}};\nstatic Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t n,const Oop*a,size_t count){if(n!=NAMES||count)return p->invalid;id=*p;for(size_t i=0;i<n;i++)names[i]=s[i];return image;}\nconst IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,NAMES,methods,sizeof(methods)/sizeof(methods[0]),initialize};\n"
+  },
+  "exact_source_patches": {
+    "shared-direct-source": [
+      {
+        "path": "Cargo.lock",
+        "base_repository_path": null,
+        "sha256": "ac0bd50ff16aa96e8be78c43434c24ce9a75b83bc1b5727fa52785698f539c47",
+        "patch": "--- /dev/null\n+++ b/Cargo.lock\n@@ -0,0 +1,105 @@\n+# This file is automatically @generated by Cargo.\n+# It is not intended for manual editing.\n+version = 4\n+\n+[[package]]\n+name = \"birnam-abi\"\n+version = \"0.0.0\"\n+\n+[[package]]\n+name = \"birnam-artifact-codec\"\n+version = \"0.0.0\"\n+dependencies = [\n+ \"sha2\",\n+]\n+\n+[[package]]\n+name = \"birnam-callable-core\"\n+version = \"0.0.0\"\n+dependencies = [\n+ \"birnam-abi\",\n+ \"birnam-artifact-codec\",\n+]\n+\n+[[package]]\n+name = \"block-buffer\"\n+version = \"0.10.4\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71\"\n+dependencies = [\n+ \"generic-array\",\n+]\n+\n+[[package]]\n+name = \"cfg-if\"\n+version = \"1.0.5\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600\"\n+\n+[[package]]\n+name = \"cpufeatures\"\n+version = \"0.2.17\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280\"\n+dependencies = [\n+ \"libc\",\n+]\n+\n+[[package]]\n+name = \"crypto-common\"\n+version = \"0.1.7\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a\"\n+dependencies = [\n+ \"generic-array\",\n+ \"typenum\",\n+]\n+\n+[[package]]\n+name = \"digest\"\n+version = \"0.10.7\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292\"\n+dependencies = [\n+ \"block-buffer\",\n+ \"crypto-common\",\n+]\n+\n+[[package]]\n+name = \"generic-array\"\n+version = \"0.14.7\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a\"\n+dependencies = [\n+ \"typenum\",\n+ \"version_check\",\n+]\n+\n+[[package]]\n+name = \"libc\"\n+version = \"0.2.191\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a\"\n+\n+[[package]]\n+name = \"sha2\"\n+version = \"0.10.9\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283\"\n+dependencies = [\n+ \"cfg-if\",\n+ \"cpufeatures\",\n+ \"digest\",\n+]\n+\n+[[package]]\n+name = \"typenum\"\n+version = \"1.20.1\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20\"\n+\n+[[package]]\n+name = \"version_check\"\n+version = \"0.9.5\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a\"\n"
+      },
+      {
+        "path": "Cargo.toml",
+        "base_repository_path": "rust/birnam-execution/Cargo.toml",
+        "sha256": "0b061a371be72c83e085ff9a4afe88b1f2b37732e89f0d1ce76f02dbdf36c8f6",
+        "patch": "--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1,17 +1,16 @@\n [package]\n-name = \"birnam-execution\"\n-version = \"0.0.0\"\n-edition.workspace = true\n-rust-version.workspace = true\n-publish = false\n-\n+name=\"birnam-callable-core\"\n+version=\"0.0.0\"\n+edition=\"2024\"\n+rust-version=\"1.95\"\n+[workspace]\n [dependencies]\n-birnam-abi = { path = \"../birnam-abi\" }\n-birnam-artifact-codec = { path = \"../birnam-artifact-codec\" }\n-\n+birnam-abi={path=\"/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-abi\"}\n+birnam-artifact-codec={path=\"/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-artifact-codec\"}\n+[features]\n+dispatch-metrics=[]\n [lib]\n-name = \"birnam_execution\"\n-crate-type = [\"cdylib\", \"rlib\"]\n-\n-[lints]\n-workspace = true\n+name=\"birnam_callable_core\"\n+crate-type=[\"cdylib\"]\n+[profile.release]\n+panic=\"abort\"\n"
+      },
+      {
+        "path": "build.rs",
+        "base_repository_path": "rust/birnam-execution/build.rs",
+        "sha256": "1043edfe1e8bccd7b77504774d620818a672174ec2c53f8ae34fa1ea66e16f37",
+        "patch": "--- a/build.rs\n+++ b/build.rs\n@@ -1,3 +1 @@\n-fn main() {\n-    println!(\"cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libbirnam_execution.dylib\");\n-}\n+fn main(){println!(\"cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libbirnam_callable_core.dylib\");}\n"
+      },
+      {
+        "path": "src/id/bootstrap_values.rs",
+        "base_repository_path": "rust/birnam-id/src/id/bootstrap_values.rs",
+        "sha256": "8fac64872b32bab6d4bf8dff4a297bf29a8597f82a58cbd919c78673cbc620fc",
+        "patch": "--- a/src/id/bootstrap_values.rs\n+++ b/src/id/bootstrap_values.rs\n@@ -210,22 +210,20 @@\n         o\n     }\n     pub(super) unsafe fn enter_method(\n-        &self,\n-        m: Oop,\n-        r: Oop,\n-        args: &[Oop],\n-        scope: &Scope<'_>,\n-    ) -> Result<Oop, Oop> {\n-        let method = self.method_data(m)?;\n-        scope.entered(m, method.context, method.owner);\n-        let result =\n-            unsafe { (method.entry)(self.root, method.context, r, args.as_ptr(), args.len()) };\n+        &self,m:Oop,r:Oop,args:&[Oop],scope:&Scope<'_>,\n+    )->Result<Oop,Oop>{\n+        unsafe{self.enter_or_transfer(m,r,args,scope,|_,_,_|Ok(false))}.map(|v|v.expect(\"native entry produces a result\"))\n+    }\n+    pub(super) unsafe fn enter_or_transfer(\n+        &self,m:Oop,r:Oop,args:&[Oop],scope:&Scope<'_>,\n+        transfer:impl FnOnce(Oop,Oop,&[Oop])->Result<bool,Oop>,\n+    )->Result<Option<Oop>,Oop>{\n+        let method=self.method_data(m)?;\n+        scope.entered(m,method.context,method.owner);\n+        if transfer(m,r,args)? {return Ok(None);}\n+        let result=unsafe{(method.entry)(self.root,method.context,r,args.as_ptr(),args.len())};\n         self.behavior(result)?;\n-        if abi::is_fault(result) {\n-            Err(abi::object_reference(result))\n-        } else {\n-            Ok(result)\n-        }\n+        if abi::is_fault(result){Err(abi::object_reference(result))}else{Ok(Some(result))}\n     }\n     pub(super) fn install_reference_owners(&self) {\n         // Ordinary owner objects, not per-allocation tags. New native or\n"
+      },
+      {
+        "path": "src/id/id_dispatch.rs",
+        "base_repository_path": "rust/birnam-id/src/id/id_dispatch.rs",
+        "sha256": "c5047d779ff1bb84bf5a5c505e5d7bae84913c2d21871d0943a78d768675e86f",
+        "patch": "--- a/src/id/id_dispatch.rs\n+++ b/src/id/id_dispatch.rs\n@@ -33,22 +33,23 @@\n         Ok(Some(method))\n     }\n }\n-pub(crate) unsafe fn send(s: &State, r: Oop, selector: Oop, args: &[Oop]) -> Result<Oop, Oop> {\n-    let r=crate::abi::object_reference(r);\n-    let selector=crate::abi::object_reference(selector);\n-    s.check()?;\n-    let scope = s.scope(r, selector, args);\n-    if let Some(method) = unsafe { bind(s, r, selector) }? {\n-        return unsafe { s.enter_method(method, r, args, &scope) };\n+// Both ordinary sends and the Machine driver use this exact selection path.\n+// The transfer continuation is a private Rust call within this implementation,\n+// not an object protocol, exported entry point, or stored service callback.\n+pub(crate) unsafe fn with_resolved(\n+    s:&State,r:Oop,selector:Oop,args:&[Oop],\n+    transfer:impl FnOnce(Oop,Oop,&[Oop])->Result<bool,Oop>,\n+)->Result<Option<Oop>,Oop>{\n+    let r=crate::abi::object_reference(r);let selector=crate::abi::object_reference(selector);\n+    s.check()?;let scope=s.scope(r,selector,args);\n+    if let Some(method)=unsafe{bind(s,r,selector)}?{\n+        return unsafe{s.enter_or_transfer(method,r,args,&scope,transfer)};\n     }\n-    if selector == s.dnu || (selector == s.lookup && s.behavior(r)? == s.meta) {\n-        return Err(s.unbound());\n-    }\n-    let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n-        return Err(s.unbound());\n-    };\n-    let mut forwarded = Vec::with_capacity(args.len() + 1);\n-    forwarded.push(selector);\n-    forwarded.extend_from_slice(args);\n-    unsafe { s.enter_method(handler, r, &forwarded, &scope) }\n+    if selector==s.dnu || (selector==s.lookup && s.behavior(r)?==s.meta){return Err(s.unbound());}\n+    let Some(handler)=(unsafe{bind(s,r,s.dnu)})?else{return Err(s.unbound());};\n+    let mut forwarded=Vec::with_capacity(args.len()+1);forwarded.push(selector);forwarded.extend_from_slice(args);\n+    unsafe{s.enter_or_transfer(handler,r,&forwarded,&scope,transfer)}\n }\n+pub(crate) unsafe fn send(s:&State,r:Oop,selector:Oop,args:&[Oop])->Result<Oop,Oop>{\n+    unsafe{with_resolved(s,r,selector,args,|_,_,_|Ok(false))}.map(|v|v.expect(\"ordinary send enters its Method\"))\n+}\n"
+      },
+      {
+        "path": "src/id/mod.rs",
+        "base_repository_path": "rust/birnam-id/src/id/mod.rs",
+        "sha256": "e2a22d319a5b7b9acef5e05c19647942e928a6b9eca3602d10211eb7c6e02334",
+        "patch": "--- a/src/id/mod.rs\n+++ b/src/id/mod.rs\n@@ -7,3 +7,11 @@\n mod symbol;\n mod vtable;\n pub(crate) use native_id::bootstrap;\n+\n+pub(crate) use native_id::with_resolved;\n+\n+pub(crate) use native_id::enter_captured;\n+\n+pub(crate) fn owns_protocol(protocol:&crate::abi::id_protocol::Protocol)->bool {\n+    protocol.message as usize == native_id::message as usize\n+}\n"
+      },
+      {
+        "path": "src/id/native_id.rs",
+        "base_repository_path": "rust/birnam-id/src/id/native_id.rs",
+        "sha256": "79722926273a9e5cfeb8560e99cf900aae6f5f9c95bd7becd97a7b34f0c8c946",
+        "patch": "--- a/src/id/native_id.rs\n+++ b/src/id/native_id.rs\n@@ -878,6 +878,19 @@\n     }\n \n }\n+pub(crate) unsafe fn enter_captured(root:Oop,method:Oop,receiver:Oop,args:&[Oop])->Result<Oop,Oop>{\n+    let s=unsafe{&*root.cast::<*const State>().read()};s.check()?;\n+    let method=abi::object_reference(method);\n+    let scope=s.scope(receiver,s.selector(b\"invokeOn:arguments:\"),args);\n+    unsafe{s.enter_method(method,receiver,args,&scope)}\n+}\n+pub(crate) unsafe fn with_resolved(\n+    root:Oop,r:Oop,selector:Oop,args:&[Oop],\n+    transfer:impl FnOnce(Oop,Oop,&[Oop])->Result<bool,Oop>,\n+)->Result<Option<Oop>,Oop>{\n+    let s=unsafe{&*root.cast::<*const State>().read()};\n+    unsafe{id_dispatch::with_resolved(s,r,selector,args,transfer)}\n+}\n pub(crate) unsafe extern \"C\" fn message(\n     root: Oop,\n     r: Oop,\n"
+      },
+      {
+        "path": "src/lib.rs",
+        "base_repository_path": "rust/birnam-execution/src/lib.rs",
+        "sha256": "4cb2cfaeb2f7e236d4c85eca06c07b8e62f9aa850dd1785cde9e9dbb3ea23771",
+        "patch": "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,8 +1,8 @@\n-//! Oop Execution integration: synchronous Blocks and bounded resumable Machines.\n-//! Both paths use current Id messages and the retained frame/registration engine.\n-mod entry;\n-mod entry_plan;\n-mod word_index;\n-mod objects;\n-mod execution;\n-mod synchronous;\n+//! Isolated shared implementation experiment, not an Id protocol extension.\n+pub(crate) use birnam_abi as abi;\n+mod boundary; mod raw; mod id;\n+mod entry; mod entry_plan; mod word_index; mod objects; mod execution; mod synchronous;\n+#[unsafe(no_mangle)]\n+pub unsafe extern \"C\" fn birnam_private_id_bootstrap_v2(seeds:*const abi::id_protocol::Seed,n:usize)->*const abi::id_protocol::Protocol{\n+ unsafe{id::bootstrap(seeds,n)}\n+}\n"
+      },
+      {
+        "path": "src/resumable_runtime.rs",
+        "base_repository_path": "rust/birnam-execution/src/resumable_runtime.rs",
+        "sha256": "4727d5d4d754833f6608c7d91b44ce25875edf02d679828c4055d9d561a3ec48",
+        "patch": "--- a/src/resumable_runtime.rs\n+++ b/src/resumable_runtime.rs\n@@ -20,7 +20,7 @@\n pub(super) struct Runtime {\n     pub roots: Vec<Oop>,\n     pub block_values: Vec<Oop>,\n-    default_queries: Vec<Oop>,\n+\n     records: HashMap<usize, Registered>,\n     methods: HashMap<usize, usize>,\n     context_vt: Oop,\n@@ -58,25 +58,6 @@\n         .records\n         .get(runtime.methods.get(&method.addr())?)\n         .cloned()\n-}\n-// These retained Methods are equality witnesses, never cached calls. The\n-// existing Id guard checks the matcher itself and all current query bindings.\n-const DEFAULT_QUERIES: &[&[u8]] = &[b\"usesDefaultLookup:\", b\"bind:to:\", b\"nativeBindingsMatch:\"];\n-unsafe fn pure_lookup(s: &State, receiver: Oop) -> Result<bool, Oop> {\n-    unsafe {\n-        let witnesses = s.resume.borrow().default_queries.clone();\n-        if witnesses.len() != DEFAULT_QUERIES.len() {\n-            return Ok(false);\n-        }\n-        let mut rows = Vec::with_capacity(witnesses.len() * 3);\n-        for (&name, method) in DEFAULT_QUERIES.iter().zip(witnesses) {\n-            rows.extend([s.id.root, s.names[name], method]);\n-        }\n-        if abi::as_size(s.send(s.id.root, b\"nativeBindingsMatch:\", &rows)?) != Some(1) {\n-            return Ok(false);\n-        }\n-        Ok(abi::as_size(s.send(s.id.root, b\"usesDefaultLookup:\", &[receiver])?) == Some(1))\n-    }\n }\n unsafe fn number(s: &State, value: usize) -> Result<Oop, Oop> {\n     unsafe {\n@@ -520,62 +501,32 @@\n                         for &arg in &operands.arguments {\n                             q.keep(arg);\n                         }\n-                        // A preliminary lookup is allowed only when the current\n-                        // lookup is callback-free. Unknown/custom lookup is sent\n-                        // once through ordinary Id and its native boundary.\n-                        let selected = if pure_lookup(s, operands.receiver)? {\n-                            q.keep(s.send(\n-                                s.id.root,\n-                                b\"bind:to:\",\n-                                &[operands.selector, operands.receiver],\n-                            )?)\n-                        } else {\n-                            ptr::null_mut()\n-                        };\n-                        let args = operands.arguments;\n-                        let registered = registration(s, selected).or_else(|| {\n-                            if s.resume.borrow().block_values.contains(&selected) {\n-                                let method = s.field(operands.receiver, 0).ok()?;\n-                                registration(s, method)\n-                            } else {\n-                                None\n+                        let mut native_boundary=false;\n+                        let result=crate::id::with_resolved(s.id.root,operands.receiver,operands.selector,&operands.arguments,|selected,receiver,args|{\n+                            q.keep(selected);\n+                            let registered=registration(s,selected).or_else(||{\n+                                if s.resume.borrow().block_values.contains(&selected){registration(s,s.field(receiver,0).ok()?)}else{None}\n+                            });\n+                            if let Some(r)=registered{\n+                                let(entry,value)=acquire(s,&r,receiver,args)?;\n+                                let destination=if tail{None}else{Some(ReturnDestination{result_slot})};\n+                                push(s,cap,entry,value,destination,tail)?;\n+                                Ok(true)\n+                            }else{\n+                                checked(checked(s.engine.borrow_mut().machine_mut(OWNER,cap))?.enter_synchronous_boundary(OWNER))?;\n+                                native_boundary=true;Ok(false)\n                             }\n                         });\n-                        if let Some(r) = registered {\n-                            let (entry, value) = acquire(s, &r, operands.receiver, &args)?;\n-                            let destination = if tail {\n-                                None\n-                            } else {\n-                                Some(ReturnDestination { result_slot })\n-                            };\n-                            push(s, cap, entry, value, destination, tail)?;\n-                        } else {\n-                            checked(\n-                                checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?\n-                                    .enter_synchronous_boundary(OWNER),\n-                            )?;\n-                            // Never reflect on the selected Method here. Ordinary\n-                            // Id dispatch enters it directly and handles DNU.\n-                            let value = s.id.send(operands.receiver, operands.selector, &args);\n-                            checked(\n-                                checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?\n-                                    .leave_synchronous_boundary(OWNER),\n-                            )?;\n-                            let value = q.keep(s.language_result(value)?);\n-                            if tail {\n-                                if let Some(v) = finish(s, cap, value)? {\n-                                    return Ok(v);\n-                                }\n-                            } else {\n-                                checked(s.engine.borrow_mut().commit_current_call_result(\n-                                    OWNER,\n-                                    cap,\n-                                    result_slot,\n-                                    s.nil,\n-                                    value,\n-                                ))?;\n+                        if native_boundary{checked(checked(s.engine.borrow_mut().machine_mut(OWNER,cap))?.leave_synchronous_boundary(OWNER))?;}\n+                        match result{\n+                            Ok(None)=>(),\n+                            value=>{\n+                                let value=q.keep(s.language_result(value.map(|v|v.expect(\"native result\")))?);\n+                                if tail{if let Some(v)=finish(s,cap,value)?{return Ok(v);}}\n+                                else{checked(s.engine.borrow_mut().commit_current_call_result(OWNER,cap,result_slot,s.nil,value))?;}\n                             }\n                         }\n+\n                     }\n                     _ => return Err(invalid()),\n                 }\n@@ -1086,25 +1037,6 @@\n             let method = q.keep(s.send(method, b\"withContext:\", &[s.ns])?);\n             s.send(target, b\"addMethod\", &[s.names[name], method])?;\n         }\n-        let mut witnesses = Vec::new();\n-        for &name in DEFAULT_QUERIES {\n-            let method = q.keep(s.send(s.id.root, b\"bind:to:\", &[s.names[name], s.id.root])?);\n-            if abi::as_size(s.send(\n-                s.id.root,\n-                b\"nativeBindingQuerySemantics:for:\",\n-                &[method, s.names[name]],\n-            )?) != Some(1)\n-            {\n-                witnesses.clear();\n-                break;\n-            }\n-            witnesses.push(method);\n-        }\n-        {\n-            let mut runtime = s.resume.borrow_mut();\n-            runtime.roots.extend_from_slice(&witnesses);\n-            runtime.default_queries = witnesses;\n-        }\n         for (name, value) in [\n             (b\"Machine\".as_slice(), machine_prototype),\n             (b\"MachineVt\", machine_vtable),\n"
+      },
+      {
+        "path": "src/synchronous.rs",
+        "base_repository_path": "rust/birnam-execution/src/synchronous.rs",
+        "sha256": "2dbc1be6048e2897993e7bebb59c84e1bc0e0258d7f98e0b32991ce3e7124f85",
+        "patch": "--- a/src/synchronous.rs\n+++ b/src/synchronous.rs\n@@ -145,24 +145,11 @@\n             Ok(block)\n         }\n     }\n-    unsafe fn invoke(&self, method: Oop, receiver: Oop, args: &[Oop]) -> Result<Oop, Oop> {\n-        unsafe {\n-            let scope = self.scope(&[method, receiver]);\n-            for &arg in args {\n-                scope.keep(arg);\n-            }\n-            let sequence = self.send(self.id.root, b\"sequence\", args)?;\n-            self.engine\n-                .borrow_mut()\n-                .begin_managed_turn()\n-                .map_err(|_| invalid())?;\n-            self.depth.set(self.depth.get() + 1);\n-            let _entered = Invocation(self);\n-            // Explicit captured invocation is part of Block evaluation. It is not an\n-            // extra protocol on the Method selected by an ordinary Id send.\n-            self.send(method, b\"invokeOn:arguments:\", &[receiver, sequence])\n-        }\n-    }\n+    unsafe fn invoke(&self,method:Oop,receiver:Oop,args:&[Oop])->Result<Oop,Oop>{unsafe{\n+        self.engine.borrow_mut().begin_managed_turn().map_err(|_|invalid())?;\n+        self.depth.set(self.depth.get()+1);let _entered=Invocation(self);\n+        crate::id::enter_captured(self.id.root,method,receiver,args)\n+    }}\n     unsafe fn language_result(&self, result: Result<Oop, Oop>) -> Result<Oop, Oop> {\n         unsafe {\n             match result {\n@@ -488,7 +475,8 @@\n     b\"nativeBindingsMatch:\",\n     b\"nativeBindingQuerySemantics:for:\",\n ];\n-static LITERALS: &[Literal] = &[\n+#[unsafe(export_name=\"birnam_private_execution_literals\")]\n+pub static LITERALS: [Literal; 110] = [\n     Literal::new(b\"Block\"),\n     Literal::new(b\"BlockVt\"),\n     Literal::new(b\"Error\"),\n@@ -600,7 +588,8 @@\n     Literal::new(b\"nativeBindingsMatch:\"),\n     Literal::new(b\"nativeBindingQuerySemantics:for:\"),\n ];\n-static METHODS: &[MethodSpec] = &[\n+#[unsafe(export_name=\"birnam_private_execution_methods\")]\n+pub static METHODS: [MethodSpec; 38] = [\n     MethodSpec {\n         name: 23,\n         entry: Some(from_operands),\n@@ -754,7 +743,8 @@\n         entry: Some(resumable::return_at),\n     },\n ];\n-unsafe extern \"C\" fn initialize(\n+#[unsafe(export_name=\"birnam_private_execution_initialize\")]\n+pub unsafe extern \"C\" fn initialize(\n     p: *const Protocol,\n     image: Oop,\n     l: *const Oop,\n@@ -762,6 +752,12 @@\n     a: *const Oop,\n     count: usize,\n ) -> Oop {\n+    // These two public views belong to one private implementation. Reject a\n+    // foreign Id before touching its private state or publishing anything.\n+    let protocol=unsafe{&*p};\n+    if protocol.version!=2 || protocol.byte_size as usize!=size_of::<Protocol>() || !crate::id::owns_protocol(protocol) {\n+        return protocol.invalid;\n+    }\n     API.store(p.cast_mut(), Ordering::Release);\n     let id = unsafe { *p };\n     let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {\n@@ -821,7 +817,7 @@\n             thread: std::thread::current().id(),\n         }));\n         INSTANCE.store(s, Ordering::Release);\n-        for spec in METHODS {\n+        for spec in &METHODS {\n             let name = NAMES[spec.name];\n             let target = match name {\n                 b\"fromMethod:captureOperands:\" | b\"captureWordAt:\" | b\"captureCount\" | b\"clone\" => {\n@@ -860,13 +856,3 @@\n     })()\n     .unwrap_or_else(abi::fault_reference)\n }\n-#[unsafe(no_mangle)]\n-pub static birnam_native_module_v2: Module = Module {\n-    version: 2,\n-    byte_size: size_of::<Module>() as u32,\n-    literals: LITERALS.as_ptr(),\n-    literal_count: LITERALS.len(),\n-    methods: METHODS.as_ptr(),\n-    method_count: METHODS.len(),\n-    initialize: Some(initialize),\n-};\n"
+      }
+    ],
+    "tail-hint-source": [
+      {
+        "path": "Cargo.lock",
+        "base_repository_path": null,
+        "sha256": "8b4f186724c39b72079bb5998f79663e2a602d60073207c79661691d99e0e42a",
+        "patch": "--- /dev/null\n+++ b/Cargo.lock\n@@ -0,0 +1,105 @@\n+# This file is automatically @generated by Cargo.\n+# It is not intended for manual editing.\n+version = 4\n+\n+[[package]]\n+name = \"birnam-abi\"\n+version = \"0.0.0\"\n+\n+[[package]]\n+name = \"birnam-artifact-codec\"\n+version = \"0.0.0\"\n+dependencies = [\n+ \"sha2\",\n+]\n+\n+[[package]]\n+name = \"birnam-execution\"\n+version = \"0.0.0\"\n+dependencies = [\n+ \"birnam-abi\",\n+ \"birnam-artifact-codec\",\n+]\n+\n+[[package]]\n+name = \"block-buffer\"\n+version = \"0.10.4\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71\"\n+dependencies = [\n+ \"generic-array\",\n+]\n+\n+[[package]]\n+name = \"cfg-if\"\n+version = \"1.0.5\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600\"\n+\n+[[package]]\n+name = \"cpufeatures\"\n+version = \"0.2.17\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280\"\n+dependencies = [\n+ \"libc\",\n+]\n+\n+[[package]]\n+name = \"crypto-common\"\n+version = \"0.1.7\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a\"\n+dependencies = [\n+ \"generic-array\",\n+ \"typenum\",\n+]\n+\n+[[package]]\n+name = \"digest\"\n+version = \"0.10.7\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292\"\n+dependencies = [\n+ \"block-buffer\",\n+ \"crypto-common\",\n+]\n+\n+[[package]]\n+name = \"generic-array\"\n+version = \"0.14.7\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a\"\n+dependencies = [\n+ \"typenum\",\n+ \"version_check\",\n+]\n+\n+[[package]]\n+name = \"libc\"\n+version = \"0.2.191\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a\"\n+\n+[[package]]\n+name = \"sha2\"\n+version = \"0.10.9\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283\"\n+dependencies = [\n+ \"cfg-if\",\n+ \"cpufeatures\",\n+ \"digest\",\n+]\n+\n+[[package]]\n+name = \"typenum\"\n+version = \"1.20.1\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20\"\n+\n+[[package]]\n+name = \"version_check\"\n+version = \"0.9.5\"\n+source = \"registry+https://github.com/rust-lang/crates.io-index\"\n+checksum = \"0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a\"\n"
+      },
+      {
+        "path": "Cargo.toml",
+        "base_repository_path": "rust/birnam-execution/Cargo.toml",
+        "sha256": "bb6f93fdac49a173d99ff69ba053d85225406edcfdb96006c91647d49272d330",
+        "patch": "--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1,17 +1,14 @@\n [package]\n-name = \"birnam-execution\"\n-version = \"0.0.0\"\n-edition.workspace = true\n-rust-version.workspace = true\n-publish = false\n-\n+name=\"birnam-execution\"\n+version=\"0.0.0\"\n+edition=\"2024\"\n+rust-version=\"1.95\"\n+[workspace]\n [dependencies]\n-birnam-abi = { path = \"../birnam-abi\" }\n-birnam-artifact-codec = { path = \"../birnam-artifact-codec\" }\n-\n+birnam-abi={path=\"/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-abi\"}\n+birnam-artifact-codec={path=\"/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-artifact-codec\"}\n [lib]\n-name = \"birnam_execution\"\n-crate-type = [\"cdylib\", \"rlib\"]\n-\n-[lints]\n-workspace = true\n+name=\"birnam_execution\"\n+crate-type=[\"cdylib\"]\n+[profile.release]\n+panic=\"abort\"\n"
+      },
+      {
+        "path": "src/resumable_runtime.rs",
+        "base_repository_path": "rust/birnam-execution/src/resumable_runtime.rs",
+        "sha256": "d63504472dfc5157215b8954a366e9ed3352cd5a2a18b971338f650a2a7f12e2",
+        "patch": "--- a/src/resumable_runtime.rs\n+++ b/src/resumable_runtime.rs\n@@ -28,6 +28,7 @@\n     run_descriptor: Option<Arc<FrameDescriptor>>,\n     active: Vec<MachineCapability>,\n     pending: HashSet<u64>,\n+    pending_tail: bool,\n }\n pub(super) const METHOD_NAMES: &[&[u8]] = &[\n     b\"fromStep:descriptor:selection:owner:\",\n@@ -556,7 +557,10 @@\n                             )?;\n                             // Never reflect on the selected Method here. Ordinary\n                             // Id dispatch enters it directly and handles DNU.\n+                            let previous=s.resume.borrow().pending_tail;\n+                            s.resume.borrow_mut().pending_tail=tail;\n                             let value = s.id.send(operands.receiver, operands.selector, &args);\n+                            s.resume.borrow_mut().pending_tail=previous;\n                             checked(\n                                 checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?\n                                     .leave_synchronous_boundary(OWNER),\n@@ -618,7 +622,8 @@\n             checked(s.engine.borrow_mut().release_acquired_entry(entry))?;\n             return Err(error);\n         }\n-        push(s, cap, entry, value, None, false)?;\n+        let tail_hint=inherited.is_some() && s.resume.borrow().pending_tail;\n+        push(s, cap, entry, value, None, tail_hint)?;\n         drive(s, machine, cap, None)\n     }\n }\n"
+      }
+    ],
+    "driver": [
+      {
+        "path": "oop_slice/compiler.rs",
+        "base_repository_path": "rust/birnam-siphon/examples/oop_slice/compiler.rs",
+        "sha256": "9c82df7f71a29f67a14b6352eb600babe0ebf202c4cae906f8a4ce2bb29d3665",
+        "patch": "--- a/oop_slice/compiler.rs\n+++ b/oop_slice/compiler.rs\n@@ -263,7 +263,10 @@\n             abi::as_size(send(tcc, b\"liveNativeUnits\", &[]).unwrap()),\n             Some(before)\n         );\n+        super::seam::check(id, send, sel, [ns, roots, gc, string, actor, integer, blocks]);\n+        if std::env::var_os(\"BIRNAM_SEAM_ONLY\").is_none(){\n         super::resumable::check(id,send,sel,[ns,roots,gc,string,actor,integer,blocks]);\n+        }\n         println!(\"COMPILER_EXECUTION_OOP_OK\");\n     }\n }\n"
+      },
+      {
+        "path": "oop_slice/seam.rs",
+        "base_repository_path": null,
+        "sha256": "5d2434bddb567babb8508ee5ad7f8e50181bcd6db4561950d36fdfda230349ef",
+        "patch": "--- /dev/null\n+++ b/oop_slice/seam.rs\n@@ -0,0 +1,50 @@\n+use birnam_abi::{self as abi,Oop,id_protocol::Protocol};\n+pub(super) unsafe fn check(id:&Protocol,send:&impl Fn(Oop,&[u8],&[Oop])->Result<Oop,Oop>,sel:&impl Fn(&[u8])->Oop,objects:[Oop;7]){unsafe{\n+ let[ns,roots,gc,string,actor,integer,blocks]=objects;\n+ let keep=|v|{send(roots,b\"retain:\",&[v]).unwrap();v};let token=|v|send(roots,b\"retain:\",&[v]).unwrap();let release=|t|{send(roots,b\"release:\",&[t]).unwrap();};\n+ let text=|bytes:&[u8]|{let v:Vec<_>=bytes.iter().map(|&b|abi::size(b as usize).unwrap()).collect();let data=send(id.root,b\"sequence\",&v).unwrap();keep(send(string,b\"fromBytes:\",&[data]).unwrap())};\n+ let codegen=send(ns,b\"at:\",&[sel(b\"Codegen\")]).unwrap();let machines=send(ns,b\"at:\",&[sel(b\"Machine\")]).unwrap();let tcc=send(ns,b\"at:\",&[sel(b\"TCC\")]).unwrap();let truth=send(ns,b\"at:\",&[sel(b\"true\")]).unwrap();let nil=send(ns,b\"at:\",&[sel(b\"nil\")]).unwrap();\n+ let compile=|source:&str|{let method=send(codegen,b\"compileResumable:\",&[text(source.as_bytes())]).unwrap();assert_ne!(send(method,b\"isError\",&[]).unwrap(),truth,\"{source}\");method};\n+ let block=|source:&str|{let method=compile(source);let mt=token(method);let root=send(blocks,b\"fromMethod:captureOperands:\",&[method]).unwrap();let rt=token(root);let value=keep(send(root,b\"value\",&[]).unwrap());release(rt);release(mt);value};\n+ let bits=|v|{let word=send(integer,b\"wordOf:\",&[v]).unwrap();if let Some(n)=abi::as_size(word){n}else{abi::as_size(send(word,b\"low32\",&[]).unwrap()).unwrap()}};\n+ let number=|n|keep(send(integer,b\"fromWord:\",&[abi::size(n).unwrap()]).unwrap());let one=number(1);\n+ let path=std::path::PathBuf::from(std::env::var_os(\"BIRNAM_OOP_TARGET\").unwrap()).join(\"fixtures/seam.dylib\");use std::os::unix::ffi::OsStrExt;\n+ let values:Vec<_>=path.as_os_str().as_bytes().iter().map(|&b|abi::size(b as usize).unwrap()).collect();let name=send(id.root,b\"nameWithBytes\",&values).unwrap();let image=keep(send(name,b\"loadNative\",&[]).unwrap());\n+ let get_method=|name:&[u8],context|{let m=send(image,b\"methodAt:\",&[sel(name)]).unwrap();send(m,b\"withContext:\",&[context]).unwrap()};\n+ let base=send(id.root,b\"objectBehavior\",&[]).unwrap();let probe_type=keep(send(base,b\"delegated\",&[]).unwrap());let probe=keep(send(probe_type,b\"allocate\",&[abi::size(0).unwrap()]).unwrap());send(ns,b\"at:put:\",&[sel(b\"SeamProbe\"),probe]).unwrap();\n+ for name in [b\"mark:\".as_slice(),b\"counts\",b\"reset\"]{let method=get_method(name,nil);send(probe_type,b\"addMethod\",&[sel(name),method]).unwrap();}\n+ send(probe,b\"reset\",&[]).unwrap();\n+ let callback=block(\"[| [SeamProbe mark: #callback]; [GC collectPrecisely]; 37]\");\n+ let caller=block(\"[| let n := [SeamProbe nativeCallback]; [n + 5]]\");\n+ let machine=keep(send(machines,b\"new\",&[]).unwrap());let context=send(id.root,b\"sequence\",&[machine,callback,integer]).unwrap();let method=get_method(b\"nativeCallback\",context);send(probe_type,b\"addMethod\",&[sel(b\"nativeCallback\"),method]).unwrap();\n+ assert_eq!(bits(send(machine,b\"runBlock:\",&[caller]).unwrap()),42);\n+ let counts=send(probe,b\"counts\",&[]).unwrap();assert_eq!(send(counts,b\"at:\",&[abi::size(0).unwrap()]),Ok(abi::size(1).unwrap()));assert_eq!(send(counts,b\"at:\",&[abi::size(3).unwrap()]),Ok(abi::size(1).unwrap()));\n+ println!(\"SEAM=native_callback_and_recursive_drive_rejection_passed\");\n+ // Lookup calls source code on the same receiver/arity while selecting a tail target.\n+ let helper=compile(\"[SeamProbe mark: #lookupMark]; 37\");send(probe_type,b\"addMethod\",&[sel(b\"duringLookup\"),helper]).unwrap();\n+ let target=compile(\"[SeamProbe mark: #targetMark]; 5\");send(probe_type,b\"addMethod\",&[sel(b\"seamTarget\"),target]).unwrap();\n+ let caller=block(\"[| [SeamProbe seamTarget]]\");let meta=send(id.root,b\"behaviorOf:\",&[probe_type]).unwrap();let original=send(meta,b\"lookup\",&[sel(b\"lookup\")]).unwrap();let context=send(id.root,b\"sequence\",&[original,probe]).unwrap();let method=get_method(b\"lookupCallback\",context);let custom=keep(send(meta,b\"delegated\",&[]).unwrap());send(custom,b\"addMethod\",&[sel(b\"lookup\"),method]).unwrap();send(id.root,b\"reassociateBehaviorOf:with:\",&[probe_type,custom]).unwrap();\n+ let machine=keep(send(machines,b\"new\",&[]).unwrap());assert_eq!(bits(send(machine,b\"runBlock:\",&[caller]).unwrap()),5);\n+ let counts=send(probe,b\"counts\",&[]).unwrap();for i in [1,2]{assert_eq!(send(counts,b\"at:\",&[abi::size(i).unwrap()]),Ok(abi::size(1).unwrap()));}\n+ send(id.root,b\"reassociateBehaviorOf:with:\",&[probe_type,meta]).unwrap();println!(\"SEAM=lookup_source_callback_same_receiver_and_arity_passed\");\n+ // Two independent runnable Machines with a shared scheduler root; no globals\n+ // contain their frame values. Alternate a single transition, then collect.\n+ let iterations=std::env::var(\"BIRNAM_SEAM_ITERATIONS\").unwrap_or_else(|_|\"1000\".into()).parse::<usize>().unwrap();\n+ let actor_type=send(id.root,b\"behaviorOf:\",&[actor]).unwrap();let constant=send(actor_type,b\"lookup\",&[sel(b\"constantValue\")]).unwrap();let mut setup=Vec::new();let mut owned=Vec::new();let mut contexts=Vec::new();let expected=[13usize,35];\n+ for(index,name)in [b\"SeamA\".as_slice(),b\"SeamB\"].into_iter().enumerate(){\n+  let vt=keep(send(base,b\"delegated\",&[]).unwrap());let receiver=keep(send(vt,b\"allocate\",&[abi::size(0).unwrap()]).unwrap());send(ns,b\"at:put:\",&[sel(name),receiver]).unwrap();\n+  let source=format!(\"[{} tick]; [{} loop]\",String::from_utf8_lossy(name),String::from_utf8_lossy(name));let method=compile(&source);owned.push(token(method));send(vt,b\"addMethod\",&[sel(b\"loop\"),method]).unwrap();\n+  let root=send(blocks,b\"fromMethod:captureOperands:\",&[method]).unwrap();owned.push(token(root));let machine=send(machines,b\"new\",&[]).unwrap();owned.push(token(machine));\n+  let value=number(expected[index]);let stop=send(constant,b\"withContext:\",&[value]).unwrap();let st=token(stop);let context=send(id.root,b\"sequence\",&[abi::size(iterations).unwrap(),vt,stop,abi::size(0).unwrap()]).unwrap();contexts.push(context);let ct=token(context);let tick=get_method(b\"tick\",context);send(vt,b\"addMethod\",&[sel(b\"tick\"),tick]).unwrap();release(st);release(ct);\n+  assert_eq!(send(machine,b\"runBlock:budget:\",&[root,one]),Ok(machine));setup.push(machine);\n+ }\n+ let scheduler=send(id.root,b\"sequence\",&[setup[0],setup[1],nil,nil]).unwrap();let scheduler_token=token(scheduler);for t in owned{release(t);}\n+ let mut done=[false;2];let mut transitions=0usize;\n+ while !done.iter().all(|v|*v){for i in 0..2{if done[i]{continue;}let answer=send(setup[i],b\"continueWithBudget:\",&[one]).unwrap();transitions+=1;\n+  if answer!=setup[i]{send(scheduler,b\"at:put:\",&[abi::size(i+2).unwrap(),answer]).unwrap();assert_eq!(bits(answer),expected[i]);done[i]=true;}\n+  if transitions%2048==0{send(gc,b\"collectPrecisely\",&[]).unwrap();send(tcc,b\"checkpoint\",&[]).unwrap();}\n+ }}\n+ for context in contexts{assert_eq!(send(context,b\"at:\",&[abi::size(3).unwrap()]),Ok(abi::size(iterations).unwrap()));}\n+ send(gc,b\"collectPrecisely\",&[]).unwrap();for i in 0..2{let value=send(scheduler,b\"at:\",&[abi::size(i+2).unwrap()]).unwrap();assert_eq!(bits(value),expected[i]);}release(scheduler_token);\n+ println!(\"SEAM=interleaved_machines_passed iterations_per_machine={iterations} transitions={transitions}\");\n+}}\n"
+      },
+      {
+        "path": "oop_slice/tcc.rs",
+        "base_repository_path": "rust/birnam-siphon/examples/oop_slice/tcc.rs",
+        "sha256": "4ef2838e46d56cc83c88d8a1ddc0262d02705923e895a91849eaa5b9564090f2",
+        "patch": "--- a/oop_slice/tcc.rs\n+++ b/oop_slice/tcc.rs\n@@ -28,8 +28,8 @@\n             .expect(\"real Execution loaded\");\n         let source = format!(\n             \"{}\\n{}\",\n-            include_str!(\"../../../../tests/fixtures/oop-id-v2/id.h\"),\n-            include_str!(\"../../../../tests/fixtures/oop-id-v2/compiled.c\")\n+            include_str!(\"/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-id-v2/id.h\"),\n+            include_str!(\"/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-id-v2/compiled.c\")\n         );\n         let unit = send(tcc, b\"compile:\", &[text(source.as_bytes())]).expect(\"C compiled\");\n         let token = send(roots, b\"retain:\", &[unit]).unwrap();\n"
+      },
+      {
+        "path": "oop_slice.rs",
+        "base_repository_path": "rust/birnam-siphon/examples/oop_slice.rs",
+        "sha256": "d62ac1e945900af14d174fb88cfd95f459d7bc9fcfb8f34895f41d2114c31b7d",
+        "patch": "--- a/oop_slice.rs\n+++ b/oop_slice.rs\n@@ -9,6 +9,8 @@\n mod compiler;\n #[path=\"oop_slice/resumable.rs\"]\n mod resumable;\n+#[path=\"oop_slice/seam.rs\"]\n+mod seam;\n fn main() {\n     unsafe { run() }\n }\n@@ -53,6 +55,7 @@\n             library.join(\"libbirnam_codegen_runtime.dylib\"),\n         ];\n         let words: &[&[u8]] = &[\n+ b\"methodAt:\",b\"loadNative\",b\"SeamProbe\",b\"SeamA\",b\"SeamB\",b\"nativeCallback\",b\"lookupCallback\",b\"seamTarget\",b\"duringLookup\",b\"mark:\",b\"callback\",b\"lookupMark\",b\"targetMark\",b\"counts\",b\"reset\",b\"tick\",b\"loop\",\n             b\"TailProbe\",b\"tailTick\",b\"tailSetup:\",b\"tailPeak\",b\"tailCalls\",b\"tailRecurse\",\n             b\"LookupProbe\",b\"resumableBound\",b\"fromStep:descriptor:selection:owner:\",b\"compileResumable:\",b\"Machine\",b\"MachineVt\",b\"runBlock:\",b\"runBlock:budget:\",b\"continueWithBudget:\",b\"destroy\",b\"executionState\",b\"isRunnable\",b\"liveFrameCount\",b\"runnable\",b\"completed\",b\"resumeMark:\",b\"resumeCount:\",b\"resumeReset\",b\"before\",b\"entered\",b\"after\",b\"later\",b\"child\",\n             b\"Namespace\",b\"methodFor:\",b\"captureWordAt:\",b\"Lang\",b\"Codegen\",b\"compileSynchronous:\",b\"NativeBackend\",b\"Block\",b\"BlockVt\",b\"constantValue\",b\"errorKind\",b\"isError\",b\"kind:\",b\"fromMethod:captureOperands:\",b\"compiledProbe:\",b\"dependency:\",b\"CompilerProbe\",b\"evaluatePreservingFailures:\",b\"releaseTokensProtecting\",b\"Globals\",b\"savedRelease:\",b\"collectingRelease\",b\"liveNativeUnits\",b\"compiledRunning\",b\"removeDuringCall:\",b\"milestoneValue\",b\"compileError\",b\"nativeFailure\",b\"nativeInvalidRequest\",\n"
+      }
+    ],
+    "mismatch-driver": [
+      {
+        "path": "oop_slice/compiler.rs",
+        "base_repository_path": "rust/birnam-siphon/examples/oop_slice/compiler.rs",
+        "sha256": "9c82df7f71a29f67a14b6352eb600babe0ebf202c4cae906f8a4ce2bb29d3665",
+        "patch": "--- a/oop_slice/compiler.rs\n+++ b/oop_slice/compiler.rs\n@@ -263,7 +263,10 @@\n             abi::as_size(send(tcc, b\"liveNativeUnits\", &[]).unwrap()),\n             Some(before)\n         );\n+        super::seam::check(id, send, sel, [ns, roots, gc, string, actor, integer, blocks]);\n+        if std::env::var_os(\"BIRNAM_SEAM_ONLY\").is_none(){\n         super::resumable::check(id,send,sel,[ns,roots,gc,string,actor,integer,blocks]);\n+        }\n         println!(\"COMPILER_EXECUTION_OOP_OK\");\n     }\n }\n"
+      },
+      {
+        "path": "oop_slice/seam.rs",
+        "base_repository_path": null,
+        "sha256": "5d2434bddb567babb8508ee5ad7f8e50181bcd6db4561950d36fdfda230349ef",
+        "patch": "--- /dev/null\n+++ b/oop_slice/seam.rs\n@@ -0,0 +1,50 @@\n+use birnam_abi::{self as abi,Oop,id_protocol::Protocol};\n+pub(super) unsafe fn check(id:&Protocol,send:&impl Fn(Oop,&[u8],&[Oop])->Result<Oop,Oop>,sel:&impl Fn(&[u8])->Oop,objects:[Oop;7]){unsafe{\n+ let[ns,roots,gc,string,actor,integer,blocks]=objects;\n+ let keep=|v|{send(roots,b\"retain:\",&[v]).unwrap();v};let token=|v|send(roots,b\"retain:\",&[v]).unwrap();let release=|t|{send(roots,b\"release:\",&[t]).unwrap();};\n+ let text=|bytes:&[u8]|{let v:Vec<_>=bytes.iter().map(|&b|abi::size(b as usize).unwrap()).collect();let data=send(id.root,b\"sequence\",&v).unwrap();keep(send(string,b\"fromBytes:\",&[data]).unwrap())};\n+ let codegen=send(ns,b\"at:\",&[sel(b\"Codegen\")]).unwrap();let machines=send(ns,b\"at:\",&[sel(b\"Machine\")]).unwrap();let tcc=send(ns,b\"at:\",&[sel(b\"TCC\")]).unwrap();let truth=send(ns,b\"at:\",&[sel(b\"true\")]).unwrap();let nil=send(ns,b\"at:\",&[sel(b\"nil\")]).unwrap();\n+ let compile=|source:&str|{let method=send(codegen,b\"compileResumable:\",&[text(source.as_bytes())]).unwrap();assert_ne!(send(method,b\"isError\",&[]).unwrap(),truth,\"{source}\");method};\n+ let block=|source:&str|{let method=compile(source);let mt=token(method);let root=send(blocks,b\"fromMethod:captureOperands:\",&[method]).unwrap();let rt=token(root);let value=keep(send(root,b\"value\",&[]).unwrap());release(rt);release(mt);value};\n+ let bits=|v|{let word=send(integer,b\"wordOf:\",&[v]).unwrap();if let Some(n)=abi::as_size(word){n}else{abi::as_size(send(word,b\"low32\",&[]).unwrap()).unwrap()}};\n+ let number=|n|keep(send(integer,b\"fromWord:\",&[abi::size(n).unwrap()]).unwrap());let one=number(1);\n+ let path=std::path::PathBuf::from(std::env::var_os(\"BIRNAM_OOP_TARGET\").unwrap()).join(\"fixtures/seam.dylib\");use std::os::unix::ffi::OsStrExt;\n+ let values:Vec<_>=path.as_os_str().as_bytes().iter().map(|&b|abi::size(b as usize).unwrap()).collect();let name=send(id.root,b\"nameWithBytes\",&values).unwrap();let image=keep(send(name,b\"loadNative\",&[]).unwrap());\n+ let get_method=|name:&[u8],context|{let m=send(image,b\"methodAt:\",&[sel(name)]).unwrap();send(m,b\"withContext:\",&[context]).unwrap()};\n+ let base=send(id.root,b\"objectBehavior\",&[]).unwrap();let probe_type=keep(send(base,b\"delegated\",&[]).unwrap());let probe=keep(send(probe_type,b\"allocate\",&[abi::size(0).unwrap()]).unwrap());send(ns,b\"at:put:\",&[sel(b\"SeamProbe\"),probe]).unwrap();\n+ for name in [b\"mark:\".as_slice(),b\"counts\",b\"reset\"]{let method=get_method(name,nil);send(probe_type,b\"addMethod\",&[sel(name),method]).unwrap();}\n+ send(probe,b\"reset\",&[]).unwrap();\n+ let callback=block(\"[| [SeamProbe mark: #callback]; [GC collectPrecisely]; 37]\");\n+ let caller=block(\"[| let n := [SeamProbe nativeCallback]; [n + 5]]\");\n+ let machine=keep(send(machines,b\"new\",&[]).unwrap());let context=send(id.root,b\"sequence\",&[machine,callback,integer]).unwrap();let method=get_method(b\"nativeCallback\",context);send(probe_type,b\"addMethod\",&[sel(b\"nativeCallback\"),method]).unwrap();\n+ assert_eq!(bits(send(machine,b\"runBlock:\",&[caller]).unwrap()),42);\n+ let counts=send(probe,b\"counts\",&[]).unwrap();assert_eq!(send(counts,b\"at:\",&[abi::size(0).unwrap()]),Ok(abi::size(1).unwrap()));assert_eq!(send(counts,b\"at:\",&[abi::size(3).unwrap()]),Ok(abi::size(1).unwrap()));\n+ println!(\"SEAM=native_callback_and_recursive_drive_rejection_passed\");\n+ // Lookup calls source code on the same receiver/arity while selecting a tail target.\n+ let helper=compile(\"[SeamProbe mark: #lookupMark]; 37\");send(probe_type,b\"addMethod\",&[sel(b\"duringLookup\"),helper]).unwrap();\n+ let target=compile(\"[SeamProbe mark: #targetMark]; 5\");send(probe_type,b\"addMethod\",&[sel(b\"seamTarget\"),target]).unwrap();\n+ let caller=block(\"[| [SeamProbe seamTarget]]\");let meta=send(id.root,b\"behaviorOf:\",&[probe_type]).unwrap();let original=send(meta,b\"lookup\",&[sel(b\"lookup\")]).unwrap();let context=send(id.root,b\"sequence\",&[original,probe]).unwrap();let method=get_method(b\"lookupCallback\",context);let custom=keep(send(meta,b\"delegated\",&[]).unwrap());send(custom,b\"addMethod\",&[sel(b\"lookup\"),method]).unwrap();send(id.root,b\"reassociateBehaviorOf:with:\",&[probe_type,custom]).unwrap();\n+ let machine=keep(send(machines,b\"new\",&[]).unwrap());assert_eq!(bits(send(machine,b\"runBlock:\",&[caller]).unwrap()),5);\n+ let counts=send(probe,b\"counts\",&[]).unwrap();for i in [1,2]{assert_eq!(send(counts,b\"at:\",&[abi::size(i).unwrap()]),Ok(abi::size(1).unwrap()));}\n+ send(id.root,b\"reassociateBehaviorOf:with:\",&[probe_type,meta]).unwrap();println!(\"SEAM=lookup_source_callback_same_receiver_and_arity_passed\");\n+ // Two independent runnable Machines with a shared scheduler root; no globals\n+ // contain their frame values. Alternate a single transition, then collect.\n+ let iterations=std::env::var(\"BIRNAM_SEAM_ITERATIONS\").unwrap_or_else(|_|\"1000\".into()).parse::<usize>().unwrap();\n+ let actor_type=send(id.root,b\"behaviorOf:\",&[actor]).unwrap();let constant=send(actor_type,b\"lookup\",&[sel(b\"constantValue\")]).unwrap();let mut setup=Vec::new();let mut owned=Vec::new();let mut contexts=Vec::new();let expected=[13usize,35];\n+ for(index,name)in [b\"SeamA\".as_slice(),b\"SeamB\"].into_iter().enumerate(){\n+  let vt=keep(send(base,b\"delegated\",&[]).unwrap());let receiver=keep(send(vt,b\"allocate\",&[abi::size(0).unwrap()]).unwrap());send(ns,b\"at:put:\",&[sel(name),receiver]).unwrap();\n+  let source=format!(\"[{} tick]; [{} loop]\",String::from_utf8_lossy(name),String::from_utf8_lossy(name));let method=compile(&source);owned.push(token(method));send(vt,b\"addMethod\",&[sel(b\"loop\"),method]).unwrap();\n+  let root=send(blocks,b\"fromMethod:captureOperands:\",&[method]).unwrap();owned.push(token(root));let machine=send(machines,b\"new\",&[]).unwrap();owned.push(token(machine));\n+  let value=number(expected[index]);let stop=send(constant,b\"withContext:\",&[value]).unwrap();let st=token(stop);let context=send(id.root,b\"sequence\",&[abi::size(iterations).unwrap(),vt,stop,abi::size(0).unwrap()]).unwrap();contexts.push(context);let ct=token(context);let tick=get_method(b\"tick\",context);send(vt,b\"addMethod\",&[sel(b\"tick\"),tick]).unwrap();release(st);release(ct);\n+  assert_eq!(send(machine,b\"runBlock:budget:\",&[root,one]),Ok(machine));setup.push(machine);\n+ }\n+ let scheduler=send(id.root,b\"sequence\",&[setup[0],setup[1],nil,nil]).unwrap();let scheduler_token=token(scheduler);for t in owned{release(t);}\n+ let mut done=[false;2];let mut transitions=0usize;\n+ while !done.iter().all(|v|*v){for i in 0..2{if done[i]{continue;}let answer=send(setup[i],b\"continueWithBudget:\",&[one]).unwrap();transitions+=1;\n+  if answer!=setup[i]{send(scheduler,b\"at:put:\",&[abi::size(i+2).unwrap(),answer]).unwrap();assert_eq!(bits(answer),expected[i]);done[i]=true;}\n+  if transitions%2048==0{send(gc,b\"collectPrecisely\",&[]).unwrap();send(tcc,b\"checkpoint\",&[]).unwrap();}\n+ }}\n+ for context in contexts{assert_eq!(send(context,b\"at:\",&[abi::size(3).unwrap()]),Ok(abi::size(iterations).unwrap()));}\n+ send(gc,b\"collectPrecisely\",&[]).unwrap();for i in 0..2{let value=send(scheduler,b\"at:\",&[abi::size(i+2).unwrap()]).unwrap();assert_eq!(bits(value),expected[i]);}release(scheduler_token);\n+ println!(\"SEAM=interleaved_machines_passed iterations_per_machine={iterations} transitions={transitions}\");\n+}}\n"
+      },
+      {
+        "path": "oop_slice/tcc.rs",
+        "base_repository_path": "rust/birnam-siphon/examples/oop_slice/tcc.rs",
+        "sha256": "64fd7b67282b9501f97c1212f0242647ca83647d89b8af5293e2ba5f075e3327",
+        "patch": "--- a/oop_slice/tcc.rs\n+++ b/oop_slice/tcc.rs\n@@ -24,12 +24,16 @@\n         let args = send(id.root, b\"sequence\", &[ns]).unwrap();\n         let tcc = id.send(paths[0], id.load, &[args]).expect(\"TCC loaded\");\n         let args = send(id.root, b\"sequence\", &[ns]).unwrap();\n-        id.send(paths[1], id.load, &[args])\n-            .expect(\"real Execution loaded\");\n+        let outcome=id.send(paths[1],id.load,&[args]);\n+        assert!(outcome.is_err(),\"foreign private owner must be refused\");\n+        assert!(send(ns,b\"at:\",&[sel(b\"Execution\")]).unwrap().is_null(),\"no Execution publication after refusal\");\n+        assert_eq!(send(id.root,b\"yourself\",&[]),Ok(id.root));\n+        println!(\"SEAM=mixed_owner_refused_before_publication_original_id_usable\");\n+        std::process::exit(0);\n         let source = format!(\n             \"{}\\n{}\",\n-            include_str!(\"../../../../tests/fixtures/oop-id-v2/id.h\"),\n-            include_str!(\"../../../../tests/fixtures/oop-id-v2/compiled.c\")\n+            include_str!(\"/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-id-v2/id.h\"),\n+            include_str!(\"/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-id-v2/compiled.c\")\n         );\n         let unit = send(tcc, b\"compile:\", &[text(source.as_bytes())]).expect(\"C compiled\");\n         let token = send(roots, b\"retain:\", &[unit]).unwrap();\n"
+      },
+      {
+        "path": "oop_slice.rs",
+        "base_repository_path": "rust/birnam-siphon/examples/oop_slice.rs",
+        "sha256": "d62ac1e945900af14d174fb88cfd95f459d7bc9fcfb8f34895f41d2114c31b7d",
+        "patch": "--- a/oop_slice.rs\n+++ b/oop_slice.rs\n@@ -9,6 +9,8 @@\n mod compiler;\n #[path=\"oop_slice/resumable.rs\"]\n mod resumable;\n+#[path=\"oop_slice/seam.rs\"]\n+mod seam;\n fn main() {\n     unsafe { run() }\n }\n@@ -53,6 +55,7 @@\n             library.join(\"libbirnam_codegen_runtime.dylib\"),\n         ];\n         let words: &[&[u8]] = &[\n+ b\"methodAt:\",b\"loadNative\",b\"SeamProbe\",b\"SeamA\",b\"SeamB\",b\"nativeCallback\",b\"lookupCallback\",b\"seamTarget\",b\"duringLookup\",b\"mark:\",b\"callback\",b\"lookupMark\",b\"targetMark\",b\"counts\",b\"reset\",b\"tick\",b\"loop\",\n             b\"TailProbe\",b\"tailTick\",b\"tailSetup:\",b\"tailPeak\",b\"tailCalls\",b\"tailRecurse\",\n             b\"LookupProbe\",b\"resumableBound\",b\"fromStep:descriptor:selection:owner:\",b\"compileResumable:\",b\"Machine\",b\"MachineVt\",b\"runBlock:\",b\"runBlock:budget:\",b\"continueWithBudget:\",b\"destroy\",b\"executionState\",b\"isRunnable\",b\"liveFrameCount\",b\"runnable\",b\"completed\",b\"resumeMark:\",b\"resumeCount:\",b\"resumeReset\",b\"before\",b\"entered\",b\"after\",b\"later\",b\"child\",\n             b\"Namespace\",b\"methodFor:\",b\"captureWordAt:\",b\"Lang\",b\"Codegen\",b\"compileSynchronous:\",b\"NativeBackend\",b\"Block\",b\"BlockVt\",b\"constantValue\",b\"errorKind\",b\"isError\",b\"kind:\",b\"fromMethod:captureOperands:\",b\"compiledProbe:\",b\"dependency:\",b\"CompilerProbe\",b\"evaluatePreservingFailures:\",b\"releaseTokensProtecting\",b\"Globals\",b\"savedRelease:\",b\"collectingRelease\",b\"liveNativeUnits\",b\"compiledRunning\",b\"removeDuringCall:\",b\"milestoneValue\",b\"compileError\",b\"nativeFailure\",b\"nativeInvalidRequest\",\n"
+      }
+    ]
+  },
+  "logs": {
+    "unit-direct-final.log": {
+      "sha256": "fa1b61dd0354b712a5afe2cf11978085b311581b5e0535bf53cc95ca114ff574",
+      "text_utf8_lossy": "   Compiling birnam-callable-core v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/seam-experiments/shared-direct-source)\nwarning: unused import: `Module`\n --> src/synchronous.rs:7:40\n  |\n7 |     id_protocol::{Literal, MethodSpec, Module, Protocol},\n  |                                        ^^^^^^\n  |\n  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: method `vtable_of` is never used\n   --> src/id/object_memory.rs:149:19\n    |\n128 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n149 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: direct cast of function item into an integer\n  --> src/id/mod.rs:16:53\n   |\n16 |     protocol.message as usize == native_id::message as usize\n   |                                                     ^^^^^^^^\n   |\n   = note: `#[warn(function_casts_as_integer)]` on by default\nhelp: first cast to a pointer `as *const ()`\n   |\n16 |     protocol.message as usize == native_id::message as *const () as usize\n   |                                                     ++++++++++++\n\nwarning: `birnam-callable-core` (lib test) generated 3 warnings (run `cargo fix --lib -p birnam-callable-core --tests` to apply 2 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s\n     Running unittests src/lib.rs (.cargo-target/seam-experiments/build-direct/debug/deps/birnam_callable_core-51d58d6c6884c555)\n\nrunning 43 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest entry::tests::reused_address_does_not_reuse_registration_identity ... ok\ntest entry_plan::tests::entry_transfer_preserves_sparse_bindings_missing_arguments_and_captures ... ok\ntest execution::tests::acquired_descriptor_matches_materialization_and_requires_a_live_acquisition ... ok\ntest execution::scheduling::tests::scheduling_stop_rejects_barriers_pending_edges_and_epoch_overflow ... ok\ntest execution::loop_iteration::tests::stamps_require_actual_self_tail_and_do_not_survive_restore_or_slot_reuse ... ok\ntest execution::tests::checked_frame_operations_validate_before_mutation ... ok\ntest execution::tail_entry::tests::planned_tail_entries_match_complete_frames_and_reject_without_publication ... ok\ntest execution::tests::collected_unpublished_block_generation_can_retire_without_republication ... ok\ntest execution::tests::collected_block_bindings_republish_only_after_holders_release ... ok\ntest execution::tests::descriptor_rejects_bad_arity_ranges_kinds_and_continuations ... ok\ntest execution::tests::frame_push_initializes_oop_roots_and_pop_invalidates_reused_handles ... ok\ntest execution::tests::machine_registry_enforces_owner_lifecycle_and_generational_reuse ... ok\ntest execution::tests::oop_test_values_are_pointer_sized ... ok\ntest execution::tests::owned_publication_keeps_exact_methods_without_synthetic_bindings ... ok\ntest execution::tests::recovery_scope_survives_balanced_reentry_but_not_scope_or_frame_changes ... ok\ntest execution::tests::rollback_binding_revives_a_generation_lease_pinned_retiring_entry ... ok\ntest execution::tests::v2_parallel_copy_cycles_and_call_results_use_preallocated_scratch ... ok\ntest execution::tests::v2_transition_keeps_predecessor_roots_until_copy_clear_commit ... ok\ntest execution::tests::resolve_and_classify_fast_path_has_no_allocation_lock_atomic_or_refcount_surface ... ok\ntest id::bootstrap_values::tests::detached_payloads_keep_their_reference_and_contents ... ok\ntest id::bootstrap_values::tests::object_valued_fact_queries_decline_after_live_replacement ... ok\ntest id::bootstrap_values::tests::failure_can_be_caught_and_stored_as_data ... ok\ntest id::bootstrap_values::tests::payload_meaning_can_be_supplied_after_allocation ... ok\ntest id::object_memory::tests::allocation_geometry_preserves_extent_identity_and_record_size ... ok\ntest id::native_id::lifetime_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::native_id::lifetime_tests::detached_receiver_with_released_metavtable_is_not_dispatched ... ok\ntest id::bootstrap_values::tests::malformed_native_method_bytes_are_not_called ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::bootstrap_values::tests::reference_storage_rejects_invalid_lengths_and_non_object_words ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_the_current_root_relation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest objects::tests::payload_access_requires_current_membership_and_valid_extent ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::native_id::lifetime_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\ntest execution::tests::canonical_v2_bytes_admit_into_owned_runtime_metadata ... ok\ntest objects::tests::private_records_match_exact_addresses_through_growth_retirement_and_reuse ... ok\n\ntest result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s\n\n"
+    },
+    "mismatch-check.stdout": {
+      "sha256": "c3bbb451198bc817a03c56b18024590f82db96296a586b5b1c3c72b7c00a3885",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSystem readLine binary input, EOF, detached Method, live constructor and callback GC: passed\nEnvironment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed\nOOP_STDOUT:\u0000\ufffd\nOOP_NUMBER:2\nOOP_REENTRY;OOP_REENTRY;\nSystem output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed\nFile I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed\nPEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed\nArtifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed\nSEAM=mixed_owner_refused_before_publication_original_id_usable\n"
+    },
+    "mismatch-check.stderr": {
+      "sha256": "a6d328ffa0ca9af314b8b49209bf4dce63559fe97a70ed6c16520fa8c2a264a1",
+      "text_utf8_lossy": "OOP_STDERR:\u0000\ufffd"
+    },
+    "shared-direct-independent-c.stdout": {
+      "sha256": "8cda15b5b2a25b85c31ba89513956090c0970565422e3dccbb04a397391a76e0",
+      "text_utf8_lossy": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":2561042,\"ns_per_op\":64.026050}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":16355125,\"ns_per_op\":54.517083}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2496708,\"ns_per_op\":304.773926}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":14851083,\"ns_per_op\":14851083.000000}\n{\"heap_before\":56805,\"heap_after\":2917,\"reclaimed\":53888}\n"
+    },
+    "shared-direct-input-error.stdout": {
+      "sha256": "e344016d3fbcb83abc84fefb24576a8a68d9d399974b9b0bc0f147fc9ef1193f",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSYSTEM_INPUT_ERROR_OK\n"
+    },
+    "shared-direct-input-error.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "tail-hint-extra.stderr": {
+      "sha256": "643c80c4537fdaedb9b2d4659ce0d515327a15966ea37abf18f7129cfa5fdda9",
+      "text_utf8_lossy": "OOP_STDERR:\u0000\ufffd\nthread 'main' (19351369) panicked at .cargo-target/seam-experiments/driver/oop_slice/seam.rs:27:108:\ncalled `Result::unwrap()` on an `Err` value: 0x600003e2c348\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+    },
+    "shared-direct-final-million.stdout": {
+      "sha256": "198a7a439876005a36ca4fb4807474a273077136e1aee99a8404d95a3992b918",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSystem readLine binary input, EOF, detached Method, live constructor and callback GC: passed\nEnvironment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed\nOOP_STDOUT:\u0000\ufffd\nOOP_NUMBER:2\nOOP_REENTRY;OOP_REENTRY;\nSystem output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed\nFile I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed\nPEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed\nArtifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed\nTCC_OOP_OK\nSEAM=native_callback_and_recursive_drive_rejection_passed\nSEAM=lookup_source_callback_same_receiver_and_arity_passed\nSEAM=interleaved_machines_passed iterations_per_machine=250000 transitions=1000002\nresumable arithmetic and runnable budgets: passed\nTAIL_CONTRACT custom=false calls=8 peak_frames=2\nTAIL_CONTRACT custom=false calls=24 peak_frames=2\nTAIL_CONTRACT custom=true calls=8 peak_frames=2\nTAIL_CONTRACT custom=true calls=24 peak_frames=2\nRESUMABLE_EXECUTION_OOP_OK\nCOMPILER_EXECUTION_OOP_OK\nNUMERIC_INTEGRATION_OK\n"
+    },
+    "shared-direct-final-million.stderr": {
+      "sha256": "a6d328ffa0ca9af314b8b49209bf4dce63559fe97a70ed6c16520fa8c2a264a1",
+      "text_utf8_lossy": "OOP_STDERR:\u0000\ufffd"
+    },
+    "shared-direct-final-runtime.stdout": {
+      "sha256": "b7c1e54d70307e457437be2b0d02147c10054407f17c1685d7a58a49ec0c06cc",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nString Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed\nFloat exact IEEE bits, arithmetic, conversions, live constructors/ErrorVt and allocation-time GC: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n"
+    },
+    "shared-direct-final-runtime.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-dispatch-contract.stdout": {
+      "sha256": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nDISPATCH_CONTRACT_OK\n"
+    },
+    "shared-direct-final-dispatch-contract.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-global-lookup.stdout": {
+      "sha256": "176f0d50df40a53df4c48afb08d438afc69a1d87693cbce86f07927dc423c839",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nGLOBAL_LOOKUP_INSTALLED\nGLOBAL_LOOKUP_OK\n"
+    },
+    "shared-direct-final-global-lookup.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-allocation-policy.stdout": {
+      "sha256": "373659cd02bcb30a70d4ab5f41b68bd4997a080301bc191253846091ebd0a982",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\nALLOCATION_POLICY_OK\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nString Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed\nFloat exact IEEE bits, arithmetic, conversions, live constructors/ErrorVt and allocation-time GC: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n"
+    },
+    "shared-direct-final-allocation-policy.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-finalizer-failure.stdout": {
+      "sha256": "4a1e16226e5178bb4b26887250fb4cd10d4295b1f4033be25c0df6414769fb3d",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n"
+    },
+    "shared-direct-final-finalizer-failure.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-storage-init-failure.stdout": {
+      "sha256": "941bb8d375b8d32809d2503b30505f713c977ea66a6c638317143d572364880d",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nSTORAGE_PUBLICATION_FAILURE_CONTAINED\n"
+    },
+    "shared-direct-final-storage-init-failure.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-retirement-failure.stdout": {
+      "sha256": "d80fac0585015a926a5de8cb69e4226597d541e6fee5dd35d2c43adc10628610",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nRETIREMENT_FAILURE_CONTAINED\n"
+    },
+    "shared-direct-final-retirement-failure.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-direct-final-numeric-integration.stdout": {
+      "sha256": "f052715e3e8f26e4717f36972a70b18ac4ad6f3cf027a28e79b9b5c784e680a5",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSystem readLine binary input, EOF, detached Method, live constructor and callback GC: passed\nEnvironment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed\nOOP_STDOUT:\u0000\ufffd\nOOP_NUMBER:2\nOOP_REENTRY;OOP_REENTRY;\nSystem output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed\nFile I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed\nPEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed\nArtifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed\nTCC_OOP_OK\nresumable arithmetic and runnable budgets: passed\nTAIL_CONTRACT custom=false calls=8 peak_frames=2\nTAIL_CONTRACT custom=false calls=24 peak_frames=2\nTAIL_CONTRACT custom=true calls=8 peak_frames=2\nTAIL_CONTRACT custom=true calls=24 peak_frames=2\nRESUMABLE_EXECUTION_OOP_OK\nCOMPILER_EXECUTION_OOP_OK\nNUMERIC_INTEGRATION_OK\n"
+    },
+    "shared-direct-final-numeric-integration.stderr": {
+      "sha256": "a6d328ffa0ca9af314b8b49209bf4dce63559fe97a70ed6c16520fa8c2a264a1",
+      "text_utf8_lossy": "OOP_STDERR:\u0000\ufffd"
+    },
+    "shared-runtime.stdout": {
+      "sha256": "b7c1e54d70307e457437be2b0d02147c10054407f17c1685d7a58a49ec0c06cc",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nString Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed\nFloat exact IEEE bits, arithmetic, conversions, live constructors/ErrorVt and allocation-time GC: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n"
+    },
+    "shared-runtime.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-dispatch-contract.stdout": {
+      "sha256": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nDISPATCH_CONTRACT_OK\n"
+    },
+    "shared-dispatch-contract.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-global-lookup.stdout": {
+      "sha256": "176f0d50df40a53df4c48afb08d438afc69a1d87693cbce86f07927dc423c839",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nGLOBAL_LOOKUP_INSTALLED\nGLOBAL_LOOKUP_OK\n"
+    },
+    "shared-global-lookup.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-allocation-policy.stdout": {
+      "sha256": "373659cd02bcb30a70d4ab5f41b68bd4997a080301bc191253846091ebd0a982",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\nALLOCATION_POLICY_OK\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nString Oop transfers, binary text, builders, full-width parsing, live factories and captured extensions with GC: passed\nFloat exact IEEE bits, arithmetic, conversions, live constructors/ErrorVt and allocation-time GC: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n"
+    },
+    "shared-allocation-policy.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-finalizer-failure.stdout": {
+      "sha256": "4a1e16226e5178bb4b26887250fb4cd10d4295b1f4033be25c0df6414769fb3d",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n"
+    },
+    "shared-finalizer-failure.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-storage-init-failure.stdout": {
+      "sha256": "941bb8d375b8d32809d2503b30505f713c977ea66a6c638317143d572364880d",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nSTORAGE_PUBLICATION_FAILURE_CONTAINED\n"
+    },
+    "shared-storage-init-failure.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-retirement-failure.stdout": {
+      "sha256": "d80fac0585015a926a5de8cb69e4226597d541e6fee5dd35d2c43adc10628610",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nRETIREMENT_FAILURE_CONTAINED\n"
+    },
+    "shared-retirement-failure.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text_utf8_lossy": ""
+    },
+    "shared-numeric-integration.stdout": {
+      "sha256": "f052715e3e8f26e4717f36972a70b18ac4ad6f3cf027a28e79b9b5c784e680a5",
+      "text_utf8_lossy": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSystem readLine binary input, EOF, detached Method, live constructor and callback GC: passed\nEnvironment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed\nOOP_STDOUT:\u0000\ufffd\nOOP_NUMBER:2\nOOP_REENTRY;OOP_REENTRY;\nSystem output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed\nFile I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed\nPEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed\nArtifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed\nTCC_OOP_OK\nresumable arithmetic and runnable budgets: passed\nTAIL_CONTRACT custom=false calls=8 peak_frames=2\nTAIL_CONTRACT custom=false calls=24 peak_frames=2\nTAIL_CONTRACT custom=true calls=8 peak_frames=2\nTAIL_CONTRACT custom=true calls=24 peak_frames=2\nRESUMABLE_EXECUTION_OOP_OK\nCOMPILER_EXECUTION_OOP_OK\nNUMERIC_INTEGRATION_OK\n"
+    },
+    "shared-numeric-integration.stderr": {
+      "sha256": "a6d328ffa0ca9af314b8b49209bf4dce63559fe97a70ed6c16520fa8c2a264a1",
+      "text_utf8_lossy": "OOP_STDERR:\u0000\ufffd"
+    }
+  },
+  "binary_bytes": {
+    "libbirnam_callable_core.dylib": 690992,
+    "libbirnam_id.dylib": 33456,
+    "libbirnam_execution.dylib": 33640
+  },
+  "reproduction_notes": [
+    "Baseline native libraries and driver were built by scripts/oop-id-slice-test.sh. That baseline script is expected to fail the unchanged custom-lookup tail assertion.",
+    "Preparation files use this checkout absolute path; adjust root for another checkout. Copy Id src first then Execution src for the shared crate. Exact source patches apply to that merged baseline and are authoritative over preparation recipes.",
+    "Build each standalone Cargo.toml with mise exec -- cargo build --offline --release --lib --manifest-path PATH --target-dir TARGET. Shared core uses its recorded build.rs for @rpath install name.",
+    "Build public C views with clang -dynamiclib -O2 -Itests/fixtures/oop-id-v2 FILE -L PREFIX/release -lbirnam_callable_core -Wl,-rpath,@loader_path -Wl,-install_name,@rpath/LIBRARY -o PREFIX/release/LIBRARY. Copy wrappers into each prefix; do not symlink wrappers across prefixes.",
+    "Build seam_fixture.c as a dylib using the same fixture include path. Compile driver/oop_slice.rs using edition 2024 and baseline release/deps rlibs for birnam_abi, birnam_artifact_codec, birnam_codegen, birnam_siphon, libloading.",
+    "run.py PREFIX LABEL executes all eight modes. run_extra.py PREFIX LABEL 250000 executes the callback and million-transition probes plus the original source gate.",
+    "For unit tests the copied fixture paths resolve via .cargo-target/tests/fixtures pointing to canonical tests/fixtures. cargo test --offline --locked --lib against shared-direct-source passes 43 tests.",
+    "The mixed-prefix uses original Id with candidate Execution/core. mismatch-driver expects refusal and verifies original Id remains usable. Initial mixed-owner-rejected report is the unmodified caller treating expected refusal as a failed load, not a memory fault.",
+    "Timing and concurrent process receipts precede initialization pairing guard; final-results, final-million, unit-direct-final and mismatch-check cover the guarded final build.",
+    "Only macOS ARM64 was exercised. No production install, relocation/cross-platform qualification, full worker/suspension/control qualification, or completion push."
+  ],
+  "archive_validation": "All 21 exact patches were applied independently to their recorded baseline files in temporary directories and SHA-256 checked against tested sources; all archived Python recipes compile."
+}

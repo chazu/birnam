@@ -1,6 +1,8 @@
 # Custom lookup breaks tail-call reuse in the Oop migration
 
 Status: routing cause confirmed; production repair unresolved.
+A [passing isolated candidate](oop-entry-seam-experiments.md) preserves the Id
+contract and bounded Machine execution. It is not yet integrated.
 See the [controlled diagnosis](oop-tail-routing-diagnosis.md). Remaining migration that depends
 on the current dispatch/Execution boundary is held. This is not a qualified runtime
 checkpoint. Id's public contract is frozen by the user's instruction and has not

@@ -6,6 +6,8 @@ default lookup. The runtime is not fully qualified; dependent migration is held
 until this is repaired without changing the Id contract or weakening invariants.
 See the [regression](oop-custom-lookup-tail-contract.md) and [controlled diagnosis](oop-tail-routing-diagnosis.md).
 Earlier passing receipts below retain only their recorded subset coverage.
+A [passing isolated entry candidate](oop-entry-seam-experiments.md) now preserves
+custom tail calls and interleaved Machines; production integration remains pending.
 
 Status: the corrected connected native gate passes in a separate build target.
 [Qualification receipt](../measurements/oop-resumable-20261023.json). This milestone
