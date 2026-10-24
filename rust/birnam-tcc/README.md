@@ -1,37 +1,29 @@
 # TCC owns compiled Units
 
-Bootstrap loads `libbirnam_tcc` with Namespace after Execution and parsing. The
-module owns libtcc compilation and every relocated native mapping. The private
-`birnam-native-compiler::Unit` serializes compiler operations; no compiler lock or
-registry borrow survives a native initializer or language callback.
+Oop migration in progress. See the [integration contract](../../docs/design/oop-compiler-execution-integration.md).
 
-| Receiver / selector | Input | Result |
-|---|---|---|
-| TCC `compile:` | Trusted generated C String | Unit, or compileError. |
-| TCC `compileObject:` | Trusted generated C String | Bytes containing a relocatable object, or compileError. |
-| TCC `loadObject:` | Trusted relocatable ELF object Bytes | Unit, or compileError; no C compilation or temporary object files. |
-| Unit `initialize` | none | Captured result of the unit's existing native Module initializer. |
-| Unit `initializeWith:` | Implementation Object | Same initializer with an additional rooted operand. |
-| Unit `retain:` | Object | Same Object, traced whenever the Unit is live. Used for generated Methods and native-context references. |
-| TCC `checkpoint` | none | Unit; drain detached mappings after Execution's checkpoint and idle admission. |
-| TCC `liveNativeUnits` | none | Native Word counting live and pending-retirement mappings. |
-| TCC `liveNativeBytes` | none | Native Word from libtcc's relocated-allocation accounting; available with `resource-metrics`. |
+TCC now accepts object-valued source/bytes and returns Unit, Bytes or ordinary
+compileError objects. It reads byte providers through `bytes`, `sizeWord` and
+`atWord:`; no foreign payload or borrowed native span crosses the message boundary.
+Compilation and relocation remain private libtcc operations.
 
-Each compilation has its own initializer and static native context. It exports
-`birnam_native_module_v1` using the existing Id ABI: Protocol plus Namespace and
-the owning Unit as Object operands, with the optional implementation Object last.
-No service addresses travel in Words/Bytes. A successful initializer's result and
-implementation are retained by the Unit. Repeating initialization returns the
-captured result; changing the optional implementation is rejected. Initializers
-must report other Objects retained in native contexts through Unit `retain:`.
+Compiled code exports the v2 immutable Module descriptor. Unit `initialize` and
+`initializeWith:` validate it before entry, construct its literal Symbols and
+Methods, and pass Namespace plus the optional implementation as Oop arguments.
+Unit `declaredMethodAt:` returns a declared Method by immediate index. Its native
+implementation enters generated code directly, using a TCC-owned context that
+keeps the Unit reachable. No Method application protocol is added.
 
-Object loading uses libtcc's bounded memory input, sharing section merging and
-relocation with its file loader. The current `bytes` message supplies a borrowed
-view; it is consumed synchronously before any further Id send. Retained code,
-data and symbols belong to the new Unit, independently of the input buffer and
-of other Units loaded from identical bytes. This changes neither artifact bytes
-nor the Id-facing protocol. General library/archive file loading remains a
-libtcc facility; `loadObject:` is the single relocatable-object route.
+Existing compile/object-load, retained references, weak mapping identities,
+repeated-initialization checks and checkpoint operations remain. Scoped references
+replace per-temporary Roots tokens. Unit and generated entry context registries
+are weak. GC removes their records and detaches mappings; actual unmapping waits
+for Execution's checkpoint/retirementReady handshake and no active TCC entry.
+The integration fixture substitutes only that handshake until real Execution is
+migrated; it must not be reported as complete execution or suspension coverage.
+
+The notes below describe retained private compiler/mapping mechanisms. References
+to the old v1 message ABI are superseded by the contract above.
 
 On native macOS, the private compiler owner configures its fresh memory-output
 states to use the running process's runtime when all undefined symbols are already

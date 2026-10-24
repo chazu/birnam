@@ -3,6 +3,8 @@ use birnam_abi::{self as abi, Oop, id_protocol::Protocol};
 use std::{os::unix::ffi::OsStrExt, path::PathBuf};
 #[path="oop_slice/numeric.rs"]
 mod numeric;
+#[path="oop_slice/tcc.rs"]
+mod tcc;
 fn main() {
     unsafe { run() }
 }
@@ -40,8 +42,10 @@ unsafe fn run() {
             library.join("libbirnam_file_io.dylib"),
             library.join("libbirnam_peg.dylib"),
             library.join("libbirnam_artifact.dylib"),
+            library.join("libbirnam_tcc.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"TCC",b"Execution",b"compile:",b"compileObject:",b"loadObject:",b"initialize",b"initializeWith:",b"compiledEcho:",b"mappingIdentityOf:",b"mappingBytes:",b"declaredMethodAt:",b"checkpoint",b"retirementReady",
             b"savedAllocationCharge:",b"savedAllocate",b"savedExternalCharge:",b"savedStringConstructor:",b"savedStringBytes",
             b"Artifact",b"ArtifactDescriptorVt",b"inspect:",b"inspectBytes:from:",b"lastFailure",b"kind",b"identity",b"artifactAbi",b"target",b"sourceDigest",b"revisionDigest",b"path",b"roots",b"rootsCount",b"rootAt:",b"requires",b"requiresCount",b"requireAt:",b"nativeRequires",b"nativeRequiresCount",b"nativeRequireAt:",b"capabilities",b"capabilitiesCount",b"capabilityAt:",b"artifactPathInvalid",b"artifactUnavailable",b"artifactAbiMismatch",b"artifactTargetMismatch",b"artifactDescriptionMissing",b"nativeRequirementUnavailable",
             b"Peg",b"PegPatternVt",b"PegGrammarVt",b"PegCstVt",b"literal:",b"grammar",b"rule:is:",b"parse:from:",b"ruleName",b"rule",b"start",b"end",b"childCount",b"childAt:",b"children",b"anyOf:",b"plus",b"seq",b"seqOf:",b"eof",b"ruleRef:",b"furthestFail",b"range:to:",b"syntaxError",b"undefinedRule",b"leftRecursion",
@@ -972,7 +976,7 @@ unsafe fn run() {
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
         if matches!(std::env::args().nth(2).as_deref(),Some("numeric-integration"|"numeric-input-error")) {
-            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22],names[23],names[24]],[namespace,roots,gc,actor,base,word,string]);
+            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22],names[23],names[24],names[25]],[namespace,roots,gc,actor,base,word,string]);
             return;
         }
         // Numeric and collection adapters are independent C objects for this slice.

@@ -1,0 +1,28 @@
+{
+  "base": "54a7753b08a90c7f4bdf6c374a5368000ac0fccc",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "result": "pass",
+  "scope": "TCC Oop compile/object-load and generated Method lifetime; real compiler/Execution integration remains outstanding",
+  "checks": [
+    "existing native closure and direct dispatch contract",
+    "generated Oop C using independent ABI declarations",
+    "GC inside generated entry; binding and captured Method lifetime",
+    "no lookup on selected generated Method",
+    "mapping retirement after last reference and checkpoint",
+    "compileObject/loadObject execution",
+    "incompatible descriptor refusal",
+    "failed initializer Method remains callable"
+  ],
+  "limits": [
+    "Execution checkpoint provider is an independent generated fixture, not migrated Execution",
+    "no source-language, suspension, image, worker or Logue qualification",
+    "no performance improvement claimed"
+  ],
+  "logs": {
+    "unit.log": "66b9f1bc727d3fd38e2ce4ae081a61b01ea294c546129dd7dca2aed862e0a34b",
+    "build.log": "38cf9ae8c5533f90d7c41460517d0e5eb49d2e90c577bf60d1ae39329cee5156",
+    "runtime.log": "b7c1e54d70307e457437be2b0d02147c10054407f17c1685d7a58a49ec0c06cc",
+    "numeric-integration.log": "3efb64f0fab03d3f0f7865bb7d3b0aa1ad41c7a89cbc6631288f50edf59908c3",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}
