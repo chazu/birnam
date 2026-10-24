@@ -5,6 +5,8 @@ use std::{os::unix::ffi::OsStrExt, path::PathBuf};
 mod numeric;
 #[path="oop_slice/tcc.rs"]
 mod tcc;
+#[path="oop_slice/compiler.rs"]
+mod compiler;
 fn main() {
     unsafe { run() }
 }
@@ -43,8 +45,13 @@ unsafe fn run() {
             library.join("libbirnam_peg.dylib"),
             library.join("libbirnam_artifact.dylib"),
             library.join("libbirnam_tcc.dylib"),
+            library.join("libbirnam_execution.dylib"),
+            library.join("libbirnam_lang_seed.dylib"),
+            library.join("libbirnam_native_backend.dylib"),
+            library.join("libbirnam_codegen_runtime.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"Namespace",b"methodFor:",b"captureWordAt:",b"Lang",b"Codegen",b"compileSynchronous:",b"NativeBackend",b"Block",b"BlockVt",b"constantValue",b"errorKind",b"isError",b"kind:",b"fromMethod:captureOperands:",b"compiledProbe:",b"dependency:",b"CompilerProbe",b"evaluatePreservingFailures:",b"releaseTokensProtecting",b"Globals",b"savedRelease:",b"collectingRelease",b"liveNativeUnits",b"compiledRunning",b"removeDuringCall:",b"milestoneValue",b"compileError",b"nativeFailure",b"nativeInvalidRequest",
             b"TCC",b"Execution",b"compile:",b"compileObject:",b"loadObject:",b"initialize",b"initializeWith:",b"compiledEcho:",b"mappingIdentityOf:",b"mappingBytes:",b"declaredMethodAt:",b"checkpoint",b"retirementReady",
             b"savedAllocationCharge:",b"savedAllocate",b"savedExternalCharge:",b"savedStringConstructor:",b"savedStringBytes",
             b"Artifact",b"ArtifactDescriptorVt",b"inspect:",b"inspectBytes:from:",b"lastFailure",b"kind",b"identity",b"artifactAbi",b"target",b"sourceDigest",b"revisionDigest",b"path",b"roots",b"rootsCount",b"rootAt:",b"requires",b"requiresCount",b"requireAt:",b"nativeRequires",b"nativeRequiresCount",b"nativeRequireAt:",b"capabilities",b"capabilitiesCount",b"capabilityAt:",b"artifactPathInvalid",b"artifactUnavailable",b"artifactAbiMismatch",b"artifactTargetMismatch",b"artifactDescriptionMissing",b"nativeRequirementUnavailable",
@@ -976,7 +983,7 @@ unsafe fn run() {
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
         if matches!(std::env::args().nth(2).as_deref(),Some("numeric-integration"|"numeric-input-error")) {
-            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22],names[23],names[24],names[25]],[namespace,roots,gc,actor,base,word,string]);
+            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22],names[23],names[24],names[25],names[26],names[27],names[28],names[29]],[namespace,roots,gc,actor,base,word,string]);
             return;
         }
         // Numeric and collection adapters are independent C objects for this slice.

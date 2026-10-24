@@ -1,5 +1,12 @@
 # Execution over the production Id heap
 
+Current Oop migration checkpoint: the explicit synchronous source path is
+connected through `Codegen compileSynchronous:`, NativeBackend, TCC and Execution.
+See [integration and acceptance](../../docs/design/oop-compiler-execution-integration.md).
+The resumable/compiler facade remains pending migration source; the historical
+feature descriptions below are preservation requirements, not claims that every
+feature is available in the current Oop closure. No v1 compatibility path is built.
+
 Design 90 batch 1 now runs native Methods, Blocks and Machines over the production
 prefix, including frames, bounded drives, suspension, continuations and native
 control boundaries, inline fallback, atomic flat/graph recovery, hot PC candidate

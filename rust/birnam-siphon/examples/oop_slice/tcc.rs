@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    path: Oop,
+    paths: [Oop; 2],
     objects: [Oop; 6],
 ) {
     unsafe {
@@ -22,7 +22,10 @@ pub(super) unsafe fn check(
             keep(send(string, b"fromBytes:", &[source]).unwrap())
         };
         let args = send(id.root, b"sequence", &[ns]).unwrap();
-        let tcc = id.send(path, id.load, &[args]).expect("TCC loaded");
+        let tcc = id.send(paths[0], id.load, &[args]).expect("TCC loaded");
+        let args = send(id.root, b"sequence", &[ns]).unwrap();
+        id.send(paths[1], id.load, &[args])
+            .expect("real Execution loaded");
         let source = format!(
             "{}\n{}",
             include_str!("../../../../tests/fixtures/oop-id-v2/id.h"),
@@ -74,20 +77,7 @@ pub(super) unsafe fn check(
             Ok(receiver)
         );
         send(roots, b"release:", &[captured]).unwrap();
-        // A separate generated Unit supplies only the checkpoint test fixture. This
-        // is not Execution qualification; it exercises TCC's existing idle handshake.
-        let control = keep(send(tcc, b"compile:", &[text(source.as_bytes())]).unwrap());
-        send(control, b"initialize", &[]).unwrap();
-        let control_type = keep(send(base, b"delegated", &[]).unwrap());
-        for (name, index) in [
-            (b"retirementReady".as_slice(), 1),
-            (b"checkpoint".as_slice(), 2),
-        ] {
-            let method = send(control, b"declaredMethodAt:", &[abi::size(index).unwrap()]).unwrap();
-            send(control_type, b"addMethod", &[sel(name), method]).unwrap();
-        }
-        let control_object = send(control_type, b"allocate", &[abi::size(0).unwrap()]).unwrap();
-        send(ns, b"at:put:", &[sel(b"Execution"), control_object]).unwrap();
+        // Real Execution now supplies checkpoint/idle admission.
         send(gc, b"collectPrecisely", &[]).unwrap();
         assert!(abi::as_size(send(tcc, b"mappingBytes:", &[identity]).unwrap()).unwrap() > 0);
         send(tcc, b"checkpoint", &[]).unwrap();

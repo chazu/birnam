@@ -66,6 +66,10 @@ impl State {
         let data = self.native_method_fields(method)?;
         self.new_method_index(data.entry_index, context, data.owner)
     }
+    pub(super) fn captured_method(&self, method: Oop) -> Result<Oop, Oop> {
+        let data = self.native_method_fields(method)?;
+        self.new_method_index(data.entry_index, data.context, data.owner)
+    }
     fn native_method_fields(&self, o: Oop) -> Result<NativeMethod, Oop> {
         let (p, n) = self.payload(o)?;
         if n != size_of::<NativeMethod>() {

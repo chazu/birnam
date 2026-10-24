@@ -1,5 +1,12 @@
 # Native backend
 
+Current Oop migration checkpoint: the explicit synchronous source path is
+connected through `Codegen compileSynchronous:`, NativeBackend, TCC and Execution.
+See [integration and acceptance](../../docs/design/oop-compiler-execution-integration.md).
+The resumable/compiler facade remains pending migration source; the historical
+feature descriptions below are preservation requirements, not claims that every
+feature is available in the current Oop closure. No v1 compatibility path is built.
+
 `libbirnam_native_backend.dylib` initializes with one completed Namespace Object,
 returns NativeBackend and publishes NativeBackend/NativeBackendVt. Reinitializing
 with the same Id, Namespace and creating thread preserves the receiver and methods.

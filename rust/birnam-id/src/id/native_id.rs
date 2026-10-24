@@ -152,6 +152,7 @@ pub(crate) enum Action {
     LoadArguments,
     LoadNative,
     WithContext,
+    CapturedMethod,
     FaultKind,
     FaultDetail,
     MakeFault,
@@ -242,6 +243,7 @@ core_primitives![
     (b"loadNative", LoadNative),
     (b"literalAt:", LiteralAt),
     (b"withContext:", WithContext),
+    (b"captured", CapturedMethod),
     (b"faultKind", FaultKind),
     (b"detail", FaultDetail),
     (b"fault:detail:", MakeFault),
@@ -410,7 +412,7 @@ impl State {
                 | Action::LoadArguments => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
                 Action::SymbolHash | Action::SymbolSize | Action::SymbolAt => self.symbol,
-                Action::WithContext | Action::Invoke => self.method,
+                Action::WithContext | Action::CapturedMethod | Action::Invoke => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
             };
@@ -744,6 +746,7 @@ impl State {
                 unsafe { self.load_arguments(r, a) }
             }
             Action::WithContext => self.clone_method(r, one()?),
+            Action::CapturedMethod => { if !a.is_empty() { return Err(invalid); } self.captured_method(r) },
             Action::LiteralAt => self.modules.literal(r, abi::as_size(one()?).ok_or(invalid)?)
                 .ok_or(invalid),
             Action::MethodAt => self.modules.method(r, one()?).ok_or(invalid),

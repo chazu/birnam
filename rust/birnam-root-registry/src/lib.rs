@@ -55,8 +55,9 @@ const NAMES: &[&[u8]] = &[
     b"rootsDo:",
     b"referencesOf:do:",
     b"visit:",
+    b"releaseTokensProtecting",
 ];
-static LITERALS: [Literal; 12] = [
+static LITERALS: [Literal; 13] = [
     Literal::new(NAMES[0]),
     Literal::new(NAMES[1]),
     Literal::new(NAMES[2]),
@@ -69,6 +70,7 @@ static LITERALS: [Literal; 12] = [
     Literal::new(NAMES[9]),
     Literal::new(NAMES[10]),
     Literal::new(NAMES[11]),
+    Literal::new(NAMES[12]),
 ];
 unsafe fn state<'a>(c: Oop) -> Result<&'a Registry, Oop> {
     let raw = INSTANCE.load(std::sync::atomic::Ordering::Acquire);
@@ -172,7 +174,44 @@ unsafe extern "C" fn references(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
     }
     unsafe { roots(_id, c, s.receiver, visitor, 1) }
 }
-static METHODS: [MethodSpec; 5] = [
+// The result remains an argument of this entered call throughout cleanup,
+// including replacement of release: with a collecting implementation.
+unsafe extern "C" fn release_many(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let values = abi::borrowed_slice(a, n).ok_or(s.id.invalid)?;
+        let (_result, tokens) = values.split_first().ok_or(s.id.invalid)?;
+        if tokens.iter().any(|&t| abi::as_size(t).is_none()) {
+            return Err(s.id.invalid);
+        }
+        let mut failure = None;
+        for &token in tokens.iter().rev() {
+            let error = match s.id.send(s.receiver, s.names[7], &[token]) {
+                Ok(v) if abi::as_size(v) == Some(1) => None,
+                Ok(_) => Some(abi::object_reference(s.id.invalid)),
+                Err(e) => Some(e),
+            };
+            if failure.is_none() {
+                if let Some(e) = error {
+                    let protection = s.roots.borrow_mut().retain(e).ok_or(s.id.invalid)?;
+                    failure = Some((e, protection));
+                }
+            }
+        }
+        if let Some((error, protection)) = failure {
+            s.roots.borrow_mut().release(protection);
+            Err(error)
+        } else {
+            Ok(abi::size(1).unwrap())
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+static METHODS: [MethodSpec; 6] = [
+    MethodSpec {
+        name: 12,
+        entry: Some(release_many),
+    },
     MethodSpec {
         name: 6,
         entry: Some(retain),

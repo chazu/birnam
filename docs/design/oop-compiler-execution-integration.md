@@ -4,7 +4,9 @@ The Oop-only branch is the committed development direction. The work preserves
 explicit language features and the Current Invariants; removing carrier machinery
 must simplify responsibilities rather than add a replacement value system.
 
-Status: TCC and its independent generated-code fixture pass the native gate.
+Status: the connected synchronous source-to-native path passes the native gate
+in a separate build target. [Current receipt](../measurements/oop-connected-compiler-20261023.json).
+TCC also retains its independent generated-code fixture.
 [Receipt](../measurements/oop-tcc-integration-20261023.json). This is not full
 compiler/Execution acceptance. The remaining integration is in progress.
 
@@ -80,10 +82,10 @@ The transition, scheduling, tail-entry, recovery and descriptor algorithms remai
 unchanged. Their existing assertions are retained; inert test entries are opaque
 identities because the pure engine never enters them.
 
-`bash scripts/oop-execution-engine-test.sh` compiles these production modules in a
-standalone test harness while the message-facing Execution module still uses the
-removed ABI. This is an intermediate source migration, not a build of the entire
-Execution crate. The message-facing owner must obtain and retain the exact Method
+At historical checkpoint `4b5e8a00`, `scripts/oop-execution-engine-test.sh`
+compiled these production modules in a standalone harness while the message-facing
+Execution module still used the removed ABI. The connected milestone builds and
+tests the actual Execution crate; that temporary harness has been removed. The message-facing owner must obtain and retain the exact Method
 identity and trace its step/implementation Methods when constructing registrations.
 It must not manufacture keys from addresses alone or revive raw native entries.
 
@@ -91,3 +93,88 @@ Remaining connected work: Execution's message entrypoints and constructors,
 generated C and descriptors, portable code, Codegen and the language seed, followed
 by the real language/stackless tests. The new TCC and pure engine gates do not
 replace any of those acceptance requirements.
+
+## Connected synchronous milestone
+
+The explicit `Codegen compileSynchronous:` acceptance path parses real source with the retained grammar/PEG owner,
+lowers its CST with the existing compiler, emits synchronous Oop C, compiles it
+through real TCC, and invokes an Execution-owned Block. This is deliberately the
+synchronous integration milestone; it does not qualify resumable code or replace
+the remaining language gates.
+
+Before, Execution wrapped native entry/context carriers in another Method and
+adapted every call/result. For synchronous functions, TCC already supplies ordinary
+Methods with the required mapping lifetime. Execution can retain those Methods in
+its Block payloads directly. Block value sends enter Execution's native Block
+implementation and use the existing explicit captured invocation operation. Id
+itself still enters every selected Method without a lookup on that Method.
+The existing Objects storage bookkeeping validates Execution-owned payloads; no
+foreign payload interpretation or generic payload catalog is added.
+
+Generated selector names are immutable module literals, interned once by the
+current loader operations. Actual dependency sends still perform current lookup.
+Generated temporary roots remain explicit. Cleanup changes from a byte buffer of
+raw root tokens to `Roots releaseTokensProtecting` with a protected result/error
+and Oop tokens as arguments. That owner operation calls current `release:` for
+each token; the entered call protects the result through collecting replacements.
+No managed argument container or per-value carrier is needed for cleanup.
+
+The old Execution message facade is kept as pending migration source in
+`pending_message_integration.rs`; it is not compiled as an alternate runtime or
+compatibility path. The retained frame/continuation engine continues to compile
+and its tests remain mandatory. The synchronous milestone must not be described
+as having ported the still-pending Machine/control/recovery facade.
+
+The synchronous source entry is explicit. The ordinary `compile:`/resumable
+compiler remains pending; this milestone does not silently change its scheduling
+contract to C-stack execution. NativeBackend likewise exposes `emitSynchronous:`
+for this path. No existing suspension/continuation implementation is replaced by
+the synchronous emitter. Full compiler promotion still requires reconnecting the
+retained Machine/control/recovery facade and its existing acceptance tests.
+
+### Acceptance exercised
+
+The expanded native gate uses the actual Lang seed, PEG, compiler lowering,
+NativeBackend, TCC and Execution. It checks arithmetic, full-width Integers,
+lexical closures/captures, top-level let publication, collection inside generated
+code, dependency replacement, ordinary Error data versus failed returns, and
+collection from replaced temporary-root cleanup. A compiled Method remains
+callable when all lookup on that Method fails. Another entered compiled Method
+removes its own binding, collects and checkpoints, then finishes successfully.
+
+An isolated lifetime check retains only the returned closure, verifies exactly
+one additional live mapping, releases that closure and confirms the mapping count
+returns to its baseline after real Execution/TCC checkpoint. The former generated
+checkpoint stand-in has been removed from the TCC acceptance driver.
+
+No full-language, resumable emission, authored Error/Lang, artifact/image, worker,
+installed-candidate or Logue performance acceptance is claimed. The Error provider
+in this native test remains an independent fixture. The ordinary compiler and
+resumable feature surfaces are pending, not silently replaced by synchronous ones.
+
+Explicit reflection retains fresh capture identity. `methodFor:` previously did
+current lookup followed by construction of a captured Execution Method. It now
+does current lookup followed by `captured` on the selected Method. The bootstrap
+Method owner implements that explicit construction by copying its own declared
+entry index, context and owner into a fresh Method. No payload crosses owners,
+no extra per-Method table is introduced, and ordinary sends do not use this
+operation. The negative direct-send contract remains mandatory. Behavior receivers
+retain the existing `methodFor:` interpretation: capture their instance binding,
+not a method on their metavtable.
+
+The real Execution crate now builds, so its retained engine tests run through
+ordinary `cargo test` in the native gate. The temporary standalone engine harness
+is removed. The synchronous owner reads a single Block field for invocation and
+capture access; only clone/tracing take complete field snapshots. Generated
+helpers remain `static inline`, allowing TinyCC to omit unused helper code.
+
+Reproduce the complete current native milestone gate from this worktree:
+
+```sh
+BIRNAM_OOP_TARGET="$PWD/.cargo-target/oop-connected-fresh" \
+  bash scripts/oop-id-slice-test.sh
+```
+
+The gate includes 71 pure compiler tests and all 22 retained frame-engine tests,
+in addition to the native owner tests and source-to-execution integration. Each
+check retains its scope: the native gate is not full-workspace acceptance.

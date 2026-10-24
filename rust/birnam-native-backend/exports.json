@@ -1,1 +1,8 @@
-{"schema_version":1,"scope":"Canonical portable programs to native source and descriptors","install_name":"@rpath/libbirnam_native_backend.dylib","exported_symbols":["birnam_native_module_v1","birnam_symbol_borrow_v1"]}
+{
+  "schema_version": 1,
+  "scope": "Canonical portable programs to native source and descriptors",
+  "install_name": "@rpath/libbirnam_native_backend.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v2"
+  ]
+}

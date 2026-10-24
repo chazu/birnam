@@ -1,39 +1,39 @@
 use super::*;
-unsafe fn literal(api: &Build<'_>, peg: Oop, bytes: &[u8]) -> Result<Oop, Outcome> {
+unsafe fn literal(api: &Build<'_>, peg: Oop, bytes: &[u8]) -> Result<Oop, Oop> {
     let string = unsafe { string(api, bytes)? };
     unsafe { send1(api, peg, b"literal:\0", string) }
 }
 
-unsafe fn rule_ref(api: &Build<'_>, peg: Oop, name: &[u8]) -> Result<Oop, Outcome> {
+unsafe fn rule_ref(api: &Build<'_>, peg: Oop, name: &[u8]) -> Result<Oop, Oop> {
     let symbol = unsafe { intern(api, name)? };
     unsafe { send1(api, peg, b"ruleRef:\0", symbol) }
 }
 
-unsafe fn any(api: &Build<'_>, peg: Oop) -> Result<Oop, Outcome> {
+unsafe fn any(api: &Build<'_>, peg: Oop) -> Result<Oop, Oop> {
     unsafe { send0(api, peg, b"any\0") }
 }
 
-unsafe fn eof(api: &Build<'_>, peg: Oop) -> Result<Oop, Outcome> {
+unsafe fn eof(api: &Build<'_>, peg: Oop) -> Result<Oop, Oop> {
     unsafe { send0(api, peg, b"eof\0") }
 }
 
-unsafe fn star(api: &Build<'_>, pattern: Oop) -> Result<Oop, Outcome> {
+unsafe fn star(api: &Build<'_>, pattern: Oop) -> Result<Oop, Oop> {
     unsafe { send0(api, pattern, b"star\0") }
 }
 
-unsafe fn plus(api: &Build<'_>, pattern: Oop) -> Result<Oop, Outcome> {
+unsafe fn plus(api: &Build<'_>, pattern: Oop) -> Result<Oop, Oop> {
     unsafe { send0(api, pattern, b"plus\0") }
 }
 
-unsafe fn optional(api: &Build<'_>, pattern: Oop) -> Result<Oop, Outcome> {
+unsafe fn optional(api: &Build<'_>, pattern: Oop) -> Result<Oop, Oop> {
     unsafe { send0(api, pattern, b"opt\0") }
 }
 
-unsafe fn negate(api: &Build<'_>, pattern: Oop) -> Result<Oop, Outcome> {
+unsafe fn negate(api: &Build<'_>, pattern: Oop) -> Result<Oop, Oop> {
     unsafe { send0(api, pattern, b"negate\0") }
 }
 
-unsafe fn seq(api: &Build<'_>, peg: Oop, children: &[Oop]) -> Result<Oop, Outcome> {
+unsafe fn seq(api: &Build<'_>, peg: Oop, children: &[Oop]) -> Result<Oop, Oop> {
     let result = unsafe { send0(api, peg, b"seq\0")? };
     for child in children {
         let _ = unsafe { send1(api, result, b"add:\0", *child)? };
@@ -41,7 +41,7 @@ unsafe fn seq(api: &Build<'_>, peg: Oop, children: &[Oop]) -> Result<Oop, Outcom
     Ok(result)
 }
 
-unsafe fn choice(api: &Build<'_>, peg: Oop, children: &[Oop]) -> Result<Oop, Outcome> {
+unsafe fn choice(api: &Build<'_>, peg: Oop, children: &[Oop]) -> Result<Oop, Oop> {
     let result = unsafe { send0(api, peg, b"choice\0")? };
     for child in children {
         let _ = unsafe { send1(api, result, b"add:\0", *child)? };
@@ -49,7 +49,7 @@ unsafe fn choice(api: &Build<'_>, peg: Oop, children: &[Oop]) -> Result<Oop, Out
     Ok(result)
 }
 
-unsafe fn charset(api: &Build<'_>, peg: Oop, ranges: &[(u8, u8)]) -> Result<Oop, Outcome> {
+unsafe fn charset(api: &Build<'_>, peg: Oop, ranges: &[(u8, u8)]) -> Result<Oop, Oop> {
     let result = unsafe { send0(api, peg, b"charset\0")? };
     for (lo, hi) in ranges {
         let _ = unsafe {
@@ -70,13 +70,13 @@ unsafe fn define_rule(
     grammar: Oop,
     name: &[u8],
     pattern: Oop,
-) -> Result<(), Outcome> {
+) -> Result<(), Oop> {
     let symbol = unsafe { intern(api, name)? };
     let _ = unsafe { send2(api, grammar, b"rule:is:\0", symbol, pattern)? };
     Ok(())
 }
 
-pub(super) unsafe fn build_grammar(api: &Build<'_>, peg: Oop) -> Result<Oop, Outcome> {
+pub(super) unsafe fn build_grammar(api: &Build<'_>, peg: Oop) -> Result<Oop, Oop> {
     let grammar = unsafe { send0(api, peg, b"grammar\0")? };
 
     let newline = unsafe { charset(api, peg, &[(b'\n', b'\n')])? };

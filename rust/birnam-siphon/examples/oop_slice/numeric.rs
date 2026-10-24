@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 12],
+    modules: [Oop; 16],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -1379,7 +1379,8 @@ pub(super) unsafe fn check(
         println!(
             "Artifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed"
         );
-        super::tcc::check(id,send,sel,modules[11],[namespace,roots,gc,string,base,actor]);
+        super::tcc::check(id,send,sel,[modules[11],modules[12]],[namespace,roots,gc,string,base,actor]);
+        super::compiler::check(id,send,sel,[modules[13],modules[14],modules[15]],[namespace,roots,gc,string,base,actor,integer]);
         println!("NUMERIC_INTEGRATION_OK");
     }
 }

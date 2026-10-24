@@ -1,5 +1,15 @@
 # Logue runtime work: current state and continuation
 
+Latest continuation: the explicit synchronous compiler milestone now passes:
+real source -> Lang seed/PEG -> existing lowering -> NativeBackend -> TCC ->
+actual Execution. It covers collection, live replacement, captures, Error/failure
+distinctions, direct dispatch and final mapping retirement. The temporary frame
+engine harness and TCC checkpoint stand-in are removed. See the
+[integration record](oop-compiler-execution-integration.md) and
+[qualified native receipt](../measurements/oop-connected-compiler-20261023.json).
+Ordinary compiler/resumable integration remains unfinished; nothing is installed.
+The checkpoints below describe earlier stages.
+
 Continuation, 2026-10-23: the Oop branch is now the committed development direction.
 `c23240cf` migrates TCC and validates generated Oop C, collection, captured code,
 object loading and mapping retirement. `4b5e8a00` moves the retained frame engine

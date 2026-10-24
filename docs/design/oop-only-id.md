@@ -10,6 +10,14 @@ Decision: accepted user direction, 2026-10-22. Highest-priority runtime work.
 
 ## Continuing compiler and Execution integration
 
+The latest connected milestone adds explicit `Codegen compileSynchronous:` with
+real parsing, lowering, emission, TCC compilation and Execution Block invocation.
+It passes the separate-build-target native gate, including current lookup/GC,
+fresh captured Methods, failure distinctions and mapping retirement. See the
+[current receipt](../measurements/oop-connected-compiler-20261023.json). Ordinary
+compiler/resumable integration and full-language acceptance remain pending.
+
+
 The committed development direction continues in
 [compiler/Execution integration](oop-compiler-execution-integration.md).
 TCC passes native generated-code/lifetime checks at `c23240cf`; the retained
