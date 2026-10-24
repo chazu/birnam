@@ -1,5 +1,10 @@
 # Id and Execution entry experiments
 
+**Direction superseded:** the user rejected the shared private implementation
+packaging. The passing experiments remain evidence about the regression, not
+the chosen architecture. See the [continuation-aware Id proposal and formal
+checkpoint](oop-continuation-id.md).
+
 2026-10-24. Isolated experiments against `5ec962ff`, on macOS ARM64.
 The preferred candidate passes the custom-lookup tail regression without changing
 Id's public contract or giving up bounded, interleaved Machine execution.

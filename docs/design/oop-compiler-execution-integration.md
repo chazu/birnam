@@ -6,8 +6,9 @@ default lookup. The runtime is not fully qualified; dependent migration is held
 until this is repaired without changing the Id contract or weakening invariants.
 See the [regression](oop-custom-lookup-tail-contract.md) and [controlled diagnosis](oop-tail-routing-diagnosis.md).
 Earlier passing receipts below retain only their recorded subset coverage.
-A [passing isolated entry candidate](oop-entry-seam-experiments.md) now preserves
-custom tail calls and interleaved Machines; production integration remains pending.
+The [isolated entry experiments](oop-entry-seam-experiments.md) passed, but their
+shared private implementation was rejected. The current investigation is the
+[continuation-aware Id proposal and formal model](oop-continuation-id.md).
 
 Latest checkpoint: the explicit resumable compiler is now connected to the retained
 Machine engine. Source-level bounded pause/resume, GC, entered-code replacement,

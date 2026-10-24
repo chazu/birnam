@@ -1,0 +1,9 @@
+name = "birnam_continuations"
+version = "0.1.0"
+defaultTargets = ["Continuation", "Audit"]
+
+[[lean_lib]]
+name = "Continuation"
+
+[[lean_lib]]
+name = "Audit"
