@@ -406,6 +406,57 @@ pub(super) unsafe fn check(
         release(token_machine);
         collect();
         assert_eq!(units(), baseline);
+        // The same proper tail call must stay bounded under a forwarding custom
+        // lookup. Native callbacks are not permission to retain source tail frames.
+        let base = send(id.root, b"objectBehavior", &[]).unwrap();
+        let probe_type = keep(send(base, b"delegated", &[]).unwrap());
+        let probe = keep(send(probe_type, b"allocate", &[abi::size(0).unwrap()]).unwrap());
+        send(ns, b"at:put:", &[sel(b"TailProbe"), probe]).unwrap();
+        let method = keep(compile("[TailProbe tailTick]; [TailProbe tailRecurse]"));
+        let root = keep(send(blocks, b"fromMethod:captureOperands:", &[method]).unwrap());
+        let stop = keep(send(constant, b"withContext:", &[five]).unwrap());
+        let tick = send(actor_type, b"lookup", &[sel(b"tailTick")]).unwrap();
+        let original_meta = send(id.root, b"behaviorOf:", &[probe_type]).unwrap();
+        let custom_meta = keep(send(original_meta, b"delegated", &[]).unwrap());
+        let lookup_override = send(actor_type, b"lookup", &[sel(b"lookupOverride")]).unwrap();
+        send(
+            custom_meta,
+            b"addMethod",
+            &[sel(b"lookup"), lookup_override],
+        )
+        .unwrap();
+        let mut observations = Vec::new();
+        for custom in [false, true] {
+            send(
+                id.root,
+                b"reassociateBehaviorOf:with:",
+                &[probe_type, if custom { custom_meta } else { original_meta }],
+            )
+            .unwrap();
+            for iterations in [8usize, 24] {
+                let machine = keep(send(machines, b"new", &[]).unwrap());
+                let context =
+                    send(id.root, b"sequence", &[probe_type, stop, machine, integer]).unwrap();
+                let bound_tick = send(tick, b"withContext:", &[context]).unwrap();
+                send(probe_type, b"addMethod", &[sel(b"tailTick"), bound_tick]).unwrap();
+                send(probe_type, b"addMethod", &[sel(b"tailRecurse"), method]).unwrap();
+                send(actor, b"tailSetup:", &[abi::size(iterations).unwrap()]).unwrap();
+                assert_eq!(send(machine, b"runBlock:", &[root]), Ok(five));
+                let peak = abi::as_size(send(actor, b"tailPeak", &[]).unwrap()).unwrap();
+                assert_eq!(
+                    send(actor, b"tailCalls", &[]),
+                    Ok(abi::size(iterations).unwrap())
+                );
+                println!("TAIL_CONTRACT custom={custom} calls={iterations} peak_frames={peak}");
+                observations.push((custom, iterations, peak));
+            }
+        }
+        for (custom, _, peak) in observations {
+            assert_eq!(
+                peak, 2,
+                "tail calls must reuse the source frame with custom lookup={custom}"
+            );
+        }
         println!("RESUMABLE_EXECUTION_OOP_OK");
     }
 }

@@ -1,5 +1,12 @@
 # Connected Oop resumable execution
 
+**Current hold:** the expanded source gate reproduces loss of tail-call reuse
+under forwarding custom lookup: 8/24 calls retain 9/25 frames, versus 2 with
+default lookup. The runtime is not fully qualified; dependent migration is held
+until this is repaired without changing the Id contract or weakening invariants.
+See the [regression and ownership question](oop-custom-lookup-tail-contract.md).
+Earlier passing receipts below retain only their recorded subset coverage.
+
 Status: the corrected connected native gate passes in a separate build target.
 [Qualification receipt](../measurements/oop-resumable-20261023.json). This milestone
 connects generated resumable functions to the retained Machine engine; it does

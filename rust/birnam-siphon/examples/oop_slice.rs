@@ -53,6 +53,7 @@ unsafe fn run() {
             library.join("libbirnam_codegen_runtime.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"TailProbe",b"tailTick",b"tailSetup:",b"tailPeak",b"tailCalls",b"tailRecurse",
             b"LookupProbe",b"resumableBound",b"fromStep:descriptor:selection:owner:",b"compileResumable:",b"Machine",b"MachineVt",b"runBlock:",b"runBlock:budget:",b"continueWithBudget:",b"destroy",b"executionState",b"isRunnable",b"liveFrameCount",b"runnable",b"completed",b"resumeMark:",b"resumeCount:",b"resumeReset",b"before",b"entered",b"after",b"later",b"child",
             b"Namespace",b"methodFor:",b"captureWordAt:",b"Lang",b"Codegen",b"compileSynchronous:",b"NativeBackend",b"Block",b"BlockVt",b"constantValue",b"errorKind",b"isError",b"kind:",b"fromMethod:captureOperands:",b"compiledProbe:",b"dependency:",b"CompilerProbe",b"evaluatePreservingFailures:",b"releaseTokensProtecting",b"Globals",b"savedRelease:",b"collectingRelease",b"liveNativeUnits",b"compiledRunning",b"removeDuringCall:",b"milestoneValue",b"compileError",b"nativeFailure",b"nativeInvalidRequest",
             b"TCC",b"Execution",b"compile:",b"compileObject:",b"loadObject:",b"initialize",b"initializeWith:",b"compiledEcho:",b"mappingIdentityOf:",b"mappingBytes:",b"declaredMethodAt:",b"checkpoint",b"retirementReady",

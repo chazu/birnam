@@ -1,0 +1,65 @@
+{
+  "runtime_commit": "f6e98c47",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "result": "failed required tail-call contract assertion",
+  "id_contract_change": "none; birnam-id and birnam-abi unchanged from f6e98c47",
+  "source": "[TailProbe tailTick]; [TailProbe tailRecurse]",
+  "observations": [
+    {
+      "custom_lookup": false,
+      "calls": 8,
+      "peak_frames": 2
+    },
+    {
+      "custom_lookup": false,
+      "calls": 24,
+      "peak_frames": 2
+    },
+    {
+      "custom_lookup": true,
+      "calls": 8,
+      "peak_frames": 9
+    },
+    {
+      "custom_lookup": true,
+      "calls": 24,
+      "peak_frames": 25
+    }
+  ],
+  "interpretation": "Forwarding custom lookup grows a source frame per tail call instead of reusing the frame. Both lanes return the same result and perform the requested number of ticks.",
+  "limits": [
+    "This is a failing correctness gate, not completed migration or performance qualification.",
+    "No production runtime change is included in this diagnostic checkpoint."
+  ],
+  "test_source_sha256": {
+    "tests/fixtures/oop-id-v2/fixture.c": "8a682e3764bd49edfec69c6f507db81588686f662c86858854c0dd554c19f5ec",
+    "rust/birnam-siphon/examples/oop_slice.rs": "ab08991cab18380da76ca8fa4b7bce71b5b6c423075c45c5ff0a55b226690d73",
+    "rust/birnam-siphon/examples/oop_slice/resumable.rs": "52cbfc8aa68c1ed051fb3af933e065c3b3fc9ad71fba3eb6934585f967078381"
+  },
+  "unit_results": [
+    "test result: ok. 59 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.88s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  ],
+  "numeric_log_sha256": "bbaae734f6e658860634096e2bf95b63892009ce1b93d00f4f3f5d4257610c90",
+  "numeric_log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncaught failures are ordinary data, survive GC and rethrow with the same identity: passed\nallocation omission checks current Method objects and raw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSystem readLine binary input, EOF, detached Method, live constructor and callback GC: passed\nEnvironment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed\nOOP_STDOUT:\u0000\ufffd\nOOP_NUMBER:2\nOOP_STDERR:\u0000\ufffdOOP_REENTRY;OOP_REENTRY;\nSystem output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed\nFile I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed\nPEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed\nArtifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed\nTCC_OOP_OK\nresumable arithmetic and runnable budgets: passed\nTAIL_CONTRACT custom=false calls=8 peak_frames=2\nTAIL_CONTRACT custom=false calls=24 peak_frames=2\nTAIL_CONTRACT custom=true calls=8 peak_frames=9\nTAIL_CONTRACT custom=true calls=24 peak_frames=25\n\nthread 'main' (15486254) panicked at rust/birnam-siphon/examples/oop_slice/resumable.rs:455:13:\nassertion `left == right` failed: tail calls must reuse the source frame with custom lookup=true\n  left: 9\n right: 2\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+}
