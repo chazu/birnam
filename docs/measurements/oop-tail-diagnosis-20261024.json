@@ -1,0 +1,787 @@
+{
+  "runtime_commit": "4e7b77b154842d90990ef1e478d36dbdec12874b",
+  "scope": "Determine regression cause only; no production fix or Id change",
+  "result": "Cause confirmed: custom lookup skips registration recognition and re-enters through a non-tail nested drive",
+  "observations": {
+    "baseline-1": {
+      "label": "baseline-1",
+      "returncode": -6,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 9
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 25
+        }
+      ],
+      "expected_failure": true
+    },
+    "baseline-2": {
+      "label": "baseline-2",
+      "returncode": -6,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 9
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 25
+        }
+      ],
+      "expected_failure": true
+    },
+    "trace": {
+      "label": "trace",
+      "returncode": -6,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 9
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 25
+        }
+      ],
+      "expected_failure": true
+    },
+    "no-gc": {
+      "label": "no-gc",
+      "returncode": -6,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 9
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 25
+        }
+      ],
+      "expected_failure": true
+    },
+    "forward-only": {
+      "label": "forward-only",
+      "returncode": -6,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 9
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 25
+        }
+      ],
+      "expected_failure": true
+    },
+    "force-tail-classification": {
+      "label": "force-tail-classification",
+      "returncode": 0,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 2
+        }
+      ],
+      "expected_failure": false
+    },
+    "production-after-probes": {
+      "label": "production-after-probes",
+      "returncode": -6,
+      "observations": [
+        {
+          "custom_lookup": false,
+          "calls": 8,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": false,
+          "calls": 24,
+          "peak_frames": 2
+        },
+        {
+          "custom_lookup": true,
+          "calls": 8,
+          "peak_frames": 9
+        },
+        {
+          "custom_lookup": true,
+          "calls": 24,
+          "peak_frames": 25
+        }
+      ],
+      "expected_failure": true
+    }
+  },
+  "trace_counts": {
+    "trace": {
+      "1": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 7
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 7
+        },
+        "source_reentries": 0
+      },
+      "2": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 23
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 23
+        },
+        "source_reentries": 0
+      },
+      "3": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 8
+        },
+        "source_reentries": 7
+      },
+      "4": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 24
+        },
+        "source_reentries": 23
+      }
+    },
+    "no-gc": {
+      "1": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 7
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 7
+        },
+        "source_reentries": 0
+      },
+      "2": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 23
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 23
+        },
+        "source_reentries": 0
+      },
+      "3": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 8
+        },
+        "source_reentries": 7
+      },
+      "4": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 24
+        },
+        "source_reentries": 23
+      }
+    },
+    "forward-only": {
+      "1": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 7
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 7
+        },
+        "source_reentries": 0
+      },
+      "2": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 23
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 23
+        },
+        "source_reentries": 0
+      },
+      "3": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 8
+        },
+        "source_reentries": 7
+      },
+      "4": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 24
+        },
+        "source_reentries": 23
+      }
+    },
+    "force-tail-classification": {
+      "1": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 7
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 7
+        },
+        "source_reentries": 0
+      },
+      "2": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 23
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": true,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 23
+        },
+        "source_reentries": 0
+      },
+      "3": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 8
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": true,
+            "count": 7
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 7
+        },
+        "source_reentries": 0
+      },
+      "4": {
+        "routes": [
+          {
+            "tail": false,
+            "default_lookup_proven": true,
+            "registered": true,
+            "count": 1
+          },
+          {
+            "tail": false,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 24
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": true,
+            "count": 23
+          },
+          {
+            "tail": true,
+            "default_lookup_proven": false,
+            "registered": false,
+            "count": 1
+          }
+        ],
+        "pushes_by_tail_flag": {
+          "false": 1,
+          "true": 23
+        },
+        "source_reentries": 0
+      }
+    }
+  },
+  "hypotheses": [
+    {
+      "hypothesis": "Fallback routing skips registered tail transfer",
+      "finding": "supported by trace and forced-classification control"
+    },
+    {
+      "hypothesis": "Lookup-time GC causes frame retention",
+      "finding": "rejected: removing GC preserves 9/25 frame peaks"
+    },
+    {
+      "hypothesis": "Returned Method is different or unregistered",
+      "finding": "rejected: diagnostic classification recognizes all recursive source targets and reuses frames"
+    },
+    {
+      "hypothesis": "Compiler fails to emit TailCall",
+      "finding": "rejected: original custom path decodes tail=true on all recursive calls"
+    }
+  ],
+  "control_warning": "Forced classification is diagnostic only: a nonregistered native tail target can run custom lookup twice. It is not a valid fix or invariant-preserving acceptance.",
+  "production_source_sha256": {
+    "rust/birnam-execution/src/resumable_runtime.rs": "077b7ad022e8d4c87947a3d2b47092d477c7e80c92d3f31694e9514525b543eb",
+    "rust/birnam-siphon/examples/oop_slice/resumable.rs": "52cbfc8aa68c1ed051fb3af933e065c3b3fc9ad71fba3eb6934585f967078381",
+    "tests/fixtures/oop-id-v2/fixture.c": "8a682e3764bd49edfec69c6f507db81588686f662c86858854c0dd554c19f5ec",
+    "rust/birnam-abi/src/id_protocol.rs": "d6ccf81b19e03150c1b8e25350040c3798c092105721109c528b84ed4be1e09e"
+  },
+  "diagnostic_patches": {
+    "trace_runtime": "--- production\n+++ trace runtime\n@@ -353,6 +353,7 @@\n     tail: bool,\n ) -> Result<(), Oop> {\n     let mut e = s.engine.borrow_mut();\n+    let diagnostic_before=e.machine(OWNER,cap).unwrap().arena().diagnostics().live_frames;\n     checked(e.transfer_acquired_entry_to_frame(entry))?;\n     let result = (|| {\n         let m = checked(e.machine_mut(OWNER, cap))?;\n@@ -385,6 +386,10 @@\n     })();\n     if result.is_err() {\n         checked(e.release_entry_frame_pin(entry))?;\n+    }\n+    if let Ok(case)=std::env::var(\"BIRNAM_DIAG_TAIL_CASE\") {\n+        let after=e.machine(OWNER,cap).unwrap().arena().diagnostics().live_frames;\n+        eprintln!(\"[DEBUG-tail] case={case} event=push tail={tail} before={diagnostic_before} after={after}\");\n     }\n     result\n }\n@@ -523,7 +528,8 @@\n                         // A preliminary lookup is allowed only when the current\n                         // lookup is callback-free. Unknown/custom lookup is sent\n                         // once through ordinary Id and its native boundary.\n-                        let selected = if pure_lookup(s, operands.receiver)? {\n+                        let diagnostic_pure = pure_lookup(s, operands.receiver)?;\n+                        let selected = if diagnostic_pure {\n                             q.keep(s.send(\n                                 s.id.root,\n                                 b\"bind:to:\",\n@@ -541,6 +547,10 @@\n                                 None\n                             }\n                         });\n+                        if let Ok(case)=std::env::var(\"BIRNAM_DIAG_TAIL_CASE\") {\n+                            let frames=s.engine.borrow().machine(OWNER,cap).unwrap().arena().diagnostics().live_frames;\n+                            eprintln!(\"[DEBUG-tail] case={case} event=route tail={tail} pure={diagnostic_pure} registered={} frames={frames} receiver={:p} selector={:p} selected={:p}\",registered.is_some(),operands.receiver,operands.selector,selected);\n+                        }\n                         if let Some(r) = registered {\n                             let (entry, value) = acquire(s, &r, operands.receiver, &args)?;\n                             let destination = if tail {\n@@ -597,6 +607,9 @@\n ) -> Result<Oop, Oop> {\n     unsafe {\n         let inherited = s.resume.borrow().active.last().copied();\n+        if let Ok(case)=std::env::var(\"BIRNAM_DIAG_TAIL_CASE\") {\n+            eprintln!(\"[DEBUG-tail] case={case} event=source_entry inherited={} method={:p}\",inherited.is_some(),r.method);\n+        }\n         let machine = if let Some(cap) = inherited {\n             checked(s.engine.borrow().machine_object(OWNER, cap))?\n         } else {\n",
+    "forced_tail_classification": "--- production\n+++ forced classification\n@@ -529,7 +529,7 @@\n                         // lookup is callback-free. Unknown/custom lookup is sent\n                         // once through ordinary Id and its native boundary.\n                         let diagnostic_pure = pure_lookup(s, operands.receiver)?;\n-                        let selected = if diagnostic_pure {\n+                        let selected = if diagnostic_pure || (tail && std::env::var_os(\"BIRNAM_DIAG_TAIL_CASE\").is_some()) {\n                             q.keep(s.send(\n                                 s.id.root,\n                                 b\"bind:to:\",\n",
+    "trace_fixture": "--- production\n+++ trace fixture\n@@ -1,5 +1,7 @@\n #include \"id.h\"\n #include <string.h>\n+#include <stdlib.h>\n+#include <stdio.h>\n /* This module owns Node payloads. Its state is an Id Sequence manipulated only\n    through messages. No foreign payload or Id registry is inspected. */\n typedef struct Node {Oop child;Oop size;} Node;\n@@ -331,7 +333,8 @@\n /* Tail-call contract probe. All managed references live in the Method's\n    ordinary Sequence context; only counters are private native state. */\n static size_t tail_remaining,tail_peak,tail_calls;\n-static Oop tail_setup(Oop root_,Oop c,Oop r,const Oop*a,size_t n){if(n!=1||!((uintptr_t)a[0]&1))return id.invalid;tail_remaining=id_unbox(a[0]);tail_peak=tail_calls=0;return r;}\n+static unsigned diagnostic_case;\n+static Oop tail_setup(Oop root_,Oop c,Oop r,const Oop*a,size_t n){if(n!=1||!((uintptr_t)a[0]&1))return id.invalid;tail_remaining=id_unbox(a[0]);tail_peak=tail_calls=0;char case_text[32];snprintf(case_text,sizeof(case_text),\"%u\",++diagnostic_case);setenv(\"BIRNAM_DIAG_TAIL_CASE\",case_text,1);fprintf(stderr,\"[DEBUG-tail] case=%u event=setup calls=%zu tick_selector=%p tail_selector=%p\\n\",diagnostic_case,tail_remaining,names[TAILTICK],names[TAILRECURSE]);return r;}\n static Oop tail_tick(Oop root_,Oop c,Oop r,const Oop*a,size_t n){\n  if(n||tail_remaining==0)return id.invalid;\n  Oop frames=zero(get(c,2),FRAMECOUNT);if(id_fault(frames))return frames;\n",
+    "no_lookup_gc": "--- production\n+++ no lookup GC\n@@ -96,7 +96,7 @@\n }\n static Oop lookup_override(Oop root_,Oop c,Oop r,const Oop*a,size_t n){\n  (void)root_;if(n!=1)return id.invalid;\n- REQUIRE(zero(get(c,1),COLLECT)); /* GC while the caller is still looking up its method. */\n+ /* Diagnostic control: only lookup-time GC removed. */\n  REQUIRE(put(c,8,id_size(id_unbox(get(c,8))+1)));\n  if(a[0]==names[MISSING])return get(c,10);\n  Oop args=call(id.root,SEQUENCE,a,n);if(id_fault(args))return args;\n",
+    "forwarding_only": "--- production\n+++ forwarding only\n@@ -97,7 +97,7 @@\n static Oop lookup_override(Oop root_,Oop c,Oop r,const Oop*a,size_t n){\n  (void)root_;if(n!=1)return id.invalid;\n  /* Diagnostic control: only lookup-time GC removed. */\n- REQUIRE(put(c,8,id_size(id_unbox(get(c,8))+1)));\n+ if(!getenv(\"BIRNAM_DIAG_TAIL_CASE\")){ REQUIRE(put(c,8,id_size(id_unbox(get(c,8))+1))); }\n  if(a[0]==names[MISSING])return get(c,10);\n  Oop args=call(id.root,SEQUENCE,a,n);if(id_fault(args))return args;\n  return two(get(c,7),INVOKE,r,args);\n"
+  },
+  "log_sha256": {
+    "baseline-1.stdout": "79a4a0fa340b799af33999e9b54ab54f4ec65ffeb4cc05abf39c6555226795e3",
+    "baseline-1.stderr": "c12ad0f08107c4859f91f257628c7877e8ab33886093daa75501e22d9e19b4ed",
+    "baseline-2.stdout": "79a4a0fa340b799af33999e9b54ab54f4ec65ffeb4cc05abf39c6555226795e3",
+    "baseline-2.stderr": "0399d335a3ba8c140043b0b193310f5fa5cab07eb7ae36d1912992c1002fd81f",
+    "trace.stdout": "79a4a0fa340b799af33999e9b54ab54f4ec65ffeb4cc05abf39c6555226795e3",
+    "trace.stderr": "ace829c2f0849f9c14b3ed436c077520eac3bde5d05c59460ba6bd29d82ed3d6",
+    "no-gc.stdout": "79a4a0fa340b799af33999e9b54ab54f4ec65ffeb4cc05abf39c6555226795e3",
+    "no-gc.stderr": "c8d8ed40e82d275bb645c09e11350e51505672c2ae2b035feef1a39b0d505844",
+    "forward-only.stdout": "79a4a0fa340b799af33999e9b54ab54f4ec65ffeb4cc05abf39c6555226795e3",
+    "forward-only.stderr": "33ac5f52139997f79ec1f625f67d1e72d68a045bc74e4cee20b27ddfa17a9885",
+    "force-tail-classification.stdout": "f052715e3e8f26e4717f36972a70b18ac4ad6f3cf027a28e79b9b5c784e680a5",
+    "force-tail-classification.stderr": "0004d8858b55df07450afbf08a7303be99b9dd4d7628a6b7cffbba08659ecdd5",
+    "production-after-probes.stdout": "79a4a0fa340b799af33999e9b54ab54f4ec65ffeb4cc05abf39c6555226795e3",
+    "production-after-probes.stderr": "5ac41e4b9d7a1a6aa65c3d06178b7bbe0cf8f309d2646b90fa9d43688604c237"
+  },
+  "diagnostic_sources": {
+    "prepare.py": "from pathlib import Path\nimport shutil,subprocess\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');out=root/'.cargo-target/diagnose-tail-4e7b77b1';source=out/'execution-source'\nshutil.copytree(root/'rust/birnam-execution/src',source/'src',dirs_exist_ok=True)\nshutil.copy(root/'rust/birnam-execution/build.rs',source/'build.rs')\n(source/'Cargo.toml').write_text(f'''[package]\nname=\"birnam-execution\"\nversion=\"0.0.0\"\nedition=\"2024\"\nrust-version=\"1.95\"\n[workspace]\n[dependencies]\nbirnam-abi={{path=\"{root}/rust/birnam-abi\"}}\nbirnam-artifact-codec={{path=\"{root}/rust/birnam-artifact-codec\"}}\n[lib]\nname=\"birnam_execution\"\ncrate-type=[\"cdylib\"]\n[profile.release]\npanic=\"abort\"\n''')\np=source/'src/resumable_runtime.rs';s=p.read_text()\ns=s.replace('''                        let selected = if pure_lookup(s, operands.receiver)? {''','''                        let diagnostic_pure = pure_lookup(s, operands.receiver)?;\n                        let selected = if diagnostic_pure {''')\nneedle='''                        if let Some(r) = registered {''';assert needle in s\ns=s.replace(needle,'''                        if let Ok(case)=std::env::var(\"BIRNAM_DIAG_TAIL_CASE\") {\n                            let frames=s.engine.borrow().machine(OWNER,cap).unwrap().arena().diagnostics().live_frames;\n                            eprintln!(\"[DEBUG-tail] case={case} event=route tail={tail} pure={diagnostic_pure} registered={} frames={frames} receiver={:p} selector={:p} selected={:p}\",registered.is_some(),operands.receiver,operands.selector,selected);\n                        }\n'''+needle)\nneedle='''    let mut e = s.engine.borrow_mut();\n    checked(e.transfer_acquired_entry_to_frame(entry))?;''';assert needle in s\ns=s.replace(needle,'''    let mut e = s.engine.borrow_mut();\n    let diagnostic_before=e.machine(OWNER,cap).unwrap().arena().diagnostics().live_frames;\n    checked(e.transfer_acquired_entry_to_frame(entry))?;''')\nneedle='''    if result.is_err() {\n        checked(e.release_entry_frame_pin(entry))?;\n    }\n    result\n}''';assert needle in s\ns=s.replace(needle,'''    if result.is_err() {\n        checked(e.release_entry_frame_pin(entry))?;\n    }\n    if let Ok(case)=std::env::var(\"BIRNAM_DIAG_TAIL_CASE\") {\n        let after=e.machine(OWNER,cap).unwrap().arena().diagnostics().live_frames;\n        eprintln!(\"[DEBUG-tail] case={case} event=push tail={tail} before={diagnostic_before} after={after}\");\n    }\n    result\n}''')\nneedle='''        let inherited = s.resume.borrow().active.last().copied();''';assert needle in s\ns=s.replace(needle,needle+'''\n        if let Ok(case)=std::env::var(\"BIRNAM_DIAG_TAIL_CASE\") {\n            eprintln!(\"[DEBUG-tail] case={case} event=source_entry inherited={} method={:p}\",inherited.is_some(),r.method);\n        }''')\np.write_text(s)\n(out/'trace-runtime.rs').write_text(s)\nfixture=(root/'tests/fixtures/oop-id-v2/fixture.c').read_text().replace('#include <string.h>','#include <string.h>\\n#include <stdlib.h>\\n#include <stdio.h>')\nfixture=fixture.replace('static size_t tail_remaining,tail_peak,tail_calls;','static size_t tail_remaining,tail_peak,tail_calls;\\nstatic unsigned diagnostic_case;')\nneedle='tail_peak=tail_calls=0;return r;';assert needle in fixture\nfixture=fixture.replace(needle,'''tail_peak=tail_calls=0;char case_text[32];snprintf(case_text,sizeof(case_text),\"%u\",++diagnostic_case);setenv(\"BIRNAM_DIAG_TAIL_CASE\",case_text,1);fprintf(stderr,\"[DEBUG-tail] case=%u event=setup calls=%zu tick_selector=%p tail_selector=%p\\\\n\",diagnostic_case,tail_remaining,names[TAILTICK],names[TAILRECURSE]);return r;''')\n(out/'fixture-trace.c').write_text(fixture)\nneedle=' REQUIRE(zero(get(c,1),COLLECT)); /* GC while the caller is still looking up its method. */';assert needle in fixture\n(out/'fixture-no-gc.c').write_text(fixture.replace(needle,' /* Diagnostic control: only lookup-time GC removed. */'))\nbase=root/'.cargo-target/oop-slice'\nfor variant in ['trace','no-gc','force-tail-classification']:\n prefix=out/variant\n (prefix/'release').mkdir(parents=True,exist_ok=True);(prefix/'fixtures').mkdir(exist_ok=True)\n for library in (base/'release').glob('*.dylib'):\n  if library.name=='libbirnam_execution.dylib':continue\n  path=prefix/'release'/library.name\n  if not path.exists():path.symlink_to(library)\n for file in (base/'fixtures').iterdir():\n  if file.name=='fixture.dylib':continue\n  path=prefix/'fixtures'/file.name\n  if not path.exists():path.symlink_to(file)\n subprocess.run(['clang','-dynamiclib','-O2','-I'+str(root/'tests/fixtures/oop-id-v2'),str(out/('fixture-no-gc.c'if variant=='no-gc'else'fixture-trace.c')),'-o',str(prefix/'fixtures/fixture.dylib')],check=True)\nprint(source)\n",
+    "replay.py": "from pathlib import Path\nimport os,subprocess,json,re,sys\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id')\nout=root/'.cargo-target/diagnose-tail-4e7b77b1'\ntarget=Path(sys.argv[1])if len(sys.argv)>1 else root/'.cargo-target/oop-slice'\nlabel=sys.argv[2]if len(sys.argv)>2 else 'baseline'\nenv=dict(os.environb);env.update({b'BIRNAM_OOP_TARGET':str(target).encode(),b'BIRNAM_MODULES_DIR':b'/nonexistent',b'BIRNAM_TEST_MODULE_DIRECTORY':b'/nonexistent',b'BIRNAM_OOP_TEST_PRESENT':'h\u00e9llo'.encode(),b'BIRNAM_OOP_TEST_EMPTY':b'',b'BIRNAM_OOP_TEST_BINARY':b'\\xff'})\nfor key in [b'BIRNAM_OOP_TEST_MISSING',b'fixture-hello',b'BIRNAM_DIAG_TAIL_CASE']:env.pop(key,None)\nresult=subprocess.run([str(root/'.cargo-target/oop-slice/release/examples/oop_slice'),str(root),'numeric-integration'],cwd=root,env=env,input=(root/'.cargo-target/oop-slice/qualification/input.bin').read_bytes(),capture_output=True,timeout=180)\n(out/f'{label}.stdout').write_bytes(result.stdout);(out/f'{label}.stderr').write_bytes(result.stderr)\nrows=[dict(custom_lookup=c=='true',calls=int(n),peak_frames=int(p))for c,n,p in re.findall(r'TAIL_CONTRACT custom=(true|false) calls=(\\d+) peak_frames=(\\d+)',result.stdout.decode(errors='replace'))]\nrecord={'label':label,'returncode':result.returncode,'observations':rows,'expected_failure':'tail calls must reuse the source frame' in result.stderr.decode(errors='replace')}\n(out/f'{label}.json').write_text(json.dumps(record,indent=2)+'\\n');print(json.dumps(record))\nassert len(rows)==4,record\nif label=='force-tail-classification':assert result.returncode==0 and all(row['peak_frames']==2 for row in rows),record\nelse:assert record['expected_failure'],record\n"
+  },
+  "selected_trace": {
+    "trace": [
+      "[DEBUG-tail] case=3 event=setup calls=8 tick_selector=0x60000029d658 tail_selector=0x60000029d6d8",
+      "[DEBUG-tail] case=3 event=route tail=false pure=true registered=true frames=1 receiver=0x6000002b0bc8 selector=0x60000029fcb8 selected=0x60000008c5c8",
+      "[DEBUG-tail] case=3 event=push tail=false before=1 after=2",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=2 receiver=0x60000029ad98 selector=0x60000029d658 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=false frames=2 receiver=0x60000029ad98 selector=0x60000029d6d8 selected=0x0",
+      "[DEBUG-tail] case=3 event=source_entry inherited=true method=0x600000082f88",
+      "[DEBUG-tail] case=3 event=push tail=false before=2 after=3",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=3 receiver=0x60000029ad98 selector=0x60000029d658 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=false frames=3 receiver=0x60000029ad98 selector=0x60000029d6d8 selected=0x0",
+      "[DEBUG-tail] case=3 event=source_entry inherited=true method=0x600000082f88",
+      "[DEBUG-tail] case=3 event=push tail=false before=3 after=4",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=4 receiver=0x60000029ad98 selector=0x60000029d658 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=false frames=4 receiver=0x60000029ad98 selector=0x60000029d6d8 selected=0x0",
+      "[DEBUG-tail] case=3 event=source_entry inherited=true method=0x600000082f88",
+      "[DEBUG-tail] case=3 event=push tail=false before=4 after=5",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=5 receiver=0x60000029ad98 selector=0x60000029d658 selected=0x0"
+    ],
+    "force-tail-classification": [
+      "[DEBUG-tail] case=3 event=setup calls=8 tick_selector=0x6000007e1668 tail_selector=0x6000007e16e8",
+      "[DEBUG-tail] case=3 event=route tail=false pure=true registered=true frames=1 receiver=0x6000007c1118 selector=0x6000007e3cc8 selected=0x6000005ff328",
+      "[DEBUG-tail] case=3 event=push tail=false before=1 after=2",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=2 receiver=0x6000007cd928 selector=0x6000007e1668 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=true frames=2 receiver=0x6000007cd928 selector=0x6000007e16e8 selected=0x6000005f26e8",
+      "[DEBUG-tail] case=3 event=push tail=true before=2 after=2",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=2 receiver=0x6000007cd928 selector=0x6000007e1668 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=true frames=2 receiver=0x6000007cd928 selector=0x6000007e16e8 selected=0x6000005f26e8",
+      "[DEBUG-tail] case=3 event=push tail=true before=2 after=2",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=2 receiver=0x6000007cd928 selector=0x6000007e1668 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=true frames=2 receiver=0x6000007cd928 selector=0x6000007e16e8 selected=0x6000005f26e8",
+      "[DEBUG-tail] case=3 event=push tail=true before=2 after=2",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=2 receiver=0x6000007cd928 selector=0x6000007e1668 selected=0x0",
+      "[DEBUG-tail] case=3 event=route tail=true pure=false registered=true frames=2 receiver=0x6000007cd928 selector=0x6000007e16e8 selected=0x6000005f26e8",
+      "[DEBUG-tail] case=3 event=push tail=true before=2 after=2",
+      "[DEBUG-tail] case=3 event=route tail=false pure=false registered=false frames=2 receiver=0x6000007cd928 selector=0x6000007e1668 selected=0x0"
+    ]
+  },
+  "limits": [
+    "Correctness/state observations, not CPU or native-stack measurements",
+    "No claim that ownership changes or Id extensions are necessary",
+    "Production reproducer remains failing after probes; instrumented builds exist only in ignored diagnostic directory"
+  ]
+}

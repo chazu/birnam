@@ -1,6 +1,7 @@
 # Custom lookup breaks tail-call reuse in the Oop migration
 
-Status: reproduced regression; repair unresolved. Remaining migration that depends
+Status: routing cause confirmed; production repair unresolved.
+See the [controlled diagnosis](oop-tail-routing-diagnosis.md). Remaining migration that depends
 on the current dispatch/Execution boundary is held. This is not a qualified runtime
 checkpoint. Id's public contract is frozen by the user's instruction and has not
 been changed.
@@ -66,26 +67,28 @@ stackless/tail behavior. It cannot be treated as full functional acceptance.
 - Treating a registered source call as a synchronous native call is the measured
   failure; accepting it would weaken the preserved tail-call/control contract.
 
-## Ownership decision to resolve
+## Repair requirement; ownership change is not established
 
-Current method selection and native entry are private to Id/bootstrap Method
-implementation; frame classification/scheduling live in a separate Execution
-implementation. The full path needs to select once, keep the selected code alive,
-and either transfer to its registered frame or enter its native implementation.
-That work must not become another public Id protocol or foreign-layout read.
+The controlled diagnosis confirms that the driver skips registration recognition
+for custom lookup, then re-enters the registered Method through a non-tail nested
+drive. Removing lookup-time GC/bookkeeping does not change the failure. A diagnostic
+classification control restores frame reuse, showing that the registry and the
+retained tail-transfer algorithm work.
 
-The candidate direction is to consolidate the private ownership of Method entry
-and registered execution, while keeping minimal Id, payload opacity and the public
-Id message contract unchanged. This is an ownership proposal, not an implemented
-or approved design. Its physical linkage/bootstrap arrangement must demonstrate
-that it does not merely hide a new inter-owner native service behind another name
-or pull upper-language policy into minimal Id.
+The required repair is to preserve the actual selected Method and original
+Call/TailCall context through one lookup, while retaining ordinary native dispatch
+and the frozen Id contract. The diagnostic control is not safe to retain: its
+native fallback can replay custom lookup.
 
-No such implementation is claimed here. That ownership question needs resolution
-before extending suspension, continuations, recovery or dependent compiler/host
-ports. The project instructions explicitly require the hold:
+The earlier claim that an ownership decision was necessarily required was
+premature. No ownership change or new Id operation has been shown necessary by
+this diagnosis. Further dependent migration remains held because the correctness
+gate fails, not because a proposed architecture change has been approved or proven
+unavoidable.
+
+The project instructions remain applicable:
 
 > An open invariant violation blocks further migration that depends on that mechanism.
 
-The failing test and this diagnosis may be committed under those same instructions.
-No installation, merge or completion push is warranted by this checkpoint.
+The failing test is retained. No repair, completed migration or completion push is
+claimed by this diagnostic checkpoint.

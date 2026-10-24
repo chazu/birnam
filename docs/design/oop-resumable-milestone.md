@@ -4,7 +4,7 @@
 under forwarding custom lookup: 8/24 calls retain 9/25 frames, versus 2 with
 default lookup. The runtime is not fully qualified; dependent migration is held
 until this is repaired without changing the Id contract or weakening invariants.
-See the [regression and ownership question](oop-custom-lookup-tail-contract.md).
+See the [regression](oop-custom-lookup-tail-contract.md) and [controlled diagnosis](oop-tail-routing-diagnosis.md).
 Earlier passing receipts below retain only their recorded subset coverage.
 
 Status: the corrected connected native gate passes in a separate build target.
