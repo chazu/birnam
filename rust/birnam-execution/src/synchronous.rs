@@ -582,6 +582,10 @@ const NAMES: &[&[u8]] = &[
     b"boundaryDeliveryPending",
     b"acknowledgeBoundaryDelivery",
     b"exitRunnableBoundary:",
+    b"controlEligible",
+    b"protectedBlock:",
+    b"leaveBoundary:",
+    b"park",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -729,6 +733,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"boundaryDeliveryPending"),
     Literal::new(b"acknowledgeBoundaryDelivery"),
     Literal::new(b"exitRunnableBoundary:"),
+    Literal::new(b"controlEligible"),
+    Literal::new(b"protectedBlock:"),
+    Literal::new(b"leaveBoundary:"),
+    Literal::new(b"park"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -994,6 +1002,26 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 144,
         entry: Some(resumable::exit_runnable),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 145,
+        entry: Some(resumable::control::eligible),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 146,
+        entry: Some(resumable::control::protected),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 147,
+        entry: Some(resumable::control::leave),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 148,
+        entry: Some(resumable::control::park),
         convention: 0,
     },
 ];

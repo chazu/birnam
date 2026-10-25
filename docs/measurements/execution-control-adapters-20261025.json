@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "9e8fa127",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "exit_code": 0,
+  "unit_tests_passed": 188,
+  "source_checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "COMPILED_CONTROL_ADAPTER_OK mode=return bounded=false",
+    "COMPILED_CONTROL_ADAPTER_OK mode=return bounded=true",
+    "COMPILED_CONTROL_ADAPTER_OK mode=leave bounded=false",
+    "COMPILED_CONTROL_ADAPTER_OK mode=leave bounded=true",
+    "COMPILED_CONTROL_ADAPTER_OK mode=nested bounded=false",
+    "COMPILED_CONTROL_ADAPTER_OK mode=nested bounded=true",
+    "COMPILED_CONTROL_ADAPTER_OK mode=park bounded=false",
+    "COMPILED_CONTROL_ADAPTER_OK mode=park bounded=true",
+    "COMPILED_CONTROL_NATIVE_OK mode=eligible",
+    "COMPILED_CONTROL_NATIVE_OK mode=native_eligible",
+    "COMPILED_CONTROL_NATIVE_OK mode=native_park",
+    "COMPILED_CONTROL_NATIVE_OK mode=native_leave"
+  ],
+  "ownership": "Execution owns registered adapter frames and reuses its boundary and suspension algorithms. Shared registration and descriptor construction replace the obsolete native value plumbing. Id and compiler formats are unchanged.",
+  "scope": "Machine protectedBlock:, leaveBoundary:, park and controlEligible through ordinary source sends. Source-authored handlers, cancellation, cleanup, recovery and wider runtime rebuilding remain pending.",
+  "logs_sha256": {
+    "unit.log": "95dfd5de533d645546323e562fcc9daa7e2b461a64dab585b5fdf9b045e03c87",
+    "numeric-integration.log": "d73d097e0e03f8964e92069d452fa2a951cf79847e04eabfd36ab09b2aba50a1",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}

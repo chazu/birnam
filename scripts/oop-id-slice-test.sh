@@ -89,6 +89,13 @@ for marker in [b'COMPILED_EXPLICIT_CONTROL_OK capture=false mode=resume', b'COMP
     assert marker in numeric, marker
 for mode in ['exit', 'budget', 'native', 'return', 'ingress']:
     assert ('COMPILED_BOUNDARY_EXIT_OK mode='+mode).encode() in numeric, mode
+for mode in ['return', 'leave', 'nested', 'park']:
+    for bounded in ['false', 'true']:
+        marker=f'COMPILED_CONTROL_ADAPTER_OK mode={mode} bounded={bounded}'.encode()
+        assert marker in numeric, marker
+for mode in ['eligible', 'native_eligible', 'native_park', 'native_leave']:
+    marker=('COMPILED_CONTROL_NATIVE_OK mode='+mode).encode()
+    assert marker in numeric, marker
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()

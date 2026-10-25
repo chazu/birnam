@@ -47,7 +47,7 @@ pub(super) unsafe fn check(
             send(tcc, b"checkpoint", &[]).unwrap();
         };
         let units = || abi::as_size(send(tcc, b"liveNativeUnits", &[]).unwrap()).unwrap();
-        let block = |source: &str| {
+        let source_block = |source: &str| {
             let method = compile(source);
             let mt = token(method);
             let root = send(blocks, b"fromMethod:captureOperands:", &[method]).unwrap();
@@ -97,7 +97,7 @@ pub(super) unsafe fn check(
         collect();
         println!("resumable arithmetic and runnable budgets: passed");
         // Real captured data enters resumable frames via current getters.
-        let (outer, ot) = block("[:x | [:y | [x + y]]]");
+        let (outer, ot) = source_block("[:x | [:y | [x + y]]]");
         let inner = send(outer, b"value:", &[five]).unwrap();
         let inner_token = token(inner);
         collect();
@@ -118,7 +118,7 @@ pub(super) unsafe fn check(
         let constant = send(actor_type, b"lookup", &[sel(b"constantValue")]).unwrap();
         let old_later = send(constant, b"withContext:", &[five]).unwrap();
         send(actor_type, b"addMethod", &[sel(b"later"), old_later]).unwrap();
-        let (parent, parent_token) = block(
+        let (parent, parent_token) = source_block(
             "[| [CompilerProbe resumeMark: #before]; let answer := [CompilerProbe child]; [CompilerProbe resumeMark: #after]; [answer + [CompilerProbe later]]]",
         );
         let replacement = compile("99");
@@ -189,7 +189,7 @@ pub(super) unsafe fn check(
         collect();
         assert_eq!(units(), baseline);
         // Abandoning a paused computation releases its frame pins and Unit too.
-        let (abandoned, abandoned_token) = block("[| [CompilerProbe resumeMark: #before]; 5]");
+        let (abandoned, abandoned_token) = source_block("[| [CompilerProbe resumeMark: #before]; 5]");
         let machine = send(machines, b"new", &[]).unwrap();
         let mt = token(machine);
         assert_eq!(
@@ -206,7 +206,7 @@ pub(super) unsafe fn check(
         assert_eq!(units(), baseline);
         // Replaced Block value is selected normally; it must not be classified using
         // cached behavior alone and bypassed with the old descriptor.
-        let (target, target_token) = block("[| 123]");
+        let (target, target_token) = source_block("[| 123]");
         let bt = send(ns, b"at:", &[sel(b"BlockVt")]).unwrap();
         let original = keep(send(bt, b"lookup", &[sel(b"value")]).unwrap());
         let changed = send(constant, b"withContext:", &[five]).unwrap();
@@ -236,7 +236,7 @@ pub(super) unsafe fn check(
         .unwrap();
         send(id.root, b"reassociateBehaviorOf:with:", &[native, private]).unwrap();
         assert_eq!(send(actor, b"dependency:", &[five]), Ok(five));
-        let (caller, caller_token) = block("[| [CompilerProbe dependency: 5]]");
+        let (caller, caller_token) = source_block("[| [CompilerProbe dependency: 5]]");
         let machine = send(machines, b"new", &[]).unwrap();
         let mt = token(machine);
         let result = send(machine, b"runBlock:", &[caller]).unwrap();
@@ -263,8 +263,8 @@ pub(super) unsafe fn check(
         let dnu = send(actor_type, b"lookup", &[sel(b"doesNotUnderstand:")]).unwrap();
         send(probe_type, b"addMethod", &[sel(b"doesNotUnderstand:"), dnu]).unwrap();
         send(ns, b"at:put:", &[sel(b"LookupProbe"), probe]).unwrap();
-        let (caller, caller_token) = block("[| [LookupProbe dependency: 5]]");
-        let (missing, missing_token) = block("[| [LookupProbe missingUnregistered]]");
+        let (caller, caller_token) = source_block("[| [LookupProbe dependency: 5]]");
+        let (missing, missing_token) = source_block("[| [LookupProbe missingUnregistered]]");
         let meta = send(id.root, b"behaviorOf:", &[probe_type]).unwrap();
         let private = keep(send(meta, b"delegated", &[]).unwrap());
         let custom = send(actor_type, b"lookup", &[sel(b"lookupOverride")]).unwrap();
@@ -1061,6 +1061,210 @@ pub(super) unsafe fn check(
             collect();
             assert_eq!(units(), baseline);
             println!("COMPILED_BOUNDARY_EXIT_OK mode={mode}");
+        }
+
+        // Exercise the retained adapters by their ordinary source selectors,
+        // without replacing generated Call or Return operations.
+        let protected = keep(send(machine_vt, b"lookup", &[sel(b"protectedBlock:")]).unwrap());
+        let park = keep(send(machine_vt, b"lookup", &[sel(b"park")]).unwrap());
+        for (name, source, expected, before, after) in [
+            (
+                "return",
+                "[ControlMachine protectedBlock: [| [CompilerProbe resumeMark: #before]; 11]]",
+                11,
+                1,
+                0,
+            ),
+            (
+                "leave",
+                "[[ControlMachine protectedBlock: [| [CompilerProbe resumeMark: #before]; [ControlMachine leaveBoundary: 5]; [CompilerProbe resumeMark: #after]; 99]] + 7]",
+                12,
+                1,
+                0,
+            ),
+            (
+                "nested",
+                "[ControlMachine protectedBlock: [| [[ControlMachine protectedBlock: [| [ControlMachine leaveBoundary: 5]; 99]] + 7]]]",
+                12,
+                0,
+                0,
+            ),
+        ] {
+            for bounded in [false, true] {
+                collect();
+                let baseline = units();
+                send(actor, b"resumeReset", &[]).unwrap();
+                let machine = send(machines, b"new", &[]).unwrap();
+                let mt = token(machine);
+                send(ns, b"at:put:", &[sel(b"ControlMachine"), machine]).unwrap();
+                let code = compile(source);
+                let ct = token(code);
+                let body = send(blocks, b"fromMethod:captureOperands:", &[code]).unwrap();
+                let bt = token(body);
+                let mut result = if bounded {
+                    send(machine, b"runBlock:budget:", &[body, one])
+                } else {
+                    send(machine, b"runBlock:", &[body])
+                }
+                .unwrap();
+                let mut turns = 0;
+                while result == machine {
+                    collect();
+                    result = send(machine, b"continueWithBudget:", &[one]).unwrap();
+                    turns += 1;
+                    assert!(turns < 100);
+                }
+                assert_eq!(bits(result), expected);
+                assert_eq!(count(b"before"), before);
+                assert_eq!(count(b"after"), after);
+                if name == "return" {
+                    let other = send(machines, b"new", &[]).unwrap();
+                    let ot = token(other);
+                    send(ns, b"at:put:", &[sel(b"ControlMachine"), other]).unwrap();
+                    send(
+                        machine_vt,
+                        b"addMethod",
+                        &[sel(b"protectedBlock:"), initial_later],
+                    )
+                    .unwrap();
+                    collect();
+                    assert_eq!(bits(send(other, b"runBlock:", &[body]).unwrap()), 5);
+                    assert_eq!(count(b"before"), 1);
+                    send(
+                        machine_vt,
+                        b"addMethod",
+                        &[sel(b"protectedBlock:"), protected],
+                    )
+                    .unwrap();
+                    release(ot);
+                }
+                send(
+                    ns,
+                    b"at:put:",
+                    &[sel(b"ControlMachine"), std::ptr::null_mut()],
+                )
+                .unwrap();
+                release(bt);
+                release(ct);
+                release(mt);
+                collect();
+                assert_eq!(units(), baseline);
+                println!("COMPILED_CONTROL_ADAPTER_OK mode={name} bounded={bounded}");
+            }
+        }
+        for bounded in [false, true] {
+            collect();
+            let baseline = units();
+            send(actor, b"resumeReset", &[]).unwrap();
+            let machine = send(machines, b"new", &[]).unwrap();
+            let mt = token(machine);
+            send(ns, b"at:put:", &[sel(b"ControlMachine"), machine]).unwrap();
+            let (body, bt) = source_block(
+                "[| [CompilerProbe resumeMark: #before]; let supplied := [ControlMachine park]; [CompilerProbe resumeMark: #after]; [supplied + [ControlMachine park]]]",
+            );
+            assert_eq!(send(machine, b"runBlock:", &[body]), Ok(machine));
+            assert_eq!(send(machine, b"executionState", &[]), Ok(sel(b"suspended")));
+            assert_eq!(count(b"before"), 1);
+            assert_eq!(count(b"after"), 0);
+            release(bt);
+            send(machine_vt, b"addMethod", &[sel(b"park"), replacement_later]).unwrap();
+            collect();
+            assert_eq!(units(), baseline + 1);
+            let mut result = if bounded {
+                send(machine, b"resumeWith:budget:", &[five, zero])
+            } else {
+                send(machine, b"resumeWith:", &[five])
+            }
+            .unwrap();
+            let mut turns = 0;
+            while result == machine {
+                collect();
+                result = send(machine, b"continueWithBudget:", &[one]).unwrap();
+                turns += 1;
+                assert!(turns < 100);
+            }
+            assert_eq!(bits(result), 12);
+            assert_eq!(count(b"before"), 1);
+            assert_eq!(count(b"after"), 1);
+            send(machine_vt, b"addMethod", &[sel(b"park"), park]).unwrap();
+            send(
+                ns,
+                b"at:put:",
+                &[sel(b"ControlMachine"), std::ptr::null_mut()],
+            )
+            .unwrap();
+            release(mt);
+            collect();
+            assert_eq!(units(), baseline);
+            println!("COMPILED_CONTROL_ADAPTER_OK mode=park bounded={bounded}");
+        }
+        for mode in ["eligible", "native_eligible", "native_park", "native_leave"] {
+            let callback = mode != "eligible";
+            let rejected = mode == "native_park" || mode == "native_leave";
+            collect();
+            let baseline = units();
+            let machine = send(machines, b"new", &[]).unwrap();
+            let mt = token(machine);
+            send(ns, b"at:put:", &[sel(b"ControlMachine"), machine]).unwrap();
+            let leaf = compile(match mode {
+                "native_park" => "[ControlMachine park]",
+                "native_leave" => "[ControlMachine leaveBoundary: 5]",
+                _ => "[ControlMachine controlEligible]",
+            });
+            let lt = token(leaf);
+            let leaf_block = send(blocks, b"fromMethod:captureOperands:", &[leaf]).unwrap();
+            let lbt = token(leaf_block);
+            let mut extra = Vec::new();
+            let body = if callback {
+                let context = send(id.root, b"sequence", &[machine, leaf_block, one, gc]).unwrap();
+                let reenter = send(native, b"methodAt:", &[sel(b"reenter")]).unwrap();
+                let reenter = send(reenter, b"withContext:", &[context]).unwrap();
+                extra.push(token(reenter));
+                send(probe_type, b"addMethod", &[sel(b"reenter"), reenter]).unwrap();
+                let code = compile("[ControlMachine protectedBlock: [| [TailProbe reenter]]]");
+                extra.push(token(code));
+                let body = send(blocks, b"fromMethod:captureOperands:", &[code]).unwrap();
+                extra.push(token(body));
+                body
+            } else {
+                leaf_block
+            };
+            let result = send(machine, b"runBlock:", &[body]);
+            if rejected {
+                assert!(
+                    result.is_err(),
+                    "native control must fail: {mode} {result:?}"
+                );
+                assert_eq!(send(machine, b"executionState", &[]), Ok(sel(b"failed")));
+            } else {
+                assert_eq!(
+                    result.unwrap(),
+                    send(
+                        ns,
+                        b"at:",
+                        &[sel(if callback { b"false" } else { b"true" })]
+                    )
+                    .unwrap()
+                );
+            }
+            if callback {
+                send(probe_type, b"removeMethod:", &[sel(b"reenter")]).unwrap();
+            }
+            send(
+                ns,
+                b"at:put:",
+                &[sel(b"ControlMachine"), std::ptr::null_mut()],
+            )
+            .unwrap();
+            for t in extra {
+                release(t);
+            }
+            release(lbt);
+            release(lt);
+            release(mt);
+            collect();
+            assert_eq!(units(), baseline);
+            println!("COMPILED_CONTROL_NATIVE_OK mode={mode}");
         }
 
         println!("RESUMABLE_EXECUTION_OOP_OK");

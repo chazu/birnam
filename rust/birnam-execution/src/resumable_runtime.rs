@@ -1,5 +1,7 @@
 //! Oop message connection to the retained registration and Machine algorithms.
 use super::*;
+#[path = "control.rs"]
+pub(super) mod control;
 use crate::{entry::EntryKey, execution::*};
 use std::{
     collections::{HashMap, HashSet},
@@ -168,7 +170,7 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
         else {
             return Err(invalid());
         };
-        let q = s.scope(&[*step, *owner, *description, *selection]);
+        let _q = s.scope(&[*step, *owner, *description, *selection]);
         let description = bytes(
             s,
             *description,
@@ -204,9 +206,21 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
             generation,
             key(s, *step)?,
         ))?;
+        register_descriptor(s, descriptor, *step, *owner)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe fn register_descriptor(
+    s: &State,
+    descriptor: Arc<FrameDescriptor>,
+    step: Oop,
+    owner: Oop,
+) -> Result<Oop, Oop> {
+    unsafe {
+        let q = s.scope(&[step, owner]);
         let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
-        // This milestone admits plain Block bodies. Implementation-slot adapters are
-        // a separate existing constructor contract, never silently ignored here.
+        // Implementation-slot adapters have a separate constructor contract;
+        // this registration must not silently discard that binding.
         if binding.implementation_slot.is_some() {
             return Err(invalid());
         }
@@ -235,8 +249,8 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
             context.addr(),
             Registered {
                 method,
-                step: *step,
-                owner: *owner,
+                step,
+                owner,
                 descriptor,
                 key: method_key,
                 capability,
@@ -244,8 +258,7 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
             },
         );
         Ok(method)
-    })()
-    .unwrap_or_else(abi::fault_reference)
+    }
 }
 unsafe fn new_machine(s: &State) -> Result<Oop, Oop> {
     unsafe {
@@ -1717,42 +1730,7 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
         )?);
         let step = q.keep(s.send(image, b"methodAt:", &[s.names[b"runBlockStep".as_slice()]])?);
         let step = q.keep(s.send(step, b"withContext:", &[s.ns])?);
-        let descriptor = checked(FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
-            identity: DescriptorIdentity {
-                implementation: 0,
-                generation: 0,
-                source_map: 0,
-            },
-            program_counter_count: 2,
-            driver_argument_count: 1,
-            slot_count: 4,
-            entry_receiver_slot: 0,
-            entry_argument_start: 1,
-            entry_argument_count: 1,
-            entry_capture_slots: vec![],
-            implementation_slot: None,
-            root_bitmap_words: vec![15; 2],
-            call_sites: vec![CallSiteDescriptor {
-                kind: CallSiteKind::Call,
-                receiver_slot: 1,
-                selector_slot: 2,
-                argument_start: 0,
-                argument_count: 0,
-                result_slot: Some(3),
-                continuation_pc: Some(1),
-            }],
-            edges: vec![FrameEdgeSpec {
-                kind: EdgeTransitionKind::Call,
-                source_pc: 0,
-                target_pc: 1,
-                call_site_index: Some(0),
-                result_slot: Some(3),
-                copies: vec![],
-                clear_bitmap_words: vec![0],
-            }],
-            step_method: key(s, step)?,
-        }))?;
-        descriptor.executable_owner.set(s.receiver);
+        let descriptor = control::descriptor(s, step, 1, true)?;
         {
             let mut runtime = s.resume.borrow_mut();
             runtime.context_vt = context_vt;
@@ -1798,6 +1776,7 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
                 _ => r.bridge_template = method,
             };
         }
+        control::install(s, image, machine_vtable)?;
         for (name, value) in [
             (b"Machine".as_slice(), machine_prototype),
             (b"MachineVt", machine_vtable),

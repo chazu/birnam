@@ -179,8 +179,16 @@ exit before delivery. Native entry barriers still prevent unwinding a waiting
 native caller. No new frame algorithm or Id operation is introduced. The source
 gate covers normal return, early exit, budget interleaving with GC, native refusal,
 external exit and code release
-([receipt](../measurements/execution-boundaries-20261025.json)). Higher-level
-control adapters, handlers, cancellation and recovery remain unconnected.
+([receipt](../measurements/execution-boundaries-20261025.json)).
+
+The retained `protectedBlock:`, `leaveBoundary:`, `park` and `controlEligible`
+adapters now enter as ordinary registered Methods. Execution owns their frames
+and uses the same boundary/suspension algorithms as compiled source; the compiler
+recognizes no special selectors. Their obsolete native value plumbing is removed,
+and registration and the four-slot driver descriptor are shared. Source checks
+cover nested exits, budgeted resume, replacement, GC/code release and native
+refusal ([receipt](../measurements/execution-control-adapters-20261025.json)).
+Source-authored handlers, cancellation, cleanup and recovery remain unconnected.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send
