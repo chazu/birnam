@@ -149,8 +149,7 @@ The reconstruction order is:
 
 1. **Completed:** formal boundary checks and the executable semantic reference.
 2. **Completed for the bounded Id mechanism:** transfer convention, root/context
-   handoff, native boundary checks and an independent C caller. Compiler and
-   Execution have not yet adopted it.
+   handoff, native boundary checks and an independent C caller.
 3. **Completed for the explicit source paths:** compiler/TCC v3 declarations,
    Execution return continuations, allocation accounting and safe points. The
    preliminary lookup classification, native fallback guessing and captured-alias
@@ -158,7 +157,7 @@ The reconstruction order is:
 4. Restore retained control, handlers, cancellation, cleanup, recovery and
    optimized/named/portable compiler consumers, keeping explicit features intact.
 5. Reconnect remaining functional owners, bootstrap, Host/CLI, images and workers;
-   qualify clean source builds and installed behavior before completion/push.
+   qualify clean source builds and installed behavior before release.
 
 ## Compiler/Execution continuation checkpoint
 
