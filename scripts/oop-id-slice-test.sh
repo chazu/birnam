@@ -87,6 +87,8 @@ for marker in [b'COMPILED_LOOKUP_SUSPENSION_REENTRY_REPLACEMENT_OK', b'COMPILED_
     assert marker in numeric, marker
 for marker in [b'COMPILED_EXPLICIT_CONTROL_OK capture=false mode=resume', b'COMPILED_EXPLICIT_CONTROL_OK capture=true mode=resume', b'COMPILED_EXPLICIT_CONTROL_OK capture=false mode=budget', b'COMPILED_CONTROL_DISCARD_OK capture=false', b'COMPILED_CONTROL_DISCARD_OK capture=true', b'COMPILED_CONTROL_BARRIER_OK capture=false mode=native', b'COMPILED_CONTROL_BARRIER_OK capture=true mode=native', b'COMPILED_CONTROL_BARRIER_OK capture=false mode=callback', b'COMPILED_CONTROL_BARRIER_OK capture=true mode=callback']:
     assert marker in numeric, marker
+for mode in ['exit', 'budget', 'native', 'return', 'ingress']:
+    assert ('COMPILED_BOUNDARY_EXIT_OK mode='+mode).encode() in numeric, mode
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()

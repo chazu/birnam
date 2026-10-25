@@ -577,6 +577,11 @@ const NAMES: &[&[u8]] = &[
     b"continuationConsumed",
     b"continuationWrongMachine",
     b"continuationNotImageable",
+    b"boundaryCallSite:",
+    b"exitBoundaryAt:",
+    b"boundaryDeliveryPending",
+    b"acknowledgeBoundaryDelivery",
+    b"exitRunnableBoundary:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -719,6 +724,11 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"continuationConsumed"),
     Literal::new(b"continuationWrongMachine"),
     Literal::new(b"continuationNotImageable"),
+    Literal::new(b"boundaryCallSite:"),
+    Literal::new(b"exitBoundaryAt:"),
+    Literal::new(b"boundaryDeliveryPending"),
+    Literal::new(b"acknowledgeBoundaryDelivery"),
+    Literal::new(b"exitRunnableBoundary:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -959,6 +969,31 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 122,
         entry: Some(resumable::restore),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 140,
+        entry: Some(resumable::boundary_call),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 141,
+        entry: Some(resumable::boundary_exit),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 142,
+        entry: Some(resumable::delivery_pending),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 143,
+        entry: Some(resumable::acknowledge),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 144,
+        entry: Some(resumable::exit_runnable),
         convention: 0,
     },
 ];

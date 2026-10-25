@@ -60,6 +60,11 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"resumeWith:",
     b"resumeWith:budget:",
     b"restoreContinuation:with:",
+    b"exitRunnableBoundary:",
+    b"boundaryCallSite:",
+    b"exitBoundaryAt:",
+    b"boundaryDeliveryPending",
+    b"acknowledgeBoundaryDelivery",
 ];
 fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
@@ -807,6 +812,13 @@ pub(super) unsafe extern "C" fn advance(
                     argument_count,
                     ..
                 }
+                | DecodedAction::BoundaryCall {
+                    receiver_slot,
+                    selector_slot,
+                    argument_start,
+                    argument_count,
+                    ..
+                }
                 | DecodedAction::TailCall {
                     receiver_slot,
                     selector_slot,
@@ -814,11 +826,18 @@ pub(super) unsafe extern "C" fn advance(
                     argument_count,
                 } => {
                     let tail = matches!(decoded, DecodedAction::TailCall { .. });
-                    let slot = if let DecodedAction::Call { result_slot, .. } = decoded {
-                        result_slot
-                    } else {
-                        0
+                    let slot = match decoded {
+                        DecodedAction::Call { result_slot, .. }
+                        | DecodedAction::BoundaryCall { result_slot, .. } => result_slot,
+                        _ => 0,
                     };
+                    if matches!(decoded, DecodedAction::BoundaryCall { .. }) {
+                        let result = s
+                            .engine
+                            .borrow_mut()
+                            .establish_boundary(OWNER, capability, slot);
+                        control_checked(s, result)?;
+                    }
                     let operands = checked(s.engine.borrow().copy_send_operands(
                         OWNER,
                         capability,
@@ -836,6 +855,19 @@ pub(super) unsafe extern "C" fn advance(
                     let mut values = vec![operands.receiver, operands.selector, k];
                     values.extend_from_slice(&operands.arguments);
                     s.transfer(b"prepareSend", &values)
+                }
+                DecodedAction::ExitBoundary { value_slot } => {
+                    let value = q.keep(checked(
+                        s.engine
+                            .borrow()
+                            .read_current_oop(OWNER, capability, value_slot),
+                    )?);
+                    let result = s
+                        .engine
+                        .borrow_mut()
+                        .exit_boundary(OWNER, capability, value, s.nil);
+                    control_checked(s, result)?;
+                    next_step(s, machine)
                 }
                 _ => Err(invalid()),
             }
@@ -1390,12 +1422,21 @@ unsafe fn action(c: Oop, r: Oop, a: *const Oop, n: usize, kind: u8) -> Oop {
         let cap = cap(s, r)?;
         let mut e = s.engine.borrow_mut();
         let mut storage = s.storage.borrow_mut();
-        checked(match kind {
+        let result = match kind {
             0 => e.publish_continue(&mut storage, OWNER, cap, i),
             1 => e.publish_call_site(&mut storage, OWNER, cap, i, CallSiteKind::Call),
             2 => e.publish_call_site(&mut storage, OWNER, cap, i, CallSiteKind::TailCall),
-            _ => e.publish_return(&mut storage, OWNER, cap, i),
-        })
+            3 => e.publish_return(&mut storage, OWNER, cap, i),
+            4 => e.publish_boundary_call(&mut storage, OWNER, cap, i),
+            _ => e.publish_boundary_exit(&mut storage, OWNER, cap, i),
+        };
+        drop(storage);
+        drop(e);
+        if kind >= 4 {
+            control_checked(s, result)
+        } else {
+            checked(result)
+        }
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -1422,6 +1463,90 @@ pub(super) unsafe extern "C" fn tail_call_site(
 }
 pub(super) unsafe extern "C" fn return_at(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     unsafe { action(c, r, a, n, 3) }
+}
+pub(super) unsafe extern "C" fn boundary_call(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { action(c, r, a, n, 4) }
+}
+pub(super) unsafe extern "C" fn boundary_exit(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { action(c, r, a, n, 5) }
+}
+pub(super) unsafe extern "C" fn exit_runnable(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let _q = s.scope(&[r, *value]);
+        let capability = cap(s, r)?;
+        let result = s
+            .engine
+            .borrow_mut()
+            .exit_runnable_boundary(OWNER, capability, *value, s.nil);
+        control_checked(s, result)?;
+        Ok(r)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn delivery_pending(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    _: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let result = s
+            .engine
+            .borrow()
+            .boundary_delivery_pending(OWNER, cap(s, r)?);
+        let pending = control_checked(s, result)?;
+        s.named(if pending { b"true" } else { b"false" })
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn acknowledge(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    _: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let capability = cap(s, r)?;
+        let result = s
+            .engine
+            .borrow_mut()
+            .acknowledge_boundary_delivery(OWNER, capability);
+        control_checked(s, result)?;
+        Ok(r)
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
 pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop> {
     if let Some(site) = s.resume.borrow().returns.get(&object.addr()) {

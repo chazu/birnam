@@ -505,6 +505,7 @@ pub(super) unsafe fn check(
         assert_eq!(field(stats,0),abi::size(1).unwrap());
         assert_eq!(field(stats,1),abi::size(1).unwrap());
         assert_eq!(count(b"entered"),1);
+        assert!(send(suspended,b"exitRunnableBoundary:",&[five]).is_err());
         send(probe_type,b"addMethod",&[sel(b"later:"),stop]).unwrap();
         collect();
         let completed=send(suspended,b"continueWithBudget:",&[wide]).unwrap();
@@ -889,6 +890,177 @@ pub(super) unsafe fn check(
             send(actor_type, b"removeMethod:", &[sel(b"later")]).unwrap();
         } else {
             send(actor_type, b"addMethod", &[sel(b"later"), original_later]).unwrap();
+        }
+
+        // Delimited calls use ordinary generated Call/Return sites. A leaf
+        // exit skips its intervening caller and delivers once to the boundary.
+        let original_return = keep(send(machine_vt, b"lookup", &[sel(b"returnAt:")]).unwrap());
+        let old_child = keep(send(actor_type, b"lookup", &[sel(b"child")]).unwrap());
+        let old_leaf = keep(send(actor_type, b"lookup", &[sel(b"leaf")]).unwrap());
+        for mode in ["exit", "budget", "native", "return", "ingress"] {
+            collect();
+            let baseline = units();
+            send(actor, b"resumeReset", &[]).unwrap();
+            let mut retained = Vec::new();
+            let hold = |value, retained: &mut Vec<Oop>| {
+                retained.push(token(value));
+                value
+            };
+            let machine = hold(send(machines, b"new", &[]).unwrap(), &mut retained);
+            let leaf = hold(compile("5"), &mut retained);
+            send(actor_type, b"addMethod", &[sel(b"leaf"), leaf]).unwrap();
+            if mode == "native" {
+                let block = hold(
+                    send(blocks, b"fromMethod:captureOperands:", &[leaf]).unwrap(),
+                    &mut retained,
+                );
+                let context = send(id.root, b"sequence", &[machine, block, one, gc]).unwrap();
+                let reenter = send(native, b"methodAt:", &[sel(b"reenter")]).unwrap();
+                let reenter = hold(
+                    send(reenter, b"withContext:", &[context]).unwrap(),
+                    &mut retained,
+                );
+                send(probe_type, b"addMethod", &[sel(b"reenter"), reenter]).unwrap();
+            }
+            let child = hold(
+                compile(if mode == "native" {
+                    "[CompilerProbe resumeMark: #before]; [[TailProbe reenter] + 100]"
+                } else {
+                    "[CompilerProbe resumeMark: #before]; [[CompilerProbe leaf] + 100]"
+                }),
+                &mut retained,
+            );
+            send(actor_type, b"addMethod", &[sel(b"child"), child]).unwrap();
+            let parent = hold(compile("[[CompilerProbe child] + 7]"), &mut retained);
+            let block = hold(
+                send(blocks, b"fromMethod:captureOperands:", &[parent]).unwrap(),
+                &mut retained,
+            );
+            // One host runBlock Call precedes the parent's source Call.
+            let boundary_context = hold(
+                send(
+                    id.root,
+                    b"sequence",
+                    &[original_site, abi::size(1).unwrap(), abi::size(0).unwrap()],
+                )
+                .unwrap(),
+                &mut retained,
+            );
+            let boundary = hold(
+                send(
+                    template(b"boundarySite"),
+                    b"withContext:",
+                    &[boundary_context],
+                )
+                .unwrap(),
+                &mut retained,
+            );
+            let exit_context = hold(
+                send(
+                    id.root,
+                    b"sequence",
+                    &[
+                        original_return,
+                        integer,
+                        abi::size(if mode == "return" { 999 } else { 5 }).unwrap(),
+                        abi::size(0).unwrap(),
+                        abi::size(0).unwrap(),
+                        truth,
+                        abi::size(0).unwrap(),
+                    ],
+                )
+                .unwrap(),
+                &mut retained,
+            );
+            let exit = hold(
+                send(template(b"exitReturn"), b"withContext:", &[exit_context]).unwrap(),
+                &mut retained,
+            );
+            send(machine_vt, b"addMethod", &[sel(b"callSite:"), boundary]).unwrap();
+            send(machine_vt, b"addMethod", &[sel(b"returnAt:"), exit]).unwrap();
+            let result = if mode == "budget" || mode == "ingress" {
+                let mut value = send(machine, b"runBlock:budget:", &[block, zero]).unwrap();
+                let mut turns = 0;
+                if mode == "ingress" {
+                    assert!(send(machine, b"exitRunnableBoundary:", &[five]).is_err());
+                }
+                let mut exited = false;
+                while value == machine {
+                    if mode == "ingress" && !exited && count(b"before") == 1 {
+                        assert_eq!(
+                            send(machine, b"exitRunnableBoundary:", &[five]),
+                            Ok(machine)
+                        );
+                        exited = true;
+                        assert_eq!(send(machine, b"boundaryDeliveryPending", &[]), Ok(truth));
+                        assert!(send(machine, b"exitRunnableBoundary:", &[seven]).is_err());
+                    }
+                    collect();
+                    value = send(machine, b"continueWithBudget:", &[one]).unwrap();
+                    turns += 1;
+                    assert!(turns < 100);
+                }
+                if mode == "ingress" {
+                    assert!(exited);
+                }
+                value
+            } else {
+                send(machine, b"runBlock:", &[block]).unwrap()
+            };
+            let result_token = token(result);
+            assert_eq!(
+                bits(result),
+                if mode == "native" || mode == "return" {
+                    112
+                } else {
+                    12
+                }
+            );
+            assert_eq!(count(b"before"), 1);
+            assert_eq!(field(boundary_context, 2), abi::size(1).unwrap());
+            assert_eq!(
+                field(exit_context, 3),
+                abi::size(usize::from(mode != "return" && mode != "ingress")).unwrap()
+            );
+            assert_eq!(
+                field(exit_context, 4),
+                abi::size(usize::from(mode == "native")).unwrap()
+            );
+            assert_eq!(field(exit_context, 6), abi::size(1).unwrap());
+            assert_ne!(send(machine, b"boundaryDeliveryPending", &[]), Ok(truth));
+            assert!(send(machine, b"acknowledgeBoundaryDelivery", &[]).is_err());
+            send(
+                machine_vt,
+                b"addMethod",
+                &[sel(b"callSite:"), original_site],
+            )
+            .unwrap();
+            send(
+                machine_vt,
+                b"addMethod",
+                &[sel(b"returnAt:"), original_return],
+            )
+            .unwrap();
+            for (name, method) in [
+                (b"child".as_slice(), old_child),
+                (b"leaf".as_slice(), old_leaf),
+            ] {
+                if method.is_null() {
+                    send(actor_type, b"removeMethod:", &[sel(name)]).unwrap();
+                } else {
+                    send(actor_type, b"addMethod", &[sel(name), method]).unwrap();
+                }
+            }
+            if mode == "native" {
+                send(probe_type, b"removeMethod:", &[sel(b"reenter")]).unwrap();
+            }
+            release(result_token);
+            for t in retained {
+                release(t);
+            }
+            collect();
+            assert_eq!(units(), baseline);
+            println!("COMPILED_BOUNDARY_EXIT_OK mode={mode}");
         }
 
         println!("RESUMABLE_EXECUTION_OOP_OK");

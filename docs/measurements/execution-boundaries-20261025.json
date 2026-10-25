@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "3f75481d",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "exit_code": 0,
+  "unit_tests_passed": 188,
+  "source_checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "COMPILED_BOUNDARY_EXIT_OK mode=exit",
+    "COMPILED_BOUNDARY_EXIT_OK mode=budget",
+    "COMPILED_BOUNDARY_EXIT_OK mode=native",
+    "COMPILED_BOUNDARY_EXIT_OK mode=return",
+    "COMPILED_BOUNDARY_EXIT_OK mode=ingress"
+  ],
+  "ownership": "Execution reconnects its existing boundary publication, unwind, delivery and acknowledgement algorithms. Id, frame descriptors and compiler formats are unchanged.",
+  "scope": "Source and externally requested delimited exit, with native and pending-send barriers. Higher-level control adapters, handlers, cancellation, recovery and the wider runtime rebuild remain pending.",
+  "logs_sha256": {
+    "unit.log": "b0f136d7fd3845b2fe9561b7ed3c34685e7c61613e26152c4f2f515332745a38",
+    "numeric-integration.log": "bdd5596b1e2e850aafd348725b0b3d24537c30bcc3292f24b13b4625079a83a1",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}

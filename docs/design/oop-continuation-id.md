@@ -171,7 +171,16 @@ The source gate checks supplied values without effect replay, live replacement,
 budgeted resume, wrong-Machine and repeated restore, GC with only the Continuation
 retaining its Machine, abandoned code release, and both direct/native-callback
 barriers ([receipt](../measurements/execution-control-continuations-20261025.json)).
-Delimited exit, handlers, cancellation and recovery remain unconnected.
+Delimited calls now establish the retained frame boundary before sending through
+Id. An exit unwinds only to that boundary and commits its saved Call once;
+normal return and exit retain the existing delivery acknowledgement. External
+exit accepts a committed budget stop, refusing a pending Id send and a second
+exit before delivery. Native entry barriers still prevent unwinding a waiting
+native caller. No new frame algorithm or Id operation is introduced. The source
+gate covers normal return, early exit, budget interleaving with GC, native refusal,
+external exit and code release
+([receipt](../measurements/execution-boundaries-20261025.json)). Higher-level
+control adapters, handlers, cancellation and recovery remain unconnected.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send
