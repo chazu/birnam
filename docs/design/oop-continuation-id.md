@@ -210,9 +210,21 @@ The authored control gate now uses `eval:` throughout. Separate checks cover
 compiler replacement, suspended evaluation, changed source without replay, and
 code retention/release with GC
 ([receipt](../measurements/default-compiler-entrypoints-20261025.json)).
-Artifact/source registration, recovery, complete bootstrap/Host and installed
-qualification remain pending. Bootstrap still imports the removed value carriers;
-standard source evaluation does not claim a repaired cold bootstrap.
+The retained source-record format and Codegen's connection to the authored
+`SourceRegistry` are now restored. Inspection produces ordinary compilation
+Vectors without publishing or executing source. Saved metadata is decoded and
+checked against its source digest without parser fallback. Registry publication,
+replacement and lookup use current sends; publication hands off the original
+answer destination so replacement policy may suspend. No native source table is
+introduced. The source gate covers duplicate/name/digest rejection, retained
+snapshots after replacement, method-source inventory with the parser disabled,
+64 KiB automatic collection, and suspension across registry rebinding
+([receipt](../measurements/source-registration-20261025.json)).
+Filename-aware evaluation, source/file loading, artifact admission, recovery,
+complete bootstrap/Host and installed qualification remain pending. Unconnected
+source evaluation and Generation projection remain in `pending_source.rs`.
+Bootstrap still imports removed value carriers; these source-path checkpoints do
+not claim a repaired cold bootstrap.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send
@@ -281,7 +293,7 @@ list of upper modules that still require migration.
 | --- | --- | --- |
 | Oop native owners and explicit source compilation | `scripts/oop-id-slice-test.sh`; explicit synchronous/resumable compiler entries | Preserve working algorithms and tests; migrate the execution contract |
 | Execution | `synchronous.rs`, `resumable_runtime.rs`, retained frame engine; uncompiled `pending_message_integration.rs` and older control consumers | Restore features in gated slices; delete displaced plumbing only with replacement coverage |
-| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect source registration, artifact admission, recovery and remaining compiler consumers; standard eval acceptance is not complete integration |
+| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect source/file loading, artifact admission, recovery and remaining compiler consumers; standard eval acceptance is not complete integration |
 | Functional owners and startup | Alien/Image/Store build failures; Bootstrap still imports removed carriers; Host/CLI/Isolate depend on the migration | Restore the complete cold-build/load closure before installed or worker claims |
 | Historical work | Oop worktree is the active development branch; pre-worktree probes are checkpointed separately at `f503c183` | Keep evidence; avoid merging obsolete experiment implementations into the new basis |
 

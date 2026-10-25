@@ -87,6 +87,10 @@ pub(super) unsafe fn check(
         evaluate(&std::fs::read_to_string(root.join(format!("modules/{name}.birnam"))).unwrap());
         println!("SOURCE_CONTROL_LOADED {name}");
     }
+    evaluate(&std::fs::read_to_string(root.join("modules/source-registry.birnam")).unwrap());
+    unsafe {
+        super::source_registration::check(id, send, sel, [ns, roots, gc, string, integer]);
+    }
     let target = std::env::var_os("BIRNAM_OOP_TARGET")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| root.join(".cargo-target/oop-slice"));

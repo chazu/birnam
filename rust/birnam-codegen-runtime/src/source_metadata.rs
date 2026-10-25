@@ -4,53 +4,59 @@
 use super::*;
 use birnam_codegen::{resumable::*, source_metadata::Metadata, source_revision::*};
 
-unsafe fn symbol(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
-    unsafe { q.keep(s.id.intern_name(bytes)?) }
+unsafe fn symbol(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
+    unsafe { Ok(q.keep(s.intern(bytes)?)) }
 }
-unsafe fn seq(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<Oop>, Outcome> {
+unsafe fn seq(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<Oop>, Oop> {
     unsafe {
         if !s.exact(q, value, b"VectorVt")? {
             return Err(invalid());
         }
-        let n = s.index(q, value, b"size")?;
+        let n = s.index(q.keep(s.send(value, b"size", &[])?))?;
         if n > 1_000_000 {
             return Err(invalid());
         }
         (0..n)
             .map(|i| {
                 let i = integer(s, q, i)?;
-                q.keep(object(s.send(value, b"at:", &[Operand::object(i)])?)?)
+                Ok(q.keep(s.send(value, b"at:", &[i])?))
             })
             .collect()
     }
 }
-unsafe fn integer(s: &State, q: &Scope<'_>, n: usize) -> Result<Oop, Outcome> {
+unsafe fn integer(s: &State, q: &Scope<'_>, n: usize) -> Result<Oop, Oop> {
     unsafe {
-        q.keep(object(s.send(
+        Ok(q.keep(s.send(
             s.named(b"Integer")?,
             b"fromWord:",
-            &[Operand::word(n)],
-        )?)?)
+            &[abi::size(n).ok_or_else(invalid)?],
+        )?))
     }
 }
-unsafe fn number(s: &State, value: Oop) -> Result<u32, Outcome> {
+unsafe fn number(s: &State, value: Oop) -> Result<u32, Oop> {
     unsafe {
-        s.send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(value)])?
-            .as_word()
-            .and_then(|n| u32::try_from(n).ok())
-            .ok_or_else(invalid)
+        let q = s.scope(&[value]);
+        let word = q.keep(s.send(s.named(b"Integer")?, b"wordOf:", &[value])?);
+        let bits = if let Some(v) = abi::as_size(word) {
+            v
+        } else {
+            let lo = abi::as_size(s.send(word, b"low32", &[])?).ok_or_else(invalid)?;
+            if abi::as_size(s.send(word, b"high32", &[])?) != Some(0) {
+                return Err(invalid());
+            }
+            lo
+        };
+        u32::try_from(bits).map_err(|_| invalid())
     }
 }
-unsafe fn bytes(s: &State, q: &Scope<'_>, b: &[u8]) -> Result<Oop, Outcome> {
+unsafe fn bytes(s: &State, q: &Scope<'_>, b: &[u8]) -> Result<Oop, Oop> {
     unsafe {
-        q.keep(object(s.send(
-            s.named(b"Bytes")?,
-            b"fromBytes:",
-            &[Operand::bytes(b)],
-        )?)?)
+        let factory = q.keep(s.named(b"Bytes")?);
+        let values = q.keep(s.byte_values(b)?);
+        Ok(q.keep(s.send(factory, b"fromBytes:", &[values])?))
     }
 }
-unsafe fn symbols(s: &State, q: &Scope<'_>, values: &[Vec<u8>]) -> Result<Oop, Outcome> {
+unsafe fn symbols(s: &State, q: &Scope<'_>, values: &[Vec<u8>]) -> Result<Oop, Oop> {
     unsafe {
         let values = values
             .iter()
@@ -59,22 +65,22 @@ unsafe fn symbols(s: &State, q: &Scope<'_>, values: &[Vec<u8>]) -> Result<Oop, O
         s.vector(q, &values)
     }
 }
-unsafe fn texts(s: &State, q: &Scope<'_>, values: &[Vec<u8>]) -> Result<Oop, Outcome> {
+unsafe fn texts(s: &State, q: &Scope<'_>, values: &[Vec<u8>]) -> Result<Oop, Oop> {
     unsafe {
         let values = values
             .iter()
-            .map(|b| s.text(q, b))
+            .map(|b| s.source_text(q, b))
             .collect::<Result<Vec<_>, _>>()?;
         s.vector(q, &values)
     }
 }
-unsafe fn read_symbol(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Outcome> {
+unsafe fn read_symbol(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Oop> {
     unsafe { s.symbol_bytes(q, v)?.ok_or_else(invalid) }
 }
-unsafe fn read_text(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Outcome> {
+unsafe fn read_text(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Oop> {
     unsafe { s.source_bytes(q, v)?.ok_or_else(invalid) }
 }
-unsafe fn read_bytes(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Outcome> {
+unsafe fn read_bytes(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Oop> {
     unsafe {
         if !s.exact(q, v, b"BytesVt")? {
             return Err(invalid());
@@ -82,7 +88,7 @@ unsafe fn read_bytes(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<u8>, Outcom
         s.bytes(v)
     }
 }
-unsafe fn read_symbols(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Vec<u8>>, Outcome> {
+unsafe fn read_symbols(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Vec<u8>>, Oop> {
     unsafe {
         seq(s, q, v)?
             .into_iter()
@@ -90,7 +96,7 @@ unsafe fn read_symbols(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Vec<u8>>,
             .collect()
     }
 }
-unsafe fn read_texts(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Vec<u8>>, Outcome> {
+unsafe fn read_texts(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Vec<u8>>, Oop> {
     unsafe {
         seq(s, q, v)?
             .into_iter()
@@ -98,7 +104,7 @@ unsafe fn read_texts(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Vec<u8>>, O
             .collect()
     }
 }
-unsafe fn digest(s: &State, q: &Scope<'_>, v: Oop) -> Result<[u8; 64], Outcome> {
+unsafe fn digest(s: &State, q: &Scope<'_>, v: Oop) -> Result<[u8; 64], Oop> {
     unsafe {
         let b: [u8; 64] = read_text(s, q, v)?.try_into().map_err(|_| invalid())?;
         if !b
@@ -111,7 +117,7 @@ unsafe fn digest(s: &State, q: &Scope<'_>, v: Oop) -> Result<[u8; 64], Outcome> 
     }
 }
 
-pub(super) unsafe fn reflect(s: &State, q: &Scope<'_>, m: &Metadata) -> Result<Oop, Outcome> {
+pub(super) unsafe fn reflect(s: &State, q: &Scope<'_>, m: &Metadata) -> Result<Oop, Oop> {
     unsafe {
         let nil = s.named(b"nil")?;
         let (name, requires) = if let Some((name, requires)) = &m.module {
@@ -126,7 +132,7 @@ pub(super) unsafe fn reflect(s: &State, q: &Scope<'_>, m: &Metadata) -> Result<O
                     symbol(s, q, &op.target)?,
                     symbol(s, q, &op.selector)?,
                     s.named(if op.install { b"true" } else { b"false" })?,
-                    s.text(q, &op.source)?,
+                    s.source_text(q, &op.source)?,
                     if let Some(p) = &op.program {
                         bytes(s, q, p)?
                     } else {
@@ -176,10 +182,10 @@ pub(super) unsafe fn reflect(s: &State, q: &Scope<'_>, m: &Metadata) -> Result<O
                     s.vector(q, &operations)?,
                     s.vector(q, &globals)?,
                     s.vector(q, &inventory)?,
-                    s.text(q, &r.initializer_residual_digest)?,
-                    s.text(q, &r.non_method_digest)?,
-                    s.text(q, &r.method_digest)?,
-                    s.text(q, &r.revision_digest)?,
+                    s.source_text(q, &r.initializer_residual_digest)?,
+                    s.source_text(q, &r.non_method_digest)?,
+                    s.source_text(q, &r.method_digest)?,
+                    s.source_text(q, &r.revision_digest)?,
                 ],
             )?
         } else {
@@ -189,7 +195,7 @@ pub(super) unsafe fn reflect(s: &State, q: &Scope<'_>, m: &Metadata) -> Result<O
             q,
             &[
                 symbol(s, q, b"compiledSourceMetadataV1")?,
-                s.text(q, &m.source_digest)?,
+                s.source_text(q, &m.source_digest)?,
                 name,
                 requires,
                 revision,
@@ -199,7 +205,7 @@ pub(super) unsafe fn reflect(s: &State, q: &Scope<'_>, m: &Metadata) -> Result<O
         )
     }
 }
-unsafe fn decode(s: &State, q: &Scope<'_>, value: Oop) -> Result<Metadata, Outcome> {
+unsafe fn decode(s: &State, q: &Scope<'_>, value: Oop) -> Result<Metadata, Oop> {
     unsafe {
         let fields = seq(s, q, value)?;
         let [
@@ -336,16 +342,14 @@ unsafe fn decode(s: &State, q: &Scope<'_>, value: Oop) -> Result<Metadata, Outco
         })
     }
 }
-pub(super) unsafe fn read(
-    s: &State,
-    q: &Scope<'_>,
-    source: Oop,
-) -> Result<Option<Metadata>, Outcome> {
+pub(super) unsafe fn read(s: &State, q: &Scope<'_>, source: Oop) -> Result<Option<Metadata>, Oop> {
     unsafe {
-        let owner=q.keep(s.named(b"Codegen")?)?;
-        let record=q.keep(object(s.send(owner,b"compiledSourceFor:",&[Operand::object(source)])?)?)?;
-        if record==s.named(b"nil")? {return Ok(None)}
-        let value=q.keep(object(s.send(owner,b"retainedSourceMetadataOf:",&[Operand::object(record)])?)?)?;
+        let owner = q.keep(s.named(b"Codegen")?);
+        let record = q.keep(s.send(owner, b"compiledSourceFor:", &[source])?);
+        if record == s.named(b"nil")? {
+            return Ok(None);
+        }
+        let value = q.keep(s.send(owner, b"retainedSourceMetadataOf:", &[record])?);
         if value == s.named(b"nil")? {
             return Ok(None);
         }
@@ -357,29 +361,42 @@ pub(super) unsafe fn read(
     }
 }
 /// Construct an imageable owner without changing a database or global registry.
-pub(super) unsafe fn retain_metadata(s:&State,q:&Scope<'_>,source:Oop,metadata:&Metadata)->Result<Oop,Outcome>{unsafe{
-    let text=q.keep(object(s.send(s.named(b"Codegen")?,b"sourceTextOf:",&[Operand::object(source)])?)?)?;
-    if !metadata.matches_source(&s.bytes(text)?) {return Err(invalid())}
-    let value=reflect(s,q,metadata)?;
-    q.keep(object(s.send(s.named(b"Codegen")?,b"compiledSource:metadata:",&[Operand::object(text),Operand::object(value)])?)?)
-}}
-
-/// Prepare once and hand the owning record to the caller; no implicit retention.
-pub(super) unsafe fn prepare(s:&State,q:&Scope<'_>,source:Oop)->Result<Option<Oop>,Outcome>{unsafe{
-    if compiled_source::is_record(s,q,source)? {
-        return Ok(read(s,q,source)?.map(|_|source));
-    }
-    let Some(metadata)=inspect_fresh(s,q,source)? else{return Ok(None)};
-    retain_metadata(s,q,source,&metadata).map(Some)
-}}
-
-/// Parse an explicit source request into operation-local compiler data.
-/// The CST and metadata contain copied bytes, not retained language objects.
-unsafe fn inspect_fresh(
+pub(super) unsafe fn retain_metadata(
     s: &State,
     q: &Scope<'_>,
     source: Oop,
-) -> Result<Option<Metadata>, Outcome> {
+    metadata: &Metadata,
+) -> Result<Oop, Oop> {
+    unsafe {
+        let text = q.keep(s.send(s.named(b"Codegen")?, b"sourceTextOf:", &[source])?);
+        if !metadata.matches_source(&s.bytes(text)?) {
+            return Err(invalid());
+        }
+        let value = reflect(s, q, metadata)?;
+        Ok(q.keep(s.send(
+            s.named(b"Codegen")?,
+            b"compiledSource:metadata:",
+            &[text, value],
+        )?))
+    }
+}
+
+/// Prepare once and hand the owning record to the caller; no implicit retention.
+pub(super) unsafe fn prepare(s: &State, q: &Scope<'_>, source: Oop) -> Result<Option<Oop>, Oop> {
+    unsafe {
+        if compiled_source::is_record(s, q, source)? {
+            return Ok(read(s, q, source)?.map(|_| source));
+        }
+        let Some(metadata) = inspect_fresh(s, q, source)? else {
+            return Ok(None);
+        };
+        retain_metadata(s, q, source, &metadata).map(Some)
+    }
+}
+
+/// Parse an explicit source request into operation-local compiler data.
+/// The CST and metadata contain copied bytes, not retained language objects.
+unsafe fn inspect_fresh(s: &State, q: &Scope<'_>, source: Oop) -> Result<Option<Metadata>, Oop> {
     unsafe {
         let Some(bytes) = s.source_bytes(q, source)? else {
             return Ok(None);
@@ -397,9 +414,11 @@ pub(super) unsafe fn inspect(
     s: &State,
     q: &Scope<'_>,
     source: Oop,
-) -> Result<Option<Metadata>, Outcome> {
+) -> Result<Option<Metadata>, Oop> {
     unsafe {
-        if compiled_source::is_record(s,q,source)? {return read(s,q,source)}
+        if compiled_source::is_record(s, q, source)? {
+            return read(s, q, source);
+        }
         inspect_fresh(s, q, source)
     }
 }

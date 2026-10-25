@@ -13,6 +13,8 @@ mod resumable;
 mod task_control;
 #[path = "oop_slice/default_compiler.rs"]
 mod default_compiler;
+#[path = "oop_slice/source_registration.rs"]
+mod source_registration;
 fn main() {
     unsafe { run() }
 }
@@ -57,7 +59,7 @@ unsafe fn run() {
             library.join("libbirnam_codegen_runtime.dylib"),
         ];
         let words: &[&[u8]] = &[
-            b"suspendAt:continueAt:",b"captureAt:continueAt:",b"resumeWith:",b"resumeWith:budget:",b"restoreContinuation:with:",b"suspended",b"captureRegistration",b"controlSite",b"callSite:",b"ContinuationVt",b"continuationConsumed",b"continuationWrongMachine",b"eval:",b"emit:",b"DefaultEvalBody",b"NativeTaskObserver",b"observe:",b"failTask:",b"ensureTask:body:",b"mustNotRecord",b"SymbolVt",b"Vtable",b"Collection",b"Reflect",b"taskSmokeResult",b"TaskCheckFailures",b"TaskChecks",b"value",b"ControlMachine",b"controlEligible",b"protectedBlock:",b"leaveBoundary:",b"park",b"failed",b"exitRunnableBoundary:",b"returnAt:",b"boundarySite",b"exitReturn",b"boundaryCallSite:",b"exitBoundaryAt:",b"boundaryDeliveryPending",b"acknowledgeBoundaryDelivery",b"leaf",
+            b"suspendAt:continueAt:",b"captureAt:continueAt:",b"resumeWith:",b"resumeWith:budget:",b"restoreContinuation:with:",b"suspended",b"captureRegistration",b"controlSite",b"callSite:",b"ContinuationVt",b"continuationConsumed",b"continuationWrongMachine",b"recordedMethodSources",b"size",b"parse:",b"SourceRegistry",b"sourceTextOf:",b"compiledSourceFor:",b"retainedSourceMetadataOf:",b"compiledSource:metadata:",b"sourceRevisionOf:",b"moduleMetadataOf:",b"analyzeSourceMetadata:",b"compiledSourceMetadataFor:",b"recordModuleSource:named:",b"recordCompiledSource:named:",b"moduleSourceFor:",b"replaceCompiledSource:named:",b"lastError",b"noteCompilationError:",b"clearCompilationError",b"revision",b"sourceProbe",b"sourceWrong",b"sourceTransfer",b"RegistrationSource",b"eval:",b"emit:",b"DefaultEvalBody",b"NativeTaskObserver",b"observe:",b"failTask:",b"ensureTask:body:",b"mustNotRecord",b"SymbolVt",b"Vtable",b"Collection",b"Reflect",b"taskSmokeResult",b"TaskCheckFailures",b"TaskChecks",b"value",b"ControlMachine",b"controlEligible",b"protectedBlock:",b"leaveBoundary:",b"park",b"failed",b"exitRunnableBoundary:",b"returnAt:",b"boundarySite",b"exitReturn",b"boundaryCallSite:",b"exitBoundaryAt:",b"boundaryDeliveryPending",b"acknowledgeBoundaryDelivery",b"leaf",
             b"runOther",b"reenter",b"inspectFrames",b"methodAt:",b"later:",b"localLookup",b"selected",b"resumeLookup",b"helper",b"captureFactory",b"budget:",b"allocationBytesTotal",
             b"TailProbe",b"tailTick",b"tailSetup:",b"tailPeak",b"tailCalls",b"tailRecurse",
             b"LookupProbe",b"resumableBound",b"fromStep:descriptor:selection:owner:",b"compileResumable:",b"Machine",b"MachineVt",b"runBlock:",b"runBlock:budget:",b"continueWithBudget:",b"destroy",b"executionState",b"isRunnable",b"liveFrameCount",b"runnable",b"completed",b"resumeMark:",b"resumeCount:",b"resumeReset",b"before",b"entered",b"after",b"later",b"child",

@@ -8,6 +8,9 @@ use birnam_abi::{
         Control, Literal, Protocol,
     },
 };
+mod compiled_source;
+mod source;
+mod source_metadata;
 use birnam_codegen::OwnedCst;
 use core::{
     cell::{Cell, RefCell},
@@ -26,6 +29,7 @@ struct State {
     receiver: Oop,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
+    sources: source::Sources,
     ready: Cell<bool>,
     thread: std::thread::ThreadId,
 }
@@ -487,6 +491,37 @@ const NAMES: &[&[u8]] = &[
     b"eval:",
     b"value",
     b"answerTo:with:",
+    b"sourceTextOf:",
+    b"compiledSourceFor:",
+    b"retainedSourceMetadataOf:",
+    b"compiledSource:metadata:",
+    b"sourceRevisionOf:",
+    b"moduleMetadataOf:",
+    b"analyzeSourceMetadata:",
+    b"compiledSourceMetadataFor:",
+    b"embeddedFilesOf:",
+    b"lastError",
+    b"noteCompilationError:",
+    b"clearCompilationError",
+    b"recordModuleSource:named:",
+    b"recordCompiledSource:named:",
+    b"moduleSourceFor:",
+    b"replaceCompiledSource:named:",
+    b"Globals",
+    b"SourceRegistry",
+    b"StringVt",
+    b"VectorVt",
+    b"SymbolVt",
+    b"BytesVt",
+    b"Vector",
+    b"Bytes",
+    b"new",
+    b"add:",
+    b"size",
+    b"compilationForSource:",
+    b"false",
+    b"recordedMethodSources",
+    b"sourceRegistry",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -555,6 +590,37 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"eval:"),
     Literal::new(b"value"),
     Literal::new(b"answerTo:with:"),
+    Literal::new(b"sourceTextOf:"),
+    Literal::new(b"compiledSourceFor:"),
+    Literal::new(b"retainedSourceMetadataOf:"),
+    Literal::new(b"compiledSource:metadata:"),
+    Literal::new(b"sourceRevisionOf:"),
+    Literal::new(b"moduleMetadataOf:"),
+    Literal::new(b"analyzeSourceMetadata:"),
+    Literal::new(b"compiledSourceMetadataFor:"),
+    Literal::new(b"embeddedFilesOf:"),
+    Literal::new(b"lastError"),
+    Literal::new(b"noteCompilationError:"),
+    Literal::new(b"clearCompilationError"),
+    Literal::new(b"recordModuleSource:named:"),
+    Literal::new(b"recordCompiledSource:named:"),
+    Literal::new(b"moduleSourceFor:"),
+    Literal::new(b"replaceCompiledSource:named:"),
+    Literal::new(b"Globals"),
+    Literal::new(b"SourceRegistry"),
+    Literal::new(b"StringVt"),
+    Literal::new(b"VectorVt"),
+    Literal::new(b"SymbolVt"),
+    Literal::new(b"BytesVt"),
+    Literal::new(b"Vector"),
+    Literal::new(b"Bytes"),
+    Literal::new(b"new"),
+    Literal::new(b"add:"),
+    Literal::new(b"size"),
+    Literal::new(b"compilationForSource:"),
+    Literal::new(b"false"),
+    Literal::new(b"recordedMethodSources"),
+    Literal::new(b"sourceRegistry"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -606,6 +672,91 @@ static METHODS: &[MethodSpec] = &[
         name: 63,
         entry: Some(evaluate),
         convention: 1,
+    },
+    MethodSpec {
+        name: 66,
+        entry: Some(source::text),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 67,
+        entry: Some(source::compilation),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 68,
+        entry: Some(source::retained),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 69,
+        entry: Some(source::make),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 70,
+        entry: Some(source::revision),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 71,
+        entry: Some(source::metadata),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 72,
+        entry: Some(source::prepare),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 73,
+        entry: Some(source::encoded),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 74,
+        entry: Some(source::embedded),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 75,
+        entry: Some(source::last_error),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 76,
+        entry: Some(source::note),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 77,
+        entry: Some(source::clear),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 78,
+        entry: Some(source::record),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 79,
+        entry: Some(source::record_compiled),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 80,
+        entry: Some(source::find),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 81,
+        entry: Some(source::replace),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 95,
+        entry: Some(source::method_sources),
+        convention: 0,
     },
 ];
 unsafe extern "C" fn initialize(
@@ -671,6 +822,7 @@ unsafe extern "C" fn initialize(
             receiver,
             names: names.clone(),
             scoped: RefCell::new(Vec::new()),
+            sources: source::Sources::default(),
             ready: Cell::new(false),
             thread: std::thread::current().id(),
         }));
