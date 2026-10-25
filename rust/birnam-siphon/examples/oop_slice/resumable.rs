@@ -607,6 +607,290 @@ pub(super) unsafe fn check(
         collect();
         println!("RESUMABLE_ERROR_CONVENTION_OK");
 
+        // Recover compiler-produced public descriptor bytes through a factory
+        // interception. No test reads a Method, Machine or action payload.
+        let execution_vt = send(id.root, b"behaviorOf:", &[exec]).unwrap();
+        let register = keep(
+            send(
+                execution_vt,
+                b"lookup",
+                &[sel(b"fromStep:descriptor:selection:owner:")],
+            )
+            .unwrap(),
+        );
+        let metadata = sequence(&[std::ptr::null_mut(), std::ptr::null_mut()]);
+        let registration_context = sequence(&[register, metadata]);
+        let capture_registration = keep(
+            send(
+                template(b"captureRegistration"),
+                b"withContext:",
+                &[registration_context],
+            )
+            .unwrap(),
+        );
+        let machine_vt = send(ns, b"at:", &[sel(b"MachineVt")]).unwrap();
+        let original_site = keep(send(machine_vt, b"lookup", &[sel(b"callSite:")]).unwrap());
+        let read_bytes = |object| {
+            let bytes = send(object, b"bytes", &[]).unwrap();
+            let n = abi::as_size(send(bytes, b"sizeWord", &[]).unwrap()).unwrap();
+            (0..n)
+                .map(|i| {
+                    abi::as_size(send(bytes, b"atWord:", &[abi::size(i).unwrap()]).unwrap())
+                        .unwrap() as u8
+                })
+                .collect::<Vec<_>>()
+        };
+        let original_later = keep(send(actor_type, b"lookup", &[sel(b"later")]).unwrap());
+        let seven = int(7);
+        let initial_later = keep(send(constant, b"withContext:", &[five]).unwrap());
+        let replacement_later = keep(send(constant, b"withContext:", &[seven]).unwrap());
+        for (capture, mode) in [
+            (false, "resume"),
+            (true, "resume"),
+            (false, "budget"),
+            (false, "discard"),
+            (true, "discard"),
+            (false, "native"),
+            (true, "native"),
+            (false, "callback"),
+            (true, "callback"),
+        ] {
+            send(actor, b"resumeReset", &[]).unwrap();
+            send(actor_type, b"addMethod", &[sel(b"later"), initial_later]).unwrap();
+            send(
+                execution_vt,
+                b"addMethod",
+                &[
+                    sel(b"fromStep:descriptor:selection:owner:"),
+                    capture_registration,
+                ],
+            )
+            .unwrap();
+            let baseline = units();
+            let code = compile(
+                "[| [CompilerProbe resumeMark: #before]; let answer := [CompilerProbe later]; [CompilerProbe resumeMark: #after]; [answer + [CompilerProbe later]]]",
+            );
+            let code_token = token(code);
+            send(
+                execution_vt,
+                b"addMethod",
+                &[sel(b"fromStep:descriptor:selection:owner:"), register],
+            )
+            .unwrap();
+            let descriptor_bytes = read_bytes(field(metadata, 0));
+            let selection_bytes = read_bytes(field(metadata, 1));
+            let selection = birnam_artifact_codec::stackless_selection::inspect_artifact_selection(
+                &selection_bytes,
+            )
+            .unwrap();
+            let row = selection.rows().next().unwrap().unwrap();
+            let path: Vec<_> = row.path.iter().collect();
+            let authority = birnam_artifact_codec::stackless_selection::SelectionSpec {
+                source_revision: row.source_revision,
+                root_kind: row.root_kind,
+                root_index: row.root_index,
+                path: &path,
+                implementation_kind: row.implementation_kind,
+                disposition: row.disposition,
+            };
+            let descriptor =
+                birnam_artifact_codec::frame_descriptor::inspect(&descriptor_bytes, authority)
+                    .unwrap();
+            let site_index = (0..descriptor.call_site_count())
+                .find(|&i| descriptor.call_site(i).unwrap().selector == b"later")
+                .unwrap();
+            let site = descriptor.call_site(site_index).unwrap();
+            let context = sequence(&[
+                original_site,
+                sel(if capture {
+                    b"captureAt:continueAt:"
+                } else {
+                    b"suspendAt:continueAt:"
+                }),
+                abi::size(site_index).unwrap(),
+                abi::size(site.result_slot.unwrap() as usize).unwrap(),
+                abi::size(site.continuation_pc.unwrap() as usize).unwrap(),
+                abi::size(0).unwrap(),
+                abi::size(0).unwrap(),
+                integer,
+            ]);
+            let overridden = send(template(b"controlSite"), b"withContext:", &[context]).unwrap();
+            let override_token = token(overridden);
+            let root = send(blocks, b"fromMethod:captureOperands:", &[code]).unwrap();
+            let root_token = token(root);
+            let block = send(root, b"value", &[]).unwrap();
+            let block_token = token(block);
+            release(root_token);
+            let machine = send(machines, b"new", &[]).unwrap();
+            let machine_token = token(machine);
+            if mode == "native" || mode == "callback" {
+                let mut callback_roots = Vec::new();
+                let parent = if mode == "callback" {
+                    let context = send(id.root, b"sequence", &[machine, block, one, gc]).unwrap();
+                    let method = send(native, b"methodAt:", &[sel(b"reenter")]).unwrap();
+                    let method = send(method, b"withContext:", &[context]).unwrap();
+                    callback_roots.push(token(method));
+                    send(probe_type, b"addMethod", &[sel(b"reenter"), method]).unwrap();
+                    let parent = compile("[TailProbe reenter]");
+                    callback_roots.push(token(parent));
+                    let parent = send(blocks, b"fromMethod:captureOperands:", &[parent]).unwrap();
+                    callback_roots.push(token(parent));
+                    parent
+                } else {
+                    block
+                };
+                send(machine_vt, b"addMethod", &[sel(b"callSite:"), overridden]).unwrap();
+                let result = if mode == "callback" {
+                    send(machine, b"runBlock:", &[parent])
+                } else {
+                    send(block, b"value", &[])
+                }
+                .unwrap();
+                assert_eq!(bits(result), 10);
+                assert_eq!(count(b"before"), 1);
+                assert_eq!(count(b"after"), 1);
+                assert_eq!(field(context, 5), abi::size(1).unwrap());
+                assert_eq!(field(context, 6), abi::size(1).unwrap());
+                send(
+                    machine_vt,
+                    b"addMethod",
+                    &[sel(b"callSite:"), original_site],
+                )
+                .unwrap();
+                if mode == "callback" {
+                    send(probe_type, b"removeMethod:", &[sel(b"reenter")]).unwrap();
+                }
+                for root in callback_roots {
+                    release(root);
+                }
+                release(override_token);
+                release(block_token);
+                release(code_token);
+                release(machine_token);
+                collect();
+                assert_eq!(units(), baseline);
+                println!("COMPILED_CONTROL_BARRIER_OK capture={capture} mode={mode}");
+                continue;
+            }
+            send(machine_vt, b"addMethod", &[sel(b"callSite:"), overridden]).unwrap();
+            let stopped = send(machine, b"runBlock:", &[block]).unwrap();
+            let stopped_token = token(stopped);
+            send(
+                machine_vt,
+                b"addMethod",
+                &[sel(b"callSite:"), original_site],
+            )
+            .unwrap();
+            release(override_token);
+            assert_eq!(send(machine, b"executionState", &[]), Ok(sel(b"suspended")));
+            assert_eq!(count(b"before"), 1);
+            assert_eq!(count(b"after"), 0);
+            assert_eq!(field(context, 5), abi::size(1).unwrap());
+            assert_eq!(field(context, 6), abi::size(0).unwrap());
+            if capture {
+                assert_ne!(stopped, machine);
+                assert_eq!(
+                    send(id.root, b"behaviorOf:", &[stopped]),
+                    send(ns, b"at:", &[sel(b"ContinuationVt")])
+                );
+            } else {
+                assert_eq!(stopped, machine);
+            }
+            release(block_token);
+            release(code_token);
+            send(
+                actor_type,
+                b"addMethod",
+                &[sel(b"later"), replacement_later],
+            )
+            .unwrap();
+            if capture {
+                release(machine_token);
+            }
+            collect();
+            assert_eq!(units(), baseline + 1, "suspended code must remain mapped");
+            let machine_token = if capture {
+                token(machine)
+            } else {
+                machine_token
+            };
+            if mode == "discard" {
+                release(stopped_token);
+                release(machine_token);
+                collect();
+                assert_eq!(units(), baseline, "abandoned control must release code");
+                println!("COMPILED_CONTROL_DISCARD_OK capture={capture}");
+                continue;
+            }
+            if capture {
+                let other = send(machines, b"new", &[]).unwrap();
+                let other_token = token(other);
+                let error = send(other, b"restoreContinuation:with:", &[stopped, five])
+                    .expect_err("wrong Machine must not consume");
+                assert_eq!(
+                    send(error, b"faultKind", &[]),
+                    Ok(sel(b"continuationWrongMachine"))
+                );
+                release(other_token);
+            }
+            let result = if mode == "budget" {
+                assert_eq!(
+                    send(machine, b"resumeWith:budget:", &[five, zero]),
+                    Ok(machine)
+                );
+                assert_eq!(send(machine, b"executionState", &[]), Ok(sel(b"runnable")));
+                assert_eq!(count(b"after"), 0);
+                collect();
+                let mut result = machine;
+                let mut turns = 0;
+                while result == machine {
+                    result = send(machine, b"continueWithBudget:", &[one]).unwrap();
+                    let rt = token(result);
+                    collect();
+                    release(rt);
+                    turns += 1;
+                    assert!(turns < 100);
+                }
+                result
+            } else if capture {
+                send(machine, b"restoreContinuation:with:", &[stopped, five]).unwrap()
+            } else {
+                send(machine, b"resumeWith:", &[five]).unwrap()
+            };
+            let result_token = token(result);
+            assert_eq!(bits(result), 12);
+            assert_eq!(count(b"before"), 1);
+            assert_eq!(count(b"after"), 1);
+            assert_eq!(send(machine, b"executionState", &[]), Ok(sel(b"completed")));
+            if capture {
+                let error = send(machine, b"restoreContinuation:with:", &[stopped, five])
+                    .expect_err("one shot");
+                assert_eq!(
+                    send(error, b"faultKind", &[]),
+                    Ok(sel(b"continuationConsumed"))
+                );
+            } else {
+                assert!(send(machine, b"resumeWith:", &[five]).is_err());
+            }
+            release(result_token);
+            release(stopped_token);
+            release(machine_token);
+            collect();
+            assert_eq!(units(), baseline, "completion must release code");
+            if original_later.is_null() {
+                send(actor_type, b"removeMethod:", &[sel(b"later")]).unwrap();
+            } else {
+                send(actor_type, b"addMethod", &[sel(b"later"), original_later]).unwrap();
+            }
+            println!("COMPILED_EXPLICIT_CONTROL_OK capture={capture} mode={mode}");
+        }
+
+        if original_later.is_null() {
+            send(actor_type, b"removeMethod:", &[sel(b"later")]).unwrap();
+        } else {
+            send(actor_type, b"addMethod", &[sel(b"later"), original_later]).unwrap();
+        }
+
         println!("RESUMABLE_EXECUTION_OOP_OK");
     }
 }

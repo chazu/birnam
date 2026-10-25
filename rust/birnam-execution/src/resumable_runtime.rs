@@ -55,6 +55,11 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"receiveCall",
     b"receiveRun",
     b"driveBridge",
+    b"suspendAt:continueAt:",
+    b"captureAt:continueAt:",
+    b"resumeWith:",
+    b"resumeWith:budget:",
+    b"restoreContinuation:with:",
 ];
 fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
@@ -407,6 +412,7 @@ struct Run {
     pending: Oop,
     outcome: Option<Oop>,
     parked_depth: Option<usize>,
+    driving: bool,
 }
 unsafe fn method_context(s: &State, template: Oop, context: Oop) -> Result<Oop, Oop> {
     unsafe { s.send(template, b"withContext:", &[context]) }
@@ -440,6 +446,7 @@ unsafe fn ensure_run(s: &State, machine: Oop, answer: Oop) -> Result<(), Oop> {
                 pending: advance,
                 outcome: None,
                 parked_depth: None,
+                driving: false,
             },
         );
         Ok(())
@@ -756,6 +763,43 @@ pub(super) unsafe extern "C" fn advance(
                         next_step(s, machine)
                     }
                 }
+                DecodedAction::Suspend {
+                    result_slot,
+                    delimiter,
+                } => {
+                    require_control_driver(s, machine)?;
+                    let changed = s.engine.borrow_mut().apply_suspend(
+                        OWNER,
+                        capability,
+                        result_slot,
+                        delimiter,
+                    );
+                    control_checked(s, changed)?;
+                    yield_control(s, machine, machine)
+                }
+                DecodedAction::Capture {
+                    result_slot,
+                    delimiter,
+                } => {
+                    require_control_driver(s, machine)?;
+                    let vt = s
+                        .engine
+                        .borrow()
+                        .objects()
+                        .ok_or_else(invalid)?
+                        .continuation_vtable;
+                    let continuation = q.keep(allocate(s, vt, 3)?);
+                    let captured = s.engine.borrow_mut().capture_continuation(
+                        &mut s.storage.borrow_mut(),
+                        OWNER,
+                        capability,
+                        delimiter,
+                        result_slot,
+                        continuation,
+                    );
+                    control_checked(s, captured)?;
+                    yield_control(s, machine, continuation)
+                }
                 DecodedAction::Call {
                     receiver_slot,
                     selector_slot,
@@ -819,6 +863,7 @@ unsafe fn drive(
         let (work, sink) = {
             let mut r = s.resume.borrow_mut();
             let run = r.runs.get_mut(&machine.addr()).ok_or_else(invalid)?;
+            run.driving = true;
             run.budget = budget;
             run.outcome = None;
             *run.answers.first_mut().ok_or_else(invalid)? = run.sink;
@@ -867,6 +912,9 @@ unsafe fn drive(
                 s.invoke(bridge, machine, &[])
             }
         })();
+        if let Some(run) = s.resume.borrow_mut().runs.get_mut(&machine.addr()) {
+            run.driving = false;
+        }
         if result.is_err() {
             fail_run(s, machine);
         } else if let Some(run) = s.resume.borrow_mut().runs.get_mut(&machine.addr()) {
@@ -1183,6 +1231,155 @@ pub(super) unsafe extern "C" fn write(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+// Native errors retain the engine's existing failure kinds as ordinary Fault
+// objects. Release engine/storage borrows before invoking the Fault owner.
+unsafe fn control_checked<T, E: Into<ExecutionError>>(
+    s: &State,
+    result: Result<T, E>,
+) -> Result<T, Oop> {
+    unsafe {
+        result.map_err(|error| {
+            let kind = error.into().failure_kind().symbol().as_bytes();
+            s.send(
+                s.id.root,
+                b"fault:detail:",
+                &[s.names[kind], ptr::null_mut()],
+            )
+            .err()
+            .unwrap_or_else(invalid)
+        })
+    }
+}
+unsafe fn require_control_driver(s: &State, machine: Oop) -> Result<(), Oop> {
+    unsafe {
+        if s.resume
+            .borrow()
+            .runs
+            .get(&machine.addr())
+            .is_some_and(|run| run.driving)
+        {
+            Ok(())
+        } else {
+            control_checked(s, Err::<(), _>(ExecutionError::ContinuationBarrier))
+        }
+    }
+}
+unsafe fn yield_control(s: &State, machine: Oop, value: Oop) -> Result<Oop, Oop> {
+    unsafe {
+        let k = {
+            let mut runtime = s.resume.borrow_mut();
+            let run = runtime.runs.get_mut(&machine.addr()).ok_or_else(invalid)?;
+            run.pending = run.advance;
+            run.parked_depth = None;
+            *run.answers.first().ok_or_else(invalid)?
+        };
+        s.transfer(b"answerTo:with:", &[k, value])
+    }
+}
+unsafe fn publish_control(c: Oop, machine: Oop, a: *const Oop, n: usize, capture: bool) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [slot, pc] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let _q = s.scope(&[machine, *slot, *pc]);
+        let slot = index(s, *slot)?;
+        let pc = index(s, *pc)?;
+        require_control_driver(s, machine)?;
+        let capability = cap(s, machine)?;
+        let delimiter = {
+            let result = s.engine.borrow().current_delimiter(OWNER, capability);
+            control_checked(s, result)?
+        };
+        let result = {
+            let mut e = s.engine.borrow_mut();
+            let mut storage = s.storage.borrow_mut();
+            if capture {
+                e.publish_capture(&mut storage, OWNER, capability, delimiter, slot, pc)
+            } else {
+                e.publish_suspend(&mut storage, OWNER, capability, slot, delimiter, pc)
+            }
+        };
+        control_checked(s, result)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn suspend_at(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { publish_control(c, r, a, n, false) }
+}
+pub(super) unsafe extern "C" fn capture_at(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { publish_control(c, r, a, n, true) }
+}
+unsafe fn resume_control(c: Oop, machine: Oop, a: *const Oop, n: usize, bounded: bool) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if n != 1 + usize::from(bounded) {
+            return Err(invalid());
+        }
+        let q = s.scope(args);
+        q.keep(machine);
+        let budget = if bounded {
+            Some(index(s, args[1])?)
+        } else {
+            None
+        };
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let capability = cap(s, machine)?;
+        let result = s
+            .engine
+            .borrow_mut()
+            .resume_suspended_machine(OWNER, capability, args[0], s.nil);
+        control_checked(s, result)?;
+        drive(s, machine, capability, budget)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn resume(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { resume_control(c, r, a, n, false) }
+}
+pub(super) unsafe extern "C" fn resume_bounded(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { resume_control(c, r, a, n, true) }
+}
+pub(super) unsafe extern "C" fn restore(
+    _: Oop,
+    c: Oop,
+    machine: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [continuation, value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let _q = s.scope(&[machine, *continuation, *value]);
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let capability = cap(s, machine)?;
+        refresh(s, *continuation)?;
+        let captured = {
+            let result = s
+                .engine
+                .borrow()
+                .continuation_capability_for_object(&s.storage.borrow(), *continuation);
+            control_checked(s, result)?
+        };
+        let result = s
+            .engine
+            .borrow_mut()
+            .restore_continuation(OWNER, capability, captured, *value, s.nil);
+        control_checked(s, result)?;
+        drive(s, machine, capability, None)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+
 unsafe fn action(c: Oop, r: Oop, a: *const Oop, n: usize, kind: u8) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -1257,6 +1454,13 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
             );
         }
     }
+    if let Some(o) = objects {
+        if family == Some(o.continuation_vtable) {
+            s.engine
+                .borrow()
+                .trace_continuation_roots(&s.storage.borrow(), object, |v| values.push(v));
+        }
+    }
     Ok(Some(values))
 }
 pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
@@ -1264,6 +1468,11 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
         return Ok(());
     };
     for &value in values {
+        if s.storage.borrow().family_of(value) == Some(o.continuation_vtable)
+            && s.storage.borrow().payload_size(value) == Some(3 * size_of::<Oop>())
+        {
+            unsafe { s.engine.borrow_mut().finalize_detached_continuation(value) }
+        }
         if s.storage.borrow().family_of(value) == Some(o.machine_vtable)
             && s.storage.borrow().payload_size(value) == Some(3 * size_of::<Oop>())
         {
@@ -1467,6 +1676,8 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
         for (name, value) in [
             (b"Machine".as_slice(), machine_prototype),
             (b"MachineVt", machine_vtable),
+            (b"Continuation", continuation_prototype),
+            (b"ContinuationVt", continuation_vtable),
         ] {
             s.send(s.ns, b"at:put:", &[s.names[name], value])?;
         }

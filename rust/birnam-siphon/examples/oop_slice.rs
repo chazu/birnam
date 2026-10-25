@@ -53,6 +53,7 @@ unsafe fn run() {
             library.join("libbirnam_codegen_runtime.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"suspendAt:continueAt:",b"captureAt:continueAt:",b"resumeWith:",b"resumeWith:budget:",b"restoreContinuation:with:",b"suspended",b"captureRegistration",b"controlSite",b"callSite:",b"ContinuationVt",b"continuationConsumed",b"continuationWrongMachine",
             b"runOther",b"reenter",b"inspectFrames",b"methodAt:",b"later:",b"localLookup",b"selected",b"resumeLookup",b"helper",b"captureFactory",b"budget:",b"allocationBytesTotal",
             b"TailProbe",b"tailTick",b"tailSetup:",b"tailPeak",b"tailCalls",b"tailRecurse",
             b"LookupProbe",b"resumableBound",b"fromStep:descriptor:selection:owner:",b"compileResumable:",b"Machine",b"MachineVt",b"runBlock:",b"runBlock:budget:",b"continueWithBudget:",b"destroy",b"executionState",b"isRunnable",b"liveFrameCount",b"runnable",b"completed",b"resumeMark:",b"resumeCount:",b"resumeReset",b"before",b"entered",b"after",b"later",b"child",

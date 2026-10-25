@@ -3,8 +3,8 @@
 static IdContinuationProtocol api;
 static IdProtocol id;
 enum {SEND,ENTRY,ANSWER,DRIVE,PAUSE,SEQ,AT,PUT,COLLECT,WITH,REMOVE,ADD,LOOKUP,IDENTITY,
- ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,AFTER,HELPER,DATA,ACTIVE,STATS,RESUME,SYNC,SAVE,CONTROL,INVOKE,CAPTURE,NAMES};
-static const IdLiteral literals[]={LIT("prepareSend"),LIT("prepareEntry"),LIT("answerTo:with:"),LIT("drive:budget:"),LIT("pause:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("withContext:"),LIT("removeMethod:"),LIT("addMethod"),LIT("lookup"),LIT("identityOf:"),LIT("echo"),LIT("record"),LIT("wait"),LIT("tail"),LIT("forward"),LIT("localLookup"),LIT("selected"),LIT("after"),LIT("helper"),LIT("data"),LIT("active"),LIT("stats"),LIT("resumeLookup"),LIT("syncLeaf"),LIT("saveEcho"),LIT("testControl"),LIT("invokeOn:arguments:"),LIT("captureFactory")};
+ ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,AFTER,HELPER,DATA,ACTIVE,STATS,RESUME,SYNC,SAVE,CONTROL,INVOKE,CAPTURE,CAPREG,CONTROL_SITE,WORDOF,LOW32,NAMES};
+static const IdLiteral literals[]={LIT("prepareSend"),LIT("prepareEntry"),LIT("answerTo:with:"),LIT("drive:budget:"),LIT("pause:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("withContext:"),LIT("removeMethod:"),LIT("addMethod"),LIT("lookup"),LIT("identityOf:"),LIT("echo"),LIT("record"),LIT("wait"),LIT("tail"),LIT("forward"),LIT("localLookup"),LIT("selected"),LIT("after"),LIT("helper"),LIT("data"),LIT("active"),LIT("stats"),LIT("resumeLookup"),LIT("syncLeaf"),LIT("saveEcho"),LIT("testControl"),LIT("invokeOn:arguments:"),LIT("captureFactory"),LIT("captureRegistration"),LIT("controlSite"),LIT("wordOf:"),LIT("low32")};
 static Oop names[NAMES];
 static size_t ticks,lookup_calls;
 static uintptr_t stack_low=UINTPTR_MAX,stack_high;
@@ -71,8 +71,26 @@ static Oop control_command(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)c;(v
 static Oop capture_factory(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(!n)return id.invalid;
  CHECK(put(get(c,1),0,a[0]));Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);
  Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
+/* Observe the public descriptor/selection arguments without reading Method data. */
+static Oop capture_registration(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=4)return id.invalid;
+ CHECK(put(get(c,1),0,a[1]));CHECK(put(get(c,1),1,a[2]));
+ Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
+/* context = [original callSite, mode selector, site index, result slot, pc,
+              attempts, refusals, Integer]. First matching call only. */
+static Oop control_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=1)return id.invalid;
+ Oop word=send(get(c,7),WORDOF,a,1);CHECK(word);if(!((uintptr_t)word&1)){word=send(word,LOW32,0,0);CHECK(word);}
+ Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};
+ Oop original=send(get(c,0),INVOKE,invoke,2);CHECK(original);
+ if(word!=get(c,2)||get(c,5)!=id_size(0))return original;
+ CHECK(put(c,5,id_size(1)));
+ Oop operands[]={get(c,3),get(c,4)};
+ Oop bad[]={id_size(1000000),operands[1]};
+ Oop rejected=id.message(id.root,r,get(c,1),bad,2);if(!id_fault(rejected))return id.invalid;
+ Oop action=id.message(id.root,r,get(c,1),operands,2);
+ if(id_fault(action)){CHECK(put(c,6,id_size(id_unbox(get(c,6))+1)));return original;}
+ return action;}
 static Oop sync_leaf(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(void)r;return n==1?a[0]:id.invalid;}
-static const IdContinuationMethodSpec methods[]={{ECHO,echo,1},{RECORD,record,1},{WAIT,wait_method,1},{TAIL,tail,1},{FORWARD,forward,1},{LOCAL,local_lookup,1},{SELECTED,selected,1},{DATA,data,1},{AFTER,context_value,1},{ACTIVE,active,1},{STATS,stats,1},{RESUME,resume_lookup,1},{HELPER,helper,1},{SYNC,sync_leaf,0},{SAVE,save_echo,1},{CONTROL,control_command,0},{CAPTURE,capture_factory,0}};
+static const IdContinuationMethodSpec methods[]={{ECHO,echo,1},{RECORD,record,1},{WAIT,wait_method,1},{TAIL,tail,1},{FORWARD,forward,1},{LOCAL,local_lookup,1},{SELECTED,selected,1},{DATA,data,1},{AFTER,context_value,1},{ACTIVE,active,1},{STATS,stats,1},{RESUME,resume_lookup,1},{HELPER,helper,1},{SYNC,sync_leaf,0},{SAVE,save_echo,1},{CONTROL,control_command,0},{CAPTURE,capture_factory,0},{CAPREG,capture_registration,0},{CONTROL_SITE,control_site,0}};
 static Oop initialize(const IdContinuationProtocol*p,Oop image,const Oop*s,size_t n,const Oop*a,size_t count){
  if(p->common.version!=3||p->common.byte_size!=sizeof(*p)||!p->control||n!=NAMES||count)return p->common.invalid;
  api=*p;id=p->common;for(size_t i=0;i<n;i++)names[i]=s[i];return image;

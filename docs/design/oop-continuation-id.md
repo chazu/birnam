@@ -161,6 +161,18 @@ The reconstruction order is:
 
 ## Compiler/Execution continuation checkpoint
 
+The suspension/capture slice reconnects the retained V2 control operations:
+publish the existing result-bearing Call edge, suspend or detach owned frames,
+then resume/restore with a supplied Oop and commit that edge once. Execution owns
+the continuation representation, tracing and retirement. The explicit Machine
+driver is the suspension boundary; a native callback cannot capture its waiting
+caller. This requires no Id operation, payload catalog or compiler format change.
+The source gate checks supplied values without effect replay, live replacement,
+budgeted resume, wrong-Machine and repeated restore, GC with only the Continuation
+retaining its Machine, abandoned code release, and both direct/native-callback
+barriers ([receipt](../measurements/execution-control-continuations-20261025.json)).
+Delimited exit, handlers, cancellation and recovery remain unconnected.
+
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send
 with an owned return continuation. A selected registered source entry recognizes

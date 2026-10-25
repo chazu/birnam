@@ -85,6 +85,8 @@ assert b'COMPILER_EXECUTION_OOP_OK' in numeric
 assert b'RESUMABLE_EXECUTION_OOP_OK' in numeric
 for marker in [b'COMPILED_LOOKUP_SUSPENSION_REENTRY_REPLACEMENT_OK', b'COMPILED_INTERLEAVING_GC_OK', b'COMPILED_AUTOMATIC_GC_OK', b'COMPILED_NATIVE_CALLBACK_SAME_MACHINE_OK', b'COMPILED_NESTED_MACHINE_NATIVE_BOUNDARY_OK', b'RESUMABLE_ERROR_CONVENTION_OK']:
     assert marker in numeric, marker
+for marker in [b'COMPILED_EXPLICIT_CONTROL_OK capture=false mode=resume', b'COMPILED_EXPLICIT_CONTROL_OK capture=true mode=resume', b'COMPILED_EXPLICIT_CONTROL_OK capture=false mode=budget', b'COMPILED_CONTROL_DISCARD_OK capture=false', b'COMPILED_CONTROL_DISCARD_OK capture=true', b'COMPILED_CONTROL_BARRIER_OK capture=false mode=native', b'COMPILED_CONTROL_BARRIER_OK capture=true mode=native', b'COMPILED_CONTROL_BARRIER_OK capture=false mode=callback', b'COMPILED_CONTROL_BARRIER_OK capture=true mode=callback']:
+    assert marker in numeric, marker
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()
