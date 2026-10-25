@@ -8,8 +8,10 @@ use birnam_abi::{
         Control, Literal, Protocol,
     },
 };
+mod artifact;
 mod compiled_source;
 mod embedding;
+mod foreign;
 mod source;
 mod source_evaluation;
 mod source_metadata;
@@ -558,6 +560,26 @@ const NAMES: &[&[u8]] = &[
     b"System",
     b"embedFile:",
     b"emit:source:filename:persistent:synchronous:",
+    b"compile:output:",
+    b"compile:output:from:",
+    b"load:",
+    b"compileObject:",
+    b"loadObject:",
+    b"readFile:",
+    b"writeFile:contents:",
+    b"Artifact",
+    b"inspectBytes:from:",
+    b"kind",
+    b"capabilities",
+    b"requires",
+    b"nativeRequires",
+    b"sourceDigest",
+    b"revisionDigest",
+    b"identity",
+    b"Module",
+    b"isLoaded:",
+    b"methodBehavior",
+    b"compile:signature:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -664,6 +686,26 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"System"),
     Literal::new(b"embedFile:"),
     Literal::new(b"emit:source:filename:persistent:synchronous:"),
+    Literal::new(b"compile:output:"),
+    Literal::new(b"compile:output:from:"),
+    Literal::new(b"load:"),
+    Literal::new(b"compileObject:"),
+    Literal::new(b"loadObject:"),
+    Literal::new(b"readFile:"),
+    Literal::new(b"writeFile:contents:"),
+    Literal::new(b"Artifact"),
+    Literal::new(b"inspectBytes:from:"),
+    Literal::new(b"kind"),
+    Literal::new(b"capabilities"),
+    Literal::new(b"requires"),
+    Literal::new(b"nativeRequires"),
+    Literal::new(b"sourceDigest"),
+    Literal::new(b"revisionDigest"),
+    Literal::new(b"identity"),
+    Literal::new(b"Module"),
+    Literal::new(b"isLoaded:"),
+    Literal::new(b"methodBehavior"),
+    Literal::new(b"compile:signature:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -811,6 +853,21 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(source_evaluation::eval_from),
         convention: 1,
     },
+    MethodSpec {
+        name: 104,
+        entry: Some(artifact::compile_output),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 105,
+        entry: Some(artifact::compile_from),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 106,
+        entry: Some(artifact::load),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -882,7 +939,7 @@ unsafe extern "C" fn initialize(
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
             let name = NAMES[spec.name];
-            if name == b"enterImplementation" {
+            if matches!(name, b"enterImplementation") {
                 continue;
             }
             let target = if matches!(

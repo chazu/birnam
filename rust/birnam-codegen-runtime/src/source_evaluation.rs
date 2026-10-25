@@ -1,7 +1,7 @@
 //! Retained loader diagnostics and embedding, followed by a continuation handoff.
 use super::*;
 impl State {
-    unsafe fn syntax_error(&self, q: &Scope<'_>, source: &[u8]) -> Result<(), Oop> {
+    pub(super) unsafe fn syntax_error(&self, q: &Scope<'_>, source: &[u8]) -> Result<(), Oop> {
         unsafe {
             let offset = q.keep(self.send(self.named(b"Lang")?, b"furthestFail", &[])?);
             let offset = (self.index(offset)? as i64).clamp(0, source.len() as i64) as usize;

@@ -95,6 +95,9 @@ pub(super) unsafe fn check(
     unsafe {
         super::source_loading::check(id, send, sel, [ns, roots, gc, string, integer]);
     }
+    unsafe {
+        super::artifacts::check(id, send, sel, [ns, roots, gc, string, integer]);
+    }
     let target = std::env::var_os("BIRNAM_OOP_TARGET")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| root.join(".cargo-target/oop-slice"));

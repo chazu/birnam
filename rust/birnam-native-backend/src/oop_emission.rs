@@ -199,6 +199,13 @@ fn compile_mode(
         ("FROM_BYTES", b"fromBytes:"),
         ("GLOBAL", b"resolveGlobal:"),
         ("ANSWER", b"answerTo:with:"),
+        ("VECTOR", b"Vector"),
+        ("NEW", b"new"),
+        ("ADD", b"add:"),
+        ("NIL", b"nil"),
+        ("IS_ERROR", b"isError"),
+        ("ERROR", b"Error"),
+        ("TRUE", b"true"),
     ] {
         writeln!(definitions, "#define S_{key} {}", e.name(name)?).unwrap();
     }

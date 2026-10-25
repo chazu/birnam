@@ -16,7 +16,7 @@ impl State {
         &self,
         q: &Scope<'_>,
         program: &mut Program<'_>,
-    ) -> Result<Option<Oop>, Outcome> {
+    ) -> Result<Option<Oop>, Oop> {
         unsafe { self.foreign_statements(q, &mut program.body, false, 0) }
     }
     unsafe fn foreign_statements(
@@ -25,7 +25,7 @@ impl State {
         body: &mut [Statement<'_>],
         mut shadowed: bool,
         depth: usize,
-    ) -> Result<Option<Oop>, Outcome> {
+    ) -> Result<Option<Oop>, Oop> {
         unsafe {
             for statement in body {
                 let binds = matches!(statement, Statement::Let { name: b"Alien", .. });
@@ -44,7 +44,7 @@ impl State {
         expr: &mut Expr<'_>,
         shadowed: bool,
         depth: usize,
-    ) -> Result<Option<Oop>, Outcome> {
+    ) -> Result<Option<Oop>, Oop> {
         unsafe {
             if depth > 4096 {
                 return self.foreign_error(q, b"foreign declaration nesting exceeds limit");
@@ -77,32 +77,27 @@ impl State {
                         else {
                             return self.foreign_error(q, b"Alien bind: requires literal function and signature Strings; use wrap: for runtime bindings");
                         };
-                        let function = q.keep(
-                            self.text(q, &literal::decode_body(&function[1..function.len() - 1]))?,
-                        )?;
-                        let signature = q.keep(self.text(
+                        let function = q.keep(self.source_text(
+                            q,
+                            &literal::decode_body(&function[1..function.len() - 1]),
+                        )?);
+                        let signature = q.keep(self.source_text(
                             q,
                             &literal::decode_body(&signature[1..signature.len() - 1]),
-                        )?)?;
-                        let key = q.keep(self.id.intern_name(b"AlienCompiler")?)?;
-                        let compiler = q.keep(object(self.send(
-                            self.named(b"Globals")?,
-                            b"at:",
-                            &[Operand::object(key)],
-                        )?)?)?;
-                        let c = q.keep(object(self.send(
+                        )?);
+                        let key = q.keep(self.intern(b"AlienCompiler")?);
+                        let compiler =
+                            q.keep(self.send(self.named(b"Globals")?, b"at:", &[key])?);
+                        let c = q.keep(self.send(
                             compiler,
                             b"compile:signature:",
-                            &[Operand::object(function), Operand::object(signature)],
-                        )?)?)?;
+                            &[function, signature],
+                        )?);
                         if self.is_error(c)? {
                             return Ok(Some(c));
                         }
-                        let bytes = q.keep(object(self.send(
-                            self.named(b"TCC")?,
-                            b"compileObject:",
-                            &[Operand::object(c)],
-                        )?)?)?;
+                        let bytes =
+                            q.keep(self.send(self.named(b"TCC")?, b"compileObject:", &[c])?);
                         if self.is_error(bytes)? {
                             return Ok(Some(bytes));
                         }
@@ -123,7 +118,7 @@ impl State {
             Ok(None)
         }
     }
-    unsafe fn foreign_error(&self, q: &Scope<'_>, message: &[u8]) -> Result<Option<Oop>, Outcome> {
-        unsafe { Ok(Some(q.keep(object(self.error(q, message)?)?)?)) }
+    unsafe fn foreign_error(&self, q: &Scope<'_>, message: &[u8]) -> Result<Option<Oop>, Oop> {
+        unsafe { Ok(Some(q.keep(self.error(message)?))) }
     }
 }

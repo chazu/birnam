@@ -230,10 +230,23 @@ before execution. Source-file tests cover errors versus nil, duplicate-source
 policy, live owner replacement with GC, backend publication modes, embedded bytes
 after file deletion, and a loaded body suspending/resuming after its file is gone
 ([receipt](../measurements/source-file-loading-20261025.json)).
-Artifact admission, recovery, complete bootstrap/Host and installed qualification
-remain pending. Unconnected Generation projection remains in `pending_source.rs`.
-Bootstrap still imports removed value carriers; these source-path checkpoints do
-not claim a repaired cold bootstrap.
+Ordinary resumable module artifacts now compile to ELF object bytes and load
+through the existing descriptor and compiled-source formats. The Oop initializer
+returns the retained four-field record with an empty arity-adapter list; reflected
+Methods use the current Codegen constructor. Admission checks the frozen snapshot,
+ABI/kind/capability, source and metadata digests, identity, requirements, and prior
+source before running the body. Registration follows successful non-nil activation.
+The retained synchronous activation boundary remains; task-owned Machines created
+by the body continue independently. Parser-disabled loading, cold Error-owner
+absence, malformed artifacts, unavailable requirements, snapshot replacement and
+suspended-task code lifetime are covered
+([receipt](../measurements/artifact-admission-20261025.json)).
+Synchronous artifact bodies, compiled arity-adapter artifacts and foreign-library
+packaging remain unconnected in `pending_artifact.rs`; ordinary admission refuses
+unsupported records/requirements explicitly. Recovery, complete bootstrap/Host and
+installed qualification also remain pending. Unconnected Generation projection
+remains in `pending_source.rs`. Bootstrap still imports removed value carriers;
+these checkpoints do not claim a repaired cold bootstrap.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send
@@ -302,7 +315,7 @@ list of upper modules that still require migration.
 | --- | --- | --- |
 | Oop native owners and explicit source compilation | `scripts/oop-id-slice-test.sh`; explicit synchronous/resumable compiler entries | Preserve working algorithms and tests; migrate the execution contract |
 | Execution | `synchronous.rs`, `resumable_runtime.rs`, retained frame engine; uncompiled `pending_message_integration.rs` and older control consumers | Restore features in gated slices; delete displaced plumbing only with replacement coverage |
-| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect artifact admission, recovery and remaining compiler consumers; standard eval acceptance is not complete integration |
+| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect remaining artifact variants, recovery and compiler consumers; standard eval acceptance is not complete integration |
 | Functional owners and startup | Alien/Image/Store build failures; Bootstrap still imports removed carriers; Host/CLI/Isolate depend on the migration | Restore the complete cold-build/load closure before installed or worker claims |
 | Historical work | Oop worktree is the active development branch; pre-worktree probes are checkpointed separately at `f503c183` | Keep evidence; avoid merging obsolete experiment implementations into the new basis |
 
