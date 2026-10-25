@@ -10,6 +10,7 @@ impl Emitter {
         &mut self,
         bytes: &[u8],
         source: &[u8],
+        filename: &[u8],
         depth: usize,
     ) -> Result<usize, Error> {
         if depth > 256 {
@@ -31,12 +32,7 @@ impl Emitter {
             disposition: Disposition::ResumableRequired,
         };
         let descriptor = resumable_descriptor::compile_descriptor_v2(
-            &program,
-            &layout,
-            authority,
-            b"<compiler>",
-            source,
-            1,
+            &program, &layout, authority, filename, source, 1,
         )
         .map_err(|_| Error::InvalidProgram)?;
         let selection = selection::encode_artifact_selection(&[revision], &[authority])
@@ -68,7 +64,8 @@ impl Emitter {
                     Op::PortableBlockLiteral {
                         program, captures, ..
                     } => {
-                        let child = self.resumable_function(program, source, depth + 1)?;
+                        let child =
+                            self.resumable_function(program, source, filename, depth + 1)?;
                         let v = operation.result.0;
                         writeln!(
                             out,
@@ -95,7 +92,7 @@ impl Emitter {
                     Op::BlockLiteral { .. } => return Err(Error::InvalidProgram),
                 };
                 writeln!(out,"O value_{}={expr};frame_put(&c,machine,{},value_{},{put});if(c.error)return finish(&c,0);",operation.result.0,slot(operation.result),operation.result.0).unwrap();
-                if depth == 0 {
+                if depth == 0 && self.persistent {
                     if let Op::Bind { name, .. } = &operation.kind {
                         let name = self.name(name)?;
                         let globals = self.name(b"Globals")?;

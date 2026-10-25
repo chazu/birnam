@@ -9,7 +9,9 @@ use birnam_abi::{
     },
 };
 mod compiled_source;
+mod embedding;
 mod source;
+mod source_evaluation;
 mod source_metadata;
 use birnam_codegen::OwnedCst;
 use core::{
@@ -237,10 +239,25 @@ unsafe fn emit_source(s: &State, source: Oop, resumable: bool) -> Result<Oop, Oo
             return Ok(tree);
         }
         let tree = s.project(tree, bytes.len(), 0, &mut 1_000_000)?;
-        let program = match birnam_codegen::lower_program(&tree, &bytes) {
+        let mut program = match birnam_codegen::lower_program(&tree, &bytes) {
             Ok(v) => v,
             Err(e) => return s.error(format!("source lowering: {e:?}").as_bytes()),
         };
+        if let Some(error) = s.embed_program(&q, &mut program, b"<compiler>")? {
+            return Ok(error);
+        }
+        emit_program(s, program, &bytes, None, resumable)
+    }
+}
+unsafe fn emit_program(
+    s: &State,
+    program: birnam_codegen::Program<'_>,
+    source: &[u8],
+    filename: Option<&[u8]>,
+    resumable: bool,
+) -> Result<Oop, Oop> {
+    unsafe {
+        let q = s.scope(&[]);
         let block = birnam_codegen::Block {
             params: Vec::new(),
             body: program.body,
@@ -251,12 +268,23 @@ unsafe fn emit_source(s: &State, source: Oop, resumable: bool) -> Result<Oop, Oo
         };
         let encoded = q.keep(s.text(&portable)?);
         let native = q.keep(if resumable {
-            let source_snapshot = q.keep(s.text(&bytes)?);
-            s.send(
-                s.named(b"NativeBackend")?,
-                b"emitResumable:source:",
-                &[encoded, source_snapshot],
-            )?
+            let source_snapshot = q.keep(s.text(source)?);
+            if let Some(filename) = filename {
+                let filename = q.keep(s.text(filename)?);
+                let truth = q.keep(s.named(b"true")?);
+                let falsity = q.keep(s.named(b"false")?);
+                s.send(
+                    s.named(b"NativeBackend")?,
+                    b"emit:source:filename:persistent:synchronous:",
+                    &[encoded, source_snapshot, filename, truth, falsity],
+                )?
+            } else {
+                s.send(
+                    s.named(b"NativeBackend")?,
+                    b"emitResumable:source:",
+                    &[encoded, source_snapshot],
+                )?
+            }
         } else {
             s.send(s.named(b"NativeBackend")?, b"emitSynchronous:", &[encoded])?
         });
@@ -335,8 +363,9 @@ unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop,
         let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
         let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
         let arity = s.send(c, b"at:", &[abi::size(2).unwrap()])?;
-        if abi::as_size(arity) != Some(args.len()) {
-            return Err(invalid());
+        let arity = abi::as_size(arity).ok_or_else(invalid)?;
+        if arity != args.len() {
+            return s.transfer(b"answerTo:with:", &[*k, s.named(b"nil")?]);
         }
         let mut values = vec![implementation, selector, *k, r];
         values.extend_from_slice(args);
@@ -522,6 +551,13 @@ const NAMES: &[&[u8]] = &[
     b"false",
     b"recordedMethodSources",
     b"sourceRegistry",
+    b"evalPersisting:",
+    b"evalPersisting:from:",
+    b"furthestFail",
+    b"message",
+    b"System",
+    b"embedFile:",
+    b"emit:source:filename:persistent:synchronous:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -621,6 +657,13 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"false"),
     Literal::new(b"recordedMethodSources"),
     Literal::new(b"sourceRegistry"),
+    Literal::new(b"evalPersisting:"),
+    Literal::new(b"evalPersisting:from:"),
+    Literal::new(b"furthestFail"),
+    Literal::new(b"message"),
+    Literal::new(b"System"),
+    Literal::new(b"embedFile:"),
+    Literal::new(b"emit:source:filename:persistent:synchronous:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -757,6 +800,16 @@ static METHODS: &[MethodSpec] = &[
         name: 95,
         entry: Some(source::method_sources),
         convention: 0,
+    },
+    MethodSpec {
+        name: 97,
+        entry: Some(source_evaluation::eval),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 98,
+        entry: Some(source_evaluation::eval_from),
+        convention: 1,
     },
 ];
 unsafe extern "C" fn initialize(

@@ -220,9 +220,18 @@ introduced. The source gate covers duplicate/name/digest rejection, retained
 snapshots after replacement, method-source inventory with the parser disabled,
 64 KiB automatic collection, and suspension across registry rebinding
 ([receipt](../measurements/source-registration-20261025.json)).
-Filename-aware evaluation, source/file loading, artifact admission, recovery,
-complete bootstrap/Host and installed qualification remain pending. Unconnected
-source evaluation and Generation projection remain in `pending_source.rs`.
+`evalPersisting:` and `evalPersisting:from:` now retain loader diagnostics and
+hand the compiled Block the caller's answer destination. The authored SourceLoader
+runs through real file snapshots, source registration, and current owner methods.
+The backend's existing filename/persistence/synchronous request is restored;
+filenames reach nested descriptors. The retained embedding traversal uses Oop
+byte access, preserves lexical shadowing/path limits, and copies sibling assets
+before execution. Source-file tests cover errors versus nil, duplicate-source
+policy, live owner replacement with GC, backend publication modes, embedded bytes
+after file deletion, and a loaded body suspending/resuming after its file is gone
+([receipt](../measurements/source-file-loading-20261025.json)).
+Artifact admission, recovery, complete bootstrap/Host and installed qualification
+remain pending. Unconnected Generation projection remains in `pending_source.rs`.
 Bootstrap still imports removed value carriers; these source-path checkpoints do
 not claim a repaired cold bootstrap.
 
@@ -293,7 +302,7 @@ list of upper modules that still require migration.
 | --- | --- | --- |
 | Oop native owners and explicit source compilation | `scripts/oop-id-slice-test.sh`; explicit synchronous/resumable compiler entries | Preserve working algorithms and tests; migrate the execution contract |
 | Execution | `synchronous.rs`, `resumable_runtime.rs`, retained frame engine; uncompiled `pending_message_integration.rs` and older control consumers | Restore features in gated slices; delete displaced plumbing only with replacement coverage |
-| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect source/file loading, artifact admission, recovery and remaining compiler consumers; standard eval acceptance is not complete integration |
+| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect artifact admission, recovery and remaining compiler consumers; standard eval acceptance is not complete integration |
 | Functional owners and startup | Alien/Image/Store build failures; Bootstrap still imports removed carriers; Host/CLI/Isolate depend on the migration | Restore the complete cold-build/load closure before installed or worker claims |
 | Historical work | Oop worktree is the active development branch; pre-worktree probes are checkpointed separately at `f503c183` | Keep evidence; avoid merging obsolete experiment implementations into the new basis |
 

@@ -104,6 +104,8 @@ for marker in [b'SOURCE_METHOD_DEFINITION_OK', b'SOURCE_TASK_CONTROL_OK checks=1
 assert b'#[#FAILED ' not in numeric
 for marker in [b'SOURCE_REGISTRY_METADATA_OWNERSHIP_OK', b'SOURCE_REGISTRY_LIVE_SUSPENSION_OK']:
     assert marker in numeric, marker
+for marker in [b'SOURCE_FILE_LOADING_DIAGNOSTICS_OK', b'SOURCE_BACKEND_MODES_OK', b'SOURCE_FILE_LIVE_OWNERS_FILENAME_OK', b'SOURCE_FILE_EMBEDDING_OK', b'SOURCE_FILE_SUSPENSION_GC_OK']:
+    assert marker in numeric, marker
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()

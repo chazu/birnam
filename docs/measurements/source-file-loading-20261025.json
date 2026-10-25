@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "452e54b5",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "exit_code": 0,
+  "unit_tests_passed": 188,
+  "task_control_checks": 177,
+  "task_control_failures": 0,
+  "source_checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "DEFAULT_COMPILER_ENTRYPOINTS_OK",
+    "DEFAULT_EVAL_SUSPEND_GC_OK bounded=false",
+    "DEFAULT_EVAL_SUSPEND_GC_OK bounded=true",
+    "SOURCE_FILE_LOADING_DIAGNOSTICS_OK",
+    "SOURCE_BACKEND_MODES_OK",
+    "SOURCE_FILE_LIVE_OWNERS_FILENAME_OK",
+    "SOURCE_FILE_EMBEDDING_OK",
+    "SOURCE_FILE_SUSPENSION_GC_OK",
+    "SOURCE_TASK_CONTROL_OK checks=177",
+    "SOURCE_HANDLER_CLEANUP_OK"
+  ],
+  "contract": "The authored SourceLoader retains file/registration/notification policy. evalPersisting: and evalPersisting:from: retain diagnostic nil versus evaluated Error behavior and native failures, then transfer the original continuation to the compiled Block. File I/O stays with System. The existing backend filename/persistence/synchronous request now uses Oops. No Id contract or Execution frame change.",
+  "compatibility": [
+    "Reflected Method wrong-arity calls return nil as the retained wrapper did.",
+    "Syntax diagnostics retain the filename, line/column and caret; valid nil clears stale diagnostics.",
+    "Duplicate-source nil still permits evaluation without replacing the registered source.",
+    "Namespace-only Module load notification remains distinct from Globals.",
+    "Codegen is selected after the file read and retained across a rebinding String constructor; callbacks collect."
+  ],
+  "embedding": "Retained lexical shadowing and path/size validation are reused. Sibling binary bytes are copied at compile time and remain available after asset deletion. Filenames reach nested frame descriptors.",
+  "lifetime": "A loaded body suspends in its owning Machine and resumes after source-file deletion, rebinding and GC without replaying its effects.",
+  "scope": "Source-file loading/evaluation/embedding. Artifact admission, recovery, complete bootstrap/Host, images/workers and installed qualification remain pending; pending_source.rs retains only Generation projection.",
+  "logs_sha256": {
+    "unit.log": "12bc1a28709ab0724119033fe0b0c125db6de820c14e32170952182f6a719bc2",
+    "numeric-integration.log": "ef358a5cf5dc5d53333597261158f3dbd3ef6b32514800a47293e3366dd3c80a",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}

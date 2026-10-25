@@ -7,6 +7,9 @@ pub(super) struct Sources {
     error: RefCell<Option<Vec<u8>>>,
 }
 impl Sources {
+    pub(super) fn clear_error(&self) {
+        *self.error.borrow_mut() = None;
+    }
     pub(super) fn note(&self, message: &[u8]) {
         let mut error = self.error.borrow_mut();
         if error.is_none() {
@@ -263,7 +266,7 @@ unsafe fn operation(c: Oop, a: *const Oop, n: usize, op: Op) -> Oop {
                 s.named(b"true")
             }
             Op::Clear => {
-                *s.sources.error.borrow_mut() = None;
+                s.sources.clear_error();
                 s.named(b"true")
             }
         }

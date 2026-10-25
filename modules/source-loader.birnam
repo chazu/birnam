@@ -27,7 +27,7 @@ let sourceStringVt := StringVt;
   let diagnostic := [compiler lastError];
   [[diagnostic isNil] ifTrue: [| nil] ifFalse: [|
     [[[Reflect vtableOf: diagnostic] == sourceStringVt] ifTrue: [|
-      [System printErrorText: ["birnam: load " , [display asString] , " failed:\n" , diagnostic , "\n"]]
+      [System printErrorText: ["birnam: load " , [String fromBytes: display] , " failed:\n" , diagnostic , "\n"]]
     ]];
     [self error: #syntaxError message: "source file failed to compile"]
   ]]
@@ -38,7 +38,7 @@ let sourceStringVt := StringVt;
     [[self exactError: result] ifTrue: [|
       let rendered := [result printString];
       [[[Reflect vtableOf: rendered] == sourceStringVt] ifTrue: [|
-        [System printErrorText: ["birnam: load " , [display asString] , ": " , rendered , "\n"]]
+        [System printErrorText: ["birnam: load " , [String fromBytes: display] , ": " , rendered , "\n"]]
       ]]
     ] ifFalse: [|
       [[name notNil] ifTrue: [|
@@ -56,7 +56,7 @@ let sourceStringVt := StringVt;
       // Select Codegen after the read and before constructing the source String.
       let compiler := [sourceNamespace valueAt: #Codegen];
       [[compiler isNil] ifTrue: [| [self error: #noCodegen message: "Codegen module is not loaded"]] ifFalse: [|
-        let source := [[snapshot at: 1] asString];
+        let source := [String fromBytes: [snapshot at: 1]];
         let registration := [self registrationFor: source using: compiler];
         let recorded := [registration at: 1];
         [[self exactError: recorded] ifTrue: [| recorded] ifFalse: [|

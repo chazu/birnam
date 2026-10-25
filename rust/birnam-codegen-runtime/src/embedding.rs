@@ -11,7 +11,7 @@ impl State {
         scope: &Scope<'_>,
         program: &mut Program<'_>,
         filename: &[u8],
-    ) -> Result<Option<Oop>, Outcome> {
+    ) -> Result<Option<Oop>, Oop> {
         unsafe { self.embed_statements(scope, &mut program.body, filename, false) }
     }
     unsafe fn embed_statements(
@@ -20,7 +20,7 @@ impl State {
         statements: &mut [Statement<'_>],
         filename: &[u8],
         mut shadowed: bool,
-    ) -> Result<Option<Oop>, Outcome> {
+    ) -> Result<Option<Oop>, Oop> {
         unsafe {
             for statement in statements {
                 let binds_system = matches!(
@@ -39,12 +39,8 @@ impl State {
             Ok(None)
         }
     }
-    unsafe fn embed_error(
-        &self,
-        scope: &Scope<'_>,
-        message: &[u8],
-    ) -> Result<Option<Oop>, Outcome> {
-        unsafe { Ok(Some(scope.keep(object(self.error(scope, message)?)?)?)) }
+    unsafe fn embed_error(&self, scope: &Scope<'_>, message: &[u8]) -> Result<Option<Oop>, Oop> {
+        unsafe { Ok(Some(scope.keep(self.error(message)?))) }
     }
     unsafe fn embed_expr(
         &self,
@@ -52,7 +48,7 @@ impl State {
         expr: &mut Expr<'_>,
         filename: &[u8],
         shadowed: bool,
-    ) -> Result<Option<Oop>, Outcome> {
+    ) -> Result<Option<Oop>, Oop> {
         unsafe {
             match expr {
                 Expr::Send {
@@ -88,46 +84,39 @@ impl State {
                         .parent()
                         .unwrap_or(Path::new("."))
                         .join(relative);
-                    let path = scope.keep(object(self.send(
-                        self.named(b"String")?,
-                        b"fromBytes:",
-                        &[Operand::bytes(path.as_os_str().as_encoded_bytes())],
-                    )?)?)?;
+                    let path = scope.keep(self.text(path.as_os_str().as_encoded_bytes())?);
                     // Match generated source lookup: current Globals, then Namespace.
-                    let name = scope.keep(self.id.intern_name(b"System")?)?;
-                    let globals = scope.keep(self.named(b"Globals")?)?;
-                    let nil = scope.keep(self.named(b"nil")?)?;
-                    let mut system = scope.keep(object(self.send(
-                        globals,
-                        b"at:",
-                        &[Operand::object(name)],
-                    )?)?)?;
+                    let name = scope.keep(self.intern(b"System")?);
+                    let globals = scope.keep(self.named(b"Globals")?);
+                    let nil = scope.keep(self.named(b"nil")?);
+                    let mut system = scope.keep(self.send(globals, b"at:", &[name])?);
                     if system == nil {
-                        system = scope.keep(self.named(b"System")?)?;
+                        system = scope.keep(self.named(b"System")?);
                     }
-                    let value = scope.keep(object(self.send(
-                        system,
-                        b"embedFile:",
-                        &[Operand::object(path)],
-                    )?)?)?;
+                    let value = scope.keep(self.send(system, b"embedFile:", &[path])?);
                     if self.is_error(value)? {
                         return Ok(Some(value));
                     }
                     if value == nil {
                         return self.embed_error(scope, b"embedFile: returned nil");
                     }
-                    // Copy before any subsequent send, including scope cleanup.
-                    let raw = self
-                        .send(value, b"bytes", &[])?
-                        .as_bytes()
-                        .ok_or_else(invalid)?;
-                    if raw.length > LIMIT {
+                    let buffer = scope.keep(self.send(value, b"bytes", &[])?);
+                    let count =
+                        abi::as_size(self.send(buffer, b"sizeWord", &[])?).ok_or_else(invalid)?;
+                    if count > LIMIT {
                         return self
                             .embed_error(scope, b"embedFile: file exceeds the 16 MiB limit");
                     }
-                    let bytes = borrowed_bytes(raw.pointer, raw.length)
-                        .ok_or_else(invalid)?
-                        .to_vec();
+                    let mut bytes = Vec::with_capacity(count);
+                    for i in 0..count {
+                        let byte =
+                            self.send(buffer, b"atWord:", &[abi::size(i).ok_or_else(invalid)?])?;
+                        bytes.push(
+                            abi::as_size(byte)
+                                .and_then(|b| u8::try_from(b).ok())
+                                .ok_or_else(invalid)?,
+                        );
+                    }
                     *expr = Expr::Send {
                         receiver: Box::new(Expr::StringOwned(bytes)),
                         selector: Cow::Borrowed(b"asBytes"),

@@ -1,4 +1,4 @@
-//! Oop native-emission owner. Resumable facade migration remains pending.
+//! Native emission from portable programs through Oop owner messages.
 mod c_string;
 pub mod oop_emission;
 use birnam_abi::{
@@ -160,6 +160,38 @@ unsafe extern "C" fn emit_resumable(_: Oop, c: Oop, _: Oop, a: *const Oop, n: us
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+unsafe extern "C" fn emit_program(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [program, source, filename, persistent, synchronous] =
+            borrowed_slice(a, n).ok_or_else(invalid)?
+        else {
+            return Err(invalid());
+        };
+        let q = s.scope(borrowed_slice(a, n).ok_or_else(invalid)?);
+        let truth = q.keep(s.named(b"true")?);
+        let falsity = q.keep(s.named(b"false")?);
+        let flag = |v| {
+            if v == truth {
+                Ok(true)
+            } else if v == falsity {
+                Ok(false)
+            } else {
+                Err(invalid())
+            }
+        };
+        let persistent = flag(*persistent)?;
+        let synchronous = flag(*synchronous)?;
+        let program = s.bytes(*program)?;
+        let source = s.bytes(*source)?;
+        let filename = s.bytes(*filename)?;
+        match oop_emission::compile_from(&program, &source, &filename, persistent, synchronous) {
+            Ok(c) => s.text(&c),
+            Err(e) => s.error(format!("source emission: {e:?}").as_bytes()),
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 const OWNER_NAME: &[u8] = b"NativeBackend";
 const NAMES: &[&[u8]] = &[
     b"Error",
@@ -188,6 +220,9 @@ const NAMES: &[&[u8]] = &[
     b"visit:",
     b"withContext:",
     b"emitResumable:source:",
+    b"emit:source:filename:persistent:synchronous:",
+    b"true",
+    b"false",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Error"),
@@ -216,6 +251,9 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"visit:"),
     Literal::new(b"withContext:"),
     Literal::new(b"emitResumable:source:"),
+    Literal::new(b"emit:source:filename:persistent:synchronous:"),
+    Literal::new(b"true"),
+    Literal::new(b"false"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -229,6 +267,10 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 25,
         entry: Some(emit_resumable),
+    },
+    MethodSpec {
+        name: 26,
+        entry: Some(emit_program),
     },
 ];
 unsafe extern "C" fn initialize(

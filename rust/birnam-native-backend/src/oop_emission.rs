@@ -14,6 +14,7 @@ struct Emitter {
     names: Vec<Vec<u8>>,
     functions: Vec<String>,
     descriptors: Vec<Option<(Vec<u8>, Vec<u8>)>>,
+    persistent: bool,
 }
 impl Emitter {
     fn name(&mut self, n: &[u8]) -> Result<usize, Error> {
@@ -128,7 +129,7 @@ impl Emitter {
             if statement.kind == StatementKind::Let {
                 let binding = statement.binding_index.ok_or(Error::InvalidProgram)?;
                 writeln!(out, "O b{binding}=v{};", statement.root_node).unwrap();
-                if depth == 0 {
+                if depth == 0 && self.persistent {
                     let name = p
                         .binding_name(binding as usize)
                         .ok_or(Error::InvalidProgram)?;
@@ -149,16 +150,35 @@ impl Emitter {
     }
 }
 pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    compile_mode(bytes, &[], false)
+    compile_mode(bytes, &[], b"<compiler>", true, false)
 }
 pub fn compile_resumable(bytes: &[u8], source: &[u8]) -> Result<Vec<u8>, Error> {
-    compile_mode(bytes, source, true)
+    compile_mode(bytes, source, b"<compiler>", true, true)
 }
-fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>, Error> {
+pub fn compile_from(
+    bytes: &[u8],
+    source: &[u8],
+    filename: &[u8],
+    persistent: bool,
+    synchronous: bool,
+) -> Result<Vec<u8>, Error> {
+    if persistent && synchronous {
+        return Err(Error::InvalidProgram);
+    }
+    compile_mode(bytes, source, filename, persistent, !synchronous)
+}
+fn compile_mode(
+    bytes: &[u8],
+    source: &[u8],
+    filename: &[u8],
+    persistent: bool,
+    resumable: bool,
+) -> Result<Vec<u8>, Error> {
     let mut e = Emitter {
         names: Vec::new(),
         functions: Vec::new(),
         descriptors: Vec::new(),
+        persistent,
     };
     let mut definitions = String::new();
     for (key, name) in [
@@ -185,7 +205,7 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
     let roots = e.name(b"Roots")?;
     let declared = e.name(b"declaredMethodAt:")?;
     if resumable {
-        e.resumable_function(bytes, source, 0)?;
+        e.resumable_function(bytes, source, filename, 0)?;
     } else {
         e.function(bytes, 0)?;
     }
@@ -205,11 +225,13 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
     for i in 0..e.functions.len() {
         writeln!(out, "static O function_{i}(O,O,O,const O*,size_t);").unwrap();
     }
-    for (i,f) in e.functions.iter().enumerate() {
-        if e.descriptors[i].is_some(){
-            out.push_str(&f.replace(&format!("function_{i}("),&format!("step_body_{i}(")));
+    for (i, f) in e.functions.iter().enumerate() {
+        if e.descriptors[i].is_some() {
+            out.push_str(&f.replace(&format!("function_{i}("), &format!("step_body_{i}(")));
             writeln!(out,"static O function_{i}(O root,O context,O machine,const O*args,size_t n){{if(n!=2)return id.invalid;O result=step_body_{i}(root,context,machine,args+1,n-1);if(failed(result))return result;O answer[]={{args[0],result}};return control(id.root,symbols[S_ANSWER],answer,2);}}").unwrap();
-        }else{out.push_str(f);}
+        } else {
+            out.push_str(f);
+        }
     }
     for (i, descriptor) in e.descriptors.iter().enumerate() {
         if let Some((descriptor, selection)) = descriptor {
@@ -242,7 +264,12 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
     }
     out.push_str("};\nstatic const MethodSpec declarations[]={\n");
     for (i, name) in method_names.iter().enumerate() {
-        writeln!(out, "{{{name},function_{i},{}}},",usize::from(e.descriptors[i].is_some())).unwrap();
+        writeln!(
+            out,
+            "{{{name},function_{i},{}}},",
+            usize::from(e.descriptors[i].is_some())
+        )
+        .unwrap();
     }
     out.push_str("};\n");
     writeln!(out,"static O initialize(const CP*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->common.version!=3||p->common.byte_size!=sizeof(CP))return 0;if(n!=1||count!=SYMBOL_COUNT)return p->common.invalid;id=p->common;control=p->control;ns=args[0];owner=unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
