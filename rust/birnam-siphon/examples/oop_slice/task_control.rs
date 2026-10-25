@@ -4,9 +4,9 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    objects: [Oop; 6],
+    objects: [Oop; 5],
 ) {
-    let [ns, roots, gc, string, integer, blocks] = objects;
+    let [ns, roots, gc, string, integer] = objects;
     let retain = |v| send(roots, b"retain:", &[v]).unwrap();
     let release = |v| {
         send(roots, b"release:", &[v]).unwrap();
@@ -24,24 +24,13 @@ pub(super) unsafe fn check(
     let evaluate = |source: &str| {
         let source = text(source.as_bytes());
         let st = retain(source);
-        let method = send(codegen, b"compileResumable:", &[source]).unwrap();
-        let mt = retain(method);
-        assert_ne!(
-            send(method, b"isError", &[]),
-            Ok(truth),
-            "source compilation failed"
-        );
-        let block = send(blocks, b"fromMethod:captureOperands:", &[method]).unwrap();
-        let bt = retain(block);
-        let result = send(block, b"value", &[]).unwrap();
+        let result = send(codegen, b"eval:", &[source]).unwrap();
         let rt = retain(result);
         assert_ne!(
             send(result, b"isError", &[]),
             Ok(truth),
             "source evaluation failed"
         );
-        release(bt);
-        release(mt);
         release(st);
         send(gc, b"collectPrecisely", &[]).unwrap();
         release(rt);
@@ -159,6 +148,7 @@ pub(super) unsafe fn check(
         Ok(truth)
     );
     release(et);
+    assert_eq!(evaluate("[[Codegen eval: \"[|\"] isError]"), truth);
     println!("SOURCE_HANDLER_CLEANUP_OK");
     evaluate("[System autoGc: false]");
 }

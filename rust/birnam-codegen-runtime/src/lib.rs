@@ -1,6 +1,6 @@
 //! Source compilation through current Lang, NativeBackend and TCC owners.
 //! Explicit source compilation and reflected Methods reuse the retained lowering.
-//! Artifact publication and default compiler orchestration remain pending.
+//! Artifact publication and bootstrap orchestration remain pending.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
     id_protocol::{
@@ -79,6 +79,21 @@ impl State {
     }
     unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
         unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn transfer(&self, operation: &[u8], args: &[Oop]) -> Result<Oop, Oop> {
+        unsafe {
+            let value = (self.control)(
+                self.id.root,
+                self.names[operation],
+                args.as_ptr(),
+                args.len(),
+            );
+            if abi::is_fault(value) {
+                Err(abi::object_reference(value))
+            } else {
+                Ok(value)
+            }
+        }
     }
     unsafe fn named(&self, n: &[u8]) -> Result<Oop, Oop> {
         unsafe {
@@ -206,15 +221,11 @@ impl State {
         }
     }
 }
-unsafe fn compile_source(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let [source] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let q = s.scope(&[*source]);
-        let bytes = s.bytes(*source)?;
-        let tree = q.keep(s.send(s.named(b"Lang")?, b"parse:", &[*source])?);
+unsafe fn emit_source(s: &State, source: Oop, resumable: bool) -> Result<Oop, Oop> {
+    unsafe {
+        let q = s.scope(&[source]);
+        let bytes = s.bytes(source)?;
+        let tree = q.keep(s.send(s.named(b"Lang")?, b"parse:", &[source])?);
         if tree.is_null() || tree == s.named(b"nil")? {
             return s.error(b"source parse failed");
         }
@@ -245,6 +256,17 @@ unsafe fn compile_source(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oo
         } else {
             s.send(s.named(b"NativeBackend")?, b"emitSynchronous:", &[encoded])?
         });
+        Ok(native)
+    }
+}
+unsafe fn compile_source(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [source] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*source]);
+        let native = q.keep(emit_source(s, *source, resumable)?);
         if s.is_error(native)? {
             return Ok(native);
         }
@@ -253,6 +275,36 @@ unsafe fn compile_source(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oo
             return Ok(unit);
         }
         s.send(unit, b"initialize", &[])
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn emit(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [source] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        emit_source(s, *source, true)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn evaluate(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [k, source] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[r, *k, *source]);
+        let method = q.keep(s.send(r, b"compile:", &[*source])?);
+        if s.is_error(method)? {
+            return s.transfer(b"answerTo:with:", &[*k, method]);
+        }
+        let block = q.keep(s.send(
+            s.named(b"Block")?,
+            b"fromMethod:captureOperands:",
+            &[method],
+        )?);
+        s.transfer(b"prepareSend", &[block, s.names[b"value".as_slice()], *k])
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -284,17 +336,7 @@ unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop,
         }
         let mut values = vec![implementation, selector, *k, r];
         values.extend_from_slice(args);
-        let work = (s.control)(
-            s.id.root,
-            s.names[b"prepareSend".as_slice()],
-            values.as_ptr(),
-            values.len(),
-        );
-        if abi::is_fault(work) {
-            Err(abi::object_reference(work))
-        } else {
-            Ok(work)
-        }
+        s.transfer(b"prepareSend", &values)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -441,6 +483,10 @@ const NAMES: &[&[u8]] = &[
     b"ensurePrivateVtableFor:",
     b"addMethod:as:",
     b"vtableOf:",
+    b"emit:",
+    b"eval:",
+    b"value",
+    b"answerTo:with:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -505,6 +551,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"ensurePrivateVtableFor:"),
     Literal::new(b"addMethod:as:"),
     Literal::new(b"vtableOf:"),
+    Literal::new(b"emit:"),
+    Literal::new(b"eval:"),
+    Literal::new(b"value"),
+    Literal::new(b"answerTo:with:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -541,6 +591,21 @@ static METHODS: &[MethodSpec] = &[
         name: 61,
         entry: Some(vtable_of),
         convention: 0,
+    },
+    MethodSpec {
+        name: 20,
+        entry: Some(compile_resumable),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 62,
+        entry: Some(emit),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 63,
+        entry: Some(evaluate),
+        convention: 1,
     },
 ];
 unsafe extern "C" fn initialize(

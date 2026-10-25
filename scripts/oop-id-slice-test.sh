@@ -97,6 +97,8 @@ for mode in ['return', 'leave', 'nested', 'park']:
 for mode in ['eligible', 'native_eligible', 'native_park', 'native_leave']:
     marker=('COMPILED_CONTROL_NATIVE_OK mode='+mode).encode()
     assert marker in numeric, marker
+for marker in [b'DEFAULT_COMPILER_ENTRYPOINTS_OK', b'DEFAULT_EVAL_SUSPEND_GC_OK bounded=false', b'DEFAULT_EVAL_SUSPEND_GC_OK bounded=true']:
+    assert marker in numeric, marker
 for marker in [b'SOURCE_METHOD_DEFINITION_OK', b'SOURCE_TASK_CONTROL_OK checks=177', b'SOURCE_HANDLER_CLEANUP_OK', b'#[#taskControlChecks 177 #failures 0]']:
     assert marker in numeric, marker
 assert b'#[#FAILED ' not in numeric

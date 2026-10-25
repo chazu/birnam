@@ -202,8 +202,17 @@ existing vtable ownership and the retained error primitive; reflected arities up
 to 16 use the existing Block convention. GC retirement scans the weak return
 continuation table once per dead-object set rather than once per dead object.
 [Acceptance receipt](../measurements/authored-task-control-20261025.json).
-Default compiler/artifact orchestration, recovery, complete bootstrap/Host and
-installed qualification remain pending; this is explicit source-path acceptance.
+Standard `Codegen compile:`, `emit:` and `eval:` now use the same resumable
+pipeline. `emit:` returns C without mapping code; `compile:` returns a Method;
+`eval:` sends the current `compile:` and transfers its answer destination to the
+compiled Block. Compile errors remain data and native failures retain their mark.
+The authored control gate now uses `eval:` throughout. Separate checks cover
+compiler replacement, suspended evaluation, changed source without replay, and
+code retention/release with GC
+([receipt](../measurements/default-compiler-entrypoints-20261025.json)).
+Artifact/source registration, recovery, complete bootstrap/Host and installed
+qualification remain pending. Bootstrap still imports the removed value carriers;
+standard source evaluation does not claim a repaired cold bootstrap.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send
@@ -249,8 +258,9 @@ checks. It also retains code-owner release and captured-alias acceptance.
 
 This checkpoint changes no scheduling policy and introduces no private Id/Execution
 interface. `pure_lookup`, its retained query witnesses, callee classification at
-the send site, and the captured-method alias registry are removed. Full handlers,
-cancellation, recovery and default compiler orchestration remain the next work.
+the send site, and the captured-method alias registry are removed. Authored control
+and standard compiler entry points were still pending at this checkpoint; their
+later acceptance is recorded above.
 
 [Acceptance receipt](../measurements/compiler-execution-continuations-20261024.json):
 188 unit tests pass; all native/source gate modes pass. The original tail assertion
@@ -271,7 +281,7 @@ list of upper modules that still require migration.
 | --- | --- | --- |
 | Oop native owners and explicit source compilation | `scripts/oop-id-slice-test.sh`; explicit synchronous/resumable compiler entries | Preserve working algorithms and tests; migrate the execution contract |
 | Execution | `synchronous.rs`, `resumable_runtime.rs`, retained frame engine; uncompiled `pending_message_integration.rs` and older control consumers | Restore features in gated slices; delete displaced plumbing only with replacement coverage |
-| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect ordinary compilation, captures, recovery and admission; do not treat explicit test entrypoints as complete integration |
+| Default compiler and native execution consumers | Remaining old-carrier references in Codegen Runtime, Generation, NativeBackend and Portable Code | Reconnect source registration, artifact admission, recovery and remaining compiler consumers; standard eval acceptance is not complete integration |
 | Functional owners and startup | Alien/Image/Store build failures; Bootstrap still imports removed carriers; Host/CLI/Isolate depend on the migration | Restore the complete cold-build/load closure before installed or worker claims |
 | Historical work | Oop worktree is the active development branch; pre-worktree probes are checkpointed separately at `f503c183` | Keep evidence; avoid merging obsolete experiment implementations into the new basis |
 
