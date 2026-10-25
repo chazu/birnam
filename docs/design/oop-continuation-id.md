@@ -1,8 +1,9 @@
 # Continuation-aware Id: design and proof checkpoint
 
-2026-10-24. Committed development direction. Production Id now implements the
-continuation mechanism below. The old compiler/Execution custom-lookup tail gate
-remains red until those callers migrate; full runtime qualification remains held.
+2026-10-24. Id, the explicit compiler paths, TCC and Execution now use the
+continuation contract. Their native/source gate passes, including the original
+custom-lookup tail regression. This is not completion of the broader runtime,
+control/recovery, default compiler, image, worker or installed qualification.
 
 The user rejected the shared-private-implementation packaging proposed by the
 [entry experiments](oop-entry-seam-experiments.md), and explicitly allowed
@@ -121,10 +122,8 @@ Scope is the Id mechanism. There is no scheduler, collector redesign, compiler
 change or new payload catalog in this milestone. Native images retain the
 existing residency policy. GC still refuses allocating reporting/lookup before
 retirement; the C test checks that refusal and recovery. New transfer objects
-are visible to the ordinary allocation inventory and collectible, but automatic
-collection accounting/safe-point policy for these internal allocations must be
-connected with Execution before default language promotion. The gate uses
-explicit precise collection, not a claim that this policy is already connected.
+are visible to the ordinary allocation inventory and collectible. The following
+compiler/Execution checkpoint connects their accounting and collection safe points.
 
 The [executable reference](../../formal/continuations/reference/README.md) now
 connects the model to a Rust Id library and independently compiled consumers.
@@ -152,13 +151,70 @@ The reconstruction order is:
 2. **Completed for the bounded Id mechanism:** transfer convention, root/context
    handoff, native boundary checks and an independent C caller. Compiler and
    Execution have not yet adopted it.
-3. Reconnect compiler and Execution through that contract; remove displaced
-   preliminary lookup classification and native fallback guessing when their
-   replacements pass the original source gate.
+3. **Completed for the explicit source paths:** compiler/TCC v3 declarations,
+   Execution return continuations, allocation accounting and safe points. The
+   preliminary lookup classification, native fallback guessing and captured-alias
+   map are removed; the original source gate passes.
 4. Restore retained control, handlers, cancellation, cleanup, recovery and
    optimized/named/portable compiler consumers, keeping explicit features intact.
 5. Reconnect remaining functional owners, bootstrap, Host/CLI, images and workers;
    qualify clean source builds and installed behavior before completion/push.
+
+## Compiler/Execution continuation checkpoint
+
+Before, Execution classified default lookup in advance and used synchronous send
+for custom lookup, losing source tail-call context. Now it issues one Id send
+with an owned return continuation. A selected registered source entry recognizes
+that continuation and transfers directly into the retained frame engine; native
+answers return through it. Lookup helpers receive their own continuations, so
+receiver/arity similarity cannot cause an accidental tail replacement. Id never
+reads Execution's return-site or frame representations.
+
+Generated modules use v3 metadata. Resumable steps answer their action destination;
+synchronous functions retain their synchronous convention. TCC validates either
+native descriptor version and selects the corresponding declared entry wrapper.
+Entered Unit roots and mapping retirement remain TCC's responsibility. Execution
+keeps reporting and frame operations synchronous and uses continuation entries
+for source entry, Block value and driver callbacks.
+
+Machine budget stops retain the existing frame algorithm. An Id-paused lookup
+also retains its pending work, frame edge and nested delimiters. Only the owner
+can resume that checkpoint. Native callbacks during an owned Machine drive stay
+on that Machine; recursive drive is rejected. Nested explicit Machine drives use
+the existing synchronous native boundary rather than overlapping Id drivers.
+
+A generic `allocationBytesTotal` fact counts requested Id allocation extents,
+including headers/padding, without inspecting payloads. Collect keeps the current
+construction-charge hooks and applies an Id-allocation pressure floor, including
+reported external charges, at `prepareAllocation`. Execution calls that policy
+at rooted step boundaries. This covers transfer allocations without adding a
+continuation category to the allocator or collector, or double-charging ordinary
+managed allocations. Collection resets the measurement origin, not Id's lifetime
+counter. The existing refusal of allocating GC reporting remains unchanged.
+
+Continuation answers preserve the existing native failure mark. Execution keeps
+ordinary Error values distinct from failed native returns and retains
+`evaluatePreservingFailures:` behavior. Missing/invalid lookup results reach the
+call continuation instead of silently abandoning a running Machine.
+
+The native gate retains all old assertions and adds compiled lookup-helper
+re-entry on the same receiver/arity, suspension after selection, binding
+replacement plus GC before resumption, two computations alternating budgets with
+exact effect counts, automatic collection without manual collection during the
+run, same-Machine native callbacks, nested Machine drives and resumable error
+checks. It also retains code-owner release and captured-alias acceptance.
+
+This checkpoint changes no scheduling policy and introduces no private Id/Execution
+interface. `pure_lookup`, its retained query witnesses, callee classification at
+the send site, and the captured-method alias registry are removed. Full handlers,
+cancellation, recovery and default compiler orchestration remain the next work.
+
+[Acceptance receipt](../measurements/compiler-execution-continuations-20261024.json):
+188 unit tests pass; all native/source gate modes pass. The original tail assertion
+reports 2 frames for both default and custom lookup at 8 and 24 calls. The added
+source checks cover 134 interleaved owner turns, automatic collection, suspended
+lookup replacement, native callback frame identity, nested Machine drives and
+failure conversion. No assertion was weakened or skipped to obtain these results.
 
 ## Loose ends verified before rebuilding
 

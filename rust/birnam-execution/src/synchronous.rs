@@ -4,7 +4,10 @@ mod resumable;
 use crate::{execution::ExecutionState, objects::Objects};
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
-    id_protocol::{Literal, MethodSpec, Module, Protocol},
+    id_protocol::{
+        ContinuationMethodSpec as MethodSpec, ContinuationModule as Module, ContinuationProtocol,
+        Control, Literal, Protocol,
+    },
 };
 use core::{
     cell::{Cell, RefCell},
@@ -16,6 +19,8 @@ use std::{
 };
 struct State {
     id: Protocol,
+    control: Control,
+    value_answer: Oop,
     ns: Oop,
     gc: Oop,
     nil: Oop,
@@ -94,6 +99,21 @@ impl State {
     }
     unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
         unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn transfer(&self, operation: &[u8], args: &[Oop]) -> Result<Oop, Oop> {
+        let value = unsafe {
+            (self.control)(
+                self.id.root,
+                self.names[operation],
+                args.as_ptr(),
+                args.len(),
+            )
+        };
+        if abi::is_fault(value) {
+            Err(abi::object_reference(value))
+        } else {
+            Ok(value)
+        }
     }
     unsafe fn named(&self, n: &[u8]) -> Result<Oop, Oop> {
         unsafe {
@@ -193,9 +213,42 @@ unsafe extern "C" fn from_operands(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usi
 unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let method = s.field(r, 0)?;
-        s.language_result(s.invoke(method, r, args))
+        let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[r, *k]);
+        let method = q.keep(s.field(r, 0)?);
+        let destination = if k.is_null() || s.resume.borrow().return_methods.contains_key(&k.addr())
+        {
+            *k
+        } else {
+            let context = q.keep(s.make_block(s.block_vt, &[*k])?);
+            q.keep(s.send(s.value_answer, b"withContext:", &[context])?)
+        };
+        let mut values = vec![method, r, destination];
+        values.extend_from_slice(args);
+        s.transfer(b"prepareEntry", &values)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn value_answer(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = state((*p).ns)?;
+        let [_, value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[c, *value]);
+        let k = q.keep(s.field(c, 0)?);
+        let value = q.keep(s.language_result(if abi::is_fault(*value) {
+            Err(abi::object_reference(*value))
+        } else {
+            Ok(*value)
+        })?);
+        s.transfer(b"answerTo:with:", &[k, value])
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -279,7 +332,6 @@ unsafe extern "C" fn method_for(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize)
             Ok(s.nil)
         } else {
             let captured = scope.keep(s.send(method, b"captured", &[])?);
-            resumable::capture_alias(s, method, captured)?;
             Ok(captured)
         }
     })()
@@ -303,7 +355,15 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
         let [v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let mut values = vec![s.ns, s.gc, s.nil, s.receiver, s.block, s.block_vt];
+        let mut values = vec![
+            s.ns,
+            s.gc,
+            s.nil,
+            s.receiver,
+            s.block,
+            s.block_vt,
+            s.value_answer,
+        ];
         values.extend_from_slice(&s.scoped.borrow());
         values.extend_from_slice(&s.resume.borrow().roots);
         for value in values {
@@ -393,7 +453,6 @@ const NAMES: &[&[u8]] = &[
     b"at:",
     b"at:put:",
     b"behaviorOf:",
-    b"bind:to:",
     b"captureCount",
     b"captureWordAt:",
     b"checkpoint",
@@ -460,7 +519,6 @@ const NAMES: &[&[u8]] = &[
     b"wordOf:",
     b"low32",
     b"high32",
-    b"sameNativeMethod:as:",
     b"doesNotUnderstand:",
     b"true",
     b"false",
@@ -484,9 +542,19 @@ const NAMES: &[&[u8]] = &[
     b"staleFrameView",
     b"invalidFrameSlot",
     b"allocationSizeOf:",
-    b"usesDefaultLookup:",
-    b"nativeBindingsMatch:",
-    b"nativeBindingQuerySemantics:for:",
+    b"prepareSend",
+    b"prepareEntry",
+    b"answerTo:with:",
+    b"drive:budget:",
+    b"pause:",
+    b"advanceExecution",
+    b"receiveCall",
+    b"receiveRun",
+    b"driveBridge",
+    b"faultKind",
+    b"driveActive",
+    b"valueAnswer",
+    b"continuationBarrier",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -505,7 +573,6 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"at:"),
     Literal::new(b"at:put:"),
     Literal::new(b"behaviorOf:"),
-    Literal::new(b"bind:to:"),
     Literal::new(b"captureCount"),
     Literal::new(b"captureWordAt:"),
     Literal::new(b"checkpoint"),
@@ -572,7 +639,6 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"wordOf:"),
     Literal::new(b"low32"),
     Literal::new(b"high32"),
-    Literal::new(b"sameNativeMethod:as:"),
     Literal::new(b"doesNotUnderstand:"),
     Literal::new(b"true"),
     Literal::new(b"false"),
@@ -596,174 +662,251 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"staleFrameView"),
     Literal::new(b"invalidFrameSlot"),
     Literal::new(b"allocationSizeOf:"),
-    Literal::new(b"usesDefaultLookup:"),
-    Literal::new(b"nativeBindingsMatch:"),
-    Literal::new(b"nativeBindingQuerySemantics:for:"),
+    Literal::new(b"prepareSend"),
+    Literal::new(b"prepareEntry"),
+    Literal::new(b"answerTo:with:"),
+    Literal::new(b"drive:budget:"),
+    Literal::new(b"pause:"),
+    Literal::new(b"advanceExecution"),
+    Literal::new(b"receiveCall"),
+    Literal::new(b"receiveRun"),
+    Literal::new(b"driveBridge"),
+    Literal::new(b"faultKind"),
+    Literal::new(b"driveActive"),
+    Literal::new(b"valueAnswer"),
+    Literal::new(b"continuationBarrier"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 23,
+        name: 22,
         entry: Some(from_operands),
-    },
-    MethodSpec {
-        name: 18,
-        entry: Some(capture),
+        convention: 0,
     },
     MethodSpec {
         name: 17,
+        entry: Some(capture),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 16,
         entry: Some(capture_count),
+        convention: 0,
     },
     MethodSpec {
-        name: 20,
+        name: 19,
         entry: Some(clone_block),
+        convention: 0,
     },
     MethodSpec {
-        name: 22,
+        name: 21,
         entry: Some(preserve),
+        convention: 0,
     },
     MethodSpec {
-        name: 28,
+        name: 27,
         entry: Some(method_for),
+        convention: 0,
     },
     MethodSpec {
         name: 10,
         entry: Some(install),
-    },
-    MethodSpec {
-        name: 40,
-        entry: Some(roots),
-    },
-    MethodSpec {
-        name: 33,
-        entry: Some(references),
-    },
-    MethodSpec {
-        name: 38,
-        entry: Some(retire),
-    },
-    MethodSpec {
-        name: 19,
-        entry: Some(checkpoint),
+        convention: 0,
     },
     MethodSpec {
         name: 39,
+        entry: Some(roots),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 32,
+        entry: Some(references),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 37,
+        entry: Some(retire),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 18,
+        entry: Some(checkpoint),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 38,
         entry: Some(ready),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 42,
+        entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 43,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 44,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 45,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 46,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 47,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 48,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 49,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 50,
         entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
-        name: 51,
-        entry: Some(value),
+        name: 56,
+        entry: Some(resumable::from_step),
+        convention: 0,
     },
     MethodSpec {
         name: 57,
-        entry: Some(resumable::from_step),
+        entry: Some(resumable::entry),
+        convention: 1,
     },
     MethodSpec {
         name: 58,
-        entry: Some(resumable::entry),
+        entry: Some(resumable::run_step),
+        convention: 0,
     },
     MethodSpec {
         name: 59,
-        entry: Some(resumable::run_step),
+        entry: Some(resumable::new),
+        convention: 0,
     },
     MethodSpec {
         name: 60,
-        entry: Some(resumable::new),
+        entry: Some(resumable::run),
+        convention: 0,
     },
     MethodSpec {
         name: 61,
-        entry: Some(resumable::run),
+        entry: Some(resumable::run_bounded),
+        convention: 0,
     },
     MethodSpec {
         name: 62,
-        entry: Some(resumable::run_bounded),
+        entry: Some(resumable::continue_drive),
+        convention: 0,
     },
     MethodSpec {
         name: 63,
-        entry: Some(resumable::continue_drive),
+        entry: Some(resumable::destroy),
+        convention: 0,
     },
     MethodSpec {
         name: 64,
-        entry: Some(resumable::destroy),
+        entry: Some(resumable::lifecycle),
+        convention: 0,
     },
     MethodSpec {
         name: 65,
-        entry: Some(resumable::lifecycle),
+        entry: Some(resumable::is_runnable),
+        convention: 0,
     },
     MethodSpec {
         name: 66,
-        entry: Some(resumable::is_runnable),
+        entry: Some(resumable::frame_count),
+        convention: 0,
     },
     MethodSpec {
         name: 67,
-        entry: Some(resumable::frame_count),
+        entry: Some(resumable::read),
+        convention: 0,
     },
     MethodSpec {
         name: 68,
-        entry: Some(resumable::read),
+        entry: Some(resumable::write),
+        convention: 0,
     },
     MethodSpec {
         name: 69,
-        entry: Some(resumable::write),
+        entry: Some(resumable::continue_at),
+        convention: 0,
     },
     MethodSpec {
         name: 70,
-        entry: Some(resumable::continue_at),
+        entry: Some(resumable::call_site),
+        convention: 0,
     },
     MethodSpec {
         name: 71,
-        entry: Some(resumable::call_site),
+        entry: Some(resumable::tail_call_site),
+        convention: 0,
     },
     MethodSpec {
         name: 72,
-        entry: Some(resumable::tail_call_site),
+        entry: Some(resumable::return_at),
+        convention: 0,
     },
     MethodSpec {
-        name: 73,
-        entry: Some(resumable::return_at),
+        name: 110,
+        entry: Some(resumable::advance),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 111,
+        entry: Some(resumable::receive_call),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(resumable::receive_run),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 113,
+        entry: Some(resumable::drive_bridge),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 116,
+        entry: Some(value_answer),
+        convention: 1,
     },
 ];
 unsafe extern "C" fn initialize(
-    p: *const Protocol,
+    p: *const ContinuationProtocol,
     image: Oop,
     l: *const Oop,
     n: usize,
     a: *const Oop,
     count: usize,
 ) -> Oop {
-    API.store(p.cast_mut(), Ordering::Release);
-    let id = unsafe { *p };
+    API.store(
+        unsafe { &(*p).common as *const Protocol }.cast_mut(),
+        Ordering::Release,
+    );
+    let id = unsafe { (*p).common };
+    let control = unsafe { (*p).control };
     let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {
         return id.invalid;
     };
@@ -803,6 +946,12 @@ unsafe extern "C" fn initialize(
         let block = keep(send(block_vt, b"allocate", &[abi::size(0).unwrap()])?)?;
         let s = Box::leak(Box::new(State {
             id,
+            control,
+            value_answer: keep(send(
+                image,
+                b"methodAt:",
+                &[names[b"valueAnswer".as_slice()]],
+            )?)?,
             ns: *ns,
             gc: named(b"GC")?,
             nil: named(b"nil")?,
@@ -823,6 +972,9 @@ unsafe extern "C" fn initialize(
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
             let name = NAMES[spec.name];
+            if name == b"valueAnswer" {
+                continue;
+            }
             let target = match name {
                 b"fromMethod:captureOperands:" | b"captureWordAt:" | b"captureCount" | b"clone" => {
                     block_vt
@@ -835,9 +987,6 @@ unsafe extern "C" fn initialize(
             let method = send(image, b"methodAt:", &[names[name]])?;
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[names[name], method])?;
-            if name.starts_with(b"value") {
-                s.resume.borrow_mut().block_values.push(method);
-            }
         }
         // The factory has no Block fields; it is a rooted ordinary object. Only actual
         // constructed Blocks are tracked and traced by this representation owner.
@@ -861,8 +1010,8 @@ unsafe extern "C" fn initialize(
     .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v2: Module = Module {
-    version: 2,
+pub static birnam_native_module_v3: Module = Module {
+    version: 3,
     byte_size: size_of::<Module>() as u32,
     literals: LITERALS.as_ptr(),
     literal_count: LITERALS.len(),

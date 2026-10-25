@@ -19,10 +19,14 @@ struct Registered {
 #[derive(Default)]
 pub(super) struct Runtime {
     pub roots: Vec<Oop>,
-    pub block_values: Vec<Oop>,
-    default_queries: Vec<Oop>,
+    runs: HashMap<usize, Run>,
+    returns: HashMap<usize, ReturnSite>,
+    pub(super) return_methods: HashMap<usize, usize>,
+    advance_template: Oop,
+    return_template: Oop,
+    sink_template: Oop,
+    bridge_template: Oop,
     records: HashMap<usize, Registered>,
-    methods: HashMap<usize, usize>,
     context_vt: Oop,
     template: Oop,
     run_descriptor: Option<Arc<FrameDescriptor>>,
@@ -47,37 +51,15 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"callSite:",
     b"tailCallSite:",
     b"returnAt:",
+    b"advanceExecution",
+    b"receiveCall",
+    b"receiveRun",
+    b"driveBridge",
 ];
 fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
 }
 
-fn registration(s: &State, method: Oop) -> Option<Registered> {
-    let runtime = s.resume.borrow();
-    runtime
-        .records
-        .get(runtime.methods.get(&method.addr())?)
-        .cloned()
-}
-// These retained Methods are equality witnesses, never cached calls. The
-// existing Id guard checks the matcher itself and all current query bindings.
-const DEFAULT_QUERIES: &[&[u8]] = &[b"usesDefaultLookup:", b"bind:to:", b"nativeBindingsMatch:"];
-unsafe fn pure_lookup(s: &State, receiver: Oop) -> Result<bool, Oop> {
-    unsafe {
-        let witnesses = s.resume.borrow().default_queries.clone();
-        if witnesses.len() != DEFAULT_QUERIES.len() {
-            return Ok(false);
-        }
-        let mut rows = Vec::with_capacity(witnesses.len() * 3);
-        for (&name, method) in DEFAULT_QUERIES.iter().zip(witnesses) {
-            rows.extend([s.id.root, s.names[name], method]);
-        }
-        if abi::as_size(s.send(s.id.root, b"nativeBindingsMatch:", &rows)?) != Some(1) {
-            return Ok(false);
-        }
-        Ok(abi::as_size(s.send(s.id.root, b"usesDefaultLookup:", &[receiver])?) == Some(1))
-    }
-}
 unsafe fn number(s: &State, value: usize) -> Result<Oop, Oop> {
     unsafe {
         s.send(
@@ -239,7 +221,6 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
         let lease = checked(engine.publish_owned(capability))?;
         drop(engine);
         let mut runtime = s.resume.borrow_mut();
-        runtime.methods.insert(method.addr(), context.addr());
         runtime.records.insert(
             context.addr(),
             Registered {
@@ -255,22 +236,6 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
         Ok(method)
     })()
     .unwrap_or_else(abi::fault_reference)
-}
-pub(super) unsafe fn capture_alias(s: &State, original: Oop, captured: Oop) -> Result<(), Oop> {
-    unsafe {
-        let context = s.resume.borrow().methods.get(&original.addr()).copied();
-        if let Some(context) = context {
-            if abi::as_size(s.send(s.id.root, b"sameNativeMethod:as:", &[original, captured])?)
-                == Some(1)
-            {
-                s.resume
-                    .borrow_mut()
-                    .methods
-                    .insert(captured.addr(), context);
-            }
-        }
-        Ok(())
-    }
 }
 unsafe fn new_machine(s: &State) -> Result<Oop, Oop> {
     unsafe {
@@ -414,221 +379,510 @@ fn finish(s: &State, cap: MachineCapability, value: Oop) -> Result<Option<Oop>, 
     }
     Ok(answer)
 }
+unsafe fn runtime_state<'a>() -> Result<&'a State, Oop> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
+        return Err(invalid());
+    }
+    unsafe { state((*p).ns) }
+}
 struct Active<'a>(&'a State, MachineCapability);
 impl Drop for Active<'_> {
     fn drop(&mut self) {
         assert_eq!(self.0.resume.borrow_mut().active.pop(), Some(self.1));
     }
 }
+#[derive(Clone)]
+struct ReturnSite {
+    machine: Oop,
+    frame: FrameHandle,
+    result_slot: usize,
+    tail: bool,
+}
+struct Run {
+    advance: Oop,
+    sink: Oop,
+    answers: Vec<Oop>,
+    budget: Option<usize>,
+    pending: Oop,
+    outcome: Option<Oop>,
+    parked_depth: Option<usize>,
+}
+unsafe fn method_context(s: &State, template: Oop, context: Oop) -> Result<Oop, Oop> {
+    unsafe { s.send(template, b"withContext:", &[context]) }
+}
+unsafe fn ensure_run(s: &State, machine: Oop, answer: Oop) -> Result<(), Oop> {
+    unsafe {
+        if s.resume.borrow().runs.contains_key(&machine.addr()) {
+            s.resume
+                .borrow_mut()
+                .runs
+                .get_mut(&machine.addr())
+                .unwrap()
+                .answers
+                .push(answer);
+            return Ok(());
+        }
+        let q = s.scope(&[machine, answer]);
+        let (advance, sink) = {
+            let r = s.resume.borrow();
+            (r.advance_template, r.sink_template)
+        };
+        let advance = q.keep(method_context(s, advance, machine)?);
+        let sink = q.keep(method_context(s, sink, machine)?);
+        s.resume.borrow_mut().runs.insert(
+            machine.addr(),
+            Run {
+                advance,
+                sink,
+                answers: vec![answer],
+                budget: None,
+                pending: advance,
+                outcome: None,
+                parked_depth: None,
+            },
+        );
+        Ok(())
+    }
+}
+fn fail_run(s: &State, machine: Oop) {
+    if let Ok(cap) = cap(s, machine) {
+        if let Ok(m) = s.engine.borrow_mut().machine_mut(OWNER, cap) {
+            let _ = m.fail(OWNER);
+        }
+    }
+    let mut r = s.resume.borrow_mut();
+    if let Some(run) = r.runs.get_mut(&machine.addr()) {
+        run.answers.clear();
+        run.pending = ptr::null_mut();
+        run.outcome = None;
+    }
+    r.returns.retain(|_, site| site.machine != machine);
+}
+unsafe fn failed_work(s: &State, machine: Oop, error: Oop) -> Result<Oop, Oop> {
+    unsafe {
+        let k = s
+            .resume
+            .borrow()
+            .runs
+            .get(&machine.addr())
+            .and_then(|r| r.answers.last())
+            .copied();
+        fail_run(s, machine);
+        match k {
+            Some(k) if !k.is_null() => {
+                s.transfer(b"answerTo:with:", &[k, abi::fault_reference(error)])
+            }
+            _ => Err(error),
+        }
+    }
+}
+unsafe fn answer_segment(s: &State, machine: Oop, value: Oop) -> Result<Oop, Oop> {
+    unsafe {
+        let k = s
+            .resume
+            .borrow_mut()
+            .runs
+            .get_mut(&machine.addr())
+            .ok_or_else(invalid)?
+            .answers
+            .pop()
+            .ok_or_else(invalid)?;
+        s.transfer(b"answerTo:with:", &[k, value])
+    }
+}
+unsafe fn next_step(s: &State, machine: Oop) -> Result<Oop, Oop> {
+    s.resume
+        .borrow()
+        .runs
+        .get(&machine.addr())
+        .map(|r| r.advance)
+        .ok_or_else(invalid)
+}
+fn take_return(s: &State, context: usize) -> Result<ReturnSite, Oop> {
+    let site = s
+        .resume
+        .borrow()
+        .returns
+        .get(&context)
+        .cloned()
+        .ok_or_else(invalid)?;
+    let capability = cap(s, site.machine)?;
+    {
+        let e = s.engine.borrow();
+        let m = checked(e.machine(OWNER, capability))?;
+        if m.lifecycle() != MachineLifecycle::Running
+            || m.arena().current_handle() != Some(site.frame)
+        {
+            return Err(invalid());
+        }
+    }
+    s.resume.borrow_mut().returns.remove(&context);
+    Ok(site)
+}
+unsafe fn return_method(
+    s: &State,
+    machine: Oop,
+    capability: MachineCapability,
+    result_slot: usize,
+    tail: bool,
+) -> Result<Oop, Oop> {
+    unsafe {
+        let q = s.scope(&[machine]);
+        let frame = checked(s.engine.borrow().machine(OWNER, capability))?
+            .arena()
+            .current_handle()
+            .ok_or_else(invalid)?;
+        let (vt, template) = {
+            let r = s.resume.borrow();
+            (r.context_vt, r.return_template)
+        };
+        let context = q.keep(allocate(s, vt, 0)?);
+        let method = q.keep(method_context(s, template, context)?);
+        let mut r = s.resume.borrow_mut();
+        r.returns.insert(
+            context.addr(),
+            ReturnSite {
+                machine,
+                frame,
+                result_slot,
+                tail,
+            },
+        );
+        r.return_methods.insert(method.addr(), context.addr());
+        Ok(method)
+    }
+}
+pub(super) unsafe extern "C" fn receive_call(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = runtime_state()?;
+        let [_, value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let site = take_return(s, c.addr())?;
+        let q = s.scope(&[site.machine, *value]);
+        let result = (|| {
+            let value = q.keep(s.language_result(if abi::is_fault(*value) {
+                Err(abi::object_reference(*value))
+            } else {
+                Ok(*value)
+            })?);
+            let cap = cap(s, site.machine)?;
+            if site.tail {
+                if let Some(value) = finish(s, cap, value)? {
+                    return answer_segment(s, site.machine, value);
+                }
+            } else {
+                checked(s.engine.borrow_mut().commit_current_call_result(
+                    OWNER,
+                    cap,
+                    site.result_slot,
+                    s.nil,
+                    value,
+                ))?;
+            }
+            next_step(s, site.machine)
+        })();
+        match result {
+            Err(e) => failed_work(s, site.machine, e),
+            ok => ok,
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn receive_run(
+    _: Oop,
+    machine: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = runtime_state()?;
+        let [_, value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let mut runtime = s.resume.borrow_mut();
+        let run = runtime.runs.get_mut(&machine.addr()).ok_or_else(invalid)?;
+        if run.outcome.is_some() {
+            return Err(invalid());
+        }
+        run.outcome = Some(*value);
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// Used only when an explicit Machine drive is itself called from native code
+// inside an existing Id drive. Id supplies the synchronous return boundary.
+pub(super) unsafe extern "C" fn drive_bridge(
+    _: Oop,
+    machine: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = runtime_state()?;
+        let [k] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let mut runtime = s.resume.borrow_mut();
+        let run = runtime.runs.get_mut(&machine.addr()).ok_or_else(invalid)?;
+        *run.answers.first_mut().ok_or_else(invalid)? = *k;
+        Ok(run.pending)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn advance(
+    _: Oop,
+    machine: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = runtime_state()?;
+        if borrowed_slice(a, n).ok_or_else(invalid)?.len() != 1 {
+            return Err(invalid());
+        }
+        let q = s.scope(&[machine]);
+        let capability = cap(s, machine)?;
+        let result = (|| {
+            // This is a committed execution safe point. All pending Id work and
+            // language values are reachable before policy may collect.
+            s.send(s.gc, b"prepareAllocation", &[])?;
+            let exhausted = s
+                .resume
+                .borrow()
+                .runs
+                .get(&machine.addr())
+                .ok_or_else(invalid)?
+                .budget
+                == Some(0);
+            if exhausted {
+                let next = next_step(s, machine)?;
+                if checked(s.engine.borrow().machine(OWNER, capability))?.control_eligible() {
+                    checked(
+                        checked(s.engine.borrow_mut().machine_mut(OWNER, capability))?
+                            .stop_runnable(OWNER),
+                    )?;
+                    let k = {
+                        let mut r = s.resume.borrow_mut();
+                        let run = r.runs.get_mut(&machine.addr()).unwrap();
+                        run.pending = next;
+                        *run.answers.first().ok_or_else(invalid)?
+                    };
+                    return s.transfer(b"answerTo:with:", &[k, machine]);
+                }
+                // A lookup helper may yield, but an unaware native caller may
+                // not. Admission belongs to Id; no callee/lookup guessing.
+                match s.transfer(b"pause:", &[next]) {
+                    Ok(_) => return Ok(ptr::null_mut()),
+                    Err(e) => {
+                        if s.send(e, b"faultKind", &[])?
+                            != s.names[b"continuationBarrier".as_slice()]
+                        {
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+            if let Some(left) = s
+                .resume
+                .borrow_mut()
+                .runs
+                .get_mut(&machine.addr())
+                .ok_or_else(invalid)?
+                .budget
+                .as_mut()
+            {
+                *left = left.saturating_sub(1);
+            }
+            let (step, pc, count) = {
+                let e = s.engine.borrow();
+                let m = checked(e.machine(OWNER, capability))?;
+                let f = m.arena().current_handle().ok_or_else(invalid)?;
+                (
+                    checked(m.arena().descriptor(f))?.step_method().to_method(),
+                    checked(m.arena().program_counter(f))?,
+                    checked(m.arena().descriptor(f))?.driver_argument_count(),
+                )
+            };
+            q.keep(step);
+            let args = match count {
+                0 => vec![],
+                1 => vec![q.keep(number(s, pc)?)],
+                _ => return Err(invalid()),
+            };
+            checked(s.engine.borrow_mut().begin_managed_turn())?;
+            s.depth.set(s.depth.get() + 1);
+            let turn = Invocation(s);
+            s.resume.borrow_mut().active.push(capability);
+            let active = Active(s, capability);
+            let action = q.keep(s.invoke(step, machine, &args)?);
+            drop(active);
+            drop(turn);
+            refresh(s, action)?;
+            let decoded = checked(s.engine.borrow().decode_action(
+                &s.storage.borrow(),
+                OWNER,
+                capability,
+                action,
+            ))?;
+            match decoded {
+                DecodedAction::Continue => {
+                    checked(
+                        s.engine
+                            .borrow_mut()
+                            .commit_current_continue(OWNER, capability, s.nil),
+                    )?;
+                    next_step(s, machine)
+                }
+                DecodedAction::Return { value_slot } => {
+                    let value = q.keep(checked(
+                        s.engine
+                            .borrow()
+                            .read_current_oop(OWNER, capability, value_slot),
+                    )?);
+                    if let Some(value) = finish(s, capability, value)? {
+                        answer_segment(s, machine, value)
+                    } else {
+                        next_step(s, machine)
+                    }
+                }
+                DecodedAction::Call {
+                    receiver_slot,
+                    selector_slot,
+                    argument_start,
+                    argument_count,
+                    ..
+                }
+                | DecodedAction::TailCall {
+                    receiver_slot,
+                    selector_slot,
+                    argument_start,
+                    argument_count,
+                } => {
+                    let tail = matches!(decoded, DecodedAction::TailCall { .. });
+                    let slot = if let DecodedAction::Call { result_slot, .. } = decoded {
+                        result_slot
+                    } else {
+                        0
+                    };
+                    let operands = checked(s.engine.borrow().copy_send_operands(
+                        OWNER,
+                        capability,
+                        receiver_slot,
+                        selector_slot,
+                        argument_start,
+                        argument_count,
+                    ))?;
+                    for &v in &operands.arguments {
+                        q.keep(v);
+                    }
+                    q.keep(operands.receiver);
+                    q.keep(operands.selector);
+                    let k = q.keep(return_method(s, machine, capability, slot, tail)?);
+                    let mut values = vec![operands.receiver, operands.selector, k];
+                    values.extend_from_slice(&operands.arguments);
+                    s.transfer(b"prepareSend", &values)
+                }
+                _ => Err(invalid()),
+            }
+        })();
+        match result {
+            Err(e) => failed_work(s, machine, e),
+            ok => ok,
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 unsafe fn drive(
     s: &State,
     machine: Oop,
-    cap: MachineCapability,
-    mut budget: Option<usize>,
+    capability: MachineCapability,
+    budget: Option<usize>,
 ) -> Result<Oop, Oop> {
     unsafe {
-        let _roots = s.scope(&[machine]);
+        let q = s.scope(&[machine]);
         checked(s.engine.borrow_mut().begin_managed_turn())?;
         s.depth.set(s.depth.get() + 1);
         let _turn = Invocation(s);
-        s.resume.borrow_mut().active.push(cap);
-        let _active = Active(s, cap);
-        let result = (|| {
-            loop {
-                if let Some(left) = budget.as_mut() {
-                    if *left == 0 {
-                        let mut e = s.engine.borrow_mut();
-                        let m = checked(e.machine_mut(OWNER, cap))?;
-                        if m.control_eligible() {
-                            checked(m.stop_runnable(OWNER))?;
-                            return Ok(machine);
-                        }
-                    } else {
-                        *left -= 1;
-                    }
+        s.resume.borrow_mut().active.push(capability);
+        let _active = Active(s, capability);
+        let (work, sink) = {
+            let mut r = s.resume.borrow_mut();
+            let run = r.runs.get_mut(&machine.addr()).ok_or_else(invalid)?;
+            run.budget = budget;
+            run.outcome = None;
+            *run.answers.first_mut().ok_or_else(invalid)? = run.sink;
+            (run.pending, run.sink)
+        };
+        q.keep(work);
+        q.keep(sink);
+        let result = (|| match s.transfer(
+            b"drive:budget:",
+            &[work, abi::size(usize::MAX >> 1).unwrap()],
+        ) {
+            Ok(pending) if !pending.is_null() => {
+                let depth = checked(
+                    checked(s.engine.borrow_mut().machine_mut(OWNER, capability))?
+                        .park_id_work(OWNER),
+                )?;
+                let mut runtime = s.resume.borrow_mut();
+                let run = runtime.runs.get_mut(&machine.addr()).unwrap();
+                run.pending = pending;
+                run.parked_depth = Some(depth);
+                Ok(machine)
+            }
+            Ok(_) => {
+                let value = s
+                    .resume
+                    .borrow_mut()
+                    .runs
+                    .get_mut(&machine.addr())
+                    .ok_or_else(invalid)?
+                    .outcome
+                    .take()
+                    .ok_or_else(invalid)?;
+                if abi::is_fault(value) {
+                    Err(abi::object_reference(value))
+                } else {
+                    Ok(value)
                 }
-                let (step, pc, argument_count) = {
-                    let e = s.engine.borrow();
-                    let m = checked(e.machine(OWNER, cap))?;
-                    let frame = m.arena().current_handle().ok_or_else(invalid)?;
-                    (
-                        checked(m.arena().descriptor(frame))?
-                            .step_method()
-                            .to_method(),
-                        checked(m.arena().program_counter(frame))?,
-                        checked(m.arena().descriptor(frame))?.driver_argument_count(),
-                    )
-                };
-                let q = s.scope(&[step]);
-                let arguments = match argument_count {
-                    0 => Vec::new(),
-                    1 => vec![q.keep(number(s, pc)?)],
-                    _ => return Err(invalid()),
-                };
-                let action = q.keep(s.invoke(step, machine, &arguments)?);
-                refresh(s, action)?;
-                let decoded = checked(s.engine.borrow().decode_action(
-                    &s.storage.borrow(),
-                    OWNER,
-                    cap,
-                    action,
-                ))?;
-                match decoded {
-                    DecodedAction::Continue => {
-                        checked(
-                            s.engine
-                                .borrow_mut()
-                                .commit_current_continue(OWNER, cap, s.nil),
-                        )?;
-                    }
-                    DecodedAction::Return { value_slot } => {
-                        let value =
-                            checked(s.engine.borrow().read_current_oop(OWNER, cap, value_slot))?;
-                        if let Some(v) = finish(s, cap, value)? {
-                            return Ok(v);
-                        }
-                    }
-                    DecodedAction::Call {
-                        receiver_slot,
-                        selector_slot,
-                        argument_start,
-                        argument_count,
-                        result_slot: _,
-                    }
-                    | DecodedAction::TailCall {
-                        receiver_slot,
-                        selector_slot,
-                        argument_start,
-                        argument_count,
-                    } => {
-                        let tail = matches!(decoded, DecodedAction::TailCall { .. });
-                        let result_slot = if let DecodedAction::Call { result_slot, .. } = decoded {
-                            result_slot
-                        } else {
-                            0
-                        };
-                        let operands = checked(s.engine.borrow().copy_send_operands(
-                            OWNER,
-                            cap,
-                            receiver_slot,
-                            selector_slot,
-                            argument_start,
-                            argument_count,
-                        ))?;
-                        q.keep(operands.receiver);
-                        q.keep(operands.selector);
-                        for &arg in &operands.arguments {
-                            q.keep(arg);
-                        }
-                        // A preliminary lookup is allowed only when the current
-                        // lookup is callback-free. Unknown/custom lookup is sent
-                        // once through ordinary Id and its native boundary.
-                        let selected = if pure_lookup(s, operands.receiver)? {
-                            q.keep(s.send(
-                                s.id.root,
-                                b"bind:to:",
-                                &[operands.selector, operands.receiver],
-                            )?)
-                        } else {
-                            ptr::null_mut()
-                        };
-                        let args = operands.arguments;
-                        let registered = registration(s, selected).or_else(|| {
-                            if s.resume.borrow().block_values.contains(&selected) {
-                                let method = s.field(operands.receiver, 0).ok()?;
-                                registration(s, method)
-                            } else {
-                                None
-                            }
-                        });
-                        if let Some(r) = registered {
-                            let (entry, value) = acquire(s, &r, operands.receiver, &args)?;
-                            let destination = if tail {
-                                None
-                            } else {
-                                Some(ReturnDestination { result_slot })
-                            };
-                            push(s, cap, entry, value, destination, tail)?;
-                        } else {
-                            checked(
-                                checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?
-                                    .enter_synchronous_boundary(OWNER),
-                            )?;
-                            // Never reflect on the selected Method here. Ordinary
-                            // Id dispatch enters it directly and handles DNU.
-                            let value = s.id.send(operands.receiver, operands.selector, &args);
-                            checked(
-                                checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?
-                                    .leave_synchronous_boundary(OWNER),
-                            )?;
-                            let value = q.keep(s.language_result(value)?);
-                            if tail {
-                                if let Some(v) = finish(s, cap, value)? {
-                                    return Ok(v);
-                                }
-                            } else {
-                                checked(s.engine.borrow_mut().commit_current_call_result(
-                                    OWNER,
-                                    cap,
-                                    result_slot,
-                                    s.nil,
-                                    value,
-                                ))?;
-                            }
-                        }
-                    }
-                    _ => return Err(invalid()),
+            }
+            Err(error) => {
+                let kind = s.send(error, b"faultKind", &[])?;
+                if kind != s.names[b"driveActive".as_slice()] {
+                    return Err(error);
                 }
+                let template = s.resume.borrow().bridge_template;
+                let bridge = q.keep(method_context(s, template, machine)?);
+                s.invoke(bridge, machine, &[])
             }
         })();
         if result.is_err() {
-            if let Ok(m) = s.engine.borrow_mut().machine_mut(OWNER, cap) {
-                let _ = m.fail(OWNER);
+            fail_run(s, machine);
+        } else if let Some(run) = s.resume.borrow_mut().runs.get_mut(&machine.addr()) {
+            if let Some(k) = run.answers.first_mut() {
+                *k = run.sink;
             }
         }
         result
     }
 }
-unsafe fn start_registered(
-    s: &State,
-    r: &Registered,
-    receiver: Oop,
-    args: &[Oop],
-) -> Result<Oop, Oop> {
-    unsafe {
-        let inherited = s.resume.borrow().active.last().copied();
-        let machine = if let Some(cap) = inherited {
-            checked(s.engine.borrow().machine_object(OWNER, cap))?
-        } else {
-            new_machine(s)?
-        };
-        let _q = s.scope(&[machine, r.method, receiver]);
-        let cap = cap(s, machine)?;
-        let (entry, value) = acquire(s, r, receiver, args)?;
-        let begun = {
-            let mut e = s.engine.borrow_mut();
-            let m = checked(e.machine_mut(OWNER, cap))?;
-            checked(if inherited.is_some() {
-                m.begin_nested_drive(OWNER)
-            } else {
-                m.begin_initial_drive(OWNER)
-            })
-        };
-        if let Err(error) = begun {
-            checked(s.engine.borrow_mut().release_acquired_entry(entry))?;
-            return Err(error);
-        }
-        push(s, cap, entry, value, None, false)?;
-        drive(s, machine, cap, None)
-    }
-}
 pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
-        let p = INSTANCE.load(Ordering::Acquire);
-        if p.is_null() {
+        let s = runtime_state()?;
+        let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
-        }
-        let s = state((*p).ns)?;
+        };
         let record = s
             .resume
             .borrow()
@@ -636,8 +890,73 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             .get(&c.addr())
             .cloned()
             .ok_or_else(invalid)?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        start_registered(s, &record, r, args)
+        let q = s.scope(&[c, r, *k]);
+        for &arg in args {
+            q.keep(arg);
+        }
+        let known = s.resume.borrow().return_methods.get(&k.addr()).copied();
+        if let Some(context) = known {
+            let site = s
+                .resume
+                .borrow()
+                .returns
+                .get(&context)
+                .cloned()
+                .ok_or_else(invalid)?;
+            let capability = cap(s, site.machine)?;
+            q.keep(site.machine);
+            let (acquired, value) = acquire(s, &record, r, args)?;
+            let site = match take_return(s, context) {
+                Ok(site) => site,
+                Err(e) => {
+                    checked(s.engine.borrow_mut().release_acquired_entry(acquired))?;
+                    return Err(e);
+                }
+            };
+            push(
+                s,
+                capability,
+                acquired,
+                value,
+                if site.tail {
+                    None
+                } else {
+                    Some(ReturnDestination {
+                        result_slot: site.result_slot,
+                    })
+                },
+                site.tail,
+            )?;
+            return next_step(s, site.machine);
+        }
+        let inherited = s.resume.borrow().active.last().copied();
+        let machine = q.keep(if let Some(cap) = inherited {
+            checked(s.engine.borrow().machine_object(OWNER, cap))?
+        } else {
+            new_machine(s)?
+        });
+        let capability = cap(s, machine)?;
+        let (acquired, value) = acquire(s, &record, r, args)?;
+        let begun = {
+            let mut e = s.engine.borrow_mut();
+            let m = checked(e.machine_mut(OWNER, capability))?;
+            checked(if inherited.is_some() {
+                m.begin_nested_drive(OWNER)
+            } else {
+                m.begin_initial_drive(OWNER)
+            })
+        };
+        if let Err(error) = begun {
+            checked(s.engine.borrow_mut().release_acquired_entry(acquired))?;
+            return Err(error);
+        }
+        if let Err(error) = ensure_run(s, machine, *k) {
+            checked(s.engine.borrow_mut().release_acquired_entry(acquired))?;
+            fail_run(s, machine);
+            return Err(error);
+        }
+        push(s, capability, acquired, value, None, false)?;
+        next_step(s, machine)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -704,6 +1023,7 @@ unsafe fn run_block(c: Oop, machine: Oop, a: *const Oop, n: usize, bounded: bool
                 &[(0, s.nil), (1, args[0]), (2, s.names[b"value".as_slice()])],
             ))?;
         }
+        ensure_run(s, machine, ptr::null_mut())?;
         drive(s, machine, cap, budget)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -735,7 +1055,24 @@ pub(super) unsafe extern "C" fn continue_drive(
         s.send(s.gc, b"prepareAllocation", &[])?;
         let budget = index(s, *budget)?;
         let cap = cap(s, r)?;
-        checked(checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?.resume_runnable(OWNER))?;
+        let parked = s
+            .resume
+            .borrow_mut()
+            .runs
+            .get_mut(&r.addr())
+            .ok_or_else(invalid)?
+            .parked_depth
+            .take();
+        if let Some(depth) = parked {
+            checked(
+                checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?
+                    .resume_id_work(OWNER, depth),
+            )?;
+        } else {
+            checked(
+                checked(s.engine.borrow_mut().machine_mut(OWNER, cap))?.resume_runnable(OWNER),
+            )?;
+        }
         drive(s, r, cap, Some(budget))
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -749,6 +1086,11 @@ pub(super) unsafe extern "C" fn destroy(_: Oop, c: Oop, r: Oop, _: *const Oop, n
         s.send(s.gc, b"prepareAllocation", &[])?;
         let cap = cap(s, r)?;
         checked(s.engine.borrow_mut().destroy_machine_explicit(OWNER, cap))?;
+        s.resume.borrow_mut().runs.remove(&r.addr());
+        s.resume
+            .borrow_mut()
+            .returns
+            .retain(|_, site| site.machine != r);
         Ok(r)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -885,6 +1227,9 @@ pub(super) unsafe extern "C" fn return_at(_: Oop, c: Oop, r: Oop, a: *const Oop,
     unsafe { action(c, r, a, n, 3) }
 }
 pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop> {
+    if let Some(site) = s.resume.borrow().returns.get(&object.addr()) {
+        return Ok(Some(vec![site.machine]));
+    }
     if let Some(record) = s.resume.borrow().records.get(&object.addr()) {
         return Ok(Some(vec![record.method, record.step, record.owner]));
     }
@@ -899,6 +1244,11 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
     let mut values = Vec::new();
     if let Some(o) = objects {
         if family == Some(o.machine_vtable) {
+            if let Some(run) = s.resume.borrow().runs.get(&object.addr()) {
+                values.extend([run.advance, run.sink, run.pending]);
+                values.extend(&run.answers);
+                values.extend(run.outcome);
+            }
             s.engine.borrow().trace_object_roots(
                 &s.storage.borrow(),
                 object,
@@ -921,6 +1271,13 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
         }
     }
     for value in values {
+        {
+            let mut r = s.resume.borrow_mut();
+            r.runs.remove(&value.addr());
+            r.returns.remove(&value.addr());
+            r.return_methods
+                .retain(|method, context| *method != value.addr() && *context != value.addr());
+        }
         let record = s.resume.borrow_mut().records.remove(&value.addr());
         if let Some(record) = record {
             checked(
@@ -933,7 +1290,6 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
                 .pending
                 .insert(record.descriptor.identity().generation);
         }
-        s.resume.borrow_mut().methods.remove(&value.addr());
     }
     Ok(())
 }
@@ -1069,12 +1425,18 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             runtime.template = template;
             runtime.run_descriptor = Some(descriptor);
             runtime.roots.extend([template, step]);
-            let witnesses = runtime.block_values.clone();
-            runtime.roots.extend(witnesses);
         }
         let execution_type = q.keep(s.send(s.id.root, b"behaviorOf:", &[s.receiver])?);
         for &name in METHOD_NAMES {
-            if matches!(name, b"resumableEntry" | b"runBlockStep") {
+            if matches!(
+                name,
+                b"resumableEntry"
+                    | b"runBlockStep"
+                    | b"advanceExecution"
+                    | b"receiveCall"
+                    | b"receiveRun"
+                    | b"driveBridge"
+            ) {
                 continue;
             }
             let target = if name == b"fromStep:descriptor:selection:owner:" {
@@ -1086,24 +1448,21 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             let method = q.keep(s.send(method, b"withContext:", &[s.ns])?);
             s.send(target, b"addMethod", &[s.names[name], method])?;
         }
-        let mut witnesses = Vec::new();
-        for &name in DEFAULT_QUERIES {
-            let method = q.keep(s.send(s.id.root, b"bind:to:", &[s.names[name], s.id.root])?);
-            if abi::as_size(s.send(
-                s.id.root,
-                b"nativeBindingQuerySemantics:for:",
-                &[method, s.names[name]],
-            )?) != Some(1)
-            {
-                witnesses.clear();
-                break;
-            }
-            witnesses.push(method);
-        }
-        {
-            let mut runtime = s.resume.borrow_mut();
-            runtime.roots.extend_from_slice(&witnesses);
-            runtime.default_queries = witnesses;
+        for (name, slot) in [
+            (b"advanceExecution".as_slice(), 0),
+            (b"receiveCall", 1),
+            (b"receiveRun", 2),
+            (b"driveBridge", 3),
+        ] {
+            let method = q.keep(s.send(image, b"methodAt:", &[s.names[name]])?);
+            let mut r = s.resume.borrow_mut();
+            r.roots.push(method);
+            match slot {
+                0 => r.advance_template = method,
+                1 => r.return_template = method,
+                2 => r.sink_template = method,
+                _ => r.bridge_template = method,
+            };
         }
         for (name, value) in [
             (b"Machine".as_slice(), machine_prototype),

@@ -1,7 +1,10 @@
 //! TCC owns compilation, declared generated entries and mapping retirement.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
-    id_protocol::{self as native, Literal, MethodSpec, Module, Protocol},
+    id_protocol::{
+        self as native, ContinuationMethodSpec as MethodSpec, ContinuationModule as Module,
+        ContinuationProtocol, Literal, Protocol,
+    },
 };
 use birnam_native_compiler::Unit;
 use core::{
@@ -13,6 +16,10 @@ use std::{
     ffi::CString,
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
+enum GeneratedInitializer {
+    Synchronous(native::Initialize),
+    Continuing(native::ContinuationInitialize),
+}
 struct Compiled {
     native: Unit,
     identity: usize,
@@ -29,6 +36,7 @@ struct Entry {
 }
 struct State {
     id: Protocol,
+    continuing: ContinuationProtocol,
     ns: Oop,
     gc: Oop,
     model: Oop,
@@ -36,6 +44,7 @@ struct State {
     entry_vt: Oop,
     receiver: Oop,
     template: Oop,
+    continuation_template: Oop,
     names: HashMap<&'static [u8], Oop>,
     permanent: RefCell<Vec<Oop>>,
     scoped: RefCell<Vec<Oop>>,
@@ -267,21 +276,55 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
             if unit.initializing {
                 return Err(invalid());
             }
-            let d = unit
-                .native
-                .symbol(c"birnam_native_module_v2")
-                .ok_or_else(invalid)?;
-            let d = &*d.as_ptr().cast::<Module>();
-            if d.version != native::VERSION
-                || d.byte_size as usize != size_of::<Module>()
-                || d.literal_count > 65536
-                || d.method_count > 65536
-            {
-                return Err(invalid());
-            }
-            let initialize = d.initialize.ok_or_else(invalid)?;
-            let literals = borrowed_slice(d.literals, d.literal_count).ok_or_else(invalid)?;
-            let declarations = borrowed_slice(d.methods, d.method_count).ok_or_else(invalid)?;
+            let continuing = unit.native.symbol(c"birnam_native_module_v3");
+            let (initialize, literals, declarations) = if let Some(d) = continuing {
+                let d = &*d.as_ptr().cast::<Module>();
+                if d.version != 3
+                    || d.byte_size as usize != size_of::<Module>()
+                    || d.literal_count > 65536
+                    || d.method_count > 65536
+                {
+                    return Err(invalid());
+                }
+                let literals = borrowed_slice(d.literals, d.literal_count).ok_or_else(invalid)?;
+                let declarations = borrowed_slice(d.methods, d.method_count).ok_or_else(invalid)?;
+                let mut methods = Vec::new();
+                for m in declarations {
+                    if m.convention > 1 {
+                        return Err(invalid());
+                    }
+                    methods.push((m.name, m.entry.ok_or_else(invalid)?, m.convention == 1));
+                }
+                (
+                    GeneratedInitializer::Continuing(d.initialize.ok_or_else(invalid)?),
+                    literals,
+                    methods,
+                )
+            } else {
+                let d = unit
+                    .native
+                    .symbol(c"birnam_native_module_v2")
+                    .ok_or_else(invalid)?;
+                let d = &*d.as_ptr().cast::<native::Module>();
+                if d.version != 2
+                    || d.byte_size as usize != size_of::<native::Module>()
+                    || d.literal_count > 65536
+                    || d.method_count > 65536
+                {
+                    return Err(invalid());
+                }
+                let literals = borrowed_slice(d.literals, d.literal_count).ok_or_else(invalid)?;
+                let declarations = borrowed_slice(d.methods, d.method_count).ok_or_else(invalid)?;
+                let mut methods = Vec::new();
+                for m in declarations {
+                    methods.push((m.name, m.entry.ok_or_else(invalid)?, false));
+                }
+                (
+                    GeneratedInitializer::Synchronous(d.initialize.ok_or_else(invalid)?),
+                    literals,
+                    methods,
+                )
+            };
             let mut names = Vec::new();
             for literal in literals {
                 if literal.length > 16 * 1024 * 1024 {
@@ -294,11 +337,11 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
                 );
             }
             let mut methods = Vec::new();
-            for method in declarations {
-                if method.name >= names.len() {
+            for (name, code, continuing) in declarations {
+                if name >= names.len() {
                     return Err(invalid());
                 }
-                methods.push(method.entry.ok_or_else(invalid)?);
+                methods.push((code, continuing));
             }
             (initialize, names, methods)
         };
@@ -322,13 +365,21 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
                 symbols.push(symbol);
             }
             let mut methods = Vec::new();
-            for code in declarations {
+            for (code, continuing) in declarations {
                 let context =
                     scope.keep(s.send(s.model, b"allocate:bytes:", &[s.entry_vt, number(0)?])?);
                 s.entries
                     .borrow_mut()
                     .insert(context.addr(), Entry { unit: r, code });
-                let method = scope.keep(s.send(s.template, b"withContext:", &[context])?);
+                let method = scope.keep(s.send(
+                    if continuing {
+                        s.continuation_template
+                    } else {
+                        s.template
+                    },
+                    b"withContext:",
+                    &[context],
+                )?);
                 methods.push(method);
             }
             {
@@ -340,14 +391,24 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
             }
             let mut inputs = vec![s.ns];
             inputs.extend_from_slice(args);
-            let result = initialize(
-                &s.id,
-                r,
-                symbols.as_ptr(),
-                symbols.len(),
-                inputs.as_ptr(),
-                inputs.len(),
-            );
+            let result = match initialize {
+                GeneratedInitializer::Synchronous(f) => f(
+                    &s.id,
+                    r,
+                    symbols.as_ptr(),
+                    symbols.len(),
+                    inputs.as_ptr(),
+                    inputs.len(),
+                ),
+                GeneratedInitializer::Continuing(f) => f(
+                    &s.continuing,
+                    r,
+                    symbols.as_ptr(),
+                    symbols.len(),
+                    inputs.as_ptr(),
+                    inputs.len(),
+                ),
+            };
             if abi::is_fault(result) {
                 Err(abi::object_reference(result))
             } else {
@@ -578,6 +639,7 @@ const NAMES: &[&[u8]] = &[
     b"trace:with:",
     b"visit:",
     b"withContext:",
+    b"generatedContinuationEntry",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Bytes"),
@@ -629,84 +691,112 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"trace:with:"),
     Literal::new(b"visit:"),
     Literal::new(b"withContext:"),
+    Literal::new(b"generatedContinuationEntry"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 18,
         entry: Some(compile),
+        convention: 0,
     },
     MethodSpec {
         name: 20,
         entry: Some(compile_object),
+        convention: 0,
     },
     MethodSpec {
         name: 30,
         entry: Some(load_object),
+        convention: 0,
     },
     MethodSpec {
         name: 17,
         entry: Some(checkpoint),
+        convention: 0,
     },
     MethodSpec {
         name: 29,
         entry: Some(live_units),
+        convention: 0,
     },
     MethodSpec {
         name: 32,
         entry: Some(mapping_identity),
+        convention: 0,
     },
     MethodSpec {
         name: 31,
         entry: Some(mapping_bytes),
+        convention: 0,
     },
     MethodSpec {
         name: 43,
         entry: Some(roots),
+        convention: 0,
     },
     MethodSpec {
         name: 36,
         entry: Some(references),
+        convention: 0,
     },
     MethodSpec {
         name: 41,
         entry: Some(retire),
+        convention: 0,
     },
     MethodSpec {
         name: 25,
         entry: Some(initialize_unit),
+        convention: 0,
     },
     MethodSpec {
         name: 26,
         entry: Some(initialize_unit),
+        convention: 0,
     },
     MethodSpec {
         name: 40,
         entry: Some(keep),
+        convention: 0,
     },
     MethodSpec {
         name: 21,
         entry: Some(method_at),
+        convention: 0,
     },
     MethodSpec {
         name: 24,
         entry: Some(generated),
+        convention: 0,
     },
     #[cfg(feature = "resource-metrics")]
     MethodSpec {
         name: 28,
         entry: Some(live_bytes),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 49,
+        entry: Some(generated),
+        convention: 1,
     },
 ];
 unsafe extern "C" fn initialize(
-    p: *const Protocol,
+    p: *const ContinuationProtocol,
     image: Oop,
     l: *const Oop,
     n: usize,
     a: *const Oop,
     count: usize,
 ) -> Oop {
-    API.store(p.cast_mut(), Ordering::Release);
-    let id = unsafe { *p };
+    API.store(
+        unsafe { &(*p).common as *const Protocol }.cast_mut(),
+        Ordering::Release,
+    );
+    let continuing = unsafe { *p };
+    let mut id = continuing.common;
+    id.version = 2;
+    id.byte_size = size_of::<Protocol>() as u32;
     let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {
         return id.invalid;
     };
@@ -749,6 +839,7 @@ unsafe extern "C" fn initialize(
         let template = send(image, b"methodAt:", &[names[b"generatedEntry".as_slice()]])?;
         let s = Box::into_raw(Box::new(State {
             id,
+            continuing,
             ns: *ns,
             gc,
             model,
@@ -756,6 +847,11 @@ unsafe extern "C" fn initialize(
             entry_vt,
             receiver,
             template,
+            continuation_template: send(
+                image,
+                b"methodAt:",
+                &[names[b"generatedContinuationEntry".as_slice()]],
+            )?,
             names: names.clone(),
             permanent: RefCell::new(vec![
                 *ns, roots, gc, model, vt, unit_vt, entry_vt, receiver, template,
@@ -812,8 +908,8 @@ unsafe extern "C" fn initialize(
     .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v2: Module = Module {
-    version: native::VERSION,
+pub static birnam_native_module_v3: Module = Module {
+    version: native::CONTINUATION_MODULE_VERSION,
     byte_size: size_of::<Module>() as u32,
     literals: LITERALS.as_ptr(),
     literal_count: LITERALS.len(),

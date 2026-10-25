@@ -111,6 +111,7 @@ pub(crate) enum Action {
     Extent,
     Count,
     AllocationEpoch,
+    AllocationBytesTotal,
     Roots,
     Allocations,
     References,
@@ -259,6 +260,7 @@ core_primitives![
     (b"faultReferences", FaultReferences),
     (b"sequenceReferences", SequenceReferences),
     (b"moduleReferences", ModuleReferences),
+    (b"allocationBytesTotal", AllocationBytesTotal),
 ];
 impl State {
     pub fn check(&self) -> Result<(), Oop> {
@@ -611,6 +613,7 @@ impl State {
                 }
                 abi::size(self.heap.borrow().len()).ok_or(invalid)
             }
+            Action::AllocationBytesTotal => { if !a.is_empty(){return Err(invalid)}; abi::size(self.heap.borrow().allocated_bytes()).ok_or(invalid) },
             Action::AllocationEpoch => {
                 abi::size(self.heap.borrow().allocation_epoch() as usize).ok_or(invalid)
             }

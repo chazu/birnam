@@ -18,10 +18,25 @@ impl Memory {
         .filter(|n| *n != 0)
         .ok_or(self.invalid())
     }
+    pub(super) unsafe fn reset_accounting(&self, pressure: usize) -> Result<(),Oop> {
+        let total=abi::as_size(unsafe { self.send(self.id.root,b"allocationBytesTotal",&[]) }?).ok_or(self.invalid())?;
+        self.accounting_origin.set((total,pressure));
+        Ok(())
+    }
+    unsafe fn account_heap(&self) -> Result<(),Oop> {
+        let total=abi::as_size(unsafe { self.send(self.id.root,b"allocationBytesTotal",&[]) }?).ok_or(self.invalid())?;
+        let (origin,external)=self.accounting_origin.get();
+        let bytes=total.checked_sub(origin).ok_or(self.invalid())?;
+        // Keep live construction-charge hooks. The physical-byte floor also
+        // covers raw Id transfer allocations without charging managed objects twice.
+        self.charged.set(self.charged.get().max(add(bytes,external)));
+        Ok(())
+    }
     unsafe fn prepare(&self) -> Result<(), Oop> {
         if !matches!(self.phase.get(), Phase::Inactive | Phase::Idle) {
             return Err(self.invalid());
         }
+        unsafe { self.account_heap() }?;
         if self.phase.get() == Phase::Idle
             && self.automatic.get()
             && !self.constructing.get()
@@ -166,14 +181,15 @@ pub(super) unsafe extern "C" fn activate(
         // Failed validation leaves complete policy methods installed; inactive
         // construction can repair missing owners before a later activation.
         s.phase.set(Phase::Marking);
-        let answer = collection::validate(s);
+        let answer = collection::validate(s).and_then(|charge| { s.reset_accounting(charge)?; Ok(charge) });
         *s.walk.borrow_mut() = None;
         s.phase.set(if answer.is_ok() {
             Phase::Idle
         } else {
             Phase::Inactive
         });
-        s.charged.set(answer?);
+        let charge=answer?;
+        s.charged.set(charge);
         Ok(core::ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -275,10 +291,10 @@ pub(super) unsafe extern "C" fn external(
         let Some([bytes]) = abi::borrowed_slice(a, n) else {
             return Err(s.invalid());
         };
-        s.charged.set(add(
-            s.charged.get(),
-            abi::as_size(*bytes).ok_or(s.invalid())?,
-        ));
+        let bytes=abi::as_size(*bytes).ok_or(s.invalid())?;
+        let (origin,external)=s.accounting_origin.get();
+        s.accounting_origin.set((origin,add(external,bytes)));
+        s.charged.set(add(s.charged.get(),bytes));
         Ok(core::ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)

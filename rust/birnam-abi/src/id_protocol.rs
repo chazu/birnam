@@ -132,7 +132,9 @@ pub struct ContinuationMethodSpec {
 }
 /// Immutable v3 declarations may mix synchronous and continuation entries.
 /// For continuation entries, arguments[0] is the destination; a successful
-/// return is the next captured work Method, or nil to stop.
+/// return is the next captured work Method, or nil to stop. An answer delivered
+/// to a continuation retains the existing native failure mark; the receiving
+/// owner distinguishes failure from an ordinary unmarked Error object.
 #[repr(C)]
 pub struct ContinuationModule {
     pub version: u32,

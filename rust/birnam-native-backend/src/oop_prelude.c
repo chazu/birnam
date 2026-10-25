@@ -6,10 +6,12 @@ typedef void *O;
 typedef O (*Entry)(O,O,O,const O*,size_t);
 typedef struct {uint32_t version,byte_size;Entry message;O root,intern,load,at,seeds,invalid;} P;
 typedef struct {const unsigned char *bytes;size_t length;} Literal;
-typedef struct {size_t name;Entry entry;} MethodSpec;
-typedef O (*Initializer)(const P*,O,const O*,size_t,const O*,size_t);
+typedef O (*Control)(O,O,const O*,size_t);
+typedef struct {P common;Control control;} CP;
+typedef struct {size_t name;Entry entry;uint32_t convention;} MethodSpec;
+typedef O (*Initializer)(const CP*,O,const O*,size_t,const O*,size_t);
 typedef struct {uint32_t version,byte_size;const Literal*literals;size_t literal_count;const MethodSpec*methods;size_t method_count;Initializer initialize;} Module;
-static P id;static O ns,owner,roots;
+static P id;static Control control;static O ns,owner,roots;
 static O symbols[SYMBOL_COUNT],methods[METHOD_COUNT];
 static inline O size_oop(size_t n){return (O)((n<<1)|1);}
 static inline int failed(O v){return ((uintptr_t)v&3)==2;}

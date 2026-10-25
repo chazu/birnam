@@ -457,6 +457,156 @@ pub(super) unsafe fn check(
                 "tail calls must reuse the source frame with custom lookup={custom}"
             );
         }
+        // Actual compiled source runs inside a lookup continuation, then the
+        // selected target parks. Selection and effects must survive replacement.
+        send(id.root,b"reassociateBehaviorOf:with:",&[probe_type,original_meta]).unwrap();
+        let target_dir=std::env::var_os("BIRNAM_OOP_TARGET").map(std::path::PathBuf::from)
+            .unwrap_or_else(||std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.cargo-target/oop-slice"));
+        let path=target_dir.join("fixtures/continuation.dylib");
+        let path_bytes:Vec<_>=path.as_os_str().as_encoded_bytes().iter().map(|&b|abi::size(b as usize).unwrap()).collect();
+        let path=send(id.root,b"nameWithBytes",&path_bytes).unwrap();
+        let empty=send(id.root,b"sequence",&[]).unwrap();
+        let fixture=keep(id.send(path,id.load,&[empty]).unwrap());
+        let template=|name:&[u8]|send(fixture,b"methodAt:",&[sel(name)]).unwrap();
+        let sequence=|values:&[Oop]|keep(send(id.root,b"sequence",values).unwrap());
+        let field=|object,index|send(object,b"at:",&[abi::size(index).unwrap()]).unwrap();
+        let block_vt=send(id.root,b"behaviorOf:",&[blocks]).unwrap();
+        let original_factory=keep(send(block_vt,b"lookup",&[sel(b"fromMethod:captureOperands:")]).unwrap());
+        let captured=sequence(&[std::ptr::null_mut()]);
+        let capture_ctx=sequence(&[original_factory,captured]);
+        let capture_factory=keep(send(template(b"captureFactory"),b"withContext:",&[capture_ctx]).unwrap());
+        send(block_vt,b"addMethod",&[sel(b"fromMethod:captureOperands:"),capture_factory]).unwrap();
+        let maker=keep(compile("[:x | [CompilerProbe resumeMark: #entered]; x]"));
+        let maker_block=keep(send(blocks,b"fromMethod:captureOperands:",&[maker]).unwrap());
+        let helper_block=keep(send(maker_block,b"value",&[]).unwrap());
+        let helper=keep(field(captured,0));
+        let target_maker=keep(compile("[:x | 42]"));
+        let target_maker_block=keep(send(blocks,b"fromMethod:captureOperands:",&[target_maker]).unwrap());
+        let target_block=keep(send(target_maker_block,b"value",&[]).unwrap());
+        let target=keep(field(captured,0));
+        send(block_vt,b"addMethod",&[sel(b"fromMethod:captureOperands:"),original_factory]).unwrap();
+        // The source entry is capture-free; install it on the same receiver as
+        // the pending target, with the same argument count as the helper call.
+        send(probe_type,b"addMethod",&[sel(b"helper"),helper]).unwrap();
+        send(probe_type,b"addMethod",&[sel(b"later:"),target]).unwrap();
+        let parent=keep(compile("[TailProbe later: 8]"));
+        let parent_block=keep(send(blocks,b"fromMethod:captureOperands:",&[parent]).unwrap());
+        let stats=sequence(&[abi::size(0).unwrap(),abi::size(0).unwrap(),std::ptr::null_mut(),abi::size(0).unwrap()]);
+        let original_lookup=keep(send(original_meta,b"lookup",&[sel(b"lookup")]).unwrap());
+        let local_ctx=sequence(&[original_lookup,gc,sel(b"later:"),stats,template(b"selected"),probe,sel(b"helper"),template(b"resumeLookup")]);
+        let lookup=keep(send(template(b"localLookup"),b"withContext:",&[local_ctx]).unwrap());
+        let meta=keep(send(original_meta,b"delegated",&[]).unwrap());
+        send(meta,b"addMethod",&[sel(b"lookup"),lookup]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[probe_type,meta]).unwrap();
+        send(actor,b"resumeReset",&[]).unwrap();
+        let suspended=keep(send(machines,b"new",&[]).unwrap());
+        let wide=int(1000);
+        assert_eq!(send(suspended,b"runBlock:budget:",&[parent_block,wide]),Ok(suspended));
+        assert_eq!(field(stats,0),abi::size(1).unwrap());
+        assert_eq!(field(stats,1),abi::size(1).unwrap());
+        assert_eq!(count(b"entered"),1);
+        send(probe_type,b"addMethod",&[sel(b"later:"),stop]).unwrap();
+        collect();
+        let completed=send(suspended,b"continueWithBudget:",&[wide]).unwrap();
+        assert_eq!(bits(completed),42);
+        assert_eq!(count(b"entered"),1);
+        assert_eq!(field(stats,0),abi::size(1).unwrap());
+        send(id.root,b"reassociateBehaviorOf:with:",&[probe_type,original_meta]).unwrap();
+        let _=(helper_block,target_block);
+        println!("COMPILED_LOOKUP_SUSPENSION_REENTRY_REPLACEMENT_OK");
+
+        // Two compiled computations alternate owner budgets; completed results
+        // and both pending computations survive collection between turns.
+        send(actor,b"resumeReset",&[]).unwrap();
+        let mut running=Vec::new();
+        for (expected,marker) in [(13usize,"before"),(35,"after")] {
+            let code=keep(compile(&format!("{} {expected}",format!("[CompilerProbe resumeMark: #{marker}]; ").repeat(64))));
+            let block=keep(send(blocks,b"fromMethod:captureOperands:",&[code]).unwrap());
+            let m=keep(send(machines,b"new",&[]).unwrap());
+            assert_eq!(send(m,b"runBlock:budget:",&[block,zero]),Ok(m));
+            running.push((m,expected,false));
+        }
+        let mut turns=0;
+        while running.iter().any(|(_,_,done)|!*done){
+            for (m,expected,done) in &mut running {
+                if *done {continue;}
+                let result=send(*m,b"continueWithBudget:",&[one]).unwrap();
+                if result!=*m {keep(result);assert_eq!(bits(result),*expected);*done=true;}
+                collect();turns+=1;assert!(turns<2000);
+            }
+        }
+        assert_eq!(count(b"before"),64);assert_eq!(count(b"after"),64);
+        println!("COMPILED_INTERLEAVING_GC_OK turns={turns}");
+
+        let auto_code=keep(compile(&format!("{} 42", "[CompilerProbe resumeMark: #before]; ".repeat(128))));
+        let auto_block=keep(send(blocks,b"fromMethod:captureOperands:",&[auto_code]).unwrap());
+        let auto_machine=keep(send(machines,b"new",&[]).unwrap());
+        collect();let heap_before=abi::as_size(send(id.root,b"allocationCount",&[]).unwrap()).unwrap();
+        send(gc,b"budget:",&[abi::size(2048).unwrap()]).unwrap();
+        send(gc,b"automaticCollection:",&[abi::size(1).unwrap()]).unwrap();
+        let auto_result=keep(send(auto_machine,b"runBlock:",&[auto_block]).unwrap());
+        let heap_after=abi::as_size(send(id.root,b"allocationCount",&[]).unwrap()).unwrap();
+        assert_eq!(bits(auto_result),42);assert!(heap_after<heap_before+512,"automatic collection failed to bound transfer allocations: {heap_before} -> {heap_after}");
+        send(gc,b"automaticCollection:",&[abi::size(0).unwrap()]).unwrap();
+        send(gc,b"budget:",&[abi::size(16<<20).unwrap()]).unwrap();
+        println!("COMPILED_AUTOMATIC_GC_OK before={heap_before} after={heap_after}");
+
+        // A real native callback re-enters compiled source on the owned
+        // Machine; its running drive cannot be recursively resumed.
+        let native_path=target_dir.join("fixtures/continuation-native.dylib");
+        let native_bytes:Vec<_>=native_path.as_os_str().as_encoded_bytes().iter().map(|&b|abi::size(b as usize).unwrap()).collect();
+        let native_path=send(id.root,b"nameWithBytes",&native_bytes).unwrap();
+        let empty=send(id.root,b"sequence",&[]).unwrap();let native=keep(id.send(native_path,id.load,&[empty]).unwrap());
+        let callback_machine=keep(send(machines,b"new",&[]).unwrap());
+        let inspect=send(native,b"methodAt:",&[sel(b"inspectFrames")]).unwrap();
+        let inspect=keep(send(inspect,b"withContext:",&[callback_machine]).unwrap());
+        send(probe_type,b"addMethod",&[sel(b"inspectFrames"),inspect]).unwrap();
+        let child=keep(compile("[CompilerProbe resumeMark: #entered]; [TailProbe inspectFrames]"));
+        let child_block=keep(send(blocks,b"fromMethod:captureOperands:",&[child]).unwrap());
+        let callback_context=sequence(&[callback_machine,child_block,one,gc]);
+        let callback=send(native,b"methodAt:",&[sel(b"reenter")]).unwrap();
+        let callback=keep(send(callback,b"withContext:",&[callback_context]).unwrap());
+        send(probe_type,b"addMethod",&[sel(b"reenter"),callback]).unwrap();
+        let parent=keep(compile("[[TailProbe reenter] + 5]"));
+        let parent_block=keep(send(blocks,b"fromMethod:captureOperands:",&[parent]).unwrap());
+        send(actor,b"resumeReset",&[]).unwrap();
+        let mut callback_result=send(callback_machine,b"runBlock:budget:",&[parent_block,one]).unwrap();
+        let mut callback_turns=0;
+        while callback_result==callback_machine {
+            collect();callback_result=send(callback_machine,b"continueWithBudget:",&[one]).unwrap();callback_turns+=1;assert!(callback_turns<100);
+        }
+        assert_eq!(bits(callback_result),8);
+        assert_eq!(count(b"entered"),1);
+        println!("COMPILED_NATIVE_CALLBACK_SAME_MACHINE_OK");
+
+        let other_machine=keep(send(machines,b"new",&[]).unwrap());
+        let other_body=keep(compile("21"));let other_block=keep(send(blocks,b"fromMethod:captureOperands:",&[other_body]).unwrap());
+        let other_context=sequence(&[other_machine,other_block]);
+        let run_other=send(native,b"methodAt:",&[sel(b"runOther")]).unwrap();
+        let run_other=keep(send(run_other,b"withContext:",&[other_context]).unwrap());
+        send(probe_type,b"addMethod",&[sel(b"runOther"),run_other]).unwrap();
+        let outer_machine=keep(send(machines,b"new",&[]).unwrap());
+        let outer=keep(compile("[[TailProbe runOther] + 5]"));let outer_block=keep(send(blocks,b"fromMethod:captureOperands:",&[outer]).unwrap());
+        assert_eq!(bits(send(outer_machine,b"runBlock:",&[outer_block]).unwrap()),26);
+        println!("COMPILED_NESTED_MACHINE_NATIVE_BOUNDARY_OK");
+
+        // Keep the existing native-error behavior for resumable bodies too.
+        let error_body=keep(compile("[CompilerProbe rethrow: [1 / 0]]"));
+        let error_block=keep(send(blocks,b"fromMethod:captureOperands:",&[error_body]).unwrap());
+        assert_eq!(send(send(error_block,b"value",&[]).unwrap(),b"isError",&[]),Ok(truth));
+        let exec=send(ns,b"at:",&[sel(b"Execution")]).unwrap();
+        assert!(send(exec,b"evaluatePreservingFailures:",&[error_block]).is_err());
+        let invalid_lookup=keep(send(constant,b"withContext:",&[five]).unwrap());
+        send(meta,b"addMethod",&[sel(b"lookup"),invalid_lookup]).unwrap();
+        send(id.root,b"reassociateBehaviorOf:with:",&[probe_type,meta]).unwrap();
+        let bad_lookup_body=keep(compile("[TailProbe later: 8]"));
+        let bad_lookup_block=keep(send(blocks,b"fromMethod:captureOperands:",&[bad_lookup_body]).unwrap());
+        let bad_lookup_result=keep(send(bad_lookup_block,b"value",&[]).unwrap());
+        assert_eq!(send(bad_lookup_result,b"isError",&[]),Ok(truth));
+        send(id.root,b"reassociateBehaviorOf:with:",&[probe_type,original_meta]).unwrap();
+        collect();
+        println!("RESUMABLE_ERROR_CONVENTION_OK");
+
         println!("RESUMABLE_EXECUTION_OOP_OK");
     }
 }

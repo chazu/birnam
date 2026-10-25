@@ -3,8 +3,8 @@
 static IdContinuationProtocol api;
 static IdProtocol id;
 enum {SEND,ENTRY,ANSWER,DRIVE,PAUSE,SEQ,AT,PUT,COLLECT,WITH,REMOVE,ADD,LOOKUP,IDENTITY,
- ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,AFTER,HELPER,DATA,ACTIVE,STATS,RESUME,SYNC,SAVE,CONTROL,NAMES};
-static const IdLiteral literals[]={LIT("prepareSend"),LIT("prepareEntry"),LIT("answerTo:with:"),LIT("drive:budget:"),LIT("pause:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("withContext:"),LIT("removeMethod:"),LIT("addMethod"),LIT("lookup"),LIT("identityOf:"),LIT("echo"),LIT("record"),LIT("wait"),LIT("tail"),LIT("forward"),LIT("localLookup"),LIT("selected"),LIT("after"),LIT("helper"),LIT("data"),LIT("active"),LIT("stats"),LIT("resumeLookup"),LIT("syncLeaf"),LIT("saveEcho"),LIT("testControl")};
+ ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,AFTER,HELPER,DATA,ACTIVE,STATS,RESUME,SYNC,SAVE,CONTROL,INVOKE,CAPTURE,NAMES};
+static const IdLiteral literals[]={LIT("prepareSend"),LIT("prepareEntry"),LIT("answerTo:with:"),LIT("drive:budget:"),LIT("pause:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("withContext:"),LIT("removeMethod:"),LIT("addMethod"),LIT("lookup"),LIT("identityOf:"),LIT("echo"),LIT("record"),LIT("wait"),LIT("tail"),LIT("forward"),LIT("localLookup"),LIT("selected"),LIT("after"),LIT("helper"),LIT("data"),LIT("active"),LIT("stats"),LIT("resumeLookup"),LIT("syncLeaf"),LIT("saveEcho"),LIT("testControl"),LIT("invokeOn:arguments:"),LIT("captureFactory")};
 static Oop names[NAMES];
 static size_t ticks,lookup_calls;
 static uintptr_t stack_low=UINTPTR_MAX,stack_high;
@@ -68,8 +68,11 @@ static Oop stats(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(
 static Oop save_echo(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)r;if(n!=2)return id.invalid;CHECK(put(c,0,a[0]));return answer(a[0],a[1]);}
 /* Test controller uses the public native handoff, as Execution will. */
 static Oop control_command(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)c;(void)r;if(!n)return id.invalid;return api.control(root,a[0],a+1,n-1);}
+static Oop capture_factory(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(!n)return id.invalid;
+ CHECK(put(get(c,1),0,a[0]));Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);
+ Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
 static Oop sync_leaf(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(void)r;return n==1?a[0]:id.invalid;}
-static const IdContinuationMethodSpec methods[]={{ECHO,echo,1},{RECORD,record,1},{WAIT,wait_method,1},{TAIL,tail,1},{FORWARD,forward,1},{LOCAL,local_lookup,1},{SELECTED,selected,1},{DATA,data,1},{AFTER,context_value,1},{ACTIVE,active,1},{STATS,stats,1},{RESUME,resume_lookup,1},{HELPER,helper,1},{SYNC,sync_leaf,0},{SAVE,save_echo,1},{CONTROL,control_command,0}};
+static const IdContinuationMethodSpec methods[]={{ECHO,echo,1},{RECORD,record,1},{WAIT,wait_method,1},{TAIL,tail,1},{FORWARD,forward,1},{LOCAL,local_lookup,1},{SELECTED,selected,1},{DATA,data,1},{AFTER,context_value,1},{ACTIVE,active,1},{STATS,stats,1},{RESUME,resume_lookup,1},{HELPER,helper,1},{SYNC,sync_leaf,0},{SAVE,save_echo,1},{CONTROL,control_command,0},{CAPTURE,capture_factory,0}};
 static Oop initialize(const IdContinuationProtocol*p,Oop image,const Oop*s,size_t n,const Oop*a,size_t count){
  if(p->common.version!=3||p->common.byte_size!=sizeof(*p)||!p->control||n!=NAMES||count)return p->common.invalid;
  api=*p;id=p->common;for(size_t i=0;i<n;i++)names[i]=s[i];return image;

@@ -24,6 +24,8 @@ PY_EXPORTS
 for name in fixture failure rejected rejected-null; do
     clang -dynamiclib -O2 -Itests/fixtures/oop-id-v2 "tests/fixtures/oop-id-v2/$name.c" -o "$fixture/$name.dylib"
 done
+clang -dynamiclib -O2 -Itests/fixtures/oop-continuation tests/fixtures/oop-continuation/module.c -o "$fixture/continuation.dylib"
+clang -dynamiclib -O2 -Itests/fixtures/oop-continuation tests/fixtures/oop-continuation/native.c -o "$fixture/continuation-native.dylib"
 clang -O2 -DV2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v2"
 clang -O2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v1"
 # Explicit paths supply the entire runtime closure. There is no installed-prefix
@@ -81,6 +83,8 @@ assert b'NUMERIC_INTEGRATION_OK' in numeric
 assert b'TCC_OOP_OK' in numeric
 assert b'COMPILER_EXECUTION_OOP_OK' in numeric
 assert b'RESUMABLE_EXECUTION_OOP_OK' in numeric
+for marker in [b'COMPILED_LOOKUP_SUSPENSION_REENTRY_REPLACEMENT_OK', b'COMPILED_INTERLEAVING_GC_OK', b'COMPILED_AUTOMATIC_GC_OK', b'COMPILED_NATIVE_CALLBACK_SAME_MACHINE_OK', b'COMPILED_NESTED_MACHINE_NATIVE_BOUNDARY_OK', b'RESUMABLE_ERROR_CONVENTION_OK']:
+    assert marker in numeric, marker
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()

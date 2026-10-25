@@ -5,8 +5,8 @@
 #include <string.h>
 #include <dlfcn.h>
 static IdProtocol id;static Oop roots,gc,image,controller;
-static const char*words[]={"sequence","nameWithBytes","objectBehavior","allocate","delegated","behaviorOf:","reassociateBehaviorOf:with:","methodAt:","withContext:","addMethod","removeMethod:","lookup","at:","at:put:","retain:","release:","activate","automaticCollection:","collectPrecisely","prepareSend","prepareEntry","answerTo:with:","drive:budget:","echo","record","wait","tail","forward","localLookup","selected","data","active","stats","callback","allocationCount","identityOf:","invokeOn:arguments:","faultKind","rejectLookup","after","helper","resumeLookup","syncLeaf","saveEcho","testControl"};
-enum{SEQ,NAME,BASE,ALLOC,DELEGATE,BEHAVIOR,REASSOC,METHOD,CONTEXT,ADD,REMOVE,LOOKUP,AT,PUT,RETAIN,RELEASE,ACTIVATE,AUTO,GC,SEND,ENTRY,ANSWER,DRIVE,ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,DATA,ACTIVE,STATS,CALLBACK,COUNT,IDENTITY,INVOKE,FAULTK,REJECT,AFTER,HELPER,RESUME,SYNC,SAVE,CONTROL,NAMES};
+static const char*words[]={"sequence","nameWithBytes","objectBehavior","allocate","delegated","behaviorOf:","reassociateBehaviorOf:with:","methodAt:","withContext:","addMethod","removeMethod:","lookup","at:","at:put:","retain:","release:","activate","automaticCollection:","collectPrecisely","prepareSend","prepareEntry","answerTo:with:","drive:budget:","echo","record","wait","tail","forward","localLookup","selected","data","active","stats","callback","allocationCount","identityOf:","invokeOn:arguments:","faultKind","rejectLookup","after","helper","resumeLookup","syncLeaf","saveEcho","testControl","budget:","prepareAllocation","allocationBytesTotal"};
+enum{SEQ,NAME,BASE,ALLOC,DELEGATE,BEHAVIOR,REASSOC,METHOD,CONTEXT,ADD,REMOVE,LOOKUP,AT,PUT,RETAIN,RELEASE,ACTIVATE,AUTO,GC,SEND,ENTRY,ANSWER,DRIVE,ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,DATA,ACTIVE,STATS,CALLBACK,COUNT,IDENTITY,INVOKE,FAULTK,REJECT,AFTER,HELPER,RESUME,SYNC,SAVE,CONTROL,BUDGET,PREPARE,TOTAL,NAMES};
 static Oop names[NAMES];
 static Oop raw(Oop r,size_t s,const Oop*a,size_t n){return id.message(id.root,r,names[s],a,n);}
 static Oop check(Oop v){if(id_fault(v)){fprintf(stderr,"unexpected failure %p\n",v);abort();}return v;}
@@ -111,5 +111,12 @@ int main(int argc,char**argv){assert(argc==8);void*h=dlopen(argv[1],RTLD_NOW|RTL
  Oop stats_method=method(STATS,0);Oop invoke_args=seq(0,0);Oop inv[]={r,invoke_args};Oop measurements=send(stats_method,INVOKE,inv,2);
  assert(get(measurements,0)==id_size(10001));assert(id_unbox(get(measurements,2))>=10000);assert(id_unbox(get(measurements,1))<4096);
  printf("TAIL_GC_OK custom=true before=%zu after=%zu stack_span=%zu\n",before,after,id_unbox(get(measurements,1)));
+ /* Raw transfer allocations are charged at the normal GC safe point. */
+ size_t live_before=id_unbox(send(id.root,COUNT,0,0));size_t bytes_before=id_unbox(send(id.root,TOTAL,0,0));
+ for(size_t i=0;i<2048;i++){Oop unused[]={r,names[TAIL],k,id_size(0)};prepare(SEND,unused,4);}
+ size_t allocated=id_unbox(send(id.root,COUNT,0,0));assert(id_unbox(send(id.root,TOTAL,0,0))>bytes_before);
+ one(gc,BUDGET,id_size(512));one(gc,AUTO,id_size(1));send(gc,PREPARE,0,0);
+ size_t remaining=id_unbox(send(id.root,COUNT,0,0));assert(remaining+2048<allocated);assert(remaining<live_before+256);
+ one(gc,AUTO,id_size(0));printf("TRANSFER_ALLOCATION_ACCOUNTING_OK allocated=%zu remaining=%zu\n",allocated,remaining);
  printf("REAL_ID_CONTINUATION_OK\n");return 0;
 }

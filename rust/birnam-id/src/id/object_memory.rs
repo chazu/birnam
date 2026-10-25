@@ -48,6 +48,7 @@ impl Drop for Allocation {
 pub(crate) struct ObjectMemory {
     allocations: AddressMap<Allocation>,
     next_identity: u64,
+    allocated_bytes: usize,
 }
 
 impl ObjectMemory {
@@ -55,6 +56,7 @@ impl ObjectMemory {
         Self {
             allocations: AddressMap::default(),
             next_identity: 0,
+            allocated_bytes: 0,
         }
     }
 
@@ -74,6 +76,8 @@ impl ObjectMemory {
     pub(crate) fn allocate(&mut self, payload_size: usize) -> Oop {
         let total_size = Self::allocation_total_size(payload_size)
             .unwrap_or_else(|| boundary::fatal_invariant("object allocation size overflow"));
+        self.allocated_bytes = self.allocated_bytes.checked_add(total_size)
+            .unwrap_or_else(|| boundary::fatal_invariant("allocation byte counter exhausted"));
         let layout = Layout::from_size_align(total_size, BLOCK_ALIGNMENT)
             .unwrap_or_else(|_| boundary::fatal_invariant("invalid object allocation layout"));
         // SAFETY: header size is nonzero and alignment is valid.
@@ -107,6 +111,7 @@ impl ObjectMemory {
             .iter()
             .map(|(address, allocation)| (*address, allocation))
     }
+    pub(crate) fn allocated_bytes(&self) -> usize { self.allocated_bytes }
     pub(crate) fn allocation_epoch(&self) -> u64 {
         self.next_identity
     }
@@ -178,6 +183,17 @@ impl ObjectMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cumulative_bytes_include_headers_and_do_not_decrease_on_release() {
+        let mut memory=ObjectMemory::new();
+        let first=memory.allocate(3);let second=memory.allocate(24);
+        let expected=ObjectMemory::allocation_total_size(3).unwrap()+ObjectMemory::allocation_total_size(24).unwrap();
+        assert_eq!(memory.allocated_bytes(),expected);
+        drop(memory.detach(first.addr()).unwrap());drop(memory.detach(second.addr()).unwrap());
+        assert_eq!(memory.len(),0);assert_eq!(memory.allocated_bytes(),expected);
+        memory.allocate(0);assert_eq!(memory.allocated_bytes(),expected+ObjectMemory::allocation_total_size(0).unwrap());
+    }
+
     #[test]
     fn allocation_geometry_preserves_extent_identity_and_record_size() {
         assert_eq!(size_of::<Allocation>(), 24);

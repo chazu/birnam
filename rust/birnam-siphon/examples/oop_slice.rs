@@ -53,6 +53,7 @@ unsafe fn run() {
             library.join("libbirnam_codegen_runtime.dylib"),
         ];
         let words: &[&[u8]] = &[
+            b"runOther",b"reenter",b"inspectFrames",b"methodAt:",b"later:",b"localLookup",b"selected",b"resumeLookup",b"helper",b"captureFactory",b"budget:",b"allocationBytesTotal",
             b"TailProbe",b"tailTick",b"tailSetup:",b"tailPeak",b"tailCalls",b"tailRecurse",
             b"LookupProbe",b"resumableBound",b"fromStep:descriptor:selection:owner:",b"compileResumable:",b"Machine",b"MachineVt",b"runBlock:",b"runBlock:budget:",b"continueWithBudget:",b"destroy",b"executionState",b"isRunnable",b"liveFrameCount",b"runnable",b"completed",b"resumeMark:",b"resumeCount:",b"resumeReset",b"before",b"entered",b"after",b"later",b"child",
             b"Namespace",b"methodFor:",b"captureWordAt:",b"Lang",b"Codegen",b"compileSynchronous:",b"NativeBackend",b"Block",b"BlockVt",b"constantValue",b"errorKind",b"isError",b"kind:",b"fromMethod:captureOperands:",b"compiledProbe:",b"dependency:",b"CompilerProbe",b"evaluatePreservingFailures:",b"releaseTokensProtecting",b"Globals",b"savedRelease:",b"collectingRelease",b"liveNativeUnits",b"compiledRunning",b"removeDuringCall:",b"milestoneValue",b"compileError",b"nativeFailure",b"nativeInvalidRequest",
@@ -173,7 +174,7 @@ unsafe fn run() {
             .iter()
             .map(|&o| id.send(o, id.intern, &[]).unwrap())
             .collect();
-        let sel = |name: &[u8]| selectors[words.iter().position(|&w| w == name).unwrap()];
+        let sel = |name: &[u8]| selectors[words.iter().position(|&w| w == name).unwrap_or_else(||panic!("missing test selector {}",String::from_utf8_lossy(name)))];
         let send = |r: Oop, n: &[u8], a: &[Oop]| id.send(r, sel(n), a);
         let empty = send(id.root, b"sequence", &[]).unwrap();
         let roots = id.send(names[0], id.load, &[empty]).expect("Roots loaded");

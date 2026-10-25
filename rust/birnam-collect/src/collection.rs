@@ -302,9 +302,10 @@ pub(super) unsafe fn run(s: &Memory, native: &[usize]) -> Result<Oop,Oop> {
             s.phase.set(Phase::Finalizing);
             match unsafe { sweep(s, &dead) } {
                 Ok(n) => {
-                    s.charged.set(0);
-                    s.phase.set(Phase::Idle);
-                    Ok(abi::size(n).unwrap())
+                    match unsafe { s.reset_accounting(0) } {
+                        Ok(())=>{s.charged.set(0);s.phase.set(Phase::Idle);Ok(abi::size(n).unwrap())},
+                        Err(e)=>{s.phase.set(Phase::Failed);Err(e)}
+                    }
                 }
                 Err(e) => {
                     s.phase.set(Phase::Failed);

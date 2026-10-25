@@ -1,16 +1,13 @@
 # Custom lookup breaks tail-call reuse in the Oop migration
 
-Status: routing cause confirmed; production repair unresolved.
-A [passing isolated candidate](oop-entry-seam-experiments.md) preserves the Id
-contract and bounded Machine execution. It is not yet integrated.
-See the [controlled diagnosis](oop-tail-routing-diagnosis.md). Remaining migration that depends
-on the current dispatch/Execution boundary is held. This is not a qualified runtime
-checkpoint. Id's public contract is frozen by the user's instruction and has not
-been changed.
+Status: repaired by the [compiler/Execution continuation integration](oop-continuation-id.md).
+The original assertion is unchanged and now passes with 2 frames for both lookup
+modes. The diagnosis and observations below describe the earlier failing runtime;
+they are retained as regression evidence, not current acceptance status.
 
 ## Reproduction
 
-Run `bash scripts/oop-id-slice-test.sh`. The expanded native source test now fails
+At the recorded failing checkpoint, `bash scripts/oop-id-slice-test.sh` failed
 a required assertion. The same compiled function is used for both lookup modes:
 
 ```birnam
@@ -58,6 +55,11 @@ stackless/tail behavior. It cannot be treated as full functional acceptance.
 
 ## Why a local workaround is not acceptable
 
+These were the restrictions at the failing checkpoint, before the user explicitly
+authorized a continuation-aware addition to Id. The current repair uses that
+public contract; the prohibitions on replay, foreign payload access and implicit
+application dispatch remain in force.
+
 - Adding an Id entry point, selector, Protocol field or side channel violates the
   current instruction to keep the Id contract fixed.
 - Reflective `invokeOn:` on every selected Method restores the already rejected
@@ -92,5 +94,5 @@ The project instructions remain applicable:
 
 > An open invariant violation blocks further migration that depends on that mechanism.
 
-The failing test is retained. No repair, completed migration or completion push is
-claimed by this diagnostic checkpoint.
+The original assertion remains mandatory. The current repair does not imply
+completion of the broader language migration or a completion push.

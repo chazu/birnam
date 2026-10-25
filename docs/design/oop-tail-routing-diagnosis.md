@@ -1,7 +1,9 @@
 # Tail-call regression: routing diagnosis
 
-Later continuation: [isolated entry experiments](oop-entry-seam-experiments.md)
-now demonstrate a passing candidate. This document records the earlier diagnosis.
+Later continuation: the [compiler/Execution continuation integration](oop-continuation-id.md)
+now passes the original regression. This document records the earlier diagnosis;
+the [isolated shared-entry experiment](oop-entry-seam-experiments.md) was not the
+chosen implementation.
 
 2026-10-24. Diagnosis complete; production repair is not implemented. The user
 requested determination of the cause, so no runtime fix or architecture change

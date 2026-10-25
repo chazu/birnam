@@ -178,6 +178,7 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
         ("SEQUENCE", b"sequence"),
         ("FROM_BYTES", b"fromBytes:"),
         ("GLOBAL", b"resolveGlobal:"),
+        ("ANSWER", b"answerTo:with:"),
     ] {
         writeln!(definitions, "#define S_{key} {}", e.name(name)?).unwrap();
     }
@@ -204,8 +205,11 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
     for i in 0..e.functions.len() {
         writeln!(out, "static O function_{i}(O,O,O,const O*,size_t);").unwrap();
     }
-    for f in &e.functions {
-        out.push_str(f);
+    for (i,f) in e.functions.iter().enumerate() {
+        if e.descriptors[i].is_some(){
+            out.push_str(&f.replace(&format!("function_{i}("),&format!("step_body_{i}(")));
+            writeln!(out,"static O function_{i}(O root,O context,O machine,const O*args,size_t n){{if(n!=2)return id.invalid;O result=step_body_{i}(root,context,machine,args+1,n-1);if(failed(result))return result;O answer[]={{args[0],result}};return control(id.root,symbols[S_ANSWER],answer,2);}}").unwrap();
+        }else{out.push_str(f);}
     }
     for (i, descriptor) in e.descriptors.iter().enumerate() {
         if let Some((descriptor, selection)) = descriptor {
@@ -238,10 +242,10 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
     }
     out.push_str("};\nstatic const MethodSpec declarations[]={\n");
     for (i, name) in method_names.iter().enumerate() {
-        writeln!(out, "{{{name},function_{i}}},").unwrap();
+        writeln!(out, "{{{name},function_{i},{}}},",usize::from(e.descriptors[i].is_some())).unwrap();
     }
     out.push_str("};\n");
-    writeln!(out,"static O initialize(const P*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->version!=2||p->byte_size!=sizeof(P))return 0;if(n!=1||count!=SYMBOL_COUNT)return p->invalid;id=*p;ns=args[0];owner=unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
+    writeln!(out,"static O initialize(const CP*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->common.version!=3||p->common.byte_size!=sizeof(CP))return 0;if(n!=1||count!=SYMBOL_COUNT)return p->common.invalid;id=p->common;control=p->control;ns=args[0];owner=unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
     for i in 0..e.functions.len() {
         writeln!(
             out,
@@ -257,6 +261,6 @@ fn compile_mode(bytes: &[u8], source: &[u8], resumable: bool) -> Result<Vec<u8>,
         )
         .unwrap();
     }
-    out.push_str("return finish(&c,methods[0]);}\nconst Module birnam_native_module_v2={2,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,initialize};\n");
+    out.push_str("return finish(&c,methods[0]);}\nconst Module birnam_native_module_v3={3,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,initialize};\n");
     Ok(out.into_bytes())
 }

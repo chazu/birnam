@@ -1,14 +1,12 @@
 # Oop-only Id
 
-**Current hold:** the expanded source gate reproduces loss of tail-call reuse
-under forwarding custom lookup: 8/24 calls retain 9/25 frames, versus 2 with
-default lookup. The runtime is not fully qualified; dependent migration is held
-until continuation-aware Id and the migrated callers satisfy the invariants.
-See the [regression](oop-custom-lookup-tail-contract.md) and [controlled diagnosis](oop-tail-routing-diagnosis.md).
-Earlier passing receipts below retain only their recorded subset coverage.
-The [isolated entry experiments](oop-entry-seam-experiments.md) passed, but their
-shared private implementation was rejected. The current investigation is the
-[continuation-aware Id proposal and formal model](oop-continuation-id.md).
+**Current checkpoint:** the compiler/Execution continuation integration passes
+its native/source gate, including the original custom-lookup tail assertion
+(2 frames in both modes), lookup suspension/re-entry, interleaving, automatic GC
+and native callback boundaries. See the [implementation and remaining scope](oop-continuation-id.md).
+Full control/recovery, default compiler orchestration, upper-module migration and
+installed runtime qualification remain unfinished. Earlier receipts below retain
+only their recorded coverage.
 
 > **Dispatch correction:** the unapproved `apply` protocol and its forwarding
 > helpers have been removed. Ordinary sends perform lookup and enter the selected

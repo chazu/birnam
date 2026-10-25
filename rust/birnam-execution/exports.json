@@ -2,5 +2,5 @@
   "schema_version": 1,
   "scope": "Execution-owned Methods, Blocks, Machines and continuations through production Id messages",
   "install_name": "@rpath/libbirnam_execution.dylib",
-  "exported_symbols": ["birnam_native_module_v2"]
+  "exported_symbols": ["birnam_native_module_v3"]
 }

@@ -200,21 +200,40 @@ impl State {
         if abi::as_size(ready) != Some(1) {
             return Err(self.control_failure(b"continuationBarrier"));
         }
-        Ok(value)
+        if abi::is_fault(value) {
+            Err(abi::object_reference(value))
+        } else {
+            Ok(value)
+        }
     }
     fn selected_work(&self, values: &[Oop], method: Oop) -> Result<Oop, Oop> {
         let [receiver, selector, k, args @ ..] = values else {
             return Err(self.invalid());
         };
+        if abi::is_fault(method) {
+            return if k.is_null() {
+                Err(abi::object_reference(method))
+            } else {
+                self.prepare_answer(*k, method)
+            };
+        }
         if !method.is_null() {
             let mut next = vec![method, *receiver, *k];
             next.extend_from_slice(args);
-            return self.prepare_entry(&next);
+            return match self.prepare_entry(&next) {
+                Ok(work) => Ok(work),
+                Err(error) if !k.is_null() => self.prepare_answer(*k, abi::fault_reference(error)),
+                Err(error) => Err(error),
+            };
         }
         if *selector == self.dnu
             || (*selector == self.lookup && self.behavior(*receiver)? == self.meta)
         {
-            return Err(self.unbound());
+            return if k.is_null() {
+                Err(self.unbound())
+            } else {
+                self.prepare_answer(*k, abi::fault_reference(self.unbound()))
+            };
         }
         let mut next = vec![*receiver, self.dnu, *k, *selector];
         next.extend_from_slice(args);
@@ -244,9 +263,15 @@ unsafe extern "C" fn send_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
             return Err(s.invalid());
         };
         let _scope = s.scope(c, ptr::null_mut(), &values);
-        match id_dispatch::selection(s, *receiver, *selector)? {
-            Selection::Bound(method) => s.selected_work(&values, method.unwrap_or(ptr::null_mut())),
-            Selection::Lookup(behavior) => {
+        match id_dispatch::selection(s, *receiver, *selector) {
+            Ok(Selection::Bound(method)) => {
+                s.selected_work(&values, method.unwrap_or(ptr::null_mut()))
+            }
+            Err(error) if !values[2].is_null() => {
+                s.prepare_answer(values[2], abi::fault_reference(error))
+            }
+            Err(error) => Err(error),
+            Ok(Selection::Lookup(behavior)) => {
                 let mut pending = vec![abi::size(0).unwrap()];
                 pending.extend_from_slice(&values);
                 let k = s.work(LOOKED_UP, &pending)?;
@@ -308,14 +333,22 @@ unsafe extern "C" fn enter_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usi
                 passed.len(),
             );
             s.behavior(value)?;
-            if abi::is_fault(value) {
+            if abi::is_fault(value) && !k.is_null() {
+                s.prepare_answer(*k, value)
+            } else if abi::is_fault(value) {
                 Err(abi::object_reference(value))
             } else {
                 Ok(value)
             }
         } else {
-            let value = s.enter_method(*method, *receiver, args, &scope)?;
-            s.prepare_answer(*k, value)
+            let value = s
+                .enter_method(*method, *receiver, args, &scope)
+                .unwrap_or_else(abi::fault_reference);
+            if abi::is_fault(value) && k.is_null() {
+                Err(abi::object_reference(value))
+            } else {
+                s.prepare_answer(*k, value)
+            }
         }
     })()
     .unwrap_or_else(abi::fault_reference)
