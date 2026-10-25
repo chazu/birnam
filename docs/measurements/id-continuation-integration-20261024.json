@@ -1,0 +1,273 @@
+{
+  "status": "passed real Id continuation mechanism; compiler/Execution migration and complete runtime qualification remain open",
+  "platform": "macOS-14.6-arm64-arm-64bit",
+  "commands": [
+    {
+      "name": "unit",
+      "command": [
+        "mise",
+        "exec",
+        "--",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "birnam-id",
+        "-p",
+        "birnam-root-registry",
+        "-p",
+        "birnam-collect",
+        "--lib"
+      ],
+      "returncode": 0,
+      "output": "\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 21 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::bootstrap_values::tests::detached_payloads_keep_their_reference_and_contents ... ok\ntest id::bootstrap_values::tests::malformed_native_method_bytes_are_not_called ... ok\ntest id::bootstrap_values::tests::failure_can_be_caught_and_stored_as_data ... ok\ntest id::bootstrap_values::tests::object_valued_fact_queries_decline_after_live_replacement ... ok\ntest id::object_memory::tests::allocation_geometry_preserves_extent_identity_and_record_size ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::bootstrap_values::tests::reference_storage_rejects_invalid_lengths_and_non_object_words ... ok\ntest id::native_id::lifetime_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::native_id::lifetime_tests::detached_receiver_with_released_metavtable_is_not_dispatched ... ok\ntest id::bootstrap_values::tests::payload_meaning_can_be_supplied_after_allocation ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_the_current_root_relation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::native_id::lifetime_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-id)\nwarning: method `vtable_of` is never used\n   --> rust/birnam-id/src/id/object_memory.rs:149:19\n    |\n128 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n149 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-id` (lib test) generated 1 warning\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s\n     Running unittests src/lib.rs (.cargo-target/id-continuation/build/debug/deps/birnam_collect-419c8553269c28f1)\n     Running unittests src/lib.rs (.cargo-target/id-continuation/build/debug/deps/birnam_id-5ba5453e63e6c364)\n     Running unittests src/lib.rs (.cargo-target/id-continuation/build/debug/deps/birnam_root_registry-667a6069238f9f78)\n"
+    },
+    {
+      "name": "build",
+      "command": [
+        "mise",
+        "exec",
+        "--",
+        "cargo",
+        "build",
+        "--release",
+        "--offline",
+        "--locked",
+        "--lib",
+        "-p",
+        "birnam-id",
+        "-p",
+        "birnam-root-registry",
+        "-p",
+        "birnam-collect"
+      ],
+      "returncode": 0,
+      "output": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-id)\nwarning: method `vtable_of` is never used\n   --> rust/birnam-id/src/id/object_memory.rs:149:19\n    |\n128 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n149 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-id` (lib) generated 1 warning\n    Finished `release` profile [optimized] target(s) in 0.65s\n"
+    },
+    {
+      "name": "compile-module",
+      "command": [
+        "clang",
+        "-dynamiclib",
+        "-fPIC",
+        "-O2",
+        "-I/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation",
+        "/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation/module.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/module.dylib"
+      ],
+      "returncode": 0,
+      "output": ""
+    },
+    {
+      "name": "compile-native",
+      "command": [
+        "clang",
+        "-dynamiclib",
+        "-fPIC",
+        "-O2",
+        "-I/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation",
+        "/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation/native.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/native.dylib"
+      ],
+      "returncode": 0,
+      "output": ""
+    },
+    {
+      "name": "compile-rejected",
+      "command": [
+        "clang",
+        "-dynamiclib",
+        "-fPIC",
+        "-O2",
+        "-I/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation",
+        "/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation/rejected.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/rejected.dylib"
+      ],
+      "returncode": 0,
+      "output": ""
+    },
+    {
+      "name": "compile-rejected-flags",
+      "command": [
+        "clang",
+        "-dynamiclib",
+        "-fPIC",
+        "-O2",
+        "-DBAD_CONVENTION",
+        "-I/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation",
+        "/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation/rejected.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/rejected-flags.dylib"
+      ],
+      "returncode": 0,
+      "output": ""
+    },
+    {
+      "name": "compile-caller",
+      "command": [
+        "clang",
+        "-O2",
+        "-I/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation",
+        "/Users/chazu/dev/zig/birnam-oop-id/tests/fixtures/oop-continuation/caller.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/caller"
+      ],
+      "returncode": 0,
+      "output": ""
+    },
+    {
+      "name": "caller",
+      "command": [
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/caller",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/build/release/libbirnam_id.dylib",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/build/release/libbirnam_root_registry.dylib",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/build/release/libbirnam_collect.dylib",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/module.dylib",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/native.dylib",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/rejected.dylib",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/rejected-flags.dylib"
+      ],
+      "returncode": 0,
+      "output": "INCOMPATIBLE_V3_REFUSED\nDRIVE transitions=3\nCPS_NATIVE_ECHO_OK\nMIXED_NATIVE_CONVENTIONS_OK\nDRIVE transitions=3\nCONTINUATION_AS_DATA_OK\nDRIVE transitions=2\nPAUSED_ROOT_HANDOFF_OK\nDRIVE transitions=3\nNATIVE_BARRIER_AND_LATE_REPLY_OK\nDRIVE transitions=3\nOVERLAPPING_DRIVE_REFUSED\nDRIVE transitions=2\nSELECTED_ENTRY_ROOTS_AND_NO_RELOOKUP_OK\nDRIVE transitions=3\nCUSTOM_LOOKUP_PAUSE_REPLACEMENT_OK\nDRIVE transitions=2\nCAPTURED_CONTEXT_LIFETIME_OK\nCONSUMED_REPLY_RELEASES_ANSWER_OK\nINTERLEAVED_WORK_GC_OK\nALLOCATING_LOOKUP_GC_REFUSED_SAFELY\nROOT_METACIRCULAR_LOOKUP_OK\nDRIVE transitions=60007\nTAIL_GC_OK custom=true before=569 after=569 stack_span=0\nREAL_ID_CONTINUATION_OK\n"
+    }
+  ],
+  "id_exports": [
+    "_birnam_id_bootstrap_v2"
+  ],
+  "source_sha256": {
+    "rust/birnam-abi/src/id_protocol.rs": "c764ed74313245dde1cbf40b356738247de6530614fdb57c3d1078eec7c8d7a9",
+    "rust/birnam-id/src/id/bootstrap_values.rs": "beea4d26750314047532dd0a0881631a466ce5b3967c6fbbdf9597ce9557624b",
+    "rust/birnam-id/src/id/continuation.rs": "699315b128e1aafef2ceccf416aab7a5a69a3f0d49931054b1012905a29a5488",
+    "rust/birnam-id/src/id/id_dispatch.rs": "3e5fbd3023ab43937a0d006564fe3b11964a01994d8243e5bf7c0a63bd45ae3a",
+    "rust/birnam-id/src/id/initial_objects.rs": "98eae1ed87d6cac6dfbf4537d37de881d57243da27e8a3148e2650ea0424fab1",
+    "rust/birnam-id/src/id/mod.rs": "2e7080ba6a2ca8f3732e4a900a9707cd4f465a67e624480b2731c74d62979805",
+    "rust/birnam-id/src/id/native_id.rs": "7ea46d63a9ce9b9a059afd92916429934f6a835e758713fe9b2b4a4d01fabd0f",
+    "rust/birnam-id/src/id/native_modules.rs": "fcbffb7befbf293ad49e3308bab23953d610734bc6c44497f096c39733868981",
+    "rust/birnam-id/src/id/object_memory.rs": "0e9b8d1f77675fa38751a5313c755001a48de29b953ffdb4a037514bc48aab08",
+    "rust/birnam-id/src/id/symbol.rs": "882c6ea3d806157ad4b2602c4530d1ad26f6a442d95c5ee086d6af6a6f2179fc",
+    "rust/birnam-id/src/id/vtable.rs": "65e6004a32da2e7a398a425bac25e4dacdf12255b95ab2613f2e3c4e84da23dd",
+    "scripts/id-continuation-test.py": "8f816e115ac33ed27cd6cd4daecc5864f3aa911d5f27f898295b34a1fd3ab57b",
+    "tests/fixtures/oop-continuation/caller.c": "c7cf0e4ecf49b4a5bca073defd1b779a47c89ab937970f27e3b90b97f5f3a266",
+    "tests/fixtures/oop-continuation/id.h": "bde6cbf46358671aafcd84b06ea5252e0cf5946922a9f9cc04bd3af49ae25029",
+    "tests/fixtures/oop-continuation/module.c": "fca96427d8b9e80f5fa7b243f45bc95324d06c6395755e352cdf9f0130038fb6",
+    "tests/fixtures/oop-continuation/native.c": "1b099b915e5acc3b83e30174c2154b9e16a5dc5edfb1aa0ca2de5db79b945f73",
+    "tests/fixtures/oop-continuation/rejected.c": "c22fce000aa109322235ab2fdace3c1a81381bc07e2a28de7f5ba56348a824f5"
+  },
+  "library_sha256": {
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/build/release/libbirnam_id.dylib": "306946140b3fb98035308f35732c7338fe674eb9100bd52b007e6be49e3b186b",
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/build/release/libbirnam_root_registry.dylib": "44008b4abef0477ee1059818919530e948064bc8452e5dec60bad6c10890b15d",
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/build/release/libbirnam_collect.dylib": "e5aa65c246f160a6c670b5b1053681c4225805446e731ed75a1b00f3f34f6147"
+  },
+  "fixture_sha256": {
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/rejected-flags.dylib": "bb8eeb9c67b4acee2dcd3e4ae6ad5666e3e952aa56274a1d6b7f4b1beda07b15",
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/module.dylib": "e40bfadb48f7d08dbbcfcda35047afcea0018813ad04339e6e3b6d962a3b73ad",
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/caller": "d2a0e39c9c47bb75d87553c3b9ea77f7cca7d013c73e27dbd09db4031130aa6a",
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/native.dylib": "1ca4209adbea2445abe07a9dd6db6008ded11ddd46325b770ed41de09b0d4dda",
+    "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/id-continuation/qualification/rejected.dylib": "65dd5a333f0f38dcaced415d606f1f598fdb5d1b0348e9ecc30b95e77deb3b4f"
+  },
+  "baseline": "165904864cb8498fb8577839cc0b1592f462e0e1",
+  "date": "2026-10-24",
+  "compatibility": {
+    "unit_tests_passed": 186,
+    "mandatory_source_gate": "still fails the unchanged compiler/Execution custom-lookup tail assertion",
+    "tail_rows": [
+      [
+        "false",
+        "8",
+        "2"
+      ],
+      [
+        "false",
+        "24",
+        "2"
+      ],
+      [
+        "true",
+        "8",
+        "9"
+      ],
+      [
+        "true",
+        "24",
+        "25"
+      ]
+    ],
+    "numeric_tail": "aw storage meanings: passed\nObjectModel layouts, clone snapshots, private behaviors and nested conversion roots: passed\nWord full-width values, arithmetic, live expression guards and image slots: passed\nBytes binary values, live accounting with GC, full-width reads and independent decoded views: passed\nVector persistent tree boundaries, nested sort roots, callbacks, printing and real String split: passed\nMap persistence, live key protocols, collisions, in-place rehash, Vector results and callback GC: passed\nPrelude System construction, ownership and repeated-load lifetime after namespace rebinding: passed\nSystem readLine binary input, EOF, detached Method, live constructor and callback GC: passed\nEnvironment Oop byte providers, exact names, Unicode errors, lazy Error publication and captured Methods: passed\nOOP_STDOUT:\u0000\ufffd\nOOP_NUMBER:2\nOOP_STDERR:\u0000\ufffdOOP_REENTRY;OOP_REENTRY;\nSystem output binary/UTF-8-lossy streams, reentrant rendering, live bytes, failure propagation and captured Methods: passed\nFile I/O binary transfers, filename snapshots, error ordering, bounded embedding, guarded removal and constructor GC: passed\nPEG binary literals, composed grammars, CSTs, errors, allocation-time GC and retirement: passed\nArtifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed\nTCC_OOP_OK\nresumable arithmetic and runnable budgets: passed\nTAIL_CONTRACT custom=false calls=8 peak_frames=2\nTAIL_CONTRACT custom=false calls=24 peak_frames=2\nTAIL_CONTRACT custom=true calls=8 peak_frames=9\nTAIL_CONTRACT custom=true calls=24 peak_frames=25\n\nthread 'main' (20621650) panicked at rust/birnam-siphon/examples/oop_slice/resumable.rs:455:13:\nassertion `left == right` failed: tail calls must reuse the source frame with custom lookup=true\n  left: 9\n right: 2\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "completed_native_modes": {
+      "runtime": {
+        "marker": "OOP_SLICE_OK",
+        "sha256": "b7c1e54d70307e457437be2b0d02147c10054407f17c1685d7a58a49ec0c06cc"
+      },
+      "finalizer-failure": {
+        "marker": "FINALIZER_FAILURE_CONTAINED",
+        "sha256": "4a1e16226e5178bb4b26887250fb4cd10d4295b1f4033be25c0df6414769fb3d"
+      },
+      "storage-init-failure": {
+        "marker": "STORAGE_PUBLICATION_FAILURE_CONTAINED",
+        "sha256": "941bb8d375b8d32809d2503b30505f713c977ea66a6c638317143d572364880d"
+      },
+      "retirement-failure": {
+        "marker": "RETIREMENT_FAILURE_CONTAINED",
+        "sha256": "d80fac0585015a926a5de8cb69e4226597d541e6fee5dd35d2c43adc10628610"
+      },
+      "allocation-policy": {
+        "marker": "ALLOCATION_POLICY_OK",
+        "sha256": "373659cd02bcb30a70d4ab5f41b68bd4997a080301bc191253846091ebd0a982"
+      },
+      "global-lookup": {
+        "marker": "GLOBAL_LOOKUP_OK",
+        "sha256": "176f0d50df40a53df4c48afb08d438afc69a1d87693cbce86f07927dc423c839"
+      }
+    },
+    "extra_checks": [
+      {
+        "mode": "dispatch-contract",
+        "returncode": 0,
+        "marker": "DISPATCH_CONTRACT_OK",
+        "log_sha256": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+      },
+      {
+        "mode": "numeric-input-error",
+        "returncode": 0,
+        "marker": "SYSTEM_INPUT_ERROR_OK",
+        "log_sha256": "e344016d3fbcb83abc84fefb24576a8a68d9d399974b9b0bc0f147fc9ef1193f"
+      },
+      {
+        "mode": "independent-c",
+        "returncode": 0,
+        "output": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":2666625,\"ns_per_op\":66.665625}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":17447667,\"ns_per_op\":58.158890}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2478583,\"ns_per_op\":302.561401}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":15768916,\"ns_per_op\":15768916.000000}\n{\"heap_before\":56813,\"heap_after\":2925,\"reclaimed\":53888}\n"
+      }
+    ]
+  },
+  "scope_audit": {
+    "retained": [
+      "one public v3 native control entry",
+      "per-declaration calling convention",
+      "captured Method/Sequence work and answer contexts",
+      "native boundary and temporary root scopes",
+      "independent C contract/lifetime tests"
+    ],
+    "removed": [
+      "duplicate root-object transfer methods",
+      "pause admission exception for those duplicate wrappers"
+    ],
+    "unchanged": [
+      "Execution and compiler implementation",
+      "collector implementation and policy",
+      "scheduler policy",
+      "native image residency policy",
+      "Id v2 export set and synchronous native contract"
+    ]
+  },
+  "limits": [
+    "The old source/compiler Execution path has not adopted this contract and its mandatory custom-lookup tail test remains red.",
+    "Tests use explicit precise collection. Automatic collection accounting/safe-point policy for internal transfer allocations remains Execution integration work.",
+    "Allocating global lookup/reporting still causes the existing collector to refuse marking safely before retirement; refusal/recovery is tested.",
+    "Native images retain the existing residency policy. Dynamic code mapping retirement is not newly qualified.",
+    "The formal models/reference remain design evidence, not a proof of native implementation refinement."
+  ]
+}

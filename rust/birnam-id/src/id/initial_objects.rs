@@ -44,6 +44,7 @@ pub(crate) fn construct() -> Box<State> {
             seeds: nil,
             invalid: nil,
         },
+        continuation_protocol: std::cell::OnceCell::new(),
         heap: RefCell::new(heap),
         tables: RefCell::new(tables),
         symbols: RefCell::new(symbols),
@@ -68,6 +69,7 @@ pub(crate) fn construct() -> Box<State> {
         names: RefCell::new(std::collections::HashMap::new()),
         detached: RefCell::new(AddressMap::default()),
         active: RefCell::new(Vec::new()),
+        drives: RefCell::new(Vec::new()),
         permanent: RefCell::new(vec![
             root, meta, object, symbol, name, size, none, method, fault, sequence, module, lookup,
             dnu, registry, prototype,

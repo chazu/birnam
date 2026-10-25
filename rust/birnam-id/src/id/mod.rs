@@ -1,4 +1,5 @@
 mod bootstrap_values;
+mod continuation;
 mod id_dispatch;
 mod initial_objects;
 mod native_id;

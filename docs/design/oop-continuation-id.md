@@ -1,8 +1,8 @@
 # Continuation-aware Id: design and proof checkpoint
 
-2026-10-24. Committed development direction, with formal models and an executable
-semantic reference. No production ABI change is implemented. The current custom-lookup tail gate remains
-red; the broader compiler/Execution migration remains held.
+2026-10-24. Committed development direction. Production Id now implements the
+continuation mechanism below. The old compiler/Execution custom-lookup tail gate
+remains red until those callers migrate; full runtime qualification remains held.
 
 The user rejected the shared-private-implementation packaging proposed by the
 [entry experiments](oop-entry-seam-experiments.md), and explicitly allowed
@@ -61,6 +61,71 @@ Address reuse and actual foreign callback lifetime remain implementation obligat
 
 ## Executable reference and rebuild order
 
+### Real Id integration
+
+Before: Id returns a synchronous native answer; explicit resumable callers cannot
+keep a custom lookup's selected Method through a tail transfer at the public
+boundary. After: pending work and lookup returns are captured Method Oops whose
+contexts are owned Sequences. A drive enters each work Method directly, retaining
+its context/code owner; a continuation declaration receives its destination as
+the first Oop argument and returns the next captured Method (nil ends the drive).
+Language answers are delivered as arguments to their captured continuation, never
+inferred from the returned object's payload or behavior.
+
+The existing v2 Protocol and synchronous declarations remain valid. A public v3
+module descriptor declares the convention per Method, allowing synchronous GC
+reporting and continuation bodies in one owner. Initialization is synchronous and
+receives `ContinuationProtocol`: the existing fields plus one fixed `control`
+entry. The C Method function shape is unchanged. Convention flags belong to
+immutable executable declarations, not allocation records or object type tags.
+
+The control entry takes an interned operation Oop and an Oop argument array:
+
+| Operation | Arguments | Result |
+| --- | --- | --- |
+| `prepareSend` | receiver, selector, destination, arguments… | Captured work Method |
+| `prepareEntry` | selected Method, receiver, destination, arguments… | Captured direct-entry work |
+| `answerTo:with:` | destination, answer | Work delivering the answer as data |
+| `drive:budget:` | work, size-immediate budget | Pending work or nil |
+| `pause:` | pending work | Nil; the current continuation entry must then return nil |
+
+Existing marked Oop failure returns report invalid requests, consumed internal
+continuations, overlapping drives and native barriers. These are primitive
+operations, not an additional family of root-object methods. Constructing a
+lookup continuation must not require another lookup merely to return a lookup
+result. The duplicate message wrappers considered during implementation were
+removed in the scope audit.
+
+Pause cannot cross a waiting native activation. Synchronous Id sends drive a v3
+callee until it answers; an escaped answer continuation is closed before native
+return and rejects late delivery. Consumed internal continuations release their
+saved request/result references. Execution and the scheduler own pending-work
+roots and waiting/completion policy. Id reads none of their payloads.
+
+`python3 scripts/id-continuation-test.py` builds real Id, Roots and Collect plus
+independent C declarations. It checks mixed conventions, malformed descriptors,
+suspended lookup with helper re-entry, selected-code/context retention through
+replacement and GC, direct entry despite poisoned Method lookup, native barriers,
+late replies, interleaved work and a 10,000-call custom-lookup tail chain. The
+tail chain returns to the same live allocation count after precise collection
+and has zero observed C Method stack-position span.
+
+The [integration receipt](../measurements/id-continuation-integration-20261024.json)
+records the independent C gate, 186 passing existing unit tests, the retained
+native compatibility checks and the unchanged failing compiler/Execution tail
+assertion. The scope audit removed duplicate root-object transfer methods and
+their special pause handling. No scheduler, collector or compiler implementation
+changed in this milestone.
+
+Scope is the Id mechanism. There is no scheduler, collector redesign, compiler
+change or new payload catalog in this milestone. Native images retain the
+existing residency policy. GC still refuses allocating reporting/lookup before
+retirement; the C test checks that refusal and recovery. New transfer objects
+are visible to the ordinary allocation inventory and collectible, but automatic
+collection accounting/safe-point policy for these internal allocations must be
+connected with Execution before default language promotion. The gate uses
+explicit precise collection, not a claim that this policy is already connected.
+
 The [executable reference](../../formal/continuations/reference/README.md) now
 connects the model to a Rust Id library and independently compiled consumers.
 The primitive continuation is an ordinary captured Method Oop; its owner handles
@@ -84,9 +149,9 @@ qualified before production promotion.
 The reconstruction order is:
 
 1. **Completed:** formal boundary checks and the executable semantic reference.
-2. Put the transfer convention into actual Id, including root/code handoff,
-   suspension ownership and an independent native caller. Preserve direct-entry
-   negative tests and compare the reference's observable behavior.
+2. **Completed for the bounded Id mechanism:** transfer convention, root/context
+   handoff, native boundary checks and an independent C caller. Compiler and
+   Execution have not yet adopted it.
 3. Reconnect compiler and Execution through that contract; remove displaced
    preliminary lookup classification and native fallback guessing when their
    replacements pass the original source gate.

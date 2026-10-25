@@ -12,6 +12,7 @@ struct NativeMethod {
 #[derive(Clone, Copy)]
 pub(super) struct MethodData {
     pub entry: Method,
+    pub continuation: bool,
     pub context: Oop,
     pub owner: Oop,
 }
@@ -35,6 +36,7 @@ impl State {
         candidates.iter().position(|&candidate|{
             let Ok(candidate)=self.method_data(candidate) else { return false; };
             selected.entry as usize==candidate.entry as usize
+                && selected.continuation == candidate.continuation
                 && selected.context==candidate.context && selected.owner==candidate.owner
         })
     }
@@ -48,19 +50,19 @@ impl State {
     }
     pub(super) fn method_data(&self, o: Oop) -> Result<MethodData, Oop> {
         let data = self.native_method_fields(o)?;
-        let entry = self.native_entry(data.owner, data.entry_index)?;
+        let (entry, continuation) = self.native_entry(data.owner, data.entry_index)?;
         Ok(MethodData {
             entry,
+            continuation,
             context: data.context,
             owner: data.owner,
         })
     }
-    fn native_entry(&self, owner: Oop, index: usize) -> Result<Method, Oop> {
+    fn native_entry(&self, owner: Oop, index: usize) -> Result<(Method,bool), Oop> {
         if owner == self.root {
-            OPERATIONS.get(index).map(|(_, _, entry)| *entry)
-        } else {
-            self.modules.entry(owner, index)
-        }.ok_or(self.invalid())
+            OPERATIONS.get(index).map(|(_, _, entry)| (*entry,false))
+                .or_else(|| index.checked_sub(OPERATIONS.len()).and_then(|i|super::continuation::ENTRIES.get(i)).map(|e|(*e,true)))
+        } else { self.modules.entry(owner, index) }.ok_or(self.invalid())
     }
     pub(super) fn clone_method(&self, method: Oop, context: Oop) -> Result<Oop, Oop> {
         let data = self.native_method_fields(method)?;
@@ -218,6 +220,8 @@ impl State {
     ) -> Result<Oop, Oop> {
         let method = self.method_data(m)?;
         scope.entered(m, method.context, method.owner);
+        if method.continuation { return unsafe { self.enter_synchronously(m,r,args) }; }
+        let _native = super::continuation::NativeScope::enter(self);
         let result =
             unsafe { (method.entry)(self.root, method.context, r, args.as_ptr(), args.len()) };
         self.behavior(result)?;

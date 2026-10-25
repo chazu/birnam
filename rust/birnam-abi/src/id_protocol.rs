@@ -1,6 +1,9 @@
 use crate::{Oop, is_fault, object_reference};
 use core::ffi::c_void;
 pub const VERSION: u32 = 2;
+/// Version 3 declares the calling convention per Method and supplies the
+/// continuation control primitive at initialization.
+pub const CONTINUATION_MODULE_VERSION: u32 = 3;
 pub type Method = unsafe extern "C" fn(Oop, Oop, Oop, *const Oop, usize) -> Oop;
 pub type Message = unsafe extern "C" fn(Oop, Oop, Oop, *const Oop, usize) -> Oop;
 pub type Initialize =
@@ -66,6 +69,26 @@ impl Protocol {
         unsafe { self.send(self.seeds, self.at, &[crate::size(index).unwrap()]) }
     }
 }
+/// Fixed control entry for continuation declarations. `operation` is an interned
+/// Oop naming prepareSend, prepareEntry, answerTo:with:, drive:budget: or pause:.
+/// All supplied and returned values are Oops. Construction must not perform
+/// lookup in order to return the result of lookup itself.
+pub type Control = unsafe extern "C" fn(Oop, Oop, *const Oop, usize) -> Oop;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ContinuationProtocol {
+    pub common: Protocol,
+    pub control: Control,
+}
+pub type ContinuationInitialize = unsafe extern "C" fn(
+    *const ContinuationProtocol,
+    Oop,
+    *const Oop,
+    usize,
+    *const Oop,
+    usize,
+) -> Oop;
+
 // Descriptor records are immutable native object-file metadata, consumed once
 // by the loader. Code pointers never travel through Id as values.
 #[repr(C)]
@@ -98,6 +121,30 @@ pub struct Module {
     pub initialize: Option<Initialize>,
 }
 unsafe impl Sync for Module {}
+/// Calling convention is native declaration metadata, not an object kind.
+pub const SYNCHRONOUS_ENTRY: u32 = 0;
+pub const CONTINUATION_ENTRY: u32 = 1;
+#[repr(C)]
+pub struct ContinuationMethodSpec {
+    pub name: usize,
+    pub entry: Option<Method>,
+    pub convention: u32,
+}
+/// Immutable v3 declarations may mix synchronous and continuation entries.
+/// For continuation entries, arguments[0] is the destination; a successful
+/// return is the next captured work Method, or nil to stop.
+#[repr(C)]
+pub struct ContinuationModule {
+    pub version: u32,
+    pub byte_size: u32,
+    pub literals: *const Literal,
+    pub literal_count: usize,
+    pub methods: *const ContinuationMethodSpec,
+    pub method_count: usize,
+    pub initialize: Option<ContinuationInitialize>,
+}
+unsafe impl Sync for ContinuationModule {}
+
 #[repr(C)]
 pub struct Seed {
     pub bytes: *const u8,

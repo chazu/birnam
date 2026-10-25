@@ -19,6 +19,7 @@ use std::{
 };
 pub(crate) struct State {
     pub protocol: Protocol,
+    pub(super) continuation_protocol: std::cell::OnceCell<native::ContinuationProtocol>,
     pub heap: RefCell<ObjectMemory>,
     pub tables: RefCell<Vtables>,
     pub symbols: RefCell<Symbols>,
@@ -42,6 +43,7 @@ pub(crate) struct State {
     pub names: RefCell<HashMap<&'static [u8], Oop>>,
     pub detached: RefCell<AddressMap<Allocation>>,
     pub active: RefCell<Vec<CallFrame>>,
+    pub(super) drives: RefCell<Vec<super::continuation::Drive>>,
     pub permanent: RefCell<Vec<Oop>>,
     pub default_lookup: Cell<Oop>,
     pub invalid_fault: Cell<Oop>,
@@ -365,6 +367,7 @@ impl State {
                 roots.extend([frame.method, frame.context, frame.owner]);
             }
         }
+        roots.extend(self.drives.borrow().iter().filter_map(|d| d.paused));
         roots
     }
     pub(super) unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
@@ -381,6 +384,8 @@ impl State {
             b"allocation:bytes:identity:",
             b"binding:value:weak:",
             b"invalidRequest",
+            b"continuationBarrier", b"driveActive", b"continuationConsumed",
+            b"prepareSend", b"prepareEntry", b"answerTo:with:", b"drive:budget:", b"pause:",
             b"unbound",
             b"mappingFailed",
             b"incompatibleModule",

@@ -2,7 +2,9 @@
 //! lookup can call user code; the selected method is then entered directly.
 use super::{native_id::State, object_memory::ObjectMemory};
 use crate::abi::Oop;
-pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Oop>, Oop> {
+pub(super) enum Selection { Bound(Option<Oop>), Lookup(Oop) }
+// Shared decision: either an owner-table result or a live lookup send.
+pub(super) fn selection(s: &State, r: Oop, selector: Oop) -> Result<Selection, Oop> {
     let behavior = s.behavior(r)?;
     // The validated receiver's vtable was admitted when assigned and is kept
     // alive by that receiver. Read its current vtable, without a second check
@@ -24,8 +26,12 @@ pub(crate) unsafe fn bind(s: &State, r: Oop, selector: Oop) -> Result<Option<Oop
         || s.tables.borrow().has_default_root_lookup(meta, s.lookup, s.default_lookup.get())
     {
         let method = s.tables.borrow().lookup(behavior, selector);
-        return Ok(method);
+        return Ok(Selection::Bound(method));
     }
+    Ok(Selection::Lookup(behavior))
+}
+pub(crate) unsafe fn bind(s:&State,r:Oop,selector:Oop)->Result<Option<Oop>,Oop>{
+    let behavior = match selection(s,r,selector)? { Selection::Bound(m)=>return Ok(m), Selection::Lookup(v)=>v };
     let method = unsafe { send(s, behavior, s.lookup, &[selector]) }?;
     if method.is_null() {
         Ok(None)
