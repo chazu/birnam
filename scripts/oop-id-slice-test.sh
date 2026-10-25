@@ -29,7 +29,8 @@ clang -dynamiclib -O2 -Itests/fixtures/oop-continuation tests/fixtures/oop-conti
 clang -O2 -DV2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v2"
 clang -O2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v1"
 # Explicit paths supply the entire runtime closure. There is no installed-prefix
-# lookup, upper-language library, source compilation or image bootstrap fallback.
+# lookup or image bootstrap fallback. The numeric gate separately compiles
+# the retained control sources directly from this checkout.
 BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
     "$CARGO_TARGET_DIR/release/examples/oop_slice" "$root" > "$logs/runtime.log" 2>&1
 BIRNAM_MODULES_DIR=/nonexistent BIRNAM_TEST_MODULE_DIRECTORY=/nonexistent \
@@ -96,6 +97,9 @@ for mode in ['return', 'leave', 'nested', 'park']:
 for mode in ['eligible', 'native_eligible', 'native_park', 'native_leave']:
     marker=('COMPILED_CONTROL_NATIVE_OK mode='+mode).encode()
     assert marker in numeric, marker
+for marker in [b'SOURCE_METHOD_DEFINITION_OK', b'SOURCE_TASK_CONTROL_OK checks=177', b'SOURCE_HANDLER_CLEANUP_OK', b'#[#taskControlChecks 177 #failures 0]']:
+    assert marker in numeric, marker
+assert b'#[#FAILED ' not in numeric
 for expected in [b'OOP_STDOUT:\x00\xff\n', b'OOP_NUMBER:2\n', b'OOP_REENTRY;OOP_REENTRY;\n', 'OOP_STDERR:\x00\ufffd'.encode()]:
     assert expected in numeric, repr(expected)
 assert 'SYSTEM_INPUT_ERROR_OK' in (p/'input-error.log').read_text()

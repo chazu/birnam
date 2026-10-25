@@ -264,6 +264,7 @@ pub(super) unsafe fn check(
             Some(before)
         );
         super::resumable::check(id,send,sel,[ns,roots,gc,string,actor,integer,blocks]);
+        super::task_control::check(id,send,sel,[ns,roots,gc,string,integer,blocks]);
         println!("COMPILER_EXECUTION_OOP_OK");
     }
 }

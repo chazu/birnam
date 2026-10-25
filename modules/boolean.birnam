@@ -1,7 +1,7 @@
 // Boolean policy over canonical identities retained by the cold-bootstrap seed.
 // Word compares opaque identities and selects data without a temporary Word.
 // It never invokes a branch or implements Boolean behavior.
-[Module named: #booleanValues requires: #[#nativeValues]];
+[Module named: #booleanValues requires: #[]];
 let boolWord := Word;
 let boolTrue := true;
 let boolFalse := false;
@@ -12,57 +12,55 @@ let boolFalseThunk := [| boolFalse];
 let boolTrueBytes := ["true" asBytes];
 let boolFalseBytes := ["false" asBytes];
 let boolString := String;
-let boolExecution := Execution;
-let boolPrintTrue := [| [boolExecution objectResultOf: boolString selector: #fromBytes: byteArgument: boolTrueBytes]];
-let boolPrintFalse := [| [boolExecution objectResultOf: boolString selector: #fromBytes: byteArgument: boolFalseBytes]];
+let boolPrintTrue := [| [boolString fromBytes: boolTrueBytes]];
+let boolPrintFalse := [| [boolString fromBytes: boolFalseBytes]];
 
-[Reflect defineMethod: #not on: Boolean as: [boolExecution block: [:self |
+[Reflect defineMethod: #not on: Boolean as: [:self |
   let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: boolTrue ifDifferent: boolNil];
   [boolWord selectIfSameObject: self with: boolTrue ifEqual: boolFalse ifDifferent: otherwise]
-] withNativeSignature: "o"]];
-[Reflect defineMethod: #& on: Boolean as: [boolExecution block: [:self :other |
+]];
+[Reflect defineMethod: #& on: Boolean as: [:self :other |
   let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: self ifDifferent: boolNil];
   [boolWord selectIfSameObject: self with: boolTrue ifEqual: other ifDifferent: otherwise]
-] withNativeSignature: "oO"]];
-[Reflect defineMethod: #| on: Boolean as: [boolExecution block: [:self :other |
+]];
+[Reflect defineMethod: #| on: Boolean as: [:self :other |
   let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: other ifDifferent: boolNil];
   [boolWord selectIfSameObject: self with: boolTrue ifEqual: self ifDifferent: otherwise]
-] withNativeSignature: "oO"]];
+]];
 // Select data without invoking it. Callers can reuse handlers of any arity and
 // pass their changing data through ordinary value: messages after selection.
 [Reflect defineMethod: #selectIfTrue:ifFalse:otherwise: on: Boolean as:
-  [boolExecution block: [:self :yes :no :otherwise |
+  [:self :yes :no :otherwise |
     let choice := [boolWord selectIfSameObject: self with: boolFalse ifEqual: no ifDifferent: otherwise];
     [boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: choice]
-  ] withNativeSignature: "oOOO"]];
-// The deferred-result ABI invokes only the selected block and preserves raw
-// native Word/Bytes/Unit/Entry results and failures at the existing Id boundary.
+  ]];
+// Invoke only the selected Block through the ordinary continuation send.
 [Reflect defineMethod: #ifTrue:ifFalse: on: Boolean as:
-  [boolExecution block: [:self :yes :no |
+  [:self :yes :no |
     let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: no ifDifferent: boolNilThunk];
-    [boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: otherwise]
-  ] withNativeSignature: "vOO"]];
+    [[boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: otherwise] value]
+  ]];
 [Reflect defineMethod: #ifTrue: on: Boolean as:
-  [boolExecution block: [:self :yes |
-    [boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: boolNilThunk]
-  ] withNativeSignature: "vO"]];
+  [:self :yes |
+    [[boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: boolNilThunk] value]
+  ]];
 [Reflect defineMethod: #ifFalse: on: Boolean as:
-  [boolExecution block: [:self :no |
-    [boolWord selectIfSameObject: self with: boolFalse ifEqual: no ifDifferent: boolNilThunk]
-  ] withNativeSignature: "vO"]];
+  [:self :no |
+    [[boolWord selectIfSameObject: self with: boolFalse ifEqual: no ifDifferent: boolNilThunk] value]
+  ]];
 [Reflect defineMethod: #and: on: Boolean as:
-  [boolExecution block: [:self :other |
+  [:self :other |
     let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: boolFalseThunk ifDifferent: boolNilThunk];
-    [boolWord selectIfSameObject: self with: boolTrue ifEqual: other ifDifferent: otherwise]
-  ] withNativeSignature: "vO"]];
+    [[boolWord selectIfSameObject: self with: boolTrue ifEqual: other ifDifferent: otherwise] value]
+  ]];
 [Reflect defineMethod: #or: on: Boolean as:
-  [boolExecution block: [:self :other |
+  [:self :other |
     let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: other ifDifferent: boolNilThunk];
-    [boolWord selectIfSameObject: self with: boolTrue ifEqual: boolTrueThunk ifDifferent: otherwise]
-  ] withNativeSignature: "vO"]];
+    [[boolWord selectIfSameObject: self with: boolTrue ifEqual: boolTrueThunk ifDifferent: otherwise] value]
+  ]];
 [Reflect defineMethod: #printString on: Boolean as:
-  [boolExecution block: [:self |
+  [:self |
     let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: boolPrintFalse ifDifferent: boolNilThunk];
-    [boolWord selectIfSameObject: self with: boolTrue ifEqual: boolPrintTrue ifDifferent: otherwise]
-  ] withNativeSignature: "v"]];
+    [[boolWord selectIfSameObject: self with: boolTrue ifEqual: boolPrintTrue ifDifferent: otherwise] value]
+  ]];
 [Module markLoaded: #booleanValues];

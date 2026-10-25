@@ -188,7 +188,22 @@ recognizes no special selectors. Their obsolete native value plumbing is removed
 and registration and the four-slot driver descriptor are shared. Source checks
 cover nested exits, budgeted resume, replacement, GC/code release and native
 refusal ([receipt](../measurements/execution-control-adapters-20261025.json)).
-Source-authored handlers, cancellation, cleanup and recovery remain unconnected.
+The explicit source gate now loads the retained foundations and unchanged
+`stackless-control.birnam`, and passes all 177 checks in `task-control-smoke.birnam`
+with its native observer callbacks. Additional checks suspend inside `on:do:`
+handlers and ordinary `ensure:` cleanup. Task policy remains authored Birnam.
+`Reflect defineMethod:on:as:` installs an ordinary continuation Method whose
+Sequence context retains the implementation Block; its body sends `value:…`
+with the receiver and arguments, preserving the answer destination. Id reads
+none of that context. No selector-specific compiler recognition is introduced.
+Boolean selection, Globals hashing, printing and System GC now use Oop messages
+instead of the removed native value-carrier adapters. Execution publishes Block's
+existing vtable ownership and the retained error primitive; reflected arities up
+to 16 use the existing Block convention. GC retirement scans the weak return
+continuation table once per dead-object set rather than once per dead object.
+[Acceptance receipt](../measurements/authored-task-control-20261025.json).
+Default compiler/artifact orchestration, recovery, complete bootstrap/Host and
+installed qualification remain pending; this is explicit source-path acceptance.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send

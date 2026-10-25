@@ -25,7 +25,7 @@ let errorPrefix := ["does not understand #" asBytes];
 [Reflect defineMethod: #doesNotUnderstand: on: ObjectVt as: [:self :selector |
   let bytes := [errorPrefix withSymbolName: selector];
   [[bytes isNil] ifTrue: [| [Execution invalidRequest]] ifFalse: [|
-    [errorFactory kind: #doesNotUnderstand message: [bytes asString]]
+    [errorFactory kind: #doesNotUnderstand message: [String fromBytes: bytes]]
   ]]
 ]];
 [Namespace at: #Error put: errorFactory];

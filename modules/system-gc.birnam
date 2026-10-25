@@ -1,23 +1,22 @@
-// System-level GC policy. Owners provide only native Word conversion bridges.
-[Module named: #systemGc requires: #[#nativeValues]];
+// System-level GC policy. Owner messages exchange only Oops.
+[Module named: #systemGc requires: #[]];
 let gcOwner := GC;
 let gcInteger := Integer;
 let gcId := Vtable;
-let gcBoolean := Boolean;
 [Reflect defineMethod: #gc on: System as: [:self |
-  [gcInteger fromWordResultOf: gcOwner selector: #collect]
+  [gcInteger fromWord: [gcOwner collect]]
 ]];
 [Reflect defineMethod: #liveObjects on: System as: [:self |
-  [gcInteger fromWordResultOf: gcId selector: #allocationCount]
+  [gcInteger fromWord: [gcId allocationCount]]
 ]];
 [Reflect defineMethod: #autoGc: on: System as: [:self :enabled |
   [[[enabled == true] | [enabled == false]] ifTrue: [|
-    [gcBoolean sendWordOf: enabled to: gcOwner selector: #automaticCollection:]; self
+    [gcOwner automaticCollection: [gcInteger wordOf: [enabled ifTrue: [| 1] ifFalse: [| 0]]]]; self
   ] ifFalse: [| nil]]
 ]];
 [Reflect defineMethod: #preciseGc: on: System as: [:self :enabled |
   [[[enabled == true] | [enabled == false]] ifTrue: [|
-    [gcBoolean sendWordOf: enabled to: gcOwner selector: #precisePayloads:]; self
+    [gcOwner precisePayloads: [gcInteger wordOf: [enabled ifTrue: [| 1] ifFalse: [| 0]]]]; self
   ] ifFalse: [| nil]]
 ]];
 [Module markLoaded: #systemGc];

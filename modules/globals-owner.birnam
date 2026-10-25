@@ -14,7 +14,7 @@ let bindingNil := nil;
 let bindingSlot0 := 0; let bindingSlot1 := 1; let bindingSlot2 := 2; let bindingSlot3 := 3;
 let bindingReflect := Reflect;
 let bindingKeyPrototype := [bindingModel newSlots: #[nil] parent: ObjectVt];
-let bindingHashZero := [Execution wordResultOf: 0 selector: #word];
+let bindingHashZero := [Integer wordOf: 0];
 // Identity-preserving keys above ordinary Map. Symbols already have canonical
 // identity; other keys use ordinary wrappers. Constant hashing is intentional:
 // these uncommon keys collide, then compare their original identities. No
@@ -29,7 +29,7 @@ let bindingHashZero := [Execution wordResultOf: 0 selector: #word];
 ]];
 [Reflect defineMethod: #slotNames on: bindingKeyPrototype as: [:self | #[#key]]];
 [Reflect defineMethod: #collectionHash on: bindingKeyPrototype as:
-  [Execution block: [:self | bindingHashZero] withNativeSignature: "w"]];
+  [:self | bindingHashZero]];
 [Reflect defineMethod: #collectionEquals: on: bindingKeyPrototype as: [:self :other |
   [[self bindingIdentity] == [other bindingIdentity]]
 ]];

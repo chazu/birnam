@@ -1617,13 +1617,16 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
             unsafe { s.engine.borrow_mut().finalize_detached_machine(value) }
         }
     }
+    let dead: HashSet<_> = values.iter().map(|value| value.addr()).collect();
+    s.resume
+        .borrow_mut()
+        .return_methods
+        .retain(|method, context| !dead.contains(method) && !dead.contains(context));
     for value in values {
         {
             let mut r = s.resume.borrow_mut();
             r.runs.remove(&value.addr());
             r.returns.remove(&value.addr());
-            r.return_methods
-                .retain(|method, context| *method != value.addr() && *context != value.addr());
         }
         let record = s.resume.borrow_mut().records.remove(&value.addr());
         if let Some(record) = record {

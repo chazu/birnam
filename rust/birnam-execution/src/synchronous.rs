@@ -202,6 +202,14 @@ impl State {
         }
     }
 }
+unsafe extern "C" fn invalid_request(_: Oop, c: Oop, _: Oop, _: *const Oop, _: usize) -> Oop {
+    unsafe {
+        match state(c) {
+            Ok(s) => s.id.invalid,
+            Err(e) => abi::fault_reference(e),
+        }
+    }
+}
 unsafe extern "C" fn from_operands(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -586,6 +594,17 @@ const NAMES: &[&[u8]] = &[
     b"protectedBlock:",
     b"leaveBoundary:",
     b"park",
+    b"value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:",
+    b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:",
+    b"ownerOf:put:",
+    b"invalidRequest",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -737,6 +756,17 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"protectedBlock:"),
     Literal::new(b"leaveBoundary:"),
     Literal::new(b"park"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:"),
+    Literal::new(b"ownerOf:put:"),
+    Literal::new(b"invalidRequest"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1024,6 +1054,56 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(resumable::control::park),
         convention: 0,
     },
+    MethodSpec {
+        name: 149,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 150,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 151,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 152,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 153,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 154,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 155,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 156,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 157,
+        entry: Some(value),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 159,
+        entry: Some(invalid_request),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1120,6 +1200,7 @@ unsafe extern "C" fn initialize(
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[names[name], method])?;
         }
+        send(id.root, b"ownerOf:put:", &[block_vt, block])?;
         // The factory has no Block fields; it is a rooted ordinary object. Only actual
         // constructed Blocks are tracked and traced by this representation owner.
         send(roots, b"register:", &[receiver])?;

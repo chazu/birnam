@@ -1,4 +1,4 @@
-//! Cold process acceptance driver. Upper Birnam libraries/images are absent.
+//! Cold process acceptance driver, followed by explicit source qualification.
 use birnam_abi::{self as abi, Oop, id_protocol::Protocol};
 use std::{os::unix::ffi::OsStrExt, path::PathBuf};
 #[path="oop_slice/numeric.rs"]
@@ -9,6 +9,8 @@ mod tcc;
 mod compiler;
 #[path="oop_slice/resumable.rs"]
 mod resumable;
+#[path = "oop_slice/task_control.rs"]
+mod task_control;
 fn main() {
     unsafe { run() }
 }
@@ -53,7 +55,7 @@ unsafe fn run() {
             library.join("libbirnam_codegen_runtime.dylib"),
         ];
         let words: &[&[u8]] = &[
-            b"suspendAt:continueAt:",b"captureAt:continueAt:",b"resumeWith:",b"resumeWith:budget:",b"restoreContinuation:with:",b"suspended",b"captureRegistration",b"controlSite",b"callSite:",b"ContinuationVt",b"continuationConsumed",b"continuationWrongMachine",b"ControlMachine",b"controlEligible",b"protectedBlock:",b"leaveBoundary:",b"park",b"failed",b"exitRunnableBoundary:",b"returnAt:",b"boundarySite",b"exitReturn",b"boundaryCallSite:",b"exitBoundaryAt:",b"boundaryDeliveryPending",b"acknowledgeBoundaryDelivery",b"leaf",
+            b"suspendAt:continueAt:",b"captureAt:continueAt:",b"resumeWith:",b"resumeWith:budget:",b"restoreContinuation:with:",b"suspended",b"captureRegistration",b"controlSite",b"callSite:",b"ContinuationVt",b"continuationConsumed",b"continuationWrongMachine",b"NativeTaskObserver",b"observe:",b"failTask:",b"ensureTask:body:",b"mustNotRecord",b"SymbolVt",b"Vtable",b"Collection",b"Reflect",b"taskSmokeResult",b"TaskCheckFailures",b"TaskChecks",b"value",b"ControlMachine",b"controlEligible",b"protectedBlock:",b"leaveBoundary:",b"park",b"failed",b"exitRunnableBoundary:",b"returnAt:",b"boundarySite",b"exitReturn",b"boundaryCallSite:",b"exitBoundaryAt:",b"boundaryDeliveryPending",b"acknowledgeBoundaryDelivery",b"leaf",
             b"runOther",b"reenter",b"inspectFrames",b"methodAt:",b"later:",b"localLookup",b"selected",b"resumeLookup",b"helper",b"captureFactory",b"budget:",b"allocationBytesTotal",
             b"TailProbe",b"tailTick",b"tailSetup:",b"tailPeak",b"tailCalls",b"tailRecurse",
             b"LookupProbe",b"resumableBound",b"fromStep:descriptor:selection:owner:",b"compileResumable:",b"Machine",b"MachineVt",b"runBlock:",b"runBlock:budget:",b"continueWithBudget:",b"destroy",b"executionState",b"isRunnable",b"liveFrameCount",b"runnable",b"completed",b"resumeMark:",b"resumeCount:",b"resumeReset",b"before",b"entered",b"after",b"later",b"child",

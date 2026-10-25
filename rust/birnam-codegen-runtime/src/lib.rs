@@ -1,9 +1,12 @@
 //! Source compilation through current Lang, NativeBackend and TCC owners.
-//! Artifact/publication/resumable integration remains pending source, not a
-//! compatibility runtime. The established pure lowering is reused unchanged.
+//! Explicit source compilation and reflected Methods reuse the retained lowering.
+//! Artifact publication and default compiler orchestration remain pending.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
-    id_protocol::{Literal, MethodSpec, Module, Protocol},
+    id_protocol::{
+        ContinuationMethodSpec as MethodSpec, ContinuationModule as Module, ContinuationProtocol,
+        Control, Literal, Protocol,
+    },
 };
 use birnam_codegen::OwnedCst;
 use core::{
@@ -16,6 +19,9 @@ use std::{
 };
 struct State {
     id: Protocol,
+    control: Control,
+    reflect: Oop,
+    implementation_entry: Oop,
     ns: Oop,
     receiver: Oop,
     names: HashMap<&'static [u8], Oop>,
@@ -121,7 +127,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
         let [v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let mut values = vec![s.ns, s.receiver];
+        let mut values = vec![s.ns, s.receiver, s.reflect, s.implementation_entry];
         values.extend_from_slice(&s.scoped.borrow());
         for value in values {
             s.send(*v, b"visit:", &[value])?;
@@ -257,6 +263,120 @@ unsafe extern "C" fn compile(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
 unsafe extern "C" fn compile_resumable(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     unsafe { compile_source(c, a, n, true) }
 }
+// A reflected Method explicitly sends its implementation Block the receiver
+// followed by the message arguments, preserving the original answer destination.
+unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = state((*p).ns)?;
+        let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[c, r, *k]);
+        let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
+        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
+        let arity = s.send(c, b"at:", &[abi::size(2).unwrap()])?;
+        if abi::as_size(arity) != Some(args.len()) {
+            return Err(invalid());
+        }
+        let mut values = vec![implementation, selector, *k, r];
+        values.extend_from_slice(args);
+        let work = (s.control)(
+            s.id.root,
+            s.names[b"prepareSend".as_slice()],
+            values.as_ptr(),
+            values.len(),
+        );
+        if abi::is_fault(work) {
+            Err(abi::object_reference(work))
+        } else {
+            Ok(work)
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn construct_method(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [arity, implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*arity, *implementation]);
+        let arity = s.index(*arity)?;
+        if arity > 16 {
+            return Err(invalid());
+        }
+        let bytes = b"value:".repeat(arity + 1);
+        let words: Vec<_> = bytes
+            .iter()
+            .map(|b| abi::size(*b as usize).unwrap())
+            .collect();
+        let name = q.keep(s.send(s.id.root, b"nameWithBytes", &words)?);
+        let selector = q.keep(s.id.send(name, s.id.intern, &[])?);
+        let context = q.keep(s.send(
+            s.id.root,
+            b"sequence",
+            &[*implementation, selector, abi::size(arity).unwrap()],
+        )?);
+        s.send(s.implementation_entry, b"withContext:", &[context])
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn define_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [selector, target, implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[r, *selector, *target, *implementation]);
+        let bytes = s.id.read_bytes(
+            *selector,
+            s.names[b"sizeWord".as_slice()],
+            s.names[b"atWord:".as_slice()],
+        )?;
+        let first = *bytes.first().ok_or_else(invalid)?;
+        let colons = bytes.iter().filter(|&&b| b == b':').count();
+        let arity = if colons > 0 {
+            colons
+        } else {
+            usize::from(!first.is_ascii_alphabetic() && first != b'_')
+        };
+        if arity > 16 {
+            return Err(invalid());
+        }
+        let arity = q.keep(s.send(
+            s.named(b"Integer")?,
+            b"fromWord:",
+            &[abi::size(arity).unwrap()],
+        )?);
+        let method = q.keep(s.send(
+            r,
+            b"methodForArity:implementation:",
+            &[arity, *implementation],
+        )?);
+        if s.is_error(method)? {
+            return Ok(method);
+        }
+        let behavior = q.keep(s.send(s.id.root, b"ensurePrivateVtableFor:", &[*target])?);
+        let result = s.send(behavior, b"addMethod:as:", &[method, *selector])?;
+        Ok(if result == method { *target } else { result })
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn vtable_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if n != 1 {
+            return Err(invalid());
+        }
+        s.send(s.id.root, b"behaviorOf:", args)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 const OWNER_NAME: &[u8] = b"Codegen";
 const NAMES: &[&[u8]] = &[
     b"Block",
@@ -311,6 +431,16 @@ const NAMES: &[&[u8]] = &[
     b"compileSynchronous:",
     b"compileResumable:",
     b"emitResumable:source:",
+    b"Reflect",
+    b"ReflectVt",
+    b"defineMethod:on:as:",
+    b"methodForArity:implementation:",
+    b"enterImplementation",
+    b"prepareSend",
+    b"nameWithBytes",
+    b"ensurePrivateVtableFor:",
+    b"addMethod:as:",
+    b"vtableOf:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -365,31 +495,68 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"compileSynchronous:"),
     Literal::new(b"compileResumable:"),
     Literal::new(b"emitResumable:source:"),
+    Literal::new(b"Reflect"),
+    Literal::new(b"ReflectVt"),
+    Literal::new(b"defineMethod:on:as:"),
+    Literal::new(b"methodForArity:implementation:"),
+    Literal::new(b"enterImplementation"),
+    Literal::new(b"prepareSend"),
+    Literal::new(b"nameWithBytes"),
+    Literal::new(b"ensurePrivateVtableFor:"),
+    Literal::new(b"addMethod:as:"),
+    Literal::new(b"vtableOf:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 49,
         entry: Some(compile),
+        convention: 0,
     },
     MethodSpec {
         name: 38,
         entry: Some(roots),
+        convention: 0,
     },
     MethodSpec {
         name: 50,
         entry: Some(compile_resumable),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 54,
+        entry: Some(define_method),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 55,
+        entry: Some(construct_method),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 56,
+        entry: Some(enter_implementation),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 61,
+        entry: Some(vtable_of),
+        convention: 0,
     },
 ];
 unsafe extern "C" fn initialize(
-    p: *const Protocol,
+    p: *const ContinuationProtocol,
     image: Oop,
     l: *const Oop,
     n: usize,
     a: *const Oop,
     count: usize,
 ) -> Oop {
-    API.store(p.cast_mut(), Ordering::Release);
-    let id = unsafe { *p };
+    API.store(
+        unsafe { &raw mut (*p.cast_mut()).common },
+        Ordering::Release,
+    );
+    let id = unsafe { (*p).common };
+    let control = unsafe { (*p).control };
     let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {
         return id.invalid;
     };
@@ -421,8 +588,20 @@ unsafe extern "C" fn initialize(
         let token = send(roots, b"retain:", &[vt])?;
         let receiver = send(vt, b"allocate", &[abi::size(0).unwrap()])?;
         let receiver_token = send(roots, b"retain:", &[receiver])?;
+        let reflect_vt = send(named(b"ObjectVt")?, b"delegated", &[])?;
+        let reflect_vt_token = send(roots, b"retain:", &[reflect_vt])?;
+        let reflect = send(reflect_vt, b"allocate", &[abi::size(0).unwrap()])?;
+        let reflect_token = send(roots, b"retain:", &[reflect])?;
+        let implementation_entry = send(
+            image,
+            b"methodAt:",
+            &[names[b"enterImplementation".as_slice()]],
+        )?;
         let s = Box::leak(Box::new(State {
             id,
+            control,
+            reflect,
+            implementation_entry,
             ns: *ns,
             receiver,
             names: names.clone(),
@@ -432,12 +611,32 @@ unsafe extern "C" fn initialize(
         }));
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
+            let name = NAMES[spec.name];
+            if name == b"enterImplementation" {
+                continue;
+            }
+            let target = if matches!(
+                name,
+                b"defineMethod:on:as:" | b"methodForArity:implementation:" | b"vtableOf:"
+            ) {
+                reflect_vt
+            } else {
+                vt
+            };
             let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
             let method = send(method, b"withContext:", &[*ns])?;
-            send(vt, b"addMethod", &[symbols[spec.name], method])?;
+            send(target, b"addMethod", &[symbols[spec.name], method])?;
         }
         send(roots, b"register:", &[receiver])?;
         send(*ns, b"at:put:", &[names[OWNER_NAME], receiver])?;
+        send(*ns, b"at:put:", &[names[b"Reflect".as_slice()], reflect])?;
+        send(
+            *ns,
+            b"at:put:",
+            &[names[b"ReflectVt".as_slice()], reflect_vt],
+        )?;
+        send(roots, b"release:", &[reflect_token])?;
+        send(roots, b"release:", &[reflect_vt_token])?;
         send(roots, b"release:", &[token])?;
         send(roots, b"release:", &[receiver_token])?;
         s.ready.set(true);
@@ -446,8 +645,8 @@ unsafe extern "C" fn initialize(
     .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v2: Module = Module {
-    version: 2,
+pub static birnam_native_module_v3: Module = Module {
+    version: 3,
     byte_size: size_of::<Module>() as u32,
     literals: LITERALS.as_ptr(),
     literal_count: LITERALS.len(),

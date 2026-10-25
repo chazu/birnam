@@ -1,19 +1,19 @@
 // Default printing policy over owned Bytes; value-specific printers remain.
-[Module named: #printing requires: #[#nativeValues]];
+[Module named: #printing requires: #[]];
 
 // Byte constants avoid extra String factory calls while rendering each object.
 let objectPrintBytes := ["anObject" asBytes];
 let symbolPrefixBytes := ["#" asBytes];
 
 [Reflect defineMethod: #printString on: ObjectVt as: [:self |
-  [objectPrintBytes asString]
+  [String fromBytes: objectPrintBytes]
 ]];
 [Reflect defineMethod: #asString on: ObjectVt as: [:self |
   [self printString]
 ]];
 [Reflect defineMethod: #printString on: SymbolVt as: [:self |
   let bytes := [symbolPrefixBytes withSymbolName: self];
-  [[bytes isNil] ifTrue: [| nil] ifFalse: [| [bytes asString]]]
+  [[bytes isNil] ifTrue: [| nil] ifFalse: [| [String fromBytes: bytes]]]
 ]];
 
 // Bootstrap activates this artifact directly; ordinary Module loads are no-ops.
