@@ -580,6 +580,13 @@ const NAMES: &[&[u8]] = &[
     b"isLoaded:",
     b"methodBehavior",
     b"compile:signature:",
+    b"compile:output:root:",
+    b"compile:output:from:synchronousBodies:",
+    b"compile:output:root:embeddedLibraries:",
+    b"moduleFactory:source:dispositions:",
+    b"Alien",
+    b"provideLibraryPath:named:",
+    b"provideLibrary:named:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -706,6 +713,13 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"isLoaded:"),
     Literal::new(b"methodBehavior"),
     Literal::new(b"compile:signature:"),
+    Literal::new(b"compile:output:root:"),
+    Literal::new(b"compile:output:from:synchronousBodies:"),
+    Literal::new(b"compile:output:root:embeddedLibraries:"),
+    Literal::new(b"moduleFactory:source:dispositions:"),
+    Literal::new(b"Alien"),
+    Literal::new(b"provideLibraryPath:named:"),
+    Literal::new(b"provideLibrary:named:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -866,6 +880,21 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 106,
         entry: Some(artifact::load),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 124,
+        entry: Some(artifact::compile_root),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 125,
+        entry: Some(artifact::compile_synchronous),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 126,
+        entry: Some(artifact::compile_embedded),
         convention: 0,
     },
 ];

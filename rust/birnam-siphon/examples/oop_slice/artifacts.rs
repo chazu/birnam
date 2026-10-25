@@ -226,6 +226,124 @@ pub(super) unsafe fn check(
         let expected = eval("#[#success 77]");
         assert_eq!(call(outcome, b"=", &[expected]), truth);
         println!("ARTIFACT_TASK_CODE_LIFETIME_OK");
+        // The initializer remains resumable; explicit body selection controls
+        // whether invocation crosses the retained synchronous native boundary.
+        let modes_path = temp.join("modes.dylib");
+        let modes_value = text(modes_path.as_os_str().as_encoded_bytes());
+        for synchronous in [false, true] {
+            let source = text(b"[| [ControlMachine controlEligible]]");
+            assert_eq!(
+                call(
+                    codegen,
+                    b"compile:output:from:synchronousBodies:",
+                    &[
+                        source,
+                        modes_value,
+                        filename_value,
+                        if synchronous { truth } else { named(b"false") }
+                    ]
+                ),
+                modes_value
+            );
+            let body = call(codegen, b"load:", &[modes_value]);
+            let machine = eval("[Machine new]");
+            call(globals, b"at:put:", &[sel(b"ControlMachine"), machine]);
+            assert_eq!(
+                call(machine, b"runBlock:", &[body]),
+                if synchronous { named(b"false") } else { truth }
+            );
+        }
+        call(globals, b"at:put:", &[sel(b"ControlMachine"), nil]);
+        println!("ARTIFACT_SYNCHRONOUS_BODIES_OK");
+
+        let previous = call(globals, b"at:", &[sel(b"Alien")]);
+        eval(
+            "let Alien := [Object clone]; [Reflect defineMethod: #provideLibraryPath:named: on: Alien as: [:self :path :name | [Globals at: #LibraryPath put: path]; self]]; [Reflect defineMethod: #provideLibrary:named: on: Alien as: [:self :bytes :name | [Globals at: #LibraryBytes put: bytes]; self]]; [Reflect defineMethod: #dlopen: on: Alien as: [:self :name | [CompilerProbe resumeMark: #entered]; 99]]",
+        );
+        let library = temp.join("libprobe.dylib");
+        std::fs::write(&library, &object).unwrap();
+        let adjacent = temp.join("adjacent.dylib");
+        let adjacent_value = text(adjacent.as_os_str().as_encoded_bytes());
+        let root_value = text(temp.as_os_str().as_encoded_bytes());
+        let adjacent_source = text(
+            b"[Module named: #artifactAdjacent requires: #[]]; [Alien dlopen: \"libprobe.dylib\"]",
+        );
+        assert_eq!(
+            call(
+                codegen,
+                b"compile:output:root:",
+                &[adjacent_source, adjacent_value, root_value]
+            ),
+            adjacent_value
+        );
+        assert_eq!(bits(call(codegen, b"load:", &[adjacent_value])), 99);
+        assert_eq!(
+            bytes(call(globals, b"at:", &[sel(b"LibraryPath")])),
+            library.as_os_str().as_encoded_bytes()
+        );
+        call(
+            globals,
+            b"at:put:",
+            &[sel(b"LibraryPayload"), text(&object)],
+        );
+        call(
+            globals,
+            b"at:put:",
+            &[sel(b"LibraryName"), text(b"libprobe.dylib")],
+        );
+        let libraries = eval("#[#[LibraryName LibraryPayload]]");
+        let embedded_path = temp.join("embedded.dylib");
+        let embedded_value = text(embedded_path.as_os_str().as_encoded_bytes());
+        let embedded_source = text(
+            b"[Module named: #artifactEmbedded requires: #[]]; [Alien dlopen: \"libprobe.dylib\"]",
+        );
+        assert_eq!(
+            call(
+                codegen,
+                b"compile:output:root:embeddedLibraries:",
+                &[embedded_source, embedded_value, root_value, libraries]
+            ),
+            embedded_value
+        );
+        std::fs::remove_file(&library).unwrap();
+        let descriptor = call(artifact, b"inspect:", &[embedded_value]);
+        assert_ne!(descriptor, nil);
+        assert_eq!(
+            bits(call(call(descriptor, b"nativeRequires", &[]), b"size", &[])),
+            0
+        );
+        assert_eq!(bits(call(codegen, b"load:", &[embedded_value])), 99);
+        assert_eq!(
+            bytes(call(globals, b"at:", &[sel(b"LibraryBytes")])),
+            object
+        );
+        let invalid = eval("#[#[LibraryName LibraryPayload] #[LibraryName LibraryPayload]]");
+        let before = std::fs::read(&embedded_path).unwrap();
+        assert_eq!(
+            call(
+                codegen,
+                b"compile:output:root:embeddedLibraries:",
+                &[embedded_source, embedded_value, root_value, invalid]
+            ),
+            nil
+        );
+        assert_eq!(std::fs::read(&embedded_path).unwrap(), before);
+        call(actor, b"resumeReset", &[]);
+        eval(
+            "[Reflect defineMethod: #provideLibrary:named: on: Alien as: [:self :bytes :name | nil]]",
+        );
+        assert_eq!(call(codegen, b"load:", &[embedded_value]), nil);
+        assert_eq!(count(b"entered"), 0);
+        call(globals, b"at:put:", &[sel(b"Alien"), previous]);
+        for name in [
+            b"LibraryName".as_slice(),
+            b"LibraryPayload",
+            b"LibraryPath",
+            b"LibraryBytes",
+        ] {
+            call(globals, b"at:put:", &[sel(name), nil]);
+        }
+        println!("ARTIFACT_LIBRARY_PACKAGING_OK");
         call(av, b"removeMethod:", &[sel(b"artifactAnswer")]);
         std::fs::remove_dir_all(&temp).unwrap();
         for token in tokens.into_inner() {

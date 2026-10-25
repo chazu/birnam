@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "17c54933",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "exit_code": 0,
+  "unit_tests_passed": 188,
+  "task_control_checks": 177,
+  "task_control_failures": 0,
+  "checks": [
+    "ARTIFACT_COLD_ERROR_OWNER_OK",
+    "ARTIFACT_PARSER_FREE_ACTIVATION_OK",
+    "ARTIFACT_REJECTION_BEFORE_EFFECTS_OK",
+    "ARTIFACT_FROZEN_SNAPSHOT_OK",
+    "ARTIFACT_TASK_CODE_LIFETIME_OK",
+    "ARTIFACT_SYNCHRONOUS_BODIES_OK",
+    "ARTIFACT_LIBRARY_PACKAGING_OK"
+  ],
+  "scope": "Per-body selection, synchronous artifact bodies, root-directory compilation and adjacent/embedded library provisioning. Provider protocol tested with an authored observing provider; platform Alien FFI migration and full bootstrap/Host remain outstanding. Legacy native-carrier adapter artifacts remain incompatible. No Id contract change.",
+  "logs_sha256": {
+    "numeric-integration.log": "88e843b9ebdc23c46c695fa374ccdd1e0cbfb5b2e09b18b037e241418bd51d9b"
+  }
+}

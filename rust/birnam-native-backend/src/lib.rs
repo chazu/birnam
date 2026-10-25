@@ -192,6 +192,50 @@ unsafe extern "C" fn emit_program(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+unsafe fn factory(c: Oop, a: *const Oop, n: usize, persistent: bool) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [program, source, choices] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*program, *source, *choices]);
+        let integer = q.keep(s.named(b"Integer")?);
+        let truth = q.keep(s.named(b"true")?);
+        let falsity = q.keep(s.named(b"false")?);
+        let size = q.keep(s.send(*choices, b"size", &[])?);
+        let count = abi::as_size(s.send(integer, b"wordOf:", &[size])?)
+            .filter(|n| *n <= 65536)
+            .ok_or_else(invalid)?;
+        let mut dispositions = Vec::new();
+        for i in 0..count {
+            let index = q.keep(s.send(integer, b"fromWord:", &[abi::size(i).unwrap()])?);
+            let flag = s.send(*choices, b"at:", &[index])?;
+            dispositions.push(if flag == truth {
+                true
+            } else if flag == falsity {
+                false
+            } else {
+                return Err(invalid());
+            });
+        }
+        match oop_emission::compile_factory(
+            &s.bytes(*program)?,
+            &s.bytes(*source)?,
+            &dispositions,
+            persistent,
+        ) {
+            Ok(c) => s.text(&c),
+            Err(e) => s.error(format!("factory emission: {e:?}").as_bytes()),
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn module_factory(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { factory(c, a, n, true) }
+}
+unsafe extern "C" fn block_factory(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { factory(c, a, n, false) }
+}
 const OWNER_NAME: &[u8] = b"NativeBackend";
 const NAMES: &[&[u8]] = &[
     b"Error",
@@ -223,6 +267,12 @@ const NAMES: &[&[u8]] = &[
     b"emit:source:filename:persistent:synchronous:",
     b"true",
     b"false",
+    b"moduleFactory:source:dispositions:",
+    b"factory:source:dispositions:",
+    b"Integer",
+    b"size",
+    b"wordOf:",
+    b"fromWord:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Error"),
@@ -254,6 +304,12 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"emit:source:filename:persistent:synchronous:"),
     Literal::new(b"true"),
     Literal::new(b"false"),
+    Literal::new(b"moduleFactory:source:dispositions:"),
+    Literal::new(b"factory:source:dispositions:"),
+    Literal::new(b"Integer"),
+    Literal::new(b"size"),
+    Literal::new(b"wordOf:"),
+    Literal::new(b"fromWord:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -271,6 +327,14 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 26,
         entry: Some(emit_program),
+    },
+    MethodSpec {
+        name: 29,
+        entry: Some(module_factory),
+    },
+    MethodSpec {
+        name: 30,
+        entry: Some(block_factory),
     },
 ];
 unsafe extern "C" fn initialize(

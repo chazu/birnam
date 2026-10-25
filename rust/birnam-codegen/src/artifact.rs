@@ -183,8 +183,9 @@ pub fn emit_oop(
     generated: &[u8],
     path: &[u8],
     metadata: &crate::source_metadata::Metadata,
+    embedded: &[(Vec<u8>, Vec<u8>)],
 ) -> Option<Vec<u8>> {
-    let descriptor = descriptor(tree, source, path, metadata, &[])?;
+    let descriptor = descriptor(tree, source, path, metadata, embedded)?;
     let encoded = metadata.encode()?;
     let mut out = String::from("#define birnam_native_module_v3 artifact_code_module\n");
     out.push_str(std::str::from_utf8(generated).ok()?);
@@ -192,8 +193,29 @@ pub fn emit_oop(
     array(&mut out, "__birnam_artifact_descriptor", &descriptor);
     array(&mut out, "__birnam_artifact_source", source);
     array(&mut out, "__birnam_artifact_metadata", &encoded);
+    for (i, (name, bytes)) in embedded.iter().enumerate() {
+        array(&mut out, &format!("__birnam_native_name_{i}"), name);
+        let encoded: Vec<_> = bytes
+            .iter()
+            .flat_map(|b| {
+                [
+                    b"0123456789abcdef"[(b >> 4) as usize],
+                    b"0123456789abcdef"[(b & 15) as usize],
+                ]
+            })
+            .collect();
+        array(&mut out, &format!("__birnam_native_bytes_{i}"), &encoded);
+    }
     out.push_str("static O artifact_initialize(const CP*p,O unit,const O*names,size_t count,const O*a,size_t n){O method=artifact_code_module.initialize(p,unit,names,count,a,n);if(failed(method))return method;Call c={0};keep(&c,method);O nil=named(&c,S_NIL);if(method==nil)return finish(&c,method);O error_factory=named(&c,S_ERROR);if(error_factory&&error_factory!=nil){O is_error=call(&c,method,S_IS_ERROR,0,0);if(is_error==named(&c,S_TRUE))return finish(&c,method);}O factory=named(&c,S_VECTOR);O result=call(&c,factory,S_NEW,0,0);result=call(&c,result,S_ADD,&method,1);\n");
     writeln!(out,"O source=string(&c,__birnam_artifact_source,{});result=call(&c,result,S_ADD,&source,1);O metadata=string(&c,__birnam_artifact_metadata,{});result=call(&c,result,S_ADD,&metadata,1);",source.len(),encoded.len()).ok()?;
-    out.push_str("O adapters=call(&c,factory,S_NEW,0,0);result=call(&c,result,S_ADD,&adapters,1);return finish(&c,result); }\nconst Module birnam_native_module_v3={3,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,artifact_initialize};\n");
+    out.push_str("O adapters=call(&c,factory,S_NEW,0,0);result=call(&c,result,S_ADD,&adapters,1);");
+    if !embedded.is_empty() {
+        out.push_str("O libraries=call(&c,factory,S_NEW,0,0);O v;\n");
+        for (i, (name, bytes)) in embedded.iter().enumerate() {
+            writeln!(out,"O lib_{i}=call(&c,factory,S_NEW,0,0);v=string(&c,__birnam_native_name_{i},{});lib_{i}=call(&c,lib_{i},S_ADD,&v,1);v=string(&c,__birnam_native_bytes_{i},{});lib_{i}=call(&c,lib_{i},S_ADD,&v,1);libraries=call(&c,libraries,S_ADD,&lib_{i},1);",name.len(),bytes.len()*2).ok()?;
+        }
+        out.push_str("result=call(&c,result,S_ADD,&libraries,1);");
+    }
+    out.push_str("return finish(&c,result); }\nconst Module birnam_native_module_v3={3,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,artifact_initialize};\n");
     Some(out.into_bytes())
 }

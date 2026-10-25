@@ -2,6 +2,7 @@
 //! execution; TCC owns relocation, SourceRegistry owns source publication.
 use super::*;
 use birnam_codegen::{artifact as format, source_metadata::Metadata, source_revision};
+use std::os::unix::ffi::OsStrExt;
 unsafe fn fail(s: &State, message: &[u8]) -> Result<Oop, Oop> {
     unsafe {
         s.sources.note(message);
@@ -17,11 +18,23 @@ unsafe fn count(s: &State, q: &Scope<'_>, value: Oop) -> Result<usize, Oop> {
 unsafe fn name(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<u8>, Oop> {
     unsafe { s.symbol_bytes(q, value)?.ok_or_else(invalid) }
 }
-unsafe fn compile(c: Oop, a: *const Oop, n: usize, from: bool) -> Oop {
+#[derive(Clone, Copy)]
+enum Mode {
+    Output,
+    From,
+    Root,
+    Synchronous,
+    Embedded,
+}
+unsafe fn compile(c: Oop, a: *const Oop, n: usize, mode: Mode) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        if n != 2 + usize::from(from) {
+        if n != match mode {
+            Mode::Output => 2,
+            Mode::From | Mode::Root => 3,
+            _ => 4,
+        } {
             return Err(invalid());
         }
         let q = s.scope(args);
@@ -32,7 +45,7 @@ unsafe fn compile(c: Oop, a: *const Oop, n: usize, from: bool) -> Oop {
         let Some(output) = s.source_bytes(&q, args[1])? else {
             return fail(s, b"RustCodegen output path was not a String");
         };
-        let filename = if from {
+        let mut filename = if !matches!(mode, Mode::Output) {
             let Some(path) = s.source_bytes(&q, args[2])? else {
                 return fail(s, b"RustCodegen source path was not a String");
             };
@@ -40,6 +53,9 @@ unsafe fn compile(c: Oop, a: *const Oop, n: usize, from: bool) -> Oop {
         } else {
             b"<compiler>".to_vec()
         };
+        if matches!(mode, Mode::Root | Mode::Embedded) {
+            filename.extend_from_slice(b"/<module>");
+        }
         let Some(tree) = s.source_tree(&q, args[0], source.len())? else {
             s.syntax_error(&q, &source)?;
             return s.named(b"nil");
@@ -48,26 +64,104 @@ unsafe fn compile(c: Oop, a: *const Oop, n: usize, from: bool) -> Oop {
             Ok(p) => p,
             Err(_) => return fail(s, b"RustCodegen could not lower the source"),
         };
-        if !source_revision::native_requirements(&tree, &source).is_empty() {
-            return fail(
-                s,
-                b"RustCodegen foreign-library artifact packaging remains unconnected",
-            );
+        let required = source_revision::native_requirements(&tree, &source);
+        let mut libraries = Vec::new();
+        if matches!(mode, Mode::Embedded) {
+            let length = count(s, &q, args[3])?;
+            if length > 4096 {
+                return fail(s, b"too many embedded libraries");
+            }
+            let mut seen = Vec::new();
+            for i in 0..length {
+                let row = at(s, &q, args[3], i)?;
+                if count(s, &q, row)? != 2 {
+                    return fail(s, b"embedded library input must contain name and bytes");
+                }
+                let name = s.bytes(at(s, &q, row, 0)?)?;
+                if name.is_empty()
+                    || name == b"."
+                    || name == b".."
+                    || name.iter().any(|b| matches!(b, 0 | b'/' | b'\\'))
+                {
+                    return fail(s, b"embedded library name must be a bare filename");
+                }
+                if seen.contains(&name) {
+                    return fail(s, b"duplicate embedded library input");
+                }
+                seen.push(name.clone());
+                let contents = s.bytes(at(s, &q, row, 1)?)?;
+                if contents.is_empty() || contents.len() > 256 * 1024 * 1024 {
+                    return fail(s, b"embedded library size is invalid");
+                }
+                if required.contains(&name) {
+                    libraries.push((name, contents));
+                }
+            }
         }
+        let synchronous = if matches!(mode, Mode::Synchronous) {
+            let truth = s.named(b"true")?;
+            let falsity = s.named(b"false")?;
+            if args[3] != truth && args[3] != falsity {
+                return Err(invalid());
+            }
+            args[3] == truth
+        } else {
+            false
+        };
         if let Some(error) = s.embed_program(&q, &mut program, &filename)? {
             return Ok(error);
         }
         if let Some(error) = s.prepare_foreign(&q, &mut program)? {
             return Ok(error);
         }
-        let generated = q.keep(emit_program(s, program, &source, Some(&filename), true)?);
+        let generated = q.keep(if synchronous {
+            let block = birnam_codegen::Block {
+                params: Vec::new(),
+                body: program.body,
+            };
+            let portable =
+                birnam_codegen::portable::encode_block(&block, &[]).map_err(|_| invalid())?;
+            let request =
+                birnam_codegen::backend_request::Request::synchronous_factory(portable, &source)
+                    .ok_or_else(invalid)?;
+            let birnam_codegen::backend_request::Request::ModuleFactory {
+                program,
+                source,
+                dispositions,
+            } = request
+            else {
+                return Err(invalid());
+            };
+            let choices = dispositions
+                .into_iter()
+                .map(|v| {
+                    s.named(if v { b"true" } else { b"false" })
+                        .map(|v| q.keep(v))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let choices = s.vector(&q, &choices)?;
+            let program = q.keep(s.text(&program)?);
+            let source = q.keep(s.text(&source)?);
+            s.send(
+                s.named(b"NativeBackend")?,
+                b"moduleFactory:source:dispositions:",
+                &[program, source, choices],
+            )?
+        } else {
+            emit_program(s, program, &source, Some(&filename), true)?
+        });
         if s.is_error(generated)? {
             return Ok(generated);
         }
         let metadata = Metadata::inspect(&tree, &source);
-        let Some(generated) =
-            format::emit_oop(&tree, &source, &s.bytes(generated)?, &output, &metadata)
-        else {
+        let Some(generated) = format::emit_oop(
+            &tree,
+            &source,
+            &s.bytes(generated)?,
+            &output,
+            &metadata,
+            &libraries,
+        ) else {
             return fail(s, b"RustCodegen artifact identity is invalid");
         };
         let generated = q.keep(s.text(&generated)?);
@@ -98,7 +192,7 @@ pub(super) unsafe extern "C" fn compile_output(
     a: *const Oop,
     n: usize,
 ) -> Oop {
-    unsafe { compile(c, a, n, false) }
+    unsafe { compile(c, a, n, Mode::Output) }
 }
 pub(super) unsafe extern "C" fn compile_from(
     _: Oop,
@@ -107,7 +201,34 @@ pub(super) unsafe extern "C" fn compile_from(
     a: *const Oop,
     n: usize,
 ) -> Oop {
-    unsafe { compile(c, a, n, true) }
+    unsafe { compile(c, a, n, Mode::From) }
+}
+pub(super) unsafe extern "C" fn compile_root(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { compile(c, a, n, Mode::Root) }
+}
+pub(super) unsafe extern "C" fn compile_synchronous(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { compile(c, a, n, Mode::Synchronous) }
+}
+pub(super) unsafe extern "C" fn compile_embedded(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { compile(c, a, n, Mode::Embedded) }
 }
 unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop, Oop)>, Oop> {
     unsafe {
@@ -177,9 +298,6 @@ unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop,
             }
         }
         let native = q.keep(s.send(descriptor, b"nativeRequires", &[])?);
-        if count(s, q, native)? != 0 {
-            reject!(b"RustCodegen foreign-library artifact admission remains unconnected");
-        }
         let unit = q.keep(s.send(s.named(b"TCC")?, b"loadObject:", &[snapshot])?);
         if s.is_error(unit)? {
             return Ok(Some((unit, nil, nil)));
@@ -191,7 +309,7 @@ unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop,
         if s.is_error(result)? {
             return Ok(Some((result, nil, nil)));
         }
-        if !s.exact(q, result, b"VectorVt")? || count(s, q, result)? != 4 {
+        if !s.exact(q, result, b"VectorVt")? || !matches!(count(s, q, result)?, 4 | 5) {
             reject!(b"RustCodegen artifact initializer returned an invalid record");
         }
         let method = at(s, q, result, 0)?;
@@ -251,7 +369,81 @@ unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop,
         }
         let adapters = at(s, q, result, 3)?;
         if !s.exact(q, adapters, b"VectorVt")? || count(s, q, adapters)? != 0 {
-            reject!(b"RustCodegen compiled arity-adapter artifacts remain unconnected");
+            reject!(b"RustCodegen legacy compiled arity-adapter artifacts are incompatible");
+        }
+        let adjacent = count(s, q, native)?;
+        let embedded = if count(s, q, result)? == 5 {
+            Some(at(s, q, result, 4)?)
+        } else {
+            None
+        };
+        if adjacent != 0 || embedded.is_some() {
+            let key = s.names[b"Alien".as_slice()];
+            let provider = q.keep(s.send(s.named(b"Globals")?, b"at:", &[key])?);
+            let provider = if provider == nil {
+                q.keep(s.named(b"Alien")?)
+            } else {
+                provider
+            };
+            let path_bytes = s.bytes(path)?;
+            let directory = std::path::Path::new(std::ffi::OsStr::from_bytes(&path_bytes))
+                .parent()
+                .unwrap_or(std::path::Path::new("."));
+            for i in 0..adjacent {
+                let name = at(s, q, native, i)?;
+                let filename = s.bytes(name)?;
+                let resolved = q.keep(
+                    s.text(
+                        directory
+                            .join(std::ffi::OsStr::from_bytes(&filename))
+                            .as_os_str()
+                            .as_bytes(),
+                    )?,
+                );
+                let provided =
+                    q.keep(s.send(provider, b"provideLibraryPath:named:", &[resolved, name])?);
+                if provided == nil || s.is_error(provided)? {
+                    return Ok(Some((provided, nil, nil)));
+                }
+            }
+            if let Some(libraries) = embedded {
+                let length = count(s, q, libraries)?;
+                if length > 4096 {
+                    reject!(b"too many embedded libraries");
+                }
+                for i in 0..length {
+                    let row = at(s, q, libraries, i)?;
+                    if count(s, q, row)? != 2 {
+                        reject!(b"invalid embedded library record");
+                    }
+                    let name = at(s, q, row, 0)?;
+                    let encoded = s.bytes(at(s, q, row, 1)?)?;
+                    if encoded.is_empty()
+                        || encoded.len() % 2 != 0
+                        || encoded.len() > 512 * 1024 * 1024
+                    {
+                        reject!(b"invalid embedded library encoding");
+                    }
+                    let nibble = |b| match b {
+                        b'0'..=b'9' => Some(b - b'0'),
+                        b'a'..=b'f' => Some(b - b'a' + 10),
+                        _ => None,
+                    };
+                    let decoded = encoded
+                        .chunks_exact(2)
+                        .map(|p| Some((nibble(p[0])? << 4) | nibble(p[1])?))
+                        .collect::<Option<Vec<_>>>();
+                    let Some(decoded) = decoded else {
+                        reject!(b"invalid embedded library hex");
+                    };
+                    let bytes = q.keep(s.text(&decoded)?);
+                    let provided =
+                        q.keep(s.send(provider, b"provideLibrary:named:", &[bytes, name])?);
+                    if provided == nil || s.is_error(provided)? {
+                        return Ok(Some((provided, nil, nil)));
+                    }
+                }
+            }
         }
         let compilation = if metadata.revision.is_some() {
             source_metadata::retain_metadata(s, q, source, &metadata)?
@@ -274,7 +466,7 @@ pub(super) unsafe extern "C" fn load(_: Oop, c: Oop, _: Oop, a: *const Oop, n: u
         let Some((method, compilation, name)) = admit(s, &q, *path)? else {
             return s.named(b"nil");
         };
-        if s.is_error(method)? {
+        if method == s.named(b"nil")? || s.is_error(method)? {
             return Ok(method);
         }
         let block = q.keep(s.send(

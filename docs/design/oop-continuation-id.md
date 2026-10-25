@@ -241,12 +241,19 @@ by the body continue independently. Parser-disabled loading, cold Error-owner
 absence, malformed artifacts, unavailable requirements, snapshot replacement and
 suspended-task code lifetime are covered
 ([receipt](../measurements/artifact-admission-20261025.json)).
-Synchronous artifact bodies, compiled arity-adapter artifacts and foreign-library
-packaging remain unconnected in `pending_artifact.rs`; ordinary admission refuses
-unsupported records/requirements explicitly. Recovery, complete bootstrap/Host and
-installed qualification also remain pending. Unconnected Generation projection
-remains in `pending_source.rs`. Bootstrap still imports removed value carriers;
-these checkpoints do not claim a repaired cold bootstrap.
+Synchronous artifact bodies now use the retained per-body selection request: the
+initializer remains resumable while selected bodies use synchronous declarations.
+Root-directory compilation and adjacent/embedded library provisioning are restored,
+including name/size limits and the hex carrier that avoids nested descriptor magic.
+Provisioning uses the current Alien owner; the platform Alien implementation is a
+separate migration dependency. Both body modes use ordinary reflected Methods;
+prior-ABI compiled arity-adapter records are incompatible, not a parallel runtime.
+The displaced pending artifact implementation is removed
+([receipt](../measurements/artifact-variants-20261025.json)).
+Recovery, complete bootstrap/Host and installed qualification remain pending.
+Unconnected Generation projection remains in `pending_source.rs`. Bootstrap still
+imports removed value carriers; these checkpoints do not claim a repaired cold
+bootstrap.
 
 Before, Execution classified default lookup in advance and used synchronous send
 for custom lookup, losing source tail-call context. Now it issues one Id send

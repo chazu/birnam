@@ -65,7 +65,7 @@ impl Emitter {
                         program, captures, ..
                     } => {
                         let child =
-                            self.resumable_function(program, source, filename, depth + 1)?;
+                            self.selected_function(program, source, filename, depth + 1, false)?;
                         let v = operation.result.0;
                         writeln!(
                             out,

@@ -15,6 +15,7 @@ struct Emitter {
     functions: Vec<String>,
     descriptors: Vec<Option<(Vec<u8>, Vec<u8>)>>,
     persistent: bool,
+    dispositions: Option<Vec<bool>>,
 }
 impl Emitter {
     fn name(&mut self, n: &[u8]) -> Result<usize, Error> {
@@ -27,7 +28,33 @@ impl Emitter {
         self.names.push(n.to_vec());
         Ok(self.names.len() - 1)
     }
-    fn function(&mut self, bytes: &[u8], depth: usize) -> Result<usize, Error> {
+    fn selected_function(
+        &mut self,
+        bytes: &[u8],
+        source: &[u8],
+        filename: &[u8],
+        depth: usize,
+        synchronous: bool,
+    ) -> Result<usize, Error> {
+        let synchronous = match &self.dispositions {
+            Some(values) => *values
+                .get(self.functions.len())
+                .ok_or(Error::InvalidProgram)?,
+            None => synchronous,
+        };
+        if synchronous {
+            self.function(bytes, source, filename, depth)
+        } else {
+            self.resumable_function(bytes, source, filename, depth)
+        }
+    }
+    fn function(
+        &mut self,
+        bytes: &[u8],
+        source: &[u8],
+        filename: &[u8],
+        depth: usize,
+    ) -> Result<usize, Error> {
         if depth > 256 {
             return Err(Error::DepthLimit);
         }
@@ -100,7 +127,8 @@ impl Emitter {
                         )
                     }
                     NodeKind::BlockLiteral => {
-                        let child = self.function(node.data, depth + 1)?;
+                        let child =
+                            self.selected_function(node.data, source, filename, depth + 1, true)?;
                         let mut captures = vec![format!("methods[{child}]")];
                         for i in 0..node.operand_count as usize {
                             captures.push(format!(
@@ -150,10 +178,10 @@ impl Emitter {
     }
 }
 pub fn compile(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    compile_mode(bytes, &[], b"<compiler>", true, false)
+    compile_mode(bytes, &[], b"<compiler>", true, false, None)
 }
 pub fn compile_resumable(bytes: &[u8], source: &[u8]) -> Result<Vec<u8>, Error> {
-    compile_mode(bytes, source, b"<compiler>", true, true)
+    compile_mode(bytes, source, b"<compiler>", true, true, None)
 }
 pub fn compile_from(
     bytes: &[u8],
@@ -165,7 +193,25 @@ pub fn compile_from(
     if persistent && synchronous {
         return Err(Error::InvalidProgram);
     }
-    compile_mode(bytes, source, filename, persistent, !synchronous)
+    compile_mode(bytes, source, filename, persistent, !synchronous, None)
+}
+pub fn compile_factory(
+    bytes: &[u8],
+    source: &[u8],
+    dispositions: &[bool],
+    persistent: bool,
+) -> Result<Vec<u8>, Error> {
+    if dispositions.is_empty() || dispositions.len() > 65536 || (persistent && dispositions[0]) {
+        return Err(Error::InvalidProgram);
+    }
+    compile_mode(
+        bytes,
+        source,
+        b"<compiler>",
+        persistent,
+        true,
+        Some(dispositions.to_vec()),
+    )
 }
 fn compile_mode(
     bytes: &[u8],
@@ -173,12 +219,14 @@ fn compile_mode(
     filename: &[u8],
     persistent: bool,
     resumable: bool,
+    dispositions: Option<Vec<bool>>,
 ) -> Result<Vec<u8>, Error> {
     let mut e = Emitter {
         names: Vec::new(),
         functions: Vec::new(),
         descriptors: Vec::new(),
         persistent,
+        dispositions,
     };
     let mut definitions = String::new();
     for (key, name) in [
@@ -211,10 +259,12 @@ fn compile_mode(
     }
     let roots = e.name(b"Roots")?;
     let declared = e.name(b"declaredMethodAt:")?;
-    if resumable {
-        e.resumable_function(bytes, source, filename, 0)?;
-    } else {
-        e.function(bytes, 0)?;
+    e.selected_function(bytes, source, filename, 0, !resumable)?;
+    if e.dispositions
+        .as_ref()
+        .is_some_and(|v| v.len() != e.functions.len())
+    {
+        return Err(Error::InvalidProgram);
     }
     let execution = e.name(b"Execution")?;
     let register = e.name(b"fromStep:descriptor:selection:owner:")?;
