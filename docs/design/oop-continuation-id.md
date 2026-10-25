@@ -330,3 +330,14 @@ Lexical searches also find old carrier names in tests and inactive retained
 source. Those matches are not all live dependencies, and are not authorization
 to delete the features they used to cover. The full workspace and original
 source-tail gates remain required completion criteria.
+
+## Oop Bootstrap checkpoint
+
+Bootstrap now uses Oop initializer arguments, Id loading and Roots-owned result
+lifetimes. NativeLoader consumes ordinary status/value records, replacing the
+removed value-kind packet. The build-only compiler seed boots from a fresh Id
+process, constructs the foundational artifacts and hands parsing to compiled
+Birnam Lang with the seed parser disabled. The default Bootstrap builds and
+loads those artifacts without the grammar seed, but still fails at its required
+PortableCode provider. This is not full published startup qualification.
+[Receipt](../measurements/bootstrap-oop-20261025.json).
