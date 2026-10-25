@@ -1,10 +1,13 @@
 //! Reified PortableProgram objects. Every connection to another owner is an Id send.
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
 use birnam_artifact::portable_program::{self as portable, ValidatedProgram};
-use core::{cell::RefCell, ffi::c_void, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -52,8 +55,15 @@ enum Value {
     Node(Rc<NodeValue>),
     Statement(Rc<StatementValue>),
     Program(Rc<ValidatedProgram>),
-    Binding { program: Oop, index: u32 },
-    Code { program: Oop, provenance: Oop, signature: Option<birnam_abi::native_signature::Signature> },
+    Binding {
+        program: Oop,
+        index: u32,
+    },
+    Code {
+        program: Oop,
+        provenance: Oop,
+        signature: Option<birnam_abi::native_signature::Signature>,
+    },
 }
 impl Value {
     fn edges(&self) -> Vec<Oop> {
@@ -72,13 +82,15 @@ impl Value {
             Self::Binding { program, .. } => vec![*program],
             Self::Code {
                 program,
-                provenance, ..
+                provenance,
+                ..
             } => vec![*program, *provenance],
         }
     }
 }
 struct State {
     id: Protocol,
+    names: HashMap<&'static [u8], Oop>,
     ns: Oop,
     roots: Oop,
     gc: Oop,
@@ -88,29 +100,48 @@ struct State {
     // Snapshots release the map borrow before any reentrant send.
     values: RefCell<HashMap<usize, Value>>,
     thread: std::thread::ThreadId,
+    ready: Cell<bool>,
 }
 struct Scope<'a> {
     state: &'a State,
     tokens: RefCell<Vec<usize>>,
 }
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
+fn optional(v: Oop) -> Option<Oop> {
+    (!v.is_null()).then_some(v)
 }
 impl State {
-    fn send(&self, receiver: Oop, name: &[u8], args: &[Operand]) -> Result<Operand, Outcome> {
-        unsafe { self.id.send_named(receiver, name, args) }
+    fn send(&self, receiver: Oop, name: &[u8], args: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(receiver, self.names[name], args) }
     }
-    fn symbol(&self, name: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { self.id.intern_name(name) }
+    fn symbol(&self, name: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            if let Some(value) = self.names.get(name) {
+                return Ok(*value);
+            }
+            let values: Vec<_> = name
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect();
+            let value = self.send(self.id.root, b"nameWithBytes", &values)?;
+            self.id.send(value, self.id.intern, &[])
+        }
     }
-    fn named(&self, name: &[u8]) -> Result<Operand, Outcome> {
-        self.send(self.ns, b"at:", &[Operand::object(self.symbol(name)?)])
+    fn named(&self, name: &[u8]) -> Result<Oop, Oop> {
+        self.send(self.ns, b"at:", &[self.names[name]])
     }
-    fn behavior(&self, o: Oop) -> Result<Oop, Outcome> {
-        object(self.send(self.id.receiver, b"behaviorOf:", &[Operand::object(o)])?)
+    fn behavior(&self, value: Oop) -> Result<Oop, Oop> {
+        self.send(self.id.root, b"behaviorOf:", &[value])
     }
     fn node(&self, o: Oop) -> Option<Rc<NodeValue>> {
         match self.values.borrow().get(&o.addr())? {
@@ -134,94 +165,129 @@ impl State {
         match self.values.borrow().get(&o.addr())? {
             Value::Code {
                 program,
-                provenance, signature,
+                provenance,
+                signature,
             } => Some((*program, *provenance, signature.clone())),
             _ => None,
         }
     }
-    fn scoped<T>(&self, f: impl FnOnce(&Scope<'_>) -> Result<T, Outcome>) -> Result<T, Outcome> {
+    fn scoped(&self, f: impl FnOnce(&Scope<'_>) -> Result<Oop, Oop>) -> Result<Oop, Oop> {
         let scope = Scope {
             state: self,
             tokens: RefCell::new(Vec::new()),
         };
         let result = f(&scope);
-        let mut release_error = None;
+        let protected = match result {
+            Ok(v) | Err(v) => v,
+        };
+        let mut args = vec![protected];
         for token in scope.tokens.into_inner() {
-            match self.send(self.roots, b"release:", &[Operand::word(token)]) {
-                Ok(v) if v.as_word() == Some(1) => {}
-                Ok(_) => {
-                    release_error.get_or_insert_with(invalid);
-                }
-                Err(e) => {
-                    release_error.get_or_insert(e);
-                }
-            }
+            args.push(abi::size(token).ok_or_else(invalid)?);
         }
-        match (result, release_error) {
-            (Ok(_), Some(e)) => Err(e),
-            (r, _) => r,
+        let cleanup = self.send(self.roots, b"releaseTokensProtecting", &args);
+        match (result, cleanup) {
+            (Ok(_), Err(e)) => Err(e),
+            (result, _) => result,
         }
     }
 }
 impl Scope<'_> {
-    fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
-        let token = self
-            .state
-            .send(self.state.roots, b"retain:", &[Operand::object(o)])?
-            .as_word()
-            .filter(|v| *v != 0)
+    fn keep(&self, value: Oop) -> Result<Oop, Oop> {
+        let token = abi::as_size(self.state.send(self.state.roots, b"retain:", &[value])?)
+            .filter(|t| *t != 0)
             .ok_or_else(invalid)?;
         self.tokens.borrow_mut().push(token);
-        Ok(o)
+        Ok(value)
     }
-    fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Result<Oop, Outcome> {
-        let args = args
+    fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Result<Oop, Oop> {
+        self.keep(self.state.send(r, name, args)?)
+    }
+    fn word(&self, bits: u64) -> Result<Oop, Oop> {
+        if let Some(v) = abi::size(bits as usize) {
+            Ok(v)
+        } else {
+            self.call(
+                self.state.named(b"Word")?,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(bits as u32 as usize).unwrap(),
+                    abi::size((bits >> 32) as usize).unwrap(),
+                ],
+            )
+        }
+    }
+    fn word_bits(&self, value: Oop) -> Result<u64, Oop> {
+        if let Some(v) = abi::as_size(value) {
+            return Ok(v as u64);
+        }
+        let lo = abi::as_size(self.call(value, b"low32", &[])?)
+            .filter(|n| *n <= u32::MAX as usize)
+            .ok_or_else(invalid)?;
+        let hi = abi::as_size(self.call(value, b"high32", &[])?)
+            .filter(|n| *n <= u32::MAX as usize)
+            .ok_or_else(invalid)?;
+        Ok(lo as u64 | ((hi as u64) << 32))
+    }
+    fn number(&self, n: i64) -> Result<Oop, Oop> {
+        let word = self.word(n as u64)?;
+        self.call(self.state.named(b"Integer")?, b"fromWord:", &[word])
+    }
+    fn integer(&self, value: Oop) -> Result<Option<i64>, Oop> {
+        let word = self.call(self.state.named(b"Integer")?, b"wordOf:", &[value])?;
+        if word.is_null() || word == self.state.nil {
+            Ok(None)
+        } else {
+            Ok(Some(self.word_bits(word)? as i64))
+        }
+    }
+    fn blob(&self, bytes: &[u8], factory: &[u8]) -> Result<Oop, Oop> {
+        let factory = self.keep(self.state.named(factory)?)?;
+        let values: Vec<_> = bytes
             .iter()
-            .copied()
-            .map(Operand::object)
-            .collect::<Vec<_>>();
-        self.keep(object(self.state.send(r, name, &args)?)?)
+            .map(|b| abi::size(*b as usize).unwrap())
+            .collect();
+        let sequence = self.call(self.state.id.root, b"sequence", &values)?;
+        self.call(factory, b"fromBytes:", &[sequence])
     }
-    fn number(&self, n: i64) -> Result<Oop, Outcome> {
-        self.keep(object(self.state.send(
-            object(self.state.named(b"Integer")?)?,
-            b"fromWord:",
-            &[Operand::word(n as usize)],
-        )?)?)
+    fn string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
+        self.blob(bytes, b"String")
     }
-    fn integer(&self, o: Oop) -> Result<Option<i64>, Outcome> {
-        Ok(self
-            .state
-            .send(object(self.state.named(b"Integer")?)?, b"wordOf:", &[Operand::object(o)])?
-            .as_word()
-            .map(|n| n as i64))
+    fn byte_values(&self, bytes: &[u8]) -> Result<Oop, Oop> {
+        let values: Vec<_> = bytes
+            .iter()
+            .map(|b| abi::size(*b as usize).unwrap())
+            .collect();
+        self.call(self.state.id.root, b"sequence", &values)
     }
-    fn string(&self, bytes: &[u8]) -> Result<Oop, Outcome> {
-        self.keep(object(self.state.send(
-            object(self.state.named(b"String")?)?,
-            b"fromBytes:",
-            &[Operand::bytes(bytes)],
-        )?)?)
+    fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
+        let value = self.call(value, b"bytes", &[])?;
+        unsafe {
+            self.state.id.read_bytes(
+                value,
+                self.state.names[b"sizeWord".as_slice()],
+                self.state.names[b"atWord:".as_slice()],
+            )
+        }
     }
-    fn bytes(&self, o: Oop, symbol: bool) -> Result<Option<Vec<u8>>, Outcome> {
+    fn bytes(&self, value: Oop, symbol: bool) -> Result<Option<Vec<u8>>, Oop> {
         let s = self.state;
-        if s.behavior(o)? != if symbol { object(s.named(b"SymbolVt")?)? } else { object(s.named(b"StringVt")?)? } {
+        if s.behavior(value)? != s.named(if symbol { b"SymbolVt" } else { b"StringVt" })? {
             return Ok(None);
         }
-        let result = if symbol {
-            s.send(s.id.receiver, b"symbolBytesOf:", &[Operand::object(o)])?
+        if symbol {
+            unsafe {
+                s.id.read_bytes(
+                    value,
+                    s.names[b"sizeWord".as_slice()],
+                    s.names[b"atWord:".as_slice()],
+                )
+                .map(Some)
+            }
         } else {
-            s.send(o, b"bytes", &[])?
-        };
-        let bytes = result.as_bytes().ok_or_else(invalid)?;
-        // Copy the foreign borrow before any send, including retain:.
-        Ok(Some(
-            unsafe { borrowed_bytes(bytes.pointer, bytes.length) }
-                .ok_or_else(invalid)?
-                .to_vec(),
-        ))
+            self.read_bytes(value).map(Some)
+        }
     }
-    fn fail(&self, failure: Failure, message: &[u8]) -> Result<Oop, Outcome> {
+    fn fail(&self, failure: Failure, message: &[u8]) -> Result<Oop, Oop> {
         let s = self.state;
         let factory = self.keep(object(s.named(b"Error")?)?)?;
         let kind = self.keep(s.symbol(match failure {
@@ -236,7 +302,7 @@ impl Scope<'_> {
         }
         Ok(error)
     }
-    fn make(&self, behavior: Oop, value: Value) -> Result<Oop, Outcome> {
+    fn make(&self, behavior: Oop, value: Value) -> Result<Oop, Oop> {
         let s = self.state;
         self.keep(behavior)?;
         for edge in value.edges() {
@@ -246,65 +312,69 @@ impl Scope<'_> {
         let o = self.keep(object(s.send(
             behavior,
             b"allocate",
-            &[Operand::word(extent)],
+            &[abi::size(extent).ok_or_else(invalid)?],
         )?)?)?;
         if s.behavior(o)? != behavior
-            || s.send(s.id.receiver, b"allocationSizeOf:", &[Operand::object(o)])?
-                .as_word()
-                != Some(extent)
+            || abi::as_size(s.send(s.id.root, b"allocationSizeOf:", &[o])?) != Some(extent)
             || s.values.borrow().contains_key(&o.addr())
         {
             return Err(invalid());
         }
         s.values.borrow_mut().insert(o.addr(), value);
-        s.send(
-            s.gc,
-            b"finalize:with:",
-            &[Operand::object(o), Operand::object(s.families[0].1)],
-        )?;
+        s.send(s.gc, b"finalize:with:", &[o, s.families[0].1])?;
         Ok(o)
     }
-    fn node(&self, receiver: Oop, value: NodeValue) -> Result<Oop, Outcome> {
+    fn node(&self, receiver: Oop, value: NodeValue) -> Result<Oop, Oop> {
         self.make(self.state.behavior(receiver)?, Value::Node(Rc::new(value)))
     }
-    fn statement(&self, receiver: Oop, value: StatementValue) -> Result<Oop, Outcome> {
+    fn statement(&self, receiver: Oop, value: StatementValue) -> Result<Oop, Oop> {
         self.make(
             self.state.behavior(receiver)?,
             Value::Statement(Rc::new(value)),
         )
     }
-    fn binding(&self, program: Oop, index: u32) -> Result<Oop, Outcome> {
-        let Some(vt) = self.state.named(b"CodeLexicalBindingVt")?.as_object() else {
+    fn binding(&self, program: Oop, index: u32) -> Result<Oop, Oop> {
+        let Some(vt) = optional(self.state.named(b"CodeLexicalBindingVt")?) else {
             return Ok(self.state.nil);
         };
         self.make(vt, Value::Binding { program, index })
     }
-    fn code(&self, receiver: Oop, program: Oop, provenance: Oop) -> Result<Oop, Outcome> {
-        self.signed_code(receiver,program,provenance,None)
+    fn code(&self, receiver: Oop, program: Oop, provenance: Oop) -> Result<Oop, Oop> {
+        self.signed_code(receiver, program, provenance, None)
     }
-    fn signed_code(&self, receiver: Oop, program: Oop, provenance: Oop, signature: Option<birnam_abi::native_signature::Signature>) -> Result<Oop, Outcome> {
+    fn signed_code(
+        &self,
+        receiver: Oop,
+        program: Oop,
+        provenance: Oop,
+        signature: Option<birnam_abi::native_signature::Signature>,
+    ) -> Result<Oop, Oop> {
         if self.state.program(program).is_none() {
             return self.fail(
                 Failure::TypeMismatch,
                 b"CodeObject program must be a CodeProgram",
             );
         }
-        if signature.as_ref().is_some_and(|sig|self.state.program(program).is_none_or(|p|p.view().parameter_count as usize != sig.arguments().len()+1)) {
-            return self.fail(Failure::TypeMismatch,b"native signature arity disagrees with CodeObject");
+        if signature.as_ref().is_some_and(|sig| {
+            self.state
+                .program(program)
+                .is_none_or(|p| p.view().parameter_count as usize != sig.arguments().len() + 1)
+        }) {
+            return self.fail(
+                Failure::TypeMismatch,
+                b"native signature arity disagrees with CodeObject",
+            );
         }
         self.make(
             self.state.behavior(receiver)?,
             Value::Code {
                 program,
-                provenance, signature,
+                provenance,
+                signature,
             },
         )
     }
-    fn collection(
-        &self,
-        collection: Oop,
-        limit: usize,
-    ) -> Result<Result<Vec<Oop>, Failure>, Outcome> {
+    fn collection(&self, collection: Oop, limit: usize) -> Result<Result<Vec<Oop>, Failure>, Oop> {
         let count = self.call(collection, b"size", &[])?;
         let Some(count) = self.integer(count)?.and_then(|n| usize::try_from(n).ok()) else {
             return Ok(Err(Failure::TypeMismatch));
@@ -318,7 +388,7 @@ impl Scope<'_> {
         }
         Ok(Ok(values))
     }
-    fn names(&self, values: &[Oop]) -> Result<Result<Vec<Vec<u8>>, Failure>, Outcome> {
+    fn names(&self, values: &[Oop]) -> Result<Result<Vec<Vec<u8>>, Failure>, Oop> {
         let mut names = Vec::with_capacity(values.len());
         for &value in values {
             let Some(bytes) = self.bytes(value, false)? else {
@@ -334,7 +404,7 @@ impl Scope<'_> {
         }
         Ok(Ok(names))
     }
-    fn index(&self, args: &[Oop]) -> Result<Option<usize>, Outcome> {
+    fn index(&self, args: &[Oop]) -> Result<Option<usize>, Oop> {
         if let [index] = args {
             Ok(self.integer(*index)?.and_then(|n| usize::try_from(n).ok()))
         } else {
@@ -343,7 +413,7 @@ impl Scope<'_> {
     }
 }
 
-fn node_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
+fn node_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Oop> {
     use Failure::*;
     use NodeValue::*;
     let s = q.state;
@@ -619,7 +689,7 @@ fn node_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
         _ => Ok(s.nil),
     }
 }
-fn statement_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
+fn statement_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Oop> {
     use Failure::*;
     let s = q.state;
     match op {
@@ -684,15 +754,11 @@ fn statement_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, 
         _ => Ok(s.nil),
     }
 }
-fn decode_node_tree(
-    q: &Scope<'_>,
-    program: &portable::Program<'_>,
-    root: u32,
-) -> Result<Oop, Outcome> {
+fn decode_node_tree(q: &Scope<'_>, program: &portable::Program<'_>, root: u32) -> Result<Oop, Oop> {
     let s = q.state;
     let root = root as usize;
     let start = codec::decoded_subtree_start(program, root).ok_or_else(invalid)?;
-    let Some(vt) = s.named(b"CodeNodeVt")?.as_object() else {
+    let Some(vt) = optional(s.named(b"CodeNodeVt")?) else {
         return Ok(s.nil);
     };
     q.keep(vt)?;
@@ -721,7 +787,7 @@ fn decode_node_tree(
                 }
             }
             11 => {
-                let Some(program_vt) = s.named(b"CodeProgramVt")?.as_object() else {
+                let Some(program_vt) = optional(s.named(b"CodeProgramVt")?) else {
                     return Ok(s.nil);
                 };
                 let bytes = ValidatedProgram::copy_from_slice(node.data).map_err(|_| invalid())?;
@@ -744,7 +810,7 @@ fn decode_node_tree(
     }
     Ok(stack[0])
 }
-fn program_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
+fn program_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Oop> {
     use Failure::*;
     let s = q.state;
     if op == b"parameters:captures:statements:" {
@@ -858,7 +924,7 @@ fn program_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Ou
         _ => return Ok(s.nil),
     }))
 }
-fn binding_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
+fn binding_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Oop> {
     let s = q.state;
     if !a.is_empty() {
         return Ok(s.nil);
@@ -891,10 +957,12 @@ fn binding_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Ou
         _ => Ok(s.nil),
     }
 }
-fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
+fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Oop> {
     let s = q.state;
     match op {
-        b"inspectInventory:bindings:selection:" | b"inventory:matchesRoots:" | b"bindings:referencesBelow:" => return inventory::operation(q, a, op),
+        b"inspectInventory:bindings:selection:"
+        | b"inventory:matchesRoots:"
+        | b"bindings:referencesBelow:" => return inventory::operation(q, a, op),
         b"canonicalBytesOf:" => {
             let [value] = a else {
                 return Ok(s.nil);
@@ -907,7 +975,7 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
             return q.keep(object(s.send(
                 factory,
                 b"fromBytes:",
-                &[Operand::bytes(bytes.as_ref())],
+                &[q.byte_values(bytes.as_ref())?],
             )?)?);
         }
         b"fromCanonicalBytes:" => {
@@ -920,11 +988,7 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
             if s.behavior(*value)? != object(s.named(b"BytesVt")?)? {
                 return q.fail(Failure::TypeMismatch, b"fromCanonicalBytes: needs a Bytes");
             }
-            let raw = s.send(*value, b"bytes", &[])?;
-            let raw = raw.as_bytes().ok_or_else(invalid)?;
-            let bytes = unsafe { borrowed_bytes(raw.pointer, raw.length) }
-                .ok_or_else(invalid)?
-                .to_vec();
+            let bytes = q.read_bytes(*value)?;
             let bytes = match ValidatedProgram::new(bytes) {
                 Ok(v) => v,
                 Err(e) => {
@@ -959,33 +1023,50 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
             return q.code(r, *p, *provenance);
         }
         b"nativeSignature:matchesProgram:" => {
-            let [signature,program]=a else {return object(s.named(b"false")?)};
-            let copy=|value|->Result<Vec<u8>,Outcome> {
-                let raw=s.send(value,b"bytes",&[])?.as_bytes().ok_or_else(invalid)?;
-                Ok(unsafe {borrowed_bytes(raw.pointer,raw.length)}.ok_or_else(invalid)?.to_vec())
+            let [signature, program] = a else {
+                return object(s.named(b"false")?);
             };
-            let signature=copy(*signature)?;let program=copy(*program)?;
-            let valid=birnam_abi::native_signature::Signature::parse(&signature).zip(ValidatedProgram::new(program).ok()).is_some_and(|(signature,program)|signature.arguments().len()+1==program.view().parameter_count as usize);
-            return object(s.named(if valid {b"true"} else {b"false"})?);
+            let copy = |value| -> Result<Vec<u8>, Oop> { q.read_bytes(value) };
+            let signature = copy(*signature)?;
+            let program = copy(*program)?;
+            let valid = birnam_abi::native_signature::Signature::parse(&signature)
+                .zip(ValidatedProgram::new(program).ok())
+                .is_some_and(|(signature, program)| {
+                    signature.arguments().len() + 1 == program.view().parameter_count as usize
+                });
+            return object(s.named(if valid { b"true" } else { b"false" })?);
         }
         b"isNativeSignature:" => {
-            let [input]=a else {return object(s.named(b"false")?)};
-            let raw=s.send(*input,b"bytes",&[])?.as_bytes().ok_or_else(invalid)?;
-            let copied=unsafe {borrowed_bytes(raw.pointer,raw.length)}.ok_or_else(invalid)?.to_vec();
-            return Ok(if birnam_abi::native_signature::Signature::parse(&copied).is_some() {object(s.named(b"true")?)?} else {object(s.named(b"false")?)?});
+            let [input] = a else {
+                return object(s.named(b"false")?);
+            };
+            let copied = q.read_bytes(*input)?;
+            return Ok(
+                if birnam_abi::native_signature::Signature::parse(&copied).is_some() {
+                    object(s.named(b"true")?)?
+                } else {
+                    object(s.named(b"false")?)?
+                },
+            );
         }
         b"withNativeSignature:" => {
-            let [input] = a else { return Ok(s.nil); };
-            let Some((program, provenance, _)) = s.code(r) else { return Ok(s.nil); };
-            let signature = if *input == s.nil { None } else {
-                let raw=s.send(*input,b"bytes",&[])?.as_bytes().ok_or_else(invalid)?;
-                let copied=unsafe { borrowed_bytes(raw.pointer,raw.length) }.ok_or_else(invalid)?.to_vec();
-                let Some(signature)=birnam_abi::native_signature::Signature::parse(&copied) else {
-                    return q.fail(Failure::TypeMismatch,b"invalid native signature");
+            let [input] = a else {
+                return Ok(s.nil);
+            };
+            let Some((program, provenance, _)) = s.code(r) else {
+                return Ok(s.nil);
+            };
+            let signature = if *input == s.nil {
+                None
+            } else {
+                let copied = q.read_bytes(*input)?;
+                let Some(signature) = birnam_abi::native_signature::Signature::parse(&copied)
+                else {
+                    return q.fail(Failure::TypeMismatch, b"invalid native signature");
                 };
                 Some(signature)
             };
-            return q.signed_code(r,program,provenance,signature);
+            return q.signed_code(r, program, provenance, signature);
         }
         b"withProgram:" => {
             let [p] = a else {
@@ -994,7 +1075,7 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
             let Some((_, provenance, signature)) = s.code(r) else {
                 return Ok(s.nil);
             };
-            return q.signed_code(r, *p, provenance,signature);
+            return q.signed_code(r, *p, provenance, signature);
         }
         _ => {}
     }
@@ -1008,13 +1089,20 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
         b"format" => return s.symbol(b"portableProgramV1"),
         b"program" => return Ok(program),
         b"sourceProvenance" => return Ok(provenance),
-        b"nativeSignature" => return match signature {
-            None=>Ok(s.nil), Some(signature)=>{
-                let factory=q.keep(object(s.named(b"Bytes")?)?)?;
-                q.keep(object(s.send(factory,b"fromBytes:",&[Operand::bytes(signature.bytes())])?)?)
-            }
-        },
-        b"withoutSourceProvenance" => return q.signed_code(r, program, s.nil,signature),
+        b"nativeSignature" => {
+            return match signature {
+                None => Ok(s.nil),
+                Some(signature) => {
+                    let factory = q.keep(object(s.named(b"Bytes")?)?)?;
+                    q.keep(object(s.send(
+                        factory,
+                        b"fromBytes:",
+                        &[q.byte_values(signature.bytes())?],
+                    )?)?)
+                }
+            };
+        }
+        b"withoutSourceProvenance" => return q.signed_code(r, program, s.nil, signature),
         _ => {}
     }
     let bytes = s.program(program).ok_or_else(invalid)?;
@@ -1023,7 +1111,7 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
         b"arity" => q.number(i64::from(inspected.parameter_count)),
         b"digest" => q.string(&Sha256::digest(bytes.as_ref())),
         b"captureSchema" => {
-            let Some(factory) = s.named(b"Vector")?.as_object() else {
+            let Some(factory) = optional(s.named(b"Vector")?) else {
                 return Ok(s.nil);
             };
             q.keep(factory)?;
@@ -1047,47 +1135,45 @@ fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outco
     }
 }
 
-unsafe fn state<'a>(context: *mut c_void) -> Result<&'a State, Outcome> {
-    let s = unsafe { &*context.cast::<State>() };
-    if s.thread != std::thread::current().id() {
-        return Err(invalid());
+unsafe fn state<'a>(context: Oop) -> Result<&'a State, Oop> {
+    unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = &*p;
+        if s.ns != context || s.thread != std::thread::current().id() {
+            Err(invalid())
+        } else {
+            Ok(s)
+        }
     }
-    Ok(s)
 }
-unsafe extern "C" fn roots(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
+unsafe extern "C" fn roots(_: Oop, context: Oop, _: Oop, args: *const Oop, count: usize) -> Oop {
     (|| unsafe {
         let s = state(context)?;
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
         let visitor = object(*visitor)?;
-        let mut roots = vec![
-            s.ns,
-            s.roots,
-            s.gc,
-            s.nil,
-        ];
+        let mut roots = vec![s.ns, s.roots, s.gc, s.nil];
         for (vt, prototype) in s.families {
             roots.extend([vt, prototype]);
         }
         for root in roots {
-            s.send(visitor, b"visit:", &[Operand::object(root)])?;
+            s.send(visitor, b"visit:", &[root])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn references(
-    context: *mut c_void,
     _: Oop,
-    args: *const Operand,
+    context: Oop,
+    _: Oop,
+    args: *const Oop,
     count: usize,
-) -> Outcome {
+) -> Oop {
     (|| unsafe {
         let s = state(context)?;
         let Some([value, visitor]) = borrowed_slice(args, count) else {
@@ -1102,18 +1188,13 @@ unsafe extern "C" fn references(
             .map(Value::edges)
             .unwrap_or_default();
         for edge in edges {
-            s.send(visitor, b"visit:", &[Operand::object(edge)])?;
+            s.send(visitor, b"visit:", &[edge])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn finalize(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
+unsafe extern "C" fn finalize(_: Oop, context: Oop, _: Oop, args: *const Oop, count: usize) -> Oop {
     (|| unsafe {
         let s = state(context)?;
         let Some([value]) = borrowed_slice(args, count) else {
@@ -1124,14 +1205,14 @@ unsafe extern "C" fn finalize(
             .borrow_mut()
             .remove(&object(*value)?.addr())
             .ok_or_else(invalid)?;
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 // Native shape queries read admitted immutable state without exporting bytes,
 // allocating language Objects, or crossing a dependency callback. Callers keep
 // the CodeObject live under the ordinary Id ABI lifetime contract.
-unsafe fn code_count(context: *mut c_void, args: *const Operand, count: usize, parameters: bool) -> Outcome {
+unsafe fn code_count(context: Oop, args: *const Oop, count: usize, parameters: bool) -> Oop {
     (|| unsafe {
         let s = state(context)?;
         let [code] = borrowed_slice(args, count).ok_or_else(invalid)? else {
@@ -1140,24 +1221,31 @@ unsafe fn code_count(context: *mut c_void, args: *const Operand, count: usize, p
         let (program, _, _) = s.code(object(*code)?).ok_or_else(invalid)?;
         let program = s.program(program).ok_or_else(invalid)?;
         let view = program.view();
-        Ok(Operand::word(if parameters { view.parameter_count } else { view.capture_count } as usize))
-    })().map_or_else(|e| e, Outcome::loaded)
+        Ok(abi::size(if parameters {
+            view.parameter_count
+        } else {
+            view.capture_count
+        } as usize)
+        .ok_or_else(invalid)?)
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn parameter_count_of(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn parameter_count_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     unsafe { code_count(c, a, n, true) }
 }
-unsafe extern "C" fn capture_count_of(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn capture_count_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     unsafe { code_count(c, a, n, false) }
 }
 
 macro_rules! entry {
     ($name:ident, $family:ident, $selector:literal) => {
         unsafe extern "C" fn $name(
-            context: *mut c_void,
+            _: Oop,
+            context: Oop,
             r: Oop,
-            args: *const Operand,
+            args: *const Oop,
             count: usize,
-        ) -> Outcome {
+        ) -> Oop {
             (|| unsafe {
                 let s = state(context)?;
                 let args = borrowed_slice(args, count).ok_or_else(invalid)?;
@@ -1176,10 +1264,10 @@ macro_rules! entry {
                     } else {
                         $family(q, r, &args, $selector)?
                     };
-                    Ok(Operand::object(q.keep(result)?))
+                    Ok(q.keep(result)?)
                 })
             })()
-            .map_or_else(|e| e, Outcome::loaded)
+            .unwrap_or_else(abi::fault_reference)
         }
     };
 }
@@ -1244,9 +1332,17 @@ entry!(
 );
 entry!(clone_3, binding_method, b"clone");
 entry!(canonical_bytes, code_method, b"canonicalBytesOf:");
-entry!(inventory_inspect, code_method, b"inspectInventory:bindings:selection:");
+entry!(
+    inventory_inspect,
+    code_method,
+    b"inspectInventory:bindings:selection:"
+);
 entry!(inventory_closure, code_method, b"inventory:matchesRoots:");
-entry!(inventory_references, code_method, b"bindings:referencesBelow:");
+entry!(
+    inventory_references,
+    code_method,
+    b"bindings:referencesBelow:"
+);
 entry!(admit_bytes, code_method, b"fromCanonicalBytes:");
 entry!(code_object_from_program, code_method, b"fromProgram:");
 entry!(
@@ -1264,10 +1360,26 @@ entry!(
     code_method,
     b"sourceProvenance"
 );
-entry!(code_object_signature_matches,code_method,b"nativeSignature:matchesProgram:");
-entry!(code_object_is_native_signature, code_method, b"isNativeSignature:");
-entry!(code_object_native_signature, code_method, b"nativeSignature");
-entry!(code_object_with_native_signature, code_method, b"withNativeSignature:");
+entry!(
+    code_object_signature_matches,
+    code_method,
+    b"nativeSignature:matchesProgram:"
+);
+entry!(
+    code_object_is_native_signature,
+    code_method,
+    b"isNativeSignature:"
+);
+entry!(
+    code_object_native_signature,
+    code_method,
+    b"nativeSignature"
+);
+entry!(
+    code_object_with_native_signature,
+    code_method,
+    b"withNativeSignature:"
+);
 entry!(code_object_with_program, code_method, b"withProgram:");
 entry!(
     code_object_without_source_provenance,
@@ -1276,239 +1388,728 @@ entry!(
 );
 entry!(clone_4, code_method, b"clone");
 
-const FAMILIES: &[(&[u8], &[u8], &[(&[u8], Method)])] = &[
+const FAMILIES: &[(&[u8], &[u8], &[(&[u8], usize)])] = &[
     (
         b"CodeNode",
         b"CodeNodeVt",
         &[
-            (b"integer:", node_integer_new),
-            (b"floatBits:", node_float_bits_new),
-            (b"string:", node_string_new),
-            (b"symbol:", node_symbol_new),
-            (b"nilLiteral", node_nil_new),
-            (b"trueLiteral", node_true_new),
-            (b"falseLiteral", node_false_new),
-            (b"lexicalReadAt:", node_lexical_read_new),
-            (b"globalRead:", node_global_read_new),
-            (b"send:operands:", node_send_new),
-            (b"block:captureBindings:", node_block_new),
-            (b"kind", node_kind),
-            (b"integer", node_integer),
-            (b"floatBits", node_float_bits),
-            (b"string", node_string),
-            (b"symbol", node_symbol),
-            (b"bindingIndex", node_binding_index),
-            (b"global", node_global),
-            (b"selector", node_selector),
-            (b"operandCount", node_operand_count),
-            (b"operandAt:", node_operand_at),
-            (b"program", node_program),
-            (b"captureCount", node_capture_count),
-            (b"captureBindingAt:", node_capture_binding_at),
-            (b"clone", clone_0),
+            (b"integer:", 3),
+            (b"floatBits:", 4),
+            (b"string:", 5),
+            (b"symbol:", 6),
+            (b"nilLiteral", 7),
+            (b"trueLiteral", 8),
+            (b"falseLiteral", 9),
+            (b"lexicalReadAt:", 10),
+            (b"globalRead:", 11),
+            (b"send:operands:", 12),
+            (b"block:captureBindings:", 13),
+            (b"kind", 14),
+            (b"integer", 15),
+            (b"floatBits", 16),
+            (b"string", 17),
+            (b"symbol", 18),
+            (b"bindingIndex", 19),
+            (b"global", 20),
+            (b"selector", 21),
+            (b"operandCount", 22),
+            (b"operandAt:", 23),
+            (b"program", 24),
+            (b"captureCount", 25),
+            (b"captureBindingAt:", 26),
+            (b"clone", 27),
         ],
     ),
     (
         b"CodeStatement",
         b"CodeStatementVt",
         &[
-            (b"expression:", statement_expression_new),
-            (b"letNamed:expression:", statement_let_new),
-            (b"kind", statement_kind),
-            (b"expression", statement_expression),
-            (b"bindingName", statement_binding_name),
-            (b"clone", clone_1),
+            (b"expression:", 28),
+            (b"letNamed:expression:", 29),
+            (b"kind", 30),
+            (b"expression", 31),
+            (b"bindingName", 32),
+            (b"clone", 33),
         ],
     ),
     (
         b"CodeProgram",
         b"CodeProgramVt",
         &[
-            (b"parameters:captures:statements:", program_new),
-            (b"format", program_format),
-            (b"arity", program_arity),
-            (b"parameterCount", program_parameter_count),
-            (b"captureCount", program_capture_count),
-            (b"letCount", program_let_count),
-            (b"bindingCount", program_binding_count),
-            (b"statementCount", program_statement_count),
-            (b"statementAt:", program_statement_at),
-            (b"bindingAt:", program_any_binding_at),
-            (b"parameterAt:", program_parameter_at),
-            (b"captureAt:", program_capture_at),
-            (b"letAt:", program_let_at),
-            (b"clone", clone_2),
+            (b"parameters:captures:statements:", 34),
+            (b"format", 35),
+            (b"arity", 36),
+            (b"parameterCount", 37),
+            (b"captureCount", 38),
+            (b"letCount", 39),
+            (b"bindingCount", 40),
+            (b"statementCount", 41),
+            (b"statementAt:", 42),
+            (b"bindingAt:", 43),
+            (b"parameterAt:", 44),
+            (b"captureAt:", 45),
+            (b"letAt:", 46),
+            (b"clone", 47),
         ],
     ),
     (
         b"CodeLexicalBinding",
         b"CodeLexicalBindingVt",
         &[
-            (b"kind", binding_kind),
-            (b"index", binding_index),
-            (b"ordinal", binding_ordinal),
-            (b"name", binding_name),
-            (b"definingStatementIndex", binding_defining_statement),
-            (b"clone", clone_3),
+            (b"kind", 48),
+            (b"index", 49),
+            (b"ordinal", 50),
+            (b"name", 51),
+            (b"definingStatementIndex", 52),
+            (b"clone", 53),
         ],
     ),
     (
         b"CodeObject",
         b"CodeObjectVt",
         &[
-            (b"canonicalBytesOf:", canonical_bytes),
-            (b"parameterCountOf:", parameter_count_of),
-            (b"captureCountOf:", capture_count_of),
-            (b"inspectInventory:bindings:selection:", inventory_inspect),
-            (b"inventory:matchesRoots:", inventory_closure),
-            (b"bindings:referencesBelow:", inventory_references),
-            (b"fromCanonicalBytes:", admit_bytes),
-            (b"fromProgram:", code_object_from_program),
-            (
-                b"fromProgram:provenance:",
-                code_object_from_program_provenance,
-            ),
-            (b"format", code_object_format),
-            (b"arity", code_object_arity),
-            (b"captureSchema", code_object_capture_schema),
-            (b"program", code_object_program),
-            (b"digest", code_object_digest),
-            (b"sourceProvenance", code_object_source_provenance),
-            (b"nativeSignature:matchesProgram:",code_object_signature_matches),
-            (b"isNativeSignature:", code_object_is_native_signature),
-            (b"nativeSignature", code_object_native_signature),
-            (b"withNativeSignature:", code_object_with_native_signature),
-            (b"withProgram:", code_object_with_program),
-            (
-                b"withoutSourceProvenance",
-                code_object_without_source_provenance,
-            ),
-            (b"clone", clone_4),
+            (b"canonicalBytesOf:", 54),
+            (b"parameterCountOf:", 55),
+            (b"captureCountOf:", 56),
+            (b"inspectInventory:bindings:selection:", 57),
+            (b"inventory:matchesRoots:", 58),
+            (b"bindings:referencesBelow:", 59),
+            (b"fromCanonicalBytes:", 60),
+            (b"fromProgram:", 61),
+            (b"fromProgram:provenance:", 62),
+            (b"format", 63),
+            (b"arity", 64),
+            (b"captureSchema", 65),
+            (b"program", 66),
+            (b"digest", 67),
+            (b"sourceProvenance", 68),
+            (b"nativeSignature:matchesProgram:", 69),
+            (b"isNativeSignature:", 70),
+            (b"nativeSignature", 71),
+            (b"withNativeSignature:", 72),
+            (b"withProgram:", 73),
+            (b"withoutSourceProvenance", 74),
+            (b"clone", 75),
         ],
     ),
 ];
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 static BUSY: AtomicBool = AtomicBool::new(false);
-unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| {
-            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
-        };
-        let roots = named(b"Roots")?;
-        let mut tokens = Vec::new();
-        let result = (|| {
-            let mut keep = |o| -> Result<Oop, Outcome> {
-                tokens.push(
-                    id.send_named(roots, b"retain:", &[Operand::object(o)])?
-                        .as_word()
-                        .filter(|t| *t != 0)
-                        .ok_or_else(invalid)?,
-                );
-                Ok(o)
-            };
-            keep(ns)?;
-            keep(roots)?;
-            let gc = keep(named(b"GC")?)?;
-            let nil = keep(named(b"nil")?)?;
-            let parent = keep(named(b"ObjectVt")?)?;
-            let mut families = [(ptr::null_mut(), ptr::null_mut()); 5];
-            for family in &mut families {
-                let vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-                let prototype = keep(object(id.send_named(
-                    vt,
-                    b"allocate",
-                    &[Operand::word(0)],
-                )?)?)?;
-                *family = (vt, prototype);
-            }
-            let pointer = Box::into_raw(Box::new(State {
-                id,
-                ns,
-                roots,
-                gc,
-                nil,
-                families,
-                values: RefCell::new(HashMap::new()),
-                thread: std::thread::current().id(),
-            }));
-            // Published native entries keep this context valid even if a later send fails.
-            for (name, method) in [
-                (b"rootsDo:".as_slice(), self::roots as Method),
-                (b"referencesOf:do:", references as Method),
-                (b"finalize:", finalize as Method),
-            ] {
-                id.send_named(
-                    families[0].0,
-                    b"addMethod",
-                    &[
-                        Operand::object(id.intern_name(name)?),
-                        Operand::entry(NativeEntry::new(method, pointer.cast())),
-                    ],
-                )?;
-            }
-            for ((name, vt_name, methods), (vt, prototype)) in FAMILIES.iter().zip(families) {
-                for &(selector, method) in *methods {
-                    id.send_named(
-                        vt,
-                        b"addMethod",
-                        &[
-                            Operand::object(id.intern_name(selector)?),
-                            Operand::entry(NativeEntry::new(method, pointer.cast())),
-                        ],
-                    )?;
-                }
-                id.send_named(
-                    id.receiver,
-                    b"ownerOf:put:",
-                    &[Operand::object(vt), Operand::object(prototype)],
-                )?;
-                id.send_named(
-                    gc,
-                    b"trace:with:",
-                    &[Operand::object(vt), Operand::object(families[0].1)],
-                )?;
-                for (name, value) in [(*name, prototype), (*vt_name, vt)] {
-                    id.send_named(
-                        ns,
-                        b"at:put:",
-                        &[
-                            Operand::object(id.intern_name(name)?),
-                            Operand::object(value),
-                        ],
-                    )?;
-                }
-            }
-            id.send_named(roots, b"register:", &[Operand::object(families[0].1)])?;
-            INSTANCE.store(pointer, Ordering::Release);
-            Ok(Operand::unit())
-        })();
-        for token in tokens {
-            id.send_named(roots, b"release:", &[Operand::word(token)])?;
-        }
-        result
+struct Constructing;
+impl Drop for Constructing {
+    fn drop(&mut self) {
+        BUSY.store(false, Ordering::Release);
     }
 }
+
+const NAMES: &[&[u8]] = &[
+    b"releaseTokensProtecting",
+    b"nameWithBytes",
+    b"at:",
+    b"behaviorOf:",
+    b"release:",
+    b"retain:",
+    b"Word",
+    b"fromUnsignedLow:high:",
+    b"low32",
+    b"high32",
+    b"Integer",
+    b"fromWord:",
+    b"wordOf:",
+    b"sequence",
+    b"fromBytes:",
+    b"String",
+    b"bytes",
+    b"sizeWord",
+    b"atWord:",
+    b"SymbolVt",
+    b"StringVt",
+    b"Error",
+    b"typeMismatch",
+    b"invalidPortableProgram",
+    b"portableProgramLimit",
+    b"kind:message:",
+    b"allocate",
+    b"allocationSizeOf:",
+    b"finalize:with:",
+    b"CodeLexicalBindingVt",
+    b"size",
+    b"integer:",
+    b"lexicalReadAt:",
+    b"string:",
+    b"floatBits:",
+    b"symbol:",
+    b"globalRead:",
+    b"nilLiteral",
+    b"trueLiteral",
+    b"falseLiteral",
+    b"send:operands:",
+    b"block:captureBindings:",
+    b"operandAt:",
+    b"captureBindingAt:",
+    b"kind",
+    b"integer",
+    b"float",
+    b"string",
+    b"symbol",
+    b"nil",
+    b"true",
+    b"false",
+    b"lexicalRead",
+    b"globalRead",
+    b"send",
+    b"block",
+    b"floatBits",
+    b"global",
+    b"selector",
+    b"bindingIndex",
+    b"program",
+    b"operandCount",
+    b"captureCount",
+    b"expression:",
+    b"letNamed:expression:",
+    b"expression",
+    b"let",
+    b"bindingName",
+    b"CodeNodeVt",
+    b"CodeProgramVt",
+    b"parameters:captures:statements:",
+    b"statementAt:",
+    b"bindingAt:",
+    b"parameterAt:",
+    b"captureAt:",
+    b"letAt:",
+    b"CodeStatementVt",
+    b"format",
+    b"portableProgramV1",
+    b"arity",
+    b"parameterCount",
+    b"letCount",
+    b"bindingCount",
+    b"statementCount",
+    b"index",
+    b"parameter",
+    b"capture",
+    b"ordinal",
+    b"name",
+    b"definingStatementIndex",
+    b"inspectInventory:bindings:selection:",
+    b"inventory:matchesRoots:",
+    b"bindings:referencesBelow:",
+    b"canonicalBytesOf:",
+    b"Bytes",
+    b"fromCanonicalBytes:",
+    b"BytesVt",
+    b"fromProgram:",
+    b"fromProgram:provenance:",
+    b"nativeSignature:matchesProgram:",
+    b"isNativeSignature:",
+    b"withNativeSignature:",
+    b"withProgram:",
+    b"sourceProvenance",
+    b"nativeSignature",
+    b"withoutSourceProvenance",
+    b"digest",
+    b"captureSchema",
+    b"Vector",
+    b"new",
+    b"add:",
+    b"visit:",
+    b"clone",
+    b"CodeNode",
+    b"CodeStatement",
+    b"CodeProgram",
+    b"CodeLexicalBinding",
+    b"CodeObject",
+    b"CodeObjectVt",
+    b"parameterCountOf:",
+    b"captureCountOf:",
+    b"value",
+    b"at:put:",
+    b"methodAt:",
+    b"withContext:",
+    b"ObjectModel",
+    b"ownerOf:put:",
+    b"trace:with:",
+    b"register:",
+    b"Roots",
+    b"GC",
+    b"ObjectVt",
+    b"delegated",
+    b"addMethod",
+    b"rootsDo:",
+    b"referencesOf:do:",
+    b"finalize:",
+    b"newMethodAt:",
+];
+static LITERALS: &[Literal] = &[
+    Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"nameWithBytes"),
+    Literal::new(b"at:"),
+    Literal::new(b"behaviorOf:"),
+    Literal::new(b"release:"),
+    Literal::new(b"retain:"),
+    Literal::new(b"Word"),
+    Literal::new(b"fromUnsignedLow:high:"),
+    Literal::new(b"low32"),
+    Literal::new(b"high32"),
+    Literal::new(b"Integer"),
+    Literal::new(b"fromWord:"),
+    Literal::new(b"wordOf:"),
+    Literal::new(b"sequence"),
+    Literal::new(b"fromBytes:"),
+    Literal::new(b"String"),
+    Literal::new(b"bytes"),
+    Literal::new(b"sizeWord"),
+    Literal::new(b"atWord:"),
+    Literal::new(b"SymbolVt"),
+    Literal::new(b"StringVt"),
+    Literal::new(b"Error"),
+    Literal::new(b"typeMismatch"),
+    Literal::new(b"invalidPortableProgram"),
+    Literal::new(b"portableProgramLimit"),
+    Literal::new(b"kind:message:"),
+    Literal::new(b"allocate"),
+    Literal::new(b"allocationSizeOf:"),
+    Literal::new(b"finalize:with:"),
+    Literal::new(b"CodeLexicalBindingVt"),
+    Literal::new(b"size"),
+    Literal::new(b"integer:"),
+    Literal::new(b"lexicalReadAt:"),
+    Literal::new(b"string:"),
+    Literal::new(b"floatBits:"),
+    Literal::new(b"symbol:"),
+    Literal::new(b"globalRead:"),
+    Literal::new(b"nilLiteral"),
+    Literal::new(b"trueLiteral"),
+    Literal::new(b"falseLiteral"),
+    Literal::new(b"send:operands:"),
+    Literal::new(b"block:captureBindings:"),
+    Literal::new(b"operandAt:"),
+    Literal::new(b"captureBindingAt:"),
+    Literal::new(b"kind"),
+    Literal::new(b"integer"),
+    Literal::new(b"float"),
+    Literal::new(b"string"),
+    Literal::new(b"symbol"),
+    Literal::new(b"nil"),
+    Literal::new(b"true"),
+    Literal::new(b"false"),
+    Literal::new(b"lexicalRead"),
+    Literal::new(b"globalRead"),
+    Literal::new(b"send"),
+    Literal::new(b"block"),
+    Literal::new(b"floatBits"),
+    Literal::new(b"global"),
+    Literal::new(b"selector"),
+    Literal::new(b"bindingIndex"),
+    Literal::new(b"program"),
+    Literal::new(b"operandCount"),
+    Literal::new(b"captureCount"),
+    Literal::new(b"expression:"),
+    Literal::new(b"letNamed:expression:"),
+    Literal::new(b"expression"),
+    Literal::new(b"let"),
+    Literal::new(b"bindingName"),
+    Literal::new(b"CodeNodeVt"),
+    Literal::new(b"CodeProgramVt"),
+    Literal::new(b"parameters:captures:statements:"),
+    Literal::new(b"statementAt:"),
+    Literal::new(b"bindingAt:"),
+    Literal::new(b"parameterAt:"),
+    Literal::new(b"captureAt:"),
+    Literal::new(b"letAt:"),
+    Literal::new(b"CodeStatementVt"),
+    Literal::new(b"format"),
+    Literal::new(b"portableProgramV1"),
+    Literal::new(b"arity"),
+    Literal::new(b"parameterCount"),
+    Literal::new(b"letCount"),
+    Literal::new(b"bindingCount"),
+    Literal::new(b"statementCount"),
+    Literal::new(b"index"),
+    Literal::new(b"parameter"),
+    Literal::new(b"capture"),
+    Literal::new(b"ordinal"),
+    Literal::new(b"name"),
+    Literal::new(b"definingStatementIndex"),
+    Literal::new(b"inspectInventory:bindings:selection:"),
+    Literal::new(b"inventory:matchesRoots:"),
+    Literal::new(b"bindings:referencesBelow:"),
+    Literal::new(b"canonicalBytesOf:"),
+    Literal::new(b"Bytes"),
+    Literal::new(b"fromCanonicalBytes:"),
+    Literal::new(b"BytesVt"),
+    Literal::new(b"fromProgram:"),
+    Literal::new(b"fromProgram:provenance:"),
+    Literal::new(b"nativeSignature:matchesProgram:"),
+    Literal::new(b"isNativeSignature:"),
+    Literal::new(b"withNativeSignature:"),
+    Literal::new(b"withProgram:"),
+    Literal::new(b"sourceProvenance"),
+    Literal::new(b"nativeSignature"),
+    Literal::new(b"withoutSourceProvenance"),
+    Literal::new(b"digest"),
+    Literal::new(b"captureSchema"),
+    Literal::new(b"Vector"),
+    Literal::new(b"new"),
+    Literal::new(b"add:"),
+    Literal::new(b"visit:"),
+    Literal::new(b"clone"),
+    Literal::new(b"CodeNode"),
+    Literal::new(b"CodeStatement"),
+    Literal::new(b"CodeProgram"),
+    Literal::new(b"CodeLexicalBinding"),
+    Literal::new(b"CodeObject"),
+    Literal::new(b"CodeObjectVt"),
+    Literal::new(b"parameterCountOf:"),
+    Literal::new(b"captureCountOf:"),
+    Literal::new(b"value"),
+    Literal::new(b"at:put:"),
+    Literal::new(b"methodAt:"),
+    Literal::new(b"withContext:"),
+    Literal::new(b"ObjectModel"),
+    Literal::new(b"ownerOf:put:"),
+    Literal::new(b"trace:with:"),
+    Literal::new(b"register:"),
+    Literal::new(b"Roots"),
+    Literal::new(b"GC"),
+    Literal::new(b"ObjectVt"),
+    Literal::new(b"delegated"),
+    Literal::new(b"addMethod"),
+    Literal::new(b"rootsDo:"),
+    Literal::new(b"referencesOf:do:"),
+    Literal::new(b"finalize:"),
+    Literal::new(b"newMethodAt:"),
+];
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 134,
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: 135,
+        entry: Some(references),
+    },
+    MethodSpec {
+        name: 136,
+        entry: Some(finalize),
+    },
+    MethodSpec {
+        name: 31,
+        entry: Some(node_integer_new),
+    },
+    MethodSpec {
+        name: 34,
+        entry: Some(node_float_bits_new),
+    },
+    MethodSpec {
+        name: 33,
+        entry: Some(node_string_new),
+    },
+    MethodSpec {
+        name: 35,
+        entry: Some(node_symbol_new),
+    },
+    MethodSpec {
+        name: 37,
+        entry: Some(node_nil_new),
+    },
+    MethodSpec {
+        name: 38,
+        entry: Some(node_true_new),
+    },
+    MethodSpec {
+        name: 39,
+        entry: Some(node_false_new),
+    },
+    MethodSpec {
+        name: 32,
+        entry: Some(node_lexical_read_new),
+    },
+    MethodSpec {
+        name: 36,
+        entry: Some(node_global_read_new),
+    },
+    MethodSpec {
+        name: 40,
+        entry: Some(node_send_new),
+    },
+    MethodSpec {
+        name: 41,
+        entry: Some(node_block_new),
+    },
+    MethodSpec {
+        name: 44,
+        entry: Some(node_kind),
+    },
+    MethodSpec {
+        name: 45,
+        entry: Some(node_integer),
+    },
+    MethodSpec {
+        name: 56,
+        entry: Some(node_float_bits),
+    },
+    MethodSpec {
+        name: 47,
+        entry: Some(node_string),
+    },
+    MethodSpec {
+        name: 48,
+        entry: Some(node_symbol),
+    },
+    MethodSpec {
+        name: 59,
+        entry: Some(node_binding_index),
+    },
+    MethodSpec {
+        name: 57,
+        entry: Some(node_global),
+    },
+    MethodSpec {
+        name: 58,
+        entry: Some(node_selector),
+    },
+    MethodSpec {
+        name: 61,
+        entry: Some(node_operand_count),
+    },
+    MethodSpec {
+        name: 42,
+        entry: Some(node_operand_at),
+    },
+    MethodSpec {
+        name: 60,
+        entry: Some(node_program),
+    },
+    MethodSpec {
+        name: 62,
+        entry: Some(node_capture_count),
+    },
+    MethodSpec {
+        name: 43,
+        entry: Some(node_capture_binding_at),
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(clone_0),
+    },
+    MethodSpec {
+        name: 63,
+        entry: Some(statement_expression_new),
+    },
+    MethodSpec {
+        name: 64,
+        entry: Some(statement_let_new),
+    },
+    MethodSpec {
+        name: 44,
+        entry: Some(statement_kind),
+    },
+    MethodSpec {
+        name: 65,
+        entry: Some(statement_expression),
+    },
+    MethodSpec {
+        name: 67,
+        entry: Some(statement_binding_name),
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(clone_1),
+    },
+    MethodSpec {
+        name: 70,
+        entry: Some(program_new),
+    },
+    MethodSpec {
+        name: 77,
+        entry: Some(program_format),
+    },
+    MethodSpec {
+        name: 79,
+        entry: Some(program_arity),
+    },
+    MethodSpec {
+        name: 80,
+        entry: Some(program_parameter_count),
+    },
+    MethodSpec {
+        name: 62,
+        entry: Some(program_capture_count),
+    },
+    MethodSpec {
+        name: 81,
+        entry: Some(program_let_count),
+    },
+    MethodSpec {
+        name: 82,
+        entry: Some(program_binding_count),
+    },
+    MethodSpec {
+        name: 83,
+        entry: Some(program_statement_count),
+    },
+    MethodSpec {
+        name: 71,
+        entry: Some(program_statement_at),
+    },
+    MethodSpec {
+        name: 72,
+        entry: Some(program_any_binding_at),
+    },
+    MethodSpec {
+        name: 73,
+        entry: Some(program_parameter_at),
+    },
+    MethodSpec {
+        name: 74,
+        entry: Some(program_capture_at),
+    },
+    MethodSpec {
+        name: 75,
+        entry: Some(program_let_at),
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(clone_2),
+    },
+    MethodSpec {
+        name: 44,
+        entry: Some(binding_kind),
+    },
+    MethodSpec {
+        name: 84,
+        entry: Some(binding_index),
+    },
+    MethodSpec {
+        name: 87,
+        entry: Some(binding_ordinal),
+    },
+    MethodSpec {
+        name: 88,
+        entry: Some(binding_name),
+    },
+    MethodSpec {
+        name: 89,
+        entry: Some(binding_defining_statement),
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(clone_3),
+    },
+    MethodSpec {
+        name: 93,
+        entry: Some(canonical_bytes),
+    },
+    MethodSpec {
+        name: 119,
+        entry: Some(parameter_count_of),
+    },
+    MethodSpec {
+        name: 120,
+        entry: Some(capture_count_of),
+    },
+    MethodSpec {
+        name: 90,
+        entry: Some(inventory_inspect),
+    },
+    MethodSpec {
+        name: 91,
+        entry: Some(inventory_closure),
+    },
+    MethodSpec {
+        name: 92,
+        entry: Some(inventory_references),
+    },
+    MethodSpec {
+        name: 95,
+        entry: Some(admit_bytes),
+    },
+    MethodSpec {
+        name: 97,
+        entry: Some(code_object_from_program),
+    },
+    MethodSpec {
+        name: 98,
+        entry: Some(code_object_from_program_provenance),
+    },
+    MethodSpec {
+        name: 77,
+        entry: Some(code_object_format),
+    },
+    MethodSpec {
+        name: 79,
+        entry: Some(code_object_arity),
+    },
+    MethodSpec {
+        name: 107,
+        entry: Some(code_object_capture_schema),
+    },
+    MethodSpec {
+        name: 60,
+        entry: Some(code_object_program),
+    },
+    MethodSpec {
+        name: 106,
+        entry: Some(code_object_digest),
+    },
+    MethodSpec {
+        name: 103,
+        entry: Some(code_object_source_provenance),
+    },
+    MethodSpec {
+        name: 99,
+        entry: Some(code_object_signature_matches),
+    },
+    MethodSpec {
+        name: 100,
+        entry: Some(code_object_is_native_signature),
+    },
+    MethodSpec {
+        name: 104,
+        entry: Some(code_object_native_signature),
+    },
+    MethodSpec {
+        name: 101,
+        entry: Some(code_object_with_native_signature),
+    },
+    MethodSpec {
+        name: 102,
+        entry: Some(code_object_with_program),
+    },
+    MethodSpec {
+        name: 105,
+        entry: Some(code_object_without_source_provenance),
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(clone_4),
+    },
+];
 unsafe extern "C" fn initialize(
-    id: *const Protocol,
-    args: *const Operand,
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
     count: usize,
-) -> Outcome {
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
     (|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([ns]) = borrowed_slice(args, count) else {
+        let id = *p;
+        let [ns] = borrowed_slice(a, count).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let ns = object(*ns)?;
-        let existing = INSTANCE.load(Ordering::Acquire);
-        if !existing.is_null() {
-            let s = &*existing;
-            return if s.id.same_contract(&*id)
-                && s.ns == ns
-                && s.thread == std::thread::current().id()
-            {
-                Ok(Operand::unit())
+        let symbols = borrowed_slice(l, n)
+            .filter(|v| v.len() == NAMES.len())
+            .ok_or_else(invalid)?;
+        let old = INSTANCE.load(Ordering::Acquire);
+        if !old.is_null() {
+            let s = &*old;
+            return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
+                Ok(s.families[0].1)
             } else {
                 Err(invalid())
             };
@@ -1516,16 +2117,79 @@ unsafe extern "C" fn initialize(
         if BUSY.swap(true, Ordering::AcqRel) {
             return Err(invalid());
         }
-        let result = construct(*id, ns);
-        BUSY.store(false, Ordering::Release);
-        result
+        let _busy = Constructing;
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, name: &[u8], args: &[Oop]| id.send(r, names[name], args);
+        let named = |name: &[u8]| send(*ns, b"at:", &[names[name]]);
+        let roots = named(b"Roots")?;
+        let gc = named(b"GC")?;
+        let nil = named(b"nil")?;
+        let parent = named(b"ObjectVt")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v| {
+            tokens.push(send(roots, b"retain:", &[v])?);
+            Ok::<Oop, Oop>(v)
+        };
+        let mut families = [(ptr::null_mut(), ptr::null_mut()); 5];
+        for f in &mut families {
+            let vt = keep(send(parent, b"delegated", &[])?)?;
+            *f = (vt, keep(send(vt, b"allocate", &[abi::size(0).unwrap()])?)?);
+        }
+        let s = Box::leak(Box::new(State {
+            id,
+            names,
+            ns: *ns,
+            roots,
+            gc,
+            nil,
+            families,
+            values: RefCell::new(HashMap::new()),
+            thread: std::thread::current().id(),
+            ready: Cell::new(false),
+        }));
+        INSTANCE.store(s, Ordering::Release);
+        let bind = |vt, selector: &[u8], index: usize| -> Result<(), Oop> {
+            let method = s.send(
+                image,
+                b"newMethodAt:",
+                &[abi::size(index).ok_or_else(invalid)?],
+            )?;
+            let method = s.send(method, b"withContext:", &[*ns])?;
+            s.send(vt, b"addMethod", &[s.symbol(selector)?, method])?;
+            Ok(())
+        };
+        for (i, name) in [b"rootsDo:".as_slice(), b"referencesOf:do:", b"finalize:"]
+            .iter()
+            .enumerate()
+        {
+            bind(families[0].0, name, i)?;
+        }
+        s.send(roots, b"register:", &[families[0].1])?;
+        for ((name, vt_name, methods), (vt, prototype)) in FAMILIES.iter().zip(families) {
+            for &(selector, index) in *methods {
+                bind(vt, selector, index)?;
+            }
+            s.send(id.root, b"ownerOf:put:", &[vt, prototype])?;
+            s.send(gc, b"trace:with:", &[vt, families[0].1])?;
+            s.send(*ns, b"at:put:", &[s.symbol(name)?, prototype])?;
+            s.send(*ns, b"at:put:", &[s.symbol(vt_name)?, vt])?;
+        }
+        for token in tokens {
+            s.send(roots, b"release:", &[token])?;
+        }
+        s.ready.set(true);
+        Ok(families[0].1)
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
 #[unsafe(no_mangle)]

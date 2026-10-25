@@ -1,0 +1,9 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "3aca214b",
+  "command": "bash scripts/oop-bootstrap-test.sh",
+  "exit_code": 0,
+  "coverage": "PortableCode construction, signed Integer bounds, canonical program round-trip, 13 valid/invalid canonical fixtures and GC. Published Bootstrap now loads PortableCode and rejects the absent required source closure; it still does not load the grammar seed.",
+  "contract": "Private PortableProgram node/code representations stay with PortableCode. Native signature descriptions are data only; no native value carriers or Id protocol changes are added.",
+  "log_sha256": "c6e6632313375c2a931976509457e36dbccabbe1e1cdf2f593678e41ec6eb407"
+}

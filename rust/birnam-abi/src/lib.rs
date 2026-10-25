@@ -37,3 +37,6 @@ pub unsafe fn borrowed_slice<'a, T>(p: *const T, n: usize) -> Option<&'a [T]> {
         Some(unsafe { core::slice::from_raw_parts(p, n) })
     }
 }
+
+// Descriptive foreign/native signature bytes; these do not add Id value carriers.
+pub mod native_signature;

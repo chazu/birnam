@@ -341,3 +341,9 @@ Birnam Lang with the seed parser disabled. The default Bootstrap builds and
 loads those artifacts without the grammar seed, but still fails at its required
 PortableCode provider. This is not full published startup qualification.
 [Receipt](../measurements/bootstrap-oop-20261025.json).
+
+PortableCode's retained object and canonical-code operations now use Oop messages,
+with owner-defined tracing and protected result cleanup. Thirteen canonical
+program fixtures, construction and signed values pass in the cold compiler
+process. Published Bootstrap advances past PortableCode and still requires the
+remaining source/platform closure. [Receipt](../measurements/portable-code-oop-20261025.json).

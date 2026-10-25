@@ -8,14 +8,14 @@ logs="$CARGO_TARGET_DIR/bootstrap-qualification"
 mkdir -p "$logs"
 # The seed is a build tool. Published Bootstrap is separately checked below;
 # it still requires the complete owner closure and has no fallback to this seed.
-mise exec -- cargo build --offline --locked --release --lib -p birnam-bootstrap --features lang-seed > "$logs/build.log" 2>&1
+mise exec -- cargo build --offline --locked --release --lib -p birnam-bootstrap -p birnam-portable-code --features birnam-bootstrap/lang-seed > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_bootstrap > "$logs/caller-build.log" 2>&1
 python3 - "$CARGO_TARGET_DIR" "$logs" <<'PY'
 from pathlib import Path
 import os,shutil,subprocess,sys,tempfile,json
 build=Path(sys.argv[1]);logs=Path(sys.argv[2]);root=Path.cwd()
 stage=Path(tempfile.mkdtemp(prefix='cold-',dir=logs))
-names='id bootstrap root_registry namespace boolean nil collect object_model word bytes execution string integer float prelude system_output system_input environment file_io storage vector map peg artifact tcc native_backend codegen_runtime lang_seed'.split()
+names='id bootstrap portable_code root_registry namespace boolean nil collect object_model word bytes execution string integer float prelude system_output system_input environment file_io storage vector map peg artifact tcc native_backend codegen_runtime lang_seed'.split()
 for name in names:shutil.copy2(build/'release'/f'libbirnam_{name}.dylib',stage)
 subprocess.run(['clang','-dynamiclib','-O2','tests/fixtures/oop-bootstrap/returns.c','-o',str(stage/'returns.dylib')],check=True)
 subprocess.run(['clang','-dynamiclib','-x','c','-','-o',str(stage/'not-module.dylib')],input=b'int not_a_module=17;',check=True)

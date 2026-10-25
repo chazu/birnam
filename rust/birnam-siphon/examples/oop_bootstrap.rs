@@ -8,6 +8,12 @@ fn main() {
         let id_path = directory.join("libbirnam_id.dylib");
         let bootstrap = directory.join("libbirnam_bootstrap.dylib");
         let selectors: &[&[u8]] = &[
+            b"CodeObject",
+            b"Bytes",
+            b"fromCanonicalBytes:",
+            b"canonicalBytesOf:",
+            b"CodeNode",
+            b"size",
             b"Error",
             b"Globals",
             b"SourceRegistry",
@@ -81,12 +87,7 @@ fn main() {
         if std::env::args().nth(3).as_deref() == Some("published-rejection") {
             let error =
                 loaded.expect_err("published bootstrap must require the complete owner closure");
-            assert_eq!(send(error, b"faultKind", &[]), sel(b"mappingFailed"));
-            let detail = send(error, b"detail", &[]);
-            let path = id
-                .read_bytes(detail, sel(b"sizeWord"), sel(b"atWord:"))
-                .unwrap();
-            assert!(path.ends_with(b"libbirnam_portable_code.dylib"));
+            assert_eq!(send(error, b"kind", &[]), sel(b"ioError"));
             let load = |name: &str, args: &[abi::Oop]| {
                 let path = directory.join(format!("libbirnam_{name}.dylib"));
                 let values: Vec<_> = path
@@ -106,6 +107,10 @@ fn main() {
                 "published mode must not load the grammar seed"
             );
             assert!(!send(ns, b"at:", &[sel(b"Error")]).is_null());
+            assert!(
+                !send(ns, b"at:", &[sel(b"CodeNode")]).is_null(),
+                "required PortableCode owner must load before source startup"
+            );
             let globals = send(ns, b"at:", &[sel(b"Globals")]);
             let registry = send(globals, b"at:", &[sel(b"SourceRegistry")]);
             assert!(!registry.is_null());
@@ -154,6 +159,63 @@ fn main() {
         ] {
             eval(&std::fs::read_to_string(root.join(format!("modules/{name}.birnam"))).unwrap());
         }
+        let portable_path = directory.join("libbirnam_portable_code.dylib");
+        let values: Vec<_> = portable_path
+            .as_os_str()
+            .as_bytes()
+            .iter()
+            .map(|b| abi::size(*b as usize).unwrap())
+            .collect();
+        let portable_path = keep(send(id.root, b"nameWithBytes", &values));
+        let args = keep(send(id.root, b"sequence", &[ns]));
+        id.send(portable_path, id.load, &[args]).unwrap();
+        assert_eq!(
+            eval(
+                "[[| let p := [CodeProgram parameters: #[\"x\"] captures: #[] statements: #[[CodeStatement expression: [CodeNode lexicalReadAt: 0]]]]; let code := [CodeObject fromProgram: p]; let bytes := [CodeObject canonicalBytesOf: code]; [GC collectPrecisely]; let copy := [CodeObject fromCanonicalBytes: bytes]; [[[copy program] arity] = 1]] value]"
+            ),
+            named(b"true")
+        );
+        assert_eq!(
+            eval("[[[CodeNode integer: -9223372036854775808] integer] = -9223372036854775808]"),
+            named(b"true")
+        );
+        let mut checked = 0;
+        for entry in std::fs::read_dir(root.join("tests/fixtures/portable-code-v1")).unwrap() {
+            let path = entry.unwrap().path();
+            if !path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("program-")
+            {
+                continue;
+            }
+            let bytes = std::fs::read(&path).unwrap();
+            let valid = birnam_artifact_codec::portable_program::inspect(&bytes).is_ok();
+            let values: Vec<_> = bytes
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect();
+            let values = keep(send(id.root, b"sequence", &values));
+            let input = keep(send(named(b"Bytes"), b"fromBytes:", &[values]));
+            let value = keep(send(named(b"CodeObject"), b"fromCanonicalBytes:", &[input]));
+            if valid {
+                assert_ne!(send(value, b"isError", &[]), named(b"true"));
+                send(gc, b"collectPrecisely", &[]);
+                let actual = keep(send(named(b"CodeObject"), b"canonicalBytesOf:", &[value]));
+                let actual = keep(send(actual, b"bytes", &[]));
+                assert_eq!(
+                    id.read_bytes(actual, sel(b"sizeWord"), sel(b"atWord:"))
+                        .unwrap(),
+                    bytes
+                );
+            } else {
+                assert_eq!(send(value, b"isError", &[]), named(b"true"));
+            }
+            checked += 1;
+        }
+        assert!(checked >= 10);
+        println!("OOP_PORTABLE_CODE_OWNER_OK fixtures={checked}");
         let outcome = eval("[[TaskControl start: [:task | 42]] pollOutcome]");
         keep(outcome);
         assert_eq!(
