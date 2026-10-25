@@ -72,7 +72,7 @@ fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
 }
 
-unsafe fn number(s: &State, value: usize) -> Result<Oop, Oop> {
+pub(super) unsafe fn number(s: &State, value: usize) -> Result<Oop, Oop> {
     unsafe {
         s.send(
             s.named(b"Integer")?,
@@ -81,7 +81,7 @@ unsafe fn number(s: &State, value: usize) -> Result<Oop, Oop> {
         )
     }
 }
-unsafe fn index(s: &State, value: Oop) -> Result<usize, Oop> {
+pub(super) unsafe fn index(s: &State, value: Oop) -> Result<usize, Oop> {
     unsafe {
         if let Some(v) = abi::as_size(value) {
             return Ok(v);

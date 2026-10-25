@@ -223,6 +223,50 @@ fn main() {
             named(b"true")
         );
         send(gc, b"collectPrecisely", &[]);
+        for (name, file) in [
+            ("nativeValues", "native-values"),
+            ("integerValues", "integer"),
+            ("trace", "trace"),
+        ] {
+            let source =
+                std::fs::read_to_string(root.join(format!("modules/{file}.birnam"))).unwrap();
+            let output = directory.join(format!("libbirnam_{name}.dylib"));
+            let path = text(output.as_os_str().as_bytes());
+            assert_eq!(
+                send(
+                    codegen,
+                    b"compile:output:from:synchronousBodies:",
+                    &[
+                        text(source.as_bytes()),
+                        path,
+                        text(format!("modules/{file}.birnam").as_bytes()),
+                        named(b"true")
+                    ]
+                ),
+                path
+            );
+            let value = keep(send(codegen, b"load:", &[path]));
+            assert_ne!(send(value, b"isError", &[]), named(b"true"), "{name}");
+        }
+        assert_eq!(
+            abi::as_size(send(integer, b"wordOf:", &[eval("[40 + 2]")])),
+            Some(42)
+        );
+        assert_eq!(
+            eval("[[9223372036854775807 - 1] = 9223372036854775806]"),
+            named(b"true")
+        );
+        assert_eq!(
+            eval("[[-9223372036854775808 + 1] = -9223372036854775807]"),
+            named(b"true")
+        );
+        assert_eq!(
+            eval(
+                "[[| let original := [Storage methodFor: #observe:]; let target := [Object clone]; let finished := [false asCell]; let observer := [Object clone]; [Reflect defineMethod: #reached:identity: on: observer as: [:self :value :identity | nil]]; [Reflect defineMethod: #notReached:identity: on: observer as: [:self :value :identity | nil]]; [Reflect defineMethod: #complete: on: observer as: [:self :gaps | [finished set: true]]]; [Reflect defineMethod: #observe: on: Storage as: [:self :visitor | [visitor allocation: target bytes: [Vtable allocationSizeOf: target] identity: [Vtable identityOf: target]]; [visitor root: target]; [visitor complete: [Integer wordOf: 0]]]]; [Trace report: observer acceptingGaps: [Integer wordOf: 0]]; [[Vtable behaviorOf: Storage] addMethod: original as: #observe:]; [finished value]] value]"
+            ),
+            named(b"true")
+        );
+        println!("OOP_NATIVE_FACING_SOURCE_OK");
         let lang_source = std::fs::read_to_string(root.join("modules/lang.birnam")).unwrap();
         let output = directory.join("libbirnam_lang.dylib");
         let output_value = text(output.as_os_str().as_bytes());

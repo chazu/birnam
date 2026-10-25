@@ -8,7 +8,7 @@ logs="$CARGO_TARGET_DIR/bootstrap-qualification"
 mkdir -p "$logs"
 # The seed is a build tool. Published Bootstrap is separately checked below;
 # it still requires the complete owner closure and has no fallback to this seed.
-mise exec -- cargo build --offline --locked --release --lib -p birnam-bootstrap -p birnam-portable-code --features birnam-bootstrap/lang-seed > "$logs/build.log" 2>&1
+mise exec -- cargo build --offline --locked --release --lib -p birnam-bootstrap -p birnam-portable-code -p birnam-execution --features birnam-bootstrap/lang-seed > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_bootstrap > "$logs/caller-build.log" 2>&1
 python3 - "$CARGO_TARGET_DIR" "$logs" <<'PY'
 from pathlib import Path

@@ -1,4 +1,6 @@
 //! Shared Execution owner, synchronous Blocks, and resumable driver connection.
+#[path = "oop_native.rs"]
+mod native_adapters;
 #[path = "resumable_runtime.rs"]
 mod resumable;
 use crate::{execution::ExecutionState, objects::Objects};
@@ -21,6 +23,7 @@ struct State {
     id: Protocol,
     control: Control,
     value_answer: Oop,
+    native_value: Oop,
     ns: Oop,
     gc: Oop,
     nil: Oop,
@@ -371,6 +374,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.block,
             s.block_vt,
             s.value_answer,
+            s.native_value,
         ];
         values.extend_from_slice(&s.scoped.borrow());
         values.extend_from_slice(&s.resume.borrow().roots);
@@ -605,6 +609,28 @@ const NAMES: &[&[u8]] = &[
     b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:",
     b"ownerOf:put:",
     b"invalidRequest",
+    b"optionalWordResultOf:selector:argument:resultFactory:",
+    b"objectResultOf:selector:wordArgument:",
+    b"discardResultOf:selector:wordArgument:",
+    b"objectResultOf:selector:byteArgument:",
+    b"bytesResultOf:selector:resultFactory:",
+    b"wordResultOf:selector:",
+    b"bytesResultOf:selector:",
+    b"block:withNativeSignature:",
+    b"nativeSignatureValue",
+    b"failNative:detail:",
+    b"bits",
+    b"fromBits:",
+    b"Bytes",
+    b"Word",
+    b"nativeFailed:detail:",
+    b"nativeCleanup",
+    b"nativeReceiver",
+    b"nativeSelector",
+    b"nativeArguments",
+    b"nativeSignature",
+    b"detail",
+    b"size",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -767,6 +793,28 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:value:"),
     Literal::new(b"ownerOf:put:"),
     Literal::new(b"invalidRequest"),
+    Literal::new(b"optionalWordResultOf:selector:argument:resultFactory:"),
+    Literal::new(b"objectResultOf:selector:wordArgument:"),
+    Literal::new(b"discardResultOf:selector:wordArgument:"),
+    Literal::new(b"objectResultOf:selector:byteArgument:"),
+    Literal::new(b"bytesResultOf:selector:resultFactory:"),
+    Literal::new(b"wordResultOf:selector:"),
+    Literal::new(b"bytesResultOf:selector:"),
+    Literal::new(b"block:withNativeSignature:"),
+    Literal::new(b"nativeSignatureValue"),
+    Literal::new(b"failNative:detail:"),
+    Literal::new(b"bits"),
+    Literal::new(b"fromBits:"),
+    Literal::new(b"Bytes"),
+    Literal::new(b"Word"),
+    Literal::new(b"nativeFailed:detail:"),
+    Literal::new(b"nativeCleanup"),
+    Literal::new(b"nativeReceiver"),
+    Literal::new(b"nativeSelector"),
+    Literal::new(b"nativeArguments"),
+    Literal::new(b"nativeSignature"),
+    Literal::new(b"detail"),
+    Literal::new(b"size"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1104,6 +1152,56 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(invalid_request),
         convention: 0,
     },
+    MethodSpec {
+        name: 160,
+        entry: Some(native_adapters::optional_word),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 161,
+        entry: Some(native_adapters::object_word),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 162,
+        entry: Some(native_adapters::discard_word),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 163,
+        entry: Some(native_adapters::object_bytes),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 164,
+        entry: Some(native_adapters::bytes_factory),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 165,
+        entry: Some(native_adapters::word_result),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 166,
+        entry: Some(native_adapters::bytes_result),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 167,
+        entry: Some(native_adapters::with_signature),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 168,
+        entry: Some(native_adapters::value),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 169,
+        entry: Some(native_adapters::fail),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1164,6 +1262,11 @@ unsafe extern "C" fn initialize(
                 b"methodAt:",
                 &[names[b"valueAnswer".as_slice()]],
             )?)?,
+            native_value: keep(send(
+                image,
+                b"methodAt:",
+                &[names[b"nativeSignatureValue".as_slice()]],
+            )?)?,
             ns: *ns,
             gc: named(b"GC")?,
             nil: named(b"nil")?,
@@ -1184,7 +1287,7 @@ unsafe extern "C" fn initialize(
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
             let name = NAMES[spec.name];
-            if name == b"valueAnswer" {
+            if matches!(name, b"valueAnswer" | b"nativeSignatureValue") {
                 continue;
             }
             let target = match name {
