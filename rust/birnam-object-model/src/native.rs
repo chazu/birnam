@@ -511,6 +511,19 @@ impl Model {
                     Ok(*value)
                 }
                 Op::ImageSize => Ok(abi::size(self.extent(one()?)?).ok_or(invalid)?),
+                Op::ImageSlotKind => {
+                    let [index, value] = a else {
+                        return Err(invalid);
+                    };
+                    let i = self.number(*index)?;
+                    let _scope = self.scope();
+                    self.keep(*value);
+                    if i >= self.extent(*value)? / size_of::<usize>() {
+                        return Err(invalid);
+                    }
+                    let layout = self.inherited_layout(*value)?.ok_or(invalid)?;
+                    Ok(abi::size(layout.kind(i) as usize).unwrap())
+                }
                 Op::ImageSlot => {
                     let [index, value] = a else {
                         return Err(invalid);
@@ -827,6 +840,7 @@ literals![
     b"allOopLayoutOf:words:",
     b"imageSizeOf:",
     b"imageSlotAt:in:",
+    b"imageSlotKindAt:in:",
     b"restoreImageSlotAt:in:put:",
     b"slotAt:in:",
     b"slotAt:in:put:",
@@ -884,6 +898,7 @@ operations![
     (b"replaceSlot:in:expected:with:", Replace),
     (b"imageSizeOf:", ImageSize),
     (b"imageSlotAt:in:", ImageSlot),
+    (b"imageSlotKindAt:in:", ImageSlotKind),
     (b"restoreImageSlotAt:in:put:", ImagePut),
     (b"slotAt:in:put:", SlotPut),
     (b"slotKindOf:at:", SlotKind),

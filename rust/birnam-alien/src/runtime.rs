@@ -2,21 +2,54 @@
 //! are selected through Id messages; executable mappings belong to TCC Units.
 use crate::loader::LibraryRegistry;
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::RefCell, ffi::c_void, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    ptr,
+};
 use std::collections::HashMap;
 
-type Answer = Result<Operand, Outcome>;
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+type Answer = Result<Oop, Failure>;
+#[derive(Debug)]
+enum Failure {
+    Native(Oop),
+    Value(Oop),
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+impl From<Oop> for Failure {
+    fn from(v: Oop) -> Self {
+        Self::Native(v)
+    }
 }
-fn done(r: Answer) -> Outcome {
-    r.map_or_else(|e| e, Outcome::loaded)
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+use std::sync::atomic::{AtomicPtr, Ordering};
+fn invalid() -> Failure {
+    Failure::Native(unsafe { abi::object_reference((*API.load(Ordering::Acquire)).invalid) })
+}
+fn object(v: Oop) -> Result<Oop, Failure> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
+fn done(v: Answer) -> Oop {
+    match v {
+        Ok(v) | Err(Failure::Value(v)) => v,
+        Err(Failure::Native(e)) => abi::fault_reference(e),
+    }
+}
+unsafe fn state(c: Oop) -> Result<&'static State, Failure> {
+    unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = &*p;
+        if s.ns != c || s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        Ok(s)
+    }
 }
 unsafe extern "C" {
     fn malloc(n: usize) -> *mut c_void;
@@ -35,10 +68,12 @@ impl Drop for Address {
 }
 struct State {
     id: Protocol,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
+    ready: Cell<bool>,
     ns: Oop,
     roots: Oop,
     model: Oop,
-    gc: Oop,
     receiver: Oop,
     address_vt: Oop,
     permanent: Vec<Oop>,
@@ -51,113 +86,135 @@ struct State {
 }
 struct Scope<'a> {
     s: &'a State,
-    tokens: RefCell<Vec<usize>>,
+    start: usize,
 }
-impl Scope<'_> {
-    unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
-        unsafe {
-            let t = self
-                .s
-                .send(self.s.roots, b"retain:", &[Operand::object(o)])?
-                .as_word()
-                .ok_or_else(invalid)?;
-            self.tokens.borrow_mut().push(t);
-            Ok(o)
+impl<'a> Scope<'a> {
+    fn new(s: &'a State) -> Self {
+        Self {
+            s,
+            start: s.scoped.borrow().len(),
         }
     }
-    unsafe fn call(&self, r: Oop, n: &[u8], a: &[Operand]) -> Answer {
-        unsafe {
-            let v = self.s.send(r, n, a)?;
-            if let Some(o) = v.as_object() {
-                self.keep(o)?;
-            }
-            Ok(v)
-        }
+    unsafe fn keep(&self, o: Oop) -> Result<Oop, Failure> {
+        self.s.scoped.borrow_mut().push(o);
+        Ok(o)
     }
-    unsafe fn obj(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Oop, Outcome> {
+    unsafe fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Answer {
+        unsafe { self.keep(self.s.send(r, n, a)?) }
+    }
+    unsafe fn obj(&self, r: Oop, n: &[u8], a: &[Oop]) -> Answer {
         object(unsafe { self.call(r, n, a) }?)
     }
-    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
+    unsafe fn named(&self, n: &[u8]) -> Answer {
+        unsafe { self.obj(self.s.ns, b"at:", &[self.s.intern(n)?]) }
+    }
+    unsafe fn byte_value(&self, b: &[u8]) -> Answer {
         unsafe {
-            let key = self.keep(self.s.id.intern_name(n)?)?;
-            self.obj(self.s.ns, b"at:", &[Operand::object(key)])
+            let a: Vec<_> = b.iter().map(|b| abi::size(*b as usize).unwrap()).collect();
+            self.call(self.s.id.root, b"sequence", &a)
         }
     }
-    unsafe fn string(&self, b: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { self.obj(self.named(b"String")?, b"fromBytes:", &[Operand::bytes(b)]) }
-    }
-    unsafe fn integer(&self, w: usize) -> Result<Oop, Outcome> {
-        unsafe { self.obj(self.named(b"Integer")?, b"fromWord:", &[Operand::word(w)]) }
-    }
-    unsafe fn word(&self, o: Oop) -> Result<Option<usize>, Outcome> {
+    unsafe fn string(&self, b: &[u8]) -> Answer {
         unsafe {
-            Ok(self
-                .call(self.named(b"Integer")?, b"wordOf:", &[Operand::object(o)])?
-                .as_word())
+            self.obj(
+                self.named(b"String")?,
+                b"fromBytes:",
+                &[self.byte_value(b)?],
+            )
         }
     }
-    unsafe fn bytes(&self, o: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+    unsafe fn raw_word(&self, v: usize) -> Answer {
         unsafe {
-            if self
-                .call(self.s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?
-                .as_object()
-                != Some(self.named(b"StringVt")?)
-            {
+            if let Some(v) = abi::size(v) {
+                return Ok(v);
+            }
+            self.obj(
+                self.named(b"Word")?,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(v & 0xffff_ffff).unwrap(),
+                    abi::size(v >> 32).unwrap(),
+                ],
+            )
+        }
+    }
+    unsafe fn bits(&self, v: Oop) -> Result<usize, Failure> {
+        unsafe {
+            if let Some(v) = abi::as_size(v) {
+                return Ok(v);
+            }
+            self.keep(v)?;
+            let lo = abi::as_size(self.call(v, b"low32", &[])?).ok_or_else(invalid)?;
+            let hi = abi::as_size(self.call(v, b"high32", &[])?).ok_or_else(invalid)?;
+            Ok(lo | (hi << 32))
+        }
+    }
+    unsafe fn integer(&self, w: usize) -> Answer {
+        unsafe { self.obj(self.named(b"Integer")?, b"fromWord:", &[self.raw_word(w)?]) }
+    }
+    unsafe fn word(&self, o: Oop) -> Result<Option<usize>, Failure> {
+        unsafe {
+            let v = self.call(self.named(b"Integer")?, b"wordOf:", &[o])?;
+            if v.is_null() {
+                Ok(None)
+            } else {
+                self.bits(v).map(Some)
+            }
+        }
+    }
+    unsafe fn buffer(&self, o: Oop) -> Result<Vec<u8>, Failure> {
+        unsafe {
+            let v = self.call(o, b"bytes", &[])?;
+            Ok(self.s.id.read_bytes(
+                v,
+                self.s.names[b"sizeWord".as_slice()],
+                self.s.names[b"atWord:".as_slice()],
+            )?)
+        }
+    }
+    unsafe fn bytes(&self, o: Oop) -> Result<Option<Vec<u8>>, Failure> {
+        unsafe {
+            if self.call(self.s.id.root, b"behaviorOf:", &[o])? != self.named(b"StringVt")? {
                 return Ok(None);
             }
-            let b = self
-                .call(o, b"bytes", &[])?
-                .as_bytes()
-                .ok_or_else(invalid)?;
-            Ok(Some(
-                borrowed_bytes(b.pointer, b.length)
-                    .ok_or_else(invalid)?
-                    .to_vec(),
-            ))
+            self.buffer(o).map(Some)
         }
     }
     unsafe fn error(&self, kind: &[u8], text: &[u8]) -> Answer {
         unsafe {
-            let kind = self.keep(self.s.id.intern_name(kind)?)?;
+            let kind = self.keep(self.s.intern(kind)?)?;
             let text = self.string(text)?;
-            self.call(
-                self.named(b"Error")?,
-                b"kind:message:",
-                &[Operand::object(kind), Operand::object(text)],
-            )
+            self.call(self.named(b"Error")?, b"kind:message:", &[kind, text])
         }
     }
     unsafe fn nil(&self) -> Answer {
-        unsafe { Ok(Operand::object(self.named(b"nil")?)) }
+        unsafe { Ok(self.named(b"nil")?) }
     }
     unsafe fn boolean(&self, v: bool) -> Answer {
-        unsafe {
-            Ok(Operand::object(self.named(if v {
-                b"true"
-            } else {
-                b"false"
-            })?))
-        }
+        unsafe { Ok(self.named(if v { b"true" } else { b"false" })?) }
     }
-    unsafe fn is_error(&self, o: Oop) -> Result<bool, Outcome> {
+    unsafe fn is_error(&self, o: Oop) -> Result<bool, Failure> {
         unsafe { Ok(self.obj(o, b"isError", &[])? == self.named(b"true")?) }
     }
-
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        for t in self.tokens.get_mut().drain(..).rev() {
-            unsafe {
-                self.s
-                    .send(self.s.roots, b"release:", &[Operand::word(t)])
-                    .expect("release Alien root");
-            }
-        }
+        self.s.scoped.borrow_mut().truncate(self.start);
     }
 }
 impl State {
-    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Answer {
-        unsafe { self.id.send_named(r, n, a) }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Answer {
+        unsafe { self.id.send(r, self.names[n], a).map_err(Failure::Native) }
+    }
+    unsafe fn intern(&self, n: &[u8]) -> Answer {
+        unsafe {
+            if let Some(v) = self.names.get(n) {
+                return Ok(*v);
+            }
+            let a: Vec<_> = n.iter().map(|b| abi::size(*b as usize).unwrap()).collect();
+            let name = self.send(self.id.root, b"nameWithBytes", &a)?;
+            Ok(self.id.send(name, self.id.intern, &[])?)
+        }
     }
     unsafe fn address(&self, scope: &Scope<'_>, pointer: usize, owned: bool) -> Answer {
         unsafe {
@@ -165,10 +222,10 @@ impl State {
             let o = scope.obj(
                 self.model,
                 b"allocate:bytes:",
-                &[Operand::object(self.address_vt), Operand::word(0)],
+                &[self.address_vt, scope.raw_word(0)?],
             )?;
             self.addresses.borrow_mut().insert(o.addr(), allocation);
-            Ok(Operand::object(o))
+            Ok(o)
         }
     }
     fn pointer(&self, o: Oop) -> Option<usize> {
@@ -225,28 +282,46 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
         }
         match op {
             ProvideLibraryPath => {
-                let Some(name) = scope.bytes(a[1])? else { return scope.error(b"invalidNativeLibrary", b"library name must be a String"); };
-                let Some(path) = scope.bytes(a[0])? else { return scope.error(b"invalidNativeLibrary", b"library path must be a String"); };
+                let Some(name) = scope.bytes(a[1])? else {
+                    return scope.error(b"invalidNativeLibrary", b"library name must be a String");
+                };
+                let Some(path) = scope.bytes(a[0])? else {
+                    return scope.error(b"invalidNativeLibrary", b"library path must be a String");
+                };
                 let result = s.libraries.borrow_mut().provide_path(&name, &path);
                 match result {
-                    Ok(()) => Ok(Operand::object(r)),
+                    Ok(()) => Ok(r),
                     Err(e) => scope.error(b"invalidNativeLibrary", e.to_string().as_bytes()),
                 }
             }
             ProvideLibrary => {
-                let Some(name) = scope.bytes(a[1])? else { return scope.error(b"invalidEmbeddedLibrary", b"library name must be a String"); };
-                let Some(raw) = scope.call(a[0], b"bytes", &[])?.as_bytes() else { return scope.error(b"invalidEmbeddedLibrary", b"library bytes must be byte-bearing"); };
-                if raw.length > 256 * 1024 * 1024 { return scope.error(b"invalidEmbeddedLibrary", b"library exceeds 256 MiB"); }
-                let bytes = borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?.to_vec();
+                let Some(name) = scope.bytes(a[1])? else {
+                    return scope
+                        .error(b"invalidEmbeddedLibrary", b"library name must be a String");
+                };
+                let buffer = scope.call(a[0], b"bytes", &[])?;
+                let count =
+                    abi::as_size(scope.call(buffer, b"sizeWord", &[])?).ok_or_else(invalid)?;
+                if count > 256 * 1024 * 1024 {
+                    return scope.error(b"invalidEmbeddedLibrary", b"library exceeds 256 MiB");
+                }
+                let mut bytes = Vec::new();
+                bytes.try_reserve_exact(count).map_err(|_| invalid())?;
+                for index in 0..count {
+                    let byte = s.send(buffer, b"atWord:", &[abi::size(index).unwrap()])?;
+                    bytes.push(
+                        abi::as_size(byte)
+                            .and_then(|v| u8::try_from(v).ok())
+                            .ok_or_else(invalid)?,
+                    );
+                }
                 let result = s.libraries.borrow_mut().provide(&name, &bytes);
                 match result {
-                    Ok(()) => Ok(Operand::object(r)),
+                    Ok(()) => Ok(r),
                     Err(e) => scope.error(b"invalidEmbeddedLibrary", e.to_string().as_bytes()),
                 }
             }
-            InstallBinding => {
-                install_wrapper(s, scope, &[a[0], a[1], a[2], a[3], a[4]], true)
-            }
+            InstallBinding => install_wrapper(s, scope, &[a[0], a[1], a[2], a[3], a[4]], true),
             LibraryDir | Open | Close => {
                 let Some(path) = scope.bytes(a[0])? else {
                     return scope.nil();
@@ -271,7 +346,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 match result {
                     Ok(()) => {
                         if matches!(op, LibraryDir) {
-                            Ok(Operand::object(r))
+                            Ok(r)
                         } else {
                             scope.boolean(true)
                         }
@@ -327,9 +402,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 let Some(p) = s.pointer(r) else {
                     return scope.nil();
                 };
-                Ok(Operand::object(
-                    scope.string(format!("ForeignAddress(0x{p:x})").as_bytes())?,
-                ))
+                Ok(scope.string(format!("ForeignAddress(0x{p:x})").as_bytes())?)
             }
             InstallRecipe => {
                 let recipe = recipe_values(scope, a[0])?;
@@ -355,12 +428,8 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     };
                     (None, sig, Some(a[0]))
                 };
-                let compiler_name = scope.keep(s.id.intern_name(b"AlienCompiler")?)?;
-                let compiler = scope.obj(
-                    scope.named(b"Globals")?,
-                    b"at:",
-                    &[Operand::object(compiler_name)],
-                )?;
+                let compiler_name = scope.keep(s.intern(b"AlienCompiler")?)?;
+                let compiler = scope.obj(scope.named(b"Globals")?, b"at:", &[compiler_name])?;
                 let function_name = if matches!(op, Wrap) {
                     a[0]
                 } else {
@@ -370,25 +439,19 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 let source = scope.obj(
                     compiler,
                     b"compile:signature:",
-                    &[
-                        Operand::object(function_name),
-                        Operand::object(signature_value),
-                    ],
+                    &[function_name, signature_value],
                 )?;
                 if scope.is_error(source)? {
-                    return Ok(Operand::object(source));
+                    return Ok(source);
                 }
                 if matches!(op, Wrap) {
                     let bytes = match recorded_object(scope, a[0], a[1])? {
                         Some(bytes) => bytes,
                         None => {
-                            let bytes = scope.obj(
-                                scope.named(b"TCC")?,
-                                b"compileObject:",
-                                &[Operand::object(source)],
-                            )?;
+                            let bytes =
+                                scope.obj(scope.named(b"TCC")?, b"compileObject:", &[source])?;
                             if scope.is_error(bytes)? {
-                                return Ok(Operand::object(bytes));
+                                return Ok(bytes);
                             }
                             bytes
                         }
@@ -396,23 +459,16 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                     let recipe = [a[0], a[1], a[2], a[3], bytes];
                     install_wrapper(s, scope, &recipe, true)
                 } else {
-                    let unit = scope.obj(
-                        scope.named(b"TCC")?,
-                        b"compile:",
-                        &[Operand::object(source)],
-                    )?;
+                    let unit = scope.obj(scope.named(b"TCC")?, b"compile:", &[source])?;
                     if scope.is_error(unit)? {
-                        return Ok(Operand::object(unit));
+                        return Ok(unit);
                     }
-                    let value =
-                        scope.obj(unit, b"initializeWith:", &[Operand::object(block.unwrap())])?;
+                    let value = scope.obj(unit, b"initializeWith:", &[block.unwrap()])?;
                     let address = s.pointer(value).ok_or_else(invalid)?;
-                    let token = s
-                        .send(s.roots, b"retain:", &[Operand::object(unit)])?
-                        .as_word()
-                        .ok_or_else(invalid)?;
+                    let token =
+                        abi::as_size(s.send(s.roots, b"retain:", &[unit])?).ok_or_else(invalid)?;
                     s.callbacks.borrow_mut().insert(address, (unit, token));
-                    Ok(Operand::object(value))
+                    Ok(value)
                 }
             }
             ReleaseCallback => {
@@ -422,7 +478,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 };
                 let removed = s.callbacks.borrow_mut().remove(&address);
                 if let Some((_, token)) = removed {
-                    s.send(s.roots, b"release:", &[Operand::word(token)])?;
+                    s.send(s.roots, b"release:", &[scope.raw_word(token)?])?;
                     s.addresses
                         .borrow_mut()
                         .get_mut(&a[0].addr())
@@ -442,9 +498,11 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 let value = if a.len() == 2 {
                     match op {
                         PokePtr => s.pointer(a[0]),
-                        PokeDouble => scope
-                            .call(scope.named(b"Float")?, b"bitsOf:", &[Operand::object(a[0])])?
-                            .as_word(),
+                        PokeDouble => Some(scope.bits(scope.call(
+                            scope.named(b"Float")?,
+                            b"bitsOf:",
+                            &[a[0]],
+                        )?)?),
                         _ => scope.word(a[0])?,
                     }
                 } else {
@@ -464,29 +522,25 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 };
                 let p = base.wrapping_add(offset);
                 match op {
-                    PeekInt => Ok(Operand::object(
-                        scope.integer(ptr::read_unaligned(p as *const usize))?,
-                    )),
-                    PeekByte => Ok(Operand::object(
-                        scope.integer(ptr::read(p as *const u8) as usize)?,
-                    )),
+                    PeekInt => Ok(scope.integer(ptr::read_unaligned(p as *const usize))?),
+                    PeekByte => Ok(scope.integer(ptr::read(p as *const u8) as usize)?),
                     PeekPtr => s.address(scope, ptr::read_unaligned(p as *const usize), false),
                     PeekDouble => scope.call(
                         scope.named(b"Float")?,
                         b"fromBits:",
-                        &[Operand::word(ptr::read_unaligned(p as *const usize))],
+                        &[scope.raw_word(ptr::read_unaligned(p as *const usize))?],
                     ),
                     PeekString => {
                         let b = std::ffi::CStr::from_ptr(p as *const _).to_bytes().to_vec();
-                        Ok(Operand::object(scope.string(&b)?))
+                        Ok(scope.string(&b)?)
                     }
                     PokeByte => {
                         ptr::write(p as *mut u8, value as u8);
-                        Ok(Operand::object(r))
+                        Ok(r)
                     }
                     _ => {
                         ptr::write_unaligned(p as *mut usize, value);
-                        Ok(Operand::object(r))
+                        Ok(r)
                     }
                 }
             }
@@ -494,7 +548,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
     }
 }
 // Recipes retain object code and ordinary identities, never process addresses.
-unsafe fn recipe_values(q: &Scope<'_>, recipe: Oop) -> Result<[Oop; 5], Outcome> {
+unsafe fn recipe_values(q: &Scope<'_>, recipe: Oop) -> Result<[Oop; 5], Failure> {
     unsafe {
         let size = q.obj(recipe, b"size", &[])?;
         if q.word(size)? != Some(5) {
@@ -503,22 +557,31 @@ unsafe fn recipe_values(q: &Scope<'_>, recipe: Oop) -> Result<[Oop; 5], Outcome>
         let mut values = [ptr::null_mut(); 5];
         for (i, value) in values.iter_mut().enumerate() {
             let index = q.integer(i)?;
-            *value = q.obj(recipe, b"at:", &[Operand::object(index)])?;
+            *value = q.obj(recipe, b"at:", &[index])?;
         }
         Ok(values)
     }
 }
-unsafe fn recipe_owner(q: &Scope<'_>) -> Result<Oop, Outcome> {
+unsafe fn recipe_owner(q: &Scope<'_>) -> Result<Oop, Failure> {
     unsafe {
-        let name = q.keep(q.s.id.intern_name(b"AlienRecipes")?)?;
-        q.obj(q.named(b"Globals")?, b"at:", &[Operand::object(name)])
+        let name = q.keep(q.s.intern(b"AlienRecipes")?)?;
+        q.obj(q.named(b"Globals")?, b"at:", &[name])
     }
 }
-unsafe fn recorded_object(q: &Scope<'_>, function: Oop, signature: Oop) -> Result<Option<Oop>, Outcome> {
+unsafe fn recorded_object(
+    q: &Scope<'_>,
+    function: Oop,
+    signature: Oop,
+) -> Result<Option<Oop>, Failure> {
     unsafe {
-        let value = q.obj(recipe_owner(q)?, b"objectFor:signature:",
-            &[Operand::object(function), Operand::object(signature)])?;
-        if q.is_error(value)? { return Err(Outcome::loaded(Operand::object(value))); }
+        let value = q.obj(
+            recipe_owner(q)?,
+            b"objectFor:signature:",
+            &[function, signature],
+        )?;
+        if q.is_error(value)? {
+            return Err(Failure::Value(value));
+        }
         Ok((value != q.named(b"nil")?).then_some(value))
     }
 }
@@ -529,48 +592,42 @@ unsafe fn install_wrapper(s: &State, q: &Scope<'_>, recipe: &[Oop; 5], record: b
             Ok(p) => p.as_ptr().addr(),
             Err(e) => return q.error(b"symbolNotFound", e.to_string().as_bytes()),
         };
-        let unit = q.obj(
-            q.named(b"TCC")?,
-            b"loadObject:",
-            &[Operand::object(recipe[4])],
-        )?;
+        let unit = q.obj(q.named(b"TCC")?, b"loadObject:", &[recipe[4]])?;
         if q.is_error(unit)? {
-            return Ok(Operand::object(unit));
+            return Ok(unit);
         }
         let address = q.integer(address)?;
-        let method = q.obj(unit, b"initializeWith:", &[Operand::object(address)])?;
+        let method = q.obj(unit, b"initializeWith:", &[address])?;
         if q.is_error(method)? {
-            return Ok(Operand::object(method));
+            return Ok(method);
         }
         s.wrappers.borrow_mut().push(unit.addr());
-        let behavior = q.obj(
-            s.id.receiver,
-            b"ensurePrivateVtableFor:",
-            &[Operand::object(recipe[3])],
-        )?;
-        let result = q.call(
-            behavior,
-            b"addMethod:as:",
-            &[Operand::object(method), Operand::object(recipe[2])],
-        )?;
-        if result.as_object() == Some(method) {
-            if !record { return Ok(Operand::object(method)); }
+        let behavior = q.obj(s.id.root, b"ensurePrivateVtableFor:", &[recipe[3]])?;
+        let result = q.call(behavior, b"addMethod:as:", &[method, recipe[2]])?;
+        if result == method {
+            if !record {
+                return Ok(method);
+            }
             let mut row = q.obj(q.named(b"Vector")?, b"new", &[])?;
             for value in recipe {
-                row = q.obj(row, b"add:", &[Operand::object(*value)])?;
+                row = q.obj(row, b"add:", &[*value])?;
             }
-            let recorded = q.obj(recipe_owner(q)?, b"record:method:",
-                &[Operand::object(row), Operand::object(method)])?;
-            if q.is_error(recorded)? { return Ok(Operand::object(recorded)); }
-            Ok(Operand::object(recipe[3]))
-        } else if !record && !result.as_object().map(|v| q.is_error(v)).transpose()?.unwrap_or(false) {
-            q.error(b"invalidForeignRestoration", b"method publication did not return the constructed Method")
+            let recorded = q.obj(recipe_owner(q)?, b"record:method:", &[row, method])?;
+            if q.is_error(recorded)? {
+                return Ok(recorded);
+            }
+            Ok(recipe[3])
+        } else if !record && !q.is_error(result)? {
+            q.error(
+                b"invalidForeignRestoration",
+                b"method publication did not return the constructed Method",
+            )
         } else {
             Ok(result)
         }
     }
 }
-macro_rules! methods{($(($f:ident,$op:ident)),*$(,)?)=>{$(unsafe extern "C" fn $f(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome{done((||unsafe{let s=&*c.cast::<State>();if s.thread!=std::thread::current().id(){return Err(invalid())}let q=Scope{s,tokens:RefCell::new(Vec::new())};q.keep(r)?;let a=borrowed_slice(a,n).ok_or_else(invalid)?.iter().map(|a|q.keep(object(*a)?)).collect::<Result<Vec<_>,_>>()?;run(s,&q,r,&a,Op::$op)})())})*};}
+macro_rules! methods{($(($f:ident,$op:ident)),*$(,)?)=>{$(unsafe extern "C" fn $f(_:Oop,c:Oop,r:Oop,a:*const Oop,n:usize)->Oop{done((||unsafe{let s=state(c)?;if s.thread!=std::thread::current().id(){return Err(invalid())}let q=Scope::new(s);q.keep(r)?;let a=borrowed_slice(a,n).ok_or_else(invalid)?.iter().map(|a|q.keep(object(*a)?)).collect::<Result<Vec<_>,_>>()?;run(s,&q,r,&a,Op::$op)})())})*};}
 methods!(
     (library_dir, LibraryDir),
     (open, Open),
@@ -597,226 +654,439 @@ methods!(
     (poke_ptr, PokePtr),
     (poke_double, PokeDouble)
 );
-unsafe extern "C" fn address_of(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn address_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let s = state(c)?;
         if s.thread != std::thread::current().id() {
             return Err(invalid());
         }
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        Ok(s.pointer(object(*v)?)
-            .map(Operand::word)
-            .unwrap_or_else(Operand::unit))
+        let q = Scope::new(s);
+        match s.pointer(object(*v)?) {
+            Some(p) => q.raw_word(p),
+            None => Ok(ptr::null_mut()),
+        }
     })())
 }
-unsafe extern "C" fn from_address(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn from_address(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let s = state(c)?;
         if s.thread != std::thread::current().id() {
             return Err(invalid());
         }
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let q = Scope {
-            s,
-            tokens: RefCell::new(Vec::new()),
-        };
-        s.address(&q, v.as_word().ok_or_else(invalid)?, false)
+        let q = Scope::new(s);
+        s.address(&q, q.bits(*v)?, false)
     })())
 }
-unsafe extern "C" fn check_thread(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<State>() };
-    if n == 0 && s.thread == std::thread::current().id() {
-        Outcome::loaded(Operand::word(1))
-    } else {
-        invalid()
-    }
-}
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn check_thread(_: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let _ = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        Ok(abi::size(1).unwrap())
+    })())
+}
+
+unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    done((|| unsafe {
+        let s = state(c)?;
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        for &o in &s.permanent {
-            s.send(object(*v)?, b"visit:", &[Operand::object(o)])?;
+        let mut values = s.permanent.clone();
+        values.extend(s.names.values().copied());
+        values.extend(s.scoped.borrow().iter().copied());
+        for o in values {
+            s.send(object(*v)?, b"visit:", &[o])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
-        let Some([v]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let b = v.as_bytes().ok_or_else(invalid)?;
-        let b = borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?;
-        if b.len() % size_of::<usize>() != 0 {
-            return Err(invalid());
-        }
-        for chunk in b.chunks_exact(size_of::<usize>()) {
-            let o = usize::from_ne_bytes(chunk.try_into().unwrap());
+        let s = state(c)?;
+        for value in borrowed_slice(a, n).ok_or_else(invalid)? {
+            let o = value.addr();
             s.addresses.borrow_mut().remove(&o);
             s.wrappers.borrow_mut().retain(|u| *u != o);
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe fn construct(id: Protocol, ns: Oop) -> Answer {
-    unsafe {
-        let named =
-            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
-        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Alien")?)])?;
-        if existing.as_object().is_some() {
-            return Ok(existing);
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    done((|| unsafe {
+        let id = *p;
+        let [ns] = borrowed_slice(a, count).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let symbols = borrowed_slice(l, n)
+            .filter(|v| v.len() == NAMES.len())
+            .ok_or_else(invalid)?;
+        let old = INSTANCE.load(Ordering::Acquire);
+        if !old.is_null() {
+            let s = &*old;
+            return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
+                Ok(s.receiver)
+            } else {
+                Err(invalid())
+            };
         }
-        let mut state = Box::new(State {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |n: &[u8]| send(*ns, b"at:", &[names[n]]);
+        let roots = named(b"Roots")?;
+        let model = named(b"ObjectModel")?;
+        let gc = named(b"GC")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v| -> Result<Oop, Oop> {
+            tokens.push(send(roots, b"retain:", &[v])?);
+            Ok(v)
+        };
+        let vt = keep(send(named(b"ObjectVt")?, b"delegated", &[])?)?;
+        let av = keep(send(named(b"ObjectVt")?, b"delegated", &[])?)?;
+        let receiver = keep(send(vt, b"allocate", &[abi::size(0).unwrap()])?)?;
+        let prototype = keep(send(av, b"allocate", &[abi::size(0).unwrap()])?)?;
+        let s = Box::leak(Box::new(State {
             id,
-            ns,
-            roots: named(b"Roots")?,
-            model: named(b"ObjectModel")?,
-            gc: named(b"GC")?,
-            receiver: ptr::null_mut(),
-            address_vt: ptr::null_mut(),
-            permanent: Vec::new(),
+            names,
+            ns: *ns,
+            roots,
+            model,
+            receiver,
+            address_vt: av,
+            ready: Cell::new(false),
+            scoped: RefCell::new(Vec::new()),
+            permanent: vec![*ns, roots, model, gc, vt, av, receiver, prototype],
             addresses: RefCell::new(HashMap::new()),
             wrappers: RefCell::new(Vec::new()),
             callbacks: RefCell::new(HashMap::new()),
             libraries: RefCell::new(LibraryRegistry::default()),
             thread: std::thread::current().id(),
-        });
-        let q = Scope {
-            s: &state,
-            tokens: RefCell::new(Vec::new()),
-        };
-        let vt = q.obj(named(b"ObjectVt")?, b"delegated", &[])?;
-        let av = q.obj(named(b"ObjectVt")?, b"delegated", &[])?;
-        let receiver = q.obj(
-            state.model,
-            b"allocate:bytes:",
-            &[Operand::object(vt), Operand::word(0)],
-        )?;
-        let prototype = q.obj(
-            state.model,
-            b"allocate:bytes:",
-            &[Operand::object(av), Operand::word(0)],
-        )?;
-        // Transfer construction roots to the registered owner before releasing them.
-        let tokens = q.tokens.take();
-        drop(q);
-        state.receiver = receiver;
-        state.address_vt = av;
-        state.permanent = vec![
-            ns,
-            state.roots,
-            state.model,
-            state.gc,
-            vt,
-            av,
-            receiver,
-            prototype,
-        ];
-        state.addresses.borrow_mut().insert(
+        }));
+        INSTANCE.store(s, Ordering::Release);
+        s.addresses.borrow_mut().insert(
             prototype.addr(),
             Address {
                 pointer: 0,
                 owned: false,
             },
         );
-        id.send_named(
-            id.receiver,
-            b"ownerOf:put:",
-            &[Operand::object(vt), Operand::object(receiver)],
-        )?;
-        id.send_named(
-            id.receiver,
-            b"ownerOf:put:",
-            &[Operand::object(av), Operand::object(prototype)],
-        )?;
-        let s = Box::into_raw(state);
-        for (target, name, f) in [
-            (vt, b"libraryDir:".as_slice(), library_dir as Method),
-            (vt, b"dlopen:", open),
-            (vt, b"dlclose:", close),
-            (vt, b"wrap:signature:as:on:", wrap),
-            (vt, b"bind:signature:as:on:", wrap),
-            (vt, b"bind:signature:as:on:code:", install_binding),
-            (vt, b"provideLibrary:named:", provide_library),
-            (vt, b"provideLibraryPath:named:", provide_library_path),
-            (vt, b"installRecipe:", install_recipe),
-            (vt, b"callback:signature:", callback),
-            (vt, b"releaseCallback:", release_callback),
-            (vt, b"alloc:", alloc),
-            (vt, b"addressOf:", address_of),
-            (vt, b"fromAddress:", from_address),
-            (vt, b"checkThread", check_thread),
-            (vt, b"rootsDo:", roots),
-            (vt, b"retire:", retire),
-            (av, b"free", free_address),
-            (av, b"isNull", is_null),
-            (av, b"=", equal),
-            (av, b"printString", print),
-            (av, b"peekIntAt:", peek_int),
-            (av, b"peekByteAt:", peek_byte),
-            (av, b"peekPtrAt:", peek_ptr),
-            (av, b"peekDoubleAt:", peek_double),
-            (av, b"peekStringAt:", peek_string),
-            (av, b"pokeInt:at:", poke_int),
-            (av, b"pokeByte:at:", poke_byte),
-            (av, b"pokePtr:at:", poke_ptr),
-            (av, b"pokeDouble:at:", poke_double),
-        ] {
-            id.send_named(
-                target,
+        for (i, (address, name)) in INSTALL.iter().enumerate() {
+            let m = s.send(image, b"newMethodAt:", &[abi::size(i).unwrap()])?;
+            let m = s.send(m, b"withContext:", &[*ns])?;
+            s.send(
+                if *address { av } else { vt },
                 b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(f, s.cast())),
-                ],
+                &[s.intern(name)?, m],
             )?;
         }
-        id.send_named((*s).roots, b"register:", &[Operand::object(receiver)])?;
-        id.send_named(
-            (*s).gc,
-            b"registerRetirement:",
-            &[Operand::object(receiver)],
-        )?;
-        for (n, o) in [
+        s.send(roots, b"register:", &[receiver])?;
+        s.send(gc, b"registerRetirement:", &[receiver])?;
+        for (v, o) in [(vt, receiver), (av, prototype)] {
+            s.send(id.root, b"ownerOf:put:", &[v, o])?;
+        }
+        for (name, value) in [
             (b"Alien".as_slice(), receiver),
             (b"AlienVt", vt),
             (b"ForeignAddress", prototype),
             (b"ForeignAddressVt", av),
         ] {
-            id.send_named(
-                ns,
-                b"at:put:",
-                &[Operand::object(id.intern_name(n)?), Operand::object(o)],
-            )?;
+            s.send(*ns, b"at:put:", &[s.intern(name)?, value])?;
         }
         for t in tokens {
-            id.send_named((*s).roots, b"release:", &[Operand::word(t)])?;
+            s.send(roots, b"release:", &[t])?;
         }
-        Ok(Operand::object(receiver))
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        construct(*id, object(*ns)?)
+        s.ready.set(true);
+        Ok(receiver)
     })())
 }
+static INSTALL: &[(bool, &[u8])] = &[
+    (false, b"libraryDir:"),
+    (false, b"dlopen:"),
+    (false, b"dlclose:"),
+    (false, b"wrap:signature:as:on:"),
+    (false, b"bind:signature:as:on:"),
+    (false, b"bind:signature:as:on:code:"),
+    (false, b"provideLibrary:named:"),
+    (false, b"provideLibraryPath:named:"),
+    (false, b"installRecipe:"),
+    (false, b"callback:signature:"),
+    (false, b"releaseCallback:"),
+    (false, b"alloc:"),
+    (false, b"addressOf:"),
+    (false, b"fromAddress:"),
+    (false, b"checkThread"),
+    (false, b"rootsDo:"),
+    (false, b"retire:"),
+    (true, b"free"),
+    (true, b"isNull"),
+    (true, b"="),
+    (true, b"printString"),
+    (true, b"peekIntAt:"),
+    (true, b"peekByteAt:"),
+    (true, b"peekPtrAt:"),
+    (true, b"peekDoubleAt:"),
+    (true, b"peekStringAt:"),
+    (true, b"pokeInt:at:"),
+    (true, b"pokeByte:at:"),
+    (true, b"pokePtr:at:"),
+    (true, b"pokeDouble:at:"),
+];
+macro_rules! literals { ($($v:literal),*$(,)?) => {
+ const NAMES:&[&[u8]]=&[$($v),*];
+ static LITERALS:&[Literal]=&[$(Literal::new($v)),*];
+}; }
+literals![
+    b"at:",
+    b"sequence",
+    b"String",
+    b"fromBytes:",
+    b"Word",
+    b"fromUnsignedLow:high:",
+    b"low32",
+    b"high32",
+    b"Integer",
+    b"fromWord:",
+    b"wordOf:",
+    b"bytes",
+    b"sizeWord",
+    b"atWord:",
+    b"behaviorOf:",
+    b"StringVt",
+    b"Error",
+    b"kind:message:",
+    b"nil",
+    b"true",
+    b"false",
+    b"isError",
+    b"nameWithBytes",
+    b"allocate:bytes:",
+    b"invalidNativeLibrary",
+    b"invalidEmbeddedLibrary",
+    b"inUse",
+    b"notFound",
+    b"typeMismatch",
+    b"badArgument",
+    b"outOfMemory",
+    b"notOwned",
+    b"alreadyFreed",
+    b"symbolNotFound",
+    b"AlienCompiler",
+    b"Globals",
+    b"compile:signature:",
+    b"TCC",
+    b"compileObject:",
+    b"compile:",
+    b"initializeWith:",
+    b"retain:",
+    b"release:",
+    b"Float",
+    b"bitsOf:",
+    b"nullPointer",
+    b"fromBits:",
+    b"size",
+    b"AlienRecipes",
+    b"objectFor:signature:",
+    b"loadObject:",
+    b"ensurePrivateVtableFor:",
+    b"addMethod:as:",
+    b"Vector",
+    b"new",
+    b"add:",
+    b"record:method:",
+    b"invalidForeignRestoration",
+    b"visit:",
+    b"Roots",
+    b"ObjectModel",
+    b"GC",
+    b"ObjectVt",
+    b"delegated",
+    b"allocate",
+    b"newMethodAt:",
+    b"withContext:",
+    b"addMethod",
+    b"register:",
+    b"registerRetirement:",
+    b"ownerOf:put:",
+    b"Alien",
+    b"AlienVt",
+    b"ForeignAddress",
+    b"ForeignAddressVt",
+    b"at:put:",
+    b"libraryDir:",
+    b"dlopen:",
+    b"dlclose:",
+    b"wrap:signature:as:on:",
+    b"bind:signature:as:on:",
+    b"bind:signature:as:on:code:",
+    b"provideLibrary:named:",
+    b"provideLibraryPath:named:",
+    b"installRecipe:",
+    b"callback:signature:",
+    b"releaseCallback:",
+    b"alloc:",
+    b"addressOf:",
+    b"fromAddress:",
+    b"checkThread",
+    b"rootsDo:",
+    b"retire:",
+    b"free",
+    b"isNull",
+    b"=",
+    b"printString",
+    b"peekIntAt:",
+    b"peekByteAt:",
+    b"peekPtrAt:",
+    b"peekDoubleAt:",
+    b"peekStringAt:",
+    b"pokeInt:at:",
+    b"pokeByte:at:",
+    b"pokePtr:at:",
+    b"pokeDouble:at:",
+];
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 76,
+        entry: Some(library_dir),
+    },
+    MethodSpec {
+        name: 77,
+        entry: Some(open),
+    },
+    MethodSpec {
+        name: 78,
+        entry: Some(close),
+    },
+    MethodSpec {
+        name: 79,
+        entry: Some(wrap),
+    },
+    MethodSpec {
+        name: 80,
+        entry: Some(wrap),
+    },
+    MethodSpec {
+        name: 81,
+        entry: Some(install_binding),
+    },
+    MethodSpec {
+        name: 82,
+        entry: Some(provide_library),
+    },
+    MethodSpec {
+        name: 83,
+        entry: Some(provide_library_path),
+    },
+    MethodSpec {
+        name: 84,
+        entry: Some(install_recipe),
+    },
+    MethodSpec {
+        name: 85,
+        entry: Some(callback),
+    },
+    MethodSpec {
+        name: 86,
+        entry: Some(release_callback),
+    },
+    MethodSpec {
+        name: 87,
+        entry: Some(alloc),
+    },
+    MethodSpec {
+        name: 88,
+        entry: Some(address_of),
+    },
+    MethodSpec {
+        name: 89,
+        entry: Some(from_address),
+    },
+    MethodSpec {
+        name: 90,
+        entry: Some(check_thread),
+    },
+    MethodSpec {
+        name: 91,
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: 92,
+        entry: Some(retire),
+    },
+    MethodSpec {
+        name: 93,
+        entry: Some(free_address),
+    },
+    MethodSpec {
+        name: 94,
+        entry: Some(is_null),
+    },
+    MethodSpec {
+        name: 95,
+        entry: Some(equal),
+    },
+    MethodSpec {
+        name: 96,
+        entry: Some(print),
+    },
+    MethodSpec {
+        name: 97,
+        entry: Some(peek_int),
+    },
+    MethodSpec {
+        name: 98,
+        entry: Some(peek_byte),
+    },
+    MethodSpec {
+        name: 99,
+        entry: Some(peek_ptr),
+    },
+    MethodSpec {
+        name: 100,
+        entry: Some(peek_double),
+    },
+    MethodSpec {
+        name: 101,
+        entry: Some(peek_string),
+    },
+    MethodSpec {
+        name: 102,
+        entry: Some(poke_int),
+    },
+    MethodSpec {
+        name: 103,
+        entry: Some(poke_byte),
+    },
+    MethodSpec {
+        name: 104,
+        entry: Some(poke_ptr),
+    },
+    MethodSpec {
+        name: 105,
+        entry: Some(poke_double),
+    },
+];
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: 1,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };

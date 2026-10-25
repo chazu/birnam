@@ -247,7 +247,7 @@ let source := [StringBuilder new]; let args := [signature at: 1]; let result := 
 let expected := [[[args size] > 0] ifTrue: [| [[args size] - 1]] ifFalse: [| 0]];
 [source add: [self concat: #["if (n != " [self decimal: expected] "L) return alien_nil();\n"]]];
 [self indexes: args do: [:arg :i | [source add: [self argument: arg at: i]]]];
-[source add: "if (active->failure.status) return alien_nil();\n"];
+[source add: "if (active->failure) return alien_nil();\n"];
 let scalar := [[result at: 0] == #scalar];
 [source add: "  "];
 [[scalar & [[result at: 1] = "v"]] ifTrue: [| [source add: "(void)"]]
@@ -313,17 +313,19 @@ let error := [callback ifTrue: [| nil] ifFalse: [| [self validIdentifier: name]]
  let args := [self arguments: [signature at: 1] prefix: "a" separator: ","];
  let result := [signature at: 0];
  [[[[result at: 0] == #scalar] & [[result at: 1] = "v"]] ifTrue: [|
-  [body add: [self concat: #["__cb_body(" args "); active=prior; R r=finish(&c,(A){0}); if(r.status) abort(); return; }\n"]]]]
- ifFalse: [| [body add: [self concat: #[[self ctype: result] " result=__cb_body(" args "); active=prior; R r=finish(&c,(A){0}); if(r.status) abort(); return result; }\n"]]]]]]
+  [body add: [self concat: #["__cb_body(" args "); active=prior; O r=finish(&c,0); if(failed(r)) abort(); return; }\n"]]]]
+ ifFalse: [| [body add: [self concat: #[[self ctype: result] " result=__cb_body(" args "); active=prior; O r=finish(&c,0); if(failed(r)) abort(); return result; }\n"]]]]]]
  ifFalse: [|
   let declaration := [self prototype: "__alien_target" signature: signature];
   let pointer := [self concat: #["static " [[declaration copyFrom: 0 to: [[declaration size] - 1]] replace: " __alien_target(" with: " (*__alien_target)("] ";"]];
   [body add: [source replace: declaration with: pointer]];
   [body add: AlienCompilerInvoke]]];
 [body add: AlienCompilerInitialize];
-[callback ifTrue: [| [body add: "if(n!=3){active=prior;return finish(&c,(A){0});}__cbBlock=keep(&c,object(&c,a[2]));A address=word((size_t)__cb);O result=call(&c,named(&c,\"Alien\"),\"fromAddress:\",&address,1);\n"]]
- ifFalse: [| [body add: "if(n!=3){active=prior;return finish(&c,(A){0});}__alien_target=(void*)unbox(\"Integer\",\"wordOf:\",object(&c,a[2]));A args[2]={entry(invoke),obj(owner)};O result=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",args,2);\n"]]];
-[body add: "active=prior;return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n"];
+[callback ifTrue: [| [body add: "__cbBlock=keep(&c,a[1]);O address=word(&c,(size_t)__cb);O result=call(&c,named(&c,\"Alien\"),\"fromAddress:\",&address,1);\n"]]
+ ifFalse: [| [body add: "__alien_target=(void*)unbox(\"Integer\",\"wordOf:\",a[1]);O index=immediate(0);O result=call(&c,owner,\"declaredMethodAt:\",&index,1);\n"]]];
+[body add: "active=prior;return finish(&c,result); }\n"];
+[callback ifTrue: [| [body add: "const Module birnam_native_module_v2={2,sizeof(Module),literals,6,0,0,initialize};\n"]]
+ ifFalse: [| [body add: "static const MethodSpec methods[]={{5,invoke}}; const Module birnam_native_module_v2={2,sizeof(Module),literals,6,methods,1,initialize};\n"]]];
 [body asString]]]]]]]
 ]];
 

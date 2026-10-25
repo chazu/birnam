@@ -1,27 +1,48 @@
 //! Process-local Isolate objects communicate with other owners only through Id.
 use super::*;
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{cell::RefCell, ffi::c_void, ptr};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
 mod transfer;
 use transfer::{TransferError, capture, materialize};
-type Answer = Result<Operand, Outcome>;
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+type Answer = Result<Oop, Oop>;
+use std::sync::atomic::AtomicPtr;
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+fn invalid() -> Oop {
+    unsafe { abi::object_reference((*API.load(Ordering::Acquire)).invalid) }
 }
-fn object(a: Operand) -> Result<Oop, Outcome> {
-    a.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+fn object(v: Oop) -> Answer {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
 }
-fn done(r: Answer) -> Outcome {
-    r.map_or_else(|e| e, Outcome::loaded)
+fn done(r: Answer) -> Oop {
+    r.unwrap_or_else(abi::fault_reference)
+}
+unsafe fn state(c: Oop) -> Result<&'static State, Oop> {
+    unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = &*p;
+        if s.ns != c || s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        Ok(s)
+    }
 }
 struct State {
     id: Protocol,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
+    receiver: Oop,
+    ready: Cell<bool>,
     ns: Oop,
-    roots: Oop,
-    gc: Oop,
     model: Oop,
     handle_vt: Oop,
     failure_vt: Oop,
@@ -32,89 +53,116 @@ struct State {
 }
 struct Scope<'a> {
     s: &'a State,
-    tokens: RefCell<Vec<usize>>,
+    start: usize,
 }
-impl Scope<'_> {
-    unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
-        unsafe {
-            let t = self
-                .s
-                .id
-                .send_named(self.s.roots, b"retain:", &[Operand::object(o)])?
-                .as_word()
-                .ok_or_else(invalid)?;
-            self.tokens.borrow_mut().push(t);
-            Ok(o)
+impl<'a> Scope<'a> {
+    fn new(s: &'a State) -> Self {
+        Self {
+            s,
+            start: s.scoped.borrow().len(),
         }
     }
-    unsafe fn call(&self, r: Oop, n: &[u8], a: &[Operand]) -> Answer {
-        unsafe {
-            let v = self.s.id.send_named(r, n, a)?;
-            if let Some(o) = v.as_object() {
-                self.keep(o)?;
-            }
-            Ok(v)
-        }
+    unsafe fn keep(&self, o: Oop) -> Result<Oop, Oop> {
+        self.s.scoped.borrow_mut().push(o);
+        Ok(o)
     }
-    unsafe fn obj(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Oop, Outcome> {
+    unsafe fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Answer {
+        unsafe { self.keep(self.s.send(r, n, a)?) }
+    }
+    unsafe fn obj(&self, r: Oop, n: &[u8], a: &[Oop]) -> Answer {
         object(unsafe { self.call(r, n, a) }?)
     }
-    unsafe fn symbol(&self, n: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { self.keep(self.s.id.intern_name(n)?) }
+    unsafe fn named(&self, n: &[u8]) -> Answer {
+        unsafe { self.obj(self.s.ns, b"at:", &[self.s.intern(n)?]) }
     }
-    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { self.obj(self.s.ns, b"at:", &[Operand::object(self.symbol(n)?)]) }
-    }
-    unsafe fn int(&self, w: usize) -> Result<Oop, Outcome> {
-        unsafe { self.obj(self.named(b"Integer")?, b"fromWord:", &[Operand::word(w)]) }
-    }
-    unsafe fn word(&self, o: Oop) -> Result<Option<usize>, Outcome> {
+    unsafe fn byte_value(&self, b: &[u8]) -> Answer {
         unsafe {
-            Ok(self
-                .call(self.named(b"Integer")?, b"wordOf:", &[Operand::object(o)])?
-                .as_word())
+            let a: Vec<_> = b.iter().map(|b| abi::size(*b as usize).unwrap()).collect();
+            self.call(self.s.id.root, b"sequence", &a)
         }
     }
-    unsafe fn string(&self, b: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { self.obj(self.named(b"String")?, b"fromBytes:", &[Operand::bytes(b)]) }
+    unsafe fn string(&self, b: &[u8]) -> Answer {
+        unsafe {
+            self.obj(
+                self.named(b"String")?,
+                b"fromBytes:",
+                &[self.byte_value(b)?],
+            )
+        }
+    }
+    unsafe fn raw_word(&self, v: usize) -> Answer {
+        unsafe {
+            if let Some(v) = abi::size(v) {
+                return Ok(v);
+            }
+            self.obj(
+                self.named(b"Word")?,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(v & 0xffff_ffff).unwrap(),
+                    abi::size(v >> 32).unwrap(),
+                ],
+            )
+        }
+    }
+    unsafe fn bits(&self, v: Oop) -> Result<usize, Oop> {
+        unsafe {
+            if let Some(v) = abi::as_size(v) {
+                return Ok(v);
+            }
+            self.keep(v)?;
+            let lo = abi::as_size(self.call(v, b"low32", &[])?).ok_or_else(invalid)?;
+            let hi = abi::as_size(self.call(v, b"high32", &[])?).ok_or_else(invalid)?;
+            Ok(lo | (hi << 32))
+        }
+    }
+    unsafe fn int(&self, w: usize) -> Answer {
+        unsafe { self.obj(self.named(b"Integer")?, b"fromWord:", &[self.raw_word(w)?]) }
+    }
+    unsafe fn word(&self, o: Oop) -> Result<Option<usize>, Oop> {
+        unsafe {
+            let v = self.call(self.named(b"Integer")?, b"wordOf:", &[o])?;
+            if v.is_null() {
+                Ok(None)
+            } else {
+                self.bits(v).map(Some)
+            }
+        }
+    }
+    unsafe fn buffer(&self, o: Oop) -> Result<Vec<u8>, Oop> {
+        unsafe {
+            let v = self.call(o, b"bytes", &[])?;
+            Ok(self.s.id.read_bytes(
+                v,
+                self.s.names[b"sizeWord".as_slice()],
+                self.s.names[b"atWord:".as_slice()],
+            )?)
+        }
+    }
+    unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Oop> {
+        unsafe { self.buffer(o) }
+    }
+    unsafe fn symbol(&self, n: &[u8]) -> Answer {
+        unsafe { self.keep(self.s.intern(n)?) }
     }
     unsafe fn nil(&self) -> Answer {
-        unsafe { Ok(Operand::object(self.named(b"nil")?)) }
+        unsafe { self.named(b"nil") }
     }
     unsafe fn boolean(&self, b: bool) -> Answer {
-        unsafe {
-            Ok(Operand::object(self.named(if b {
-                b"true"
-            } else {
-                b"false"
-            })?))
-        }
+        unsafe { self.named(if b { b"true" } else { b"false" }) }
     }
-    unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Outcome> {
+    unsafe fn text(&self, o: Oop) -> Result<Option<Vec<u8>>, Oop> {
         unsafe {
-            let b = self
-                .call(o, b"bytes", &[])?
-                .as_bytes()
-                .ok_or_else(invalid)?;
-            Ok(borrowed_bytes(b.pointer, b.length)
-                .ok_or_else(invalid)?
-                .to_vec())
-        }
-    }
-    unsafe fn text(&self, o: Oop) -> Result<Option<Vec<u8>>, Outcome> {
-        unsafe {
-            let symbol = self.call(self.s.id.receiver, b"symbolBytesOf:", &[Operand::object(o)])?;
-            if let Some(b) = symbol.as_bytes() {
-                return Ok(Some(
-                    borrowed_bytes(b.pointer, b.length)
-                        .ok_or_else(invalid)?
-                        .to_vec(),
-                ));
+            let behavior = self.obj(self.s.id.root, b"behaviorOf:", &[o])?;
+            if behavior == self.named(b"SymbolVt")? {
+                return Ok(Some(self.s.id.read_bytes(
+                    o,
+                    self.s.names[b"sizeWord".as_slice()],
+                    self.s.names[b"atWord:".as_slice()],
+                )?));
             }
-            if self.obj(self.s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?
-                == self.named(b"StringVt")?
-            {
-                Ok(Some(self.bytes(o)?))
+            if behavior == self.named(b"StringVt")? {
+                self.bytes(o).map(Some)
             } else {
                 Ok(None)
             }
@@ -141,10 +189,10 @@ impl Scope<'_> {
             let o = self.obj(
                 self.s.model,
                 b"allocate:bytes:",
-                &[Operand::object(self.s.failure_vt), Operand::word(0)],
+                &[self.s.failure_vt, self.raw_word(0)?],
             )?;
             self.s.failures.borrow_mut().insert(o.addr(), fields);
-            Ok(Operand::object(o))
+            Ok(o)
         }
     }
     unsafe fn transfer_failure(&self, e: TransferError) -> Answer {
@@ -177,13 +225,21 @@ impl Scope<'_> {
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        for t in self.tokens.get_mut().drain(..).rev() {
-            unsafe {
-                self.s
-                    .id
-                    .send_named(self.s.roots, b"release:", &[Operand::word(t)])
-                    .expect("release Isolate root");
+        self.s.scoped.borrow_mut().truncate(self.start);
+    }
+}
+impl State {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Answer {
+        unsafe { self.id.send(r, self.names[n], a).map_err(|v| v) }
+    }
+    unsafe fn intern(&self, n: &[u8]) -> Answer {
+        unsafe {
+            if let Some(v) = self.names.get(n) {
+                return Ok(*v);
             }
+            let a: Vec<_> = n.iter().map(|b| abi::size(*b as usize).unwrap()).collect();
+            let name = self.send(self.id.root, b"nameWithBytes", &a)?;
+            Ok(self.id.send(name, self.id.intern, &[])?)
         }
     }
 }
@@ -339,7 +395,7 @@ unsafe fn start(q: &Scope<'_>, a: &[Oop], service: bool) -> Answer {
         let value = match q.obj(
             q.s.model,
             b"allocate:bytes:",
-            &[Operand::object(q.s.handle_vt), Operand::word(0)],
+            &[q.s.handle_vt, q.raw_word(0)?],
         ) {
             Ok(o) => o,
             Err(e) => {
@@ -354,7 +410,7 @@ unsafe fn start(q: &Scope<'_>, a: &[Oop], service: bool) -> Answer {
         }
         q.s.handles.borrow_mut().insert(value.addr(), token);
         registry_lock().insert(token, Arc::new(Mutex::new(entry)));
-        Ok(Operand::object(value))
+        Ok(value)
     }
 }
 fn selector_arity_one(selector: &[u8]) -> bool {
@@ -432,10 +488,10 @@ unsafe fn reply(
                     if envelope {
                         (|| {
                             let vector = q.obj(q.named(b"Vector")?, b"new", &[])?;
-                            q.call(vector, b"add:", &[Operand::object(v)])
+                            q.call(vector, b"add:", &[v])
                         })()
                     } else {
-                        Ok(Operand::object(v))
+                        Ok(v)
                     }
                 }
                 Err(TransferError::Native(e)) => {
@@ -598,7 +654,7 @@ unsafe fn request(q: &Scope<'_>, r: Oop, a: &[Oop], asynchronous: bool) -> Answe
         })();
         match response {
             Err(f) => q.failure(f),
-            Ok((id, None)) => Ok(Operand::object(q.int(id as usize)?)),
+            Ok((id, None)) => Ok(q.int(id as usize)?),
             Ok((id, Some(frame))) => reply(q, &shared, frame, id, false),
         }
     }
@@ -658,7 +714,7 @@ unsafe fn poll(q: &Scope<'_>, r: Oop, a: &[Oop]) -> Answer {
 unsafe fn stop(q: &Scope<'_>, r: Oop, force: bool) -> Answer {
     unsafe {
         let Some(shared) = q.entry(r) else {
-            return Ok(Operand::object(r));
+            return Ok(r);
         };
         let result = (|| {
             let mut e = lock_entry(&shared);
@@ -702,7 +758,7 @@ unsafe fn stop(q: &Scope<'_>, r: Oop, force: bool) -> Answer {
             Ok(())
         })();
         match result {
-            Ok(()) => Ok(Operand::object(r)),
+            Ok(()) => Ok(r),
             Err(f) => q.failure(f),
         }
     }
@@ -794,40 +850,27 @@ enum Op {
     Worker,
     BootError,
 }
-struct EntryContext {
-    state: *const State,
-    op: Op,
-}
-unsafe extern "C" fn method(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe fn method(c: Oop, r: Oop, a: *const Oop, n: usize, op: Op) -> Oop {
     done((|| unsafe {
-        let context = &*c.cast::<EntryContext>();
-        let s = &*context.state;
-        if s.thread != std::thread::current().id() {
-            return Err(invalid());
-        }
-        let q = Scope {
-            s,
-            tokens: RefCell::new(Vec::new()),
-        };
+        let s = state(c)?;
+        let q = Scope::new(s);
         q.keep(r)?;
         let operands = borrowed_slice(a, n).ok_or_else(invalid)?;
         // Worker/boot-error take native Words; every object input remains retained.
         for v in operands {
-            if let Some(o) = v.as_object() {
-                q.keep(o)?;
-            }
+            q.keep(*v)?;
         }
-        if matches!(context.op, Op::Worker) {
+        if matches!(op, Op::Worker) {
             return worker(&q, operands);
         }
-        if matches!(context.op, Op::BootError) {
+        if matches!(op, Op::BootError) {
             return boot_error(&q, operands);
         }
         let args = operands
             .iter()
             .map(|v| object(*v))
             .collect::<Result<Vec<_>, _>>()?;
-        match context.op {
+        match op {
             Op::Start => start(&q, &args, false),
             Op::StartService => start(&q, &args, true),
             Op::Request => request(&q, r, &args, false),
@@ -852,7 +895,7 @@ unsafe extern "C" fn method(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                         }
                     })
                     .unwrap_or(b"stopped");
-                Ok(Operand::object(q.symbol(state)?))
+                Ok(q.symbol(state)?)
             }
             Op::Sleep => {
                 let Some(&value) = args.first() else {
@@ -864,21 +907,21 @@ unsafe extern "C" fn method(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                     std::thread::sleep(Duration::from_millis(ms as u64));
                 }
                 drain(false);
-                Ok(Operand::object(value))
+                Ok(value)
             }
             Op::Crash => std::process::abort(),
             Op::PollControl => match service::poll_control() {
                 1 => q.boolean(true),
-                2 => Ok(Operand::object(q.symbol(b"ownerLost")?)),
+                2 => Ok(q.symbol(b"ownerLost")?),
                 _ => q.nil(),
             },
             Op::Drain | Op::Shutdown => {
-                drain(matches!(context.op, Op::Shutdown));
-                Ok(Operand::unit())
+                drain(matches!(op, Op::Shutdown));
+                Ok(ptr::null_mut())
             }
             Op::IsError => q.boolean(true),
             Op::Class | Op::Kind | Op::Message | Op::ExitStatus | Op::RequestId => {
-                let i = match context.op {
+                let i = match op {
                     Op::Class => 0,
                     Op::Kind => 1,
                     Op::Message => 2,
@@ -886,14 +929,14 @@ unsafe extern "C" fn method(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                     _ => 4,
                 };
                 let o = s.failures.borrow().get(&r.addr()).ok_or_else(invalid)?[i];
-                Ok(Operand::object(o))
+                Ok(o)
             }
             Op::Encode => {
                 let [v] = args.as_slice() else {
                     return Err(invalid());
                 };
                 match q.encode(*v) {
-                    Ok(b) => q.call(q.named(b"Bytes")?, b"fromBytes:", &[Operand::bytes(&b)]),
+                    Ok(b) => q.call(q.named(b"Bytes")?, b"fromBytes:", &[q.byte_value(&b)?]),
                     Err(e) => q.transfer_failure(e),
                 }
             }
@@ -903,7 +946,7 @@ unsafe extern "C" fn method(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
                 };
                 let b = q.bytes(*v)?;
                 match q.decode(&b) {
-                    Ok(v) => Ok(Operand::object(v)),
+                    Ok(v) => Ok(v),
                     Err(e) => q.transfer_failure(e),
                 }
             }
@@ -911,46 +954,41 @@ unsafe extern "C" fn method(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
         }
     })())
 }
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let s = state(c)?;
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        for &o in &s.permanent {
-            s.id.send_named(object(*v)?, b"visit:", &[Operand::object(o)])?;
+        let mut values = s.permanent.clone();
+        values.extend(s.names.values().copied());
+        values.extend(s.scoped.borrow().iter().copied());
+        for o in values {
+            s.send(object(*v)?, b"visit:", &[o])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let s = state(c)?;
         let Some([o, v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
         let fields = s.failures.borrow().get(&object(*o)?.addr()).copied();
         if let Some(fields) = fields {
             for o in fields {
-                s.id.send_named(object(*v)?, b"visit:", &[Operand::object(o)])?;
+                s.send(object(*v)?, b"visit:", &[o])?;
             }
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
-        let Some([v]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let b = v.as_bytes().ok_or_else(invalid)?;
-        let b = borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?;
-        if b.len() % size_of::<usize>() != 0 {
-            return Err(invalid());
-        }
-        for b in b.chunks_exact(size_of::<usize>()) {
-            let address = usize::from_ne_bytes(b.try_into().unwrap());
+        let s = state(c)?;
+        for value in borrowed_slice(a, n).ok_or_else(invalid)? {
+            let address = value.addr();
             s.failures.borrow_mut().remove(&address);
             if let Some(t) = s.handles.borrow_mut().remove(&address) {
                 if let Some(e) = lookup_entry(t) {
@@ -958,159 +996,15 @@ unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize)
                 }
             }
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe fn construct(id: Protocol, ns: Oop) -> Answer {
-    unsafe {
-        let named =
-            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
-        let existing =
-            id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Isolate")?)])?;
-        if existing.as_object().is_some() {
-            return Ok(existing);
-        }
-        let mut s = Box::new(State {
-            id,
-            ns,
-            roots: named(b"Roots")?,
-            gc: named(b"GC")?,
-            model: named(b"ObjectModel")?,
-            handle_vt: ptr::null_mut(),
-            failure_vt: ptr::null_mut(),
-            permanent: Vec::new(),
-            handles: RefCell::new(HashMap::new()),
-            failures: RefCell::new(HashMap::new()),
-            thread: std::thread::current().id(),
-        });
-        let q = Scope {
-            s: &s,
-            tokens: RefCell::new(Vec::new()),
-        };
-        let vt = q.obj(named(b"ObjectVt")?, b"delegated", &[])?;
-        let hv = q.obj(named(b"ObjectVt")?, b"delegated", &[])?;
-        let fv = q.obj(named(b"ErrorVt")?, b"delegated", &[])?;
-        let receiver = q.obj(
-            s.model,
-            b"allocate:bytes:",
-            &[Operand::object(vt), Operand::word(0)],
-        )?;
-        let tokens = q.tokens.take();
-        drop(q);
-        s.handle_vt = hv;
-        s.failure_vt = fv;
-        s.permanent = vec![ns, s.roots, s.gc, s.model, vt, hv, fv, receiver];
-        let s = Box::into_raw(s);
-        for (target, name, op) in [
-            (vt, b"start:selector:image:".as_slice(), Op::Start),
-            (vt, b"startService:image:", Op::StartService),
-            (vt, b"idleFor:", Op::Sleep),
-            (vt, b"_isolateSleep:", Op::Sleep),
-            (vt, b"_isolateCrash:", Op::Crash),
-            (vt, b"pollServiceControl", Op::PollControl),
-            (vt, b"checkpoint", Op::Drain),
-            (vt, b"shutdown", Op::Shutdown),
-            (vt, b"encode:", Op::Encode),
-            (vt, b"decode:", Op::Decode),
-            (vt, b"runWorker:receiver:selector:", Op::Worker),
-            (vt, b"workerBootError:kind:message:", Op::BootError),
-            (hv, b"request:", Op::Request),
-            (hv, b"request:timeout:", Op::Request),
-            (hv, b"submit:timeout:", Op::Submit),
-            (hv, b"pollRequest:", Op::Poll),
-            (hv, b"cancelRequest:", Op::Cancel),
-            (hv, b"stop", Op::Stop),
-            (hv, b"terminate", Op::Terminate),
-            (hv, b"state", Op::State),
-            (fv, b"isError", Op::IsError),
-            (fv, b"class", Op::Class),
-            (fv, b"kind", Op::Kind),
-            (fv, b"message", Op::Message),
-            (fv, b"exitStatus", Op::ExitStatus),
-            (fv, b"requestId", Op::RequestId),
-        ] {
-            let c = Box::into_raw(Box::new(EntryContext { state: s, op }));
-            id.send_named(
-                target,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(method, c.cast())),
-                ],
-            )?;
-        }
-        for (name, f) in [
-            (b"rootsDo:".as_slice(), roots as Method),
-            (b"referencesOf:do:", references),
-            (b"retire:", retire),
-        ] {
-            id.send_named(
-                vt,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(f, s.cast())),
-                ],
-            )?;
-        }
-        id.send_named((*s).roots, b"register:", &[Operand::object(receiver)])?;
-        id.send_named(
-            (*s).gc,
-            b"registerRetirement:",
-            &[Operand::object(receiver)],
-        )?;
-        id.send_named(
-            (*s).gc,
-            b"trace:with:",
-            &[Operand::object(fv), Operand::object(receiver)],
-        )?;
-        for (n, o) in [
-            (b"Isolate".as_slice(), receiver),
-            (b"IsolateVt", vt),
-            (b"IsolateHandleVt", hv),
-            (b"IsolateFailureVt", fv),
-        ] {
-            id.send_named(
-                ns,
-                b"at:put:",
-                &[Operand::object(id.intern_name(n)?), Operand::object(o)],
-            )?;
-        }
-        id.send_named(
-            id.receiver,
-            b"ownerOf:put:",
-            &[Operand::object(vt), Operand::object(receiver)],
-        )?;
-        for t in tokens {
-            id.send_named((*s).roots, b"release:", &[Operand::word(t)])?;
-        }
-        Ok(Operand::object(receiver))
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        construct(*id, object(*ns)?)
-    })())
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: 1,
-    byte_size: size_of::<native::Module>() as u32,
-    initialize: Some(initialize),
-};
-unsafe fn boot_error(q: &Scope<'_>, a: &[Operand]) -> Answer {
+unsafe fn boot_error(q: &Scope<'_>, a: &[Oop]) -> Answer {
     unsafe {
         let [fd, kind, message] = a else {
             return Err(invalid());
         };
-        let fd = fd
-            .as_word()
+        let fd = abi::as_size(*fd)
             .filter(|fd| *fd <= c_int::MAX as usize)
             .ok_or_else(invalid)? as c_int;
         let kind = q.text(object(*kind)?)?.ok_or_else(invalid)?;
@@ -1126,16 +1020,15 @@ unsafe fn boot_error(q: &Scope<'_>, a: &[Operand]) -> Answer {
         };
         let mut file = ManuallyDrop::new(File::from_raw_fd(fd));
         write_frame(borrowed_file(&mut file), &frame).map_err(|_| invalid())?;
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     }
 }
-unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
+unsafe fn worker(q: &Scope<'_>, a: &[Oop]) -> Answer {
     unsafe {
         let [fd, receiver, selector] = a else {
             return Err(invalid());
         };
-        let fd = fd
-            .as_word()
+        let fd = abi::as_size(*fd)
             .filter(|fd| *fd <= c_int::MAX as usize)
             .ok_or_else(invalid)? as c_int;
         let receiver = object(*receiver)?;
@@ -1157,7 +1050,7 @@ unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
             payload: Vec::new(),
         };
         if write_frame(channel, &ready).is_err() {
-            return Ok(Operand::word(1));
+            return Ok(q.raw_word(1)?);
         }
         loop {
             let frame = match if task_service {
@@ -1166,7 +1059,7 @@ unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
                 read_frame(channel)
             } {
                 Ok(f) => f,
-                Err(_) => return Ok(Operand::word(1)),
+                Err(_) => return Ok(q.raw_word(1)?),
             };
             if frame.header.kind == FrameKind::Stop {
                 let stopped = Frame {
@@ -1177,22 +1070,17 @@ unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
                     },
                     payload: Vec::new(),
                 };
-                return Ok(Operand::word(usize::from(
-                    write_frame(channel, &stopped).is_err(),
-                )));
+                return Ok(q.raw_word(usize::from(write_frame(channel, &stopped).is_err()))?);
             }
             if frame.header.kind != FrameKind::Request {
-                return Ok(Operand::word(1));
+                return Ok(q.raw_word(1)?);
             }
-            let request = Scope {
-                s: q.s,
-                tokens: RefCell::new(Vec::new()),
-            };
+            let request = Scope::new(q.s);
             let payload = if task_service {
                 match service::request_payload(&frame.payload) {
                     Ok(Some(p)) => p,
                     Ok(None) => continue,
-                    Err(_) => return Ok(Operand::word(1)),
+                    Err(_) => return Ok(q.raw_word(1)?),
                 }
             } else {
                 frame.payload
@@ -1217,27 +1105,21 @@ unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
                             payload,
                         },
                     );
-                    return Ok(Operand::word(1));
+                    return Ok(q.raw_word(1)?);
                 }
             };
             let result = if task_service {
                 if service::begin(fd, frame.header.request_id).is_err() {
-                    return Ok(Operand::word(1));
+                    return Ok(q.raw_word(1)?);
                 }
                 let policy = request.obj(
                     request.named(b"Globals")?,
                     b"at:",
-                    &[Operand::object(request.symbol(b"TaskService")?)],
+                    &[request.symbol(b"TaskService")?],
                 )?;
-                request.obj(
-                    policy,
-                    b"serve:request:",
-                    &[Operand::object(receiver), Operand::object(argument)],
-                )
+                request.obj(policy, b"serve:request:", &[receiver, argument])
             } else {
-                let result =
-                    q.s.id
-                        .send(receiver, selector, &[Operand::object(argument)]);
+                let result = q.s.id.send(receiver, selector, &[argument]);
                 result.and_then(object).and_then(|o| request.keep(o))
             };
             let (kind, payload) = match result {
@@ -1251,9 +1133,7 @@ unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
                     .map_err(|_| invalid())?,
                 ),
                 Ok(result) => {
-                    if request.call(result, b"isError", &[])?.as_object()
-                        == Some(request.named(b"true")?)
-                    {
+                    if request.call(result, b"isError", &[])? == request.named(b"true")? {
                         let kind = request.obj(result, b"kind", &[])?;
                         let message = request.obj(result, b"message", &[])?;
                         let kind = request.text(kind)?.ok_or_else(invalid)?;
@@ -1298,10 +1178,464 @@ unsafe fn worker(q: &Scope<'_>, a: &[Operand]) -> Answer {
                 payload,
             };
             if write_frame(channel, &reply).is_err() {
-                return Ok(Operand::word(1));
+                return Ok(q.raw_word(1)?);
             }
             drop(request);
             drain(false);
         }
     }
 }
+unsafe extern "C" fn op_start(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Start) }
+}
+unsafe extern "C" fn op_startservice(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::StartService) }
+}
+unsafe extern "C" fn op_sleep(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Sleep) }
+}
+unsafe extern "C" fn op_crash(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Crash) }
+}
+unsafe extern "C" fn op_pollcontrol(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::PollControl) }
+}
+unsafe extern "C" fn op_drain(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Drain) }
+}
+unsafe extern "C" fn op_shutdown(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Shutdown) }
+}
+unsafe extern "C" fn op_encode(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Encode) }
+}
+unsafe extern "C" fn op_decode(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Decode) }
+}
+unsafe extern "C" fn op_worker(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Worker) }
+}
+unsafe extern "C" fn op_booterror(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::BootError) }
+}
+unsafe extern "C" fn op_request(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Request) }
+}
+unsafe extern "C" fn op_submit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Submit) }
+}
+unsafe extern "C" fn op_poll(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Poll) }
+}
+unsafe extern "C" fn op_cancel(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Cancel) }
+}
+unsafe extern "C" fn op_stop(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Stop) }
+}
+unsafe extern "C" fn op_terminate(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Terminate) }
+}
+unsafe extern "C" fn op_state(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::State) }
+}
+unsafe extern "C" fn op_iserror(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::IsError) }
+}
+unsafe extern "C" fn op_class(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Class) }
+}
+unsafe extern "C" fn op_kind(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Kind) }
+}
+unsafe extern "C" fn op_message(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::Message) }
+}
+unsafe extern "C" fn op_exitstatus(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::ExitStatus) }
+}
+unsafe extern "C" fn op_requestid(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { method(c, r, a, n, Op::RequestId) }
+}
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    done((|| unsafe {
+        let id = *p;
+        let [ns] = borrowed_slice(a, count).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let symbols = borrowed_slice(l, n)
+            .filter(|v| v.len() == NAMES.len())
+            .ok_or_else(invalid)?;
+        let old = INSTANCE.load(Ordering::Acquire);
+        if !old.is_null() {
+            let s = &*old;
+            return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
+                Ok(s.receiver)
+            } else {
+                Err(invalid())
+            };
+        }
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |n: &[u8]| send(*ns, b"at:", &[names[n]]);
+        let roots = named(b"Roots")?;
+        let model = named(b"ObjectModel")?;
+        let gc = named(b"GC")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v| -> Result<Oop, Oop> {
+            tokens.push(send(roots, b"retain:", &[v])?);
+            Ok(v)
+        };
+        let vt = keep(send(named(b"ObjectVt")?, b"delegated", &[])?)?;
+        let hv = keep(send(named(b"ObjectVt")?, b"delegated", &[])?)?;
+        let fv = keep(send(named(b"ErrorVt")?, b"delegated", &[])?)?;
+        let receiver = keep(send(vt, b"allocate", &[abi::size(0).unwrap()])?)?;
+        let s = Box::leak(Box::new(State {
+            id,
+            names,
+            ns: *ns,
+            model,
+            receiver,
+            handle_vt: hv,
+            failure_vt: fv,
+            ready: Cell::new(false),
+            scoped: RefCell::new(Vec::new()),
+            permanent: vec![*ns, roots, gc, model, vt, hv, fv, receiver],
+            handles: RefCell::new(HashMap::new()),
+            failures: RefCell::new(HashMap::new()),
+            thread: std::thread::current().id(),
+        }));
+        INSTANCE.store(s, Ordering::Release);
+        for (i, (target, name)) in INSTALL.iter().enumerate() {
+            let m = s.send(image, b"newMethodAt:", &[abi::size(i).unwrap()])?;
+            let m = s.send(m, b"withContext:", &[*ns])?;
+            s.send([vt, hv, fv][*target], b"addMethod", &[s.intern(name)?, m])?;
+        }
+        s.send(roots, b"register:", &[receiver])?;
+        s.send(gc, b"registerRetirement:", &[receiver])?;
+        s.send(gc, b"trace:with:", &[fv, receiver])?;
+        for (name, value) in [
+            (b"Isolate".as_slice(), receiver),
+            (b"IsolateVt", vt),
+            (b"IsolateHandleVt", hv),
+            (b"IsolateFailureVt", fv),
+        ] {
+            s.send(*ns, b"at:put:", &[s.intern(name)?, value])?;
+        }
+        s.send(id.root, b"ownerOf:put:", &[vt, receiver])?;
+        for t in tokens {
+            s.send(roots, b"release:", &[t])?;
+        }
+        s.ready.set(true);
+        Ok(receiver)
+    })())
+}
+static INSTALL: &[(usize, &[u8])] = &[
+    (0, b"start:selector:image:"),
+    (0, b"startService:image:"),
+    (0, b"idleFor:"),
+    (0, b"_isolateSleep:"),
+    (0, b"_isolateCrash:"),
+    (0, b"pollServiceControl"),
+    (0, b"checkpoint"),
+    (0, b"shutdown"),
+    (0, b"encode:"),
+    (0, b"decode:"),
+    (0, b"runWorker:receiver:selector:"),
+    (0, b"workerBootError:kind:message:"),
+    (1, b"request:"),
+    (1, b"request:timeout:"),
+    (1, b"submit:timeout:"),
+    (1, b"pollRequest:"),
+    (1, b"cancelRequest:"),
+    (1, b"stop"),
+    (1, b"terminate"),
+    (1, b"state"),
+    (2, b"isError"),
+    (2, b"class"),
+    (2, b"kind"),
+    (2, b"message"),
+    (2, b"exitStatus"),
+    (2, b"requestId"),
+    (0, b"rootsDo:"),
+    (0, b"referencesOf:do:"),
+    (0, b"retire:"),
+];
+macro_rules! literals { ($($v:literal),*$(,)?) => {
+ const NAMES:&[&[u8]]=&[$($v),*];
+ static LITERALS:&[Literal]=&[$(Literal::new($v)),*];
+}; }
+literals![
+    b"at:",
+    b"sequence",
+    b"String",
+    b"fromBytes:",
+    b"Word",
+    b"fromUnsignedLow:high:",
+    b"low32",
+    b"high32",
+    b"Integer",
+    b"fromWord:",
+    b"wordOf:",
+    b"bytes",
+    b"sizeWord",
+    b"atWord:",
+    b"nil",
+    b"true",
+    b"false",
+    b"SymbolVt",
+    b"behaviorOf:",
+    b"StringVt",
+    b"allocate:bytes:",
+    b"encode",
+    b"nonTransferable",
+    b"nameWithBytes",
+    b"stopped",
+    b"unknownHandle",
+    b"busy",
+    b"notReady",
+    b"protocol",
+    b"invalidRecord",
+    b"invalidArguments",
+    b"invalidReceiver",
+    b"handle:",
+    b"invalidSelector",
+    b"invalidImage",
+    b"embeddedNul",
+    b"boot",
+    b"wrongArity",
+    b"expectedReady",
+    b"handshakeTimeout",
+    b"invalidReady",
+    b"handshakeFailed",
+    b"timeout",
+    b"deadline",
+    b"transport",
+    b"uncertain",
+    b"invalidReply",
+    b"resultTransfer",
+    b"application",
+    b"Vector",
+    b"new",
+    b"add:",
+    b"invalidTimeout",
+    b"asyncRequired",
+    b"requestIdExhausted",
+    b"invalidRequest",
+    b"unavailable",
+    b"exit",
+    b"invalidRequestId",
+    b"staleRequest",
+    b"invalidStopReply",
+    b"starting",
+    b"ready",
+    b"stopping",
+    b"reapPending",
+    b"exited",
+    b"ownerLost",
+    b"Bytes",
+    b"visit:",
+    b"invalidPayload",
+    b"Globals",
+    b"TaskService",
+    b"serve:request:",
+    b"nativeFailure",
+    b"isError",
+    b"kind",
+    b"message",
+    b"encodeFailed",
+    b"Roots",
+    b"ObjectModel",
+    b"GC",
+    b"retain:",
+    b"ObjectVt",
+    b"delegated",
+    b"ErrorVt",
+    b"allocate",
+    b"newMethodAt:",
+    b"withContext:",
+    b"addMethod",
+    b"register:",
+    b"registerRetirement:",
+    b"trace:with:",
+    b"Isolate",
+    b"IsolateVt",
+    b"IsolateHandleVt",
+    b"IsolateFailureVt",
+    b"at:put:",
+    b"ownerOf:put:",
+    b"release:",
+    b"start:selector:image:",
+    b"startService:image:",
+    b"idleFor:",
+    b"_isolateSleep:",
+    b"_isolateCrash:",
+    b"pollServiceControl",
+    b"checkpoint",
+    b"shutdown",
+    b"encode:",
+    b"decode:",
+    b"runWorker:receiver:selector:",
+    b"workerBootError:kind:message:",
+    b"request:",
+    b"request:timeout:",
+    b"submit:timeout:",
+    b"pollRequest:",
+    b"cancelRequest:",
+    b"stop",
+    b"terminate",
+    b"state",
+    b"class",
+    b"exitStatus",
+    b"requestId",
+    b"rootsDo:",
+    b"referencesOf:do:",
+    b"retire:",
+    b"size",
+    b"IntegerVt",
+    b"FloatVt",
+    b"Float",
+    b"bitsOf:",
+    b"VectorVt",
+    b"MapVt",
+    b"keys",
+    b"fromBits:",
+    b"Map",
+    b"includesKey:",
+];
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 99,
+        entry: Some(op_start),
+    },
+    MethodSpec {
+        name: 100,
+        entry: Some(op_startservice),
+    },
+    MethodSpec {
+        name: 101,
+        entry: Some(op_sleep),
+    },
+    MethodSpec {
+        name: 102,
+        entry: Some(op_sleep),
+    },
+    MethodSpec {
+        name: 103,
+        entry: Some(op_crash),
+    },
+    MethodSpec {
+        name: 104,
+        entry: Some(op_pollcontrol),
+    },
+    MethodSpec {
+        name: 105,
+        entry: Some(op_drain),
+    },
+    MethodSpec {
+        name: 106,
+        entry: Some(op_shutdown),
+    },
+    MethodSpec {
+        name: 107,
+        entry: Some(op_encode),
+    },
+    MethodSpec {
+        name: 108,
+        entry: Some(op_decode),
+    },
+    MethodSpec {
+        name: 109,
+        entry: Some(op_worker),
+    },
+    MethodSpec {
+        name: 110,
+        entry: Some(op_booterror),
+    },
+    MethodSpec {
+        name: 111,
+        entry: Some(op_request),
+    },
+    MethodSpec {
+        name: 112,
+        entry: Some(op_request),
+    },
+    MethodSpec {
+        name: 113,
+        entry: Some(op_submit),
+    },
+    MethodSpec {
+        name: 114,
+        entry: Some(op_poll),
+    },
+    MethodSpec {
+        name: 115,
+        entry: Some(op_cancel),
+    },
+    MethodSpec {
+        name: 116,
+        entry: Some(op_stop),
+    },
+    MethodSpec {
+        name: 117,
+        entry: Some(op_terminate),
+    },
+    MethodSpec {
+        name: 118,
+        entry: Some(op_state),
+    },
+    MethodSpec {
+        name: 74,
+        entry: Some(op_iserror),
+    },
+    MethodSpec {
+        name: 119,
+        entry: Some(op_class),
+    },
+    MethodSpec {
+        name: 75,
+        entry: Some(op_kind),
+    },
+    MethodSpec {
+        name: 76,
+        entry: Some(op_message),
+    },
+    MethodSpec {
+        name: 120,
+        entry: Some(op_exitstatus),
+    },
+    MethodSpec {
+        name: 121,
+        entry: Some(op_requestid),
+    },
+    MethodSpec {
+        name: 122,
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: 123,
+        entry: Some(references),
+    },
+    MethodSpec {
+        name: 124,
+        entry: Some(retire),
+    },
+];
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
+    initialize: Some(initialize),
+};

@@ -155,7 +155,7 @@ unsafe fn run() {
             b"Integer", b"wordOf:", b"slot:in:", b"imageSizeOf:", b"slotKindOf:at:",
             b"fromUnsignedLow:high:", b"low32", b"high32", b"fromBits:", b"bits", b"wrappingAdd:", b"wrappingSubtract:",
             b"shiftLeft:", b"unsignedDivide:", b"tryPrimitiveExpression:", b"tryPrimitiveExpressionAtEpoch:",
-            b"imageSlotAt:in:", b"restoreImageSlotAt:in:put:", b"atWord:",
+            b"imageSlotAt:in:", b"imageSlotKindAt:in:", b"restoreImageSlotAt:in:put:", b"atWord:",
             b"fromByteValues", b"appendByteValues", b"appendBytes:", b"sizeWord", b"bytes", b"length", b"byteAtWord:",
             b"sliceFromWord:toWord:", b"sha256", b"readU64At:", b"readTaggedTableWithSchema:limit:", b"withSymbolName:",
             b"fromWord:", b"numberIdentity", b"externalCharge",
@@ -793,6 +793,13 @@ unsafe fn run() {
         let private=send(id.root,b"ensurePrivateVtableFor:",&[record]).unwrap();
         assert_eq!(send(id.root,b"ownerOf:",&[private]).unwrap(),record);
         assert_eq!(send(id.root,b"ensurePrivateVtableFor:",&[record]).unwrap(),private);
+        assert_eq!(abi::as_size(send(model,b"imageSlotKindAt:in:",&[abi::size(0).unwrap(),record]).unwrap()),Some(1));
+        assert_eq!(abi::as_size(send(model,b"imageSlotKindAt:in:",&[abi::size(1).unwrap(),record]).unwrap()),Some(0));
+        assert!(send(model,b"imageSlotKindAt:in:",&[abi::size(2).unwrap(),record]).is_err());
+        // A reference slot stays a reference slot when it holds an immediate Oop.
+        send(model,b"slotAt:in:put:",&[abi::size(0).unwrap(),record,abi::size(19).unwrap()]).unwrap();
+        assert_eq!(abi::as_size(send(model,b"imageSlotKindAt:in:",&[abi::size(0).unwrap(),record]).unwrap()),Some(1));
+        send(model,b"slotAt:in:put:",&[abi::size(0).unwrap(),record,replacement_child]).unwrap();
         record.cast::<usize>().add(1).write(replacement_child.addr());
         assert!(send(model,b"slotAt:in:",&[abi::size(1).unwrap(),record]).is_err(), "private behavior must preserve the inherited raw-word layout");
         let integer_type=send(base,b"delegated",&[]).unwrap();

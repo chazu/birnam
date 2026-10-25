@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "f65175af",
+  "scope": "Full default Bootstrap startup in a fresh process; not installed Host/CLI or image/worker acceptance.",
+  "commands": [
+    {
+      "command": "bash scripts/oop-bootstrap-test.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "bash scripts/oop-id-slice-test.sh",
+      "exit_code": 0,
+      "unit_tests": 188,
+      "authored_task_control_checks": 177
+    },
+    {
+      "command": "mise exec -- cargo test --offline --locked -p birnam-image -p birnam-alien -p birnam-isolate",
+      "exit_code": 0,
+      "unit_tests": 18
+    },
+    {
+      "command": "mise exec -- cargo check --workspace --offline --locked",
+      "exit_code": 101,
+      "result": "Remaining Generation (47 errors) and Relational (51 errors) consumers still use the removed calling convention."
+    }
+  ],
+  "closure": {
+    "authored_artifacts": 22,
+    "published_bootstrap": "default features",
+    "lang_seed_removed": true,
+    "installed_module_fallbacks": false,
+    "published_cwd": "staged library directory",
+    "cold_native_libraries": 32,
+    "published_native_libraries": 31
+  },
+  "checks": [
+    "Fresh-process published startup and arithmetic before/after precise GC",
+    "Required artifact absence rejects startup",
+    "Isolate copied signed Integer bounds, Float, String, Symbol and non-transferable rejection",
+    "Alien owned foreign memory writes/reads/free",
+    "Generated C signed integer, string, double and unsigned 64-bit calls",
+    "C callback into a source Block that collects; callback release clears address",
+    "Embedded library size limit checked before byte reads",
+    "ObjectModel inherited raw/reference slot distinction including an immediate Oop in a reference slot",
+    "Direct Id dispatch counterexamples and existing stackless task-control gate"
+  ],
+  "contract": "No Id contract changes. Native declarations and all message arguments/results use Oops. Representation, foreign marshalling, image policy and tracing remain with their owners.",
+  "remaining": [
+    "Host/CLI installation",
+    "Image graph recovery and pending compiler/Execution/reflection consumers",
+    "Restored-image worker acceptance",
+    "Generation and relational workspace migration"
+  ],
+  "logs": {
+    ".cargo-target/oop-slice/bootstrap-qualification/cold.log": "103dd056f4424b319601b4e20d5ec991080a15548383b6d18cfbba864817c1c9",
+    ".cargo-target/oop-slice/bootstrap-qualification/published.log": "d2551cf977f524a4c8bdc2d2650072c3a2af6cb7fbc4d225e10ef4592ee9257f",
+    ".cargo-target/oop-slice/bootstrap-qualification/published-missing.log": "8a0391010624110a2882c2c2866d2613c47bd1be03280a14f02a4cf8259d6a34",
+    ".cargo-target/published-full-gate.log": "6a259baddc11aa8e044184502b21d683e6758e390e80aa41f8fb2ed75249a52a",
+    ".cargo-target/published-owner-tests.log": "76ef36406254430c309c3db0e71ac480bae824cd7ef3cdbc55418e4ebc505dcc"
+  }
+}

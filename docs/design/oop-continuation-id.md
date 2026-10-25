@@ -312,7 +312,7 @@ failure conversion. No assertion was weakened or skipped to obtain these results
 
 ## Loose ends verified before rebuilding
 
-`cargo check --workspace --offline --locked` currently exits 101. Its first
+At the pre-rebuild checkpoint, `cargo check --workspace --offline --locked` exited 101. Its first
 reported failures are Alien (39 errors), Image (73), and Store (93), including
 imports of removed native carriers and obsolete initializer signatures. This is
 a recorded baseline failure, not a result of the reference, and not an exhaustive
@@ -347,3 +347,47 @@ with owner-defined tracing and protected result cleanup. Thirteen canonical
 program fixtures, construction and signed values pass in the cold compiler
 process. Published Bootstrap advances past PortableCode and still requires the
 remaining source/platform closure. [Receipt](../measurements/portable-code-oop-20261025.json).
+
+## Full published Bootstrap startup
+
+The published Bootstrap closure now starts in a fresh Id process. The cold
+qualification builds its native owners, uses the build-only Lang seed to compile
+all 22 required authored artifacts, then replaces Bootstrap with its default
+build and removes the seed dylib. The published process runs from the staged
+library directory with installed-module fallbacks disabled. Removing a required
+artifact still fails startup; it does not fall back to source or the seed.
+
+The existing message contract is unchanged. Before this migration, Alien, Image
+and Isolate sent the removed Operand/Outcome structs and installed native entry
+records. They now declare Methods in their native module metadata and send Oops.
+Ordinary dispatch remains current lookup followed by direct Method entry. These
+owners keep their native resource tables and tracing responsibilities; scoped
+references are enumerated by their existing Roots providers. No Id operation or
+payload-type catalog was added.
+
+Execution's explicit native-facing adapters normalize Word and Bytes through
+those owners. AlienCompiler emits the same Oop calling convention, and generated
+wrappers retain their TCC Unit and use Roots to protect results during cleanup.
+AlienRecipes inspects a vtable's own bindings through `bindingsDo:` when checking
+registration identities. That inspection neither changes ordinary lookup nor
+adds a Method application protocol.
+
+ObjectModel adds `imageSlotKindAt:in:` to report its inherited slot layout. Image
+must distinguish a raw word from an object-reference slot holding an immediate
+Oop; inspecting the returned value's encoding cannot make that decision. The
+layout and its interpretation remain with ObjectModel. Image retains its own
+format policy and codecs above Id.
+
+Acceptance includes published arithmetic and collection, all startup owner
+initializers, copied Isolate values and non-transferable rejection, Alien memory
+access, generated integer/string/float/full-width unsigned calls, and a C callback
+that collects before returning to its caller. Callback release clears the foreign
+address. Oversized embedded libraries are rejected before reading their bytes.
+The broad Oop gate separately retains the direct-dispatch counterexample tests
+and authored task-control checks. [Receipt](../measurements/published-startup-oop-20261025.json).
+
+This completes published **Bootstrap** startup, not Host/CLI installation or full
+image/worker acceptance. Image graph recovery still needs the pending compiler,
+Execution and reflection connections; Generation, relational integration and
+Host/CLI remain outside this gate. Isolate's copied-value conversion and owner
+activation are qualified here; no restored-image worker process is claimed.

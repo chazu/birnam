@@ -631,6 +631,7 @@ const NAMES: &[&[u8]] = &[
     b"nativeSignature",
     b"detail",
     b"size",
+    b"fromBytes:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -815,6 +816,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"nativeSignature"),
     Literal::new(b"detail"),
     Literal::new(b"size"),
+    Literal::new(b"fromBytes:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {

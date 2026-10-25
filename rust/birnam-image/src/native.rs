@@ -3,29 +3,57 @@
 mod format;
 use super::{support, v8};
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as abi, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
 use birnam_artifact::{
     code_binding_inventory as bindings, materialization_selection as selection, portable_inventory,
 };
 use core::{
     cell::{Cell, RefCell},
-    ffi::c_void,
     ptr,
 };
 use std::{collections::HashMap, os::unix::ffi::OsStrExt, path::Path};
-// Distinguish our validation refusal (the public Image API answers nil) from
-// an owner's native failure, which must propagate unchanged.
-const IMAGE_REJECTED: usize = 0x494d4147;
-fn bad() -> Outcome {
-    Outcome::failed(abi::INVALID_REQUEST, IMAGE_REJECTED)
+// Image admission refusal is local policy, not a second Id result format.
+#[derive(Debug)]
+enum Failure {
+    Rejected,
+    Native(Oop),
+    Value(Oop),
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|o| !o.is_null()).ok_or_else(bad)
+impl From<Oop> for Failure {
+    fn from(v: Oop) -> Self {
+        Self::Native(v)
+    }
 }
-fn done(v: Result<Operand, Outcome>) -> Outcome {
-    v.map_or_else(|e| e, Outcome::loaded)
+fn bad() -> Failure {
+    Failure::Rejected
+}
+fn object(v: Oop) -> Result<Oop, Failure> {
+    if v.is_null() { Err(bad()) } else { Ok(v) }
+}
+fn optional(v: Oop) -> Option<Oop> {
+    (!v.is_null()).then_some(v)
+}
+fn done(v: Result<Oop, Failure>) -> Oop {
+    match v {
+        Ok(v) | Err(Failure::Value(v)) => v,
+        Err(Failure::Native(v)) => abi::fault_reference(v),
+        Err(Failure::Rejected) => unsafe { (*INSTANCE.load(Ordering::Acquire)).id.invalid },
+    }
+}
+use std::sync::atomic::{AtomicPtr, Ordering};
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+unsafe fn state(c: Oop) -> Result<&'static State, Failure> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
+        return Err(bad());
+    }
+    let s = unsafe { &*p };
+    if s.ns != c || s.thread != std::thread::current().id() {
+        return Err(bad());
+    }
+    Ok(s)
 }
 #[derive(Clone)]
 struct Fact {
@@ -43,12 +71,14 @@ struct Report {
 }
 struct State {
     id: Protocol,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
     ns: Oop,
-    roots: Oop,
     model: Oop,
     receiver: Oop,
     permanent: Vec<Oop>,
     busy: Cell<bool>,
+    ready: Cell<bool>,
     facts: RefCell<Vec<Fact>>,
     report: RefCell<Report>,
     composition: RefCell<Option<Vec<u8>>>,
@@ -56,93 +86,120 @@ struct State {
 }
 struct Scope<'a> {
     s: &'a State,
-    tokens: RefCell<Vec<usize>>,
+    start: usize,
 }
-impl Scope<'_> {
-    unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
-        unsafe {
-            let t = self
-                .s
-                .send(self.s.roots, b"retain:", &[Operand::object(o)])?
-                .as_word()
-                .ok_or_else(bad)?;
-            self.tokens.borrow_mut().push(t);
-            Ok(o)
+impl<'a> Scope<'a> {
+    fn new(s: &'a State) -> Self {
+        Self {
+            s,
+            start: s.scoped.borrow().len(),
         }
+    }
+    unsafe fn keep(&self, o: Oop) -> Result<Oop, Failure> {
+        self.s.scoped.borrow_mut().push(o);
+        Ok(o)
     }
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        for t in self.tokens.get_mut().drain(..) {
-            unsafe {
-                self.s
-                    .send(self.s.roots, b"release:", &[Operand::word(t)])
-                    .expect("release Image root");
-            }
-        }
+        self.s.scoped.borrow_mut().truncate(self.start);
     }
 }
 impl State {
-    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Operand, Outcome> {
-        unsafe { self.id.send_named(r, n, a) }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Failure> {
+        unsafe { self.id.send(r, self.names[n], a).map_err(Failure::Native) }
     }
-    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
-        unsafe { object(self.send(self.ns, b"at:", &[Operand::object(self.id.intern_name(n)?)])?) }
-    }
-    unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Outcome> {
+    unsafe fn intern(&self, n: &[u8]) -> Result<Oop, Failure> {
         unsafe {
-            let v = self.send(o, b"bytes", &[])?.as_bytes().ok_or_else(bad)?;
-            Ok(borrowed_bytes(v.pointer, v.length)
-                .ok_or_else(bad)?
-                .to_vec())
+            if let Some(v) = self.names.get(n) {
+                return Ok(*v);
+            }
+            let args: Vec<_> = n.iter().map(|b| abi::size(*b as usize).unwrap()).collect();
+            let name = self.send(self.id.root, b"nameWithBytes", &args)?;
+            Ok(self.id.send(name, self.id.intern, &[])?)
         }
     }
-    unsafe fn symbol(&self, o: Oop) -> Result<Vec<u8>, Outcome> {
+    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Failure> {
+        unsafe { object(self.send(self.ns, b"at:", &[self.intern(n)?])?) }
+    }
+    unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Failure> {
         unsafe {
-            let v = self
-                .send(self.id.receiver, b"symbolBytesOf:", &[Operand::object(o)])?
-                .as_bytes()
-                .ok_or_else(bad)?;
-            Ok(borrowed_bytes(v.pointer, v.length)
-                .ok_or_else(bad)?
-                .to_vec())
+            let q = Scope::new(self);
+            let v = q.keep(self.send(o, b"bytes", &[])?)?;
+            Ok(self.id.read_bytes(
+                v,
+                self.names[b"sizeWord".as_slice()],
+                self.names[b"atWord:".as_slice()],
+            )?)
         }
     }
-    unsafe fn text(&self, q: &Scope<'_>, family: &[u8], b: &[u8]) -> Result<Oop, Outcome> {
+    unsafe fn symbol(&self, o: Oop) -> Result<Vec<u8>, Failure> {
         unsafe {
-            q.keep(object(self.send(
-                self.named(family)?,
-                b"fromBytes:",
-                &[Operand::bytes(b)],
-            )?)?)
+            let q = Scope::new(self);
+            q.keep(o)?;
+            Ok(self.id.read_bytes(
+                o,
+                self.names[b"sizeWord".as_slice()],
+                self.names[b"atWord:".as_slice()],
+            )?)
         }
     }
-    unsafe fn integer(&self, q: &Scope<'_>, v: usize) -> Result<Oop, Outcome> {
+    unsafe fn byte_value(&self, b: &[u8]) -> Result<Oop, Failure> {
         unsafe {
-            q.keep(object(self.send(
-                self.named(b"Integer")?,
-                b"fromWord:",
-                &[Operand::word(v)],
-            )?)?)
+            let args: Vec<_> = b.iter().map(|b| abi::size(*b as usize).unwrap()).collect();
+            self.send(self.id.root, b"sequence", &args)
         }
     }
-    unsafe fn number(&self, v: Oop) -> Result<usize, Outcome> {
+    unsafe fn text(&self, q: &Scope<'_>, family: &[u8], b: &[u8]) -> Result<Oop, Failure> {
         unsafe {
-            self.send(self.named(b"Integer")?, b"wordOf:", &[Operand::object(v)])?
-                .as_word()
-                .ok_or_else(bad)
+            let v = q.keep(self.byte_value(b)?)?;
+            q.keep(self.send(self.named(family)?, b"fromBytes:", &[v])?)
         }
     }
-    unsafe fn call(&self, q: &Scope<'_>, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Outcome> {
+    unsafe fn word(&self, v: usize) -> Result<Oop, Failure> {
         unsafe {
-            q.keep(object(self.send(
-                r,
-                n,
-                &a.iter().copied().map(Operand::object).collect::<Vec<_>>(),
-            )?)?)
+            if let Some(v) = abi::size(v) {
+                return Ok(v);
+            }
+            self.send(
+                self.named(b"Word")?,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(v & 0xffff_ffff).unwrap(),
+                    abi::size(v >> 32).unwrap(),
+                ],
+            )
         }
     }
-    unsafe fn vector(&self, q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Outcome> {
+    unsafe fn bits(&self, v: Oop) -> Result<usize, Failure> {
+        unsafe {
+            let q = Scope::new(self);
+            q.keep(v)?;
+            if let Some(v) = abi::as_size(v) {
+                return Ok(v);
+            }
+            let lo = abi::as_size(self.send(v, b"low32", &[])?).ok_or_else(bad)?;
+            let hi = abi::as_size(self.send(v, b"high32", &[])?).ok_or_else(bad)?;
+            Ok(lo | (hi << 32))
+        }
+    }
+    unsafe fn integer(&self, q: &Scope<'_>, v: usize) -> Result<Oop, Failure> {
+        unsafe {
+            let v = q.keep(self.word(v)?)?;
+            q.keep(self.send(self.named(b"Integer")?, b"fromWord:", &[v])?)
+        }
+    }
+    unsafe fn number(&self, v: Oop) -> Result<usize, Failure> {
+        unsafe {
+            let q = Scope::new(self);
+            let v = q.keep(self.send(self.named(b"Integer")?, b"wordOf:", &[v])?)?;
+            self.bits(v)
+        }
+    }
+    unsafe fn call(&self, q: &Scope<'_>, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Failure> {
+        unsafe { q.keep(object(self.send(r, n, a)?)?) }
+    }
+    unsafe fn vector(&self, q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Failure> {
         unsafe {
             let mut v = self.call(q, self.named(b"Vector")?, b"new", &[])?;
             for &x in values {
@@ -151,7 +208,7 @@ impl State {
             Ok(v)
         }
     }
-    unsafe fn sequence(&self, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, Outcome> {
+    unsafe fn sequence(&self, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, Failure> {
         unsafe {
             let n = self.number(self.call(q, v, b"size", &[])?)?;
             if n > 1_048_576 {
@@ -164,29 +221,28 @@ impl State {
             Ok(out)
         }
     }
-    unsafe fn export(&self, o: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+    unsafe fn export(&self, o: Oop) -> Result<Option<Vec<u8>>, Failure> {
         unsafe {
-            self.send(self.ns, b"nameOf:", &[Operand::object(o)])?
-                .as_object()
+            optional(self.send(self.ns, b"nameOf:", &[o])?)
                 .map(|n| self.symbol(n))
                 .transpose()
         }
     }
-    unsafe fn behavior(&self, o: Oop) -> Result<Oop, Outcome> {
-        unsafe { object(self.send(self.id.receiver, b"behaviorOf:", &[Operand::object(o)])?) }
+    unsafe fn behavior(&self, o: Oop) -> Result<Oop, Failure> {
+        unsafe { object(self.send(self.id.root, b"behaviorOf:", &[o])?) }
     }
     // Match ObjectModel ensurePrivateVtableFor: without mutating dictionaries.
     // A behavior is already its own method target; its behavior is the Id.
-    unsafe fn method_behavior(&self, target: Oop) -> Result<Oop, Outcome> {
+    unsafe fn method_behavior(&self, target: Oop) -> Result<Oop, Failure> {
         let behavior = unsafe { self.behavior(target) }?;
-        Ok(if behavior == self.id.receiver {
+        Ok(if behavior == self.id.root {
             target
         } else {
             behavior
         })
     }
-    unsafe fn is_error(&self, o: Oop) -> Result<bool, Outcome> {
-        unsafe { Ok(self.send(o, b"isError", &[])?.as_object() == Some(self.named(b"true")?)) }
+    unsafe fn is_error(&self, o: Oop) -> Result<bool, Failure> {
+        unsafe { Ok(optional(self.send(o, b"isError", &[])?) == Some(self.named(b"true")?)) }
     }
     fn reject(&self, detail: &[u8]) {
         *self.report.borrow_mut() = Report {
@@ -198,7 +254,7 @@ impl State {
 }
 // The old native shims cannot execute these message-based object files.
 fn runtime_abi() -> u64 {
-    support::wyhash(support::runtime_abi_hash(), b"Id-native-message-image-v1")
+    support::wyhash(support::runtime_abi_hash(), b"Id-oop-image-v2")
 }
 fn composition_identity(decoded: &v8::DecodedImage<'_>) -> Vec<u8> {
     use sha2::{Digest, Sha256};
@@ -285,7 +341,7 @@ impl Value {
             }
         }
     }
-    fn decode(bytes: &[u8], offset: &mut usize) -> Result<Self, Outcome> {
+    fn decode(bytes: &[u8], offset: &mut usize) -> Result<Self, Failure> {
         let start = *offset;
         let field = v8::parse_field(bytes, offset).map_err(|_| bad())?;
         Ok(match field.tag {
@@ -318,7 +374,7 @@ impl Value {
             _ => return Err(bad()),
         })
     }
-    fn binding(&self) -> Result<bindings::Field<'_>, Outcome> {
+    fn binding(&self) -> Result<bindings::Field<'_>, Failure> {
         Ok(match self {
             Self::Nil => bindings::Field::Nil,
             Self::True => bindings::Field::True,
@@ -355,10 +411,13 @@ struct Graph<'a, 'b> {
     fact_owner: Option<Oop>,
 }
 impl Graph<'_, '_> {
-    unsafe fn reference(&mut self, o: Oop) -> Result<Value, Outcome> {
+    unsafe fn reference(&mut self, o: Oop) -> Result<Value, Failure> {
         unsafe {
             if o.is_null() {
                 return Ok(Value::Null);
+            }
+            if let Some(v) = abi::as_size(o) {
+                return Ok(Value::Word(v as u64));
             }
             self.q.keep(o)?;
             for (n, v) in [
@@ -390,7 +449,7 @@ impl Graph<'_, '_> {
             Ok(Value::Heap(i))
         }
     }
-    unsafe fn finish(&mut self) -> Result<Vec<u8>, Outcome> {
+    unsafe fn finish(&mut self) -> Result<Vec<u8>, Failure> {
         unsafe {
             let mut i = 0;
             while i < self.objects.len() {
@@ -398,9 +457,11 @@ impl Graph<'_, '_> {
                 // Current owner policy selects an unpublished payload or refuses
                 // persistence. Returning self preserves ordinary Error values too.
                 let payload = self.s.call(self.q, o, b"imagePayload", &[])?;
-                if payload == self.s.named(b"false")? { return Err(bad()); }
+                if payload == self.s.named(b"false")? {
+                    return Err(bad());
+                }
                 if payload != o && self.s.is_error(payload)? {
-                    return Err(Outcome::loaded(Operand::object(payload)));
+                    return Err(Failure::Value(payload));
                 }
                 let first = self.q.keep(self.s.behavior(o)?)?;
                 let mut vt = first;
@@ -413,14 +474,16 @@ impl Graph<'_, '_> {
                         return Err(bad());
                     }
                     vt = self.q.keep(object(self.s.send(
-                        self.s.id.receiver,
+                        self.s.id.root,
                         b"parentOf:",
-                        &[Operand::object(vt)],
+                        &[vt],
                     )?)?)?;
                 };
                 // Projection changes plain object slots, never a native family's
                 // representation. Their existing owner-specific codecs remain.
-                if payload != o && name != b"ObjectVt" { return Err(bad()); }
+                if payload != o && name != b"ObjectVt" {
+                    return Err(bad());
+                }
                 if name == b"BlockVt" {
                     // Execution reconstructs its intrinsic per-Method behavior.
                     // Additional user-defined Block behavior layers remain inadmissible.
@@ -429,26 +492,26 @@ impl Graph<'_, '_> {
                     }
                 } else if !visited.is_empty() {
                     let owner = self.q.keep(object(self.s.send(
-                        self.s.id.receiver,
+                        self.s.id.root,
                         b"ownerOf:",
-                        &[Operand::object(first)],
+                        &[first],
                     )?)?)?;
                     let Value::Heap(owner_index) = self.reference(owner)? else {
                         return Err(bad());
                     };
                     let parent = if owner == o {
                         let parent = self.q.keep(object(self.s.send(
-                            self.s.id.receiver,
+                            self.s.id.root,
                             b"parentOf:",
-                            &[Operand::object(first)],
+                            &[first],
                         )?)?)?;
                         Some(if let Some(name) = self.s.export(parent)? {
                             super::behavior_links::Parent::Export(name)
                         } else {
                             let parent_owner = self.q.keep(object(self.s.send(
-                                self.s.id.receiver,
+                                self.s.id.root,
                                 b"ownerOf:",
-                                &[Operand::object(parent)],
+                                &[parent],
                             )?)?)?;
                             let Value::Heap(index) = self.reference(parent_owner)? else {
                                 return Err(bad());
@@ -484,10 +547,9 @@ impl Graph<'_, '_> {
                         let bits = if family == b"Word" {
                             self.s.send(o, b"bits", &[])?
                         } else {
-                            self.s
-                                .send(self.s.named(family)?, selector, &[Operand::object(o)])?
+                            self.s.send(self.s.named(family)?, selector, &[o])?
                         };
-                        let n = bits.as_word().ok_or_else(bad)? as u64;
+                        let n = self.s.bits(bits)? as u64;
                         node.locator = match family {
                             b"Integer" => Value::Integer(n),
                             b"Float" => Value::Float(n),
@@ -504,7 +566,9 @@ impl Graph<'_, '_> {
                                 b"imageFieldAt:",
                                 &[self.s.integer(self.q, i)?],
                             )?;
-                            if i == 0 && self.fact_owner != Some(v) { return Err(bad()); }
+                            if i == 0 && self.fact_owner != Some(v) {
+                                return Err(bad());
+                            }
                             node.fields.push(self.reference(v)?);
                         }
                     }
@@ -519,8 +583,10 @@ impl Graph<'_, '_> {
                         node.fields.push(Value::Program(0));
                         let provenance = self.s.call(self.q, o, b"sourceProvenance", &[])?;
                         node.fields.push(self.reference(provenance)?);
-                        let signature=self.s.call(self.q,o,b"nativeSignature",&[])?;
-                        if signature!=self.s.named(b"nil")? {node.fields.push(Value::Bytes(self.s.bytes(signature)?));}
+                        let signature = self.s.call(self.q, o, b"nativeSignature", &[])?;
+                        if signature != self.s.named(b"nil")? {
+                            node.fields.push(Value::Bytes(self.s.bytes(signature)?));
+                        }
                     }
                     // Execution's family name is BlockVt; source Blocks have private behaviors.
                     b"BlockVt" => {
@@ -565,11 +631,9 @@ impl Graph<'_, '_> {
                         if !allowed {
                             return Err(bad());
                         }
-                        let bytes = self
-                            .s
-                            .send(self.s.model, b"imageSizeOf:", &[Operand::object(payload)])?
-                            .as_word()
-                            .ok_or_else(bad)?;
+                        let bytes =
+                            abi::as_size(self.s.send(self.s.model, b"imageSizeOf:", &[payload])?)
+                                .ok_or_else(bad)?;
                         // Prelude owns System as an empty Object. Native service state
                         // belongs to module contexts, never to a cloned receiver.
                         if (name == b"SystemVt" && bytes != 0)
@@ -579,16 +643,20 @@ impl Graph<'_, '_> {
                             return Err(bad());
                         }
                         for slot in 0..bytes / size_of::<usize>() {
-                            let v = self.s.send(
+                            let v = self.q.keep(self.s.send(
                                 self.s.model,
                                 b"imageSlotAt:in:",
-                                &[Operand::word(slot), Operand::object(payload)],
+                                &[self.s.word(slot)?, payload],
+                            )?)?;
+                            let kind = self.s.send(
+                                self.s.model,
+                                b"imageSlotKindAt:in:",
+                                &[abi::size(slot).ok_or_else(bad)?, payload],
                             )?;
-                            node.fields.push(match v.kind() {
-                                abi::UNIT => Value::Null,
-                                abi::WORD => Value::Raw(v.as_word().ok_or_else(bad)? as u64),
-                                abi::OBJECT => self.reference(object(v)?)?,
-                                _ => return Err(bad()),
+                            node.fields.push(if abi::as_size(kind) == Some(1) {
+                                self.reference(v)?
+                            } else {
+                                Value::Raw(self.s.bits(v)? as u64)
                             });
                         }
                     }
@@ -628,29 +696,51 @@ impl Graph<'_, '_> {
 }
 // Snapshot consistency is about owner data, not optional certification or
 // method identities. Monotonic epochs may conservatively reject a no-op edit.
-unsafe fn snapshot_stamp(s: &State, q: &Scope<'_>, store: Option<Oop>) -> Result<(Option<(Oop, usize)>, Oop, Oop, Oop, Oop, usize, usize, usize), Outcome> {
+unsafe fn snapshot_stamp(
+    s: &State,
+    q: &Scope<'_>,
+    store: Option<Oop>,
+) -> Result<
+    (
+        Option<(Oop, usize)>,
+        Oop,
+        Oop,
+        Oop,
+        Oop,
+        usize,
+        usize,
+        usize,
+    ),
+    Failure,
+> {
     unsafe {
-        let facts = store.map(|owner| {
-            s.send(owner, b"imageStateRevision", &[])?.as_word().map(|revision| (owner, revision)).ok_or_else(bad)
-        }).transpose()?;
+        let facts = store
+            .map(|owner| {
+                abi::as_size(s.send(owner, b"imageStateRevision", &[])?)
+                    .map(|revision| (owner, revision))
+                    .ok_or_else(bad)
+            })
+            .transpose()?;
         let globals = q.keep(s.named(b"Globals")?)?;
         let bindings = s.number(s.call(q, globals, b"bindingBasis", &[])?)?;
-        let methods = s.send(s.id.receiver, b"bindingEpoch", &[])?.as_word().ok_or_else(bad)?;
-        let name = q.keep(s.id.intern_name(b"SourceRegistry")?)?;
+        let methods = abi::as_size(s.send(s.id.root, b"bindingEpoch", &[])?).ok_or_else(bad)?;
+        let name = q.keep(s.intern(b"SourceRegistry")?)?;
         let sources = s.call(q, globals, b"at:", &[name])?;
         let revision = s.number(s.call(q, sources, b"revision", &[])?)?;
-        let manager = s.call(q, globals, b"at:", &[q.keep(s.id.intern_name(b"Module")?)?])?;
+        let manager = s.call(q, globals, b"at:", &[q.keep(s.intern(b"Module")?)?])?;
         let registry = s.call(q, manager, b"registry", &[])?;
-        Ok((facts, globals, sources, manager, registry, bindings, methods, revision))
+        Ok((
+            facts, globals, sources, manager, registry, bindings, methods, revision,
+        ))
     }
 }
-unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Operand, Outcome> {
+unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Oop, Failure> {
     unsafe {
         let admitted = s.call(q, s.named(b"Generation")?, b"prepareImageSnapshot", &[])?;
         if admitted != s.named(b"true")? {
             s.reject(b"Image snapshot admission failed");
             return if s.is_error(admitted)? {
-                Ok(Operand::object(admitted))
+                Ok(admitted)
             } else {
                 Err(bad())
             };
@@ -658,18 +748,31 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
         let selected = s.call(q, system, b"imageStore", &[])?;
         if s.is_error(selected)? {
             s.reject(b"Image fact participant selection failed");
-            return Ok(Operand::object(selected));
+            return Ok(selected);
         }
         let store = (selected != s.named(b"nil")?).then_some(selected);
         // Native Store identities are resident exports, not copied slot payloads.
-        if store.is_some() && s.export(selected)?.is_none() { return Err(bad()); }
+        if store.is_some() && s.export(selected)?.is_none() {
+            return Err(bad());
+        }
         let stamp = snapshot_stamp(s, q, store)?;
-        let manager = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"Module")?)?])?;
+        let manager = s.call(
+            q,
+            s.named(b"Globals")?,
+            b"at:",
+            &[q.keep(s.intern(b"Module")?)?],
+        )?;
         let names = s.call(q, manager, b"imageProviders", &[])?;
-        if s.is_error(names)? { return Ok(Operand::object(names)); }
+        if s.is_error(names)? {
+            return Ok(names);
+        }
         let names = s.sequence(q, names)?;
-        let mut providers = (u32::try_from(names.len()).map_err(|_| bad())?).to_le_bytes().to_vec();
-        for name in names { Value::Symbol(s.symbol(name)?).encode(&mut providers); }
+        let mut providers = (u32::try_from(names.len()).map_err(|_| bad())?)
+            .to_le_bytes()
+            .to_vec();
+        for name in names {
+            Value::Symbol(s.symbol(name)?).encode(&mut providers);
+        }
         s.facts.borrow_mut().clear();
         let metadata = if let Some(store) = store {
             let metadata = [
@@ -681,9 +784,11 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
             .map(|n| s.call(q, store, n, &[]).and_then(|o| s.number(o)));
             let [basis, oldest, policy, argument] = metadata;
             let metadata = (basis?, oldest?, policy?, argument?);
-            s.send(store, b"imageFactsInto:", &[Operand::object(s.receiver)])?;
+            s.send(store, b"imageFactsInto:", &[s.receiver])?;
             Some(metadata)
-        } else { None };
+        } else {
+            None
+        };
         let facts = s.facts.borrow().clone();
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let rows = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
@@ -719,10 +824,12 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
             ]);
         }
         let sources = s.call(q, codegen, b"portableImageSources", &[])?;
-        if s.is_error(sources)? { return Err(Outcome::loaded(Operand::object(sources))); }
+        if s.is_error(sources)? {
+            return Err(Failure::Value(sources));
+        }
         // Explicit owner roots avoid rediscovery through half-restored Globals.
-        let tag = q.keep(s.id.intern_name(b"imageOwnersV2")?)?;
-        let name = q.keep(s.id.intern_name(b"AlienRecipes")?)?;
+        let tag = q.keep(s.intern(b"imageOwnersV2")?)?;
+        let name = q.keep(s.intern(b"AlienRecipes")?)?;
         let foreign = s.call(q, s.named(b"Globals")?, b"at:", &[name])?;
         let mut owners = s.call(q, s.named(b"Vector")?, b"new", &[])?;
         for value in [tag, sources, foreign, selected] {
@@ -742,7 +849,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
                     provenance: v[2].binding()?,
                 })
             })
-            .collect::<Result<Vec<_>, Outcome>>()?;
+            .collect::<Result<Vec<_>, Failure>>()?;
         let bindings = bindings::encode(&specs).map_err(|_| bad())?;
         let count = portable_inventory::inspect(&programs)
             .map_err(|_| bad())?
@@ -776,7 +883,9 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
                     .map_err(|_| bad())?;
             }
             Some(writer.finish())
-        } else { None };
+        } else {
+            None
+        };
         let fact_sections = facts_bytes.as_deref().into_iter().collect::<Vec<_>>();
         // Structural checks precede the native compiler and any file publication.
         format::compose(
@@ -807,7 +916,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
         )?;
         if s.is_error(compiled)? {
             s.reject(b"Native image compilation failed");
-            return Ok(Operand::object(compiled));
+            return Ok(compiled);
         }
         let code = s.bytes(compiled)?;
         let bytes = format::compose(
@@ -831,14 +940,14 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
         if admitted != s.named(b"true")? {
             s.reject(b"Image snapshot admission changed during save");
             return if s.is_error(admitted)? {
-                Ok(Operand::object(admitted))
+                Ok(admitted)
             } else {
                 Err(bad())
             };
         }
         if snapshot_stamp(s, q, store)? != stamp {
             s.reject(b"World changed during image snapshot");
-            return Ok(Operand::object(s.named(b"nil")?));
+            return Ok(s.named(b"nil")?);
         }
         support::publish_atomic(path, &bytes).map_err(|_| bad())?;
         *s.report.borrow_mut() = Report {
@@ -847,10 +956,10 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Ope
             code: count * 2 + specs.len(),
             detail: Vec::new(),
         };
-        Ok(Operand::object(s.named(b"true")?))
+        Ok(s.named(b"true")?)
     }
 }
-fn heap_nodes(decoded: &v8::DecodedImage<'_>) -> Result<Vec<Node>, Outcome> {
+fn heap_nodes(decoded: &v8::DecodedImage<'_>) -> Result<Vec<Node>, Failure> {
     let mut nodes = Vec::new();
     for heap in &decoded.heaps {
         let count = u32::from_le_bytes(
@@ -890,14 +999,15 @@ unsafe fn resolve(
     q: &Scope<'_>,
     value: &Value,
     objects: &[Oop],
-) -> Result<Oop, Outcome> {
+) -> Result<Oop, Failure> {
     unsafe {
         match value {
             Value::Nil => s.named(b"nil"),
             Value::True => s.named(b"true"),
             Value::False => s.named(b"false"),
             Value::Null => Ok(ptr::null_mut()),
-            Value::Symbol(b) => q.keep(s.id.intern_name(b)?),
+            Value::Word(n) => abi::size(*n as usize).ok_or_else(bad),
+            Value::Symbol(b) => q.keep(s.intern(b)?),
             Value::Export(b) => q.keep(s.named(b)?),
             Value::Heap(i) => objects
                 .get(*i as usize)
@@ -912,7 +1022,7 @@ unsafe fn restore_heap(
     s: &State,
     q: &Scope<'_>,
     decoded: &v8::DecodedImage<'_>,
-) -> Result<Vec<Oop>, Outcome> {
+) -> Result<Vec<Oop>, Failure> {
     unsafe {
         let nodes = heap_nodes(decoded)?;
         let inventory = portable_inventory::inspect(decoded.programs).map_err(|_| bad())?;
@@ -930,7 +1040,7 @@ unsafe fn restore_heap(
                     } else {
                         b"fromBits:"
                     };
-                    object(s.send(s.named(family)?, selector, &[Operand::word(*n as usize)])?)?
+                    object(s.send(s.named(family)?, selector, &[s.word(*n as usize)?])?)?
                 }
                 Value::String(b) => s.text(q, b"String", b)?,
                 Value::Bytes(b) => s.text(q, b"Bytes", b)?,
@@ -938,7 +1048,9 @@ unsafe fn restore_heap(
                     if node.fields.len() != 3 {
                         return Err(bad());
                     }
-                    let Value::Export(_) = &node.fields[0] else { return Err(bad()); };
+                    let Value::Export(_) = &node.fields[0] else {
+                        return Err(bad());
+                    };
                     let store = resolve(s, q, &node.fields[0], &[])?;
                     let nil = s.named(b"nil")?;
                     s.call(q, store, b"cellFor:attr:", &[nil, nil])?
@@ -968,13 +1080,13 @@ unsafe fn restore_heap(
                             s.model,
                             b"allocate:bytes:",
                             &[
-                                Operand::object(vt),
-                                Operand::word(
+                                vt,
+                                s.word(
                                     node.fields
                                         .len()
                                         .checked_mul(size_of::<usize>())
                                         .ok_or_else(bad)?,
-                                ),
+                                )?,
                             ],
                         )?,
                     )?
@@ -984,11 +1096,7 @@ unsafe fn restore_heap(
             objects[i] = q.keep(v)?;
             if matches!(&node.locator,Value::Export(n) if n==b"ObjectVt") && !node.fields.is_empty()
             {
-                let vt = object(s.send(
-                    s.id.receiver,
-                    b"ensurePrivateVtableFor:",
-                    &[Operand::object(v)],
-                )?)?;
+                let vt = object(s.send(s.id.root, b"ensurePrivateVtableFor:", &[v])?)?;
                 q.keep(vt)?;
                 let kinds = node
                     .fields
@@ -998,11 +1106,7 @@ unsafe fn restore_heap(
                 s.send(
                     s.model,
                     b"setLayoutOf:to:rest:",
-                    &[
-                        Operand::object(vt),
-                        Operand::bytes(&kinds),
-                        Operand::word(0),
-                    ],
+                    &[vt, q.keep(s.byte_value(&kinds)?)?, s.word(0)?],
                 )?;
             }
         }
@@ -1017,10 +1121,12 @@ unsafe fn restore_heap(
                 {
                     continue;
                 }
-                let (index,provenance,signature)=match node.fields.as_slice() {
-                    [Value::Program(index),provenance]=>(*index,provenance,None),
-                    [Value::Program(index),provenance,Value::Bytes(signature)]=>(*index,provenance,Some(signature)),
-                    _=>return Err(bad()),
+                let (index, provenance, signature) = match node.fields.as_slice() {
+                    [Value::Program(index), provenance] => (*index, provenance, None),
+                    [Value::Program(index), provenance, Value::Bytes(signature)] => {
+                        (*index, provenance, Some(signature))
+                    }
+                    _ => return Err(bad()),
                 };
                 if let Value::Heap(index) = provenance {
                     if objects.get(*index as usize).ok_or_else(bad)?.is_null() {
@@ -1048,10 +1154,12 @@ unsafe fn restore_heap(
                         &[program, provenance],
                     )?
                 };
-                if let Some(signature)=signature {
-                    let signature=s.text(q,b"Bytes",signature)?;
-                    objects[i]=s.call(q,objects[i],b"withNativeSignature:",&[signature])?;
-                    if s.is_error(objects[i])? {return Err(bad());}
+                if let Some(signature) = signature {
+                    let signature = s.text(q, b"Bytes", signature)?;
+                    objects[i] = s.call(q, objects[i], b"withNativeSignature:", &[signature])?;
+                    if s.is_error(objects[i])? {
+                        return Err(bad());
+                    }
                 }
                 remaining -= 1;
             }
@@ -1115,19 +1223,15 @@ unsafe fn restore_heap(
                 Value::Export(n) if n != b"CodeObjectVt" => {
                     for (slot, field) in node.fields.iter().enumerate() {
                         let value = if let Value::Raw(n) = field {
-                            Operand::word(*n as usize)
+                            s.word(*n as usize)?
                         } else {
                             let v = resolve(s, q, field, &objects)?;
-                            if v.is_null() {
-                                Operand::unit()
-                            } else {
-                                Operand::object(v)
-                            }
+                            if v.is_null() { ptr::null_mut() } else { v }
                         };
                         s.send(
                             s.model,
                             b"restoreImageSlotAt:in:put:",
-                            &[Operand::word(slot), Operand::object(objects[i]), value],
+                            &[s.word(slot)?, objects[i], value],
                         )?;
                     }
                 }
@@ -1141,9 +1245,9 @@ unsafe fn restore_heap(
             for link in links.iter().filter(|link| link.object == link.owner) {
                 let owner = *objects.get(link.owner as usize).ok_or_else(bad)?;
                 let behavior = q.keep(object(s.send(
-                    s.id.receiver,
+                    s.id.root,
                     b"ensurePrivateVtableFor:",
-                    &[Operand::object(owner)],
+                    &[owner],
                 )?)?)?;
                 if matches!(&nodes[link.owner as usize].locator, Value::Export(name) if name == b"ObjectVt")
                 {
@@ -1155,11 +1259,7 @@ unsafe fn restore_heap(
                     s.send(
                         s.model,
                         b"setLayoutOf:to:rest:",
-                        &[
-                            Operand::object(behavior),
-                            Operand::bytes(&kinds),
-                            Operand::word(0),
-                        ],
+                        &[behavior, q.keep(s.byte_value(&kinds)?)?, s.word(0)?],
                     )?;
                 }
                 private.insert(link.owner, behavior);
@@ -1173,19 +1273,12 @@ unsafe fn restore_heap(
                             *private.get(index).ok_or_else(bad)?
                         }
                     };
-                    s.send(
-                        s.id.receiver,
-                        b"parentOf:put:",
-                        &[Operand::object(behavior), Operand::object(parent)],
-                    )?;
+                    s.send(s.id.root, b"parentOf:put:", &[behavior, parent])?;
                 } else {
                     s.send(
-                        s.id.receiver,
+                        s.id.root,
                         b"reassociateBehaviorOf:with:",
-                        &[
-                            Operand::object(objects[link.object as usize]),
-                            Operand::object(behavior),
-                        ],
+                        &[objects[link.object as usize], behavior],
                     )?;
                 }
             }
@@ -1199,7 +1292,7 @@ unsafe fn restore_facts(
     store: Oop,
     decoded: &v8::DecodedImage<'_>,
     objects: &[Oop],
-) -> Result<Oop, Outcome> {
+) -> Result<Oop, Failure> {
     unsafe {
         // All fact decoding and fallible construction happen in a separate Store.
         let staged = s.call(q, store, b"new", &[])?;
@@ -1208,7 +1301,7 @@ unsafe fn restore_facts(
             return Err(bad());
         }
         for bytes in &decoded.facts {
-            let u64_at = |i| -> Result<usize, Outcome> {
+            let u64_at = |i| -> Result<usize, Failure> {
                 usize::try_from(u64::from_le_bytes(
                     bytes
                         .get(i..i + 8)
@@ -1281,32 +1374,53 @@ unsafe fn load(
     rebuild: bool,
     mapped_only: bool,
     startup: bool,
-) -> Result<Operand, Outcome> {
+) -> Result<Oop, Failure> {
     unsafe {
         let mut owned = format::inspect(s, &bytes)?;
         // Validation returned independent snapshots; the file buffer is dead.
         drop(bytes);
         // Activation follows declared metadata, never ambient Store discovery.
         let providers = owned.providers.as_deref().ok_or_else(bad)?;
-        let count = u32::from_le_bytes(providers.get(..4).ok_or_else(bad)?.try_into().map_err(|_| bad())?);
+        let count = u32::from_le_bytes(
+            providers
+                .get(..4)
+                .ok_or_else(bad)?
+                .try_into()
+                .map_err(|_| bad())?,
+        );
         let mut offset = 4;
         let mut names = Vec::new();
         for _ in 0..count {
-            let Value::Symbol(name) = Value::decode(providers, &mut offset)? else { return Err(bad()); };
-            names.push(q.keep(s.id.intern_name(&name)?)?);
+            let Value::Symbol(name) = Value::decode(providers, &mut offset)? else {
+                return Err(bad());
+            };
+            names.push(q.keep(s.intern(&name)?)?);
         }
-        if offset != providers.len() { return Err(bad()); }
-        let manager = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"Module")?)?])?;
+        if offset != providers.len() {
+            return Err(bad());
+        }
+        let manager = s.call(
+            q,
+            s.named(b"Globals")?,
+            b"at:",
+            &[q.keep(s.intern(b"Module")?)?],
+        )?;
         let names = s.vector(q, &names)?;
         let ready = s.call(q, manager, b"loadImageProviders:", &[names])?;
-        if s.is_error(ready)? { return Err(Outcome::loaded(Operand::object(ready))); }
-        if ready != manager { return Err(bad()); }
+        if s.is_error(ready)? {
+            return Err(Failure::Value(ready));
+        }
+        if ready != manager {
+            return Err(bad());
+        }
         let composition = composition_identity(&owned.view());
         let native_code = owned.code.take();
         let decoded = owned.view();
         // Current images identify their ordinary source owner explicitly.
         // Older source-less images need rebuilding, not a hidden native fallback.
-        if decoded.sources.is_none() { return Err(bad()); }
+        if decoded.sources.is_none() {
+            return Err(bad());
+        }
         if mapped_only && native_code.is_none() {
             return Err(bad());
         }
@@ -1318,10 +1432,7 @@ unsafe fn load(
         let mapped = !rebuild && native_code.is_some();
         let loaded_result = q.keep(s.named(if mapped { b"true" } else { b"false" })?)?;
         let started = if mapped {
-            let input = Scope {
-                s,
-                tokens: RefCell::new(Vec::new()),
-            };
+            let input = Scope::new(s);
             let code = s.text(
                 &input,
                 b"Bytes",
@@ -1372,21 +1483,31 @@ unsafe fn load(
             let mut offset = 0;
             let roots = resolve(s, q, &Value::decode(roots, &mut offset)?, &objects)?;
             let fields = s.sequence(q, roots)?;
-            let [tag, sources, foreign, store] = fields.as_slice() else { return Err(bad()); };
-            if *tag != s.id.intern_name(b"imageOwnersV2")? { return Err(bad()); }
+            let [tag, sources, foreign, store] = fields.as_slice() else {
+                return Err(bad());
+            };
+            if *tag != s.intern(b"imageOwnersV2")? {
+                return Err(bad());
+            }
             if s.call(q, codegen, b"preparePortableImageSources:", &[*sources])? != yes {
                 return Err(bad());
             }
             (*foreign, (*store != s.named(b"nil")?).then_some(*store))
         };
-        if decoded.facts.len() != usize::from(fact_owner.is_some()) { return Err(bad()); }
+        if decoded.facts.len() != usize::from(fact_owner.is_some()) {
+            return Err(bad());
+        }
         // Admission of malformed input is separate from ordinary Cell dispatch.
         for node in heap_nodes(&decoded)? {
             if matches!(&node.locator, Value::Export(name) if name == b"CellVt") {
-                if fact_owner != Some(resolve(s, q, &node.fields[0], &objects)?) { return Err(bad()); }
+                if fact_owner != Some(resolve(s, q, &node.fields[0], &objects)?) {
+                    return Err(bad());
+                }
             }
         }
-        let staged = fact_owner.map(|store| restore_facts(s, q, store, &decoded, &objects)).transpose()?;
+        let staged = fact_owner
+            .map(|store| restore_facts(s, q, store, &decoded, &objects))
+            .transpose()?;
         let inventory = bindings::inspect(decoded.bindings).map_err(|_| bad())?;
         let mut publication = Vec::new();
         for i in 0..inventory.binding_count as usize {
@@ -1395,7 +1516,7 @@ unsafe fn load(
             let implementation =
                 resolve(s, q, &Value::from_binding(binding.implementation), &objects)?;
             let provenance = resolve(s, q, &Value::from_binding(binding.provenance), &objects)?;
-            let selector = q.keep(s.id.intern_name(binding.selector)?)?;
+            let selector = q.keep(s.intern(binding.selector)?)?;
             let index = s.integer(q, i)?;
             if s.call(
                 q,
@@ -1414,33 +1535,65 @@ unsafe fn load(
         // resident exports. Old heap objects held by callers keep their methods.
         // Only resident binding keys are needed here. Query their actual owners;
         // constructing a full code/provenance report creates avoidable heap work.
-        let count = s.send(s.id.receiver, b"behaviorCount", &[])?.as_word().ok_or_else(bad)?;
+        let count = abi::as_size(s.send(s.id.root, b"behaviorCount", &[])?).ok_or_else(bad)?;
         let mut behaviors = Vec::with_capacity(count);
         for index in 0..count {
-            behaviors.push(q.keep(object(s.send(s.id.receiver, b"behaviorAt:", &[Operand::word(index)])?)?)?);
+            behaviors.push(q.keep(object(s.send(
+                s.id.root,
+                b"behaviorAt:",
+                &[s.word(index)?],
+            )?)?)?);
         }
         let mut removals = Vec::new();
         for behavior in behaviors {
-            let owner = s.send(s.id.receiver, b"ownerOf:", &[Operand::object(behavior)])?.as_object();
+            let owner = optional(s.send(s.id.root, b"ownerOf:", &[behavior])?);
             let target = if let Some(owner) = owner {
                 q.keep(owner)?;
-                if s.behavior(owner)? == behavior { owner }
-                else if s.export(behavior)?.is_some() { behavior }
-                else { continue; }
-            } else if s.export(behavior)?.is_some() { behavior }
-            else { continue; };
-            if s.export(target)?.is_none() { continue; }
+                if s.behavior(owner)? == behavior {
+                    owner
+                } else if s.export(behavior)?.is_some() {
+                    behavior
+                } else {
+                    continue;
+                }
+            } else if s.export(behavior)?.is_some() {
+                behavior
+            } else {
+                continue;
+            };
+            if s.export(target)?.is_none() {
+                continue;
+            }
             q.keep(target)?;
             for index in 0..1_048_576usize {
-                let Some(selector) = s.send(s.id.receiver, b"selectorAt:in:",
-                    &[Operand::word(index), Operand::object(behavior)])?.as_object() else { break; };
+                let Some(selector) =
+                    optional(s.send(s.id.root, b"selectorAt:in:", &[s.word(index)?, behavior])?)
+                else {
+                    break;
+                };
                 q.keep(selector)?;
-                if publication.iter().any(|&(_, t, n, _, _)| t == target && n == selector) { continue; }
-                let entry = s.send(s.id.receiver, b"bindingOf:in:",
-                    &[Operand::object(selector), Operand::object(behavior)])?;
-                if entry.as_entry().is_none() { continue; }
-                if s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[entry])?.as_object().is_none() { continue; }
-                removals.push((ptr::null_mut(), target, selector, s.named(b"nil")?, behavior));
+                if publication
+                    .iter()
+                    .any(|&(_, t, n, _, _)| t == target && n == selector)
+                {
+                    continue;
+                }
+                let entry = s.send(s.id.root, b"bindingOf:in:", &[selector, behavior])?;
+                if optional(entry).is_none() {
+                    continue;
+                }
+                if optional(s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[entry])?)
+                    .is_none()
+                {
+                    continue;
+                }
+                removals.push((
+                    ptr::null_mut(),
+                    target,
+                    selector,
+                    s.named(b"nil")?,
+                    behavior,
+                ));
             }
         }
         removals.extend(publication);
@@ -1460,10 +1613,14 @@ unsafe fn load(
         // A replaced begin operation can invalidate capabilities before returning
         // failure. Include that call in the partial-application boundary itself.
         // Earlier staging failures leave the old capabilities in service.
-        let result = (|| -> Result<(), Outcome> {
+        let result = (|| -> Result<(), Failure> {
             let admitted = s.call(q, codegen, b"beginPortableImageApplication", &[])?;
             if admitted != yes {
-                return Err(if s.is_error(admitted)? { Outcome::loaded(Operand::object(admitted)) } else { bad() });
+                return Err(if s.is_error(admitted)? {
+                    Failure::Value(admitted)
+                } else {
+                    bad()
+                });
             }
             if let (Some(store), Some(staged)) = (fact_owner, staged) {
                 if s.call(q, store, b"swapImageStateWith:", &[staged])? != store {
@@ -1473,21 +1630,34 @@ unsafe fn load(
             for &(index, target, selector, provenance, behavior) in &publication {
                 let published = (|| {
                     if index.is_null() {
-                        let removed = s.send(behavior, b"removeMethod:", &[Operand::object(selector)])?;
-                        if let Some(value) = removed.as_object() {
-                            if s.is_error(value)? { return Err(Outcome::loaded(removed)); }
+                        let removed = s.send(behavior, b"removeMethod:", &[selector])?;
+                        if let Some(value) = optional(removed) {
+                            if s.is_error(value)? {
+                                return Err(Failure::Value(removed));
+                            }
                         }
                         Ok(target)
                     } else {
-                        s.call(q, codegen, b"installPortableImageBinding:on:as:source:",
-                            &[index, target, selector, provenance])
+                        s.call(
+                            q,
+                            codegen,
+                            b"installPortableImageBinding:on:as:source:",
+                            &[index, target, selector, provenance],
+                        )
                     }
-                })().and_then(|value| {
-                    if value == target { Ok(value) }
-                    else if s.is_error(value)? { Err(Outcome::loaded(Operand::object(value))) }
-                    else { Err(bad()) }
+                })()
+                .and_then(|value| {
+                    if value == target {
+                        Ok(value)
+                    } else if s.is_error(value)? {
+                        Err(Failure::Value(value))
+                    } else {
+                        Err(bad())
+                    }
                 });
-                if published? != target { return Err(bad()); }
+                if published? != target {
+                    return Err(bad());
+                }
             }
             // Only captured-receiver preparation runs before hashes are repaired.
             // Keep newly installed Methods as temporary image-operation roots;
@@ -1495,10 +1665,14 @@ unsafe fn load(
             let mut pending = Vec::new();
             if foreign_owner != s.named(b"nil")? {
                 let rows = s.call(q, foreign_owner, b"prepareImageRecipes", &[])?;
-                if s.is_error(rows)? { return Err(Outcome::loaded(Operand::object(rows))); }
+                if s.is_error(rows)? {
+                    return Err(Failure::Value(rows));
+                }
                 for recipe in s.sequence(q, rows)? {
                     let method = s.call(q, s.named(b"Alien")?, b"installRecipe:", &[recipe])?;
-                    if s.is_error(method)? { return Err(Outcome::loaded(Operand::object(method))); }
+                    if s.is_error(method)? {
+                        return Err(Failure::Value(method));
+                    }
                     pending.push((recipe, method));
                 }
             }
@@ -1516,8 +1690,10 @@ unsafe fn load(
                 let indexed = s.call(q, foreign_owner, b"indexRestoredRecipes:", &[rows])?;
                 if indexed != foreign_owner {
                     return Err(if s.is_error(indexed)? {
-                        Outcome::loaded(Operand::object(indexed))
-                    } else { bad() });
+                        Failure::Value(indexed)
+                    } else {
+                        bad()
+                    });
                 }
             }
             // Globals and private Methods now refer to the restored ordinary
@@ -1525,13 +1701,17 @@ unsafe fn load(
             if decoded.sources.is_some() {
                 let checked = s.call(q, codegen, b"finishPortableImageSources", &[])?;
                 if checked != yes {
-                    return Err(if s.is_error(checked)? { Outcome::loaded(Operand::object(checked)) } else { bad() });
+                    return Err(if s.is_error(checked)? {
+                        Failure::Value(checked)
+                    } else {
+                        bad()
+                    });
                 }
             }
             Ok(())
         })();
         if let Err(error) = result {
-            if let Some(value) = error.value.as_object() {
+            if let Failure::Native(value) | Failure::Value(value) = error {
                 q.keep(value)?;
             }
             // Publication may already have committed, including before a failing
@@ -1540,17 +1720,27 @@ unsafe fn load(
             // code remains owned by Execution. No user callback is replayed.
             *s.composition.borrow_mut() = None;
             *s.report.borrow_mut() = Report {
-                status: if startup { b"startupFailed" } else { b"partialLoad" },
-                detail: format!("image load failed (native status={} detail={}); applied changes retained; {}",
-                    error.status, error.detail,
-                    if startup { "discard the startup world" }
-                    else { "world may be partially loaded; no rollback was attempted" }).into_bytes(),
+                status: if startup {
+                    b"startupFailed"
+                } else {
+                    b"partialLoad"
+                },
+                detail: format!(
+                    "image load failed (failure={:?}); applied changes retained; {}",
+                    error,
+                    if startup {
+                        "discard the startup world"
+                    } else {
+                        "world may be partially loaded; no rollback was attempted"
+                    }
+                )
+                .into_bytes(),
                 ..Report::default()
             };
             return Err(error);
         }
         *s.composition.borrow_mut() = Some(composition);
-        Ok(Operand::object(loaded_result))
+        Ok(loaded_result)
     }
 }
 #[derive(Clone, Copy)]
@@ -1571,27 +1761,16 @@ enum Op {
     Code,
     Identity,
 }
-struct Entry {
-    state: *const State,
-    op: Op,
-}
-unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe fn operation(c: Oop, r: Oop, a: *const Oop, n: usize, op: Op) -> Oop {
     done((|| unsafe {
-        let e = &*c.cast::<Entry>();
-        let s = &*e.state;
-        if s.thread != std::thread::current().id() {
-            return Err(bad());
-        }
+        let s = state(c)?;
         let args = borrowed_slice(a, n).ok_or_else(bad)?;
-        let q = Scope {
-            s,
-            tokens: RefCell::new(Vec::new()),
-        };
+        let q = Scope::new(s);
         q.keep(r)?;
         for &a in args {
             q.keep(object(a)?)?;
         }
-        let expected = match e.op {
+        let expected = match op {
             Op::Save | Op::Load | Op::LoadMapped | Op::StartMapped => 1,
             Op::Rebuild | Op::LoadBytes | Op::Start | Op::StartBytes => 2,
             _ => 0,
@@ -1599,36 +1778,32 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
         if n != expected {
             return Err(bad());
         }
-        match e.op {
-            Op::Report => return Ok(Operand::object(s.receiver)),
+        match op {
+            Op::Report => return Ok(s.receiver),
             Op::Status => {
                 let status = s.report.borrow().status;
-                return Ok(Operand::object(s.id.intern_name(if status.is_empty() {
-                    b"none"
-                } else {
-                    status
-                })?));
+                return Ok(s.intern(if status.is_empty() { b"none" } else { status })?);
             }
             Op::Detail => {
                 let text = s.report.borrow().detail.clone();
-                return s.text(&q, b"String", &text).map(Operand::object);
+                return s.text(&q, b"String", &text);
             }
             Op::Saved | Op::Zero | Op::Code => {
                 let n = {
                     let report = s.report.borrow();
-                    match e.op {
+                    match op {
                         Op::Saved => report.saved,
                         Op::Code => report.code,
                         _ => 0,
                     }
                 };
-                return s.integer(&q, n).map(Operand::object);
+                return s.integer(&q, n);
             }
             Op::Identity => {
                 let identity = s.composition.borrow().clone();
                 return match identity {
-                    Some(bytes) => s.text(&q, b"String", &bytes).map(Operand::object),
-                    None => Ok(Operand::object(s.named(b"nil")?)),
+                    Some(bytes) => s.text(&q, b"String", &bytes),
+                    None => Ok(s.named(b"nil")?),
                 };
             }
             _ => (),
@@ -1645,15 +1820,15 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
         }
         let _busy = Busy(s);
         *s.report.borrow_mut() = Report::default();
-        let result = (|| -> Result<Operand, Outcome> {
+        let result = (|| -> Result<Oop, Failure> {
             let bytes = s.bytes(object(args[0])?)?;
-            if matches!(e.op, Op::Save) {
+            if matches!(op, Op::Save) {
                 if s.behavior(object(args[0])?)? != s.named(b"StringVt")? {
                     return Err(bad());
                 }
                 return save(s, &q, r, Path::new(std::ffi::OsStr::from_bytes(&bytes)));
             }
-            let bytes = if matches!(e.op, Op::LoadBytes | Op::StartBytes) {
+            let bytes = if matches!(op, Op::LoadBytes | Op::StartBytes) {
                 bytes
             } else {
                 if s.behavior(object(args[0])?)? != s.named(b"StringVt")? {
@@ -1667,25 +1842,28 @@ unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 std::fs::read(path).map_err(|_| bad())?
             };
             let rebuild = n == 2 && object(args[1])? == s.named(b"true")?;
-            load(s, &q, bytes, rebuild, matches!(e.op, Op::LoadMapped | Op::StartMapped),
-                matches!(e.op, Op::Start | Op::StartMapped | Op::StartBytes))
+            load(
+                s,
+                &q,
+                bytes,
+                rebuild,
+                matches!(op, Op::LoadMapped | Op::StartMapped),
+                matches!(op, Op::Start | Op::StartMapped | Op::StartBytes),
+            )
         })();
-        if result.is_err() && !matches!(s.report.borrow().status, b"partialLoad" | b"startupFailed") {
+        if result.is_err() && !matches!(s.report.borrow().status, b"partialLoad" | b"startupFailed")
+        {
             s.reject(b"Image admission, owner operation or publication failed");
         }
         match result {
-            Err(error)
-                if error.status == abi::INVALID_REQUEST && error.detail == IMAGE_REJECTED =>
-            {
-                Ok(Operand::object(s.named(b"nil")?))
-            }
+            Err(Failure::Rejected) => Ok(s.named(b"nil")?),
             result => result,
         }
     })())
 }
-unsafe extern "C" fn collect_fact(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn collect_fact(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let s = state(c)?;
         if s.thread != std::thread::current().id() || !s.busy.get() {
             return Err(bad());
         }
@@ -1713,150 +1891,449 @@ unsafe extern "C" fn collect_fact(c: *mut c_void, _: Oop, a: *const Operand, n: 
             op: op as u8,
             history,
         };
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn enumerate_roots(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
+unsafe extern "C" fn enumerate_roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let s = &*c.cast::<State>();
+        let s = state(c)?;
         let Some([visitor]) = borrowed_slice(a, n) else {
             return Err(bad());
         };
         let visitor = object(*visitor)?;
         let mut values = s.permanent.clone();
+        values.extend(s.names.values().copied());
+        values.extend(s.scoped.borrow().iter().copied());
         values.extend(s.facts.borrow().iter().flat_map(|f| f.values));
         for value in values {
-            s.send(visitor, b"visit:", &[Operand::object(value)])?;
+            s.send(visitor, b"visit:", &[value])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named =
-            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
-        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Image")?)])?;
-        if existing.as_object().is_some() {
-            return Ok(existing);
+unsafe extern "C" fn op_save(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Save) }
+}
+unsafe extern "C" fn op_start(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Start) }
+}
+unsafe extern "C" fn op_startmapped(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::StartMapped) }
+}
+unsafe extern "C" fn op_startbytes(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::StartBytes) }
+}
+unsafe extern "C" fn op_load(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Load) }
+}
+unsafe extern "C" fn op_rebuild(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Rebuild) }
+}
+unsafe extern "C" fn op_loadmapped(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::LoadMapped) }
+}
+unsafe extern "C" fn op_loadbytes(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::LoadBytes) }
+}
+unsafe extern "C" fn op_report(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Report) }
+}
+unsafe extern "C" fn op_identity(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Identity) }
+}
+unsafe extern "C" fn op_status(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Status) }
+}
+unsafe extern "C" fn op_detail(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Detail) }
+}
+unsafe extern "C" fn op_saved(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Saved) }
+}
+unsafe extern "C" fn op_zero(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Zero) }
+}
+unsafe extern "C" fn op_code(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { operation(c, r, a, n, Op::Code) }
+}
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    let result = (|| -> Result<Oop, Failure> {
+        unsafe {
+            let id = *p;
+            let [ns] = borrowed_slice(a, count).ok_or_else(bad)? else {
+                return Err(bad());
+            };
+            let symbols = borrowed_slice(l, n)
+                .filter(|v| v.len() == NAMES.len())
+                .ok_or_else(bad)?;
+            let old = INSTANCE.load(Ordering::Acquire);
+            if !old.is_null() {
+                let s = &*old;
+                return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
+                    Ok(s.receiver)
+                } else {
+                    Err(bad())
+                };
+            }
+            let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+            let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+            let named = |n: &[u8]| send(*ns, b"at:", &[names[n]]);
+            let roots = named(b"Roots")?;
+            let model = named(b"ObjectModel")?;
+            let vt = send(named(b"ObjectVt")?, b"delegated", &[])?;
+            let token = send(roots, b"retain:", &[vt])?;
+            let receiver = send(vt, b"allocate", &[abi::size(0).unwrap()])?;
+            let token2 = send(roots, b"retain:", &[receiver])?;
+            let system = named(b"System")?;
+            let system_vt = send(id.root, b"behaviorOf:", &[system])?;
+            let s = Box::leak(Box::new(State {
+                id,
+                names,
+                scoped: RefCell::new(Vec::new()),
+                ns: *ns,
+                model,
+                receiver,
+                permanent: vec![*ns, roots, model, receiver, vt, system, system_vt],
+                busy: Cell::new(false),
+                ready: Cell::new(false),
+                facts: RefCell::new(Vec::new()),
+                report: RefCell::new(Report::default()),
+                composition: RefCell::new(None),
+                thread: std::thread::current().id(),
+            }));
+            INSTANCE.store(s, Ordering::Release);
+            for (index, (is_system, name)) in INSTALL.iter().enumerate() {
+                let method = s.send(image, b"newMethodAt:", &[abi::size(index).unwrap()])?;
+                let method = s.send(method, b"withContext:", &[*ns])?;
+                s.send(
+                    if *is_system { system_vt } else { vt },
+                    b"addMethod",
+                    &[s.intern(name)?, method],
+                )?;
+            }
+            s.send(roots, b"register:", &[receiver])?;
+            for (name, value) in [
+                (b"Image".as_slice(), receiver),
+                (b"ImageSaveReport", receiver),
+                (b"ImageSaveReportVt", vt),
+            ] {
+                s.send(*ns, b"at:put:", &[s.intern(name)?, value])?;
+            }
+            s.send(roots, b"release:", &[token])?;
+            s.send(roots, b"release:", &[token2])?;
+            s.ready.set(true);
+            Ok(receiver)
         }
-        let roots = named(b"Roots")?;
-        let model = named(b"ObjectModel")?;
-        let mut tokens = Vec::new();
-        let mut keep = |o: Oop| -> Result<Oop, Outcome> {
-            tokens.push(
-                id.send_named(roots, b"retain:", &[Operand::object(o)])?
-                    .as_word()
-                    .ok_or_else(bad)?,
-            );
-            Ok(o)
-        };
-        let vt = keep(object(id.send_named(
-            named(b"ObjectVt")?,
-            b"delegated",
-            &[],
-        )?)?)?;
-        let receiver = keep(object(id.send_named(
-            model,
-            b"allocate:bytes:",
-            &[Operand::object(vt), Operand::word(0)],
-        )?)?)?;
-        let system = named(b"System")?;
-        let system_vt =
-            object(id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(system)])?)?;
-        let state = Box::into_raw(Box::new(State {
-            id,
-            ns,
-            roots,
-            model,
-            receiver,
-            permanent: vec![ns, roots, model, receiver, vt, system, system_vt],
-            busy: Cell::new(false),
-            facts: RefCell::new(Vec::new()),
-            report: RefCell::new(Report::default()),
-            composition: RefCell::new(None),
-            thread: std::thread::current().id(),
-        }));
-        for (target, name, op) in [
-            (system_vt, b"saveImage:".as_slice(), Op::Save),
-            (system_vt, b"startImage:rebuild:", Op::Start),
-            (system_vt, b"startImageMapped:", Op::StartMapped),
-            (system_vt, b"startImageBytes:rebuild:", Op::StartBytes),
-            (system_vt, b"loadImage:", Op::Load),
-            (system_vt, b"loadImage:rebuild:", Op::Rebuild),
-            (system_vt, b"loadImageMapped:", Op::LoadMapped),
-            (system_vt, b"loadImageBytes:rebuild:", Op::LoadBytes),
-            (system_vt, b"imageSaveReport", Op::Report),
-            (system_vt, b"imageCompositionIdentity", Op::Identity),
-            (vt, b"status", Op::Status),
-            (vt, b"detail", Op::Detail),
-            (vt, b"savedFacts", Op::Saved),
-            (vt, b"recoveredFacts", Op::Zero),
-            (vt, b"rejectedFacts", Op::Zero),
-            (vt, b"recoveredSlots", Op::Zero),
-            (vt, b"rejectedSlots", Op::Zero),
-            (vt, b"codeUnits", Op::Code),
-        ] {
-            let e = Box::into_raw(Box::new(Entry { state, op }));
-            id.send_named(
-                target,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(operation, e.cast())),
-                ],
-            )?;
-        }
-        for (name, f) in [
-            (b"rootsDo:".as_slice(), enumerate_roots as Method),
-            (b"e:a:v:tx:op:historied:", collect_fact),
-        ] {
-            id.send_named(
-                vt,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(f, state.cast())),
-                ],
-            )?;
-        }
-        id.send_named(roots, b"register:", &[Operand::object(receiver)])?;
-        for (name, v) in [
-            (b"Image".as_slice(), receiver),
-            (b"ImageSaveReport", receiver),
-            (b"ImageSaveReportVt", vt),
-        ] {
-            id.send_named(
-                ns,
-                b"at:put:",
-                &[Operand::object(id.intern_name(name)?), Operand::object(v)],
-            )?;
-        }
-        for token in tokens {
-            id.send_named(roots, b"release:", &[Operand::word(token)])?;
-        }
-        Ok(Operand::object(receiver))
+    })();
+    match result {
+        Err(Failure::Rejected) => unsafe { (*p).invalid },
+        v => done(v),
     }
 }
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        if !abi::valid_protocol(id) {
-            return Err(bad());
-        }
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(bad());
-        };
-        construct(*id, object(*ns)?)
-    })())
-}
+static INSTALL: &[(bool, &[u8])] = &[
+    (true, b"saveImage:"),
+    (true, b"startImage:rebuild:"),
+    (true, b"startImageMapped:"),
+    (true, b"startImageBytes:rebuild:"),
+    (true, b"loadImage:"),
+    (true, b"loadImage:rebuild:"),
+    (true, b"loadImageMapped:"),
+    (true, b"loadImageBytes:rebuild:"),
+    (true, b"imageSaveReport"),
+    (true, b"imageCompositionIdentity"),
+    (false, b"status"),
+    (false, b"detail"),
+    (false, b"savedFacts"),
+    (false, b"recoveredFacts"),
+    (false, b"rejectedFacts"),
+    (false, b"recoveredSlots"),
+    (false, b"rejectedSlots"),
+    (false, b"codeUnits"),
+    (false, b"rootsDo:"),
+    (false, b"e:a:v:tx:op:historied:"),
+];
+macro_rules! literals { ($($v:literal),*$(,)?) => {
+ const NAMES:&[&[u8]]=&[$($v),*];
+ static LITERALS:&[Literal]=&[$(Literal::new($v)),*];
+}; }
+literals![
+    b"nameWithBytes",
+    b"at:",
+    b"bytes",
+    b"sizeWord",
+    b"atWord:",
+    b"symbolBytesOf:",
+    b"sequence",
+    b"fromBytes:",
+    b"Word",
+    b"fromUnsignedLow:high:",
+    b"low32",
+    b"high32",
+    b"Integer",
+    b"fromWord:",
+    b"wordOf:",
+    b"Vector",
+    b"new",
+    b"add:",
+    b"size",
+    b"nameOf:",
+    b"behaviorOf:",
+    b"isError",
+    b"true",
+    b"rejected",
+    b"Id-oop-image-v2",
+    b"0123456789abcdef",
+    b"nil",
+    b"false",
+    b"SymbolVt",
+    b"imagePayload",
+    b"parentOf:",
+    b"ObjectVt",
+    b"BlockVt",
+    b"ownerOf:",
+    b"IntegerVt",
+    b"FloatVt",
+    b"WordVt",
+    b"Float",
+    b"bitsOf:",
+    b"bits",
+    b"StringVt",
+    b"BytesVt",
+    b"CellVt",
+    b"imageFieldAt:",
+    b"CodeObjectVt",
+    b"CodeObject",
+    b"canonicalBytesOf:",
+    b"sourceProvenance",
+    b"nativeSignature",
+    b"codeObject",
+    b"isSynchronous",
+    b"captureCount",
+    b"captureAt:",
+    b"SystemVt",
+    b"VectorVt",
+    b"VectorNodeVt",
+    b"VectorNode",
+    b"MapVt",
+    b"MapNodeVt",
+    b"MapNode",
+    b"RangeVt",
+    b"ErrorVt",
+    b"imageSizeOf:",
+    b"imageSlotAt:in:",
+    b"imageSlotKindAt:in:",
+    b"imageStateRevision",
+    b"Globals",
+    b"bindingBasis",
+    b"bindingEpoch",
+    b"SourceRegistry",
+    b"revision",
+    b"Module",
+    b"registry",
+    b"Generation",
+    b"prepareImageSnapshot",
+    b"imageStore",
+    b"imageProviders",
+    b"basis",
+    b"oldestRetainedBasis",
+    b"retentionPolicyCode",
+    b"retentionPolicyArgument",
+    b"imageFactsInto:",
+    b"Codegen",
+    b"portableImageBindings",
+    b"portableImageSources",
+    b"imageOwnersV2",
+    b"AlienRecipes",
+    b"Bytes",
+    b"compilePortableImageCode:bindings:selection:",
+    b"saved",
+    b"fromBits:",
+    b"String",
+    b"cellFor:attr:",
+    b"allocate:bytes:",
+    b"ensurePrivateVtableFor:",
+    b"setLayoutOf:to:rest:",
+    b"fromCanonicalBytes:",
+    b"program",
+    b"fromProgram:provenance:",
+    b"withNativeSignature:",
+    b"portableImageBlockMethod:synchronous:",
+    b"Block",
+    b"imageShellFromMethod:codeObject:",
+    b"restoreImageCaptures:of:",
+    b"restoreImageStore:entity:attr:",
+    b"restoreImageSlotAt:in:put:",
+    b"parentOf:put:",
+    b"reassociateBehaviorOf:with:",
+    b"imageLoadBegin",
+    b"imageAddFact:attr:value:tx:op:historied:",
+    b"imageLoadEnd:raw:oldest:policy:argument:",
+    b"loadImageProviders:",
+    b"beginPortableImageMapped:programs:bindings:selection:",
+    b"beginPortableImageRebuild:bindings:selection:",
+    b"cancelPortableImageUnit",
+    b"preparePortableImageSources:",
+    b"preparePortableImageBinding:implementation:",
+    b"behaviorCount",
+    b"behaviorAt:",
+    b"selectorAt:in:",
+    b"bindingOf:in:",
+    b"Execution",
+    b"implementationOfEntry:",
+    b"finishPortableImageUnit",
+    b"beginPortableImageApplication",
+    b"swapImageStateWith:",
+    b"removeMethod:",
+    b"installPortableImageBinding:on:as:source:",
+    b"prepareImageRecipes",
+    b"Alien",
+    b"installRecipe:",
+    b"Map",
+    b"rehashImage:",
+    b"indexRestoredRecipes:",
+    b"finishPortableImageSources",
+    b"startupFailed",
+    b"partialLoad",
+    b"none",
+    b"visit:",
+    b"Roots",
+    b"ObjectModel",
+    b"delegated",
+    b"retain:",
+    b"allocate",
+    b"System",
+    b"newMethodAt:",
+    b"withContext:",
+    b"addMethod",
+    b"register:",
+    b"Image",
+    b"ImageSaveReport",
+    b"ImageSaveReportVt",
+    b"at:put:",
+    b"release:",
+    b"saveImage:",
+    b"startImage:rebuild:",
+    b"startImageMapped:",
+    b"startImageBytes:rebuild:",
+    b"loadImage:",
+    b"loadImage:rebuild:",
+    b"loadImageMapped:",
+    b"loadImageBytes:rebuild:",
+    b"imageSaveReport",
+    b"imageCompositionIdentity",
+    b"status",
+    b"detail",
+    b"savedFacts",
+    b"recoveredFacts",
+    b"rejectedFacts",
+    b"recoveredSlots",
+    b"rejectedSlots",
+    b"codeUnits",
+    b"rootsDo:",
+    b"e:a:v:tx:op:historied:",
+    b"kind",
+    b"imageRejected",
+    b"ImageFormat",
+    b"inspect:architecture:abi:",
+    b"compose:",
+];
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 154,
+        entry: Some(op_save),
+    },
+    MethodSpec {
+        name: 155,
+        entry: Some(op_start),
+    },
+    MethodSpec {
+        name: 156,
+        entry: Some(op_startmapped),
+    },
+    MethodSpec {
+        name: 157,
+        entry: Some(op_startbytes),
+    },
+    MethodSpec {
+        name: 158,
+        entry: Some(op_load),
+    },
+    MethodSpec {
+        name: 159,
+        entry: Some(op_rebuild),
+    },
+    MethodSpec {
+        name: 160,
+        entry: Some(op_loadmapped),
+    },
+    MethodSpec {
+        name: 161,
+        entry: Some(op_loadbytes),
+    },
+    MethodSpec {
+        name: 162,
+        entry: Some(op_report),
+    },
+    MethodSpec {
+        name: 163,
+        entry: Some(op_identity),
+    },
+    MethodSpec {
+        name: 164,
+        entry: Some(op_status),
+    },
+    MethodSpec {
+        name: 165,
+        entry: Some(op_detail),
+    },
+    MethodSpec {
+        name: 166,
+        entry: Some(op_saved),
+    },
+    MethodSpec {
+        name: 167,
+        entry: Some(op_zero),
+    },
+    MethodSpec {
+        name: 168,
+        entry: Some(op_zero),
+    },
+    MethodSpec {
+        name: 169,
+        entry: Some(op_zero),
+    },
+    MethodSpec {
+        name: 170,
+        entry: Some(op_zero),
+    },
+    MethodSpec {
+        name: 171,
+        entry: Some(op_code),
+    },
+    MethodSpec {
+        name: 172,
+        entry: Some(enumerate_roots),
+    },
+    MethodSpec {
+        name: 173,
+        entry: Some(collect_fact),
+    },
+];
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: abi::Module = abi::Module {
-    version: abi::VERSION,
-    byte_size: size_of::<abi::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
 #[unsafe(no_mangle)]

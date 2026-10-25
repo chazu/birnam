@@ -27,7 +27,7 @@ impl Decoded {
         }
     }
 }
-unsafe fn optional(s: &State, q: &Scope<'_>, v: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+unsafe fn optional(s: &State, q: &Scope<'_>, v: Oop) -> Result<Option<Vec<u8>>, Failure> {
     unsafe {
         if v == s.named(b"nil")? {
             Ok(None)
@@ -36,27 +36,31 @@ unsafe fn optional(s: &State, q: &Scope<'_>, v: Oop) -> Result<Option<Vec<u8>>, 
         }
     }
 }
-unsafe fn admitted(s: &State, q: &Scope<'_>, answer: Oop) -> Result<Oop, Outcome> {
+unsafe fn admitted(s: &State, q: &Scope<'_>, answer: Oop) -> Result<Oop, Failure> {
     unsafe {
         let error = s.call(q, answer, b"isError", &[])?;
         if error == s.named(b"true")? {
             let kind = s.call(q, answer, b"kind", &[])?;
-            if s.symbol(kind)? == b"imageRejected" { return Err(bad()) }
-            return Err(Outcome::failed(abi::INVALID_REQUEST, 0));
+            if s.symbol(kind)? == b"imageRejected" {
+                return Err(bad());
+            }
+            return Err(Failure::Value(answer));
         }
         Ok(answer)
     }
 }
-pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Outcome> {
+pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Failure> {
     unsafe {
         // All returned fields are copied snapshots. Do not pin the full input
         // and the validator's temporary carriers through heap reconstruction.
-        let scope = Scope {
-            s,
-            tokens: RefCell::new(Vec::new()),
-        };
+        let scope = Scope::new(s);
         let q = &scope;
-        let owner = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"ImageFormat")?)?])?;
+        let owner = s.call(
+            q,
+            s.named(b"Globals")?,
+            b"at:",
+            &[q.keep(s.intern(b"ImageFormat")?)?],
+        )?;
         let value = s.text(q, b"Bytes", bytes)?;
         let arch = s.integer(q, support::IMAGE_ARCH_TAG as usize)?;
         let abi = s.integer(q, runtime_abi() as usize)?;
@@ -77,7 +81,7 @@ pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Outcome
         else {
             return Err(bad());
         };
-        let blobs = |v| -> Result<Vec<Vec<u8>>, Outcome> {
+        let blobs = |v| -> Result<Vec<Vec<u8>>, Failure> {
             s.sequence(q, v)?.into_iter().map(|v| s.bytes(v)).collect()
         };
         let code = optional(s, q, *code)?;
@@ -101,20 +105,25 @@ pub(super) unsafe fn compose(
     s: &State,
     q: &Scope<'_>,
     spec: v8::ImageSpec<'_>,
-) -> Result<Vec<u8>, Outcome> {
+) -> Result<Vec<u8>, Failure> {
     unsafe {
-        let owner = s.call(q, s.named(b"Globals")?, b"at:", &[q.keep(s.id.intern_name(b"ImageFormat")?)?])?;
+        let owner = s.call(
+            q,
+            s.named(b"Globals")?,
+            b"at:",
+            &[q.keep(s.intern(b"ImageFormat")?)?],
+        )?;
         let arch = s.integer(q, spec.architecture as usize)?;
         let abi = s.integer(q, spec.runtime_abi as usize)?;
         let blob = |b: &[u8]| s.text(q, b"Bytes", b);
-        let opt = |b: Option<&[u8]>| -> Result<Oop, Outcome> {
+        let opt = |b: Option<&[u8]>| -> Result<Oop, Failure> {
             if let Some(b) = b {
                 blob(b)
             } else {
                 s.named(b"nil")
             }
         };
-        let blobs = |parts: &[&[u8]]| -> Result<Oop, Outcome> {
+        let blobs = |parts: &[&[u8]]| -> Result<Oop, Failure> {
             let values = parts
                 .iter()
                 .map(|b| blob(b))

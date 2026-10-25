@@ -9,6 +9,10 @@ fn main() {
         let bootstrap = directory.join("libbirnam_bootstrap.dylib");
         let selectors: &[&[u8]] = &[
             b"CodeObject",
+            b"false",
+            b"none",
+            b"message",
+            b"invalidEmbeddedLibrary",
             b"Bytes",
             b"fromCanonicalBytes:",
             b"canonicalBytesOf:",
@@ -84,40 +88,13 @@ fn main() {
         };
         let args = send(id.root, b"sequence", &[id.literal(1).unwrap()]);
         let loaded = id.send(id.literal(0).unwrap(), id.load, &[args]);
-        if std::env::args().nth(3).as_deref() == Some("published-rejection") {
-            let error =
-                loaded.expect_err("published bootstrap must require the complete owner closure");
+        if std::env::args().nth(3).as_deref() == Some("published-missing") {
+            let error = loaded.expect_err("published Bootstrap requires every startup artifact");
             assert_eq!(send(error, b"kind", &[]), sel(b"ioError"));
-            let load = |name: &str, args: &[abi::Oop]| {
-                let path = directory.join(format!("libbirnam_{name}.dylib"));
-                let values: Vec<_> = path
-                    .as_os_str()
-                    .as_bytes()
-                    .iter()
-                    .map(|b| abi::size(*b as usize).unwrap())
-                    .collect();
-                let path = send(id.root, b"nameWithBytes", &values);
-                let args = send(id.root, b"sequence", args);
-                id.send(path, id.load, &[args]).unwrap()
-            };
-            let roots = load("root_registry", &[]);
-            let ns = load("namespace", &[roots]);
-            assert!(
-                send(ns, b"at:", &[sel(b"Lang")]).is_null(),
-                "published mode must not load the grammar seed"
-            );
-            assert!(!send(ns, b"at:", &[sel(b"Error")]).is_null());
-            assert!(
-                !send(ns, b"at:", &[sel(b"CodeNode")]).is_null(),
-                "required PortableCode owner must load before source startup"
-            );
-            let globals = send(ns, b"at:", &[sel(b"Globals")]);
-            let registry = send(globals, b"at:", &[sel(b"SourceRegistry")]);
-            assert!(!registry.is_null());
-            println!("OOP_PUBLISHED_BOOTSTRAP_REQUIRES_PROVIDERS_OK");
+            println!("OOP_PUBLISHED_MISSING_ARTIFACT_REJECTED");
             return;
         }
-        let ns = loaded.expect("cold compiler bootstrap");
+        let ns = loaded.expect("Bootstrap initialization");
         assert_eq!(id.send(id.literal(0).unwrap(), id.load, &[args]), Ok(ns));
         let named = |n: &[u8]| send(ns, b"at:", &[sel(n)]);
         let roots = named(b"Roots");
@@ -136,7 +113,15 @@ fn main() {
         };
         let eval = |s: &str| {
             let value = keep(send(codegen, b"eval:", &[text(s.as_bytes())]));
-            assert_ne!(send(value, b"isError", &[]), named(b"true"), "{s}");
+            if send(value, b"isError", &[]) == named(b"true") {
+                let message = keep(send(value, b"message", &[]));
+                let bytes = keep(send(message, b"bytes", &[]));
+                panic!(
+                    "{s}: {:?}",
+                    id.read_bytes(bytes, sel(b"sizeWord"), sel(b"atWord:"))
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                );
+            }
             value
         };
         assert_eq!(
@@ -144,6 +129,98 @@ fn main() {
             Some(3)
         );
         send(gc, b"collectPrecisely", &[]);
+        if std::env::args().nth(3).as_deref() == Some("published") {
+            assert_eq!(eval("[[Module libDir] = [Module libDir]]"), named(b"true"));
+            assert_eq!(eval("[[Alien alloc: 16] isNull]"), named(b"false"));
+            assert_eq!(
+                eval(
+                    "[[| let p := [Alien alloc: 16]; [p pokeInt: -9223372036854775808 at: 0]; let result := [[p peekIntAt: 0] = -9223372036854775808]; [p free]; result] value]"
+                ),
+                named(b"true")
+            );
+            eval(
+                "[Globals at: #Roundtrip put: [Isolate decode: [Isolate encode: #[1 -9223372036854775808 3.5 \"hello\" #symbol]]]]",
+            );
+            for (index, value) in ["1", "-9223372036854775808", "3.5", "\"hello\"", "#symbol"]
+                .iter()
+                .enumerate()
+            {
+                let comparison = if index == 4 { "==" } else { "=" };
+                assert_eq!(
+                    eval(&format!("[[Roundtrip at: {index}] {comparison} {value}]")),
+                    named(b"true"),
+                    "roundtrip index {index}"
+                );
+            }
+            assert_eq!(
+                eval("[[Isolate encode: [Object clone]] isError]"),
+                named(b"true")
+            );
+            let generated = eval("[AlienCompiler compile: \"labs\" signature: \"l l\"]");
+            let generated = keep(send(generated, b"bytes", &[]));
+            std::fs::write(
+                directory.join("alien-generated.c"),
+                id.read_bytes(generated, sel(b"sizeWord"), sel(b"atWord:"))
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                eval(
+                    "[Alien wrap: \"labs\" signature: \"l l\" as: #publishedAbsolute on: Integer]"
+                ),
+                integer
+            );
+            assert_eq!(eval("[[-42 publishedAbsolute] = 42]"), named(b"true"));
+            assert_eq!(
+                eval(&format!(
+                    "[Alien dlopen: \"{}\"]",
+                    directory.join("foreign.dylib").display()
+                )),
+                named(b"true")
+            );
+            eval(
+                "[Alien wrap: \"oop_callback\" signature: \"l p l\" as: #callPublished: on: ForeignAddress]",
+            );
+            eval(
+                "[Globals at: #PublishedCallback put: [Alien callback: [:value | [GC collectPrecisely]; [value + 1]] signature: \"l l\"]]",
+            );
+            assert_eq!(
+                eval("[[PublishedCallback callPublished: 41] = 42]"),
+                named(b"true")
+            );
+            eval("[Alien releaseCallback: PublishedCallback]");
+            assert_eq!(eval("[PublishedCallback isNull]"), named(b"true"));
+            eval("[Alien wrap: \"oop_string\" signature: \"s s\" as: #publishedCopy on: String]");
+            assert_eq!(
+                eval("[[\"copied\" publishedCopy] = \"copied\"]"),
+                named(b"true")
+            );
+            eval("[Alien wrap: \"oop_double\" signature: \"d d\" as: #publishedCopy on: Float]");
+            assert_eq!(eval("[[3.25 publishedCopy] = 3.25]"), named(b"true"));
+            eval("[Alien wrap: \"oop_unsigned\" signature: \"u u\" as: #publishedCopy on: Word]");
+            assert_eq!(
+                eval(
+                    "[[[Execution wordResultOf: -1 selector: #word] publishedCopy] = [Execution wordResultOf: -1 selector: #word]]"
+                ),
+                named(b"true")
+            );
+            assert_eq!(
+                eval(
+                    "[[| let fake := [Object clone]; [Reflect defineMethod: #bytes on: fake as: [:self | self]]; [Reflect defineMethod: #sizeWord on: fake as: [:self | [Integer wordOf: 268435457]]]; [[Alien provideLibrary: fake named: \"oversized\"] kind]] value]"
+                ),
+                sel(b"invalidEmbeddedLibrary")
+            );
+            println!("OOP_PUBLISHED_ALIEN_CALLBACK_OK");
+
+            assert_eq!(eval("[[System imageSaveReport] status]"), sel(b"none"));
+            send(gc, b"collectPrecisely", &[]);
+            assert_eq!(
+                abi::as_size(send(integer, b"wordOf:", &[eval("[40 + 2]")])),
+                Some(42)
+            );
+            println!("OOP_FULL_PUBLISHED_STARTUP_OK");
+            return;
+        }
         for name in [
             "cell",
             "modules",
@@ -283,6 +360,51 @@ fn main() {
             ),
             output_value
         );
+        for (name, file) in [
+            ("cell", "cell"),
+            ("modules", "modules"),
+            ("booleanValues", "boolean"),
+            ("blockLoopControl", "block-loop-control"),
+            ("blockLoop", "block-loop"),
+            ("range", "range"),
+            ("systemGc", "system-gc"),
+            ("printing", "printing"),
+            ("sourceLoader", "source-loader"),
+            ("nativeLoader", "native-loader"),
+            ("alienCompiler", "alien-compiler"),
+            ("alienRecipes", "alien-recipes"),
+            ("imageFormat", "image-format"),
+            ("globals", "globals"),
+            ("methodInvocation", "method-invocation"),
+        ] {
+            let source_path = root.join(format!("modules/{file}.birnam"));
+            let source = std::fs::read(&source_path).unwrap();
+            let path = text(
+                directory
+                    .join(format!("libbirnam_{name}.dylib"))
+                    .as_os_str()
+                    .as_bytes(),
+            );
+            assert_eq!(
+                send(
+                    codegen,
+                    b"compile:output:from:synchronousBodies:",
+                    &[
+                        text(&source),
+                        path,
+                        text(source_path.as_os_str().as_bytes()),
+                        named(if name == "methodInvocation" {
+                            b"false"
+                        } else {
+                            b"true"
+                        })
+                    ]
+                ),
+                path,
+                "compile {name}"
+            );
+            println!("OOP_PUBLISHED_ARTIFACT {name}");
+        }
         let seed = named(b"Lang");
         let seed_vt = send(id.root, b"behaviorOf:", &[seed]);
         let base = send(id.root, b"objectBehavior", &[]);
