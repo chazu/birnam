@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "scope": "Standalone Siphon and production Id handoff without upper runtime modules",
+  "base_revision": "143f77c8000057530f7e067d9445b832a8e28b19",
+  "command": "MISE_TRUSTED_CONFIG_PATHS=\"$PWD\" CARGO_TARGET_DIR=\"$PWD/.cargo-target/siphon-oop-qualification\" mise exec -- bash scripts/siphon-test.sh",
+  "tests_passed": 2,
+  "source_sha256": {
+    "rust/birnam-siphon/tests/id.rs": "5f02457cf8e02cea0b180b0b6b2473a073f69df622d9c5de811662658872e998",
+    "scripts/siphon-test.sh": "efafa38bbe79d6a34632c444c7de6bd3e56af7f8463220a261e56b43cf77dd2b",
+    "tests/fixtures/oop-id-v2/siphon.c": "3f5f0107d01016907657ab0b6a486976726acdc4b1320c6fb2bac7d0c40bdbee"
+  },
+  "logs": [
+    {
+      "path": ".cargo-target/oop-siphon-id-before.log",
+      "sha256": "b9e70d9cd7ca06c9f5de61a193653013c83b56ed83c6cf75040f8c050825f2b4"
+    },
+    {
+      "path": ".cargo-target/oop-siphon-id.log",
+      "sha256": "e61dd99c762774f32fe771f2b25ef206e1d2cd674551504adc22fc7048a2c721"
+    }
+  ],
+  "before": "Compilation fails on retired Operand/Outcome API.",
+  "after": "Both tests pass; independent C fixture compiles with -Wall -Wextra -Werror.",
+  "runtime_changes": false
+}

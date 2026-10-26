@@ -869,3 +869,15 @@ behavioral assertions. This changes test budgets only; worker startup still has
 the user-selected 15-second deadline. No runtime implementation or Id contract
 changed for these checks. The optional method-change subscription remains open.
 [Receipt](../measurements/alien-store-images-oop-20261026.json).
+
+## Standalone Siphon acceptance
+
+`scripts/siphon-test.sh` again builds and tests the production Id without upper
+runtime modules. The old test no longer compiles because it used Operand/Outcome
+and expected a native protocol struct as a message result. Its replacement uses
+seed Names and Oop messages, loads an independent C module, and verifies repeated
+initialization with current arguments, initializer rejection, canonical symbols,
+invalid library paths and process-owned Id identity across reopening. The C
+fixture aborts if the retired initializer is entered. Both tests pass; no runtime
+code or Id operation changed.
+[Receipt](../measurements/siphon-handoff-oop-20261026.json).

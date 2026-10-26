@@ -12,6 +12,9 @@ custom lookup, DNU, collection during calls, finalization, and invalid contexts.
 collects and invokes the published method afterward. `rejected.c` aborts if its
 incompatible initializer is entered. `rejected-null.c` has no initializer.
 `tcc-caller.c` is compiled with the vendored compiler and calls real Id and GC.
+`siphon.c` returns its initializer's sole Oop argument and rejects other arities.
+The standalone Siphon test uses it to verify loading after the initial handoff;
+its retired initializer aborts if entered.
 
 `bench.c` builds twice. Its v1 control uses the unchanged independent v1 C header
 against the installed baseline. Its v2 build uses `id.h` and the isolated libraries.
