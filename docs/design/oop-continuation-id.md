@@ -391,3 +391,15 @@ image/worker acceptance. Image graph recovery still needs the pending compiler,
 Execution and reflection connections; Generation, relational integration and
 Host/CLI remain outside this gate. Isolate's copied-value conversion and owner
 activation are qualified here; no restored-image worker process is claimed.
+
+The authored MethodInvocation policy now installs on that published runtime.
+Its cache obtains neutral templates from Codegen's existing declared Method entry,
+then binds separate implementation contexts through `withImplementation:`; it no
+longer emits and compiles another C adapter for each arity. Contexts remain
+owner-defined Oop Sequences, with no new Id operation or native registry.
+Execution's explicit `invokeOn:` / `invokeOn:arguments:` messages snapshot the
+argument owner's `sizeWord` / `atWord:` view and enter the captured Method through
+the existing continuation primitive. Ordinary dispatch does not use those messages.
+The bootstrap gate covers 19 construction/replacement/GC/suspension checks, arities
+0–16, and the 177 task-control checks after installing the authored policy. Native
+Host migration and installed CLI acceptance remain separate work.

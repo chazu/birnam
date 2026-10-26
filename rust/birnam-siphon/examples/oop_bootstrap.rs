@@ -13,6 +13,14 @@ fn main() {
             b"none",
             b"message",
             b"invalidEmbeddedLibrary",
+            b"mustNotRecord",
+            b"ensurePrivateVtableFor:",
+            b"methodAt:",
+            b"withContext:",
+            b"observe:",
+            b"failTask:",
+            b"ensureTask:body:",
+            b"NativeTaskObserver",
             b"Bytes",
             b"fromCanonicalBytes:",
             b"canonicalBytesOf:",
@@ -218,6 +226,91 @@ fn main() {
                 abi::as_size(send(integer, b"wordOf:", &[eval("[40 + 2]")])),
                 Some(42)
             );
+            for module in ["stdlib", "stackless-control"] {
+                eval(
+                    &std::fs::read_to_string(root.join(format!("modules/{module}.birnam")))
+                        .unwrap(),
+                );
+            }
+            let checks = eval(include_str!(
+                "../../../scripts/oop-method-invocation-smoke.birnam"
+            ));
+            let count = abi::as_size(send(checks, b"sizeWord", &[])).unwrap();
+            assert_eq!(count, 19);
+            for i in 0..count {
+                assert_eq!(
+                    send(checks, b"atWord:", &[abi::size(i).unwrap()]),
+                    named(b"true"),
+                    "MethodInvocation check {i}"
+                );
+            }
+            for arity in 0..=16 {
+                let selector = if arity == 0 {
+                    "probe".to_string()
+                } else {
+                    "probe:".repeat(arity)
+                };
+                let parameters = (0..arity).map(|i| format!(" :a{i}")).collect::<String>();
+                let invocation = if arity == 0 {
+                    "probe".to_string()
+                } else {
+                    (0..arity)
+                        .map(|i| format!("probe: {i} "))
+                        .collect::<String>()
+                };
+                let answer = if arity == 0 {
+                    "42".to_string()
+                } else {
+                    format!("a{}", arity - 1)
+                };
+                let expected = if arity == 0 { 42 } else { arity - 1 };
+                assert_eq!(
+                    eval(&format!(
+                        "[[| let target := [Object clone]; [Reflect defineMethod: #{selector} on: target as: [:self{parameters} | {answer}]]; [[target {invocation}] = {expected}]] value]"
+                    )),
+                    named(b"true"),
+                    "arity {arity}"
+                );
+            }
+            assert_eq!(
+                eval("[[Codegen methodTemplateForArity: 17] isError]"),
+                named(b"true")
+            );
+            println!("OOP_METHOD_INVOCATION_OK checks={count} arities=0..16");
+            // Use the same real synchronous callback fixture as the core gate.
+            let path = directory.join("continuation-native.dylib");
+            let values: Vec<_> = path
+                .as_os_str()
+                .as_bytes()
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect();
+            let path = keep(send(id.root, b"nameWithBytes", &values));
+            let args = keep(send(id.root, b"sequence", &[]));
+            let image = keep(id.send(path, id.load, &[args]).unwrap());
+            let observer = eval("[Object clone]");
+            let cleanup = eval("[| nil]");
+            let context = keep(send(
+                id.root,
+                b"sequence",
+                &[cleanup, sel(b"mustNotRecord")],
+            ));
+            let behavior = keep(send(id.root, b"ensurePrivateVtableFor:", &[observer]));
+            for name in [b"observe:".as_slice(), b"failTask:", b"ensureTask:body:"] {
+                let method = keep(send(image, b"methodAt:", &[sel(name)]));
+                let method = keep(send(method, b"withContext:", &[context]));
+                send(behavior, b"addMethod", &[sel(name), method]);
+            }
+            send(
+                named(b"Globals"),
+                b"at:put:",
+                &[sel(b"NativeTaskObserver"), observer],
+            );
+            eval(include_str!("../../../scripts/task-control-smoke.birnam"));
+            eval("[TaskCheck run]");
+            assert_eq!(eval("[[TaskCheckFailures value] = 0]"), named(b"true"));
+            assert_eq!(eval("[[TaskChecks value] = 177]"), named(b"true"));
+            println!("OOP_INSTALLED_METHOD_POLICY_TASK_CONTROL_OK checks=177");
             println!("OOP_FULL_PUBLISHED_STARTUP_OK");
             return;
         }

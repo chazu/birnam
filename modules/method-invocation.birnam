@@ -1,5 +1,5 @@
-// Ordinary method construction policy. Templates retain code, while each Method
-// retains its own implementation and registration. This module is deliberately
+// Ordinary method construction policy. Templates share the declared code, while
+// each bound Method retains its own implementation. This module is deliberately
 // compiled as normal resumable Birnam, including on its first bootstrap load.
 [Module named: #methodInvocation requires: #[#globals]];
 [[|
@@ -19,12 +19,9 @@ let factory := [ObjectModel newSlots: #[[Map new]] parent: ObjectVt];
   [[result isError] ifTrue: [| result] ifFalse: [| self]]
 ]];
 [Reflect defineMethod: #compileTemplateForArity: on: factory as: [:self :arity |
-  let source := [NativeBackend named: arity synchronous: false];
-  [[source isError] ifTrue: [| source] ifFalse: [|
-    // A dedicated neutral template never pins the first user's implementation.
-    // Error already propagates initializeWith: through its normal DNU protocol.
-    [[TCC compile: source] initializeWith: nil]
-  ]]
+  // The Oop entry already handles every supported arity. Its neutral template
+  // shares code without compiling another native unit for each cache entry.
+  [Codegen methodTemplateForArity: arity]
 ]];
 [Reflect defineMethod: #templateForArity: on: factory as: [:self :arity |
   let template := [[self templates] at: arity];

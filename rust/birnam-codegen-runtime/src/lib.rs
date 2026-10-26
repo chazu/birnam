@@ -1,6 +1,6 @@
 //! Source compilation through current Lang, NativeBackend and TCC owners.
 //! Explicit source compilation and reflected Methods reuse the retained lowering.
-//! Artifact publication and bootstrap orchestration remain pending.
+//! Source records and artifact publication use those same owner messages.
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
     id_protocol::{
@@ -29,6 +29,7 @@ struct State {
     control: Control,
     reflect: Oop,
     implementation_entry: Oop,
+    binding_entry: Oop,
     ns: Oop,
     receiver: Oop,
     names: HashMap<&'static [u8], Oop>,
@@ -150,7 +151,13 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
         let [v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let mut values = vec![s.ns, s.receiver, s.reflect, s.implementation_entry];
+        let mut values = vec![
+            s.ns,
+            s.receiver,
+            s.reflect,
+            s.implementation_entry,
+            s.binding_entry,
+        ];
         values.extend_from_slice(&s.scoped.borrow());
         for value in values {
             s.send(*v, b"visit:", &[value])?;
@@ -375,6 +382,39 @@ unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop,
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+impl State {
+    unsafe fn value_selector(&self, q: &Scope<'_>, arity: usize) -> Result<Oop, Oop> {
+        unsafe {
+            if arity > 16 {
+                return Err(invalid());
+            }
+            let words: Vec<_> = b"value:"
+                .repeat(arity + 1)
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect();
+            let name = q.keep(self.send(self.id.root, b"nameWithBytes", &words)?);
+            Ok(q.keep(self.id.send(name, self.id.intern, &[])?))
+        }
+    }
+    unsafe fn implementation(
+        &self,
+        q: &Scope<'_>,
+        template: Oop,
+        implementation: Oop,
+        selector: Oop,
+        arity: Oop,
+    ) -> Result<Oop, Oop> {
+        unsafe {
+            let context = q.keep(self.send(
+                self.id.root,
+                b"sequence",
+                &[implementation, selector, arity],
+            )?);
+            self.send(template, b"withContext:", &[context])
+        }
+    }
+}
 unsafe extern "C" fn construct_method(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -383,22 +423,75 @@ unsafe extern "C" fn construct_method(_: Oop, c: Oop, _: Oop, a: *const Oop, n: 
         };
         let q = s.scope(&[*arity, *implementation]);
         let arity = s.index(*arity)?;
-        if arity > 16 {
+        let selector = s.value_selector(&q, arity)?;
+        s.implementation(
+            &q,
+            s.implementation_entry,
+            *implementation,
+            selector,
+            abi::size(arity).unwrap(),
+        )
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// Neutral templates share the declared entry. The construction context contains
+// only selector and arity; it never retains the first bound implementation.
+unsafe extern "C" fn method_template(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [arity] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*arity]);
+        let arity = s.index(*arity)?;
+        let selector = s.value_selector(&q, arity)?;
+        let arity = abi::size(arity).unwrap();
+        let nil = q.keep(s.named(b"nil")?);
+        let template =
+            q.keep(s.implementation(&q, s.implementation_entry, nil, selector, arity)?);
+        let behavior = q.keep(s.send(s.id.root, b"ensurePrivateVtableFor:", &[template])?);
+        let context = q.keep(s.send(s.id.root, b"sequence", &[selector, arity])?);
+        let binder = q.keep(s.send(s.binding_entry, b"withContext:", &[context])?);
+        s.send(
+            behavior,
+            b"addMethod",
+            &[s.names[b"withImplementation:".as_slice()], binder],
+        )?;
+        Ok(template)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn bind_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
             return Err(invalid());
         }
-        let bytes = b"value:".repeat(arity + 1);
-        let words: Vec<_> = bytes
-            .iter()
-            .map(|b| abi::size(*b as usize).unwrap())
-            .collect();
-        let name = q.keep(s.send(s.id.root, b"nameWithBytes", &words)?);
-        let selector = q.keep(s.id.send(name, s.id.intern, &[])?);
-        let context = q.keep(s.send(
+        let s = state((*p).ns)?;
+        let [implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[c, r, *implementation]);
+        let selector = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
+        let arity = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
+        let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
+        let method = q.keep(s.implementation(&q, r, *implementation, selector, arity)?);
+        s.send(
             s.id.root,
-            b"sequence",
-            &[*implementation, selector, abi::size(arity).unwrap()],
-        )?);
-        s.send(s.implementation_entry, b"withContext:", &[context])
+            b"reassociateBehaviorOf:with:",
+            &[method, behavior],
+        )?;
+        Ok(method)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn method_from_template(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [template, implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        s.send(*template, b"withImplementation:", &[*implementation])
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -587,6 +680,11 @@ const NAMES: &[&[u8]] = &[
     b"Alien",
     b"provideLibraryPath:named:",
     b"provideLibrary:named:",
+    b"methodTemplateForArity:",
+    b"bindImplementation",
+    b"withImplementation:",
+    b"methodForTemplate:implementation:",
+    b"reassociateBehaviorOf:with:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -720,6 +818,11 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"Alien"),
     Literal::new(b"provideLibraryPath:named:"),
     Literal::new(b"provideLibrary:named:"),
+    Literal::new(b"methodTemplateForArity:"),
+    Literal::new(b"bindImplementation"),
+    Literal::new(b"withImplementation:"),
+    Literal::new(b"methodForTemplate:implementation:"),
+    Literal::new(b"reassociateBehaviorOf:with:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -897,6 +1000,21 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(artifact::compile_embedded),
         convention: 0,
     },
+    MethodSpec {
+        name: 131,
+        entry: Some(method_template),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 132,
+        entry: Some(bind_implementation),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 134,
+        entry: Some(method_from_template),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -957,6 +1075,11 @@ unsafe extern "C" fn initialize(
             control,
             reflect,
             implementation_entry,
+            binding_entry: send(
+                image,
+                b"methodAt:",
+                &[names[b"bindImplementation".as_slice()]],
+            )?,
             ns: *ns,
             receiver,
             names: names.clone(),
@@ -968,12 +1091,15 @@ unsafe extern "C" fn initialize(
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
             let name = NAMES[spec.name];
-            if matches!(name, b"enterImplementation") {
+            if matches!(name, b"enterImplementation" | b"bindImplementation") {
                 continue;
             }
             let target = if matches!(
                 name,
-                b"defineMethod:on:as:" | b"methodForArity:implementation:" | b"vtableOf:"
+                b"defineMethod:on:as:"
+                    | b"methodForArity:implementation:"
+                    | b"methodForTemplate:implementation:"
+                    | b"vtableOf:"
             ) {
                 reflect_vt
             } else {

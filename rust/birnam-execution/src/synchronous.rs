@@ -348,6 +348,35 @@ unsafe extern "C" fn method_for(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+// Explicit captured-Method invocation accepts the owner's indexed Oop view.
+// This adapter is never consulted by an ordinary send to another receiver.
+unsafe extern "C" fn invoke_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let values = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let q = s.scope(values);
+        q.keep(r);
+        let (k, receiver, arguments) = match values {
+            [k, receiver] => (*k, *receiver, None),
+            [k, receiver, arguments] => (*k, *receiver, Some(*arguments)),
+            _ => return Err(invalid()),
+        };
+        let mut values = vec![r, receiver, k];
+        if let Some(arguments) = arguments {
+            let count = abi::as_size(s.send(arguments, b"sizeWord", &[])?).ok_or_else(invalid)?;
+            values.try_reserve(count).map_err(|_| invalid())?;
+            for i in 0..count {
+                values.push(q.keep(s.send(
+                    arguments,
+                    b"atWord:",
+                    &[abi::size(i).ok_or_else(invalid)?],
+                )?));
+            }
+        }
+        s.transfer(b"prepareEntry", &values)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 unsafe extern "C" fn install(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -632,6 +661,8 @@ const NAMES: &[&[u8]] = &[
     b"detail",
     b"size",
     b"fromBytes:",
+    b"methodBehavior",
+    b"invokeOn:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -817,6 +848,8 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"detail"),
     Literal::new(b"size"),
     Literal::new(b"fromBytes:"),
+    Literal::new(b"methodBehavior"),
+    Literal::new(b"invokeOn:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1204,6 +1237,16 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(native_adapters::fail),
         convention: 0,
     },
+    MethodSpec {
+        name: 24,
+        entry: Some(invoke_method),
+        convention: 1,
+    },
+    MethodSpec {
+        name: 184,
+        entry: Some(invoke_method),
+        convention: 1,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1297,6 +1340,7 @@ unsafe extern "C" fn initialize(
                     block_vt
                 }
                 b"methodFor:" | b"addMethod:as:" => base,
+                b"invokeOn:" | b"invokeOn:arguments:" => send(id.root, b"methodBehavior", &[])?,
                 n if n.starts_with(b"value") => block_vt,
                 _ if resumable::METHOD_NAMES.contains(&name) => continue,
                 _ => behavior,

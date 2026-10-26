@@ -1,0 +1,54 @@
+// Run after stdlib and task control load, as in Host source startup.
+[MethodInvocation install];
+[[|
+let checks := [Cell with: #[]];
+let check := [:condition | [checks set: [[checks value] add: condition]]];
+[MethodInvocation clearTemplates];
+let basis := [Globals bindingBasis];
+let template := [MethodInvocation templateForArity: 1];
+[check value: [[MethodInvocation templateForArity: 1] == template]];
+let target := [Object clone];
+let first := [template withImplementation: [:self :argument | [argument + 1]]];
+let second := [template withImplementation: [:self :argument | [argument + 2]]];
+[check value: [[first == second] = false]];
+[check value: [[first invokeOn: target arguments: #[40]] = 41]];
+[check value: [[second invokeOn: target arguments: #[40]] = 42]];
+let rebound := [first withImplementation: [:self :argument | [argument + 3]]];
+[check value: [[rebound invokeOn: target arguments: #[40]] = 43]];
+[check value: [[first invokeOn: target arguments: #[40]] = 41]];
+[check value: [[Globals bindingBasis] = basis]];
+[[Vtable behaviorOf: target] addMethod: first as: #answer:];
+let captured := [target methodFor: #answer:];
+[Reflect defineMethod: #answer: on: target as: [:self :argument | 99]];
+[GC collectPrecisely];
+[check value: [[target answer: 40] = 99]];
+[check value: [[captured invokeOn: target arguments: #[40]] = 41]];
+[Reflect defineMethod: #plain on: target as: [:self | 17]];
+[check value: [[[target methodFor: #plain] invokeOn: target] = 17]];
+let viaTemplate := [Reflect methodForTemplate: template implementation: [:self :argument | argument]];
+[check value: [[viaTemplate invokeOn: target arguments: #[42]] = 42]];
+
+// Explicit invocation must remain stackless and preserve its result destination.
+let waiting := [Reflect methodForArity: 1 implementation: [:self :task | [task wait]; 42]];
+let task := [TaskControl start: [:task | [waiting invokeOn: target arguments: #[task]]]];
+[check value: [[task pollOutcome] isNil]];
+let token := [task waitToken];
+[check value: [token notNil]];
+[GC collectPrecisely];
+[check value: [task resolve: token with: nil]];
+[check value: [[task pollOutcome] = #[#success 42]]];
+
+// Replace the language factory. Future construction observes it; existing Methods
+// and the Namespace fallback remain independent of that global binding.
+let refusal := [Error kind: #methodConstructionRefused];
+let alternate := [Object clone];
+[Reflect defineMethod: #methodForArity:implementation: on: alternate as: [:self :arity :implementation | refusal]];
+[Globals at: #MethodInvocation put: alternate];
+let rejected := [Reflect defineMethod: #neverInstalled on: target as: [:self | 0]];
+[check value: [rejected == refusal]];
+[Globals remove: #MethodInvocation];
+[check value: [[first invokeOn: target arguments: #[40]] = 41]];
+[check value: [[Reflect defineMethod: #restored on: target as: [:self | 42]] == target]];
+[check value: [[target restored] = 42]];
+[checks value]
+] value]

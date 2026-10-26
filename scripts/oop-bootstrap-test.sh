@@ -22,6 +22,7 @@ names='id bootstrap image alien isolate portable_code root_registry namespace bo
 for name in names:shutil.copy2(build/'release'/f'libbirnam_{name}.dylib',stage)
 subprocess.run(['clang','-dynamiclib','-O2','tests/fixtures/oop-bootstrap/returns.c','-o',str(stage/'returns.dylib')],check=True)
 subprocess.run(['clang','-dynamiclib','-O2','tests/fixtures/oop-bootstrap/foreign.c','-o',str(stage/'foreign.dylib')],check=True)
+subprocess.run(['clang','-dynamiclib','-O2','tests/fixtures/oop-continuation/native.c','-o',str(stage/'continuation-native.dylib')],check=True)
 subprocess.run(['clang','-dynamiclib','-x','c','-','-o',str(stage/'not-module.dylib')],input=b'int not_a_module=17;',check=True)
 env=dict(os.environ,BIRNAM_MODULES_DIR='/nonexistent',BIRNAM_TEST_MODULE_DIRECTORY='/nonexistent')
 with open(logs/'cold.log','w') as output:
@@ -40,7 +41,7 @@ shutil.copy2(build/'release/libbirnam_bootstrap.dylib',stage/'libbirnam_bootstra
 (stage/'libbirnam_lang_seed.dylib').unlink()
 env=dict(os.environ,BIRNAM_MODULES_DIR='/nonexistent',BIRNAM_TEST_MODULE_DIRECTORY='/nonexistent')
 with open(logs/'published.log','w') as output:
- subprocess.run([str(build/'release/examples/oop_bootstrap'),str(stage),str(Path.cwd()),'published'],cwd=stage,env=env,stdout=output,stderr=subprocess.STDOUT,check=True,timeout=120)
+ subprocess.run([str(build/'release/examples/oop_bootstrap'),str(stage),str(Path.cwd()),'published'],cwd=stage,env=env,stdout=output,stderr=subprocess.STDOUT,check=True,timeout=300)
 assert 'OOP_FULL_PUBLISHED_STARTUP_OK' in (logs/'published.log').read_text()
 print((logs/'published.log').read_text(),end='')
 required=stage/'libbirnam_cell.dylib';absent=stage/'libbirnam_cell.unavailable'
