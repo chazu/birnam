@@ -662,3 +662,23 @@ leaks a native Observer structure or passes carrier structs. Its original 177
 assertions pass. All seven binaries required by `host-cli-test.sh` now build;
 the full installed task group remains a separate check.
 [Receipt](../measurements/task-control-oop-20261026.json).
+
+
+## Baked image bytes stay with their owner
+
+The installed interaction gate exposed a baked-startup timeout. The Host facade
+constructed one large String/Sequence for the entire image, then HostEntry read
+it back into native bytes and constructed another String. Baked startup now
+constructs Bytes using the existing bounded `fromByteValues` / `appendByteValues`
+operations. HostEntry passes that Oop directly to the current Image entry, which
+owns interpretation and validation. No Id operation or private byte interface
+is added; String byte providers remain usable by Image.
+
+A regression substitutes an Image entry that accepts an opaque object with no
+byte operations. It fails against the prior HostEntry and passes now, proving
+that HostEntry does not decode the provider before the selected Image operation.
+A 119 MiB baked image runs saved main after its input image is deleted in 16.4
+seconds; the installed fixture had exceeded its unchanged 120-second limit.
+The workspace library suite passes. The complete interaction retry and the
+separate Concurrency ready-handshake regression remain open.
+[Receipt](../measurements/baked-bytes-oop-20261026.json).

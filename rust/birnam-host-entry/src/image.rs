@@ -86,9 +86,8 @@ impl HostRuntime<'_> {
     }
 }
 impl HostRuntime<'_> {
-    pub fn load_image_bytes(&self, bytes: &[u8], startup: bool) -> Result<(), HostError> {
+    pub fn load_image_bytes(&self, bytes: birnam_abi::Oop, startup: bool) -> Result<(), HostError> {
         let q = self.scope();
-        let bytes = q.string(bytes)?;
         let result = q.call(
             self.named(b"System")?,
             if startup { b"startImageBytes:rebuild:" } else { b"loadImageBytes:rebuild:" },

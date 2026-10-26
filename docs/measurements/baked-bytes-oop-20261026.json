@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "scope": "Host baked byte transfer and source-hidden executable startup, not full interaction/concurrency acceptance",
+  "base_revision": "db0e698d",
+  "workspace_library_log": ".cargo-target/oop-baked-workspace-lib.log",
+  "negative_before_log": ".cargo-target/oop-baked-provider-before.log",
+  "negative_after_log": ".cargo-target/oop-baked-provider-after.log",
+  "baked": {
+    "seconds": 16.396011583,
+    "exit_code": 0,
+    "stdout": "worker must not execute saved main\n",
+    "stderr": "",
+    "image_removed": true
+  },
+  "image_bytes": 124658663,
+  "prior_timeout_seconds": 120,
+  "remaining": [
+    "Full interaction CLI retry",
+    "Concurrency ready handshake remains over ten seconds"
+  ]
+}

@@ -136,3 +136,42 @@ fn user_images_compile_only_without_code_or_on_explicit_rebuild() {
     }
     fs::remove_dir_all(scratch).unwrap();
 }
+
+#[test]
+#[ignore = "requires production native modules"]
+fn image_byte_provider_reaches_image_without_host_decoding() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = resolve_from_exe_dir(
+        Path::new("/unused/bin"),
+        Overrides {
+            lib_dir: Some(&lib),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let host = HostRuntime::start_native(&resources, true).unwrap();
+    let fixtures = Hooks::new(&host.context);
+    let q = host.scope();
+    let system = host.named(b"System").unwrap();
+    let vt = q
+        .call(host.context.id.root, b"behaviorOf:", &[system])
+        .unwrap();
+    let key = fixtures.symbol(b"startImageBytes:rebuild:");
+    let original = fixtures.capture(vt, key);
+    let calls = fixtures.context(&[host.named(b"true").unwrap(), birnam_abi::size(0).unwrap()]);
+    q.call(
+        vt,
+        b"addMethod",
+        &[key, fixtures.method(b"fixedCount", calls)],
+    )
+    .unwrap();
+    // The current Image entry owns interpretation. This object deliberately has
+    // no byte protocol: any Host decoding or String conversion must fail.
+    let opaque = q
+        .call(host.named(b"Object").unwrap(), b"clone", &[])
+        .unwrap();
+    host.call(b"HostEntry", b"startImageBytes:", &[opaque])
+        .unwrap();
+    assert_eq!(fixtures.count(calls, 1), 1);
+    q.call(vt, b"addMethod", &[key, original]).unwrap();
+}

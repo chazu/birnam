@@ -22,8 +22,18 @@ impl HostRuntime {
     ) -> Result<Self, HostError> {
         let h = Self::start_native(r, p.precise_gc)?;
         let q = h.scope();
-        let bytes = q.string(bytes)?;
-        h.call(b"HostEntry", b"startImageBytes:", &[bytes])?;
+        let mut chunks = bytes.chunks(8192);
+        let values = |bytes: &[u8]| bytes.iter()
+            .map(|b| birnam_abi::size(*b as usize).unwrap()).collect::<Vec<_>>();
+        let mut buffer = q.call(
+            h.named(b"Bytes")?, b"fromByteValues", &values(chunks.next().unwrap_or(&[])),
+        )?;
+        for chunk in chunks {
+            let next = h.send(buffer, b"appendByteValues", &values(chunk))?;
+            if next != buffer { q.keep(next)?; }
+            buffer = next;
+        }
+        h.call(b"HostEntry", b"startImageBytes:", &[buffer])?;
         drop(q);
         Ok(h)
     }

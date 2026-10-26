@@ -27,7 +27,7 @@ operations return nil unless a result is specified. Wrong arity is an Error.
 | `loadArtifact:` | Activate through Module. |
 | `loadImage:rebuild:compiled:` | Live restoration; rebase Module's library directory after success. |
 | `startImage:rebuild:compiled:` | Startup admission; caller must discard the world on failure. |
-| `loadImageBytes:` | Live restoration from String bytes. |
+| `loadImageBytes:` | Live restoration from an Image byte provider; HostEntry passes the Oop to Image without decoding or copying its bytes. |
 | `startImageBytes:` | Startup admission of baked image bytes. |
 | `imageHasMain` | Boolean presence of global main. |
 | `imageMain` | Enter saved main; fulfill its returned intent after evaluation returns, then checkpoint Isolate. |

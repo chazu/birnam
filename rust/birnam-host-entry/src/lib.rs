@@ -37,7 +37,7 @@ fn dispatch(context: &Context, operation: &str, args: &[Oop]) -> Result<Oop, Hos
                 host.rebase_module(&q, &host.resources)?;
             }
             "loadImageBytes:" | "startImageBytes:" => {
-                host.load_image_bytes(&native::bytes(&q, args, 0)?, operation.starts_with("start"))?
+                host.load_image_bytes(native::argument(&q, args, 0)?, operation.starts_with("start"))?
             }
             "evalScript:" => host.eval_script(&native::path(&q, args, 0)?)?,
             "compile:output:" => {
