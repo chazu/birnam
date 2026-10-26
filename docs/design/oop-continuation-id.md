@@ -1235,3 +1235,14 @@ is preserved. Once calls end, allocation-identity observations confirm that the
 target, stored value and index are reclaimed. The test fixture holds these objects
 only weakly. No runtime or Id change was needed.
 [Receipt](../measurements/object-model-scopes-oop-20261026.json).
+
+## Cold-candidate image acceptance
+
+All 16 checks in the installed Host image group pass on the original cold
+candidate `28a2f117`: optional Store participation, source-free startup and native
+loading, Trace, frame calls, collection search, StringBuilder, OS services,
+Alien recipes and publication, hashing, collecting reentry, and saved Host entry
+roots. This completes that candidate's image run. It predates the root-provider,
+frame-view and pending-call recovery corrections and does not qualify them.
+The corrected candidate is being built independently from `52c617fe`.
+[Receipt](../measurements/cold-image-oop-20261026.json).
