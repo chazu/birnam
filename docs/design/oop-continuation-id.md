@@ -1134,3 +1134,23 @@ projection fixture reaches `Machine recoverAt:with:`, which is not connected in
 the current Execution facade. The accepted compiler/Execution plan retains frame
 recovery. That assertion remains unchanged; restoration must connect the existing
 recovery machinery, not merely install an error stub for the negative case.
+
+## Frame inspection through Oop methods
+
+The retained FrameView engine is now connected to `Machine currentFrameView` and
+the existing identity, program-counter, slot and slot-kind getters. Before this
+slice, those selectors were absent from the Oop facade. After it, an ordinary Id
+send enters an Execution Method, which validates the existing arena/frame handle
+and reads Execution-owned storage. Identity results use Word's existing constructor;
+positions and counts use Integer. No Id operation, payload interpretation, registry
+or application protocol was added. Execution reports the view's Machine reference
+through its existing GC owner and retains the prohibition on cloning views.
+
+The native regression fails against the preceding prefix and passes against an
+isolated prefix with the new Execution library. It checks live reads, getter
+replacement and captured getters, unrelated receivers, invalid slots, precise
+collection with only the view retained, and stale reads after completion and
+destruction. The complete Oop core gate also passes, including its negative
+direct-dispatch contract. This restores inspection needed by recovery; it does not
+implement pending-call recovery or complete cold-install qualification.
+[Receipt](../measurements/frame-view-oop-20261026.json).

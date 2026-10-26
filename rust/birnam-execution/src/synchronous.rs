@@ -721,6 +721,19 @@ const NAMES: &[&[u8]] = &[
     b"withNativeSignature:",
     b"parameterCountOf:",
     b"forDoesNotUnderstand",
+    b"currentFrameView",
+    b"implementationIdentity",
+    b"generationIdentity",
+    b"sourceMapIdentity",
+    b"programCounter",
+    b"slotCount",
+    b"frameViewOopAt:",
+    b"slotKindAt:",
+    b"frameViewClone",
+    b"methodIdentity",
+    b"sourceMapLocation",
+    b"fromUnsignedLow:high:",
+    b"FrameView",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -933,6 +946,19 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"withNativeSignature:"),
     Literal::new(b"parameterCountOf:"),
     Literal::new(b"forDoesNotUnderstand"),
+    Literal::new(b"currentFrameView"),
+    Literal::new(b"implementationIdentity"),
+    Literal::new(b"generationIdentity"),
+    Literal::new(b"sourceMapIdentity"),
+    Literal::new(b"programCounter"),
+    Literal::new(b"slotCount"),
+    Literal::new(b"frameViewOopAt:"),
+    Literal::new(b"slotKindAt:"),
+    Literal::new(b"frameViewClone"),
+    Literal::new(b"methodIdentity"),
+    Literal::new(b"sourceMapLocation"),
+    Literal::new(b"fromUnsignedLow:high:"),
+    Literal::new(b"FrameView"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1405,6 +1431,51 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(dnu_identity),
         convention: 0,
     },
+    MethodSpec {
+        name: 210,
+        entry: Some(resumable::frame_view::current),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 211,
+        entry: Some(resumable::frame_view::word::<0>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 212,
+        entry: Some(resumable::frame_view::word::<1>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 213,
+        entry: Some(resumable::frame_view::word::<2>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 214,
+        entry: Some(resumable::frame_view::word::<3>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 215,
+        entry: Some(resumable::frame_view::word::<4>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 216,
+        entry: Some(resumable::frame_view::read::<false>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 217,
+        entry: Some(resumable::frame_view::read::<true>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 218,
+        entry: Some(invalid_request),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1530,7 +1601,13 @@ unsafe extern "C" fn initialize(
                 | b"admitCodeObject:"
                 | b"bindingMatchesIn:as:" => send(id.root, b"methodBehavior", &[])?,
                 n if n.starts_with(b"value") => block_vt,
-                _ if resumable::METHOD_NAMES.contains(&name) => continue,
+                _ if resumable::METHOD_NAMES.contains(&name)
+                    || resumable::frame_view::METHODS
+                        .iter()
+                        .any(|&(_, declaration)| declaration == name) =>
+                {
+                    continue;
+                }
                 _ => behavior,
             };
             let method = send(image, b"methodAt:", &[names[name]])?;

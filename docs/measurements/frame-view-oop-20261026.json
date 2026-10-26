@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "scope": "Oop FrameView facade, live getter replacement, owner validation and lifetime; complete Oop core gate",
+  "base_revision": "6a2dd689f21e17d1709b503b21964e5bfa294667",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/frame-view-c23gy51s/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/frame_view.rs": "b567fdb30271206611a70ec0f6cc1892f0efe43a988cb446568d0aedc5ea78cd",
+    "rust/birnam-execution/src/resumable_runtime.rs": "4e133094872c92e2ede3e463f3db1e5426431198e5b03d5c406de603a0d076bc",
+    "rust/birnam-execution/src/synchronous.rs": "bf744a07daa1a64d25fe74c8981e2829a7b40d3425c3b46214fa98d427862441",
+    "rust/birnam-siphon/tests/frame_views.rs": "b5f4bfc4b52604983c29d7caf4e457d4759d4674d5f70b8d80b1facaf8b04ed1"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/frame-view-before.log",
+      "sha256": "3e00a23a78335b2353cb6edc19bb4fde6fcd4c7897934900e9bb6590a896244e",
+      "expected_exit": 101
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/frame-view-native.log",
+      "sha256": "d428a95a3f751a14e7adc247b4f2c2d6691a5dbf486d0c2fd71d32411c182933",
+      "expected_exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/frame-view-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "expected_exit": 0
+    }
+  ],
+  "id_changes": false,
+  "remaining": [
+    "Execution pending-call recovery facade",
+    "Full native harness migration and acceptance",
+    "Requalify the corrected runtime in a fresh cold installation"
+  ]
+}

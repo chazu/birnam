@@ -2,6 +2,8 @@
 use super::*;
 #[path = "control.rs"]
 pub(super) mod control;
+#[path = "frame_view.rs"]
+pub(super) mod frame_view;
 use crate::{entry::EntryKey, execution::*};
 use std::{
     collections::{HashMap, HashSet},
@@ -67,6 +69,7 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"exitBoundaryAt:",
     b"boundaryDeliveryPending",
     b"acknowledgeBoundaryDelivery",
+    b"currentFrameView",
 ];
 fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
@@ -1598,6 +1601,11 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
         }
     }
     if let Some(o) = objects {
+        if family == Some(o.frame_view_vtable) {
+            if let Some(word) = s.storage.borrow().read_payload_word(object, 0) {
+                values.push(ptr::with_exposed_provenance_mut(word));
+            }
+        }
         if family == Some(o.continuation_vtable) {
             s.engine
                 .borrow()
@@ -1785,9 +1793,11 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             };
         }
         control::install(s, image, machine_vtable)?;
+        frame_view::install(s, image, frame_view_vtable)?;
         for (name, value) in [
             (b"Machine".as_slice(), machine_prototype),
             (b"MachineVt", machine_vtable),
+            (b"FrameView", frame_view_prototype),
             (b"Continuation", continuation_prototype),
             (b"ContinuationVt", continuation_vtable),
         ] {
