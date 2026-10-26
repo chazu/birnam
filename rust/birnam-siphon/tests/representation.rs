@@ -1,53 +1,97 @@
-//! Id-owned atomic facts preserve changed-getter fallback and self admission.
-mod support;
-use birnam_abi::{Oop, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
-use std::{cell::Cell, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct Hook { original: NativeEntry, calls: Cell<usize> }
-unsafe extern "C" fn fail(c:*mut c_void,_:Oop,_:*const Operand,_:usize)->Outcome {
-    unsafe{&*c.cast::<Hook>()}.calls.set(1); Outcome::failed(812,19)
-}
-unsafe extern "C" fn forward(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
-    let h=unsafe{&*c.cast::<Hook>()};h.calls.set(h.calls.get()+1);
-    unsafe{(h.original.method.unwrap())(h.original.context,r,a,n)}
-}
-fn atomic_facts_match_heap_and_decline_changed_getters_queries_and_lookup() -> Protocol {
-    unsafe {
-        let id=id();let b=behavior(id);let other=behavior(id);let v=allocate(id,b,8);
-        let selector=id.intern_name(b"tryRepresentationIdentityOf:behavior:bytes:").unwrap();
-        let args=[Operand::object(v),Operand::object(b),Operand::word(8)];
-        let query=|args:&[Operand]| id.send(id.receiver,selector,args).unwrap();
-        let identity=send(id,id.receiver,b"identityOf:",&[Operand::object(v)]).as_word().unwrap();
-        assert_eq!(query(&args).as_word(),Some(identity));assert_ne!(identity,0);
-        for wrong in [[Operand::object(v),Operand::object(other),Operand::word(8)],
-            [Operand::object(v),Operand::object(b),Operand::word(7)],
-            [Operand::object(std::ptr::with_exposed_provenance_mut(7)),Operand::object(b),Operand::word(8)]] {
-            assert_eq!(query(&wrong).as_word(),Some(0));
-        }
-        assert!(id.send(id.receiver,selector,&args[..2]).is_err());
-        assert!(id.send(id.receiver,selector,&[args[0],args[1],Operand::object(v)]).is_err());
-        let bind=|name:&[u8]|send(id,id.receiver,b"bind:to:",&[Operand::object(id.intern_name(name).unwrap()),Operand::object(id.receiver)]).as_entry().unwrap();
-        for name in [b"behaviorOf:".as_slice(),b"allocationSizeOf:",b"identityOf:"] {
-            let entry=bind(name);let mut h=Hook{original:entry,calls:Cell::new(0)};
-            install(id,id.receiver,name,fail,(&raw mut h).cast());
-            assert_eq!(query(&args).kind(),0);assert_eq!(h.calls.get(),0,"atomic admission must not execute changed getters");
-            install(id,id.receiver,name,entry.method.unwrap(),entry.context);
-        }
-        let own=bind(b"tryRepresentationIdentityOf:behavior:bytes:");let mut h=Hook{original:own,calls:Cell::new(0)};
-        install(id,id.receiver,b"tryRepresentationIdentityOf:behavior:bytes:",forward,(&raw mut h).cast());
-        assert_eq!(query(&args).kind(),0,"a forwarding wrapper cannot claim the canonical answer");
-        install(id,id.receiver,b"tryRepresentationIdentityOf:behavior:bytes:",own.method.unwrap(),own.context);
-        let lookup=bind(b"lookup");h.original=lookup;
-        install(id,id.receiver,b"lookup",forward,(&raw mut h).cast());h.calls.set(0);
-        assert_eq!(query(&args).kind(),0);assert_eq!(h.calls.get(),1,"only the ordinary dispatch lookup occurs");
-        install(id,id.receiver,b"lookup",lookup.method.unwrap(),lookup.context);
-        send(id,id.receiver,b"reassociateBehaviorOf:with:",&[Operand::object(v),Operand::object(other)]);
-        assert_eq!(query(&args).as_word(),Some(0),"no shape grant persists across reassociation");
-        id
-    }
-}
+//! Allocation facts decline when their getters, query or lookup are replaced.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{as_size, size};
+
 #[test]
-#[ignore="current native Id required"]
+#[ignore = "current native Id required"]
 fn representation_facts_and_fallbacks() {
-    atomic_facts_match_heap_and_decline_changed_getters_queries_and_lookup();
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let base = h.named(b"ObjectVt").unwrap();
+    let behavior = q.call(base, b"delegated", &[]).unwrap();
+    let other = q.call(base, b"delegated", &[]).unwrap();
+    let value = q.call(behavior, b"allocate", &[size(8).unwrap()]).unwrap();
+    let root_behavior = q.call(h.id.root, b"behaviorOf:", &[h.id.root]).unwrap();
+    let selector = hooks.symbol(b"tryRepresentationIdentityOf:behavior:bytes:");
+    let add = hooks.symbol(b"addMethod");
+    let at = hooks.symbol(b"at:");
+    let put = hooks.symbol(b"at:put:");
+    let reassociate = hooks.symbol(b"reassociateBehaviorOf:with:");
+    let raw = |r, s, a: &[_]| unsafe { h.id.send(r, s, a) };
+    let query = |a: &[_]| raw(h.id.root, selector, a).unwrap();
+    let args = [value, behavior, size(8).unwrap()];
+    let identity = q.call(h.id.root, b"identityOf:", &[value]).unwrap();
+    assert_eq!(query(&args), identity);
+    assert_ne!(as_size(identity), Some(0));
+    for wrong in [
+        [value, other, size(8).unwrap()],
+        [value, behavior, size(7).unwrap()],
+        [size(3).unwrap(), behavior, size(8).unwrap()],
+    ] {
+        assert_eq!(as_size(query(&wrong)), Some(0));
+    }
+    assert!(raw(h.id.root, selector, &args[..2]).is_err());
+    assert!(raw(h.id.root, selector, &[value, behavior, value]).is_err());
+    for name in [
+        b"behaviorOf:".as_slice(),
+        b"allocationSizeOf:",
+        b"identityOf:",
+    ] {
+        let selected = hooks.symbol(name);
+        let original = q
+            .call(h.id.root, b"bind:to:", &[selected, h.id.root])
+            .unwrap();
+        let failure = hooks.fault(19);
+        let context = hooks.context(&[failure, size(0).unwrap()]);
+        let replacement = hooks.method(b"deny", context);
+        raw(root_behavior, add, &[selected, replacement]).unwrap();
+        assert_eq!(raw(h.id.root, selected, &[value]).unwrap_err(), failure);
+        raw(context, put, &[size(1).unwrap(), size(0).unwrap()]).unwrap();
+        assert!(query(&args).is_null());
+        assert_eq!(
+            as_size(raw(context, at, &[size(1).unwrap()]).unwrap()),
+            Some(0),
+            "allocation fact query must not execute a changed getter"
+        );
+        raw(root_behavior, add, &[selected, original]).unwrap();
+    }
+    let original = q
+        .call(h.id.root, b"bind:to:", &[selector, h.id.root])
+        .unwrap();
+    let context = hooks.context(&[original, size(0).unwrap()]);
+    let forwarding = hooks.method(b"counted", context);
+    raw(root_behavior, add, &[selector, forwarding]).unwrap();
+    assert!(
+        query(&args).is_null(),
+        "a forwarding wrapper cannot claim the canonical answer"
+    );
+    assert_eq!(hooks.count(context, 1), 1);
+    raw(root_behavior, add, &[selector, original]).unwrap();
+
+    let meta = q.call(h.id.root, b"behaviorOf:", &[root_behavior]).unwrap();
+    let lookup = hooks.symbol(b"lookup");
+    let original_lookup = q.call(meta, b"lookup", &[lookup]).unwrap();
+    let custom_meta = q.call(meta, b"delegated", &[]).unwrap();
+    let alias = hooks.symbol(b"originalAllocationLookup:");
+    raw(custom_meta, add, &[alias, original_lookup]).unwrap();
+    let context = hooks.context(&[alias, size(0).unwrap()]);
+    let forwarding = hooks.method(b"lookupForward", context);
+    raw(custom_meta, add, &[lookup, forwarding]).unwrap();
+    raw(h.id.root, reassociate, &[root_behavior, custom_meta]).unwrap();
+    assert!(query(&args).is_null());
+    assert_eq!(
+        as_size(raw(context, at, &[size(1).unwrap()]).unwrap()),
+        Some(1),
+        "only the ordinary method lookup occurs"
+    );
+    raw(h.id.root, reassociate, &[root_behavior, meta]).unwrap();
+    assert_eq!(query(&args), identity);
+    raw(h.id.root, reassociate, &[value, other]).unwrap();
+    assert_eq!(
+        as_size(query(&args)),
+        Some(0),
+        "no shape grant survives reassociation"
+    );
 }

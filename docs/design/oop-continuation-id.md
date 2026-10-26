@@ -955,3 +955,19 @@ choice is to retain the corrected Id contract and retire universal subscriptions
 (keeping explicit Store invalidation), or explicitly approve the opt-in core hook.
 No implementation or existing assertion has changed while that decision is pending.
 [Probe receipt](../measurements/method-observation-boundary-oop-20261026.json).
+
+## Allocation-fact acceptance through Oops
+
+The single-object and batch allocation-fact tests now use Oop arguments, scoped
+roots and declared callbacks. They retain the assertions for changed getters,
+replacement of the query itself, custom method lookup, mismatched size/vtable,
+reassociation and the two-to-32-object batch bound. Changed getters are not called
+when the shortcut declines. The custom lookup runs exactly once for the query.
+
+The batch test uses the existing `representationsMatch` message instead of the
+retired packed native-pointer byte buffer. Malformed Oop arguments remain rejected.
+A test-only lookup callback forwards the existing argument slice through an
+explicitly installed alias, avoiding an argument Sequence and recursive sends to
+the Id receiver. No production runtime code changed. Both migrated tests and four
+existing callback-fixture consumers pass; the C fixture also passes strict warnings.
+[Receipt](../measurements/allocation-facts-oop-20261026.json).

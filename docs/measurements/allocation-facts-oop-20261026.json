@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "scope": "Single and batched allocation facts plus shared native test callbacks",
+  "base_revision": "3da80c5f744fd30fdcbf34ed187ac098ab1ef6fc",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-admission-m228271n/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/representation.rs": "b4cc71091931f8692b34c15c9213c6f13d6fbbe7c7401341a27bde1206ea9674",
+    "rust/birnam-siphon/tests/representation_batch.rs": "d03dc64b2b8a013422b9d34a139c21504388faa72adf2de0056a83b82d0774d9",
+    "tests/fixtures/oop-host/host-hooks.c": "c2b2259686fdee1c9402e6d5f8501578767ae8dc54a96923457ff1280c588eb0"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-representation-facts.log",
+      "sha256": "084a6a1260abeded2bb7ffdc936009c3d636ed451af8242e8d3b7f182d648df5",
+      "tests_passed": 1
+    },
+    {
+      "log": ".cargo-target/oop-representation-batch.log",
+      "sha256": "16820a497932184cc2718c76dceae3108be2c6c9647a328a5c3fd602bbbded88",
+      "tests_passed": 1
+    },
+    {
+      "log": ".cargo-target/oop-allocation-facts-shared-hooks.log",
+      "sha256": "f25e6dfe7bbcc8b6ff1bc7549349bc2abff38ac3e9759ad7a9ac91fe85b8ee19",
+      "tests_passed": 4
+    }
+  ],
+  "shared_fixture_consumers": [
+    "block_arity",
+    "integer_operation_objects",
+    "representation_fallback",
+    "source_inspection"
+  ],
+  "c_fixture_validation": "clang -dynamiclib -O2 -Wall -Wextra -Werror tests/fixtures/oop-host/host-hooks.c -o .cargo-target/oop-host-hooks-check.dylib",
+  "runtime_changes": false,
+  "remaining": "Method observation contract decision remains pending; the old universal subscription and its failing assertion are unchanged."
+}

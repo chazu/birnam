@@ -1,40 +1,71 @@
-//! Id batches its own metadata, never the Word owner's payload.
-mod support;
-use birnam_abi::{Oop,id_protocol::{NativeEntry,Operand,Outcome}};
-use std::{cell::Cell,ffi::c_void};
-use support::*;
-struct Hook { original:NativeEntry,calls:Cell<usize> }
-unsafe extern "C" fn forward(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
- let h=unsafe{&*c.cast::<Hook>()};h.calls.set(h.calls.get()+1);
- unsafe{(h.original.method.unwrap())(h.original.context,r,a,n)}
-}
+//! Id batches allocation facts without reading the value owner's payload.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+
 #[test]
-#[ignore="requires current native Id"]
-fn batch_facts_are_current_bounded_and_decline_replaced_dependencies(){unsafe{
- let id=id();let b=behavior(id);let a=allocate(id,b,8);let z=allocate(id,b,8);
- let batch=id.intern_name(b"tryRepresentationsOf:behavior:bytes:").unwrap();
- let values=[a.addr(),z.addr()];
- let query=|values:&[usize],behavior,size|{
-  let bytes=core::slice::from_raw_parts(values.as_ptr().cast::<u8>(),size_of_val(values));
-  id.send(id.receiver,batch,&[Operand::bytes(bytes),Operand::object(behavior),Operand::word(size)])
- };
- assert_eq!(query(&values,b,8).unwrap().as_word(),Some(1));
- assert_eq!(query(&values,b,9).unwrap().as_word(),Some(0));
- let aliases=[a.addr(),a.addr()];assert_eq!(query(&aliases,b,8).unwrap().as_word(),Some(1));
- let other=behavior(id);assert_eq!(query(&values,other,8).unwrap().as_word(),Some(0));
- let invalid=[a.addr(),7];assert_eq!(query(&invalid,b,8).unwrap().as_word(),Some(0));
- for count in [0,1,33]{assert_eq!(query(&vec![a.addr();count],b,8).unwrap_err().status,1);}
- assert_eq!(id.send(id.receiver,batch,&[Operand::bytes(&[0]),Operand::object(b),Operand::word(8)]).unwrap_err().status,1);
- let maximum=vec![a.addr();32];assert_eq!(query(&maximum,b,8).unwrap().as_word(),Some(1));
- let bind=|name:&[u8]|send(id,id.receiver,b"bind:to:",&[Operand::object(id.intern_name(name).unwrap()),Operand::object(id.receiver)]).as_entry().unwrap();
- for name in [b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(),b"behaviorOf:",b"allocationSizeOf:",b"identityOf:",b"tryRepresentationsOf:behavior:bytes:"]{
-  let old=bind(name);let mut h=Hook{original:old,calls:Cell::new(0)};
-  install(id,id.receiver,name,forward,(&raw mut h).cast());
-  assert_eq!(query(&values,b,8).unwrap().kind(),birnam_abi::id_protocol::UNIT);
-  assert_eq!(h.calls.get(),usize::from(name==b"tryRepresentationsOf:behavior:bytes:"),"owner declines omitted getters without invoking them");
-  install(id,id.receiver,name,old.method.unwrap(),old.context);
- }
- assert_eq!(query(&values,b,8).unwrap().as_word(),Some(1));
- send(id,id.receiver,b"reassociateBehaviorOf:with:",&[Operand::object(z),Operand::object(other)]);
- assert_eq!(query(&values,b,8).unwrap().as_word(),Some(0),"no shape verdict survives reassociation");
-}}
+#[ignore = "requires current native Id"]
+fn batch_facts_are_current_bounded_and_decline_replaced_dependencies() {
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let base = h.named(b"ObjectVt").unwrap();
+    let behavior = q.call(base, b"delegated", &[]).unwrap();
+    let other = q.call(base, b"delegated", &[]).unwrap();
+    let a = q.call(behavior, b"allocate", &[size(8).unwrap()]).unwrap();
+    let z = q.call(behavior, b"allocate", &[size(8).unwrap()]).unwrap();
+    let root_behavior = q.call(h.id.root, b"behaviorOf:", &[h.id.root]).unwrap();
+    let batch = hooks.symbol(b"representationsMatch");
+    let add = hooks.symbol(b"addMethod");
+    let at = hooks.symbol(b"at:");
+    let query = |values: &[Oop], behavior, bytes| {
+        let mut args = vec![behavior, size(bytes).unwrap()];
+        args.extend_from_slice(values);
+        unsafe { h.id.send(h.id.root, batch, &args) }
+    };
+    let values = [a, z];
+    assert_eq!(as_size(query(&values, behavior, 8).unwrap()), Some(1));
+    assert_eq!(as_size(query(&values, behavior, 9).unwrap()), Some(0));
+    assert_eq!(as_size(query(&[a, a], behavior, 8).unwrap()), Some(1));
+    assert_eq!(as_size(query(&values, other, 8).unwrap()), Some(0));
+    assert_eq!(
+        as_size(query(&[a, size(3).unwrap()], behavior, 8).unwrap()),
+        Some(0)
+    );
+    for count in [0, 1, 33] {
+        assert!(query(&vec![a; count], behavior, 8).is_err());
+    }
+    assert!(unsafe { h.id.send(h.id.root, batch, &[behavior, a, a, z]) }.is_err());
+    assert_eq!(as_size(query(&[a; 32], behavior, 8).unwrap()), Some(1));
+    for name in [
+        b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(),
+        b"behaviorOf:",
+        b"allocationSizeOf:",
+        b"identityOf:",
+        b"representationsMatch",
+    ] {
+        let selector = hooks.symbol(name);
+        let original = q
+            .call(h.id.root, b"bind:to:", &[selector, h.id.root])
+            .unwrap();
+        let context = hooks.context(&[original, size(0).unwrap()]);
+        let forwarding = hooks.method(b"counted", context);
+        unsafe { h.id.send(root_behavior, add, &[selector, forwarding]) }.unwrap();
+        assert!(query(&values, behavior, 8).unwrap().is_null());
+        let calls = unsafe { h.id.send(context, at, &[size(1).unwrap()]) }.unwrap();
+        assert_eq!(
+            as_size(calls),
+            Some(usize::from(name == b"representationsMatch")),
+            "a declined batch does not call omitted getters"
+        );
+        unsafe { h.id.send(root_behavior, add, &[selector, original]) }.unwrap();
+    }
+    assert_eq!(as_size(query(&values, behavior, 8).unwrap()), Some(1));
+    q.call(h.id.root, b"reassociateBehaviorOf:with:", &[z, other])
+        .unwrap();
+    assert_eq!(
+        as_size(query(&values, behavior, 8).unwrap()),
+        Some(0),
+        "no shape verdict survives reassociation"
+    );
+}
