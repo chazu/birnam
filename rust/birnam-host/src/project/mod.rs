@@ -1,7 +1,7 @@
 //! Rust command adapter to the native HostProject owner. Implementations live
 //! in libbirnam_host_project; only owned result values cross this boundary.
 use crate::{HostError, HostRuntime};
-use birnam_abi::id_protocol::Operand;
+use birnam_abi::Oop;
 pub use birnam_host_support::project::*;
 use birnam_host_support::{Scope, native};
 use std::{
@@ -22,7 +22,7 @@ impl Project<'_> {
         &self,
         q: &Scope<'_>,
         name: &[u8],
-        args: &[Operand],
+        args: &[Oop],
     ) -> Result<birnam_abi::Oop, HostError> {
         let owner = match name {
             b"testSources:" | b"index:" | b"observe:root:composition:" | b"embeddedFiles:" => {
@@ -36,7 +36,7 @@ impl Project<'_> {
         &self,
         q: &Scope<'_>,
         name: &[u8],
-        args: &[Operand],
+        args: &[Oop],
     ) -> Result<T, HostError> {
         let value = self.call(q, name, args)?;
         serde_json::from_slice(&q.string_bytes(value)?).map_err(|e| HostError(e.to_string()))
@@ -44,12 +44,12 @@ impl Project<'_> {
     pub fn check_project(&self, path: &Path) -> Result<ProjectCheckResult, HostError> {
         let q = self.host.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
-        self.decode(&q, b"check:", &[Operand::object(path)])
+        self.decode(&q, b"check:", &[path])
     }
     pub fn fetch_project_dependencies(&self, path: &Path) -> Result<ProjectFetchResult, HostError> {
         let q = self.host.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
-        self.decode(&q, b"fetch:", &[Operand::object(path)])
+        self.decode(&q, b"fetch:", &[path])
     }
     pub fn build_project(
         &self,
@@ -64,10 +64,10 @@ impl Project<'_> {
             &q,
             b"build:target:profile:version:",
             &[
-                Operand::object(start),
-                Operand::object(target),
-                Operand::object(profile),
-                Operand::object(version),
+                start,
+                target,
+                profile,
+                version,
             ],
         )
     }
@@ -82,7 +82,7 @@ impl Project<'_> {
         self.decode(
             &q,
             b"locate:profile:",
-            &[Operand::object(path), Operand::object(profile)],
+            &[path, profile],
         )
     }
     pub fn install_project_build(
@@ -93,22 +93,14 @@ impl Project<'_> {
         let q = self.host.scope();
         let build = native::encode(&q, build)?;
         let dir = q.string(dir.as_os_str().as_bytes())?;
-        let result = self.call(&q, b"install:directory:", &[build, Operand::object(dir)])?;
-        self.host
-            .context
-            .send(
-                self.host.named(b"Integer")?,
-                b"wordOf:",
-                &[Operand::object(result)],
-            )?
-            .as_word()
-            .ok_or_else(|| HostError("invalid install count".into()))
+        let result = self.call(&q, b"install:directory:", &[build, dir])?;
+        q.word_bits(q.call(self.host.named(b"Integer")?,b"wordOf:",&[result])?)
     }
     pub fn project_test_sources(&self, path: &Path) -> Result<(PathBuf, Vec<PathBuf>), HostError> {
         let q = self.host.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
         let (root, files): (Vec<u8>, Vec<Vec<u8>>) =
-            self.decode(&q, b"testSources:", &[Operand::object(path)])?;
+            self.decode(&q, b"testSources:", &[path])?;
         Ok((
             PathBuf::from(OsString::from_vec(root)),
             files
@@ -131,9 +123,9 @@ impl Project<'_> {
             &q,
             b"test:source:profile:",
             &[
-                Operand::object(root),
-                Operand::object(path),
-                Operand::object(profile),
+                root,
+                path,
+                profile,
             ],
         )
         .map(|_| ())
@@ -142,7 +134,7 @@ impl Project<'_> {
         let q = self.host.scope();
         let options = native::encode(&q, options)?;
         let version = q.string(version.as_bytes())?;
-        self.call(&q, b"run:version:", &[options, Operand::object(version)])
+        self.call(&q, b"run:version:", &[options, version])
             .map(|_| ())
     }
     pub fn index_project_source(
@@ -151,7 +143,7 @@ impl Project<'_> {
     ) -> Result<Option<ProjectSourceMetadata>, HostError> {
         let q = self.host.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
-        self.decode(&q, b"index:", &[Operand::object(path)])
+        self.decode(&q, b"index:", &[path])
     }
     pub fn observe_project_source(
         &self,
@@ -166,12 +158,12 @@ impl Project<'_> {
         self.decode(
             &q,
             b"observe:root:composition:",
-            &[Operand::object(path), Operand::object(root), composition],
+            &[path, root, composition],
         )
     }
     pub fn project_embedded_files(&self, path: &Path) -> Result<Vec<Vec<u8>>, HostError> {
         let q = self.host.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
-        self.decode(&q, b"embeddedFiles:", &[Operand::object(path)])
+        self.decode(&q, b"embeddedFiles:", &[path])
     }
 }

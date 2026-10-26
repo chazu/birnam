@@ -403,3 +403,19 @@ the existing continuation primitive. Ordinary dispatch does not use those messag
 The bootstrap gate covers 19 construction/replacement/GC/suspension checks, arities
 0–16, and the 177 task-control checks after installing the authored policy. Native
 Host migration and installed CLI acceptance remain separate work.
+
+HostEntry, HostInteraction, HostProject, ProjectBuild and the executable facade now
+use declared Oop Methods. Host keeps paths and copied projections; it does not read
+foreign payloads or pass function pointers through Id. Its send helper protects
+receiver/arguments in an existing Sequence while constructing a selector, and
+protects the result through Roots cleanup. Returning scopes transfer their result
+with `releaseTokensProtecting`; REPL/client scopes still release independently.
+
+`scripts/oop-host-test.sh` qualifies a relocated CLI with explicit source startup,
+minimal startup, diagnostics, module compilation without execution, source-free
+artifact activation, and a project-query result surviving collecting cleanup.
+It also runs the published Bootstrap/task-control gate and 23 CLI/support unit
+tests. Default startup still requires its compiled bootstrap image; it does not
+silently use source. Image/worker acceptance and the old native integration test
+fixtures remain pending. The workspace build now stops in Generation, Store and
+Relational, rather than Host support. [Receipt](../measurements/host-oop-20261025.json).

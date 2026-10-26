@@ -1,5 +1,4 @@
 use crate::{HostError, HostRuntime, Resources, StartupPolicy};
-use birnam_abi::id_protocol::Operand;
 use std::{os::unix::ffi::OsStrExt, path::Path};
 impl HostRuntime {
     pub fn run_worker(
@@ -21,16 +20,16 @@ impl HostRuntime {
         let fd = q.call(
             h.named(b"Integer")?,
             b"fromWord:",
-            &[Operand::word(fd as usize)],
+            &[birnam_host_support::size(fd as usize)?],
         )?;
         h.call(
             b"HostEntry",
             b"worker:receiver:selector:fd:",
             &[
-                Operand::object(path),
-                Operand::object(receiver),
-                Operand::object(selector),
-                Operand::object(fd),
+                path,
+                receiver,
+                selector,
+                fd,
             ],
         )
     }

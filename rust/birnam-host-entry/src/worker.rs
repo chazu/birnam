@@ -1,5 +1,4 @@
 use crate::HostRuntime;
-use birnam_abi::id_protocol::Operand;
 use birnam_host_support::{HostError, native_error};
 use std::path::Path;
 impl HostRuntime<'_> {
@@ -24,16 +23,15 @@ impl HostRuntime<'_> {
             if target == host.named(b"nil")? {
                 target = host.named(receiver.as_bytes())?;
             }
-            scope.keep(Operand::object(target))?;
-            let selector = unsafe { host.id.intern_name(selector.as_bytes()) }
+            scope.keep(target)?;
+            let selector = host.intern(selector.as_bytes())
                 .map_err(|e| native_error("intern worker selector", e))?;
-            scope.keep(Operand::object(selector))?;
+            scope.keep(selector)?;
             let behavior =
-                scope.call(host.id.receiver, b"behaviorOf:", &[Operand::object(target)])?;
+                scope.call(host.id.root, b"behaviorOf:", &[target])?;
             if host
-                .send(behavior, b"lookup", &[Operand::object(selector)])?
-                .as_entry()
-                .is_none()
+                .send(behavior, b"lookup", &[selector])?
+                .is_null()
             {
                 return Err(HostError("worker selector is not callable".into()));
             }
@@ -53,9 +51,9 @@ impl HostRuntime<'_> {
                     isolate,
                     b"workerBootError:kind:message:",
                     &[
-                        Operand::word(fd as usize),
-                        Operand::object(kind),
-                        Operand::object(message),
+                        birnam_host_support::size(fd as usize)?,
+                        kind,
+                        message,
                     ],
                 );
                 return Err(e);
@@ -65,12 +63,12 @@ impl HostRuntime<'_> {
             isolate,
             b"runWorker:receiver:selector:",
             &[
-                Operand::word(fd as usize),
-                Operand::object(target),
-                Operand::object(selector),
+                birnam_host_support::size(fd as usize)?,
+                target,
+                selector,
             ],
         )?;
-        if result.as_word() == Some(0) {
+        if birnam_abi::as_size(result) == Some(0) {
             Ok(())
         } else {
             Err(HostError("worker channel failed".into()))

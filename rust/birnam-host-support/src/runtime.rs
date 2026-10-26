@@ -1,9 +1,6 @@
 //! Scoped Id messages and owned value projections on the creating thread.
 use crate::Resources;
-use birnam_abi::{
-    Oop, borrowed_bytes,
-    id_protocol::{Operand, Outcome, Protocol},
-};
+use birnam_abi::{self as abi, Oop, id_protocol::Protocol};
 use std::{cell::RefCell, fmt, marker::PhantomData, os::unix::ffi::OsStrExt, path::Path, rc::Rc};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostError(pub String);
@@ -13,60 +10,105 @@ impl fmt::Display for HostError {
     }
 }
 impl std::error::Error for HostError {}
-pub fn native_error(operation: &str, error: Outcome) -> HostError {
-    HostError(format!(
-        "{operation}: native status={} detail={}",
-        error.status, error.detail
-    ))
+pub fn native_error(operation: &str, error: Oop) -> HostError {
+    HostError(format!("{operation}: native failure ({error:p})"))
 }
-pub fn object(value: Operand) -> Result<Oop, HostError> {
-    value
-        .as_object()
-        .filter(|o| !o.is_null())
-        .ok_or_else(|| HostError("expected an object result".into()))
+pub fn size(value: usize) -> Result<Oop, HostError> {
+    abi::size(value).ok_or_else(|| HostError("value exceeds immediate size range".into()))
+}
+pub fn object(value: Oop) -> Result<Oop, HostError> {
+    if value.is_null() {
+        Err(HostError("expected an object result".into()))
+    } else {
+        Ok(value)
+    }
 }
 // Native owners and the executable facade retain intermediates before any
 // subsequent send, then releases them on success and on every error path.
 pub struct Scope<'a> {
     pub host: &'a Context,
-    tokens: RefCell<Vec<usize>>,
+    tokens: RefCell<Vec<Oop>>,
+    finished: bool,
 }
 impl Scope<'_> {
-    pub fn keep(&self, value: Operand) -> Result<Oop, HostError> {
-        let o = object(value)?;
-        let token = self
-            .host
-            .send(self.host.roots, b"retain:", &[Operand::object(o)])?
-            .as_word()
-            .ok_or_else(|| HostError("Roots retain: expected token".into()))?;
+    pub fn keep(&self, value: Oop) -> Result<Oop, HostError> {
+        let token = unsafe {
+            self.host
+                .id
+                .send(self.host.roots, self.host.retain, &[value])
+        }
+        .map_err(|e| native_error("retain Host value", e))?;
         self.tokens.borrow_mut().push(token);
-        Ok(o)
+        Ok(value)
     }
-    pub fn call(
-        &self,
-        receiver: Oop,
-        name: &[u8],
-        arguments: &[Operand],
-    ) -> Result<Oop, HostError> {
+    // Protect returned Oops while replaceable release: callbacks run.
+    pub fn finish(mut self, value: Oop) -> Result<Oop, HostError> {
+        self.finished = true;
+        self.release(value)?;
+        Ok(value)
+    }
+    fn release(&self, protected: Oop) -> Result<(), HostError> {
+        let mut values = vec![protected];
+        values.extend(self.tokens.take());
+        unsafe {
+            self.host
+                .id
+                .send(self.host.roots, self.host.release_many, &values)
+        }
+        .map_err(|e| native_error("release Host scope", e))?;
+        Ok(())
+    }
+    pub fn call(&self, receiver: Oop, name: &[u8], arguments: &[Oop]) -> Result<Oop, HostError> {
         self.keep(self.host.send(receiver, name, arguments)?)
+    }
+    pub fn byte_values(&self, bytes: &[u8]) -> Result<Oop, HostError> {
+        let values: Vec<_> = bytes
+            .iter()
+            .map(|b| abi::size(*b as usize).unwrap())
+            .collect();
+        self.call(self.host.id.root, b"sequence", &values)
     }
     pub fn string(&self, bytes: &[u8]) -> Result<Oop, HostError> {
         self.call(
             self.host.named(b"String")?,
             b"fromBytes:",
-            &[Operand::bytes(bytes)],
+            &[self.byte_values(bytes)?],
         )
     }
+    pub fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {
+        self.keep(value)?;
+        unsafe {
+            self.host
+                .id
+                .read_bytes(value, self.host.size_word, self.host.at_word)
+        }
+        .map_err(|e| native_error("read Host bytes", e))
+    }
     pub fn text(&self, o: Oop) -> Result<String, HostError> {
-        let b = self
-            .host
-            .send(o, b"bytes", &[])?
-            .as_bytes()
-            .ok_or_else(|| HostError("expected diagnostic bytes".into()))?;
-        // Copy the borrow before another message can collect its owner.
-        let bytes = unsafe { borrowed_bytes(b.pointer, b.length) }
-            .ok_or_else(|| HostError("invalid diagnostic bytes".into()))?;
-        Ok(String::from_utf8_lossy(bytes).into_owned())
+        Ok(String::from_utf8_lossy(&self.read_bytes(self.call(o, b"bytes", &[])?)?).into_owned())
+    }
+    pub fn word(&self, value: usize) -> Result<Oop, HostError> {
+        if let Some(value) = abi::size(value) {
+            return Ok(value);
+        }
+        self.call(
+            self.host.named(b"Word")?,
+            b"fromUnsignedLow:high:",
+            &[size(value & 0xffff_ffff)?, size(value >> 32)?],
+        )
+    }
+    pub fn word_bits(&self, value: Oop) -> Result<usize, HostError> {
+        if let Some(v) = abi::as_size(value) {
+            return Ok(v);
+        }
+        self.keep(value)?;
+        let lo = abi::as_size(self.host.send(value, b"low32", &[])?)
+            .filter(|v| *v <= u32::MAX as usize)
+            .ok_or_else(|| HostError("expected Word low bits".into()))?;
+        let hi = abi::as_size(self.host.send(value, b"high32", &[])?)
+            .filter(|v| *v <= u32::MAX as usize)
+            .ok_or_else(|| HostError("expected Word high bits".into()))?;
+        Ok(lo | (hi << 32))
     }
     pub fn evaluate(
         &self,
@@ -77,21 +119,15 @@ impl Scope<'_> {
         let cg = self.host.named(b"Codegen")?;
         let source = self.string(source)?;
         if let Some(name) = module {
-            let name = unsafe { self.host.id.intern_name(name) }
+            let name = self
+                .host
+                .intern(name)
                 .map_err(|e| native_error("intern module", e))?;
-            let recorded = self.call(
-                cg,
-                b"recordModuleSource:named:",
-                &[Operand::object(source), Operand::object(name)],
-            )?;
+            let recorded = self.call(cg, b"recordModuleSource:named:", &[source, name])?;
             self.check(cg, recorded)?;
         }
         let path = self.string(path.as_os_str().as_bytes())?;
-        let result = self.call(
-            cg,
-            b"evalPersisting:from:",
-            &[Operand::object(source), Operand::object(path)],
-        )?;
+        let result = self.call(cg, b"evalPersisting:from:", &[source, path])?;
         self.check(cg, result)?;
         Ok(())
     }
@@ -116,21 +152,15 @@ impl Scope<'_> {
 }
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        for token in self.tokens.get_mut().drain(..).rev() {
-            let _ = self
-                .host
-                .send(self.host.roots, b"release:", &[Operand::word(token)]);
+        if !self.finished {
+            let _ = self.release(std::ptr::null_mut());
         }
     }
 }
 
 impl Scope<'_> {
     pub fn exact(&self, value: Oop, family: &[u8]) -> Result<(), HostError> {
-        let behavior = self.call(
-            self.host.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(value)],
-        )?;
+        let behavior = self.call(self.host.id.root, b"behaviorOf:", &[value])?;
         if behavior != self.host.named(family)? {
             return Err(HostError(format!(
                 "project metadata expected {}",
@@ -142,55 +172,34 @@ impl Scope<'_> {
     pub fn vector_size(&self, value: Oop) -> Result<usize, HostError> {
         self.exact(value, b"VectorVt")?;
         let count = self.call(value, b"size", &[])?;
-        self.host
-            .send(
-                self.host.named(b"Integer")?,
-                b"wordOf:",
-                &[Operand::object(count)],
-            )?
-            .as_word()
-            .filter(|n| *n <= isize::MAX as usize)
-            .ok_or_else(|| HostError("project metadata has an invalid vector size".into()))
+        self.word_bits(self.call(self.host.named(b"Integer")?, b"wordOf:", &[count])?)
     }
     pub fn vector_at(&self, value: Oop, index: usize) -> Result<Oop, HostError> {
-        let index = self.call(
-            self.host.named(b"Integer")?,
-            b"fromWord:",
-            &[Operand::word(index)],
-        )?;
-        self.call(value, b"at:", &[Operand::object(index)])
+        let index = self.call(self.host.named(b"Integer")?, b"fromWord:", &[size(index)?])?;
+        self.call(value, b"at:", &[index])
     }
     pub fn symbol_text(&self, value: Oop) -> Result<String, HostError> {
-        let bytes = self
-            .host
-            .send(
-                self.host.id.receiver,
-                b"symbolBytesOf:",
-                &[Operand::object(value)],
-            )?
-            .as_bytes()
-            .ok_or_else(|| HostError("project metadata expected a Symbol".into()))?;
-        let bytes = unsafe { borrowed_bytes(bytes.pointer, bytes.length) }
-            .ok_or_else(|| HostError("invalid Symbol bytes".into()))?;
-        Ok(String::from_utf8_lossy(bytes).into_owned())
+        self.exact(value, b"SymbolVt")?;
+        Ok(String::from_utf8_lossy(&self.read_bytes(value)?).into_owned())
     }
     pub fn string_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {
         self.exact(value, b"StringVt")?;
-        let bytes = self
-            .host
-            .send(value, b"bytes", &[])?
-            .as_bytes()
-            .ok_or_else(|| HostError("project metadata expected String bytes".into()))?;
-        Ok(unsafe { borrowed_bytes(bytes.pointer, bytes.length) }
-            .ok_or_else(|| HostError("invalid String bytes".into()))?
-            .to_vec())
+        self.read_bytes(self.call(value, b"bytes", &[])?)
     }
 }
+
 pub struct Context {
     pub id: Protocol,
     pub namespace: Oop,
     pub roots: Oop,
-    namespace_token: usize,
+    constructor: Oop,
+    sequence: Oop,
+    size_word: Oop,
+    at_word: Oop,
+    retain: Oop,
+    release_many: Oop,
+    permanent: Vec<Oop>,
+
     pub thread: std::thread::ThreadId,
     pub resources: Resources,
     // Protocol owners and loaded native images live for the process. Host
@@ -198,78 +207,164 @@ pub struct Context {
     _owner_thread: PhantomData<Rc<()>>,
 }
 impl Context {
-    pub fn send(&self, receiver: Oop, name: &[u8], args: &[Operand]) -> Result<Operand, HostError> {
-        unsafe { self.id.send_named(receiver, name, args) }
-            .map_err(|e| native_error(&String::from_utf8_lossy(name), e))
+    pub fn intern(&self, name: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            let values: Vec<_> = name
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect();
+            let name = self.id.send(self.id.root, self.constructor, &values)?;
+            self.id.send(name, self.id.intern, &[])
+        }
+    }
+    pub fn send(&self, receiver: Oop, name: &[u8], args: &[Oop]) -> Result<Oop, HostError> {
+        unsafe {
+            if self.thread != std::thread::current().id() {
+                return Err(HostError("Host context used from another thread".into()));
+            }
+            let mut values = Vec::with_capacity(args.len() + 1);
+            values.push(receiver);
+            values.extend_from_slice(args);
+            let snapshot = self
+                .id
+                .send(self.id.root, self.sequence, &values)
+                .map_err(|e| native_error("snapshot Host arguments", e))?;
+            let token = self
+                .id
+                .send(self.roots, self.retain, &[snapshot])
+                .map_err(|e| native_error("retain Host arguments", e))?;
+            let result = self
+                .intern(name)
+                .and_then(|name| self.id.send(receiver, name, args));
+            let protected = match result {
+                Ok(v) | Err(v) => v,
+            };
+            let cleanup = self
+                .id
+                .send(self.roots, self.release_many, &[protected, token]);
+            result
+                .and_then(|v| cleanup.map(|_| v))
+                .map_err(|e| native_error(&String::from_utf8_lossy(name), e))
+        }
     }
     pub fn named(&self, name: &[u8]) -> Result<Oop, HostError> {
-        let symbol =
-            unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern name", e))?;
-        object(self.send(self.namespace, b"at:", &[Operand::object(symbol)])?)
+        let symbol = self
+            .intern(name)
+            .map_err(|e| native_error("intern name", e))?;
+        object(self.send(self.namespace, b"at:", &[symbol])?)
     }
     pub fn scope(&self) -> Scope<'_> {
         Scope {
             host: self,
             tokens: RefCell::new(Vec::new()),
+            finished: false,
         }
+    }
+    pub fn load_native(&self, q: &Scope<'_>, path: &Path, args: &[Oop]) -> Result<Oop, HostError> {
+        let values: Vec<_> = path
+            .as_os_str()
+            .as_bytes()
+            .iter()
+            .map(|b| abi::size(*b as usize).unwrap())
+            .collect();
+        let path = q.keep(self.send(self.id.root, b"nameWithBytes", &values)?)?;
+        let args = q.keep(self.send(self.id.root, b"sequence", args)?)?;
+        q.keep(
+            unsafe { self.id.send(path, self.id.load, &[args]) }
+                .map_err(|e| native_error("load native Host owner", e))?,
+        )
     }
 
     pub fn global(&self, scope: &Scope<'_>, name: &[u8]) -> Result<Oop, HostError> {
-        let symbol =
-            unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern global", e))?;
-        scope.call(self.named(b"Globals")?, b"at:", &[Operand::object(symbol)])
+        let symbol = self
+            .intern(name)
+            .map_err(|e| native_error("intern global", e))?;
+        scope.keep(symbol)?;
+        scope.call(self.named(b"Globals")?, b"at:", &[symbol])
     }
-
 }
 impl Drop for Context {
     fn drop(&mut self) {
-        let _ = self.send(
-            self.roots,
-            b"release:",
-            &[Operand::word(self.namespace_token)],
-        );
+        let mut args = vec![std::ptr::null_mut()];
+        args.append(&mut self.permanent);
+        let _ = unsafe { self.id.send(self.roots, self.release_many, &args) };
     }
 }
-
 impl Context {
     pub fn from_namespace(
         id: Protocol,
         namespace: Oop,
         resources: Resources,
+        constructor: Oop,
     ) -> Result<Self, HostError> {
-        let roots = object(
-            unsafe {
-                id.send_named(
+        unsafe {
+            let intern = |name: &[u8]| -> Result<Oop, Oop> {
+                let values: Vec<_> = name
+                    .iter()
+                    .map(|b| abi::size(*b as usize).unwrap())
+                    .collect();
+                let name = id.send(id.root, constructor, &values)?;
+                id.send(name, id.intern, &[])
+            };
+            let roots = id
+                .send(
                     namespace,
-                    b"at:",
-                    &[Operand::object(
-                        id.intern_name(b"Roots")
-                            .map_err(|e| native_error("Roots", e))?,
-                    )],
+                    id.at,
+                    &[intern(b"Roots").map_err(|e| native_error("Roots name", e))?],
                 )
+                .map_err(|e| native_error("Roots", e))?;
+            let retain = intern(b"retain:").map_err(|e| native_error("retain name", e))?;
+            let mut permanent = Vec::new();
+            for v in [namespace, roots, constructor, retain] {
+                permanent.push(
+                    id.send(roots, retain, &[v])
+                        .map_err(|e| native_error("retain Host context", e))?,
+                );
             }
-            .map_err(|e| native_error("Roots", e))?,
-        )?;
-        let token = unsafe { id.send_named(roots, b"retain:", &[Operand::object(namespace)]) }
-            .map_err(|e| native_error("retain namespace", e))?
-            .as_word()
-            .ok_or_else(|| HostError("invalid namespace token".into()))?;
-        Ok(Self {
-            id,
-            namespace,
-            roots,
-            namespace_token: token,
-            resources,
-            thread: std::thread::current().id(),
-            _owner_thread: PhantomData,
-        })
+            let release_many =
+                intern(b"releaseTokensProtecting").map_err(|e| native_error("release name", e))?;
+            permanent.push(
+                id.send(roots, retain, &[release_many])
+                    .map_err(|e| native_error("retain release selector", e))?,
+            );
+            let sequence = intern(b"sequence").map_err(|e| native_error("sequence name", e))?;
+            permanent.push(
+                id.send(roots, retain, &[sequence])
+                    .map_err(|e| native_error("retain sequence", e))?,
+            );
+            let size_word = intern(b"sizeWord").map_err(|e| native_error("size selector", e))?;
+            permanent.push(
+                id.send(roots, retain, &[size_word])
+                    .map_err(|e| native_error("retain size selector", e))?,
+            );
+            let at_word = intern(b"atWord:").map_err(|e| native_error("index selector", e))?;
+            permanent.push(
+                id.send(roots, retain, &[at_word])
+                    .map_err(|e| native_error("retain index selector", e))?,
+            );
+            Ok(Self {
+                id,
+                namespace,
+                roots,
+                constructor,
+                sequence,
+                size_word,
+                at_word,
+                retain,
+                release_many,
+                permanent,
+                resources,
+                thread: std::thread::current().id(),
+                _owner_thread: PhantomData,
+            })
+        }
     }
     pub fn owner_call(
         &self,
         q: &Scope<'_>,
         owner: &[u8],
         name: &[u8],
-        args: &[Operand],
+        args: &[Oop],
     ) -> Result<Oop, HostError> {
         let result = q.call(self.named(owner)?, name, args)?;
         q.check_result(result)?;
@@ -282,7 +377,7 @@ impl Context {
     pub fn load_artifact(&self, path: &Path) -> Result<(), HostError> {
         let q = self.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
-        self.owner_call(&q, b"HostEntry", b"loadArtifact:", &[Operand::object(path)])
+        self.owner_call(&q, b"HostEntry", b"loadArtifact:", &[path])
             .map(|_| ())
     }
     pub fn run_repl(&self, config: bool) -> Result<(), HostError> {
@@ -290,11 +385,7 @@ impl Context {
             &self.scope(),
             b"HostInteraction",
             b"repl:",
-            &[Operand::object(self.named(if config {
-                b"true"
-            } else {
-                b"false"
-            })?)],
+            &[self.named(if config { b"true" } else { b"false" })?],
         )
         .map(|_| ())
     }
@@ -303,16 +394,11 @@ impl Context {
         let port = q.call(
             self.named(b"Integer")?,
             b"fromWord:",
-            &[Operand::word(port as usize)],
+            &[size(port as usize)?],
         )?;
         let bind = q.string(bind.as_bytes())?;
-        self.owner_call(
-            &q,
-            b"HostInteraction",
-            b"socket:bind:",
-            &[Operand::object(port), Operand::object(bind)],
-        )
-        .map(|_| ())
+        self.owner_call(&q, b"HostInteraction", b"socket:bind:", &[port, bind])
+            .map(|_| ())
     }
 }
 
@@ -320,7 +406,7 @@ impl Context {
     pub fn eval_script(&self, path: &Path) -> Result<(), HostError> {
         let q = self.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
-        self.owner_call(&q, b"HostEntry", b"evalScript:", &[Operand::object(path)])
+        self.owner_call(&q, b"HostEntry", b"evalScript:", &[path])
             .map(|_| ())
     }
 }

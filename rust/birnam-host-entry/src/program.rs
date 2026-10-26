@@ -1,5 +1,4 @@
 use crate::HostRuntime;
-use birnam_abi::id_protocol::Operand;
 use birnam_host_support::{HostError, read_source_file};
 use std::{fs, os::unix::ffi::OsStrExt, path::Path};
 impl HostRuntime<'_> {
@@ -22,9 +21,9 @@ impl HostRuntime<'_> {
                 cg,
                 b"compile:output:from:",
                 &[
-                    Operand::object(source),
-                    Operand::object(output),
-                    Operand::object(filename),
+                    source,
+                    output,
+                    filename,
                 ],
             )?;
             scope.check(cg, result)?;
@@ -52,10 +51,10 @@ impl HostRuntime<'_> {
                     .as_os_str()
                     .as_bytes(),
             )?;
-            let configured = scope.call(manager, b"libDir:", &[Operand::object(directory)])?;
+            let configured = scope.call(manager, b"libDir:", &[directory])?;
             scope.check_result(configured)?;
             let path = scope.string(path.as_os_str().as_bytes())?;
-            let result = scope.call(manager, b"loadArtifact:", &[Operand::object(path)])?;
+            let result = scope.call(manager, b"loadArtifact:", &[path])?;
             scope.check(self.named(b"Codegen")?, result)?;
             if result == self.named(b"nil")? {
                 return Err(HostError("artifact activation failed".into()));

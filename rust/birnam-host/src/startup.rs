@@ -1,11 +1,10 @@
 use crate::{Resources,StartupPolicy,runtime::{HostError,HostRuntime}};
-use birnam_abi::id_protocol::Operand;
 #[cfg(test)]use crate::runtime::object;
 #[cfg(test)]use birnam_abi::{Oop,id_protocol::{Outcome,Protocol}};
 #[cfg(test)]use std::{env,path::Path,os::unix::ffi::OsStrExt};
 impl HostRuntime {
  pub fn start(resources:&Resources,policy:StartupPolicy)->Result<Self,HostError>{let host=Self::start_native(resources,policy.precise_gc)?;if !policy.skip_stdlib {host.bootstrap(policy.source_bootstrap,policy.tool_bootstrap)?;}Ok(host)}
- pub(crate) fn bootstrap(&self,source:bool,tools:bool)->Result<(),HostError>{self.call(b"HostEntry",b"bootstrap:tools:",&[Operand::object(self.named(if source{b"true"}else{b"false"})?),Operand::object(self.named(if tools{b"true"}else{b"false"})?)])}
+ pub(crate) fn bootstrap(&self,source:bool,tools:bool)->Result<(),HostError>{self.call(b"HostEntry",b"bootstrap:tools:",&[self.named(if source{b"true"}else{b"false"})?,self.named(if tools{b"true"}else{b"false"})?])}
 }
 #[cfg(test)]
 #[path = "lifecycle_test.rs"]

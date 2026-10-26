@@ -1,211 +1,202 @@
-//! Local constructor, binding and value-copy helpers. No language owner API is
-//! represented by a Rust pointer or dependency-specific service table.
+//! Host-local construction and value copies. All cross-owner traffic is Oops.
 use crate::{Context, HostError, Resources, Scope, native_error};
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{self as abi, NativeEntry, Operand, Outcome, Protocol},
-};
+use birnam_abi::{self as abi, Oop, borrowed_slice, id_protocol::Protocol};
 use std::{
-    ffi::{OsString, c_void},
+    cell::Cell,
+    ffi::OsString,
     os::unix::ffi::{OsStrExt, OsStringExt},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
-pub type Handler = fn(&Context, &str, &[Operand]) -> Result<Operand, HostError>;
+pub type Handler = fn(&Context, &str, &[Oop]) -> Result<Oop, HostError>;
 pub struct Owner {
     context: Context,
     receiver: Oop,
+    ready: Cell<bool>,
 }
-struct Binding {
-    owner: *const Owner,
-    operation: &'static str,
-    handler: Handler,
-}
-fn invalid() -> Outcome {
-    Outcome::failed(abi::INVALID_REQUEST, 0)
-}
-unsafe extern "C" fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let result = (|| -> Result<Operand, HostError> {
-        let binding = unsafe { &*c.cast::<Binding>() };
-        let owner = unsafe { &*binding.owner };
-        let h = &owner.context;
-        if h.thread != std::thread::current().id() {
-            return Err(HostError(
-                "native Host owner called from another thread".into(),
-            ));
-        }
-        let args = unsafe { borrowed_slice(a, n) }
-            .ok_or_else(|| HostError("invalid Host arguments".into()))?;
-        let q = h.scope();
-        q.keep(Operand::object(r))?;
-        for arg in args {
-            if arg.kind() == abi::OBJECT {
-                q.keep(*arg)?;
-            }
-        }
-        match (binding.handler)(h, binding.operation, args) {
-            Ok(value) => Ok(value),
-            Err(error) => {
-                let kind = q.keep(Operand::object(
-                    unsafe { h.id.intern_name(b"hostError") }
-                        .map_err(|e| native_error("host error kind", e))?,
-                ))?;
-                let message = q.string(error.0.as_bytes())?;
-                Ok(Operand::object(q.call(
-                    h.named(b"Error")?,
-                    b"kind:message:",
-                    &[Operand::object(kind), Operand::object(message)],
-                )?))
-            }
-        }
-    })();
-    result.map_or_else(|_| invalid(), Outcome::loaded)
-}
-/// Each library supplies its own singleton, selectors and local handler.
-/// Constructor operands are Namespace, prefix, lib, workspace, guides, Id path.
-pub unsafe fn initialize(
-    id: *const Protocol,
-    a: *const Operand,
+pub unsafe fn invoke(
+    instance: &AtomicPtr<Owner>,
+    root: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
     n: usize,
+    operation: &str,
+    handler: Handler,
+) -> Oop {
+    unsafe {
+        let p = instance.load(Ordering::Acquire);
+        if p.is_null() {
+            return abi::fault_reference(root);
+        }
+        let owner = &*p;
+        let h = &owner.context;
+        if h.thread != std::thread::current().id() || owner.receiver != c {
+            return h.id.invalid;
+        }
+        let q = h.scope();
+        let result = (|| -> Result<Oop, HostError> {
+            let args =
+                borrowed_slice(a, n).ok_or_else(|| HostError("invalid Host arguments".into()))?;
+            q.keep(r)?;
+            for v in args {
+                q.keep(*v)?;
+            }
+            match handler(h, operation, args) {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    let kind = q.keep(
+                        h.intern(b"hostError")
+                            .map_err(|e| native_error("Host error kind", e))?,
+                    )?;
+                    let text = q.string(e.0.as_bytes())?;
+                    q.call(h.named(b"Error")?, b"kind:message:", &[kind, text])
+                }
+            }
+        })();
+        match result {
+            Ok(v) => q.finish(v).unwrap_or(h.id.invalid),
+            Err(_) => h.id.invalid,
+        }
+    }
+}
+/// The initializer receives Namespace, prefix, lib, workspace, guides and Id path.
+pub unsafe fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
     instance: &AtomicPtr<Owner>,
     busy: &AtomicBool,
-    name: &[u8],
-    methods: &[&'static str],
-    handler: Handler,
-) -> Outcome {
-    let result = (|| -> Result<Operand, Outcome> {
-        if !unsafe { abi::valid_protocol(id) } {
-            return Err(invalid());
-        }
-        let [ns, prefix, lib, workspace, guides, id_path] =
-            unsafe { borrowed_slice(a, n) }.ok_or_else(invalid)?
-        else {
-            return Err(invalid());
-        };
-        let ns = ns
-            .as_object()
-            .filter(|p| !p.is_null())
-            .ok_or_else(invalid)?;
-        let id = unsafe { *id };
-        let prior = instance.load(Ordering::Acquire);
-        if !prior.is_null() {
-            let s = unsafe { &*prior };
-            if s.context.id.receiver != id.receiver
-                || s.context.namespace != ns
-                || s.context.thread != std::thread::current().id()
+    methods: &[&str],
+) -> Oop {
+    unsafe {
+        let id = *p;
+        let invalid = id.invalid;
+        let result = (|| -> Result<Oop, HostError> {
+            let symbols = borrowed_slice(l, n)
+                .filter(|s| s.len() == methods.len() + 2)
+                .ok_or_else(|| HostError("invalid Host literals".into()))?;
+            let [ns, prefix, lib, workspace, guides, id_path] = borrowed_slice(a, count)
+                .ok_or_else(|| HostError("invalid Host initialization".into()))?
+            else {
+                return Err(HostError("Host resources missing".into()));
+            };
+            if busy.swap(true, Ordering::AcqRel) {
+                return Err(HostError("Host initialization reentered".into()));
+            }
+            struct Initializing<'a>(&'a AtomicBool);
+            impl Drop for Initializing<'_> {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::Release);
+                }
+            }
+            let _initializing = Initializing(busy);
+            let prior = instance.load(Ordering::Acquire);
+            if !prior.is_null()
+                && ((*prior).context.id.root != id.root
+                    || (*prior).context.thread != std::thread::current().id())
             {
-                return Err(invalid());
+                return Err(HostError("Host runtime mismatch".into()));
             }
-        }
-        if busy.swap(true, Ordering::AcqRel) {
-            return Err(invalid());
-        }
-        let initialized = (|| -> Result<Operand, Outcome> {
-            let mut h =
-                Context::from_namespace(id, ns, Resources::default()).map_err(|_| invalid())?;
+            let mut h = Context::from_namespace(id, *ns, Resources::default(), symbols[0])?;
             let q = h.scope();
-            // These are ordinary String Objects, usable from System's native
-            // loader as well as the executable. Retain every initializer input
-            // before any effectful value projection, and copy each byte borrow.
             for value in [prefix, lib, workspace, guides, id_path] {
-                q.keep(*value).map_err(|_| invalid())?;
+                q.keep(*value)?;
             }
-            let path = |arg: &Operand| -> Result<PathBuf, Outcome> {
-                Ok(PathBuf::from(OsString::from_vec(
-                    q.string_bytes(arg.as_object().ok_or_else(invalid)?)
-                        .map_err(|_| invalid())?,
-                )))
+            let path = |value: Oop| -> Result<PathBuf, HostError> {
+                Ok(PathBuf::from(OsString::from_vec(q.string_bytes(value)?)))
             };
             let resources = Resources {
-                prefix: path(prefix)?,
-                lib_dir: path(lib)?,
-                rust_workspace_dir: path(workspace)?,
-                guide_dir: path(guides)?,
-                id_dylib: path(id_path)?,
+                prefix: path(*prefix)?,
+                lib_dir: path(*lib)?,
+                rust_workspace_dir: path(*workspace)?,
+                guide_dir: path(*guides)?,
+                id_dylib: path(*id_path)?,
             };
             drop(q);
             h.resources = resources;
-            let prior = instance.load(Ordering::Acquire);
             if !prior.is_null() {
-                let s = unsafe { &*prior };
-                return if s.context.id.receiver == id.receiver
-                    && s.context.namespace == ns
-                    && s.context.resources == h.resources
-                    && s.context.thread == std::thread::current().id()
+                let o = &*prior;
+                return if o.ready.get()
+                    && o.context.namespace == *ns
+                    && o.context.resources == h.resources
                 {
-                    Ok(Operand::object(s.receiver))
+                    Ok(o.receiver)
                 } else {
-                    Err(invalid())
+                    Err(HostError("Host resources mismatch".into()))
                 };
             }
-            let built = (|| -> Result<Operand, HostError> {
-                let q = h.scope();
-                let receiver = q.call(h.named(b"Object")?, b"clone", &[])?;
-                let behavior = q.call(
-                    id.receiver,
-                    b"ensurePrivateVtableFor:",
-                    &[Operand::object(receiver)],
-                )?;
-                // Completed owner and its callback contexts have process lifetime.
-                h.send(h.roots, b"retain:", &[Operand::object(receiver)])?;
-                h.send(h.roots, b"retain:", &[Operand::object(behavior)])?;
-                drop(q);
-                let state = Box::into_raw(Box::new(Owner {
-                    context: h,
-                    receiver,
-                }));
-                let h = &unsafe { &*state }.context;
-                for operation in methods {
-                    let selector = unsafe { id.intern_name(operation.as_bytes()) }
-                        .map_err(|e| native_error("Host selector", e))?;
-                    let binding = Box::into_raw(Box::new(Binding {
-                        owner: state,
-                        operation,
-                        handler,
-                    }));
-                    h.send(
-                        behavior,
-                        b"addMethod",
-                        &[
-                            Operand::object(selector),
-                            Operand::entry(NativeEntry::new(invoke, binding.cast())),
-                        ],
-                    )?;
-                }
-                let symbol = unsafe { id.intern_name(name) }
-                    .map_err(|e| native_error("Host owner name", e))?;
-                h.send(
-                    ns,
-                    b"at:put:",
-                    &[Operand::object(symbol), Operand::object(receiver)],
-                )?;
-                instance.store(state, Ordering::Release);
-                Ok(Operand::object(receiver))
-            })();
-            built.map_err(|_| invalid())
+            let q = h.scope();
+            let receiver = q.call(h.named(b"Object")?, b"clone", &[])?;
+            let behavior = q.call(id.root, b"ensurePrivateVtableFor:", &[receiver])?;
+            h.send(h.roots, b"retain:", &[receiver])?;
+            h.send(h.roots, b"retain:", &[behavior])?;
+            drop(q);
+            let owner = Box::leak(Box::new(Owner {
+                context: h,
+                receiver,
+                ready: Cell::new(false),
+            }));
+            instance.store(owner, Ordering::Release);
+            let h = &owner.context;
+            let q = h.scope();
+            for i in 0..methods.len() {
+                let method = q.call(image, b"newMethodAt:", &[abi::size(i).unwrap()])?;
+                let method = q.call(method, b"withContext:", &[receiver])?;
+                h.send(behavior, b"addMethod", &[symbols[i + 2], method])?;
+            }
+            h.send(*ns, b"at:put:", &[symbols[1], receiver])?;
+            let receiver = q.finish(receiver)?;
+            owner.ready.set(true);
+            Ok(receiver)
         })();
-        busy.store(false, Ordering::Release);
-        initialized
-    })();
-    result.map_or_else(|e| e, Outcome::loaded)
+        result.unwrap_or(invalid)
+    }
 }
-pub fn argument(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<Oop, HostError> {
+// Native declarations are immutable loader metadata. The local Rust helper is
+// shared by Host owners; no native pointer is passed through an Id message.
+#[macro_export]
+macro_rules! host_owner {
+ ($name:literal,$dispatch:path,$(($entry:ident,$selector:literal)),+$(,)?)=>{
+  static INSTANCE:std::sync::atomic::AtomicPtr<$crate::native::Owner>=std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+  static BUSY:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
+  $(unsafe extern "C" fn $entry(root:birnam_abi::Oop,c:birnam_abi::Oop,r:birnam_abi::Oop,a:*const birnam_abi::Oop,n:usize)->birnam_abi::Oop{
+   unsafe{$crate::native::invoke(&INSTANCE,root,c,r,a,n,$selector,$dispatch)}
+  })+
+  static LITERALS:&[birnam_abi::id_protocol::Literal]=&[
+   birnam_abi::id_protocol::Literal::new(b"nameWithBytes"),birnam_abi::id_protocol::Literal::new($name),$(birnam_abi::id_protocol::Literal::new($selector.as_bytes())),+
+  ];
+  static METHODS:&[birnam_abi::id_protocol::MethodSpec]=&{
+   const ENTRIES:&[birnam_abi::id_protocol::Method]=&[$($entry as birnam_abi::id_protocol::Method),+];
+   let mut specs=[const {birnam_abi::id_protocol::MethodSpec{name:0,entry:None}};ENTRIES.len()];
+   let mut i=0;while i<ENTRIES.len(){specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(ENTRIES[i])};i+=1;}specs
+  };
+  unsafe extern "C" fn initialize(p:*const birnam_abi::id_protocol::Protocol,image:birnam_abi::Oop,l:*const birnam_abi::Oop,n:usize,a:*const birnam_abi::Oop,count:usize)->birnam_abi::Oop{
+   unsafe{$crate::native::initialize(p,image,l,n,a,count,&INSTANCE,&BUSY,&[$($selector),+])}
+  }
+  #[unsafe(no_mangle)]pub static birnam_native_module_v2:birnam_abi::id_protocol::Module=birnam_abi::id_protocol::Module{version:2,byte_size:size_of::<birnam_abi::id_protocol::Module>() as u32,literals:LITERALS.as_ptr(),literal_count:LITERALS.len(),methods:METHODS.as_ptr(),method_count:METHODS.len(),initialize:Some(initialize)};
+ };
+}
+pub fn argument(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<Oop, HostError> {
     q.keep(
         *args
             .get(i)
             .ok_or_else(|| HostError("missing Host argument".into()))?,
     )
 }
-pub fn bytes(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<Vec<u8>, HostError> {
+pub fn bytes(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<Vec<u8>, HostError> {
     q.string_bytes(argument(q, args, i)?)
 }
-pub fn path(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<PathBuf, HostError> {
+pub fn path(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<PathBuf, HostError> {
     Ok(PathBuf::from(OsString::from_vec(bytes(q, args, i)?)))
 }
-pub fn text(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<String, HostError> {
+pub fn text(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<String, HostError> {
     String::from_utf8(bytes(q, args, i)?).map_err(|e| HostError(e.to_string()))
 }
-pub fn boolean(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<bool, HostError> {
+pub fn boolean(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<bool, HostError> {
     let o = argument(q, args, i)?;
     if o == q.host.named(b"true")? {
         Ok(true)
@@ -215,27 +206,24 @@ pub fn boolean(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<bool, HostEr
         Err(HostError("expected Boolean".into()))
     }
 }
-pub fn word(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<usize, HostError> {
+pub fn word(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<usize, HostError> {
     let o = argument(q, args, i)?;
     q.exact(o, b"IntegerVt")?;
-    q.host
-        .send(q.host.named(b"Integer")?, b"wordOf:", &[Operand::object(o)])?
-        .as_word()
-        .ok_or_else(|| HostError("expected Integer word".into()))
+    q.word_bits(q.call(q.host.named(b"Integer")?, b"wordOf:", &[o])?)
 }
-pub fn argv(q: &Scope<'_>, args: &[Operand], i: usize) -> Result<Vec<OsString>, HostError> {
+pub fn argv(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<Vec<OsString>, HostError> {
     let a = argument(q, args, i)?;
     (0..q.vector_size(a)?)
         .map(|j| Ok(OsString::from_vec(q.string_bytes(q.vector_at(a, j)?)?)))
         .collect()
 }
-pub fn encode<T: serde::Serialize>(q: &Scope<'_>, value: &T) -> Result<Operand, HostError> {
+pub fn encode<T: serde::Serialize>(q: &Scope<'_>, value: &T) -> Result<Oop, HostError> {
     let bytes = serde_json::to_vec(value).map_err(|e| HostError(e.to_string()))?;
-    Ok(Operand::object(q.string(&bytes)?))
+    Ok(q.string(&bytes)?)
 }
 pub fn decode<T: serde::de::DeserializeOwned>(
     q: &Scope<'_>,
-    args: &[Operand],
+    args: &[Oop],
     i: usize,
 ) -> Result<T, HostError> {
     serde_json::from_slice(&bytes(q, args, i)?).map_err(|e| HostError(e.to_string()))

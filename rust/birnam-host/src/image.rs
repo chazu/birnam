@@ -1,5 +1,4 @@
 use crate::{HostError, HostRuntime, Resources, StartupPolicy};
-use birnam_abi::id_protocol::Operand;
 use std::{os::unix::ffi::OsStrExt, path::Path};
 impl HostRuntime {
     pub fn start_image(r: &Resources, p: StartupPolicy, path: &Path) -> Result<Self, HostError> {
@@ -24,7 +23,7 @@ impl HostRuntime {
         let h = Self::start_native(r, p.precise_gc)?;
         let q = h.scope();
         let bytes = q.string(bytes)?;
-        h.call(b"HostEntry", b"startImageBytes:", &[Operand::object(bytes)])?;
+        h.call(b"HostEntry", b"startImageBytes:", &[bytes])?;
         drop(q);
         Ok(h)
     }
@@ -44,9 +43,9 @@ impl HostRuntime {
             b"HostEntry",
             if startup { b"startImage:rebuild:compiled:" } else { b"loadImage:rebuild:compiled:" },
             &[
-                Operand::object(path),
-                Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),
-                Operand::object(self.named(if compiled { b"true" } else { b"false" })?),
+                path,
+                self.named(if rebuild { b"true" } else { b"false" })?,
+                self.named(if compiled { b"true" } else { b"false" })?,
             ],
         )
     }

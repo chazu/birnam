@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "220593cc",
+  "command": "bash scripts/oop-host-test.sh",
+  "exit_code": 0,
+  "scope": "Host source startup, CLI calls, artifact compilation/loading, relocation and scoped result lifetime; no installed release, image recovery or restored worker claim.",
+  "runs": [
+    {
+      "name": "source startup",
+      "exit_code": 0,
+      "stdout": "42\n",
+      "stderr": ""
+    },
+    {
+      "name": "explicit minimal startup",
+      "exit_code": 0,
+      "stdout": "42\n",
+      "stderr": ""
+    },
+    {
+      "name": "default requires image",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "birnam: /Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/host-jesp3c9j/relocated/lib/birnam-bootstrap.image: No such file or directory (os error 2); reinstall Birnam to prepare its bootstrap image (BIRNAM_FORCE_SOURCE=1 explicitly requests source bootstrap)\n"
+    },
+    {
+      "name": "missing source",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "birnam: /Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/host-jesp3c9j/absent.birnam: No such file or directory (os error 2)\n"
+    },
+    {
+      "name": "source diagnostic",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "birnam: /Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/host-jesp3c9j/syntax.birnam: 1:7: syntax error\n[[1 + ]\n      ^\n"
+    },
+    {
+      "name": "method construction through Host",
+      "exit_code": 0,
+      "stdout": "#[true true true true true true true true true true true true true true true true true true true]\n",
+      "stderr": ""
+    },
+    {
+      "name": "compile without executing",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "activate artifact without source",
+      "exit_code": 0,
+      "stdout": "73\n",
+      "stderr": ""
+    },
+    {
+      "name": "project result survives collecting cleanup",
+      "exit_code": 0,
+      "stdout": "true\nfalse\ntrue\n",
+      "stderr": ""
+    }
+  ],
+  "cli_unit_tests": 14,
+  "support_unit_tests": 9,
+  "bootstrap": "Fresh published closure, seed removed, 19 MethodInvocation checks, arities 0-16 and 177 task-control checks.",
+  "contract": "No Id changes. Host operations use declared Oop Methods and owner messages. Host value projections and OS paths remain Host-owned. Scope results survive current release callbacks without retaining an entire REPL session.",
+  "remaining": [
+    "Generation, Store and Relational ABI migration",
+    "Image recovery and default image-backed startup",
+    "Full project, REPL and restored worker qualification",
+    "Migration of retained native Host/image/generation integration fixtures"
+  ],
+  "logs": {
+    ".cargo-target/oop-slice/host-qualification/host-jesp3c9j/receipt.json": "85f0a44d914e8999b6d5cd360cdedecfb5727e0096db3f3257b6709f1269f4a2",
+    ".cargo-target/oop-host-complete.log": "89d6c58df7baa45dc698bdaa0b5326edfc586d8d2ea234d989a50c117ad5b301",
+    ".cargo-target/oop-slice/host-qualification/cli-tests.log": "1632a5786adad8d02917a15d386b243bbcdcfeba234e4e2cdbd016e5f3b87c8b",
+    ".cargo-target/oop-slice/host-qualification/support-tests.log": "65aaacec98d3a60532557e6eca286ab877c76ef6024176b867376470bf36cca9"
+  }
+}

@@ -1,7 +1,6 @@
 //! Current Id queries to the read-only project owner. Only owned bytes and value
 //! records cross; no observer state or scoped native callback is borrowed.
 use super::{Project, data::*};
-use birnam_abi::id_protocol::Operand;
 use birnam_host_support::{HostError, native};
 use std::{
     ffi::OsString,
@@ -23,7 +22,7 @@ impl Project<'_> {
         let path = q.string(path.as_os_str().as_bytes())?;
         let result = self
             .host
-            .owner_call(&q, b"HostProject", name, &[Operand::object(path)])?;
+            .owner_call(&q, b"HostProject", name, &[path])?;
         serde_json::from_slice(&q.string_bytes(result)?).map_err(|e| HostError(e.to_string()))
     }
     pub(super) fn observe_project_snapshot(
@@ -43,7 +42,7 @@ impl Project<'_> {
         let path = q.string(start.as_os_str().as_bytes())?;
         let result =
             self.host
-                .owner_call(&q, b"HostProject", b"root:", &[Operand::object(path)])?;
+                .owner_call(&q, b"HostProject", b"root:", &[path])?;
         Ok(PathBuf::from(OsString::from_vec(q.string_bytes(result)?)))
     }
     pub(super) fn project_resolution(
@@ -72,9 +71,9 @@ impl Project<'_> {
             b"HostProject",
             b"observeBytes:path:root:",
             &[
-                Operand::object(source),
-                Operand::object(path),
-                Operand::object(root),
+                source,
+                path,
+                root,
             ],
         )?;
         serde_json::from_slice(&q.string_bytes(result)?).map_err(|e| HostError(e.to_string()))
@@ -91,7 +90,7 @@ impl Project<'_> {
             &q,
             b"HostProject",
             b"dependencyPaths:dependencies:",
-            &[Operand::object(root), deps],
+            &[root, deps],
         )?;
         serde_json::from_slice(&q.string_bytes(result)?).map_err(|e| HostError(e.to_string()))
     }

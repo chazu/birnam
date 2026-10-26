@@ -9,7 +9,6 @@ use crate::{
     program::read_source_file,
     runtime::{HostError, Scope},
 };
-use birnam_abi::id_protocol::Operand;
 #[cfg(test)]
 use birnam_abi::{
     Oop,
@@ -28,7 +27,7 @@ impl SourceScope for Scope<'_> {
         let value = self.call(
             self.host.named(b"Codegen")?,
             b"moduleMetadataOf:",
-            &[Operand::object(source)],
+            &[source],
         )?;
         if value == self.host.named(b"nil")? {
             return Ok(None);
@@ -104,7 +103,7 @@ impl Project<'_> {
             let paths = scope.call(
                 self.host.named(b"Codegen")?,
                 b"embeddedFilesOf:",
-                &[Operand::object(source)],
+                &[source],
             )?;
             scope.check_result(paths)?;
             let mut result = Vec::new();

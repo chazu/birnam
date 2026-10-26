@@ -3,7 +3,7 @@ pub use resources::Resources;
 mod policy;
 pub use policy::StartupPolicy;
 mod runtime;
-pub use runtime::{Context, HostError, Scope, native_error, object};
+pub use runtime::{Context, HostError, Scope, native_error, object, size};
 pub mod native;
 pub mod project;
 mod source;

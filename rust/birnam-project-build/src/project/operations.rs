@@ -8,7 +8,7 @@ use crate::{
 };
 #[cfg(test)]
 use birnam_abi::id_protocol::{Outcome, Protocol};
-use birnam_abi::{Oop, id_protocol::Operand};
+use birnam_abi::{Oop};
 use birnam_artifact::digest::sha256_hex;
 #[cfg(test)]
 use std::env;
@@ -26,7 +26,7 @@ impl Project<'_> {
         let result = q.call(
             self.host.global(q, b"ProjectPolicy")?,
             name,
-            &[Operand::object(input)],
+            &[input],
         )?;
         q.check_result(result)?;
         if result == self.host.named(b"nil")? {
@@ -50,7 +50,7 @@ impl Project<'_> {
         let output_value = q.string(output.as_os_str().as_bytes())?;
         let root = q.string(module.project_root.as_bytes())?;
         let cg = self.host.named(b"Codegen")?;
-        let mut arguments = vec![Operand::object(source), Operand::object(output_value), Operand::object(root)];
+        let mut arguments = vec![source, output_value, root];
         let selector: &[u8] = if embedded.is_empty() {
             // Preserve the ordinary compiler protocol for check/adjacent builds.
             b"compile:output:root:"
@@ -60,12 +60,12 @@ impl Project<'_> {
             for (name, bytes) in embedded {
                 let mut row = q.call(vector, b"new", &[])?;
                 let name = q.string(name.as_bytes())?;
-                row = q.call(row, b"add:", &[Operand::object(name)])?;
+                row = q.call(row, b"add:", &[name])?;
                 let content = q.string(bytes)?;
-                row = q.call(row, b"add:", &[Operand::object(content)])?;
-                libraries = q.call(libraries, b"add:", &[Operand::object(row)])?;
+                row = q.call(row, b"add:", &[content])?;
+                libraries = q.call(libraries, b"add:", &[row])?;
             }
-            arguments.push(Operand::object(libraries));
+            arguments.push(libraries);
             b"compile:output:root:embeddedLibraries:"
         };
         let result = q.call(cg, selector, &arguments)?;
@@ -189,13 +189,13 @@ impl Project<'_> {
                 .as_os_str()
                 .as_bytes(),
         )?;
-        let set = q.call(manager, b"libDir:", &[Operand::object(directory)])?;
+        let set = q.call(manager, b"libDir:", &[directory])?;
         q.check_result(set)?;
         let path = q.string(path.as_os_str().as_bytes())?;
         let descriptor = q.call(
             self.host.named(b"Artifact")?,
             b"inspect:",
-            &[Operand::object(path)],
+            &[path],
         )?;
         if descriptor == self.host.named(b"nil")? {
             return Err(HostError(
@@ -207,7 +207,7 @@ impl Project<'_> {
         let plan = q.call(
             manager,
             b"planFor:path:",
-            &[Operand::object(name), Operand::object(path)],
+            &[name, path],
         )?;
         q.check_result(plan)?;
         let mut entries = Vec::new();
@@ -410,21 +410,21 @@ impl Project<'_> {
         let mut args = q.call(self.host.named(b"Vector")?, b"new", &[])?;
         for arg in &options.arguments {
             let value = q.string(arg.as_os_str().as_bytes())?;
-            args = q.call(args, b"add:", &[Operand::object(value)])?;
+            args = q.call(args, b"add:", &[value])?;
         }
-        let key = unsafe { self.host.id.intern_name(b"ProjectArgs") }
+        let key = self.host.intern(b"ProjectArgs")
             .map_err(|e| native_error("ProjectArgs", e))?;
         let result = q.call(
             self.host.named(b"Globals")?,
             b"at:put:",
-            &[Operand::object(key), Operand::object(args)],
+            &[key, args],
         )?;
         q.check_result(result)?;
         let directory = q.string(application.parent().unwrap().as_os_str().as_bytes())?;
         let configured = q.call(
             self.host.named(b"Alien")?,
             b"libraryDir:",
-            &[Operand::object(directory)],
+            &[directory],
         )?;
         q.check_result(configured)?;
         self.host.load_artifact(application)?;
@@ -446,15 +446,7 @@ impl Project<'_> {
                             .host
                             .global(&q, PROJECT_SOCKET_PORT_GLOBAL.as_bytes())?;
                         q.exact(value, b"IntegerVt")?;
-                        let port = self
-                            .host
-                            .send(
-                                self.host.named(b"Integer")?,
-                                b"wordOf:",
-                                &[Operand::object(value)],
-                            )?
-                            .as_word()
-                            .ok_or_else(|| HostError("invalid published socket port".into()))?;
+                        let port=q.word_bits(q.call(self.host.named(b"Integer")?,b"wordOf:",&[value])?)?;
                         u16::try_from(port)
                             .map_err(|_| HostError("invalid published socket port".into()))?
                     }
@@ -678,7 +670,7 @@ impl Project<'_> {
         let result = q.call(
             self.host.named(b"Alien")?,
             b"libraryDir:",
-            &[Operand::object(directory)],
+            &[directory],
         )?;
         q.check_result(result)?;
         self.host.load_artifact(&build.module_root)?;
@@ -694,7 +686,7 @@ impl Project<'_> {
         if q.vector_size(suites)? == 0 {
             return Err(HostError("test source registered no suites".into()));
         }
-        let result = q.call(test, b"runAllSuitesWithRunner:", &[Operand::object(runner)])?;
+        let result = q.call(test, b"runAllSuitesWithRunner:", &[runner])?;
         q.check_result(result)?;
         if q.call(result, b"allPassed", &[])? != self.host.named(b"true")? {
             return Err(HostError("project tests failed".into()));

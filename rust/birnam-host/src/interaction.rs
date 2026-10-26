@@ -1,5 +1,4 @@
 use crate::{HostError, HostRuntime};
-use birnam_abi::id_protocol::Operand;
 use std::{ffi::OsString, os::unix::ffi::OsStrExt};
 impl HostRuntime {
     pub fn run_repl(&self, apply_config: bool) -> Result<(), HostError> {
@@ -13,8 +12,8 @@ impl HostRuntime {
         let mut argv = q.call(self.named(b"Vector")?, b"new", &[])?;
         for arg in args {
             let s = q.string(arg.as_bytes())?;
-            argv = q.call(argv, b"add:", &[Operand::object(s)])?;
+            argv = q.call(argv, b"add:", &[s])?;
         }
-        self.call(b"HostInteraction", b"cli:", &[Operand::object(argv)])
+        self.call(b"HostInteraction", b"cli:", &[argv])
     }
 }

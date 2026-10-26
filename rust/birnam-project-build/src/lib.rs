@@ -1,12 +1,6 @@
-use birnam_abi::id_protocol::{self as abi, Operand, Outcome, Protocol};
-use birnam_host_support::{
-    Context, HostError,
-    native::{self, Owner},
-};
-use std::{
-    ops::Deref,
-    sync::atomic::{AtomicBool, AtomicPtr},
-};
+use birnam_abi::Oop;
+use birnam_host_support::{Context, HostError, native};
+use std::ops::Deref;
 struct HostRuntime<'a> {
     context: &'a Context,
 }
@@ -36,7 +30,7 @@ mod test_resources;
 mod test_support;
 #[cfg(test)]
 pub use test_resources::{Overrides, resolve_from_exe_dir};
-fn dispatch(context: &Context, operation: &str, args: &[Operand]) -> Result<Operand, HostError> {
+fn dispatch(context: &Context, operation: &str, args: &[Oop]) -> Result<Oop, HostError> {
     if args.len() != operation.bytes().filter(|b| *b == b':').count() {
         return Err(HostError(format!("{operation}: wrong arity")));
     }
@@ -45,90 +39,74 @@ fn dispatch(context: &Context, operation: &str, args: &[Operand]) -> Result<Oper
 
     let project = project::Project { host: context };
     use birnam_host_support::project::*;
-    match operation {
-        "check:" => {
-            return native::encode(&q, &project.check_project(&native::path(&q, args, 0)?)?);
-        }
-        "fetch:" => {
-            return native::encode(
-                &q,
-                &project.fetch_project_dependencies(&native::path(&q, args, 0)?)?,
-            );
-        }
-        "build:target:profile:version:" => {
-            return native::encode(
-                &q,
-                &project.build_project(&ProjectBuildRequest {
-                    start: &native::path(&q, args, 0)?,
-                    target: &native::text(&q, args, 1)?,
-                    profile: &native::text(&q, args, 2)?,
-                    tool_version: &native::text(&q, args, 3)?,
-                })?,
-            );
-        }
-        "locate:profile:" => {
-            return native::encode(
-                &q,
-                &project.locate_project_build(
-                    &native::path(&q, args, 0)?,
-                    &native::text(&q, args, 1)?,
-                )?,
-            );
-        }
-        "install:directory:" => {
-            let count = project.install_project_build(
-                &native::decode(&q, args, 0)?,
+    let result = (|| {
+        match operation {
+            "check:" => {
+                return native::encode(&q, &project.check_project(&native::path(&q, args, 0)?)?);
+            }
+            "fetch:" => {
+                return native::encode(
+                    &q,
+                    &project.fetch_project_dependencies(&native::path(&q, args, 0)?)?,
+                );
+            }
+            "build:target:profile:version:" => {
+                return native::encode(
+                    &q,
+                    &project.build_project(&ProjectBuildRequest {
+                        start: &native::path(&q, args, 0)?,
+                        target: &native::text(&q, args, 1)?,
+                        profile: &native::text(&q, args, 2)?,
+                        tool_version: &native::text(&q, args, 3)?,
+                    })?,
+                );
+            }
+            "locate:profile:" => {
+                return native::encode(
+                    &q,
+                    &project.locate_project_build(
+                        &native::path(&q, args, 0)?,
+                        &native::text(&q, args, 1)?,
+                    )?,
+                );
+            }
+            "install:directory:" => {
+                let count = project.install_project_build(
+                    &native::decode(&q, args, 0)?,
+                    &native::path(&q, args, 1)?,
+                )?;
+                return Ok(q.call(
+                    host.named(b"Integer")?,
+                    b"fromWord:",
+                    &[birnam_host_support::size(count)?],
+                )?);
+            }
+            "test:source:profile:" => project.run_project_test_source(
+                &native::path(&q, args, 0)?,
                 &native::path(&q, args, 1)?,
-            )?;
-            return Ok(Operand::object(q.call(
-                host.named(b"Integer")?,
-                b"fromWord:",
-                &[Operand::word(count)],
-            )?));
+                &native::text(&q, args, 2)?,
+            )?,
+            "run:version:" => project.run_project(
+                &native::decode::<RunOptions>(&q, args, 0)?,
+                &native::text(&q, args, 1)?,
+            )?,
+            _ => return Err(HostError("unknown ProjectBuild operation".into())),
         }
-        "test:source:profile:" => project.run_project_test_source(
-            &native::path(&q, args, 0)?,
-            &native::path(&q, args, 1)?,
-            &native::text(&q, args, 2)?,
-        )?,
-        "run:version:" => project.run_project(
-            &native::decode::<RunOptions>(&q, args, 0)?,
-            &native::text(&q, args, 1)?,
-        )?,
-        _ => return Err(HostError("unknown ProjectBuild operation".into())),
-    }
-    Ok(Operand::object(host.named(b"nil")?))
+        Ok(host.named(b"nil")?)
+    })();
+    result.and_then(|value| q.finish(value))
 }
-static INSTANCE: AtomicPtr<Owner> = AtomicPtr::new(std::ptr::null_mut());
-static BUSY: AtomicBool = AtomicBool::new(false);
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        native::initialize(
-            id,
-            a,
-            n,
-            &INSTANCE,
-            &BUSY,
-            b"ProjectBuild",
-            &[
-                "check:",
-                "fetch:",
-                "build:target:profile:version:",
-                "locate:profile:",
-                "install:directory:",
-                "test:source:profile:",
-                "run:version:",
-            ],
-            dispatch,
-        )
-    }
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: abi::Module = abi::Module {
-    version: 1,
-    byte_size: size_of::<abi::Module>() as u32,
-    initialize: Some(initialize),
-};
+birnam_host_support::host_owner!(
+    b"ProjectBuild",
+    dispatch,
+    (operation_0, "check:"),
+    (operation_1, "fetch:"),
+    (operation_2, "build:target:profile:version:"),
+    (operation_3, "locate:profile:"),
+    (operation_4, "install:directory:"),
+    (operation_5, "test:source:profile:"),
+    (operation_6, "run:version:"),
+);
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1

@@ -1,5 +1,4 @@
 use crate::HostRuntime;
-use birnam_abi::id_protocol::Operand;
 use birnam_host_support::{HostError, Resources, Scope};
 use std::{fs, os::unix::ffi::OsStrExt, path::Path};
 impl HostRuntime<'_> {
@@ -15,7 +14,7 @@ impl HostRuntime<'_> {
         let module = self.global(scope, b"Module")?;
         if module != self.named(b"nil")? {
             let lib = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
-            scope.call(module, b"libDir:", &[Operand::object(lib)])?;
+            scope.call(module, b"libDir:", &[lib])?;
         }
         Ok(())
     }
@@ -46,8 +45,8 @@ impl HostRuntime<'_> {
                     (false, false) => b"loadImage:rebuild:",
                 },
                 &[
-                    Operand::object(filename),
-                    Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),
+                    filename,
+                    self.named(if rebuild { b"true" } else { b"false" })?,
                 ][..if mapped_only { 1 } else { 2 }],
             )?;
             if result == self.named(b"true")? || result == self.named(b"false")? {
@@ -94,8 +93,8 @@ impl HostRuntime<'_> {
             self.named(b"System")?,
             if startup { b"startImageBytes:rebuild:" } else { b"loadImageBytes:rebuild:" },
             &[
-                Operand::object(bytes),
-                Operand::object(self.named(b"false")?),
+                bytes,
+                self.named(b"false")?,
             ],
         )?;
         if result != self.named(b"true")? && result != self.named(b"false")? {

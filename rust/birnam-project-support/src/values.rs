@@ -2,7 +2,6 @@
 use super::data::*;
 use crate::data::ProjectSourceObservation;
 use birnam_abi::Oop;
-use birnam_abi::id_protocol::Operand;
 use birnam_host_support::{HostError, Scope};
 use std::ffi::OsStr;
 use std::{collections::HashSet, path::Path};
@@ -24,39 +23,30 @@ impl<'a, 'h> Decoder<'a, 'h> {
     }
     fn behavior(&self, v: Oop) -> Result<Oop, DecodeError> {
         Ok(self.q.call(
-            self.q.host.id.receiver,
+            self.q.host.id.root,
             b"behaviorOf:",
-            &[Operand::object(v)],
+            &[v],
         )?)
     }
     fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, DecodeError> {
         Ok(self.q.call(
             r,
             n,
-            &a.iter().copied().map(Operand::object).collect::<Vec<_>>(),
+            a,
         )?)
     }
     fn number(&self, n: i64) -> Result<Oop, DecodeError> {
         Ok(self.q.call(
             self.q.host.named(b"Integer")?,
             b"fromWord:",
-            &[Operand::word(n as usize)],
+            &[self.q.word(n as usize)?],
         )?)
     }
     fn is_integer(&self, v: Oop) -> Result<bool, DecodeError> {
         Ok(self.behavior(v)? == self.q.host.named(b"IntegerVt")?)
     }
     fn integer(&self, v: Oop) -> Result<i64, DecodeError> {
-        Ok(self
-            .q
-            .host
-            .send(
-                self.q.host.named(b"Integer")?,
-                b"wordOf:",
-                &[Operand::object(v)],
-            )?
-            .as_word()
-            .ok_or(DecodeError::InvalidPort)? as i64)
+        Ok(self.q.word_bits(self.q.call(self.q.host.named(b"Integer")?,b"wordOf:",&[v])?)? as i64)
     }
     fn at(&self, v: Oop, k: &str) -> Result<Oop, DecodeError> {
         self.q.exact(v, b"MapVt")?;
@@ -561,14 +551,14 @@ impl Builder<'_, '_> {
         self.q.call(self.q.host.named(b"Map")?, b"new", &[])
     }
     fn add(&self, v: Oop, item: Oop) -> Result<Oop, HostError> {
-        self.q.call(v, b"add:", &[Operand::object(item)])
+        self.q.call(v, b"add:", &[item])
     }
     fn put(&self, v: Oop, k: &str, item: Oop) -> Result<Oop, HostError> {
         let key = self.q.string(k.as_bytes())?;
         self.q.call(
             v,
             b"at:put:",
-            &[Operand::object(key), Operand::object(item)],
+            &[key, item],
         )
     }
     fn string(&self, v: &str) -> Result<Oop, HostError> {
@@ -726,7 +716,7 @@ impl Builder<'_, '_> {
                 self.q.call(
                     self.q.host.named(b"Integer")?,
                     b"fromWord:",
-                    &[Operand::word(value.run.socket_port as usize)],
+                    &[birnam_host_support::size(value.run.socket_port as usize)?],
                 )?,
             )?
         };

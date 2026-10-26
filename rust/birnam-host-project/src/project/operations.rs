@@ -5,7 +5,7 @@ use crate::{
     program::{MAX_SCRIPT_BYTES, read_source_file},
     runtime::{HostError, Scope, native_error},
 };
-use birnam_abi::{Oop, id_protocol::Operand};
+use birnam_abi::{Oop};
 use std::{
     collections::HashSet,
     os::unix::ffi::OsStrExt,
@@ -32,9 +32,9 @@ impl Project<'_> {
             if self.host.global(&q, global)? == self.host.named(b"nil")? {
                 q.evaluate(source, Path::new("<project-support>"), Some(name))?;
                 let manager = self.host.global(&q, b"Module")?;
-                let name = unsafe { self.host.id.intern_name(name) }
+                let name = self.host.intern(name)
                     .map_err(|e| native_error("project module", e))?;
-                let result = q.call(manager, b"markLoaded:", &[Operand::object(name)])?;
+                let result = q.call(manager, b"markLoaded:", &[name])?;
                 q.check_result(result)?;
             }
         }
@@ -50,7 +50,7 @@ impl Project<'_> {
         let parsed = q.call(
             self.host.global(&q, b"Toml")?,
             b"parse:",
-            &[Operand::object(source)],
+            &[source],
         )?;
         q.check_result(parsed)?;
         values::decode_manifest(&q, parsed).map_err(project_error)
@@ -59,7 +59,7 @@ impl Project<'_> {
         let result = q.call(
             self.host.global(q, b"ProjectPolicy")?,
             name,
-            &[Operand::object(input)],
+            &[input],
         )?;
         q.check_result(result)?;
         if result == self.host.named(b"nil")? {
@@ -146,12 +146,12 @@ impl Project<'_> {
         let mut vector = q.call(self.host.named(b"Vector")?, b"new", &[])?;
         for path in paths {
             let path = q.string(path.as_os_str().as_bytes())?;
-            vector = q.call(vector, b"add:", &[Operand::object(path)])?;
+            vector = q.call(vector, b"add:", &[path])?;
         }
         let source = q.call(
             self.host.global(&q, b"Module")?,
             b"composeSources:",
-            &[Operand::object(vector)],
+            &[vector],
         )?;
         q.check_result(source)?;
         let bytes = q.string_bytes(source)?;

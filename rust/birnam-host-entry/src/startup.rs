@@ -1,5 +1,4 @@
 use crate::HostRuntime;
-use birnam_abi::id_protocol::Operand;
 use birnam_host_support::{HostError, native_error};
 use std::{os::unix::ffi::OsStrExt, path::Path};
 impl HostRuntime<'_> {
@@ -64,9 +63,9 @@ impl HostRuntime<'_> {
         // initial Boolean/Block installation is complete. No dependency is frozen.
         scope.evaluate(b"[MethodInvocation install]", Path::new("<host>"), None)?;
         let globals = host.named(b"Globals")?;
-        let name = unsafe { host.id.intern_name(b"Module") }
+        let name = host.intern(b"Module")
             .map_err(|e| native_error("intern Module", e))?;
-        let module = scope.call(globals, b"at:", &[Operand::object(name)])?;
+        let module = scope.call(globals, b"at:", &[name])?;
         for name in [
             "artifact",
             "storage",
@@ -80,15 +79,15 @@ impl HostRuntime<'_> {
             "alien",
             "isolate",
         ] {
-            let symbol = unsafe { host.id.intern_name(name.as_bytes()) }
+            let symbol = host.intern(name.as_bytes())
                 .map_err(|e| native_error("intern kernel module", e))?;
-            scope.call(module, b"kernel:", &[Operand::object(symbol)])?;
+            scope.call(module, b"kernel:", &[symbol])?;
         }
         let lib = scope.string(self.resources.lib_dir.as_os_str().as_bytes())?;
-        scope.call(module, b"libDir:", &[Operand::object(lib)])?;
+        scope.call(module, b"libDir:", &[lib])?;
         let lang =
-            unsafe { host.id.intern_name(b"lang") }.map_err(|e| native_error("intern lang", e))?;
-        scope.call(module, b"markLoaded:", &[Operand::object(lang)])?;
+            host.intern(b"lang").map_err(|e| native_error("intern lang", e))?;
+        scope.call(module, b"markLoaded:", &[lang])?;
         Ok(())
     }
 }
