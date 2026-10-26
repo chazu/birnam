@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "base_revision": "17d3f478",
+  "positive_log": ".cargo-target/oop-more-retention.log",
+  "positive_sha256": "6c97c6304048ba6bac954ccda98a5e2e3b01bac9424238d2b758d7f3ff11f176",
+  "negative_controls": [
+    {
+      "target": "harness_retention",
+      "log": ".cargo-target/oop-harness_retention-negative.log",
+      "sha256": "5b8bfcb5ba80c4fd72792c1161ad01490eb94dfd2f9483bd43ffd67bde1ab843"
+    },
+    {
+      "target": "local_cell_retention",
+      "log": ".cargo-target/oop-local_cell_retention-negative.log",
+      "sha256": "2a1fa8bb3ac5a2a8c9a0fcb9fe1cba9f3ad95c4250a45082046d8a1eb761b7e3"
+    }
+  ],
+  "scope": "Retained Test/Bench and local-Cell lifecycle fixtures",
+  "runtime_changes": false
+}

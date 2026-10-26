@@ -1,118 +1,95 @@
-//! Measure actual harness constructors after their language frame has returned.
-mod support;
-use birnam_abi::{
-    Oop,
-    id_protocol::{Operand, Protocol},
-};
+//! Measure retained authored state after the language call has returned.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::as_size;
 use std::os::unix::ffi::OsStrExt;
-use support::*;
 
-unsafe fn named(id: Protocol, ns: Oop, name: &[u8]) -> Oop {
-    unsafe {
-        object(send(
-            id,
-            ns,
-            b"at:",
-            &[Operand::object(id.intern_name(name).unwrap())],
-        ))
-    }
-}
-unsafe fn count(id: Protocol) -> usize {
-    unsafe {
-        send(id, id.receiver, b"allocationCount", &[])
-            .as_word()
-            .unwrap()
-    }
-}
 #[test]
 #[ignore = "requires production modules"]
 fn harness_batches_leave_no_objects_or_facts() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
+    let h = oop::bootstrap();
+    let gc = h.named(b"GC").unwrap();
+    h.send(gc, b"precisePayloads:", &[birnam_abi::size(1).unwrap()])
+        .unwrap();
+    // Match the installed CLI's complete tools image and provider directory.
+    {
+        let q = h.scope();
+        let module = h.global(&q, b"Module").unwrap();
+        q.call(
+            module,
+            b"libDir:",
+            &[q.string(h.resources.lib_dir.as_os_str().as_bytes())
+                .unwrap()],
+        )
+        .unwrap();
+        let path = q
+            .string(
+                h.resources
+                    .lib_dir
+                    .join("birnam-tools.image")
+                    .as_os_str()
+                    .as_bytes(),
+            )
+            .unwrap();
+        let loaded = q
+            .call(h.named(b"System").unwrap(), b"loadImage:", &[path])
+            .unwrap();
+        q.check_result(loaded).unwrap();
+        assert_eq!(loaded, h.named(b"true").unwrap());
+    }
+    let fixture = include_str!("../../../tests/fixtures/harness-owners.birnam");
+    let mut prefix = fixture.split("// RETURN_BATCH").next().unwrap().to_string();
+    for module in ["test", "bench"] {
+        prefix = prefix.replace(
+            &format!("\"modules/{module}.birnam\""),
+            &format!(
+                "{:?}",
+                h.resources
+                    .lib_dir
+                    .parent()
+                    .unwrap()
+                    .join(format!("share/birnam/src/modules/{module}.birnam"))
+            ),
         );
-        let roots = named(id, ns, b"Roots");
-        let gc = named(id, ns, b"GC");
-        send(id, gc, b"precisePayloads:", &[Operand::word(1)]);
-        // Match ordinary CLI startup, including TaskExecutor's authored policy.
-        let startup = directory().join("birnam-tools.image");
-        let path = object(send(
-            id,
-            named(id, ns, b"String"),
-            b"fromBytes:",
-            &[Operand::bytes(startup.as_os_str().as_bytes())],
-        ));
-        let path_root = retain(id, roots, path);
-        let loaded = object(send(
-            id,
-            named(id, ns, b"System"),
-            b"loadImage:",
-            &[Operand::object(path)],
-        ));
-        assert_eq!(loaded, named(id, ns, b"true"));
-        release(id, roots, path_root);
-        let fixture = include_str!("../../../tests/fixtures/harness-owners.birnam");
-        let mut prefix = fixture
-            .split("// RETURN_BATCH")
-            .next()
-            .unwrap()
-            .to_string();
-        for module in ["test", "bench"] {
-            prefix = prefix.replace(&format!("\"modules/{module}.birnam\""),
-                &format!("{:?}", directory().parent().unwrap().join(format!("share/birnam/src/modules/{module}.birnam"))));
-        }
-        if std::env::var_os("BIRNAM_HARNESS_RETAIN_NEGATIVE").is_some() {
-            prefix = prefix.replace("[Test unregister: temporarySuite];", "nil;");
-        }
-        let source = format!(
-            "[Module libDir: {:?}];\n{}\nlet batch := [:calls | let before := [db retainedFactCount]; [1 to: calls do: [:i | [operation value]]]; [[db retainedFactCount] - before]];\n[[[Globals includes: #Test] & [Globals includes: #Bench]] ifTrue: [| batch] ifFalse: [| [Error kind: #retentionSetupFailed]]]\n] value]",
-            directory().to_str().unwrap(),
-            prefix
-        );
-        let text = object(send(
-            id,
-            named(id, ns, b"String"),
-            b"fromBytes:",
-            &[Operand::bytes(source.as_bytes())],
-        ));
-        let text_root = retain(id, roots, text);
-        let batch = object(send(
-            id,
-            named(id, ns, b"Codegen"),
-            b"eval:",
-            &[Operand::object(text)],
-        ));
-        let batch_root = retain(id, roots, batch);
-        release(id, roots, text_root);
+    }
+    if std::env::var_os("BIRNAM_HARNESS_RETAIN_NEGATIVE").is_some() {
+        prefix = prefix.replace("[Test unregister: temporarySuite];", "nil;");
+    }
+    let source = format!(
+        "[Module libDir: {:?}];\n{}\nlet batch := [:calls | let before := [db retainedFactCount]; [1 to: calls do: [:i | [operation value]]]; [[db retainedFactCount] - before]];\n[[[Globals includes: #Test] & [Globals includes: #Bench]] ifTrue: [| batch] ifFalse: [| [Error kind: #retentionSetupFailed]]]\n] value]",
+        h.resources.lib_dir.to_str().unwrap(),
+        prefix
+    );
+
+    let retained = h.scope();
+    let batch = {
+        let q = h.scope();
+        let text = q.string(source.as_bytes()).unwrap();
+        let value = q
+            .call(h.named(b"Codegen").unwrap(), b"eval:", &[text])
+            .unwrap();
+        q.check_result(value).unwrap();
+        retained.keep(value).unwrap()
+    };
+    let integer = h.named(b"Integer").unwrap();
+    for n in [2, 0, 1, 30, 100, 100, 100] {
+        let q = h.scope();
+        let argument = q
+            .call(integer, b"fromWord:", &[birnam_abi::size(n).unwrap()])
+            .unwrap();
+        h.send(gc, b"collectPrecisely", &[]).unwrap();
+        let before = as_size(h.send(h.id.root, b"allocationCount", &[]).unwrap()).unwrap();
+        // Deliberately retain no returned value through the second collection.
+        let facts = h.send(batch, b"value:", &[argument]).unwrap();
         assert_eq!(
-            object(send(id, batch, b"isError", &[])),
-            named(id, ns, b"false")
+            as_size(h.send(integer, b"wordOf:", &[facts]).unwrap()),
+            Some(0)
         );
-        let integer = named(id, ns, b"Integer");
-        for n in [2, 0, 1, 30, 100, 100, 100] {
-            let argument = object(send(id, integer, b"fromWord:", &[Operand::word(n)]));
-            let arg_root = retain(id, roots, argument);
-            collect(id, gc);
-            let before = count(id);
-            let facts = object(send(id, batch, b"value:", &[Operand::object(argument)]));
-            assert_eq!(
-                send(id, integer, b"wordOf:", &[Operand::object(facts)]).as_word(),
-                Some(0)
-            );
-            collect(id, gc);
-            let after = count(id);
-            eprintln!("harness native sample {n}: before={before} after={after}");
-            if n != 2 {
-                assert_eq!(
-                    after, before,
-                    "harness batch retained objects at {n} calls"
-                );
-            }
-            release(id, roots, arg_root);
+        h.send(gc, b"collectPrecisely", &[]).unwrap();
+        let after = as_size(h.send(h.id.root, b"allocationCount", &[]).unwrap()).unwrap();
+        eprintln!("harness native sample {n}: before={before} after={after}");
+        if n != 2 {
+            assert_eq!(after, before, "harness batch retained objects at {n} calls");
         }
-        release(id, roots, batch_root);
     }
 }

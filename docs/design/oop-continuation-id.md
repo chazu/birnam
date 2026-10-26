@@ -812,3 +812,13 @@ missing/incompatible modules, aliases and current method replacement. Retired
 initializer/dependency exports still abort if mistakenly entered. Authored Trace
 also passes mapped/rebuilt image recovery with Oop native adapters and collection.
 [Receipt](../measurements/image-followup-oop-20261026.json).
+
+
+## Harness and local-Cell retention checks
+
+The retained Test/Bench and local-Cell measurement harnesses now use Oop callers
+and scoped roots. Their original batches pass exact post-collection object-count
+and no-fact-publication assertions. The negative controls still fail when a suite
+is left registered or a temporary Cell is deliberately retained. This migrates
+additional native tests without adding a compatibility ABI or changing runtime
+behavior. [Receipt](../measurements/harness-cell-retention-oop-20261026.json).
