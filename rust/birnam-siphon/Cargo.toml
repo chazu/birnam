@@ -12,6 +12,7 @@ birnam-abi = { path = "../birnam-abi" }
 workspace = true
 
 [dev-dependencies]
+birnam-host-support = { path = "../birnam-host-support" }
 birnam-native-compiler = { path = "../birnam-native-compiler" }
 birnam-artifact-codec = { path = "../birnam-artifact-codec" }
 serde_json.workspace = true

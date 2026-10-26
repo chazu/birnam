@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "base_revision": "f26d8fd1",
+  "log": ".cargo-target/oop-source-inspection-run.log",
+  "log_sha256": "5abb16f9cc072c6a29c28faa7aff73d43047c65956c85c2db8e921e6eb132a14",
+  "scope": "Retained static source-inspection integration test",
+  "checks": [
+    "no fact publication",
+    "stable object counts after collection",
+    "current parser and retained-metadata accessor",
+    "distinct equal-text source identities",
+    "retained records need no parser",
+    "Store-independent preparation and registration",
+    "explicit analysis propagates current parser failure"
+  ],
+  "production_dependency_changes": false
+}

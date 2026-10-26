@@ -337,6 +337,7 @@ version = "0.0.0"
 dependencies = [
  "birnam-abi",
  "birnam-artifact-codec",
+ "birnam-host-support",
  "birnam-native-compiler",
  "serde_json",
 ]

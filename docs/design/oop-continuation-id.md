@@ -741,3 +741,18 @@ image completes its ready handshake with the established Id implementation, and
 all 13 Isolate tests pass. Earlier ten-second measurements remain historical
 evidence, not the current acceptance target. The Method-layout, inlining, byte
 sharing and adapter experiments are not included in this change.
+
+
+## Static source-inspection harness
+
+The retained Siphon source-inspection test now uses Oop arguments/results and
+existing declared native callbacks. Caller-side rooting reuses HostSupport as a
+test-only dependency; Siphon's production dependency remains just the Id ABI.
+The fixture loads the optional Store wrapper explicitly over the native bootstrap,
+without requiring stdlib's module-loading policy.
+
+All original assertions pass: temporary inspections retain no objects or facts,
+parser and metadata accessors remain live through collecting callbacks, equal
+source text does not merge identity, retained records do not reparse, and source
+preparation/registration work without Store. No old carrier compatibility API is
+introduced. [Receipt](../measurements/source-inspection-oop-20261026.json).

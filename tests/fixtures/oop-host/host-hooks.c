@@ -2,11 +2,11 @@
 #include "../oop-id-v2/id.h"
 
 static IdProtocol id;
-static Oop names[21];
+static Oop names[22];
 enum {
     AT, PUT, SEQ, INVOKE, GC, NEXT, GLOBAL_PUT, REPLACE, RECORD,
     DENY, FIXED_COUNT, COLLECT, REENTER, IMAGE_FAIL, REGISTRY_FAIL,
-    LEGACY, COUNT, FIXED, REMOVE_MAIN, COLLECT_ONCE, COLLECT_EVERY
+    LEGACY, COUNT, FIXED, REMOVE_MAIN, COLLECT_ONCE, COLLECT_EVERY, OBSERVED
 };
 #define CHECK(v) do { Oop checked = (v); if (id_fault(checked)) return checked; } while (0)
 
@@ -61,6 +61,16 @@ static Oop remove_main(Oop root, Oop context, Oop receiver, const Oop *args, siz
     Oop result = send(get(context, 4), GLOBAL_PUT, values, 2);
     CHECK(result);
     return collecting(root, context, receiver, args, count);
+}
+/* [original, GC, calls, failure-or-null] */
+static Oop observed(Oop root, Oop context, Oop receiver, const Oop *args, size_t count) {
+    (void)root;
+    increment(context, 2);
+    Oop failure = get(context, 3);
+    if (failure) return id_failure(failure);
+    Oop result = send(get(context, 1), GC, 0, 0);
+    CHECK(result);
+    return invoke(get(context, 0), receiver, args, count);
 }
 /* [original, GC, collections] */
 static Oop collect_every(Oop root, Oop context, Oop receiver, const Oop *args, size_t count) {
@@ -149,7 +159,7 @@ static Oop fixed(Oop root, Oop context, Oop receiver, const Oop *args, size_t co
 static Oop initialize(const IdProtocol *protocol, Oop image, const Oop *symbols,
                       size_t symbol_count, const Oop *args, size_t count) {
     (void)args;
-    if (count || symbol_count != 21) return protocol->invalid;
+    if (count || symbol_count != 22) return protocol->invalid;
     id = *protocol;
     for (size_t i = 0; i < symbol_count; i++) names[i] = symbols[i];
     return image;
@@ -160,14 +170,14 @@ static const IdLiteral literals[] = {
     LIT("replaceCompiledSource:named:"), LIT("recordCompiledSource:named:"),
     LIT("deny"), LIT("fixedCount"), LIT("collecting"), LIT("reenter"),
     LIT("imageFailure"), LIT("registryFailure"), LIT("legacySource"),
-    LIT("counted"), LIT("fixed"), LIT("removeMain"), LIT("collectOnce"), LIT("collectEvery")
+    LIT("counted"), LIT("fixed"), LIT("removeMain"), LIT("collectOnce"), LIT("collectEvery"), LIT("observed")
 };
 static const IdMethodSpec methods[] = {
     {DENY, deny}, {FIXED_COUNT, fixed_count}, {COLLECT, collecting},
     {REENTER, reenter}, {IMAGE_FAIL, image_fail}, {REGISTRY_FAIL, registry_fail},
     {LEGACY, legacy}, {COUNT, counted}, {FIXED, fixed}, {REMOVE_MAIN, remove_main},
-    {COLLECT_ONCE, collect_once}, {COLLECT_EVERY, collect_every}
+    {COLLECT_ONCE, collect_once}, {COLLECT_EVERY, collect_every}, {OBSERVED, observed}
 };
 const IdModule birnam_native_module_v2 = {
-    2, sizeof(IdModule), literals, 21, methods, 12, initialize
+    2, sizeof(IdModule), literals, 22, methods, 13, initialize
 };
