@@ -703,3 +703,30 @@ No cache, contract extension, private byte interface or timeout increase was
 introduced. The interaction group separately exposed the baked-startup problem
 fixed in `f9d701f7`; its complete CLI retry is still running.
 [Group results and reproduction evidence](../measurements/installed-oop-groups-20261026.json).
+
+
+## Restore exported-global and parent reflection
+
+The corrected interaction CLI passes its complete tooling, baked-executable,
+published project tty/socket and persistent-session checks. All 26 REPL golden
+checks also pass. The subsequent LSP test exposed three unported existing Reflect
+queries: `globalNamed:`, `allGlobalNames` and `parentOf:`. Completion had been
+reflecting the Error returned for the missing global query, rather than System.
+
+These queries now use ordinary current Namespace, Globals and Id messages.
+Reflection preserves native-export precedence, including a bound nil, then falls
+back to authored Globals for an absent export. Its exported-name list uses
+Namespace `count` and `nameAt:` and excludes authored-only Globals. Parent lookup
+uses the current Id query, without reading vtable payloads. No Id entry, registry
+or private owner interface is added.
+
+The regression fails against the prior runtime and passes with the restored
+queries, including replacement, precise collection and exact failure propagation.
+The real LSP exchange passes, as do 145 stdlib checks, 75 CLI checks and the
+workspace library suite. The interaction group is now covered by these component
+runs on staged installed prefixes; cold release acceptance remains separate.
+Worker startup remains over its unchanged deadline. Additional timing localized
+about 4.5 seconds to ImageFormat validation, mostly heap admission. A generated
+immediate-word experiment was also removed after insufficient measured improvement;
+no global tuning or constructor behavior change is included in this milestone.
+[Receipt](../measurements/reflection-oop-20261026.json).

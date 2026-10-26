@@ -923,6 +923,10 @@ const NAMES: &[&[u8]] = &[
     b"sliceFromWord:toWord:",
     b"fromByteValues",
     b"appendByteValues",
+    b"globalNamed:",
+    b"allGlobalNames",
+    b"count",
+    b"nameAt:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1117,6 +1121,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"sliceFromWord:toWord:"),
     Literal::new(b"fromByteValues"),
     Literal::new(b"appendByteValues"),
+    Literal::new(b"globalNamed:"),
+    Literal::new(b"allGlobalNames"),
+    Literal::new(b"count"),
+    Literal::new(b"nameAt:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1469,6 +1477,21 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(reflection::name_of),
         convention: 0,
     },
+    MethodSpec {
+        name: 192,
+        entry: Some(reflection::global_named),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 193,
+        entry: Some(reflection::global_names),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 139,
+        entry: Some(reflection::parent),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1596,6 +1619,9 @@ unsafe extern "C" fn initialize(
                     | b"methodForTemplate:implementation:"
                     | b"vtableOf:"
                     | b"nameOf:"
+                    | b"globalNamed:"
+                    | b"allGlobalNames"
+                    | b"parentOf:"
             ) {
                 reflect_vt
             } else {

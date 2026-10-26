@@ -40,6 +40,12 @@ resolve Store or Generation. They create no method description facts and are usa
 while a program is running. Explicit Store publication keeps its selected policy
 and description behavior. Temporary roots survive collecting owner calls.
 
+Reflect `globalNamed:` queries current Namespace exports first, then current
+Globals when the export is absent. A bound nil export still wins. `allGlobalNames`
+returns the ordered Namespace export names through `count` and `nameAt:`; it does
+not merge authored-only Globals. `parentOf:` uses the current Id `parentOf:`
+query. These operations inspect no foreign payloads or private owner tables.
+
 Image binding installation uses the same direct owner path. General snapshots
 preserve actual live Methods even if an opted-in managed revision has drifted;
 that metadata reloads as descriptive state, not a recovered activation capability.

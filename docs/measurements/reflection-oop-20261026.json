@@ -1,0 +1,103 @@
+{
+  "passed": true,
+  "base_revision": "0410910e",
+  "operations": [
+    "Reflect globalNamed:",
+    "Reflect allGlobalNames",
+    "Reflect parentOf:"
+  ],
+  "cases": [
+    {
+      "name": "reflection_before",
+      "log": ".cargo-target/oop-reflection-before.log",
+      "sha256": "350db01dfb6fddda106c81dcd8fb850550ab35a528af7fb2bae396d7bc014639",
+      "expected_failure": true
+    },
+    {
+      "name": "reflection_after",
+      "log": ".cargo-target/oop-reflection-after.log",
+      "sha256": "9493df3f72dad4ea540ac2dc2d83df61d61b672ca741dafaced9db228b4978ba",
+      "expected_failure": false
+    },
+    {
+      "name": "lsp",
+      "log": ".cargo-target/oop-lsp-reflection.log",
+      "sha256": "1cf71d90ed3b43764609e589c0b8647acd50ead0033dc29874cb2e21c49c8300",
+      "expected_failure": false
+    },
+    {
+      "name": "workspace_lib",
+      "log": ".cargo-target/oop-reflection-workspace.log",
+      "sha256": "19a702e361c2af544b74e0ad7f84a778f16444972d3b419d68aa62f28a1a277b",
+      "expected_failure": false
+    },
+    {
+      "name": "stdlib",
+      "log": ".cargo-target/oop-reflection-stdlib.log",
+      "sha256": "559959ef010cc3350d83664193bc6d0949aff187faa2660870de05a0b7ceaa0b",
+      "expected_failure": false
+    },
+    {
+      "name": "cli",
+      "log": ".cargo-target/oop-reflection-cli.log",
+      "sha256": "cdf890fd3a6326b0f3c5accd5741f33c4f4b6ce5407f748f79c375244c00ce01",
+      "expected_failure": false
+    }
+  ],
+  "authored_checks": {
+    "stdlib": 145,
+    "cli": 75
+  },
+  "contracts": [
+    "Namespace export precedence, including bound nil",
+    "Current Globals fallback only for absent exports",
+    "Ordered Namespace-only enumeration through current count/nameAt: messages",
+    "Collection during enumeration and exact native failure propagation",
+    "Current Id parentOf: query"
+  ],
+  "interaction_retry": {
+    "checks": [
+      {
+        "argv": [
+          "python3",
+          "scripts/interaction-cli-test.py",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/task-qualification/baked-ms5gj3mp/prefix"
+        ],
+        "exit_code": 0,
+        "label": "interaction-cli",
+        "started_unix_ns": 1793018591569903000,
+        "status": "passed",
+        "wall_ns": 772365592875
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/repl-golden.sh"
+        ],
+        "exit_code": 0,
+        "label": "repl-golden",
+        "started_unix_ns": 1793019364095216000,
+        "status": "passed",
+        "wall_ns": 963333845417
+      },
+      {
+        "argv": [
+          "bash",
+          "scripts/lsp-project-smoke.sh"
+        ],
+        "exit_code": 1,
+        "label": "lsp-project",
+        "started_unix_ns": 1793020327558720000,
+        "status": "failed",
+        "wall_ns": 24914545167
+      }
+    ],
+    "schema": 1
+  },
+  "lsp_failure_corrected": true,
+  "remaining": [
+    "Worker ready handshake still exceeds unchanged ten-second limit",
+    "Later installed task checks and full image-family/release qualification remain incomplete",
+    "Legacy Siphon test harness migration remains incomplete"
+  ]
+}

@@ -18,3 +18,6 @@ mod receipt_validation;
 
 #[cfg(test)]
 mod test_hooks;
+
+#[cfg(test)]
+mod reflection_test;
