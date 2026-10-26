@@ -881,3 +881,14 @@ invalid library paths and process-owned Id identity across reopening. The C
 fixture aborts if the retired initializer is entered. Both tests pass; no runtime
 code or Id operation changed.
 [Receipt](../measurements/siphon-handoff-oop-20261026.json).
+
+## Integer operation replacement acceptance
+
+The native Integer operation test now uses scoped Oop roots and captured Methods
+instead of native entry/context carriers. It retains all five distinct operation
+receivers, replaces addition with a two-argument authored Method that collects and
+returns a captured object, and counts entry through the existing declared test
+callback. Addition observes that replacement exactly once; subtraction remains
+unchanged, and restoring the captured Method restores the original sum. The test
+passes against the staged runtime without production changes.
+[Receipt](../measurements/integer-operation-oop-20261026.json).

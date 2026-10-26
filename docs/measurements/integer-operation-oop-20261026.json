@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "scope": "Current Integer operation replacement and restoration during collection",
+  "base_revision": "7af59505d96de6c07cf74c4797bad87de5376be4",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix",
+  "test": "rust/birnam-siphon/tests/integer_operation_objects.rs",
+  "test_sha256": "64703d3dc1a4fb0e986eeba899c69a5bb8121fbc188a7fec3ca7f05b518fb85b",
+  "log": ".cargo-target/oop-integer-operation-objects.log",
+  "log_sha256": "ce217b8dd46a3bc13e6d0e11dbf86c8521312267ce4957f80b8844e8929f2a38",
+  "command": "cargo test --offline --locked -p birnam-siphon --test integer_operation_objects -- --include-ignored --nocapture",
+  "tests_passed": 1,
+  "runtime_changes": false
+}
