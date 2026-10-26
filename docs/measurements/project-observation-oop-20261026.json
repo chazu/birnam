@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-26",
+  "base_commit": "75a706a0",
+  "scope": "ProjectBuild and HostProject test harness migration; production interfaces unchanged",
+  "passed": true,
+  "pure_unit_tests": 22,
+  "runtime_tests": {
+    "passed": true,
+    "runs": [
+      {
+        "package": "birnam-project-build",
+        "test": "project::operations::tests::project_policy_values_survive_collecting_messages",
+        "exit_code": 0,
+        "stdout": "\nrunning 1 test\ntest project::operations::tests::project_policy_values_survive_collecting_messages ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 12.38s\n\n",
+        "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_project_build-087ce0efd0fbf378)\n"
+      },
+      {
+        "package": "birnam-host-project",
+        "test": "project::source::tests::project_source_observation_uses_live_messages",
+        "exit_code": 0,
+        "stdout": "\nrunning 1 test\ntest project::source::tests::project_source_observation_uses_live_messages ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 12.67s\n\n",
+        "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_host_project-c40eb33509e53612)\n"
+      },
+      {
+        "package": "birnam-host-project",
+        "test": "project_query_contract::project_queries_are_rooted_and_do_not_install_a_global_bridge",
+        "exit_code": 0,
+        "stdout": "\nrunning 1 test\ntest project_query_contract::project_queries_are_rooted_and_do_not_install_a_global_bridge ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 11.73s\n\n",
+        "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_host_project-c40eb33509e53612)\n"
+      }
+    ]
+  },
+  "cli_probe": {
+    "complete": false,
+    "passed_before_stop": [
+      "human and JSON read-only check",
+      "invalid manifest rejection",
+      "missing publication refusal",
+      "build and cache reuse",
+      "repair malformed and missing cached artifacts",
+      "published execution with hidden source and manifest",
+      "explicit rebuild and failed-publication preservation"
+    ],
+    "stop": "Partial qualification prefix has no birnam-tools.image; full installed project gate remains pending"
+  },
+  "worker_probe": {
+    "complete": false,
+    "class": "boot",
+    "kind": "handshakeTimeout",
+    "limit_milliseconds": 10000,
+    "note": "The ready handshake timed out. An early sample shows byte conversions during native Bootstrap artifact loading; full restore profiling remains pending."
+  },
+  "workspace_library_tests": {
+    "complete": false,
+    "remaining": "birnam-host lib tests still use removed carriers and entries; 409 compilation errors"
+  },
+  "contract": "Test callbacks are declared native Methods. Contexts carry captured Methods, GC receiver and counters as Oops; no function pointer or native stack pointer crosses Id. Native failure checks preserve Fault identity.",
+  "logs": {
+    ".cargo-target/oop-slice/project-qualification/native-bvdgzvbz/receipt.json": "099c4617d63fa9c54a5a03e2a0d3a85d4b2b6f9780133540c427e1178df6c3e2",
+    ".cargo-target/oop-project-unit.log": "83962fb9aead3f9831b28130fbc30276fcd941d61932603f5bd8357397cb71a0",
+    ".cargo-target/oop-project-cli.log": "abb2281118622c472be886576d0085a396b38d2690182a2308c621be533e0a0b",
+    ".cargo-target/oop-worker-test.log": "339eba2d90e694c8eb55948d16625cf94189262d950e61e2bd37e2760e0d536c",
+    ".cargo-target/oop-slice/project-qualification/worker-probe.log": "07d3f4dbb5ba1a457dadc852780f5436b11c6d58a541837a5e4f2066c8063994",
+    ".cargo-target/oop-slice/project-qualification/worker-image-sample.txt": "a66146394d9346505e53ac5aa42fdbda4f1bd3320b9c477591a8b16f7016c7b9",
+    ".cargo-target/oop-workspace-lib-tests-next.log": "ef316f3ac0eb4e3e7e1bab67b670269c7f999524707ab1c362c24e072f6b7594"
+  }
+}

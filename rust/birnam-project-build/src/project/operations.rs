@@ -6,8 +6,6 @@ use crate::{
     program::read_source_file,
     runtime::{HostError, Scope, native_error},
 };
-#[cfg(test)]
-use birnam_abi::id_protocol::{Outcome, Protocol};
 use birnam_abi::{Oop};
 use birnam_artifact::digest::sha256_hex;
 #[cfg(test)]
@@ -697,25 +695,6 @@ impl Project<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use birnam_abi::id_protocol::NativeEntry;
-    use core::{cell::Cell, ffi::c_void};
-    struct Hook {
-        id: Protocol,
-        gc: Oop,
-        original: NativeEntry,
-        calls: Cell<usize>,
-    }
-    unsafe extern "C" fn collect(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-        let h = unsafe { &*c.cast::<Hook>() };
-        h.calls.set(h.calls.get() + 1);
-        if let Err(e) = unsafe { h.id.send_named(h.gc, b"collectPrecisely", &[]) } {
-            return e;
-        }
-        unsafe { h.original.method.unwrap()(h.original.context, r, a, n) }
-    }
-    unsafe extern "C" fn fail(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-        Outcome::failed(1, 919)
-    }
     #[test]
     #[ignore = "requires installed production modules"]
     fn project_policy_values_survive_collecting_messages() {
@@ -733,7 +712,7 @@ mod tests {
             StartupPolicy {
                 skip_stdlib: false,
                 precise_gc: true,
-                source_bootstrap: false,
+                source_bootstrap: env::var_os("BIRNAM_TEST_SOURCE_BOOTSTRAP").is_some(),
                 tool_bootstrap: false,
             },
         )
@@ -760,41 +739,41 @@ mod tests {
         assert_eq!(snapshot.projects[0].sources[0].sources.len(), 2);
         let q = host.scope();
         let policy = host.global(&q, b"ProjectPolicy").unwrap();
-        let behavior = q
-            .call(host.id.receiver, b"behaviorOf:", &[Operand::object(policy)])
-            .unwrap();
+        let behavior = q.call(host.id.root, b"behaviorOf:", &[policy]).unwrap();
+        let fixture = temp.0.join("project-policy.dylib");
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/oop-host/project-policy.c");
+        assert!(
+            std::process::Command::new("clang")
+                .args(["-dynamiclib", "-O2"])
+                .arg(source)
+                .arg("-o")
+                .arg(&fixture)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let module = host.load_native(&q, &fixture, &[]).unwrap();
+        let forward_name = q.keep(host.intern(b"collectingForward").unwrap()).unwrap();
+        let forward = q.call(module, b"methodAt:", &[forward_name]).unwrap();
         let mut hooks = Vec::new();
         for selector in [b"resolveSnapshot:".as_slice(), b"artifactPlan:"] {
-            let key = unsafe { host.id.intern_name(selector) }.unwrap();
-            // Replacing the binding removes its normal Method root. Retain the
-            // owned Method while the forwarding fixture holds its native entry.
-            q.call(policy, b"methodFor:", &[Operand::object(key)])
-                .unwrap();
-            let original = host
-                .send(
-                    host.id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(key), Operand::object(behavior)],
+            let key = q.keep(host.intern(selector).unwrap()).unwrap();
+            let original = q.call(policy, b"methodFor:", &[key]).unwrap();
+            let context = q
+                .call(
+                    host.id.root,
+                    b"sequence",
+                    &[
+                        original,
+                        host.named(b"GC").unwrap(),
+                        birnam_abi::size(0).unwrap(),
+                    ],
                 )
-                .unwrap()
-                .as_entry()
                 .unwrap();
-            let mut hook = Box::new(Hook {
-                id: host.id,
-                gc: host.named(b"GC").unwrap(),
-                original,
-                calls: Cell::new(0),
-            });
-            host.send(
-                behavior,
-                b"addMethod",
-                &[
-                    Operand::object(key),
-                    Operand::entry(NativeEntry::new(collect, (&mut *hook as *mut Hook).cast())),
-                ],
-            )
-            .unwrap();
-            hooks.push((key, hook));
+            let method = q.call(forward, b"withContext:", &[context]).unwrap();
+            q.call(behavior, b"addMethod", &[key, method]).unwrap();
+            hooks.push((key, original, context));
         }
         let resolution = host.project().project_resolution(&snapshot).unwrap();
         assert_eq!(resolution.modules[0].name, "example");
@@ -817,40 +796,37 @@ mod tests {
             host.global(&q, b"neverPublished").unwrap(),
             host.named(b"nil").unwrap()
         );
-        for (key, hook) in &hooks {
-            assert!(hook.calls.get() > 0);
-            host.send(
-                behavior,
-                b"addMethod",
-                &[Operand::object(*key), Operand::entry(hook.original)],
-            )
-            .unwrap();
+        for &(key, original, context) in &hooks {
+            let calls = q
+                .call(context, b"at:", &[birnam_abi::size(2).unwrap()])
+                .unwrap();
+            assert!(birnam_abi::as_size(calls).unwrap() > 0);
+            q.call(behavior, b"addMethod", &[key, original]).unwrap();
         }
-        // A current policy's typed native failure must not become an empty plan.
-        host.send(
-            behavior,
-            b"addMethod",
-            &[
-                Operand::object(hooks[0].0),
-                Operand::entry(NativeEntry::new(fail, std::ptr::null_mut())),
-            ],
-        )
-        .unwrap();
-        assert!(
-            host.project()
-                .project_resolution(&snapshot)
-                .unwrap_err()
-                .0
-                .contains("detail=919")
+        // A current policy's native failure must not become an empty plan.
+        // Compare the propagated Fault identity without reading its payload.
+        let kind = q
+            .keep(host.intern(b"projectPolicyFailure").unwrap())
+            .unwrap();
+        let constructor = q.keep(host.intern(b"fault:detail:").unwrap()).unwrap();
+        let failure = unsafe {
+            host.id.send(
+                host.id.root,
+                constructor,
+                &[kind, birnam_abi::size(919).unwrap()],
+            )
+        }
+        .unwrap_err();
+        let failure = q.keep(failure).unwrap();
+        let name = q.keep(host.intern(b"fail").unwrap()).unwrap();
+        let fail = q.call(module, b"methodAt:", &[name]).unwrap();
+        let fail = q.call(fail, b"withContext:", &[failure]).unwrap();
+        q.call(behavior, b"addMethod", &[hooks[0].0, fail]).unwrap();
+        assert_eq!(
+            host.project().project_resolution(&snapshot).unwrap_err(),
+            native_error("resolveSnapshot:", failure)
         );
-        host.send(
-            behavior,
-            b"addMethod",
-            &[
-                Operand::object(hooks[0].0),
-                Operand::entry(hooks[0].1.original),
-            ],
-        )
-        .unwrap();
+        q.call(behavior, b"addMethod", &[hooks[0].0, hooks[0].1])
+            .unwrap();
     }
 }

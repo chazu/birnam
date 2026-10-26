@@ -544,3 +544,19 @@ blocked; mapped recovery also blocks the compiler. The broader workspace library
 test command still fails in ProjectBuild's old-carrier test harness. Native test
 fixtures, additional optional image families, installed tooling and restored
 workers remain outside this milestone. [Receipt](../measurements/optional-owners-oop-20261026.json).
+
+
+## Project observation acceptance
+
+ProjectBuild and HostProject's test helpers now use the same Oop bootstrap and
+owner-loading protocol as Host. Collecting/failing callback fixtures declare
+Methods and retain captured originals in Oop contexts; the old native entry and
+stack-pointer injection is gone. All 22 pure tests and three retained runtime
+observation tests pass, including source non-execution, current policy replacement,
+GC, exact native failure identity and malformed metadata refusal.
+
+The project CLI probe passes check, build/cache repair and published execution
+with source hidden, then stops at the partial prefix's missing tools image.
+Worker startup separately reaches the fixed 10-second ready-handshake timeout;
+restored workers are not yet qualified. Host's lifecycle/image library tests still
+need their old-carrier harness migrated. [Receipt](../measurements/project-observation-oop-20261026.json).

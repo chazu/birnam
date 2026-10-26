@@ -4,7 +4,6 @@ use crate::{
     StartupPolicy,
     test_support::{HostRuntime, create_check_temp_directory},
 };
-use birnam_abi::id_protocol::Operand;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -26,7 +25,7 @@ fn project_queries_are_rooted_and_do_not_install_a_global_bridge() {
         StartupPolicy {
             skip_stdlib: false,
             precise_gc: true,
-            source_bootstrap: false,
+            source_bootstrap: env::var_os("BIRNAM_TEST_SOURCE_BOOTSTRAP").is_some(),
             tool_bootstrap: false,
         },
     )
@@ -39,20 +38,16 @@ fn project_queries_are_rooted_and_do_not_install_a_global_bridge() {
         .unwrap();
     host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
         .unwrap();
-    let path = q
-        .call(project, b"pathForUri:", &[Operand::object(uri)])
-        .unwrap();
+    let path = q.call(project, b"pathForUri:", &[uri]).unwrap();
     assert_eq!(
         q.string_bytes(path).unwrap(),
         b"/tmp/birnam query/example.birnam"
     );
     let malformed = q.string(b"https://example.test/not-a-file").unwrap();
-    let rejected = q
-        .call(project, b"pathForUri:", &[Operand::object(malformed)])
-        .unwrap();
+    let rejected = q.call(project, b"pathForUri:", &[malformed]).unwrap();
     let key = q.string(b"ok").unwrap();
     assert_eq!(
-        q.call(rejected, b"at:", &[Operand::object(key)]).unwrap(),
+        q.call(rejected, b"at:", &[key]).unwrap(),
         host.named(b"false").unwrap()
     );
     let wrong = q.call(project, b"pathForUri:", &[]).unwrap();
@@ -72,11 +67,9 @@ fn project_queries_are_rooted_and_do_not_install_a_global_bridge() {
     let uri = q
         .string(format!("file://{}", temp.0.join("src/example.birnam").display()).as_bytes())
         .unwrap();
-    let snapshot = q
-        .call(project, b"snapshotForUri:", &[Operand::object(uri)])
-        .unwrap();
+    let snapshot = q.call(project, b"snapshotForUri:", &[uri]).unwrap();
     assert_eq!(
-        q.call(snapshot, b"at:", &[Operand::object(key)]).unwrap(),
+        q.call(snapshot, b"at:", &[key]).unwrap(),
         host.named(b"true").unwrap()
     );
     assert_eq!(
@@ -88,11 +81,9 @@ fn project_queries_are_rooted_and_do_not_install_a_global_bridge() {
     // is no closed callback state: the completed native owner has process lifetime.
     host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
         .unwrap();
-    let repeated = q
-        .call(project, b"snapshotForUri:", &[Operand::object(uri)])
-        .unwrap();
+    let repeated = q.call(project, b"snapshotForUri:", &[uri]).unwrap();
     assert_eq!(
-        q.call(repeated, b"at:", &[Operand::object(key)]).unwrap(),
+        q.call(repeated, b"at:", &[key]).unwrap(),
         host.named(b"true").unwrap()
     );
     assert!(!temp.0.join(".birnam/build").exists());

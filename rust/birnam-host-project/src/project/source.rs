@@ -9,11 +9,6 @@ use crate::{
     program::read_source_file,
     runtime::{HostError, Scope},
 };
-#[cfg(test)]
-use birnam_abi::{
-    Oop,
-    id_protocol::{Outcome, Protocol},
-};
 use std::path::Path;
 #[cfg(test)]
 use std::{env, fs};
@@ -119,36 +114,8 @@ impl Project<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use birnam_abi::id_protocol::{INVALID_REQUEST, NativeEntry};
-    use core::ffi::c_void;
     use sha2::{Digest, Sha256};
-    use std::{cell::Cell, path::PathBuf};
-
-    struct Hook {
-        id: Protocol,
-        gc: Oop,
-        original: NativeEntry,
-        calls: Cell<usize>,
-    }
-    unsafe extern "C" fn collecting(
-        c: *mut c_void,
-        r: Oop,
-        a: *const Operand,
-        n: usize,
-    ) -> Outcome {
-        let hook = unsafe { &*c.cast::<Hook>() };
-        if let Err(e) = unsafe { hook.id.send_named(hook.gc, b"collectPrecisely", &[]) } {
-            return e;
-        }
-        hook.calls.set(hook.calls.get() + 1);
-        unsafe { hook.original.method.unwrap()(hook.original.context, r, a, n) }
-    }
-    unsafe extern "C" fn fail(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-        Outcome::failed(INVALID_REQUEST, 909)
-    }
-    unsafe extern "C" fn fixed(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-        Outcome::loaded(Operand::object(c.cast()))
-    }
+    use std::path::PathBuf;
     struct Temp(PathBuf);
     impl Drop for Temp {
         fn drop(&mut self) {
@@ -195,55 +162,50 @@ let nested := [| [System embedFile: "second\nfile"]];
         fs::write(&path, source).unwrap();
         let scope = host.scope();
         let gc = host.named(b"GC").unwrap();
+        let fixture = temp.0.join("project-policy.dylib");
+        let fixture_source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/oop-host/project-policy.c");
+        assert!(
+            std::process::Command::new("clang")
+                .args(["-dynamiclib", "-O2"])
+                .arg(fixture_source)
+                .arg("-o")
+                .arg(&fixture)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let module = host.load_native(&scope, &fixture, &[]).unwrap();
+        let forward_name = scope
+            .keep(host.intern(b"collectingForward").unwrap())
+            .unwrap();
+        let forward = scope.call(module, b"methodAt:", &[forward_name]).unwrap();
         let mut hooks = Vec::new();
         for (family, name) in [
-            (b"LangVt".as_slice(), b"parse:".as_slice()),
+            (b"Lang".as_slice(), b"parse:".as_slice()),
             (b"VectorVt", b"at:"),
             (b"VectorVt", b"add:"),
             (b"StringVt", b"bytes"),
         ] {
-            let vt = host.named(family).unwrap();
-            let selector = unsafe { host.id.intern_name(name) }.unwrap();
-            let original = host
-                .send(
-                    host.id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(selector), Operand::object(vt)],
-                )
-                .unwrap()
-                .as_entry()
-                .unwrap();
-            if family == b"LangVt" {
+            let vt = if family == b"Lang" {
                 scope
-                    .keep(
-                        host.send(
-                            host.named(b"Execution").unwrap(),
-                            b"methodOfEntry:",
-                            &[Operand::entry(original)],
-                        )
-                        .unwrap(),
-                    )
-                    .unwrap();
-            }
-            let mut hook = Box::new(Hook {
-                id: host.id,
-                gc,
-                original,
-                calls: Cell::new(0),
-            });
-            host.send(
-                vt,
-                b"addMethod",
-                &[
-                    Operand::object(selector),
-                    Operand::entry(NativeEntry::new(
-                        collecting,
-                        (&mut *hook as *mut Hook).cast(),
-                    )),
-                ],
-            )
-            .unwrap();
-            hooks.push((vt, selector, hook));
+                    .call(host.id.root, b"behaviorOf:", &[host.named(family).unwrap()])
+                    .unwrap()
+            } else {
+                host.named(family).unwrap()
+            };
+            let selector = scope.keep(host.intern(name).unwrap()).unwrap();
+            let original = scope.call(vt, b"methodFor:", &[selector]).unwrap();
+            let context = scope
+                .call(
+                    host.id.root,
+                    b"sequence",
+                    &[original, gc, birnam_abi::size(0).unwrap()],
+                )
+                .unwrap();
+            let method = scope.call(forward, b"withContext:", &[context]).unwrap();
+            scope.call(vt, b"addMethod", &[selector, method]).unwrap();
+            hooks.push((vt, selector, original, context));
         }
         let observation = host
             .project()
@@ -272,23 +234,16 @@ let nested := [| [System embedFile: "second\nfile"]];
             [b"missing.bin".to_vec(), b"second\nfile".to_vec()]
         );
         let cg = host.named(b"Codegen").unwrap();
-        let name = unsafe { host.id.intern_name(b"observed") }.unwrap();
+        let name = scope.keep(host.intern(b"observed").unwrap()).unwrap();
         let nil = host.named(b"nil").unwrap();
-        assert_eq!(
-            scope
-                .call(cg, b"moduleSourceFor:", &[Operand::object(name)])
-                .unwrap(),
-            nil
-        );
+        assert_eq!(scope.call(cg, b"moduleSourceFor:", &[name]).unwrap(), nil);
         assert_eq!(host.global(&scope, b"shouldNeverBeDefined").unwrap(), nil);
-        for (vt, selector, hook) in hooks {
-            assert!(hook.calls.get() > 0);
-            host.send(
-                vt,
-                b"addMethod",
-                &[Operand::object(selector), Operand::entry(hook.original)],
-            )
-            .unwrap();
+        for (vt, selector, original, context) in hooks {
+            let calls = scope
+                .call(context, b"at:", &[birnam_abi::size(2).unwrap()])
+                .unwrap();
+            assert!(birnam_abi::as_size(calls).unwrap() > 0);
+            scope.call(vt, b"addMethod", &[selector, original]).unwrap();
         }
         // Metadata and syntax rejection remain distinct from compile diagnostics.
         for source in [b"42".as_slice(), b"[Module named:"] {
@@ -307,45 +262,43 @@ let nested := [| [System embedFile: "second\nfile"]];
             gold.revision_digest,
             "92749bc6da04d6045dc5a0eb386d10ad952542a70ca6754c431c1d2b8bbeed9f"
         );
-        let vt = host.named(b"CodegenVt").unwrap();
-        let selector = unsafe { host.id.intern_name(b"moduleMetadataOf:") }.unwrap();
-        let original = host
-            .send(
-                host.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(selector), Operand::object(vt)],
-            )
-            .unwrap()
-            .as_entry()
+        let vt = scope.call(host.id.root, b"behaviorOf:", &[cg]).unwrap();
+        let selector = scope
+            .keep(host.intern(b"moduleMetadataOf:").unwrap())
             .unwrap();
-        host.send(
-            vt,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(fail, core::ptr::null_mut())),
-            ],
-        )
-        .unwrap();
-        assert!(
-            host.project()
-                .index_project_source(&path)
-                .unwrap_err()
-                .0
-                .contains("detail=909")
+        let original = scope.call(vt, b"methodFor:", &[selector]).unwrap();
+        let kind = scope
+            .keep(host.intern(b"projectMetadataFailure").unwrap())
+            .unwrap();
+        let constructor = scope.keep(host.intern(b"fault:detail:").unwrap()).unwrap();
+        let failure = unsafe {
+            host.id.send(
+                host.id.root,
+                constructor,
+                &[kind, birnam_abi::size(909).unwrap()],
+            )
+        }
+        .unwrap_err();
+        let failure = scope.keep(failure).unwrap();
+        let fail_name = scope.keep(host.intern(b"fail").unwrap()).unwrap();
+        let fail = scope.call(module, b"methodAt:", &[fail_name]).unwrap();
+        let fail = scope.call(fail, b"withContext:", &[failure]).unwrap();
+        scope.call(vt, b"addMethod", &[selector, fail]).unwrap();
+        assert_eq!(
+            host.project().index_project_source(&path).unwrap_err(),
+            HostError(format!(
+                "{}: {}",
+                path.display(),
+                birnam_host_support::native_error("moduleMetadataOf:", failure)
+            ))
         );
         let malformed = scope
             .call(host.named(b"Vector").unwrap(), b"new", &[])
             .unwrap();
-        host.send(
-            vt,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(fixed, malformed.cast())),
-            ],
-        )
-        .unwrap();
+        let fixed_name = scope.keep(host.intern(b"fixed").unwrap()).unwrap();
+        let fixed = scope.call(module, b"methodAt:", &[fixed_name]).unwrap();
+        let fixed = scope.call(fixed, b"withContext:", &[malformed]).unwrap();
+        scope.call(vt, b"addMethod", &[selector, fixed]).unwrap();
         assert!(
             host.project()
                 .index_project_source(&path)
@@ -353,12 +306,7 @@ let nested := [| [System embedFile: "second\nfile"]];
                 .0
                 .contains("invalid module metadata")
         );
-        host.send(
-            vt,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(original)],
-        )
-        .unwrap();
+        scope.call(vt, b"addMethod", &[selector, original]).unwrap();
         let large = temp.0.join("large.birnam");
         fs::File::create(&large)
             .unwrap()
