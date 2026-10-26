@@ -1246,3 +1246,16 @@ roots. This completes that candidate's image run. It predates the root-provider,
 frame-view and pending-call recovery corrections and does not qualify them.
 The corrected candidate is being built independently from `52c617fe`.
 [Receipt](../measurements/cold-image-oop-20261026.json).
+
+## Corrected runtime from a fresh cold installation
+
+Revision `52c617fe`, including the root-provider, frame-view and recovery changes,
+builds from a clean detached checkout with fresh build directories and no installed
+Birnam on PATH. Its schema-4 receipt verifies all 817 installed files, Id protocol 2
+and exclusion of the build-only Lang seed. An archive of those exact bytes passes
+signature, relocation, source/GC/image and compiled-startup checks while both the
+original checkout and installed prefix are hidden. Both paths were restored after
+the check. The five complete installed Host groups are now running against this
+candidate; the cold/archive result does not substitute for those groups or the
+remaining native migration work.
+[Receipt](../measurements/corrected-cold-install-oop-20261026.json).

@@ -1,0 +1,76 @@
+{
+  "passed": true,
+  "scope": "Fresh corrected-runtime cold installation and archive smoke; full installed Host groups still running",
+  "source_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "52c617feaf31ef0da973b5601425a8e9f6fb79e4"
+  },
+  "source_manifest_sha256": "c1d7dba4c57c01f89c9a11ac0fce6f12dfeb8e75d854c9a1c425e419ac6ead06",
+  "prefix": "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+  "receipt_sha256": "bbde91bff11a3dd4cb3ef775468ed3b7a4286e631771f5fddda4135a475f114a",
+  "staged_manifest_files": 817,
+  "staged_manifest_sha256": "93f49621f91ad3aebdf23dd0c2a3efa6c910e61c79a638511008ed7cc56ea4e7",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-corrected-1wcb9e4b/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_log": "/private/tmp/birnam-oop-corrected-1wcb9e4b/install.log",
+  "install_log_sha256": "b17ed4b11f6e128151673acd1e892cf6346fb069307398ff4994abe108cad448",
+  "archive": "/private/tmp/birnam-oop-corrected-1wcb9e4b/candidate.tar.gz",
+  "archive_sha256": "a0567ec2088af46f36bc1c874fa820f36e627a601c62bfba244b71e1a2f50d54",
+  "archive_smoke_log": "/private/tmp/birnam-oop-corrected-1wcb9e4b/archive-smoke.log",
+  "archive_smoke_log_sha256": "7f3e72f08553a0581b5bd54256569e57de0f57adb4bc44657961a083213bc89c",
+  "archive_smoke_build_paths_hidden": true,
+  "build_paths_restored": true,
+  "install_seconds": 766.067928,
+  "archive_smoke_seconds": 308.463379,
+  "remaining": [
+    "Complete corrected-candidate installed Host groups",
+    "Remaining native harness and compiler optimization producer migration"
+  ]
+}
