@@ -547,10 +547,7 @@ unsafe fn execute(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: OpCode) -
                         .revision
                         .checked_add(1)
                         .expect("Store revision exhausted");
-                    let old = current_value_raw(st, a[1], a[0]);
-                    if !old.is_null() {
-                        remove_mirror_facts(st, a[1], a[0], old);
-                    }
+                    remove_mirror_facts(st, a[1], a[0]);
                 }
             }
             AddMethod | RemoveMethod => {
@@ -578,10 +575,7 @@ unsafe fn execute(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: OpCode) -
                     }
                 }
                 s.edit(r, |st| {
-                    let old = current_value_raw(st, behavior, selector);
-                    if !old.is_null() {
-                        remove_mirror_facts(st, behavior, selector, old);
-                    }
+                    remove_mirror_facts(st, behavior, selector);
                 })?;
                 if matches!(op, AddMethod) {
                     let result = s.send(behavior, b"addMethod:as:", &[a[2], selector])?;
@@ -678,11 +672,16 @@ unsafe fn execute(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: OpCode) -
                     let many = cardinality(p, st, attr) == p.many;
                     if matches!(op, Assert)
                         && !st.raw
-                        && (if many {
-                            is_member(st, e, attr, v)
-                        } else {
-                            current_value_raw(st, e, attr) == v
-                        })
+                        && st
+                            .facts
+                            .iter()
+                            .rev()
+                            .find(|fact| {
+                                same(fact.e, e) && same(fact.a, attr) && (!many || same(fact.v, v))
+                            })
+                            .is_some_and(|fact| {
+                                !fact.mirror && fact.op == super::Op::Assert && same(fact.v, v)
+                            })
                     {
                         return Ok(());
                     }

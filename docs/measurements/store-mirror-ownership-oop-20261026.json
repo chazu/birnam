@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "scope": "Store user-fact ownership during explicit mirror invalidation",
+  "base_revision": "61d6e814c59c6e6f347d6adedadca5fc72a1aa8c",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix",
+  "source_sha256": {
+    "rust/birnam-store/src/lib.rs": "0761b130aebc02f99a85e415f133920067c5781042726eed1f9b54379381d2f1",
+    "rust/birnam-store/src/native.rs": "9733e989f0f4decdea1534884bcf490d991e1ed833e07726c81e53ff764e6e77"
+  },
+  "store_sha256": "06dbabac2931a698cde3764d0f8f9193324c8139ab4e21a214108b7b4948bc2d",
+  "cause": "Duplicate detection accepted a mirror row as an explicit assertion; projection updates could reuse mirror ownership; invalidation selected rows using the current user value.",
+  "fix": "Only an explicit current assertion is deduplicated. Projection writes do not reuse mirror rows. Invalidation removes only mirror-owned rows for the dictionary key, independent of user values.",
+  "checks": [
+    {
+      "name": "unit_before",
+      "log": ".cargo-target/oop-store-invalidation-before.log",
+      "sha256": "8884f0cbe448a94884e343488e71a407f893eae38e9c19a5c3fdb386dac29ae3",
+      "exit_code": 101
+    },
+    {
+      "name": "unit_after",
+      "log": ".cargo-target/oop-store-invalidation-after.log",
+      "sha256": "e2fe6ada1a467d9ea3ddb9ef6fce00a8d2a0685ef3a7a8b890c34663b30fa764",
+      "exit_code": 0
+    },
+    {
+      "name": "native_before",
+      "log": ".cargo-target/oop-explicit-method-invalidation.log",
+      "sha256": "2ecfa69b9959793ba045edfd0dab304e7abb0ff5eade2380a0a0096089f158b2",
+      "exit_code": 101
+    },
+    {
+      "name": "native_after",
+      "log": ".cargo-target/oop-explicit-method-invalidation-after.log",
+      "sha256": "b816147a46572160ecfda9d5e433da617799cb0b5b844918d51d9a4e0c19062e",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace_libraries",
+      "log": ".cargo-target/oop-explicit-invalidation-workspace.log",
+      "sha256": "286d105e1c0b79db5a91a8e0c6b7bb67b1314f1428c1cefa69e225e74eb758e5",
+      "exit_code": 0
+    },
+    {
+      "name": "optional_activation",
+      "log": ".cargo-target/oop-explicit-invalidation-optional.log",
+      "sha256": "f262e1ee95daf3e4325fabafb284b02535134344a51130e64e6c6f89a2981762",
+      "exit_code": 0
+    }
+  ],
+  "unit_tests_passed": 13,
+  "manual_benchmarks_ignored": 2,
+  "id_contract_changes": false
+}

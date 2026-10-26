@@ -221,7 +221,7 @@ fn record_projection_one(
         .rev()
         .find_map(|(index, fact)| (same(fact.e, e) && same(fact.a, a)).then_some(index))
     {
-        if !state.facts[index].historied {
+        if !state.facts[index].historied && !state.facts[index].mirror {
             let tx = next_tx(state);
             let fact = &mut state.facts[index];
             fact.v = v;
@@ -253,7 +253,7 @@ fn record_projection_many(
             (same(fact.e, e) && same(fact.a, a) && same(fact.v, v)).then_some(index)
         })
     {
-        if !state.facts[index].historied {
+        if !state.facts[index].historied && !state.facts[index].mirror {
             let tx = next_tx(state);
             let fact = &mut state.facts[index];
             fact.op = op;
@@ -270,11 +270,10 @@ fn remove_mirror_facts(
     state: &mut StoreState,
     e: birnam_abi::Oop,
     a: birnam_abi::Oop,
-    v: birnam_abi::Oop,
 ) {
     state
         .facts
-        .retain(|fact| !(fact.mirror && same(fact.e, e) && same(fact.a, a) && same(fact.v, v)));
+        .retain(|fact| !(fact.mirror && same(fact.e, e) && same(fact.a, a)));
 }
 
 fn append_mirror_fact(
@@ -901,10 +900,51 @@ mod tests {
         let mut state = StoreState::new();
         append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, false);
         append_mirror_fact(&mut state, oop(20), oop(21), oop(30));
-        remove_mirror_facts(&mut state, oop(20), oop(21), oop(30));
+        remove_mirror_facts(&mut state, oop(20), oop(21));
         assert_eq!(state.facts.len(), 1);
         assert!(!state.facts[0].mirror);
         assert_eq!(current_value_raw(&state, oop(20), oop(21)), oop(30));
+    }
+
+    #[test]
+    fn explicit_projection_after_a_mirror_has_independent_ownership() {
+        let runtime = test_runtime(64, core::mem::size_of::<Fact>() * 32);
+        for many in [false, true] {
+            for value in [oop(30), oop(31)] {
+                for op in [Op::Assert, Op::Retract] {
+                    let mut state = StoreState::new();
+                    append_mirror_fact(&mut state, oop(20), oop(21), oop(30));
+                    if many {
+                        record_projection_many(&runtime, &mut state, oop(20), oop(21), value, op)
+                            .unwrap();
+                    } else {
+                        record_projection_one(&runtime, &mut state, oop(20), oop(21), value, op)
+                            .unwrap();
+                    }
+                    assert_eq!(state.facts.len(), 2);
+                    assert!(!state.facts[1].mirror);
+                    remove_mirror_facts(&mut state, oop(20), oop(21));
+                    assert_eq!(state.facts.len(), 1);
+                    assert!(durable_image_fact(&state.facts[0], &[]));
+                    assert_eq!(
+                        current_value_raw(&state, oop(20), oop(21)),
+                        if op == Op::Assert { value } else { core::ptr::null_mut() }
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mirror_invalidation_ignores_the_current_user_value() {
+        let mut state = StoreState::new();
+        append_mirror_fact(&mut state, oop(20), oop(21), oop(30));
+        append_fact(&mut state, oop(20), oop(21), oop(31), Op::Assert, false);
+        assert_eq!(current_value_raw(&state, oop(20), oop(21)), oop(31));
+        remove_mirror_facts(&mut state, oop(20), oop(21));
+        assert_eq!(state.facts.len(), 1);
+        assert!(!state.facts[0].mirror);
+        assert_eq!(current_value_raw(&state, oop(20), oop(21)), oop(31));
     }
 
     #[test]
