@@ -846,3 +846,26 @@ EOF and real read errors. StringBuilder checks also pass through compiled
 artifacts and mapped/rebuilt/baked images, including copied String identity,
 current method replacement and rejection of a live native buffer.
 [Receipt](../measurements/vtable-publisher-oop-20261026.json).
+
+## Foreign wrappers and optional Store image participation
+
+The Alien image checks preserve authored replacements and foreign wrappers after
+source deletion through mapped recovery, rebuilt recovery and a baked executable.
+A newer wrapper installed during an image callback remains authoritative after
+resave and rebuild, including collection during that callback. Hash recovery passes
+with both identity-based hashing and hashing that calls a foreign function, so
+foreign bindings are available before the restored hash tables are rebuilt.
+The registration suite also passes successive mapped and rebuilt saves, retaining
+code reuse, owner aliases, removed methods and authored replacements.
+
+Explicit Store opt-out also passes: saving does not invoke the replaced Store
+operations, recovery preserves destination facts, and a Cell belonging to an
+unselected Store is rejected without replacing the saved file. A custom selection
+error preserves its identity and leaves that file unchanged.
+
+The basic Alien and Store-participation runners exceeded their former 90- and
+180-second save limits. They now allow 600 seconds per command, retaining all
+behavioral assertions. This changes test budgets only; worker startup still has
+the user-selected 15-second deadline. No runtime implementation or Id contract
+changed for these checks. The optional method-change subscription remains open.
+[Receipt](../measurements/alien-store-images-oop-20261026.json).

@@ -1,0 +1,251 @@
+{
+  "passed": true,
+  "scope": "Five Alien and optional Store image suites on the staged Oop prefix; not full language or release acceptance",
+  "base_revision": "1e38a6f491b0e6756ca4e3f405038d2be3fcbc54",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix",
+  "artifacts": {
+    "lib/libbirnam_id.dylib": "cb4b09726d129a94a0b2460b074897029dff1395b8aeb29f626dc0b67ad0fd64",
+    "lib/libbirnam_execution.dylib": "6bb44edcb47bb506096ebc2cfdd46ada9788068fbae3403a235439ffc333f58a",
+    "lib/libbirnam_alien.dylib": "b51f6a099b20a8bad9a402d158735e760cc92ff2afe71a3fa3d559c101238033",
+    "lib/libbirnam_image.dylib": "db0e429394bb34faa6270b22c36bf29cace8b41d10c0e8c4a0789ba65ad09d9d",
+    "lib/native/libbirnam_store.dylib": "02918d51850962a1d4de58a1e8d27ff5c94fc24e2db4fdd7507484fc6776b4da",
+    "lib/libbirnam_alienRecipes.dylib": "6074fdf6f41eb3d76a616a3604dcc26266f660791a407ef3651366f64df1b808"
+  },
+  "checks": [
+    {
+      "runner": "scripts/alien-image-test.py",
+      "runner_sha256": "fcb4c1b5c79456700dff5fd2e1b3a0ed16e7e96608fe2409108297474f9551eb",
+      "command": [
+        "python3",
+        "scripts/alien-image-test.py",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix"
+      ],
+      "passed": true,
+      "log": ".cargo-target/oop-alien-image.log",
+      "log_sha256": "e0ce3a47e90b64e05e92297a782cc401c2a858060f54bf6d69db2a9d567c0cde",
+      "output": "Alien/Image: saved replacement and other wrapper survive source deletion, mapped/rebuilt recovery and baked entry"
+    },
+    {
+      "runner": "scripts/alien-image-reentry-test.py",
+      "runner_sha256": "7d9d408397ef01f27f39d0bd8fd13fbd38896603dd7f8f31af980c4c84f16130",
+      "command": [
+        "python3",
+        "scripts/alien-image-reentry-test.py",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix"
+      ],
+      "passed": true,
+      "log": ".cargo-target/oop-alien-image-reentry.log",
+      "log_sha256": "5e56b604e7a0305aa54a3656913727b08edd3f513076ceff849c9d99cdb2c940",
+      "output": "Alien image reentry: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-image-reentry-ddy0ug3m/results.json",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-image-reentry-ddy0ug3m/results.json",
+      "receipt_sha256": "bfbda7a0311bd6dd22bf8d02bdd18cfa403db18fbe85386660abf291ff02cd4e",
+      "runs": [
+        {
+          "exit_code": 0,
+          "name": "source",
+          "stderr": "",
+          "stdout": "#saved\n",
+          "wall_ns": 291910347167
+        },
+        {
+          "exit_code": 0,
+          "name": "mapped",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\n",
+          "wall_ns": 321324156167
+        },
+        {
+          "exit_code": 0,
+          "name": "rebuilt-resave",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\n",
+          "wall_ns": 31658110625
+        }
+      ]
+    },
+    {
+      "runner": "scripts/alien-recipes-test.py",
+      "runner_sha256": "3ce5ace8a70384b82c26217c141c7098bdeddcacc3b7b6a5c5d29bc155bd5d61",
+      "command": [
+        "python3",
+        "scripts/alien-recipes-test.py",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix"
+      ],
+      "passed": true,
+      "log": ".cargo-target/oop-alien-recipes.log",
+      "log_sha256": "3a304f71a37fe919285d8ba837c98a703f55194250bec0026d94210c9310ad47",
+      "output": "Alien recipes: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-recipes-1s1pps2_/results.json",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-recipes-1s1pps2_/results.json",
+      "receipt_sha256": "a68ca351f6cecc3e1a025995d361580eaac63a524124cd1fed654f988bc20ed6",
+      "runs": [
+        {
+          "exit_code": 0,
+          "name": "source",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n#saved\n",
+          "wall_ns": 290466303958
+        },
+        {
+          "exit_code": 0,
+          "name": "mapped",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n",
+          "wall_ns": 324914845750
+        },
+        {
+          "exit_code": 0,
+          "name": "rebuilt-resave",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n2\n",
+          "wall_ns": 249699023708
+        },
+        {
+          "exit_code": 0,
+          "name": "mapped-resave",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n3\n",
+          "wall_ns": 12366756792
+        }
+      ]
+    },
+    {
+      "runner": "scripts/alien-recipes-hash-test.py",
+      "runner_sha256": "108e5911b1b73f6c7e09f4c737f163dcf6e7f7d4de9eb0ad580eb91882c149eb",
+      "command": [
+        "python3",
+        "scripts/alien-recipes-hash-test.py",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix"
+      ],
+      "passed": true,
+      "log": ".cargo-target/oop-alien-hash.log",
+      "log_sha256": "14536306ed3e349b052d31f2fa2fe08e57b4d036277877c0b3ea3c07ecb25f1f",
+      "output": "Alien image hashing: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-hash-v_yzn8xt/results.json",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-hash-v_yzn8xt/results.json",
+      "receipt_sha256": "a035c5ff360ccdfd8f8f3e1e65b4c916ffc54339c5d9448fee17c845894a338a",
+      "runs": [
+        {
+          "exit_code": 0,
+          "mode": "identity",
+          "name": "source",
+          "stderr": "",
+          "stdout": "true\n#saved\n",
+          "wall_ns": 350732242458
+        },
+        {
+          "exit_code": 0,
+          "mode": "identity",
+          "name": "mapped",
+          "stderr": "",
+          "stdout": "7\n",
+          "wall_ns": 17690395291
+        },
+        {
+          "exit_code": 0,
+          "mode": "identity",
+          "name": "rebuilt",
+          "stderr": "",
+          "stdout": "7\n",
+          "wall_ns": 27475189958
+        },
+        {
+          "exit_code": 0,
+          "mode": "foreign",
+          "name": "source",
+          "stderr": "",
+          "stdout": "true\n#saved\n",
+          "wall_ns": 331114248333
+        },
+        {
+          "exit_code": 0,
+          "mode": "foreign",
+          "name": "mapped",
+          "stderr": "",
+          "stdout": "7\n",
+          "wall_ns": 12856488375
+        },
+        {
+          "exit_code": 0,
+          "mode": "foreign",
+          "name": "rebuilt",
+          "stderr": "",
+          "stdout": "7\n",
+          "wall_ns": 19868934500
+        }
+      ]
+    },
+    {
+      "runner": "scripts/image-store-participation-test.py",
+      "runner_sha256": "abbd855473cab253f2308afcf6ad6871c3685a112cf8a21314cc1082660d6a66",
+      "command": [
+        "python3",
+        "scripts/image-store-participation-test.py",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix"
+      ],
+      "passed": true,
+      "log": ".cargo-target/oop-image-store-participation.log",
+      "log_sha256": "491a5f8a85da194b1d828c8114ccd63c6be2653a83c24818baf23cd075c7fef3",
+      "output": "image-store-participation: passed; /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-gfirdelw/results.json",
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-gfirdelw/results.json",
+      "receipt_sha256": "d0408957385cc97fac3e36ff7656845959a81ef937d1598b6915cabf3af67930",
+      "runs": [
+        {
+          "exit_code": 0,
+          "name": "save-core",
+          "stderr": "",
+          "stdout": "true\n#saved\n",
+          "wall_ns": 324704686583
+        },
+        {
+          "exit_code": 0,
+          "name": "load-core-false",
+          "stderr": "",
+          "stdout": "true\n73\n42\nnil\n",
+          "wall_ns": 29644991500
+        },
+        {
+          "exit_code": 0,
+          "name": "load-core-true",
+          "stderr": "",
+          "stdout": "false\n73\n42\nnil\n",
+          "wall_ns": 38071382042
+        },
+        {
+          "exit_code": 0,
+          "name": "mismatched-cell",
+          "stderr": "",
+          "stdout": "nil\n#rejected\n",
+          "wall_ns": 16655272334
+        },
+        {
+          "exit_code": 0,
+          "name": "selection-error",
+          "stderr": "",
+          "stdout": "true\n#rejected\n",
+          "wall_ns": 15626242500
+        }
+      ]
+    }
+  ],
+  "test_budget_changes": {
+    "scripts/alien-image-test.py": [
+      90,
+      600
+    ],
+    "scripts/image-store-participation-test.py": [
+      180,
+      600
+    ]
+  },
+  "prior_timeouts": [
+    {
+      "log": ".cargo-target/oop-alien-image-90s.log",
+      "sha256": "5195c84f372e02d5887a5684cff8b8d1303372a0327a460abd2c92b81871a82c"
+    },
+    {
+      "log": ".cargo-target/oop-image-store-participation-180s.log",
+      "sha256": "d0ba82da821ee07224e40c1555a760a60f8c69133e25b36586fb9bef75c7142f"
+    }
+  ],
+  "runtime_changes": false,
+  "remaining_gap": "Vtable methodChangesTo: subscription remains unconnected; alien-publication-test.py is not qualified by this receipt."
+}

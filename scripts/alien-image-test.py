@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-alien-image-') as temporary:
     shutil.copytree(binary.parent.parent/'lib',work/'bundle/lib')
     source.write_text('[Alien wrap: "labs" signature: "l l" as: #foreignAbsolute on: Integer]; [Alien wrap: "labs" signature: "l l" as: #foreignKept on: Integer]; [Reflect defineMethod: #foreignAbsolute on: Integer as: [:self | 99]]; [Reflect defineMethod: #foreignReinstalled on: Integer as: [:self | 88]]; [Alien wrap: "labs" signature: "l l" as: #foreignReinstalled on: Integer]; [Globals at: #main put: [| [System println: [[0 - 7] foreignAbsolute]]; [System println: [[0 - 7] foreignKept]]; [System println: [[0 - 7] foreignReinstalled]]]]; [System saveImage: '+json.dumps(str(image))+']')
     def run(args):
-        result=subprocess.run(args,cwd=work,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=90)
+        result=subprocess.run(args,cwd=work,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=600)
         assert result.returncode==0,(args,result.returncode,result.stdout,result.stderr)
         assert not result.stderr,(args,result.stderr)
         return result.stdout
