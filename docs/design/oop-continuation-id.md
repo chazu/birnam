@@ -1098,3 +1098,12 @@ unrelated facts, and reservation owners survive collection without caller roots.
 Releasing one owner's reservation is idempotent and preserves another's. The null
 Oop represents absence while language nil remains a present value. No Store or Id
 implementation changed. [Receipt](../measurements/store-compensation-oop-20261026.json).
+
+## Cold-candidate task acceptance
+
+The complete installed Host task group passes on cold candidate `28a2f117`:
+task image/field recovery, 19 Concurrency service checks, multicore behavior,
+closure observation and all 177 task-control checks. The worker startup deadline
+remains 15 seconds. This is functional acceptance, not a multicore speedup claim,
+and predates the root-provider correction below.
+[Receipt](../measurements/cold-tasks-oop-20261026.json).
