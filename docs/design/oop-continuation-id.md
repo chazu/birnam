@@ -892,3 +892,11 @@ callback. Addition observes that replacement exactly once; subtraction remains
 unchanged, and restoring the captured Method restores the original sum. The test
 passes against the staged runtime without production changes.
 [Receipt](../measurements/integer-operation-oop-20261026.json).
+
+The numeric identity-fallback test is also migrated. It replaces `identityOf:` on
+the Id receiver's vtable, first proves that replacement is active, then verifies
+that existing Words remain readable without invoking it while new allocation
+propagates its exact failure object once. Captured Methods and callback state use
+scoped Oops. The first port incorrectly treated the Id receiver as a vtable;
+correcting the fixture preserves the original assertions without a runtime change.
+[Receipt](../measurements/numeric-identity-fallback-oop-20261026.json).

@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "scope": "Numeric reads and allocation failure under current Id identity replacement",
+  "base_revision": "db88b10ee53a37940b3762a21380ffdfbf3619da",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix",
+  "test": "rust/birnam-siphon/tests/representation_fallback.rs",
+  "test_sha256": "d3e7d1c2495145f5d87539d2cca958c0e6a823a1b4556d26a6fb0af3067b97d6",
+  "log": ".cargo-target/oop-representation-fallback.log",
+  "log_sha256": "f94e5d9833db08e9c3ca0bf34f8dc435bce113e1c1c12423944e7b33c075d9b0",
+  "command": "cargo test --offline --locked -p birnam-siphon --test representation_fallback -- --include-ignored --nocapture",
+  "tests_passed": 1,
+  "runtime_changes": false,
+  "fixture_correction": "Install the replacement on the Id receiver vtable, not on the receiver itself; a direct failure probe confirms installation before checking allocation."
+}
