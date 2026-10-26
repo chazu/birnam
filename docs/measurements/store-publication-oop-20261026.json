@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "scope": "Explicit Store authorization, commit and managed notification through Oop callbacks",
+  "base_revision": "92cc249fedb1ef2d7e95cb765217e7a5835ef478",
+  "prefix": "/private/tmp/birnam-oop-cold-waekjc38/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/publication_contract.rs": "fae8c99afe8dac578bf296e9f0e8c167b5efa48bbb24647522e0273d42054486",
+    "tests/fixtures/oop-host/store-publication.c": "c1432cff9ca8dd833e57d2e4d6c8196e519d7f624b26e5bd47200a3b7a91587b"
+  },
+  "log": ".cargo-target/oop-cold-qualification/publication.log",
+  "log_sha256": "73c6a4ced6710e2a5c6c2dd66dbe0de7f922a373ffcb45d45eb40cf2c2648b7a",
+  "c_warnings": "-Wall -Wextra -Werror",
+  "runtime_changes": false,
+  "universal_subscription": false
+}

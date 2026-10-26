@@ -996,8 +996,9 @@ afterward.
 Validation passes: 13 Store unit tests, workspace library tests, explicit
 invalidation, all 20 Alien publication assertions, compiled/source optional Store
 activation, image participation and all 870 authored checks. The legacy `store`,
-`publication_contract`, `binding_undo` and `minimal_mutation` harnesses have their
-retired-subscription expectations removed but still await Oop conversion; this is
+`publication_contract`, `binding_undo` and `minimal_mutation` harnesses had their
+retired-subscription expectations removed but still awaited Oop conversion at
+that checkpoint; subsequent conversions are recorded below. This is
 not a claim that the full native-message gate passes.
 [Retirement receipt](../measurements/explicit-method-invalidation-oop-20261026.json).
 
@@ -1068,3 +1069,14 @@ lifecycle recovery with binding drift, explicit adoption, running/TCP activation
 and rollback, and all 62 compiled-unit policy checks. No runtime change was needed.
 Other Host groups and the legacy native integration audit remain separate work.
 [Receipt](../measurements/cold-generation-oop-20261026.json).
+
+## Explicit Store publication callbacks
+
+The retained publication-contract harness now uses declared C callbacks with Oop
+Sequence state instead of native function entries and pointers to Rust test state.
+It checks authorization denial, exact native failure identities, post-publication
+dictionary/mirror agreement during collection, retained callback edits after a
+failure, and non-veto Error data returned by a void observer. A failed post-remove
+callback does not resurrect the Method; missing removal invokes only authorization.
+The test passes on the cold candidate without production changes or a universal
+subscription. [Receipt](../measurements/store-publication-oop-20261026.json).

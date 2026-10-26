@@ -1,280 +1,171 @@
 //! Explicit Store publication preserves authorization and post-edit notification.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol, UNIT},
-};
-use std::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-    os::unix::ffi::OsStrExt,
-};
-use support::*;
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
-    tokens: RefCell<Vec<usize>>,
-}
-impl H {
-    unsafe fn named(&self, n: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(n).unwrap())],
-            ))
-        }
-    }
-    unsafe fn keep(&self, o: Oop) -> Oop {
-        self.tokens
-            .borrow_mut()
-            .push(unsafe { retain(self.id, self.roots, o) });
-        o
-    }
-    unsafe fn key(&self, n: &[u8]) -> Oop {
-        unsafe { self.keep(self.id.intern_name(n).unwrap()) }
-    }
-    unsafe fn call(&self, r: Oop, n: &[u8], args: &[Oop]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                r,
-                n,
-                &args
-                    .iter()
-                    .copied()
-                    .map(Operand::object)
-                    .collect::<Vec<_>>(),
-            )))
-        }
-    }
-}
-#[derive(Clone, Copy, PartialEq)]
-enum Mode {
-    Normal,
-    Deny,
-    AuthFault,
-    ManagedFault,
-    ErrorValue,
-}
-struct Probe<'a> {
-    h: &'a H,
-    store: Oop,
-    selector: Oop,
-    foreign: Oop,
-    error: Oop,
-    mode: Cell<Mode>,
-    record: Cell<bool>,
-    events: RefCell<Vec<&'static str>>,
-}
-unsafe extern "C" fn answer(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(c.cast()))
-}
-unsafe extern "C" fn authorize(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe<'_>>();
-        if p.record.get() {
-            p.events.borrow_mut().push("authorize");
-        }
-        match if p.record.get() {
-            p.mode.get()
-        } else {
-            Mode::Normal
-        } {
-            Mode::Deny => Outcome::loaded(Operand::object(p.h.named(b"false"))),
-            Mode::AuthFault => Outcome::failed(881, 1),
-            _ => Outcome::loaded(Operand::object(p.h.named(b"true"))),
-        }
-    }
-}
-unsafe extern "C" fn managed(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe<'_>>();
-        let args = borrowed_slice(a, n).unwrap();
-        if !p.record.get() {
-            return Outcome::loaded(Operand::unit());
-        }
-        p.events.borrow_mut().push("managed");
-        collect(p.h.id, p.h.named(b"GC"));
-        let direct = send(
-            p.h.id,
-            p.h.id.receiver,
-            b"bindingOf:in:",
-            &[args[0], args[1]],
-        );
-        let fact = send(
-            p.h.id,
-            p.store,
-            b"rawCurrentValue:attr:",
-            &[args[1], args[0]],
-        );
-        assert_eq!(
-            direct.kind() == UNIT,
-            fact.kind() == UNIT,
-            "managed notification follows mirror publication"
-        );
-        if p.mode.get() == Mode::ManagedFault {
-            send(
-                p.h.id,
-                p.store,
-                b"assert:attr:value:",
-                &[
-                    Operand::object(p.foreign),
-                    Operand::object(p.selector),
-                    Operand::object(p.h.named(b"true")),
-                ],
-            );
-            return Outcome::failed(881, 3);
-        }
-        Outcome::loaded(if p.mode.get() == Mode::ErrorValue {
-            Operand::object(p.error)
-        } else {
-            Operand::unit()
-        })
-    }
-}
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::size;
+
 #[test]
 #[ignore = "production native modules"]
 fn authorization_commit_notifications_and_failure_are_distinct() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        optional_modules(id, ns, &["store"]);
-        let roots = object(send(
-            id,
-            ns,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Roots").unwrap())],
-        ));
-        let h = H {
-            id,
-            ns,
-            roots,
-            tokens: RefCell::new(vec![]),
-        };
-        let store = h.named(b"Store");
-        let target = h.call(h.named(b"Object"), b"clone", &[]);
-        let vt = h.call(id.receiver, b"ensurePrivateVtableFor:", &[target]);
-        let selector = h.key(b"publicationAudit");
-        let old_value = h.key(b"oldPublication");
-        let new_value = h.key(b"newPublication");
-        let make = |value| {
-            h.keep(object(send(
-                id,
-                h.named(b"Method"),
-                b"fromNative:owner:",
-                &[
-                    Operand::entry(NativeEntry::new(answer, value)),
-                    Operand::object(value),
-                ],
-            )))
-        };
-        let old = make(old_value);
-        let new = make(new_value);
-        let mut p = Probe {
-            h: &h,
-            store,
-            selector,
-            foreign: h.key(b"publicationForeign"),
-            error: h.call(h.named(b"Error"), b"kind:", &[h.key(b"observerErrorValue")]),
-            mode: Cell::new(Mode::Normal),
-            record: Cell::new(false),
-            events: RefCell::new(vec![]),
-        };
-        let c = (&raw mut p).cast();
-        let ab = h.keep(behavior(id));
-        let ob = h.keep(behavior(id));
-        install(id, ab, b"value", authorize, c);
-        install(id, ob, b"managedMethodChanged:on:", managed, c);
-        let a = h.keep(allocate(id, ab, 0));
-        let o = h.keep(allocate(id, ob, 0));
-        h.call(store, b"setMethodMutationAuthorizer:", &[a]);
-        h.call(store, b"setMethodMutationObserver:", &[o]);
-        for mode in [
-            Mode::Normal,
-            Mode::Deny,
-            Mode::AuthFault,
-            Mode::ManagedFault,
-            Mode::ErrorValue,
-        ] {
-            p.record.set(false);
-            assert_eq!(
-                h.call(store, b"addMethod:on:with:", &[selector, vt, old]),
-                store
-            );
-            p.events.borrow_mut().clear();
-            p.mode.set(mode);
-            p.record.set(true);
-            let result = id.send_named(
-                store,
-                b"addMethod:on:with:",
-                &[
-                    Operand::object(selector),
-                    Operand::object(vt),
-                    Operand::object(new),
-                ],
-            );
-            let committed = !matches!(mode, Mode::Deny | Mode::AuthFault);
-            assert_eq!(
-                h.call(target, b"publicationAudit", &[]),
-                if committed { new_value } else { old_value }
-            );
-            let expected_events = match mode {
-                Mode::Deny | Mode::AuthFault => vec!["authorize"],
-                _ => vec!["authorize", "managed"],
-            };
-            assert_eq!(*p.events.borrow(), expected_events);
-            match mode {
-                Mode::AuthFault => assert_eq!(result.unwrap_err().detail, 1),
-                Mode::ManagedFault => {
-                    assert_eq!(result.unwrap_err().detail, 3);
-                    assert_eq!(
-                        h.call(store, b"currentValue:attr:", &[p.foreign, selector]),
-                        h.named(b"true")
-                    );
-                }
-                Mode::Deny => assert_eq!(object(result.unwrap()), h.named(b"false")),
-                _ => assert_eq!(object(result.unwrap()), store), // observer Error values are void results, not vetoes
-            }
-            let fact = send(
-                id,
-                store,
-                b"rawCurrentValue:attr:",
-                &[Operand::object(vt), Operand::object(selector)],
-            );
-            assert_eq!(fact.as_object(), Some(if committed { new } else { old }));
-        }
-        // A failed post-remove notification does not resurrect the removed method.
-        p.mode.set(Mode::ManagedFault);
-        p.events.borrow_mut().clear();
-        let failure = id
-            .send_named(
-                store,
-                b"removeMethod:on:",
-                &[Operand::object(selector), Operand::object(vt)],
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let store = h
+        .load_native(
+            &q,
+            &h.resources.lib_dir.join("native/libbirnam_store.dylib"),
+            &[h.namespace],
+        )
+        .unwrap();
+    q.check_result(store).unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "birnam-store-publication-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/store-publication.c")
             )
-            .unwrap_err();
-        assert_eq!(failure.detail, 3);
-        assert_eq!(
-            send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(selector), Operand::object(vt)]
-            )
-            .kind(),
-            UNIT
-        );
-        p.mode.set(Mode::Normal);
-        p.events.borrow_mut().clear();
-        let missing = h.call(store, b"removeMethod:on:", &[selector, vt]);
-        assert_eq!(h.call(missing, b"kind", &[]), h.key(b"missingDirectMethod"));
-        assert_eq!(*p.events.borrow(), vec!["authorize"]);
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = h.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let truth = h.named(b"true").unwrap();
+    let falsity = h.named(b"false").unwrap();
+    let nil = h.named(b"nil").unwrap();
+    let gc = h.named(b"GC").unwrap();
+    q.call(gc, b"precisePayloads:", &[size(1).unwrap()])
+        .unwrap();
+    let target = q.call(h.named(b"Object").unwrap(), b"clone", &[]).unwrap();
+    let vt = q
+        .call(h.id.root, b"ensurePrivateVtableFor:", &[target])
+        .unwrap();
+    let selector = hooks.symbol(b"publicationAudit");
+    let old_value = hooks.symbol(b"oldPublication");
+    let new_value = hooks.symbol(b"newPublication");
+    let old = hooks.method(b"fixed", old_value);
+    let new = hooks.method(b"fixed", new_value);
+    let foreign = hooks.symbol(b"publicationForeign");
+    let error = q
+        .call(
+            h.named(b"Error").unwrap(),
+            b"kind:",
+            &[hooks.symbol(b"observerErrorValue")],
+        )
+        .unwrap();
+    let auth_fault = hooks.fault(1);
+    let managed_fault = hooks.fault(3);
+    let state = hooks.context(&[
+        store,
+        h.named(b"Execution").unwrap(),
+        gc,
+        nil,
+        truth,
+        falsity,
+        foreign,
+        error,
+        auth_fault,
+        managed_fault,
+        size(0).unwrap(),
+        size(0).unwrap(),
+        size(0).unwrap(),
+        nil,
+        nil,
+    ]);
+    let events = || {
+        (0..hooks.count(state, 12))
+            .map(|i| hooks.field(state, 13 + i))
+            .collect::<Vec<_>>()
+    };
+    let authorize = hooks.symbol(b"authorize");
+    let managed = hooks.symbol(b"managed");
+    for (name, public, registration) in [
+        (
+            authorize,
+            b"value".as_slice(),
+            b"setMethodMutationAuthorizer:".as_slice(),
+        ),
+        (
+            managed,
+            b"managedMethodChanged:on:",
+            b"setMethodMutationObserver:",
+        ),
+    ] {
+        let method = q.call(module, b"methodAt:", &[name]).unwrap();
+        let method = q.call(method, b"withContext:", &[state]).unwrap();
+        let receiver = q.call(h.named(b"Object").unwrap(), b"clone", &[]).unwrap();
+        let behavior = q
+            .call(h.id.root, b"ensurePrivateVtableFor:", &[receiver])
+            .unwrap();
+        q.call(behavior, b"addMethod", &[hooks.symbol(public), method])
+            .unwrap();
+        assert_eq!(q.call(store, registration, &[receiver]).unwrap(), store);
     }
+    let publish = hooks.symbol(b"addMethod:on:with:");
+    for mode in 0..=4 {
+        hooks.put(state, 11, size(0).unwrap());
+        assert_eq!(
+            q.call(store, b"addMethod:on:with:", &[selector, vt, old])
+                .unwrap(),
+            store
+        );
+        hooks.put(state, 12, size(0).unwrap());
+        hooks.put(state, 10, size(mode).unwrap());
+        hooks.put(state, 11, size(1).unwrap());
+        let result = unsafe { h.id.send(store, publish, &[selector, vt, new]) };
+        let committed = mode != 1 && mode != 2;
+        assert_eq!(
+            q.call(target, b"publicationAudit", &[]).unwrap(),
+            if committed { new_value } else { old_value }
+        );
+        assert_eq!(
+            events(),
+            if committed {
+                vec![authorize, managed]
+            } else {
+                vec![authorize]
+            }
+        );
+        match mode {
+            1 => assert_eq!(result.unwrap(), falsity),
+            2 => assert_eq!(result.unwrap_err(), auth_fault),
+            3 => {
+                assert_eq!(result.unwrap_err(), managed_fault);
+                assert_eq!(
+                    q.call(store, b"currentValue:attr:", &[foreign, selector])
+                        .unwrap(),
+                    truth
+                );
+            }
+            _ => assert_eq!(result.unwrap(), store),
+        }
+        assert_eq!(
+            q.call(store, b"rawCurrentValue:attr:", &[vt, selector])
+                .unwrap(),
+            if committed { new } else { old }
+        );
+    }
+    hooks.put(state, 10, size(3).unwrap());
+    hooks.put(state, 12, size(0).unwrap());
+    let remove = hooks.symbol(b"removeMethod:on:");
+    assert_eq!(
+        unsafe { h.id.send(store, remove, &[selector, vt]) }.unwrap_err(),
+        managed_fault
+    );
+    assert_eq!(events(), vec![authorize, managed]);
+    assert_eq!(hooks.capture(vt, selector), nil);
+    hooks.put(state, 10, size(0).unwrap());
+    hooks.put(state, 12, size(0).unwrap());
+    let missing = q.call(store, b"removeMethod:on:", &[selector, vt]).unwrap();
+    assert_eq!(
+        q.call(missing, b"kind", &[]).unwrap(),
+        hooks.symbol(b"missingDirectMethod")
+    );
+    assert_eq!(events(), vec![authorize]);
 }
