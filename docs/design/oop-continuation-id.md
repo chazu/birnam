@@ -1043,3 +1043,18 @@ collection pass; self-compilation produces identical artifact bytes. The product
 load probe excludes the Rust grammar and still rejects missing compiled Lang even
 when the seed is present. No runtime or parser implementation changed.
 [Receipt](../measurements/lang-caller-oop-20261026.json).
+
+## Alien compiler oracle across the ABI change
+
+The CLI group next found that its frozen Rust oracle still emits Operand/Outcome
+native adapters. The oracle remains unchanged. The runner now compares the foreign
+marshalling bodies and diagnostics, excluding the known version-specific prelude
+and native entry/registration wrappers and translating only the old failure-status
+field access. All 64 comparisons and eight ABI-classification checks pass.
+
+The Oop adapter is additionally exercised against an independent C fixture rather
+than copying the production adapter into the oracle. Twenty checks pass for signed,
+unsigned, float, string, pointer and void calls; structs, arrays, nested HFA and
+non-HFA returns; malformed aggregate shape; and collecting scalar/aggregate callbacks
+with release. These checks run without the stdlib. No runtime/compiler behavior or
+Id contract changed. [Receipt](../measurements/alien-compiler-oop-20261026.json).

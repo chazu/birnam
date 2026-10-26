@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "scope": "Frozen foreign-marshalling oracle and real Oop Alien adapters; not a claim of byte equality between retired and current native ABIs",
+  "base_revision": "1856b3b2c01784e600642d74d5e011b722c59525",
+  "prefix": "/private/tmp/birnam-oop-cold-waekjc38/prefix",
+  "source_sha256": {
+    "scripts/alien-compiler-test.py": "d64ce0a0013a3bbde783825155bb5ca5396f7d1d3d4ed4afe644b0677eda399a",
+    "scripts/fixtures/alien-compiler-abi.c": "3d156352c8559014d8275387476f2cd19cbaa15ae60a57e32e5c623e5523bd61",
+    "tests/reference/alien-compiler/src/codegen.rs": "1f645503b49694d32e4589aba94d285f02d94cae332d425d92e01037db312199",
+    "tests/reference/alien-compiler/src/native_prelude.c": "6f6e92ebafd2b6cf1671d69f951f516affe558db6448dc38eb4849f8b220383f"
+  },
+  "oracle_implementation_changed": false,
+  "normalization": [
+    "Remove the respective known ABI prelude",
+    "Remove native entry/registration wrappers",
+    "Normalize only active->failure.status to active->failure in the retired oracle"
+  ],
+  "foreign_and_diagnostic_cases": 64,
+  "abi_classification_cases": 8,
+  "real_adapter_checks": 20,
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/cli-before-alien.log",
+      "sha256": "90a6e847fe146609d623b6462e386f80ecf6cf67cfdb37a877f37f4bdd971aa7"
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/alien-after.log",
+      "sha256": "e50a56c781504b26d4e9040211094b5f634bd9adbd4593abf689c2b8472f1751"
+    }
+  ],
+  "runtime_changes": false
+}
