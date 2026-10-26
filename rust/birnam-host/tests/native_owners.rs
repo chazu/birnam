@@ -1,27 +1,11 @@
-//! Exercise the descriptor/message boundary, independently of Rust owner bodies.
-use birnam_abi::{
-    Oop,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use birnam_host_support::{Context, object};
-use std::{cell::Cell, env, ffi::c_void, os::unix::ffi::OsStrExt, path::PathBuf};
-struct Collect {
-    id: Protocol,
-    gc: Oop,
-    original: NativeEntry,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn collecting(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<Collect>() };
-    if let Err(error) = unsafe { s.id.send_named(s.gc, b"collectPrecisely", &[]) } {
-        return error;
-    }
-    s.calls.set(s.calls.get() + 1);
-    unsafe { s.original.method.unwrap()(s.original.context, r, a, n) }
-}
-unsafe extern "C" fn answer_true(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(c.cast()))
-}
+//! Exercise native module declarations and Id messages independently of owner bodies.
+use birnam_host_support::Context;
+use std::{env, os::unix::ffi::OsStrExt, path::PathBuf};
+#[path = "../src/test_hooks.rs"]
+#[allow(dead_code)] // Other Host fixtures use the remaining callback helpers.
+mod test_hooks;
+use test_hooks::Hooks;
+
 #[test]
 #[ignore = "requires installed native Host libraries; scripts/host-cli-test.sh"]
 fn native_host_owners_use_descriptors_and_messages() {
@@ -31,37 +15,37 @@ fn native_host_owners_use_descriptors_and_messages() {
         birnam_host::Overrides::default(),
     )
     .unwrap();
-    let id = birnam_siphon::load(resources.id_dylib.as_os_str().as_bytes()).unwrap();
-    let ns = object(
-        unsafe {
-            id.send(
-                id.receiver,
-                id.load,
-                &[
-                    Operand::bytes(
-                        resources
-                            .lib_dir
-                            .join("libbirnam_bootstrap.dylib")
-                            .as_os_str()
-                            .as_bytes(),
-                    ),
-                    Operand::bytes(resources.lib_dir.as_os_str().as_bytes()),
-                ],
-            )
-        }
-        .unwrap(),
+    let bootstrap = lib.join("libbirnam_bootstrap.dylib");
+    let id = birnam_siphon::load(
+        resources.id_dylib.as_os_str().as_bytes(),
+        &[
+            bootstrap.as_os_str().as_bytes(),
+            lib.as_os_str().as_bytes(),
+            b"nameWithBytes",
+            b"sequence",
+        ],
     )
     .unwrap();
-    let h = Context::from_namespace(id, ns, resources).unwrap();
+    let h = unsafe {
+        let constructor = id.send(id.literal(2).unwrap(), id.intern, &[]).unwrap();
+        let sequence = id.send(id.literal(3).unwrap(), id.intern, &[]).unwrap();
+        let args = id
+            .send(id.root, sequence, &[id.literal(1).unwrap()])
+            .unwrap();
+        let ns = id.send(id.literal(0).unwrap(), id.load, &[args]).unwrap();
+        Context::from_namespace(id, ns, resources, constructor).unwrap()
+    };
+
+    let fixtures = Hooks::new(&h);
     h.send(
         h.named(b"GC").unwrap(),
         b"precisePayloads:",
-        &[Operand::word(1)],
+        &[birnam_abi::size(1).unwrap()],
     )
     .unwrap();
     let q = h.scope();
     let r = &h.resources;
-    let mut init = vec![Operand::object(ns)];
+    let mut init = vec![h.namespace];
     for p in [
         &r.prefix,
         &r.lib_dir,
@@ -69,7 +53,7 @@ fn native_host_owners_use_descriptors_and_messages() {
         &r.guide_dir,
         &r.id_dylib,
     ] {
-        init.push(Operand::object(q.string(p.as_os_str().as_bytes()).unwrap()));
+        init.push(q.string(p.as_os_str().as_bytes()).unwrap());
     }
     let mut owners = Vec::new();
     for (library, name) in [
@@ -79,18 +63,10 @@ fn native_host_owners_use_descriptors_and_messages() {
         ("host_interaction", b"HostInteraction"),
     ] {
         let path = r.lib_dir.join(format!("libbirnam_{library}.dylib"));
-        let mut request = vec![Operand::bytes(path.as_os_str().as_bytes())];
-        request.extend_from_slice(&init);
-        let owner = q
-            .keep(unsafe { id.send(id.receiver, id.load, &request) }.unwrap())
-            .unwrap();
+        let owner = h.load_native(&q, &path, &init).unwrap();
         assert_eq!(owner, h.named(name).unwrap());
-        assert_eq!(
-            q.keep(unsafe { id.send(id.receiver, id.load, &request) }.unwrap())
-                .unwrap(),
-            owner
-        );
-        assert!(unsafe { id.send(id.receiver, id.load, &request[..2]) }.is_err());
+        assert_eq!(h.load_native(&q, &path, &init).unwrap(), owner);
+        assert!(h.load_native(&q, &path, &init[..1]).is_err());
         owners.push((owner, path));
     }
     let entry = owners[0].0;
@@ -99,10 +75,7 @@ fn native_host_owners_use_descriptors_and_messages() {
     q.call(
         entry,
         b"bootstrap:tools:",
-        &[
-            Operand::object(h.named(b"false").unwrap()),
-            Operand::object(h.named(b"false").unwrap()),
-        ],
+        &[h.named(b"false").unwrap(), h.named(b"false").unwrap()],
     )
     .and_then(|o| q.check_result(o))
     .unwrap();
@@ -110,111 +83,61 @@ fn native_host_owners_use_descriptors_and_messages() {
         q.call(entry, b"imageHasMain", &[]).unwrap(),
         h.named(b"false").unwrap()
     );
-    // Reloading a constructed owner preserves a replacement; it cannot reset
-    // a retained receiver or install another callback context.
-    let behavior = q
-        .call(id.receiver, b"behaviorOf:", &[Operand::object(entry)])
-        .unwrap();
-    let selector = unsafe { id.intern_name(b"imageHasMain") }.unwrap();
-    let original = h
-        .send(
-            id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(selector), Operand::object(behavior)],
-        )
-        .unwrap()
-        .as_entry()
-        .unwrap();
+    // Reloading an owner preserves its receiver and replaced method.
+    let behavior = q.call(id.root, b"behaviorOf:", &[entry]).unwrap();
+    let selector = fixtures.symbol(b"imageHasMain");
+    let original = fixtures.capture(behavior, selector);
     h.send(
         behavior,
         b"addMethod",
         &[
-            Operand::object(selector),
-            Operand::entry(NativeEntry::new(
-                answer_true,
-                h.named(b"true").unwrap().cast(),
-            )),
+            selector,
+            fixtures.method(b"fixed", h.named(b"true").unwrap()),
         ],
     )
     .unwrap();
-    let mut request = vec![Operand::bytes(owners[0].1.as_os_str().as_bytes())];
-    request.extend_from_slice(&init);
-    assert_eq!(
-        q.keep(unsafe { id.send(id.receiver, id.load, &request) }.unwrap())
-            .unwrap(),
-        entry
-    );
+    assert_eq!(h.load_native(&q, &owners[0].1, &init).unwrap(), entry);
     assert_eq!(
         q.call(entry, b"imageHasMain", &[]).unwrap(),
         h.named(b"true").unwrap()
     );
-    h.send(
-        behavior,
-        b"addMethod",
-        &[Operand::object(selector), Operand::entry(original)],
-    )
-    .unwrap();
-    // A native error must survive precise collection while its message String
-    // is constructed, including a newly interned error-kind Symbol.
+    h.send(behavior, b"addMethod", &[selector, original])
+        .unwrap();
+    // An error survives collection while its message String and newly interned
+    // error-kind Symbol are constructed.
     let string = q
-        .call(
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(h.named(b"String").unwrap())],
-        )
+        .call(id.root, b"behaviorOf:", &[h.named(b"String").unwrap()])
         .unwrap();
-    let from_bytes = unsafe { id.intern_name(b"fromBytes:") }.unwrap();
-    let original = h
-        .send(
-            id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(from_bytes), Operand::object(string)],
-        )
-        .unwrap()
-        .as_entry()
-        .unwrap();
-    let mut hook = Collect {
-        id,
-        gc: h.named(b"GC").unwrap(),
+    let from_bytes = fixtures.symbol(b"fromBytes:");
+    let original = fixtures.capture(string, from_bytes);
+    let hook = fixtures.context(&[
         original,
-        calls: Cell::new(0),
-    };
+        h.named(b"GC").unwrap(),
+        birnam_abi::size(0).unwrap(),
+        std::ptr::null_mut(),
+    ]);
     h.send(
         string,
         b"addMethod",
-        &[
-            Operand::object(from_bytes),
-            Operand::entry(NativeEntry::new(
-                collecting,
-                (&mut hook as *mut Collect).cast(),
-            )),
-        ],
+        &[from_bytes, fixtures.method(b"collectEvery", hook)],
     )
     .unwrap();
     let error = q.call(interaction, b"repl:", &[]).unwrap();
-    h.send(
-        string,
-        b"addMethod",
-        &[Operand::object(from_bytes), Operand::entry(original)],
-    )
-    .unwrap();
-    assert!(hook.calls.get() > 0);
+    h.send(string, b"addMethod", &[from_bytes, original])
+        .unwrap();
+    assert!(fixtures.count(hook, 2) > 0);
     assert_eq!(
         q.call(error, b"kind", &[]).unwrap(),
-        unsafe { id.intern_name(b"hostError") }.unwrap()
+        fixtures.symbol(b"hostError")
     );
     assert!(q.check_result(error).unwrap_err().0.contains("wrong arity"));
     let malformed = q.string(b"not json").unwrap();
     let version = q.string(b"fixture").unwrap();
     let error = q
-        .call(
-            build,
-            b"run:version:",
-            &[Operand::object(malformed), Operand::object(version)],
-        )
+        .call(build, b"run:version:", &[malformed, version])
         .unwrap();
     assert!(q.check_result(error).is_err());
     println!(
-        "native Host owners: descriptors, completed Namespace inputs, reload preservation, malformed requests and collecting error construction passed"
+        "native Host owners: declarations, completed Namespace inputs, reload preservation, malformed requests and collecting error construction passed"
     );
 }

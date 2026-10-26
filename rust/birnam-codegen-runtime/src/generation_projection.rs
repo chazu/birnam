@@ -32,9 +32,12 @@ pub(super) unsafe extern "C" fn initial(_: Oop, c: Oop, _: Oop, _: *const Oop, n
         let original = snapshot(s, &q)?;
         let mut entries = Vec::new();
         for &(name, record) in &original.1 {
-            let metadata = source_metadata::read(s, &q, record)?
-                .and_then(|m| m.revision)
-                .ok_or_else(invalid)?;
+            let Some(metadata) = source_metadata::read(s, &q, record)?.and_then(|m| m.revision)
+            else {
+                return s.error(
+                    b"compiled source metadata is missing; rebuild the artifact or image",
+                );
+            };
             let bytes = s.source_bytes(&q, record)?.ok_or_else(invalid)?;
             if s.symbol_bytes(&q, name)?.as_deref() != Some(metadata.name.as_slice()) {
                 return s.error(b"generation source name mismatches");

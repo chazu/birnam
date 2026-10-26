@@ -1,0 +1,216 @@
+{
+  "base_revision": "a82941505f5752a575dca46e97c196bd0469f007",
+  "passed": true,
+  "pending": [],
+  "scope": "Host library and three native integration binaries; not the complete host-cli runner or release acceptance",
+  "runtime_changes": [
+    "Restore compileError value and original rebuild guidance for missing generation source metadata"
+  ],
+  "fixtures": "Declared native Methods with Oop contexts and captured Methods; no additions to Id",
+  "workspace_lib": {
+    "passed": true,
+    "command": "MISE_TRUSTED_CONFIG_PATHS=\"$PWD\" CARGO_TARGET_DIR=\"$PWD/.cargo-target/oop-slice\" mise exec -- cargo test --offline --locked --workspace --lib",
+    "log": ".cargo-target/oop-host-unit-final.log"
+  },
+  "runtime_cases": [
+    {
+      "name": "startup::lifecycle_test::activation_inside_entered_methods_uses_current_setters",
+      "passed": true,
+      "log": ".cargo-target/oop-host-activation_inside_entered_methods_uses_current_setters.log",
+      "log_sha256": "82aad6ed5c759deffeaeb358280035ae8c7501223b281b497b5ec4b973ce7137",
+      "seconds": 13.4
+    },
+    {
+      "name": "startup::lifecycle_test::lifecycle_fields_preserve_explicit_facts_and_status_reads",
+      "passed": true,
+      "log": ".cargo-target/oop-host-fixed-lifecycle_fields_preserve_explicit_facts_and_status_reads.log",
+      "log_sha256": "c209cb908a714c8e6b8dca4ba23d6f156006059eaf851b1d048e963d2e314807",
+      "seconds": 13.3
+    },
+    {
+      "name": "startup::lifecycle_test::independent_candidate_modules_need_no_certificate",
+      "passed": true,
+      "log": ".cargo-target/oop-host-independent_candidate_modules_need_no_certificate.log",
+      "log_sha256": "9de2d43dd5dc02a025d21c14293568184d8d9cc129c5a8514adb33738ed347ab",
+      "seconds": 17.12
+    },
+    {
+      "name": "startup::lifecycle_test::discard_cancels_preparation_and_keeps_bindings_and_files",
+      "passed": true,
+      "log": ".cargo-target/oop-host-discard_cancels_preparation_and_keeps_bindings_and_files.log",
+      "log_sha256": "1a07a197bbcc591ee8ebe2a58383f38a2d8df9bb662fd9c091260b64e8e42df2",
+      "seconds": 13.11
+    },
+    {
+      "name": "startup::lifecycle_test::dependency_changes_use_registered_module_without_certification",
+      "passed": true,
+      "log": ".cargo-target/oop-host-dependency_changes_use_registered_module_without_certification.log",
+      "log_sha256": "fbb6e0d515da341d84b658d9c6cd7ad66e1b23f0f541fe82c35acaa2e267f9fa",
+      "seconds": 15.61
+    },
+    {
+      "name": "startup::lifecycle_test::rollback_keeps_released_predecessors_discarded",
+      "passed": true,
+      "log": ".cargo-target/oop-host-rollback_keeps_released_predecessors_discarded.log",
+      "log_sha256": "840c3070c01ef2b6839cfe772bc883277011facb6f1115cd05a61541c9baaa68",
+      "seconds": 16.28
+    },
+    {
+      "name": "startup::lifecycle_test::certificate_release_reclaims_observations_and_preserves_candidate_undo",
+      "passed": true,
+      "log": ".cargo-target/oop-host-certificate_release_reclaims_observations_and_preserves_candidate_undo.log",
+      "log_sha256": "07486d7bbe934a4bf9d432366d66b81a445b621e4c3e0e04cfec10d6a3d9f326",
+      "seconds": 16.01
+    },
+    {
+      "name": "startup::lifecycle_test::image_application_boundary_invalidates_without_restore",
+      "passed": true,
+      "log": ".cargo-target/oop-host-image_application_boundary_invalidates_without_restore.log",
+      "log_sha256": "0ea5eedb1c47e16512c9d68e13d6165378031ecb040c653ba116ade4a9957751",
+      "seconds": 245.79
+    },
+    {
+      "name": "startup::lifecycle_test::source_registry_sends_retain_partial_edits_for_explicit_undo",
+      "passed": true,
+      "log": ".cargo-target/oop-host-source_registry_sends_retain_partial_edits_for_explicit_undo.log",
+      "log_sha256": "3e278a50f266dbd04d5bca3fc9816c40e2c5307281ae9d8232210b6aa7c21b68",
+      "seconds": 19.14
+    },
+    {
+      "name": "startup::lifecycle_test::source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+      "passed": true,
+      "log": ".cargo-target/oop-host-source_registry_images_preserve_aliases_and_reject_changed_snapshots.log",
+      "log_sha256": "20d48d885393208271fc8e70afb94235c798ef1da76f81bc955fe81b5227a776",
+      "seconds": 286.05
+    },
+    {
+      "name": "startup::lifecycle_test::registry_validation_uses_one_metadata_read_and_current_query",
+      "passed": true,
+      "log": ".cargo-target/oop-host-registry_validation_uses_one_metadata_read_and_current_query.log",
+      "log_sha256": "b0f28c13e4ba4b736a2db160154ab9ba749e67a68484943f44c7c182727acc0e",
+      "seconds": 13.47
+    },
+    {
+      "name": "startup::lifecycle_test::direct_method_observations_restore_native_abi_and_owned_identity",
+      "passed": true,
+      "log": ".cargo-target/oop-host-direct_method_observations_restore_native_abi_and_owned_identity.log",
+      "log_sha256": "98a837d042c12b2ad6dfee520c7ed5bc162fb8226d9f2bb339ee771dcbd2e483",
+      "seconds": 13.06
+    },
+    {
+      "name": "startup::lifecycle_test::candidate_task_exit_retains_explicit_undo_and_releases_operation_scope",
+      "passed": true,
+      "log": ".cargo-target/oop-host-candidate_task_exit_retains_explicit_undo_and_releases_operation_scope.log",
+      "log_sha256": "7c25cf06b49c3297ab3ac0836c7849ef302b0cc0331ae55e9220494ea8adfe19",
+      "seconds": 14.29
+    },
+    {
+      "name": "startup::tests::host_roots_survive_collecting_sends",
+      "passed": true,
+      "log": ".cargo-target/oop-host-runtime-0.log",
+      "log_sha256": "2907377e485f43ebe69ce2582e06d6c3d41b2ab1b93e195edcdbec063d3625f9",
+      "seconds": 4.05
+    },
+    {
+      "name": "startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+      "passed": true,
+      "log": ".cargo-target/oop-host-fixed-installed_bootstrap_and_console_do_not_compile_or_parse.log",
+      "log_sha256": "30bac1fa65e558af401f71556993c6626a7dc07831f7124ecfaf0e8c34ad45af",
+      "seconds": 33.14
+    },
+    {
+      "name": "startup::tests::image_entry_uses_saved_code_and_roots",
+      "passed": true,
+      "log": ".cargo-target/oop-host-entry-final.log",
+      "log_sha256": "9f95f46c4851a0e3e384c99d1466466442f09f1282dbc0613623678eea9cb6ab",
+      "seconds": 10.72
+    },
+    {
+      "name": "startup::image_loading_test::user_images_compile_only_without_code_or_on_explicit_rebuild",
+      "passed": true,
+      "log": ".cargo-target/oop-host-user_images_compile_only_without_code_or_on_explicit_rebuild.log",
+      "log_sha256": "78d325ccc7f6a9f5c9af97006f61e4397b0091105cc272d65f13af8d487dbb57",
+      "seconds": 38.86
+    },
+    {
+      "name": "startup::lifecycle_test::image_restores_descriptions_and_explicit_adoption",
+      "passed": true,
+      "log": ".cargo-target/oop-host-fixed-image_restores_descriptions_and_explicit_adoption.log",
+      "log_sha256": "e707643f0ddbcd5dd1d101de9cbc0a701004cea33c86eb5ee030f63bf1d34fbc",
+      "seconds": 1518.69,
+      "child_cases": [
+        "mapped",
+        "mapped resaved",
+        "rebuild",
+        "rebuild resaved",
+        "drift-mapped",
+        "drift-rebuild"
+      ]
+    }
+  ],
+  "source_generation": {
+    "passed": true,
+    "checks": 28,
+    "receipt": ".cargo-target/oop-slice/generation-qualification/lifecycle-cn7t9ni6/receipt.json"
+  },
+  "fixture_compile": {
+    "passed": true,
+    "flags": [
+      "-dynamiclib",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "exported_symbols": [
+      "_birnam_native_module_v2"
+    ]
+  },
+  "runtime_command": "BIRNAM_TEST_MODULE_DIRECTORY=<installed lib> mise exec -- cargo test --offline --locked -p birnam-host --lib <test name> -- --exact --ignored --nocapture (one process per test)",
+  "host_package": {
+    "passed": true,
+    "command": "mise exec -- cargo test --offline --locked -p birnam-host",
+    "log": ".cargo-target/oop-host-package-final.log"
+  },
+  "native_integration": [
+    {
+      "target": "native_backend",
+      "name": "native_backend_is_the_live_compiler_seam",
+      "passed": true,
+      "log": ".cargo-target/oop-host-native-backend.log",
+      "log_sha256": "ed0ed0dd7ad0cdcb51f43820707faa5a01c0766d851f7133f7c3a1996abe60b7",
+      "seconds": 3.88
+    },
+    {
+      "target": "native_owners",
+      "name": "native_host_owners_use_descriptors_and_messages",
+      "passed": true,
+      "log": ".cargo-target/oop-host-native-owners.log",
+      "log_sha256": "d32bba0dcb589850b1dee0dc0fc4605c40eb4f0877526ad893fd40729e65c610",
+      "seconds": 13.48
+    },
+    {
+      "target": "native_compilers",
+      "name": "native_compilers_are_live_value_seams",
+      "passed": true,
+      "log": ".cargo-target/oop-host-native-compilers.log",
+      "log_sha256": "472a5d0000a607cda8a933095a27ba9abf56fb5e7bfbb2036cee8913c816d363",
+      "seconds": 5.26
+    }
+  ],
+  "runtime_library_cases": 18,
+  "native_integration_cases": 3,
+  "findings": [
+    "Restored missing-metadata compileError without parsing or compilation fallback.",
+    "Restricted the saved-main test hook to a delegated vtable for main; shared Block interception recursively entered the fixture through Globals mutation.",
+    "Restored compiled Store/Relational wrappers in the staged prefix after a bulk native-library copy overwrote them.",
+    "Retargeted the NativeBackend fixture to the current resumable emission operation and tested arity on an existing operation."
+  ],
+  "remaining": [
+    "Older Siphon test harnesses still use the old carrier API.",
+    "The complete host-cli runner, remaining installed-language checks and cold release acceptance are not qualified by this receipt."
+  ],
+  "corrected_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/project-qualification/host-corrected-90qyaz38",
+  "codegen_runtime_sha256": "2ac780fd9882c75a2952d441324505c18ad3d4da10714d3d83d903609c7dfdc2",
+  "callback_source_sha256": "d6598ac21a58bc05fd34a1116f2e5db1650b918f19e2161be18ef529e6e420d3"
+}

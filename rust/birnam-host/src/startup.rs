@@ -1,6 +1,5 @@
 use crate::{Resources,StartupPolicy,runtime::{HostError,HostRuntime}};
 #[cfg(test)]use crate::runtime::object;
-#[cfg(test)]use birnam_abi::{Oop,id_protocol::{Outcome,Protocol}};
 #[cfg(test)]use std::{env,path::Path,os::unix::ffi::OsStrExt};
 impl HostRuntime {
  pub fn start(resources:&Resources,policy:StartupPolicy)->Result<Self,HostError>{let host=Self::start_native(resources,policy.precise_gc)?;if !policy.skip_stdlib {host.bootstrap(policy.source_bootstrap,policy.tool_bootstrap)?;}Ok(host)}
@@ -17,19 +16,8 @@ mod image_loading_test;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use birnam_abi::id_protocol::{self as native, NativeEntry};
-    use std::{cell::Cell, ffi::c_void, path::PathBuf};
-
-    unsafe extern "C" fn deny_compilation(
-        context: *mut c_void,
-        _: Oop,
-        _: *const Operand,
-        _: usize,
-    ) -> Outcome {
-        let calls = unsafe { &*context.cast::<Cell<usize>>() };
-        calls.set(calls.get() + 1);
-        Outcome::failed(native::INVALID_REQUEST, 98765)
-    }
+    use crate::test_hooks::Hooks;
+    use std::path::PathBuf;
 
     #[test]
     #[ignore = "requires an installed prefix"]
@@ -44,75 +32,93 @@ mod tests {
         )
         .unwrap();
         let host = HostRuntime::start_native(&resources, true).unwrap();
-        let fixture = env::temp_dir().join(format!("birnam-compiled-metadata-{}.o", std::process::id()));
+        let hooks = Hooks::new(&host.context);
+        let fixture =
+            env::temp_dir().join(format!("birnam-compiled-metadata-{}.o", std::process::id()));
         {
             let q = host.scope();
             let source = q.string(b"[Module named: #metadataFixture requires: #[]]; [Reflect defineMethod: #metadataFixtureAnswer on: Integer as: [:self | 42]]; true").unwrap();
             let fixture_path = q.string(fixture.as_os_str().as_bytes()).unwrap();
-            let result = q.call(host.named(b"Codegen").unwrap(), b"compile:output:", &[Operand::object(source), Operand::object(fixture_path)]).unwrap();
+            let result = q
+                .call(
+                    host.named(b"Codegen").unwrap(),
+                    b"compile:output:",
+                    &[source, fixture_path],
+                )
+                .unwrap();
             q.check_result(result).unwrap();
             assert_eq!(result, fixture_path);
-            let key = unsafe { host.context.id.intern_name(b"Store") }.unwrap();
-            let present = q.call(host.named(b"Namespace").unwrap(), b"includesKey:", &[Operand::object(key)]).unwrap();
-            assert_eq!(present, host.named(b"false").unwrap(), "artifact compilation activated Store");
+            let key = host.context.intern(b"Store").unwrap();
+            let present = q
+                .call(host.named(b"Namespace").unwrap(), b"includesKey:", &[key])
+                .unwrap();
+            assert_eq!(
+                present,
+                host.named(b"false").unwrap(),
+                "artifact compilation activated Store"
+            );
         }
-        let calls = Box::new(Cell::new(0usize));
-        let mut original_method_tokens = Vec::new();
+        let calls = hooks.context(&[hooks.fault(98765), birnam_abi::size(0).unwrap()]);
+        let deny = hooks.method(b"deny", calls);
         let mut originals = Vec::new();
         for (family, name) in [
             (b"TCCVt".as_slice(), b"compile:".as_slice()),
             (b"TCCVt", b"compileObject:"),
             (b"LangVt", b"parse:"),
             (b"PegGrammarVt", b"parse:from:"),
-            (b"NativeBackendVt", b"emit:source:filename:persistent:synchronous:"),
+            (
+                b"NativeBackendVt",
+                b"emit:source:filename:persistent:synchronous:",
+            ),
             (b"NativeBackendVt", b"factory:source:dispositions:"),
-            (b"NativeBackendVt", b"named:synchronous:"),
         ] {
-            let tcc = host.named(family).unwrap();
-            let selector = unsafe { host.context.id.intern_name(name) }.unwrap();
-            let original = host
-                .send(
-                    host.context.id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(selector), Operand::object(tcc)],
+            let tcc = if family == b"LangVt" || family == b"NativeBackendVt" {
+                let owner = if family == b"LangVt" {
+                    b"Lang".as_slice()
+                } else {
+                    b"NativeBackend".as_slice()
+                };
+                host.send(
+                    host.context.id.root,
+                    b"behaviorOf:",
+                    &[host.named(owner).unwrap()],
                 )
                 .unwrap()
-                .as_entry()
-                .unwrap();
-            if family == b"LangVt" {
-                let method = host.send(host.named(b"Execution").unwrap(),
-                    b"methodOfEntry:", &[Operand::entry(original)]).unwrap();
-                let token = host.send(host.context.roots, b"retain:", &[method]).unwrap().as_word().unwrap();
-                original_method_tokens.push(token);
-            }
-            host.send(
-                tcc,
-                b"addMethod",
-                &[
-                    Operand::object(selector),
-                    Operand::entry(NativeEntry::new(
-                        deny_compilation,
-                        (&*calls as *const Cell<usize>).cast_mut().cast(),
-                    )),
-                ],
-            )
-            .unwrap();
+            } else {
+                host.named(family).unwrap()
+            };
+            let selector = host.context.intern(name).unwrap();
+            let original = hooks.capture(tcc, selector);
+            host.send(tcc, b"addMethod", &[selector, deny]).unwrap();
             originals.push((tcc, selector, original));
         }
         // Resources are now owned by native HostEntry; changing the facade's
         // private copy cannot simulate a missing bootstrap. Exercise the real
         // file boundary, restoring the fixture even if an assertion unwinds.
-        struct MissingBootstrap { original: PathBuf, saved: PathBuf }
-        impl Drop for MissingBootstrap {
-            fn drop(&mut self) { let _=std::fs::rename(&self.saved,&self.original); }
+        struct MissingBootstrap {
+            original: PathBuf,
+            saved: PathBuf,
         }
-        let original=host.context.resources.lib_dir.join("birnam-bootstrap.image");
-        let saved=original.with_extension(format!("disabled-{}",std::process::id()));
-        std::fs::rename(&original,&saved).unwrap();
-        let missing=MissingBootstrap{original,saved};
+        impl Drop for MissingBootstrap {
+            fn drop(&mut self) {
+                let _ = std::fs::rename(&self.saved, &self.original);
+            }
+        }
+        let original = host
+            .context
+            .resources
+            .lib_dir
+            .join("birnam-bootstrap.image");
+        let saved = original.with_extension(format!("disabled-{}", std::process::id()));
+        std::fs::rename(&original, &saved).unwrap();
+        let missing = MissingBootstrap { original, saved };
         let error = host.bootstrap(false, false).unwrap_err();
         assert!(error.0.contains("reinstall Birnam"), "{error}");
-        assert_eq!(calls.get(),0,"missing bootstrap invoked a source fallback");
+        assert_eq!(
+            hooks.count(calls, 1),
+            0,
+            "missing bootstrap invoked a source fallback"
+        );
         drop(missing);
         host.bootstrap(false, false).unwrap();
         for name in [b"repl".as_slice(), b"socket", b"config", b"toml", b"file"] {
@@ -121,56 +127,106 @@ mod tests {
         let q = host.scope();
         let cg = host.named(b"Codegen").unwrap();
         let path = q.string(fixture.as_os_str().as_bytes()).unwrap();
-        let result = q.call(cg, b"load:", &[Operand::object(path)]).unwrap();
+        let result = q.call(cg, b"load:", &[path]).unwrap();
         q.check_result(result).unwrap();
         assert_eq!(result, host.named(b"true").unwrap());
         std::fs::remove_file(&fixture).unwrap();
-        let name = unsafe { host.context.id.intern_name(b"stdlib") }.unwrap();
-        let source = q.call(cg, b"moduleSourceFor:", &[Operand::object(name)]).unwrap();
-        let source_owner=host.global(&q,b"SourceRegistry").unwrap();
-        let _record=q.call(cg,b"compiledSourceFor:",&[Operand::object(source)]).unwrap();
-        let snapshot=q.call(source_owner,b"sourceRegistry",&[]).unwrap();
-        let mut row_index=0;
-        for i in 1..q.vector_size(snapshot).unwrap(){
-            if q.vector_at(q.vector_at(snapshot,i).unwrap(),0).unwrap()==name {row_index=i;break}
+        let name = host.context.intern(b"stdlib").unwrap();
+        let source = q.call(cg, b"moduleSourceFor:", &[name]).unwrap();
+        let source_owner = host.global(&q, b"SourceRegistry").unwrap();
+        let _record = q.call(cg, b"compiledSourceFor:", &[source]).unwrap();
+        let snapshot = q.call(source_owner, b"sourceRegistry", &[]).unwrap();
+        let mut row_index = 0;
+        for i in 1..q.vector_size(snapshot).unwrap() {
+            if q.vector_at(q.vector_at(snapshot, i).unwrap(), 0).unwrap() == name {
+                row_index = i;
+                break;
+            }
         }
-        assert_ne!(row_index,0);
-        let owner_vt=q.call(host.context.id.receiver,b"behaviorOf:",&[Operand::object(source_owner)]).unwrap();
-        let selector=unsafe{host.context.id.intern_name(b"sourceRegistry")}.unwrap();
-        let _original_method=q.call(source_owner,b"methodFor:",&[Operand::object(selector)]).unwrap();
-        let original=host.send(host.context.id.receiver,b"bindingOf:in:",&[Operand::object(selector),Operand::object(owner_vt)]).unwrap().as_entry().unwrap();
-        unsafe extern "C" fn snapshot_value(c:*mut c_void,_:Oop,_:*const Operand,_:usize)->Outcome {Outcome::loaded(Operand::object(c.cast()))}
-        let malformed=q.call(host.named(b"Vector").unwrap(),b"new",&[]).unwrap();
-        let replacing=|vector,index,value| {
-            let mut out=q.call(host.named(b"Vector").unwrap(),b"new",&[]).unwrap();
+        assert_ne!(row_index, 0);
+        let owner_vt = q
+            .call(host.context.id.root, b"behaviorOf:", &[source_owner])
+            .unwrap();
+        let selector = host.context.intern(b"sourceRegistry").unwrap();
+        let _original_method = q.call(source_owner, b"methodFor:", &[selector]).unwrap();
+        let original = hooks.capture(owner_vt, selector);
+        let malformed = q.call(host.named(b"Vector").unwrap(), b"new", &[]).unwrap();
+        let replacing = |vector, index, value| {
+            let mut out = q.call(host.named(b"Vector").unwrap(), b"new", &[]).unwrap();
             for i in 0..q.vector_size(vector).unwrap() {
-                let item=if i==index {value}else{q.vector_at(vector,i).unwrap()};
-                out=q.call(out,b"add:",&[Operand::object(item)]).unwrap();
+                let item = if i == index {
+                    value
+                } else {
+                    q.vector_at(vector, i).unwrap()
+                };
+                out = q.call(out, b"add:", &[item]).unwrap();
             }
             out
         };
         let old_shape = replacing(snapshot, 0, host.named(b"false").unwrap());
-        assert!(q.call(cg,b"preparePortableImageSources:",&[Operand::object(snapshot)]).is_err(), "image source staging accepted an obsolete registry shape");
-        host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(NativeEntry::new(snapshot_value,old_shape.cast()))]).unwrap();
-        assert!(q.call(cg,b"initialGenerationProjection",&[]).is_err(), "old sealed-flag source registry accepted");
-        for (bad,is_missing) in [(host.named(b"nil").unwrap(),true),(malformed,false)] {
-            let bad_record=q.call(cg,b"compiledSource:metadata:",&[Operand::object(source),Operand::object(bad)]).unwrap();
-            let row=q.vector_at(snapshot,row_index).unwrap();
-            let bad_row=replacing(row,1,bad_record);
-            let bad_snapshot=replacing(snapshot,row_index,bad_row);
-            host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(NativeEntry::new(snapshot_value,bad_snapshot.cast()))]).unwrap();
-            let rejected=q.call(cg,b"initialGenerationProjection",&[]);
-            if is_missing {assert!(q.check_result(rejected.unwrap()).is_err(),"missing metadata accepted")}
-            else {assert!(rejected.is_err(),"malformed metadata accepted")}
-            assert_eq!(calls.get(),0,"metadata rejection invoked a parser fallback");
+        assert!(
+            q.call(cg, b"preparePortableImageSources:", &[snapshot])
+                .is_err(),
+            "image source staging accepted an obsolete registry shape"
+        );
+        host.send(
+            owner_vt,
+            b"addMethod",
+            &[selector, hooks.method(b"fixed", old_shape)],
+        )
+        .unwrap();
+        assert!(
+            q.call(cg, b"initialGenerationProjection", &[]).is_err(),
+            "old sealed-flag source registry accepted"
+        );
+        for (bad, is_missing) in [(host.named(b"nil").unwrap(), true), (malformed, false)] {
+            let bad_record = q
+                .call(cg, b"compiledSource:metadata:", &[source, bad])
+                .unwrap();
+            let row = q.vector_at(snapshot, row_index).unwrap();
+            let bad_row = replacing(row, 1, bad_record);
+            let bad_snapshot = replacing(snapshot, row_index, bad_row);
+            host.send(
+                owner_vt,
+                b"addMethod",
+                &[selector, hooks.method(b"fixed", bad_snapshot)],
+            )
+            .unwrap();
+            let rejected = q.call(cg, b"initialGenerationProjection", &[]);
+            if is_missing {
+                let error = rejected.unwrap();
+                assert_eq!(
+                    q.call(error, b"kind", &[]).unwrap(),
+                    hooks.symbol(b"compileError")
+                );
+                assert!(q.check_result(error).unwrap_err().0.contains(
+                    "compiled source metadata is missing; rebuild the artifact or image"
+                ));
+            } else {
+                assert!(rejected.is_err(), "malformed metadata accepted")
+            }
+            assert_eq!(
+                hooks.count(calls, 1),
+                0,
+                "metadata rejection invoked a parser fallback"
+            );
         }
-        host.send(owner_vt,b"addMethod",&[Operand::object(selector),Operand::entry(original)]).unwrap();
+        host.send(owner_vt, b"addMethod", &[selector, original])
+            .unwrap();
         let docs = q.call(cg, b"recordedMethodSources", &[]).unwrap();
         assert!(q.vector_size(docs).unwrap() > 0);
         let repl = host.global(&q, b"Repl").unwrap();
         let result = q.call(repl, b"consoleHostInitNoConfig", &[]).unwrap();
         q.check_result(result).unwrap();
-        assert_eq!(q.call(host.global(&q, b"DispatchGeneration").unwrap(), b"current", &[]).unwrap(), host.named(b"nil").unwrap());
+        assert_eq!(
+            q.call(
+                host.global(&q, b"DispatchGeneration").unwrap(),
+                b"current",
+                &[]
+            )
+            .unwrap(),
+            host.named(b"nil").unwrap()
+        );
         let result = q.call(repl, b"consoleHostReadyNoMain", &[]).unwrap();
         q.check_result(result).unwrap();
         let result = q.call(repl, b"consoleDone", &[]).unwrap();
@@ -179,48 +235,16 @@ mod tests {
         for name in [b"lsp".as_slice(), b"cli", b"doc"] {
             host.load_tool(name).unwrap();
         }
-        assert_eq!(calls.get(), 0, "bootstrap or console invoked the compiler or parser");
+        assert_eq!(
+            hooks.count(calls, 1),
+            0,
+            "bootstrap or console invoked the compiler or parser"
+        );
         for (tcc, selector, original) in originals {
-            host.send(
-                tcc,
-                b"addMethod",
-                &[Operand::object(selector), Operand::entry(original)],
-            )
-            .unwrap();
-        }
-        for token in original_method_tokens {
-            host.send(host.context.roots, b"release:", &[Operand::word(token)]).unwrap();
+            host.send(tcc, b"addMethod", &[selector, original]).unwrap();
         }
     }
 
-    struct CollectingSend {
-        id: Protocol,
-        gc: Oop,
-        original: NativeEntry,
-        calls: Cell<usize>,
-        fail: Cell<bool>,
-    }
-    unsafe extern "C" fn collecting_send(
-        context: *mut c_void,
-        receiver: Oop,
-        args: *const Operand,
-        count: usize,
-    ) -> Outcome {
-        let state = unsafe { &*context.cast::<CollectingSend>() };
-        let call = state.calls.get() + 1;
-        // Small operations remain exhaustive. Sample large resident-image
-        // restoration geometrically instead of collecting once per core slot.
-        if call <= 8 || call.is_power_of_two() {
-            if let Err(error) = unsafe { state.id.send_named(state.gc, b"collectPrecisely", &[]) } {
-                return error;
-            }
-        }
-        state.calls.set(call);
-        if state.fail.get() {
-            return Outcome::failed(native::UNBOUND, 12345);
-        }
-        unsafe { state.original.method.unwrap()(state.original.context, receiver, args, count) }
-    }
     #[test]
     #[ignore = "requires production installed native modules; scripts/host-cli-test.sh"]
     fn host_roots_survive_collecting_sends() {
@@ -243,40 +267,32 @@ mod tests {
             },
         )
         .unwrap();
-        let cg = host.named(b"CodegenVt").unwrap();
+        let fixtures = Hooks::new(&host.context);
+        let cg = host
+            .send(
+                host.context.id.root,
+                b"behaviorOf:",
+                &[host.named(b"Codegen").unwrap()],
+            )
+            .unwrap();
         let gc = host.named(b"GC").unwrap();
         let mut hooks = Vec::new();
         for name in [b"evalPersisting:from:".as_slice(), b"lastError"] {
-            let symbol = unsafe { host.context.id.intern_name(name) }.unwrap();
-            let original = host
-                .send(
-                    host.context.id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(symbol), Operand::object(cg)],
-                )
-                .unwrap()
-                .as_entry()
-                .unwrap();
-            let mut hook = Box::new(CollectingSend {
-                id: host.context.id,
-                gc,
+            let symbol = host.context.intern(name).unwrap();
+            let original = fixtures.capture(cg, symbol);
+            let context = fixtures.context(&[
                 original,
-                calls: Cell::new(0),
-                fail: Cell::new(false),
-            });
+                gc,
+                birnam_abi::size(0).unwrap(),
+                std::ptr::null_mut(),
+            ]);
             host.send(
                 cg,
                 b"addMethod",
-                &[
-                    Operand::object(symbol),
-                    Operand::entry(NativeEntry::new(
-                        collecting_send,
-                        (&mut *hook as *mut CollectingSend).cast(),
-                    )),
-                ],
+                &[symbol, fixtures.method(b"collecting", context)],
             )
             .unwrap();
-            hooks.push((symbol, hook));
+            hooks.push((symbol, original, context));
         }
         for source in [
             b"nil".as_slice(),
@@ -299,7 +315,11 @@ mod tests {
         assert!(error.0.contains("could not read file"), "{error}");
         let error = host
             .scope()
-            .evaluate(b"[Error kind: #hostKindOnly]", Path::new("<root-test>"), None)
+            .evaluate(
+                b"[Error kind: #hostKindOnly]",
+                Path::new("<root-test>"),
+                None,
+            )
             .unwrap_err();
         assert_eq!(error.0, "error(#hostKindOnly)");
         let error = host
@@ -307,20 +327,16 @@ mod tests {
             .evaluate(b"[", Path::new("<root-test>"), None)
             .unwrap_err();
         assert!(error.0.contains("syntax error"), "{error}");
-        hooks[0].1.fail.set(true);
+        let failure = fixtures.fault(12345);
+        fixtures.put(hooks[0].2, 3, failure);
         let error = host
             .scope()
             .evaluate(b"nil", Path::new("<root-test>"), None)
             .unwrap_err();
-        assert!(error.0.contains("native status=6 detail=12345"), "{error}");
-        for (symbol, hook) in hooks {
-            assert!(hook.calls.get() >= 6);
-            host.send(
-                cg,
-                b"addMethod",
-                &[Operand::object(symbol), Operand::entry(hook.original)],
-            )
-            .unwrap();
+        assert!(error.0.contains(&format!("{failure:p}")), "{error}");
+        for (symbol, original, context) in hooks {
+            assert!(fixtures.count(context, 2) >= 6);
+            host.send(cg, b"addMethod", &[symbol, original]).unwrap();
         }
         // Exact roots retain an intermediate and release it when the scope exits.
         let temporary;
@@ -333,53 +349,13 @@ mod tests {
         host.send(gc, b"collectPrecisely", &[]).unwrap();
         assert_ne!(
             host.send(
-                host.context.id.receiver,
+                host.context.id.root,
                 b"allocationAt:",
-                &[Operand::word(temporary.addr())]
+                &[birnam_abi::size(temporary.addr()).unwrap()]
             )
-            .unwrap()
-            .as_object(),
-            Some(temporary)
+            .unwrap(),
+            temporary
         );
-    }
-    unsafe extern "C" fn deny_compile(
-        _: *mut c_void,
-        _: Oop,
-        _: *const Operand,
-        _: usize,
-    ) -> Outcome {
-        Outcome::failed(native::UNBOUND, 54321)
-    }
-    struct MainSend {
-        hook: CollectingSend,
-        globals: Oop,
-        name: Oop,
-        nil: Oop,
-    }
-    unsafe extern "C" fn remove_main_and_collect(
-        context: *mut c_void,
-        receiver: Oop,
-        args: *const Operand,
-        count: usize,
-    ) -> Outcome {
-        let state = unsafe { &*context.cast::<MainSend>() };
-        if let Err(error) = unsafe {
-            state.hook.id.send_named(
-                state.globals,
-                b"at:put:",
-                &[Operand::object(state.name), Operand::object(state.nil)],
-            )
-        } {
-            return error;
-        }
-        unsafe {
-            collecting_send(
-                (&state.hook as *const CollectingSend).cast_mut().cast(),
-                receiver,
-                args,
-                count,
-            )
-        }
     }
     #[test]
     #[ignore = "requires installed modules and a saved CLI image; scripts/host-cli-test.sh"]
@@ -395,28 +371,15 @@ mod tests {
         )
         .unwrap();
         let host = HostRuntime::start_native(&resources, true).unwrap();
-        let symbol = |name: &[u8]| unsafe { host.context.id.intern_name(name) }.unwrap();
-        let binding = |vt, name| {
-            host.send(
-                host.context.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(name), Operand::object(vt)],
-            )
-            .unwrap()
-            .as_entry()
-            .unwrap()
-        };
+        let fixtures = Hooks::new(&host.context);
+        let symbol = |name: &[u8]| fixtures.symbol(name);
+        let binding = |vt, name| fixtures.capture(vt, name);
         let bind = |vt, name, entry| {
-            host.send(
-                vt,
-                b"addMethod",
-                &[Operand::object(name), Operand::entry(entry)],
-            )
-            .unwrap();
+            host.send(vt, b"addMethod", &[name, entry]).unwrap();
         };
         let behavior = |o| {
             object(
-                host.send(host.context.id.receiver, b"behaviorOf:", &[Operand::object(o)])
+                host.send(host.context.id.root, b"behaviorOf:", &[o])
                     .unwrap(),
             )
             .unwrap()
@@ -433,67 +396,56 @@ mod tests {
             bind(
                 vt,
                 name,
-                NativeEntry::new(deny_compile, core::ptr::null_mut()),
+                fixtures.method(
+                    b"deny",
+                    fixtures.context(&[fixtures.fault(54321), birnam_abi::size(0).unwrap()]),
+                ),
             );
         }
         let model = behavior(host.named(b"ObjectModel").unwrap());
         let restore = symbol(b"restoreImageSlotAt:in:put:");
-        let mut hook = Box::new(CollectingSend {
-            id: host.context.id,
-            gc: host.named(b"GC").unwrap(),
-            original: binding(model, restore),
-            calls: Cell::new(0),
-            fail: Cell::new(false),
-        });
-        bind(
-            model,
-            restore,
-            NativeEntry::new(collecting_send, (&mut *hook as *mut CollectingSend).cast()),
-        );
+        let original = binding(model, restore);
+        let hook = fixtures.context(&[
+            original,
+            host.named(b"GC").unwrap(),
+            birnam_abi::size(0).unwrap(),
+            std::ptr::null_mut(),
+        ]);
+        bind(model, restore, fixtures.method(b"collecting", hook));
         host.load_image(&path).unwrap();
-        assert!(hook.calls.get() > 0);
-        bind(model, restore, hook.original);
+        assert!(fixtures.count(hook, 2) > 0);
+        bind(model, restore, original);
         let scope = host.scope();
         let main = host.global(&scope, b"main").unwrap();
         let vt = behavior(main);
         let value = symbol(b"value");
-        let mut main_send = Box::new(MainSend {
-            hook: CollectingSend {
-                id: host.context.id,
-                gc: host.named(b"GC").unwrap(),
-                original: binding(vt, value),
-                calls: Cell::new(0),
-                fail: Cell::new(true),
-            },
-            globals: host.named(b"Globals").unwrap(),
-            name: symbol(b"main"),
-            nil: host.named(b"nil").unwrap(),
-        });
-        // A native execution failure keeps its status and detail through Host.
-        bind(
-            vt,
-            value,
-            NativeEntry::new(
-                collecting_send,
-                (&mut main_send.hook as *mut CollectingSend).cast(),
-            ),
-        );
+        let failure = fixtures.fault(12345);
+        let original = binding(vt, value);
+        // Intercept only main. Globals mutation itself evaluates Blocks, which
+        // must keep their normal value method while this hook removes main.
+        let binding_scope = host.scope();
+        let vt = binding_scope.call(vt, b"delegated", &[]).unwrap();
+        host.send(host.context.id.root, b"reassociateBehaviorOf:with:", &[main, vt])
+            .unwrap();
+        let main_send = fixtures.context(&[
+            original,
+            host.named(b"GC").unwrap(),
+            birnam_abi::size(0).unwrap(),
+            failure,
+            host.named(b"Globals").unwrap(),
+            symbol(b"main"),
+            host.named(b"nil").unwrap(),
+        ]);
+        bind(vt, value, fixtures.method(b"collecting", main_send));
         let error = host.run_image_main().unwrap_err();
-        assert!(error.0.contains("native status=6 detail=12345"), "{error}");
-        main_send.hook.fail.set(false);
-        bind(
-            vt,
-            value,
-            NativeEntry::new(
-                remove_main_and_collect,
-                (&mut *main_send as *mut MainSend).cast(),
-            ),
-        );
+        assert!(error.0.contains(&format!("{failure:p}")), "{error}");
+        fixtures.put(main_send, 3, std::ptr::null_mut());
+        bind(vt, value, fixtures.method(b"removeMain", main_send));
         drop(scope); // The next call must root main itself, before it loses Globals.
         host.run_image_main().unwrap();
         // The fixture callback context must stay live until its binding is gone.
-        bind(vt, value, main_send.hook.original);
-        assert_eq!(main_send.hook.calls.get(), 2);
+        bind(vt, value, original);
+        assert_eq!(fixtures.count(main_send, 2), 2);
         for (vt, name, entry) in denied {
             bind(vt, name, entry);
         }

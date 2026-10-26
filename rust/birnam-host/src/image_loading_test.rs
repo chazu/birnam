@@ -1,23 +1,11 @@
 //! Compilation policy at the user-image loading boundary, in fresh processes.
+use crate::test_hooks::Hooks;
 use crate::{HostRuntime, Overrides, resolve_from_exe_dir};
-use birnam_abi::{
-    Oop,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome},
-};
 use std::{
-    cell::Cell,
-    env,
-    ffi::c_void,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
-
-unsafe extern "C" fn deny(context: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    let calls = unsafe { &*context.cast::<Cell<usize>>() };
-    calls.set(calls.get() + 1);
-    Outcome::failed(native::UNBOUND, 73129)
-}
 
 #[test]
 #[ignore = "requires production native modules and the installed bootstrap image"]
@@ -35,30 +23,18 @@ fn user_images_compile_only_without_code_or_on_explicit_rebuild() {
         )
         .unwrap();
         let host = HostRuntime::start_native(&resources, false).unwrap();
-        let calls = Cell::new(0usize);
-        let mapped_calls = Cell::new(0usize);
-        let install = |receiver: &[u8], selector: &[u8], counter: &Cell<usize>| {
+        let fixtures = Hooks::new(&host.context);
+        let calls = fixtures.context(&[fixtures.fault(73129), birnam_abi::size(0).unwrap()]);
+        let mapped_calls = fixtures.context(&[fixtures.fault(73130), birnam_abi::size(0).unwrap()]);
+        let install = |receiver: &[u8], selector: &[u8], counter| {
             let receiver = host.named(receiver).unwrap();
             let behavior = host
-                .send(
-                    host.context.id.receiver,
-                    b"behaviorOf:",
-                    &[Operand::object(receiver)],
-                )
-                .unwrap()
-                .as_object()
+                .send(host.context.id.root, b"behaviorOf:", &[receiver])
                 .unwrap();
-            let name = unsafe { host.context.id.intern_name(selector) }.unwrap();
             host.send(
                 behavior,
                 b"addMethod",
-                &[
-                    Operand::object(name),
-                    Operand::entry(NativeEntry::new(
-                        deny,
-                        (counter as *const Cell<usize>).cast_mut().cast(),
-                    )),
-                ],
+                &[fixtures.symbol(selector), fixtures.method(b"deny", counter)],
             )
             .unwrap();
         };
@@ -76,13 +52,13 @@ fn user_images_compile_only_without_code_or_on_explicit_rebuild() {
             (b"TCC", b"compile:"),
             (b"TCC", b"compileObject:"),
         ] {
-            install(receiver, selector, &calls);
+            install(receiver, selector, calls);
         }
         if case == "mapped_failure" {
             install(
                 b"Codegen",
                 b"beginPortableImageMapped:programs:bindings:selection:",
-                &mapped_calls,
+                mapped_calls,
             );
         }
         let image = PathBuf::from(env::var_os("BIRNAM_IMAGE_POLICY_PATH").unwrap());
@@ -90,20 +66,24 @@ fn user_images_compile_only_without_code_or_on_explicit_rebuild() {
         match case.as_str() {
             "mapped" => {
                 result.unwrap();
-                assert_eq!(calls.get(), 0);
+                assert_eq!(fixtures.count(calls, 1), 0);
             }
             "mapped_failure" => {
                 assert!(result.is_err());
-                assert_eq!(mapped_calls.get(), 1);
+                assert_eq!(fixtures.count(mapped_calls, 1), 1);
                 assert_eq!(
-                    calls.get(),
+                    fixtures.count(calls, 1),
                     0,
                     "failed mapping must never fall back to compilation"
                 );
             }
             "without_code" | "rebuild" => {
                 assert!(result.is_err(), "the compiler rejection must propagate");
-                assert_eq!(calls.get(), 1, "this mode must select compilation");
+                assert_eq!(
+                    fixtures.count(calls, 1),
+                    1,
+                    "this mode must select compilation"
+                );
             }
             _ => panic!("unknown image case"),
         }

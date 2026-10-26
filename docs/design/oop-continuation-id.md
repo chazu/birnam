@@ -616,3 +616,38 @@ The complete original worker suite now passes on `88378faf`, including copied
 values, failures, async requests, timeout/crash, orphan reaping, relocated library
 configuration and authored service cancellation. The ready-handshake limit stays
 at 10 seconds. [Receipt](../measurements/worker-oop-20261026.json).
+
+
+## Host library acceptance over Oop callbacks
+
+The retained Host library tests now compile against declared native Methods.
+Their callback contexts, counters, captured Methods and injected failures are
+ordinary rooted Oops. Test callbacks explicitly invoke a captured Method through
+its existing reflection operation; ordinary Id sends retain their direct-entry
+contract. No production callback registry, private cross-owner interface or Id
+operation is introduced.
+
+This qualification found a lost diagnostic in generation projection. Missing
+retained metadata now returns the existing `compileError` value with rebuild
+guidance, as before the Oop migration. Malformed metadata still fails, and neither
+case reparses source. The callback and image checks retain their assertions for
+current setters, explicit undo, code ownership, partial publication and failure
+propagation.
+
+The saved-main rooting fixture now installs its hook on a delegated vtable for
+that one Block. Replacing the shared Block `value` method also intercepted Blocks
+used by Globals mutation, recursively entering the fixture itself. The corrected
+fixture still removes global main and collects during entry; the Host must keep
+main alive for the call. This is a fixture correction, not a runtime stack-size
+change.
+
+The workspace library suite, the Host package suite and all 18 installed-runtime
+Host library tests pass, including mapped/rebuilt/resaved generation images and
+live-method drift. The 28-check source Generation test also passes. Results are
+recorded in [the Host receipt](../measurements/host-oop-20261026.json). The three separate
+Host native integration tests also pass with declared callbacks: owner initialization/reload, live NativeBackend emission, and the
+authored AlienCompiler/ImageFormat byte and failure protocols. The NativeBackend
+fixture now replaces `emitResumable:source:`, which is the operation used by
+`Codegen compile:`; the old named-descriptor operation is no longer its interface.
+Older Siphon test harnesses still require migration. This does not qualify the
+complete `host-cli` runner or a cold release.

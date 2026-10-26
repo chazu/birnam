@@ -15,3 +15,6 @@ pub use baked::{bake_executable, baked_image, read_baked_image};
 pub mod bootstrap_receipt;
 pub mod publication_receipt;
 mod receipt_validation;
+
+#[cfg(test)]
+mod test_hooks;
