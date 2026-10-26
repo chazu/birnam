@@ -822,3 +822,27 @@ and no-fact-publication assertions. The negative controls still fail when a suit
 is left registered or a temporary Cell is deliberately retained. This migrates
 additional native tests without adding a compatibility ABI or changing runtime
 behavior. [Receipt](../measurements/harness-cell-retention-oop-20261026.json).
+
+
+## Restore the vtable publication operation
+
+`addMethod:as:` was incorrectly installed on generic Object behavior during the
+Oop port. Its established receiver is a vtable, and direct capture at the vtable
+behavior therefore returned nil. Execution now installs this existing operation
+on the current behavior of ObjectVt, leaving `methodFor:` on Object. No Id
+operation, observer mechanism or private interface is added.
+
+The direct-capture regression fails before the correction and passes afterward.
+The core Oop gate and the unchanged Alien recipe-reentry test pass, including
+nested publication, collecting replacement and exact policy errors. The full
+Alien publication test still fails one Store-notification assertion: the older
+`Vtable methodChangesTo:` subscription has not been connected to the corrected
+core. That feature remains an explicit integration gap; its assertion was not
+removed and a universal notification hook was not added to Id as a shortcut.
+
+System image checks pass with source removed, mapped/rebuilt recovery and baked
+entry: saved aliases/data, current file/environment state, binary input/output,
+EOF and real read errors. StringBuilder checks also pass through compiled
+artifacts and mapped/rebuilt/baked images, including copied String identity,
+current method replacement and rejection of a live native buffer.
+[Receipt](../measurements/vtable-publisher-oop-20261026.json).

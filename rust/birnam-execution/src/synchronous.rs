@@ -1502,7 +1502,8 @@ unsafe extern "C" fn initialize(
                 | b"captureWordAt:"
                 | b"captureCount"
                 | b"clone" => block_vt,
-                b"methodFor:" | b"addMethod:as:" => base,
+                b"methodFor:" => base,
+                b"addMethod:as:" => send(id.root, b"behaviorOf:", &[base])?,
                 b"codeObject"
                 | b"isSynchronous"
                 | b"captureAt:"

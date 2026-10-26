@@ -1,0 +1,44 @@
+{
+  "passed": true,
+  "scope": "Direct vtable publisher placement, Alien reentrant publication, System and StringBuilder images; not the complete Alien publication gate",
+  "base_revision": "9a6fd12a",
+  "checks": [
+    {
+      "name": "vtable_before",
+      "log": ".cargo-target/oop-vtable-publisher-before.log",
+      "sha256": "9908ffa762d7ffa759542ee698b4cbce16c371ae88854e8b05dcba68b1ae7ae2"
+    },
+    {
+      "name": "vtable_after",
+      "log": ".cargo-target/oop-vtable-publisher-after.log",
+      "sha256": "f26493fdb2038c55aae7fb0f5bbdc67d863bbb1a42d7c7d0dd8569baacded2cf"
+    },
+    {
+      "name": "core",
+      "log": ".cargo-target/oop-vtable-publication-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    },
+    {
+      "name": "alien_reentry",
+      "log": ".cargo-target/oop-alien-reentry.log",
+      "sha256": "3472ecbe3ae8b84f1389633605a0baafaa5775af3ff141b24316cd751315f505"
+    },
+    {
+      "name": "alien_publication_remaining_failure",
+      "log": ".cargo-target/oop-alien-publication-after.log",
+      "sha256": "22f6d00c8c3610a6d175d4a9ff778e5175d5c6fa166f5ad4761a9cae84dd2c2e"
+    },
+    {
+      "name": "system_images",
+      "log": ".cargo-target/oop-system-image-followup.log",
+      "sha256": "877bc97be3c7d71095585c47cdb03d6385f0cfcac28de0228cc936051b0efbd2"
+    },
+    {
+      "name": "string_builder_images",
+      "log": ".cargo-target/oop-string-builder-image.log",
+      "sha256": "f82b8033f5bc2c9e18e58184996a4efb930db04f9e17fbb77c8575ad9367952a"
+    }
+  ],
+  "remaining_failure": "Alien publication still fails its Store notification assertion because Vtable methodChangesTo: is not connected. The original test is unchanged.",
+  "id_changes": false
+}

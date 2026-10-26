@@ -209,3 +209,44 @@ fn empty_slot_reflection_consults_the_current_reference_owner() {
         0
     );
 }
+
+#[test]
+#[ignore = "requires production native modules"]
+fn method_publication_is_a_direct_vtable_operation() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = resolve_from_exe_dir(
+        Path::new("/unused/bin"),
+        Overrides {
+            lib_dir: Some(&lib),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let host = HostRuntime::start_native(&resources, true).unwrap();
+    let hooks = Hooks::new(&host.context);
+    let q = host.scope();
+    let base = host.named(b"ObjectVt").unwrap();
+    let meta = q
+        .call(host.context.id.root, b"behaviorOf:", &[base])
+        .unwrap();
+    let key = hooks.symbol(b"addMethod:as:");
+    let publisher = hooks.capture(meta, key);
+    assert_ne!(publisher, host.named(b"nil").unwrap());
+    assert_eq!(hooks.capture(base, key), host.named(b"nil").unwrap());
+    let target = q.call(base, b"delegated", &[]).unwrap();
+    let method = hooks.method(b"fixed", host.named(b"true").unwrap());
+    let probe = hooks.symbol(b"publicationProbe");
+    let args = hooks.context(&[method, probe]);
+    assert_eq!(
+        q.call(publisher, b"invokeOn:arguments:", &[target, args])
+            .unwrap(),
+        method
+    );
+    let receiver = q
+        .call(target, b"allocate", &[birnam_abi::size(0).unwrap()])
+        .unwrap();
+    assert_eq!(
+        q.call(receiver, b"publicationProbe", &[]).unwrap(),
+        host.named(b"true").unwrap()
+    );
+}
