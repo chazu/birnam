@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-26",
+  "base_commit": "759f60e1",
+  "scope": "Real installer and project workflow on the Oop runtime",
+  "passed": true,
+  "prefix": "/private/tmp/birnam-oop-published-k1p4xM/prefix",
+  "build_mode": "development-cache",
+  "source_manifest_sha256": "60148aa1bf4600a1afc3114d04a891376f1fcad188b7d383157f9d0ef26633ec",
+  "staged_manifest_sha256": "fbc4f04a75808207af7f59dd996227f4d31091ff64c1d81d9330d4bcd5c2a4dd",
+  "verified_installed_files": 811,
+  "parser_seed_installed": false,
+  "image_bytes": {
+    "birnam-bootstrap.image": 138379866,
+    "birnam-tools.image": 187841004
+  },
+  "checks": [
+    "Installer source compiler seed builds the full declared artifact closure",
+    "Seed removed before published startup",
+    "Core image built and console checked before optional providers",
+    "Full tools image built; fresh console and doc stdlib succeed",
+    "All installed file hashes match the published receipt",
+    "Default image-backed project policy and permanent query tests pass",
+    "Project CLI check human/JSON, build, cache reuse/repair, run, install, test, path and pinned Git dependencies",
+    "Published execution survives hidden source/manifest, relocation and removed dependency checkout; incomplete native publication rejected"
+  ],
+  "project_cli_environment": "BIRNAM_FORCE_SOURCE=1 for the repeated full workflow; the separate project policy/query checks and installer console/doc checks use default image-backed startup",
+  "change": "Host queries the supplied Namespace for Alien before configuring its library directory. The compiler-only seed omits Alien; normal published Bootstrap still requires that owner. No Id operation or runtime coupling added.",
+  "remaining": [
+    "Worker startup exceeds its unchanged 10-second ready handshake",
+    "Host lifecycle/image library tests and native integration fixtures still use removed carriers",
+    "Broader live tooling, task/worker and image-family acceptance",
+    "Performance qualification; this is a developer-cache installer run, not release cold-build/archive qualification"
+  ],
+  "logs": {
+    ".cargo-target/oop-published-install.log": "1acedd711b865d4492632b892eb57d0d5075f95a14b79fcf9716f2d1233d912c",
+    ".cargo-target/oop-published-project-cli.log": "c97c0ade902fb19e0d409990085debd17b868ff947445f26167e704225317713",
+    ".cargo-target/oop-published-project-policy.log": "d6a72353e1776fdfdcbc3279a03ec7d32fa62d329e9e0ffb7e014c60eb052817",
+    ".cargo-target/oop-published-project-query.log": "693174b1a529f656a8f729f43822e6eb82b7b799a6657e4bcdebb6bc10fcd72b",
+    "/tmp/birnam-oop-published-k1p4xM/prefix/share/birnam/rust-install.json": "65221c02fe9ed3545b85bb1bfff5b7815d0a94cfed20cb9c1d9ae241001c67e5"
+  }
+}

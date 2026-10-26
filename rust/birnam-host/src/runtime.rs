@@ -65,8 +65,16 @@ impl HostRuntime {
         )?;
         {
             let scope = host.scope();
-            let directory = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
-            scope.call(host.named(b"Alien")?, b"libraryDir:", &[directory])?;
+            let key = scope.keep(host.context.intern(b"Alien")
+                .map_err(|e| native_error("intern Alien", e))?)?;
+            let alien = host.context.send(host.context.namespace, b"at:", &[key])?;
+            // The build-only compiler seed has no Alien owner. Published
+            // Bootstrap still requires it before this Host boundary is reached.
+            if !alien.is_null() {
+                scope.keep(alien)?;
+                let directory = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
+                scope.call(alien, b"libraryDir:", &[directory])?;
+            }
         }
         Ok(host)
     }

@@ -560,3 +560,22 @@ with source hidden, then stops at the partial prefix's missing tools image.
 Worker startup separately reaches the fixed 10-second ready-handshake timeout;
 restored workers are not yet qualified. Host's lifecycle/image library tests still
 need their old-carrier harness migrated. [Receipt](../measurements/project-observation-oop-20261026.json).
+
+
+## Real installer and project workflow
+
+Host no longer requires an Alien receiver when entered over the build-only
+compiler seed. It queries Namespace and configures Alien when present; published
+Bootstrap retains its required native-owner closure. This fixes the first cold
+artifact compilation without adding a seed API or loading unrelated platform
+owners into the compiler seed.
+
+The real installer now produces the core and tools images, removes the parser
+seed, and passes fresh console and `doc stdlib` probes. All 811 installed files
+match its receipt. Default image-backed project policy/query checks pass. The full
+project CLI workflow also passes with explicit source startup: human/JSON check,
+build/cache repair, run/install/test, path and pinned Git dependencies, source-hidden
+published execution, relocation and missing-library refusal. This used the
+explicit developer build cache; release cold/archive qualification is separate.
+Worker startup still exceeds its unchanged ready-handshake limit, and the remaining
+Host/native test harness migration remains open. [Receipt](../measurements/published-project-oop-20261026.json).
