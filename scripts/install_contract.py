@@ -15,7 +15,7 @@ def verify(prefix):
         raise ValueError('expected a schema-4 Rust installation receipt')
     contract = receipt['admission_contract']
     if (contract['target'], contract['id_protocol_version'], contract['stdlib_loading']) != (
-            'aarch64-macos', 1, 'compiled-image'):
+            'aarch64-macos', 2, 'compiled-image'):
         raise ValueError('unsupported installation admission contract')
     expected = receipt['staged_manifest']
     actual = {}

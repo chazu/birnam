@@ -21,7 +21,7 @@ class InstalledContract(unittest.TestCase):
             path.write_bytes(name.encode())
         (self.prefix / 'bin/birnam').chmod(0o755)
         self.receipt = dict(schema=4, authority='rust',
-                            admission_contract=dict(target='aarch64-macos', id_protocol_version=1,
+                            admission_contract=dict(target='aarch64-macos', id_protocol_version=2,
                                                     stdlib_loading='compiled-image'),
                             dynamic_libraries=['libbirnam_id.dylib'])
         self.publish()
@@ -37,6 +37,13 @@ class InstalledContract(unittest.TestCase):
 
     def test_exact_relocated_closure(self):
         self.assertEqual(verify(self.prefix), self.receipt)
+
+    def test_rejects_retired_or_unknown_id_protocol(self):
+        for version in (1, 3):
+            self.receipt['admission_contract']['id_protocol_version'] = version
+            self.publish()
+            with self.assertRaisesRegex(ValueError, 'unsupported installation admission contract'):
+                verify(self.prefix)
 
     def test_rejects_modified_removed_and_unlisted_files(self):
         library = self.prefix / 'lib/libbirnam_id.dylib'

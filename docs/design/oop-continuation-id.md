@@ -1000,3 +1000,13 @@ activation, image participation and all 870 authored checks. The legacy `store`,
 retired-subscription expectations removed but still await Oop conversion; this is
 not a claim that the full native-message gate passes.
 [Retirement receipt](../measurements/explicit-method-invalidation-oop-20261026.json).
+
+## Installation admission metadata
+
+The installer receipt and its verifier still declared Id protocol version 1 even
+though the current Oop interface declares version 2. Both now record/require
+version 2; continuation module declaration version 3 is a separate field of the
+native module format. The receipt schema is unchanged. Tests reject both the
+retired version 1 and unknown version 3 as Id protocol versions, and the installer
+and release-orchestration tests pass. This corrects qualification metadata without
+changing Id or the runtime.
