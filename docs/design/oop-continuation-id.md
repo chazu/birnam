@@ -792,3 +792,23 @@ through the post-call collection. Both tests pass at every original batch size.
 The deliberate Logger-retention negative control fails at one call after warmup,
 confirming that the migrated harness still detects a leak.
 [Receipt](../measurements/retention-harness-oop-20261026.json).
+
+
+## Additional image and native-loader acceptance
+
+Frame-call and collection-search checks pass after source deletion in both
+mapped and rebuilt images, preserving identity, current replacement, collection,
+protocol withdrawal and suspension. The collection-search runner's save operation
+exceeded its old 180-second test limit; the runner now allows 600 seconds while
+retaining every behavioral assertion. This is a test budget, not a runtime policy.
+
+The native-loader image fixture now declares its callback through the Oop module
+format. Initializers return an explicit Oop; the fixture receives its desired
+return object as a second argument instead of returning the retired non-object
+Unit carrier. No compatibility operation or runtime API was added. The checks pass
+through source execution, a source-free compiled artifact, mapped/rebuilt images
+and a baked executable, including collecting initialization, repeated loading,
+missing/incompatible modules, aliases and current method replacement. Retired
+initializer/dependency exports still abort if mistakenly entered. Authored Trace
+also passes mapped/rebuilt image recovery with Oop native adapters and collection.
+[Receipt](../measurements/image-followup-oop-20261026.json).

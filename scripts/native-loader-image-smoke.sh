@@ -46,16 +46,16 @@ let main := [|
   [System println: [receiver == alias]];
   [System println: [[receiver savedReceiver] == alias]];
   [System println: [path == pathAlias]];
-  [System println: [[receiver loadModule: path arguments: #[System]] == alias]];
+  [System println: [[receiver loadModule: path arguments: #[System receiver]] == alias]];
   [System println: [System nativeLoaderCount]];
-  [receiver loadModule: path arguments: #[System]];
+  [receiver loadModule: path arguments: #[System receiver]];
   [System println: [System nativeLoaderCount]];
   [System println: [[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] kind]];
   [System println: [[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] kind]];
   // Image main replaces methods through ordinary sends.
   [System println: [[Reflect defineMethod: #loadModule:arguments: on: receiver as: [:self :name :arguments | nil]] == receiver]];
   [System gc];
-  [System println: [[receiver loadModule: path arguments: #[System]] == alias]];
+  [System println: [[receiver loadModule: path arguments: #[System receiver]] == alias]];
   [System println: [System nativeLoaderCount]];
   [System println: "native-loader-image-ok"]
 ];

@@ -1,0 +1,87 @@
+{
+  "passed": true,
+  "base_revision": "c6963ad3",
+  "scope": "Frame calls, collection search, native loading and Trace through installed image recovery",
+  "checks": [
+    {
+      "name": "frame_calls",
+      "receipt": {
+        "checks": [
+          {
+            "argv": [
+              "python3",
+              "scripts/frame-call-image-smoke.py",
+              "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/slots-818u425i/prefix"
+            ],
+            "exit_code": 0,
+            "label": "frame-call-image",
+            "started_unix_ns": 1793032324957696000,
+            "status": "passed",
+            "wall_ns": 110926798334
+          }
+        ],
+        "schema": 1
+      }
+    },
+    {
+      "name": "search",
+      "receipt": {
+        "checks": [
+          {
+            "argv": [
+              "python3",
+              "scripts/collection-search-image-test.py",
+              "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/slots-818u425i/prefix",
+              "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/search-images"
+            ],
+            "exit_code": 0,
+            "label": "collection-search-image",
+            "started_unix_ns": 1793032871427793000,
+            "status": "passed",
+            "wall_ns": 259310456833
+          }
+        ],
+        "schema": 1
+      }
+    },
+    {
+      "name": "trace",
+      "receipt": {
+        "checks": [
+          {
+            "argv": [
+              "python3",
+              "scripts/trace-image-smoke.py",
+              "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/slots-818u425i/prefix"
+            ],
+            "exit_code": 0,
+            "label": "trace-image",
+            "started_unix_ns": 1793034036875022000,
+            "status": "passed",
+            "wall_ns": 107998136792
+          }
+        ],
+        "schema": 1
+      }
+    }
+  ],
+  "native_loader": {
+    "log": ".cargo-target/oop-native-loader-image.log",
+    "sha256": "c9d9f3187a3a462ed29cf715b3eccd68d5395e20b7f2c18696ccb05730a83622",
+    "cases": [
+      "source",
+      "source-free compiled artifact",
+      "mapped image",
+      "rebuilt image",
+      "baked executable"
+    ]
+  },
+  "fixture_migration": "Declared v2 Method and explicit Oop initializer result; the fixture accepts the desired return Oop as its second argument instead of a retired Unit carrier",
+  "test_budget": "Collection-search image command limit raised from 180 to 600 seconds; assertions unchanged",
+  "runtime_changes": false,
+  "remaining": [
+    "Other image-family checks",
+    "Legacy native harness migration",
+    "Clean installer and release qualification"
+  ]
+}

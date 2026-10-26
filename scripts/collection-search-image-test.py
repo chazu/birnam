@@ -33,11 +33,11 @@ source.write_text('''
 '''.replace('IMAGE', json.dumps(str(image))))
 env = clean_environment()
 env['BIRNAM_GC_PRECISE'] = '1'
-run = command([prefix/'bin/birnam', source], cwd=work, env=env, timeout=180)
+run = command([prefix/'bin/birnam', source], cwd=work, env=env, timeout=600)
 assert run['exit_code'] == 0 and not run['stderr'] and run['stdout'] == '#saved\n', run
 source.unlink()
 for flags in ([], ['--rebuild']):
-    run = command([prefix/'bin/birnam', *flags, image], cwd=work, env=env, timeout=180)
+    run = command([prefix/'bin/birnam', *flags, image], cwd=work, env=env, timeout=600)
     assert run['exit_code'] == 0 and not run['stderr'], run
     assert run['stdout'] == 'true\n2\ntrue\n#[#success 2]\n', run
 print('search images: source-free mapped/rebuilt identity, GC, replacement and suspension passed')

@@ -63,4 +63,4 @@ let main := [|
  path.unlink()
  for args in [[str(image)],['--rebuild',str(image)]]:
   assert run(args)==b'true\n#retained\n73\n#[true false]\n'
- print('Trace: source-free mapped and rebuilt image, native carriers and collecting completion passed')
+ print('Trace: source-free mapped and rebuilt image, Oop native adapters and collecting completion passed')

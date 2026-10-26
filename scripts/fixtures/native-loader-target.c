@@ -1,41 +1,58 @@
-#include "../../rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h"
+#include "../../tests/fixtures/oop-id-v2/id.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #ifdef NATIVE_LOADER_NO_INIT
 int not_a_module(void) { return 1; }
 #else
-static BirnamProtocol carrier;
+static IdProtocol id;
+static Oop names[6];
 static unsigned calls;
-static BirnamOutcome intern(const char *name) {
-    BirnamOperand argument={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)name,strlen(name)}};
-    return carrier.message(carrier.context,carrier.receiver,carrier.intern,&argument,1);
+enum {BEHAVIOR, GC, COUNT, METHOD, ADD, NAME};
+static Oop send(Oop receiver, size_t selector, const Oop *args, size_t count) {
+    return id.message(id.root, receiver, names[selector], args, count);
 }
-static BirnamOutcome send(BirnamObject receiver,const char *selector,const BirnamOperand *args,size_t count) {
-    BirnamOutcome symbol=intern(selector);assert(symbol.status==BIRNAM_LOADED && symbol.value.kind==BIRNAM_OBJECT);
-    return carrier.message(carrier.context,receiver,symbol.value.data.object,args,count);
-}
-static BirnamOutcome count_loads(void *context,BirnamObject self,const BirnamOperand *args,size_t count) {
-    (void)context;(void)self;(void)args;assert(!count);
-    char value[64];snprintf(value,sizeof(value),"native-load-%u",calls);return intern(value);
+static Oop count_loads(Oop root, Oop context, Oop receiver, const Oop *args, size_t count) {
+    (void)root; (void)context; (void)receiver; (void)args;
+    if (count) return id.invalid;
+    char text[64];
+    int length = snprintf(text, sizeof(text), "native-load-%u", calls);
+    assert(length > 0 && (size_t)length < sizeof(text));
+    Oop bytes[64];
+    for (int i = 0; i < length; ++i) bytes[i] = id_size((unsigned char)text[i]);
+    Oop name = send(id.root, NAME, bytes, (size_t)length);
+    if (id_fault(name)) return name;
+    return id.message(id.root, name, id.intern, NULL, 0);
 }
 /* Neither dependency discovery nor the retired initializer may be invoked. */
-int birnam_native_loader_dependency_v12(const void *provider) { (void)provider;abort(); }
+int birnam_native_loader_dependency_v12(const void *provider) { (void)provider; abort(); }
 void *module_init(void) { abort(); }
-static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
-    assert(id && count==1 && args[0].kind==BIRNAM_OBJECT);
-    if(calls) assert(id->context==carrier.context);
-    carrier=*id;
-    BirnamObject system=args[0].data.object;
-    BirnamOutcome behavior=send(carrier.receiver,"behaviorOf:",args,1);
-    assert(behavior.status==BIRNAM_LOADED && behavior.value.kind==BIRNAM_OBJECT);
-    assert(send(system,"gc",NULL,0).status==BIRNAM_LOADED);
-    calls++;
-    BirnamOutcome selector=intern("nativeLoaderCount");assert(selector.status==BIRNAM_LOADED);
-    BirnamOperand install[]={selector.value,{.kind=BIRNAM_NATIVE_ENTRY,.data.entry={count_loads,NULL}}};
-    assert(send(behavior.value.data.object,"addMethod",install,2).status==BIRNAM_LOADED);
-    return (BirnamOutcome){0};
+static Oop initialize(const IdProtocol *protocol, Oop image, const Oop *symbols,
+                      size_t symbol_count, const Oop *args, size_t count) {
+    if (symbol_count != 6 || (count != 1 && count != 2)) return protocol->invalid;
+    if (calls) assert(protocol->root == id.root);
+    id = *protocol;
+    for (size_t i = 0; i < symbol_count; ++i) names[i] = symbols[i];
+    Oop system = args[0];
+    Oop behavior = send(id.root, BEHAVIOR, &system, 1);
+    if (id_fault(behavior)) return behavior;
+    Oop collected = send(system, GC, NULL, 0);
+    if (id_fault(collected)) return collected;
+    ++calls;
+    Oop method = send(image, METHOD, &names[COUNT], 1);
+    if (id_fault(method)) return method;
+    Oop binding[] = {names[COUNT], method};
+    Oop installed = send(behavior, ADD, binding, 2);
+    if (id_fault(installed)) return installed;
+    // Initializers now return an explicit Oop; the caller chooses the result.
+    return args[count - 1];
 }
-const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};
+static const IdLiteral literals[] = {
+    LIT("behaviorOf:"), LIT("gc"), LIT("nativeLoaderCount"),
+    LIT("methodAt:"), LIT("addMethod"), LIT("nameWithBytes")
+};
+static const IdMethodSpec methods[] = {{COUNT, count_loads}};
+const IdModule birnam_native_module_v2 = {
+    2, sizeof(IdModule), literals, 6, methods, 1, initialize
+};
 #endif
