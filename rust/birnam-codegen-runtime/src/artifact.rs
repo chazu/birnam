@@ -245,13 +245,21 @@ unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop,
         if s.is_error(contents)? {
             return Ok(Some((contents, s.named(b"nil")?, s.named(b"nil")?)));
         }
-        let bytes = s.bytes(contents)?;
-        if !bytes.starts_with(b"\x7fELF") {
+        let view = q.keep(s.send(contents, b"bytes", &[])?);
+        let snapshot = q.keep(s.send(view, b"clone", &[])?);
+        let length = abi::as_size(s.send(snapshot, b"sizeWord", &[])?).ok_or_else(invalid)?;
+        let mut magic = Vec::new();
+        for i in 0..length.min(4) {
+            let byte = s.send(snapshot, b"atWord:", &[abi::size(i).unwrap()])?;
+            magic.push(
+                abi::as_size(byte)
+                    .and_then(|n| u8::try_from(n).ok())
+                    .ok_or_else(invalid)?,
+            );
+        }
+        if magic != b"\x7fELF" {
             reject!(b"RustCodegen artifact is not an Id native object");
         }
-        let factory = q.keep(s.named(b"Bytes")?);
-        let values = q.keep(s.byte_values(&bytes)?);
-        let snapshot = q.keep(s.send(factory, b"fromBytes:", &[values])?);
         let descriptor = q.keep(s.send(
             s.named(b"Artifact")?,
             b"inspectBytes:from:",

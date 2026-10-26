@@ -5,7 +5,7 @@ use birnam_codegen::{backend_request::Request, image::Plan};
 #[derive(Clone)]
 enum Body {
     Object {
-        bytes: std::rc::Rc<Vec<u8>>,
+        bytes: Oop,
         range: std::ops::Range<usize>,
     },
     Rebuild(Request),
@@ -22,12 +22,10 @@ impl Stage {
     pub(super) fn roots(&self) -> Vec<Oop> {
         self.bodies
             .iter()
-            .filter_map(|v| {
-                if let Body::Ready(m) = v {
-                    Some(*m)
-                } else {
-                    None
-                }
+            .filter_map(|v| match v {
+                Body::Ready(m) => Some(*m),
+                Body::Object { bytes, .. } => Some(*bytes),
+                _ => None,
             })
             .chain(self.templates.iter().copied())
             .chain(self.prepared.iter().flatten().copied())
@@ -55,10 +53,25 @@ enum Op {
 unsafe fn call(s: &State, q: &Scope<'_>, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
     unsafe { Ok(q.keep(s.send(r, n, a)?)) }
 }
-unsafe fn value(s: &State, q: &Scope<'_>, family: &[u8], bytes: &[u8]) -> Result<Oop, Oop> {
+unsafe fn blob(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
     unsafe {
-        let data = q.keep(s.byte_values(bytes)?);
-        call(s, q, s.named(family)?, b"fromBytes:", &[data])
+        let mut chunks = bytes.chunks(8192);
+        let values = |bytes: &[u8]| {
+            bytes
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let first = values(chunks.next().unwrap_or(&[]));
+        let mut output = call(s, q, s.named(b"Bytes")?, b"fromByteValues", &first)?;
+        for chunk in chunks {
+            let next = s.send(output, b"appendByteValues", &values(chunk))?;
+            if next != output {
+                q.keep(next);
+            }
+            output = next;
+        }
+        Ok(output)
     }
 }
 unsafe fn at(s: &State, q: &Scope<'_>, r: Oop, i: usize) -> Result<Oop, Oop> {
@@ -97,7 +110,7 @@ pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result
         else {
             return Err(invalid());
         };
-        let p = value(s, q, b"Bytes", program)?;
+        let p = blob(s, q, program)?;
         let source = q.keep(s.text(source)?);
         let filename = q.keep(s.text(filename)?);
         let persistent = s.named(if *persistent { b"true" } else { b"false" })?;
@@ -292,20 +305,42 @@ unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oo
                         }
                         objects.push(s.bytes(object)?);
                     }
-                    return value(s, q, b"Bytes", &plan.encode(&objects).ok_or_else(invalid)?);
+                    return blob(s, q, &plan.encode(&objects).ok_or_else(invalid)?);
                 }
                 let bodies = if matches!(op, Op::Mapped) {
-                    let bytes = std::rc::Rc::new(s.bytes(args[0])?);
-                    let objects = plan.decode(&bytes).ok_or_else(invalid)?;
-                    objects
-                        .iter()
-                        .map(|object| {
-                            let start = object.as_ptr().addr() - bytes.as_ptr().addr();
-                            Body::Object {
-                                bytes: bytes.clone(),
-                                range: start..start + object.len(),
+                    let view = call(s, q, args[0], b"bytes", &[])?;
+                    let bytes = call(s, q, view, b"clone", &[])?;
+                    let length =
+                        abi::as_size(s.send(bytes, b"sizeWord", &[])?).ok_or_else(invalid)?;
+                    let mut failure = None;
+                    let ranges = plan
+                        .decode_ranges(length, |range| {
+                            let result = (|| -> Result<Vec<u8>, Oop> {
+                                range
+                                    .map(|i| {
+                                        let v = s.send(
+                                            bytes,
+                                            b"atWord:",
+                                            &[abi::size(i).ok_or_else(invalid)?],
+                                        )?;
+                                        abi::as_size(v)
+                                            .and_then(|n| u8::try_from(n).ok())
+                                            .ok_or_else(invalid)
+                                    })
+                                    .collect()
+                            })();
+                            match result {
+                                Ok(v) => Some(v),
+                                Err(e) => {
+                                    failure = Some(e);
+                                    None
+                                }
                             }
                         })
+                        .ok_or_else(|| failure.unwrap_or_else(invalid))?;
+                    ranges
+                        .into_iter()
+                        .map(|range| Body::Object { bytes, range })
                         .collect()
                 } else {
                     plan.requests[..2 * plan.programs]
@@ -361,7 +396,16 @@ unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oo
                     Body::Object { bytes, range } => {
                         let unit = {
                             let input = s.scope(&[]);
-                            let data = value(s, &input, b"Bytes", &bytes[range])?;
+                            let data = call(
+                                s,
+                                &input,
+                                bytes,
+                                b"sliceFromWord:toWord:",
+                                &[
+                                    abi::size(range.start).ok_or_else(invalid)?,
+                                    abi::size(range.end).ok_or_else(invalid)?,
+                                ],
+                            )?;
                             s.send(s.named(b"TCC")?, b"loadObject:", &[data])?
                         };
                         q.keep(unit)

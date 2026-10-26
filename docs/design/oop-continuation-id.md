@@ -579,3 +579,35 @@ published execution, relocation and missing-library refusal. This used the
 explicit developer build cache; release cold/archive qualification is separate.
 Worker startup still exceeds its unchanged ready-handshake limit, and the remaining
 Host/native test harness migration remains open. [Receipt](../measurements/published-project-oop-20261026.json).
+
+## Byte snapshots on the image/worker path
+
+Image input and Codegen's binary output now use Bytes' existing bounded
+`fromByteValues` / `appendByteValues` operations instead of allocating a Sequence
+with one managed reference per byte. The validated native-code bundle remains a
+Bytes Oop across Image and Codegen. Codegen retains an owner-provided snapshot,
+reads its framing through indexed messages, and requests each selected object
+through `sliceFromWord:toWord:` before sending it to TCC. Artifact loading also
+keeps one byte snapshot for inspection and mapping. No foreign byte payload is
+read and no Id message or calling convention is added.
+
+The existing native Word-indexed slice operation now copies only its requested
+range. It previously cloned the entire source buffer before copying the range,
+which made mapping many small objects from one image repeatedly copy the complete
+bundle. The buffer borrow ends before allocation or any callback. Generated
+binary descriptors/programs are constructed as Bytes; language String literals
+continue to call their current String constructor.
+
+A trial batch-copy API and per-owner callback receivers were discarded after the
+slice-copy cause was isolated. They are not part of the implementation. The
+snapshot regression changes the caller's original byte object's slicing behavior
+and collects after preparation; mapped execution must still succeed with both
+parser and compiler disabled. Another regression refuses binary metadata passed
+through String construction while requiring ordinary String construction to run.
+
+The final core, Bootstrap, Host, Generation and image gate passes. In its single
+local run, mapped recovery took 9.1 seconds and default CLI startup/execution took
+8.9 seconds; the initial mapped probe took 46.1 seconds. These are acceptance
+measurements, not a release benchmark. The targeted service-image worker now
+starts within the unchanged deadline; complete worker acceptance remains a
+separate gate. [Receipt](../measurements/image-byte-snapshots-oop-20261026.json).

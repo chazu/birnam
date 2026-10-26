@@ -44,6 +44,20 @@ static inline O string(Call*c,const unsigned char*bytes,size_t n){
  if(n>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*values=n?malloc(n*sizeof(O)):0;if(n&&!values){c->error=id.invalid;return 0;}
  for(size_t i=0;i<n;i++)values[i]=size_oop(bytes[i]);O sequence=call(c,id.root,S_SEQUENCE,values,n);free(values);O factory=named(c,S_STRING);return call(c,factory,S_FROM_BYTES,&sequence,1);
 }
+/* Descriptor/program metadata is binary data, independent of String literals. */
+static inline O blob(Call*c,const unsigned char*bytes,size_t n){
+ const size_t batch=8192;O*values=n?malloc((n<batch?n:batch)*sizeof(O)):0;
+ if(n&&!values){c->error=id.invalid;return 0;}
+ size_t count=n<batch?n:batch;for(size_t i=0;i<count;i++)values[i]=size_oop(bytes[i]);
+ O result=call(c,named(c,S_BYTES),S_FROM_BYTE_VALUES,values,count);
+ for(size_t start=count;start<n&&!c->error;start+=count){
+  count=n-start<batch?n-start:batch;
+  for(size_t i=0;i<count;i++)values[i]=size_oop(bytes[start+i]);
+  O next=raw(c,result,S_APPEND_BYTE_VALUES,values,count);
+  if(!c->error&&next!=result)keep(c,next);result=next;
+ }
+ free(values);return result;
+}
 static inline O global(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_GLOBAL,&key,1);}
 /* Machine owns logical slots; generated code never reads its payload. */
 static inline O frame_get(Call*c,O machine,size_t slot,size_t selector){O index=size_oop(slot);return call(c,machine,selector,&index,1);}

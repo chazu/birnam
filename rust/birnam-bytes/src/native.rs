@@ -304,7 +304,15 @@ unsafe fn run(t: &Bytes, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                     return Err(invalid());
                 };
                 let (from, to) = (t.number(*from)?, t.number(*to)?);
-                let bytes = t.copy(r)?.get(from..to).map(<[u8]>::to_vec);
+                let bytes = {
+                    let buffers = t.buffers.borrow();
+                    buffers
+                        .get(&r.addr())
+                        .ok_or_else(invalid)?
+                        .bytes
+                        .get(from..to)
+                        .map(<[u8]>::to_vec)
+                };
                 bytes.map_or(Ok(ptr::null_mut()), |bytes| t.make(bytes))
             }
             7 => {

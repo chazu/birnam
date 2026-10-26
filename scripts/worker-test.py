@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from contextlib import nullcontext
 import socket
 import shlex
 import time
@@ -13,7 +14,11 @@ import tempfile
 binary = Path(sys.argv[1]).resolve() / 'bin/birnam'
 env = {k: v for k, v in os.environ.items() if not k.startswith('BIRNAM_')}
 env.update(BIRNAM_NO_STDLIB='1', BIRNAM_GC_PRECISE='1')
-with tempfile.TemporaryDirectory(prefix='birnam-workers-') as temporary:
+retained = os.environ.get('BIRNAM_WORKER_TEST_DIRECTORY')
+if retained:
+    Path(retained).mkdir(parents=True, exist_ok=True)
+workspace = nullcontext(retained) if retained else tempfile.TemporaryDirectory(prefix='birnam-workers-')
+with workspace as temporary:
     work = Path(temporary)
     image = work / 'worker.image'
     def run(name, source, expected=b'', *, stdlib=False):

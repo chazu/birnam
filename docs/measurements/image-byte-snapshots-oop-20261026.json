@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-26",
+  "base_commit": "477333e8",
+  "scope": "Image byte ownership and copying; worker suite continues separately",
+  "passed": true,
+  "commands": [
+    "bash scripts/oop-image-test.sh"
+  ],
+  "core_unit_tests": 190,
+  "task_control_checks": 177,
+  "generation_checks": 28,
+  "portable_code_checks": 107,
+  "image_acceptance": {
+    "passed": true,
+    "runs": [
+      {
+        "name": "dispatch and Block restoration",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true true true true true true true true true true true true]\n",
+        "stderr": "",
+        "elapsed_seconds": 8.536138417
+      },
+      {
+        "name": "immediate locator admission",
+        "exit_code": 0,
+        "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "stderr": "",
+        "elapsed_seconds": 9.324110791000003
+      },
+      {
+        "name": "binary metadata avoids String construction",
+        "exit_code": 0,
+        "stdout": "#[true true]\n",
+        "stderr": "",
+        "elapsed_seconds": 8.368223291
+      },
+      {
+        "name": "save",
+        "exit_code": 0,
+        "stdout": "true\n#saved\n",
+        "stderr": "",
+        "elapsed_seconds": 176.9847815
+      },
+      {
+        "name": "mapped without parser or compiler",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true true true]\nOOP_IMAGE_MAPPED_OK\n",
+        "stderr": "",
+        "elapsed_seconds": 9.100337209000003
+      },
+      {
+        "name": "explicit rebuild without parser",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true true true]\nOOP_IMAGE_REBUILT_OK\n",
+        "stderr": "",
+        "elapsed_seconds": 13.686389833999982
+      },
+      {
+        "name": "default image-backed CLI",
+        "exit_code": 0,
+        "stdout": "42\n",
+        "stderr": "",
+        "elapsed_seconds": 8.857773292000019
+      }
+    ],
+    "image_bytes": 123394837,
+    "image_sha256": "62a929e224200c1e711d341614d23cadc1e4c02abca968cd4412dbad9094e07d"
+  },
+  "baseline": {
+    "exit_code": 0,
+    "elapsed_seconds": 46.104243499999995
+  },
+  "timing_scope": "Single local acceptance runs including bootstrap. The initial and final generated images are different builds of the same probe; this is not a matched release benchmark. The final mapped probe additionally changes the original code buffer behavior and collects after staging.",
+  "worker_targeted_case": "Previously failing service-image library query succeeds under the existing 10000 ms ready handshake. Complete worker suite is still running and is not claimed here.",
+  "contract": "No Id/ABI additions, runtime dependency changes or foreign payload reads. Bytes owns byte storage. Image/Codegen retain Oops and use existing clone/slicing/data-construction messages. Generated language String literals remain current constructor sends. Experimental batch-copy API and callback receiver registries were removed.",
+  "remaining": [
+    "Complete original worker/task-service acceptance",
+    "Remaining legacy Host/native test harness migration",
+    "Broader installed tooling and image-family checks",
+    "Cold/archive release and full-language performance qualification"
+  ],
+  "logs": {
+    ".cargo-target/oop-worker-minimal-final-gate.log": "1a74124dd420d15fbc9f9b5d83aef81ce6a14f1c029b77d019143569376ba074",
+    ".cargo-target/oop-slice/image-qualification/roundtrip-nt496sd6/receipt.json": "a79f7f573413cbe9ec1fb36ae791281ee964b37da1a4083707a49f5a8950e7c6",
+    ".cargo-target/oop-slice/worker-performance/baseline.json": "f26d2059a217741c0bfdf512e6c5774eca8ebad47f02b863a8bc3eef95931850",
+    ".cargo-target/oop-slice/worker-performance/baseline-sample.txt": "3578db1e909a44cb40aaee8924b6f7c79469b0330e8c26ecee41d44afbd40122",
+    ".cargo-target/oop-slice/worker-performance/binary-metadata-baseline.json": "ac227c1bc607308acfa447ed0dde407dabf02f8952c6743c079fdf733ec3d5ba",
+    ".cargo-target/oop-slice/worker-performance/retained-suite/service-load.json": "518ea0fdf17860277fe907f570cd118c4d15fad2a49df302ef2528e724b8af77",
+    ".cargo-target/oop-slice/worker-performance/retained-suite/worker-library-fixed.log": "e292cf74a142b92df96e8a7d968ac884c90d4c167dee570a2b1a5ac8b2f8d5ca",
+    ".cargo-target/oop-slice/qualification/unit.log": "ed08c083207dfe76af8df1c3279037f1a6303cee8d314750cf6dc9c097ec702f"
+  }
+}

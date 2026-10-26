@@ -919,6 +919,10 @@ const NAMES: &[&[u8]] = &[
     b"Map",
     b"kind:",
     b"forDoesNotUnderstand",
+    b"clone",
+    b"sliceFromWord:toWord:",
+    b"fromByteValues",
+    b"appendByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1109,6 +1113,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"Map"),
     Literal::new(b"kind:"),
     Literal::new(b"forDoesNotUnderstand"),
+    Literal::new(b"clone"),
+    Literal::new(b"sliceFromWord:toWord:"),
+    Literal::new(b"fromByteValues"),
+    Literal::new(b"appendByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {

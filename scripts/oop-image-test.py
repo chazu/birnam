@@ -59,6 +59,11 @@ for i,data in enumerate(valid+invalid):
     forms.append('[System println: [[[ImageFormat inspect: bytes architecture: 1 abi: [bytes readU64At: 20]] isError] = '+('false' if i<len(valid) else 'true')+']];')
 format_probe=work/'format.birnam';format_probe.write_text('\n'.join(forms))
 run('immediate locator admission',[build/'release/birnam',format_probe],'true\n'*len(forms[::2]),dict(env,BIRNAM_FORCE_SOURCE='1'))
+fixture=stage/'binary-metadata.dylib'
+subprocess.run(['clang','-dynamiclib','-O2',str(root/'tests/fixtures/oop-host/binary-metadata.c'),'-o',str(fixture)],check=True)
+probe=work/'binary-metadata.birnam'
+probe.write_text('[Globals at: #BinaryMetadataProbe put: [System loadModule: '+json.dumps(str(fixture))+' arguments: #[]]];\n[System println: '+(root/'scripts/oop-binary-metadata-smoke.birnam').read_text()+']\n')
+run('binary metadata avoids String construction',[build/'release/birnam',probe],'#[true true]\n',dict(env,BIRNAM_FORCE_SOURCE='1'))
 run('save',[build/'release/birnam',source],'true\n#saved\n',dict(env,BIRNAM_FORCE_SOURCE='1'))
 assert snapshot.is_file()
 source.unlink()

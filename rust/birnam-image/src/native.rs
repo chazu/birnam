@@ -150,6 +150,30 @@ impl State {
             self.send(self.id.root, b"sequence", &args)
         }
     }
+    // Native file/codec bytes enter the Bytes owner as bounded Oop packets.
+    // A managed Sequence for the entire image would make GC visit every byte.
+    unsafe fn blob(&self, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Failure> {
+        unsafe {
+            let mut chunks = bytes.chunks(8192);
+            let values = |chunk: &[u8]| {
+                chunk
+                    .iter()
+                    .map(|b| abi::size(*b as usize).unwrap())
+                    .collect::<Vec<_>>()
+            };
+            let first = values(chunks.next().unwrap_or(&[]));
+            let mut output =
+                q.keep(self.send(self.named(b"Bytes")?, b"fromByteValues", &first)?)?;
+            for chunk in chunks {
+                let next = object(self.send(output, b"appendByteValues", &values(chunk))?)?;
+                if next != output {
+                    q.keep(next)?;
+                }
+                output = next;
+            }
+            Ok(output)
+        }
+    }
     unsafe fn text(&self, q: &Scope<'_>, family: &[u8], b: &[u8]) -> Result<Oop, Failure> {
         unsafe {
             let value = {
@@ -261,13 +285,13 @@ impl State {
 fn runtime_abi() -> u64 {
     support::wyhash(support::runtime_abi_hash(), b"Id-oop-image-v4")
 }
-fn composition_identity(decoded: &v8::DecodedImage<'_>) -> Vec<u8> {
+fn composition_identity(decoded: &v8::DecodedImage<'_>, checksum: Option<&[u8; 8]>) -> Vec<u8> {
     use sha2::{Digest, Sha256};
     let mut digest = Sha256::new();
-    if let Some(code) = decoded.code {
+    if let Some(code) = checksum {
         digest.update(b"birnam.image-composition.v1\0");
         digest.update(1u32.to_le_bytes());
-        digest.update(&code[..8]); // validated code-record checksum
+        digest.update(code); // validated code-record checksum
     } else {
         digest.update(b"birnam.image-rebuilt-composition.v1\0");
         for bytes in [decoded.programs, decoded.bindings, decoded.selection] {
@@ -954,9 +978,9 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Oop
                 code: None,
             },
         )?;
-        let p = s.text(q, b"Bytes", &programs)?;
-        let b = s.text(q, b"Bytes", &bindings)?;
-        let selected = s.text(q, b"Bytes", &selection)?;
+        let p = s.blob(q, &programs)?;
+        let b = s.blob(q, &bindings)?;
+        let selected = s.blob(q, &selection)?;
         let compiled = s.call(
             q,
             codegen,
@@ -1096,7 +1120,7 @@ unsafe fn restore_heap(
                     object(s.send(s.named(family)?, selector, &[s.word(*n as usize)?])?)?
                 }
                 Value::String(b) => s.text(q, b"String", b)?,
-                Value::Bytes(b) => s.text(q, b"Bytes", b)?,
+                Value::Bytes(b) => s.blob(q, b)?,
                 Value::Export(n) if n == b"CellVt" => {
                     if node.fields.len() != 3 {
                         return Err(bad());
@@ -1186,11 +1210,7 @@ unsafe fn restore_heap(
                         continue;
                     }
                 }
-                let bytes = s.text(
-                    q,
-                    b"Bytes",
-                    inventory.program(index as usize).ok_or_else(bad)?,
-                )?;
+                let bytes = s.blob(q, inventory.program(index as usize).ok_or_else(bad)?)?;
                 let code = s.call(q, s.named(b"CodeObject")?, b"fromCanonicalBytes:", &[bytes])?;
                 if s.is_error(code)? {
                     return Err(bad());
@@ -1208,7 +1228,7 @@ unsafe fn restore_heap(
                     )?
                 };
                 if let Some(signature) = signature {
-                    let signature = s.text(q, b"Bytes", signature)?;
+                    let signature = s.blob(q, signature)?;
                     objects[i] = s.call(q, objects[i], b"withNativeSignature:", &[signature])?;
                     if s.is_error(objects[i])? {
                         return Err(bad());
@@ -1430,6 +1450,11 @@ unsafe fn load(
 ) -> Result<Oop, Failure> {
     unsafe {
         let mut owned = format::inspect(s, &bytes)?;
+        // inspect's temporary scope has ended; retain its returned code object
+        // before any further send. Other fields are copied native snapshots.
+        if let Some(code) = owned.code {
+            q.keep(code)?;
+        }
         // Validation returned independent snapshots; the file buffer is dead.
         drop(bytes);
         // Activation follows declared metadata, never ambient Store discovery.
@@ -1466,8 +1491,15 @@ unsafe fn load(
         if ready != manager {
             return Err(bad());
         }
-        let composition = composition_identity(&owned.view());
         let native_code = owned.code.take();
+        let checksum = native_code
+            .map(|code| {
+                let prefix =
+                    s.call(q, code, b"sliceFromWord:toWord:", &[s.word(0)?, s.word(8)?])?;
+                <[u8; 8]>::try_from(s.bytes(prefix)?).map_err(|_| bad())
+            })
+            .transpose()?;
+        let composition = composition_identity(&owned.view(), checksum.as_ref());
         let decoded = owned.view();
         // Current images identify their ordinary source owner explicitly.
         // Older source-less images need rebuilding, not a hidden native fallback.
@@ -1479,25 +1511,21 @@ unsafe fn load(
         }
         let codegen = q.keep(s.named(b"Codegen")?)?;
         let yes = q.keep(s.named(b"true")?)?;
-        let p = s.text(q, b"Bytes", decoded.programs)?;
-        let b = s.text(q, b"Bytes", decoded.bindings)?;
-        let selection = s.text(q, b"Bytes", decoded.selection)?;
+        let p = s.blob(q, decoded.programs)?;
+        let b = s.blob(q, decoded.bindings)?;
+        let selection = s.blob(q, decoded.selection)?;
         let mapped = !rebuild && native_code.is_some();
         let loaded_result = q.keep(s.named(if mapped { b"true" } else { b"false" })?)?;
         let started = if mapped {
             let input = Scope::new(s);
-            let code = s.text(
+            let code = native_code.ok_or_else(bad)?;
+            let length = s.send(code, b"sizeWord", &[])?;
+            let code = s.call(
                 &input,
-                b"Bytes",
-                native_code
-                    .as_deref()
-                    .ok_or_else(bad)?
-                    .get(72..)
-                    .ok_or_else(bad)?,
+                code,
+                b"sliceFromWord:toWord:",
+                &[s.word(72)?, length],
             )?;
-            // The current factory has consumed our borrow. Its owned carrier
-            // is pinned independently; do not retain the Rust copy as well.
-            drop(native_code);
             s.call(
                 q,
                 codegen,
@@ -1505,7 +1533,6 @@ unsafe fn load(
                 &[code, p, b, selection],
             )?
         } else {
-            drop(native_code);
             s.call(
                 q,
                 codegen,
@@ -2261,6 +2288,10 @@ literals![
     b"inspect:architecture:abi:",
     b"compose:",
     b"isBehavior:",
+    b"fromByteValues",
+    b"appendByteValues",
+    b"clone",
+    b"sliceFromWord:toWord:",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {

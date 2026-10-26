@@ -38,6 +38,11 @@ fn main() {
             b"invokeOn:arguments:",
             b"GC",
             b"collectPrecisely",
+            b"Codegen",
+            b"methodFor:",
+            b"withContext:",
+            b"stageAndChange",
+            b"beginPortableImageMapped:programs:bindings:selection:",
         ];
         let mut seeds = vec![
             bootstrap.as_os_str().as_bytes(),
@@ -94,6 +99,20 @@ fn main() {
         if !rebuild {
             replace(b"TCC", b"compile:");
             replace(b"TCC", b"compileObject:");
+        }
+        if !rebuild {
+            let selector = sel(b"beginPortableImageMapped:programs:bindings:selection:");
+            let codegen = named(b"Codegen");
+            let original = keep(send(codegen, b"methodFor:", &[selector]));
+            let hook = keep(send(fixture, b"methodAt:", &[sel(b"stageAndChange")]));
+            let context = keep(send(
+                id.root,
+                b"sequence",
+                &[original, named(b"GC"), deny, named(b"nil")],
+            ));
+            let hook = keep(send(hook, b"withContext:", &[context]));
+            let behavior = keep(send(id.root, b"behaviorOf:", &[codegen]));
+            send(behavior, b"addMethod", &[selector, hook]);
         }
         let path = text(path.as_os_str().as_bytes());
         let result = if rebuild {

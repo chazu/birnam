@@ -7,7 +7,7 @@ pub(super) struct Decoded {
     pub selection: Vec<u8>,
     pub heaps: Vec<Vec<u8>>,
     pub facts: Vec<Vec<u8>>,
-    pub code: Option<Vec<u8>>,
+    pub code: Option<Oop>,
     pub sources: Option<Vec<u8>>,
     pub behaviors: Option<Vec<u8>>,
     pub providers: Option<Vec<u8>>,
@@ -20,7 +20,7 @@ impl Decoded {
             selection: &self.selection,
             heaps: self.heaps.iter().map(Vec::as_slice).collect(),
             facts: self.facts.iter().map(Vec::as_slice).collect(),
-            code: self.code.as_deref(),
+            code: None,
             sources: self.sources.as_deref(),
             behaviors: self.behaviors.as_deref(),
             providers: self.providers.as_deref(),
@@ -51,8 +51,8 @@ unsafe fn admitted(s: &State, q: &Scope<'_>, answer: Oop) -> Result<Oop, Failure
 }
 pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Failure> {
     unsafe {
-        // All returned fields are copied snapshots. Do not pin the full input
-        // and the validator's temporary carriers through heap reconstruction.
+        // Metadata is copied; native code stays an owner-provided Bytes Oop.
+        // The caller must retain that Oop after this temporary scope ends.
         let scope = Scope::new(s);
         let q = &scope;
         let owner = s.call(
@@ -61,7 +61,7 @@ pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Failure
             b"at:",
             &[q.keep(s.intern(b"ImageFormat")?)?],
         )?;
-        let value = s.text(q, b"Bytes", bytes)?;
+        let value = s.blob(q, bytes)?;
         let arch = s.integer(q, support::IMAGE_ARCH_TAG as usize)?;
         let abi = s.integer(q, runtime_abi() as usize)?;
         let answer = s.call(q, owner, b"inspect:architecture:abi:", &[value, arch, abi])?;
@@ -84,10 +84,20 @@ pub(super) unsafe fn inspect(s: &State, bytes: &[u8]) -> Result<Decoded, Failure
         let blobs = |v| -> Result<Vec<Vec<u8>>, Failure> {
             s.sequence(q, v)?.into_iter().map(|v| s.bytes(v)).collect()
         };
-        let code = optional(s, q, *code)?;
-        if code.as_ref().is_some_and(|b| b.len() < 72) {
-            return Err(bad());
-        }
+        let code = if *code == s.named(b"nil")? {
+            None
+        } else {
+            let buffer = s.call(q, *code, b"bytes", &[])?;
+            let code = s.call(q, buffer, b"clone", &[])?;
+            if abi::as_size(s.send(code, b"sizeWord", &[])?)
+                .ok_or_else(bad)?
+                .checked_sub(72)
+                .is_none()
+            {
+                return Err(bad());
+            }
+            Some(code)
+        };
         Ok(Decoded {
             programs: s.bytes(*programs)?,
             bindings: s.bytes(*bindings)?,
@@ -115,7 +125,7 @@ pub(super) unsafe fn compose(
         )?;
         let arch = s.integer(q, spec.architecture as usize)?;
         let abi = s.integer(q, spec.runtime_abi as usize)?;
-        let blob = |b: &[u8]| s.text(q, b"Bytes", b);
+        let blob = |b: &[u8]| s.blob(q, b);
         let opt = |b: Option<&[u8]>| -> Result<Oop, Failure> {
             if let Some(b) = b {
                 blob(b)

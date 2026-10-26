@@ -1,0 +1,16 @@
+[[|
+let body := [| "visible String literal"];
+let code := [body codeObject];
+let source := [NativeBackend emit: [CodeObject canonicalBytesOf: code] source: "" filename: "<binary-test>" persistent: false synchronous: false];
+let unit := [TCC compile: source];
+let original := [String methodFor: #fromBytes:];
+let hook := [[BinaryMetadataProbe methodAt: #checkString] withContext: original];
+let behavior := [Vtable behaviorOf: String];
+[behavior addMethod: hook as: #fromBytes:];
+let method := [unit initialize];
+let restored := [Block fromMethod: method codeObject: code captures: #[]];
+let result := [restored value];
+[behavior addMethod: original as: #fromBytes:];
+let calls := [Integer fromWord: [[BinaryMetadataProbe methodAt: #observed] invokeOn: BinaryMetadataProbe]];
+#[[result = "visible String literal"] [calls > 0]]
+] value]

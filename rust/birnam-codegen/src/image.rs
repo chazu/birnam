@@ -28,6 +28,25 @@ mod tests {
             plan.decode(&encoded),
             Some(objects.iter().map(Vec::as_slice).collect())
         );
+        let mut reads = Vec::new();
+        let ranges = plan
+            .decode_ranges(encoded.len(), |range| {
+                reads.push(range.clone());
+                encoded.get(range).map(<[u8]>::to_vec)
+            })
+            .unwrap();
+        assert_eq!(
+            reads.iter().map(|r| r.len()).sum::<usize>(),
+            44 + 8 * objects.len()
+        );
+        for (range, object) in ranges.iter().zip(&objects) {
+            assert_eq!(&encoded[range.clone()], object);
+            assert!(
+                reads
+                    .iter()
+                    .all(|read| read.end <= range.start || read.start >= range.end)
+            );
+        }
         // The runtime holds its owned bundle snapshot through all loader sends.
         // Decoding must not duplicate the complete native-code inventory.
         let decoded = plan.decode(&encoded).unwrap();
@@ -108,29 +127,44 @@ impl Plan {
         }
         Some(out)
     }
-    pub fn decode<'a>(&self, bytes: &'a [u8]) -> Option<Vec<&'a [u8]>> {
-        if bytes.get(..8)? != b"BIRNAMO2" || bytes.get(8..40)? != self.authority {
+    /// Validate bundle framing while reading only its header and object lengths.
+    /// The byte owner retains and slices the payloads through its own messages.
+    pub fn decode_ranges(
+        &self,
+        length: usize,
+        mut read: impl FnMut(std::ops::Range<usize>) -> Option<Vec<u8>>,
+    ) -> Option<Vec<std::ops::Range<usize>>> {
+        if length < 44 {
             return None;
         }
-        let count = u32::from_le_bytes(bytes.get(40..44)?.try_into().ok()?) as usize;
+        let header = read(0..44)?;
+        if header.len() != 44 || &header[..8] != b"BIRNAMO2" || header[8..40] != self.authority {
+            return None;
+        }
+        let count = u32::from_le_bytes(header[40..44].try_into().ok()?) as usize;
         if count != 2 * self.programs {
             return None;
         }
         let mut offset = 44usize;
         let mut objects = Vec::new();
         for _ in 0..count {
-            let length = usize::try_from(u64::from_le_bytes(
-                bytes.get(offset..offset + 8)?.try_into().ok()?,
-            ))
-            .ok()?;
-            offset += 8;
-            let end = offset.checked_add(length)?;
-            if length == 0 {
+            let end = offset.checked_add(8).filter(|end| *end <= length)?;
+            let size =
+                usize::try_from(u64::from_le_bytes(read(offset..end)?.try_into().ok()?)).ok()?;
+            offset = end;
+            let end = offset.checked_add(size).filter(|end| *end <= length)?;
+            if size == 0 {
                 return None;
             }
-            objects.push(bytes.get(offset..end)?);
+            objects.push(offset..end);
             offset = end;
         }
-        (offset == bytes.len()).then_some(objects)
+        (offset == length).then_some(objects)
+    }
+    pub fn decode<'a>(&self, bytes: &'a [u8]) -> Option<Vec<&'a [u8]>> {
+        self.decode_ranges(bytes.len(), |range| bytes.get(range).map(<[u8]>::to_vec))?
+            .into_iter()
+            .map(|range| bytes.get(range))
+            .collect()
     }
 }
