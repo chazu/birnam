@@ -54,13 +54,19 @@ use live Id messages. Object Model alone allocates/describes/accesses the slots;
 cloning, tracing and image transport use its existing ordinary-storage protocols.
 
 `referenceSlotsOf:` takes one language Object and returns a Vector of Integer
-indices for reference slots described by this owner, or nil for unsupported
-nonempty storage/missing layout. It reads metadata only, follows private behavior
+indices for reference slots described by this owner, or nil for foreign storage
+or a missing layout. It reads metadata only, follows private behavior
 layers to the nearest layout, snapshots indices before construction callbacks,
 and keeps construction intermediates in its GC-visible scope. Empty ordinary
 storage returns an empty Vector. Raw slots and foreign payloads are not exposed.
 The authored [Reflect facade](../../docs/design/reflect-slots-and-module-state.md)
 adds names and generic reads/writes without a schema registry or fact mirror.
+
+The Oop `object_model_slots` test checks metadata-only access, live layout changes,
+detached vtables during collecting callbacks, reentrant snapshot construction,
+exact failure references and reclamation after query exit. Its C fixture keeps
+only weak observations of the target and compares allocation identities when
+checking reclamation, so the test cannot accidentally root the objects it measures.
 
 Native operations on the ObjectModel receiver are:
 

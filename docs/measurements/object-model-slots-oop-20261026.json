@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "ObjectModel reference inventory and scoped lifetime through Oop callbacks",
+  "base_revision": "5b897d03dbce4279d68eac35693a94de4623a338",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-rv1m_85i/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/object_model_slots.rs": "fcc2cb0de15195be32aaf4e0a92f2ee95ce8b2326920550c42c9acf8c8c861f2",
+    "tests/fixtures/oop-host/reference-slots.c": "682834eef4162cdb010b36bdf8c6673e59f6ab888731f4fcd0ef4a6a4dd54d2a"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/object-model-slots.log",
+      "sha256": "676db7639579f2b0fe69cf813ae2d8d3ef03014700e912cf6445226d7fd95ba7",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

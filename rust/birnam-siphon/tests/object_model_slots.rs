@@ -1,138 +1,300 @@
-//! Owned slot geometry, current layouts, private behaviors, reentry and GC.
-mod support;
-use birnam_abi::{Oop, borrowed_slice, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
-use std::{cell::Cell, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct Hook {
-    id: Protocol, model: Oop, gc: Oop, target: Oop, behavior: Oop,
-    original: NativeEntry, calls: Cell<usize>, fail: Cell<bool>,
-}
-unsafe extern "C" fn collecting(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<Hook>() };
-    h.calls.set(h.calls.get() + 1);
-    if h.calls.get() == 1 {
-        unsafe {
-            send(h.id, h.model, b"setLayoutOf:to:rest:",
-                &[Operand::object(h.behavior), Operand::bytes(&[0, 0, 0]), Operand::word(0)]);
-            object(send(h.id, h.model, b"referenceSlotsOf:", &[Operand::object(h.target)]));
-        }
-    }
-    unsafe { send(h.id, h.gc, b"collectPrecisely", &[]) };
-    assert!(unsafe { present(h.id, h.target) }, "outer query target survives reentrant collection");
-    if h.fail.get() && h.calls.get() == 2 { return Outcome::failed(927, 3); }
-    unsafe { h.original.method.unwrap()(h.original.context, r, a, n) }
-}
-struct LayerHook {
-    id: Protocol, gc: Oop, roots: Oop, target: Oop, private: Oop, replacement: Oop,
-    original: NativeEntry, entered: Cell<bool>, saved: Cell<usize>,
-}
-unsafe extern "C" fn changing_parent(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<LayerHook>() };
-    let args = unsafe { borrowed_slice(a, n) }.unwrap();
-    let parent = unsafe { h.original.method.unwrap()(h.original.context, r, a, n) };
-    if args[0].as_object() == Some(h.private) && !h.entered.replace(true) {
-        unsafe {
-            send(h.id, h.id.receiver, b"reassociateBehaviorOf:with:",
-                &[Operand::object(h.target), Operand::object(h.replacement)]);
-            send(h.id, h.gc, b"collectPrecisely", &[]);
-            assert!(present(h.id, h.private), "inventory lost detached behavior during metadata callback");
-            // Only after checking query-owned protection, retain it for test cleanup.
-            h.saved.set(retain(h.id, h.roots, h.private));
-        }
-    }
-    parent
-}
-unsafe extern "C" fn unreadable(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(928, 4)
-}
-unsafe fn indices(id: Protocol, integer: Oop, vector: Oop) -> Vec<usize> {
-    let size = unsafe { send(id, vector, b"size", &[]) };
-    let size = unsafe { send(id, integer, b"wordOf:", &[size]) }.as_word().unwrap();
-    (0..size).map(|i| unsafe {
-        let index = send(id, integer, b"fromWord:", &[Operand::word(i)]);
-        let value = send(id, vector, b"at:", &[index]);
-        send(id, integer, b"wordOf:", &[value]).as_word().unwrap()
-    }).collect()
+//! Owned slot descriptions, live layout changes and collection during queries.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use birnam_host_support::{Context, Scope};
+use std::path::Path;
+
+fn indices(h: &Context, q: &Scope<'_>, vector: Oop) -> Vec<usize> {
+    (0..q.vector_size(vector).unwrap())
+        .map(|i| {
+            let value = q.vector_at(vector, i).unwrap();
+            q.word_bits(
+                q.call(h.named(b"Integer").unwrap(), b"wordOf:", &[value])
+                    .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect()
 }
 
 #[test]
-#[ignore = "production dylibs required"]
-fn reference_inventory_uses_owned_metadata_and_roots_its_snapshot() { unsafe {
-    let id = id();
-    let ns = load(id, "bootstrap", &[Operand::bytes(directory().as_os_str().as_bytes())]);
-    let named = |name: &[u8]| object(send(id, ns, b"at:", &[Operand::object(id.intern_name(name).unwrap())]));
-    let model = named(b"ObjectModel"); let roots = named(b"Roots"); let gc = named(b"GC");
-    let integer = named(b"Integer"); let nil = named(b"nil");
-    let behavior = object(send(id, named(b"ObjectVt"), b"delegated", &[]));
-    let bt = retain(id, roots, behavior);
-    send(id, model, b"setLayoutOf:to:rest:", &[Operand::object(behavior), Operand::bytes(&[1, 0, 1]), Operand::word(0)]);
-    let target = object(send(id, model, b"allocate:bytes:", &[Operand::object(behavior), Operand::word(3 * size_of::<Oop>())]));
-    let tt = retain(id, roots, target);
-    let inventory = object(send(id, model, b"referenceSlotsOf:", &[Operand::object(target)]));
-    let it = retain(id, roots, inventory);
-    assert_eq!(indices(id, integer, inventory), vec![0, 2]);
-    let private = object(send(id, id.receiver, b"ensurePrivateVtableFor:", &[Operand::object(target)]));
-    let pt = retain(id, roots, private);
-    assert_eq!(indices(id, integer, object(send(id, model, b"referenceSlotsOf:", &[Operand::object(target)]))), vec![0, 2]);
-    let text = send(id, named(b"String"), b"fromBytes:", &[Operand::bytes(b"opaque")]);
-    assert_eq!(send(id, model, b"referenceSlotsOf:", &[text]).as_object(), Some(nil));
-    let zero = send(id, integer, b"fromWord:", &[Operand::word(0)]);
-    assert!(indices(id, integer, object(send(id, model, b"referenceSlotsOf:", &[zero]))).is_empty(), "owned raw numeric bits are never reference slots");
-    assert_eq!(send(id, model, b"referenceSlotsOf:", &[Operand::object(private)]).as_object(), Some(nil));
-    let empty = object(send(id, named(b"Object"), b"clone", &[]));
-    assert!(indices(id, integer, object(send(id, model, b"referenceSlotsOf:", &[Operand::object(empty)]))).is_empty());
-    let untyped = object(send(id, model, b"allocate:bytes:", &[Operand::object(named(b"ObjectVt")), Operand::word(size_of::<Oop>())]));
-    assert_eq!(send(id, model, b"referenceSlotsOf:", &[Operand::object(untyped)]).as_object(), Some(nil));
-    // Geometry does not consult the readable-value path.
-    let model_vt = object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(model)]));
-    let raw = id.intern_name(b"slotAt:in:").unwrap();
-    let read = send(id, model_vt, b"lookup", &[Operand::object(raw)]).as_entry().unwrap();
-    install(id, model_vt, b"slotAt:in:", unreadable, std::ptr::null_mut());
-    assert_eq!(indices(id, integer, object(send(id, model, b"referenceSlotsOf:", &[Operand::object(target)]))), vec![0, 2]);
-    install(id, model_vt, b"slotAt:in:", read.method.unwrap(), read.context);
-    // Replacing a metadata getter can detach the behavior being inspected.
-    // A precise collection must still see the query's local behavior roots.
-    let parent_selector = id.intern_name(b"parentOf:").unwrap();
-    let parent = send(id, id.receiver, b"lookup", &[Operand::object(parent_selector)]).as_entry().unwrap();
-    let layer = Box::leak(Box::new(LayerHook { id, gc, roots, target, private,
-        replacement: named(b"ObjectVt"), original: parent, entered: Cell::new(false), saved: Cell::new(0) }));
-    install(id, id.receiver, b"parentOf:", changing_parent, (&raw mut *layer).cast());
-    release(id, roots, pt);
-    let observed = object(send(id, model, b"referenceSlotsOf:", &[Operand::object(target)]));
-    install(id, id.receiver, b"parentOf:", parent.method.unwrap(), parent.context);
-    assert!(layer.entered.get());
-    let pt = layer.saved.get(); assert_ne!(pt, 0);
-    assert_eq!(indices(id, integer, observed), vec![0, 2]);
-    send(id, id.receiver, b"reassociateBehaviorOf:with:", &[Operand::object(target), Operand::object(private)]);
-    let integer_vt = object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(integer)]));
-    let selector = id.intern_name(b"fromWord:").unwrap();
-    let original = send(id, integer_vt, b"lookup", &[Operand::object(selector)]).as_entry().unwrap();
-    let h = Box::leak(Box::new(Hook { id, model, gc, target, behavior: private,
-        original, calls: Cell::new(0), fail: Cell::new(false) }));
-    let query = id.intern_name(b"referenceSlotsOf:").unwrap();
-    install(id, integer_vt, b"fromWord:", collecting, (&raw mut *h).cast());
-    release(id, roots, tt);
-    release(id, roots, pt);
-    let snapshot = object(id.send(model, query, &[Operand::object(target)]).unwrap());
-    let st = retain(id, roots, snapshot);
-    let target_again = retain(id, roots, target);
-    assert_eq!(h.calls.get(), 2, "snapshot still constructs both pre-callback indices");
-    install(id, integer_vt, b"fromWord:", original.method.unwrap(), original.context);
-    assert_eq!(indices(id, integer, snapshot), vec![0, 2]);
-    assert!(indices(id, integer, object(send(id, model, b"referenceSlotsOf:", &[Operand::object(target)]))).is_empty());
-    assert_eq!(indices(id, integer, inventory), vec![0, 2], "old inventory does not update itself");
-    send(id, model, b"setLayoutOf:to:rest:", &[Operand::object(private), Operand::bytes(&[1, 0, 1]), Operand::word(0)]);
-    h.calls.set(0); h.fail.set(true);
-    install(id, integer_vt, b"fromWord:", collecting, (&raw mut *h).cast());
-    release(id, roots, target_again);
-    let error = id.send(model, query, &[Operand::object(target)]).unwrap_err();
-    assert_eq!((error.status, error.detail), (927, 3));
-    install(id, integer_vt, b"fromWord:", original.method.unwrap(), original.context);
-    release(id, roots, bt);
-    send(id, gc, b"collectPrecisely", &[]);
-    assert!(!present(id, target), "query and failure must not leak target protection");
-    assert_eq!(indices(id, integer, snapshot), vec![0, 2], "returned snapshot remains caller-owned");
-    for token in [it, st] { release(id, roots, token); }
-    assert!(id.send(model, query, &[]).is_err());
-    assert!(id.send(model, query, &[Operand::word(0)]).is_err());
-} }
+#[ignore = "requires production Oop modules"]
+fn reference_inventory_uses_owned_metadata_and_roots_its_snapshot() {
+    let h = oop::bootstrap();
+    let held = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let model = h.named(b"ObjectModel").unwrap();
+    let roots = h.named(b"Roots").unwrap();
+    let gc = h.named(b"GC").unwrap();
+    let integer = h.named(b"Integer").unwrap();
+    let nil = h.named(b"nil").unwrap();
+    held.call(gc, b"precisePayloads:", &[size(1).unwrap()])
+        .unwrap();
+    let base = h.named(b"ObjectVt").unwrap();
+    let behavior = held.call(base, b"delegated", &[]).unwrap();
+    let layout = held
+        .call(
+            h.id.root,
+            b"sequence",
+            &[size(1).unwrap(), size(0).unwrap(), size(1).unwrap()],
+        )
+        .unwrap();
+    let zero_layout = held
+        .call(h.id.root, b"sequence", &[size(0).unwrap(); 3])
+        .unwrap();
+    h.send(
+        model,
+        b"setLayoutOf:to:rest:",
+        &[behavior, layout, size(0).unwrap()],
+    )
+    .unwrap();
+    // Explicit tokens prevent the test's result scope from accidentally
+    // retaining objects whose lifetime the query must protect.
+    let target = h
+        .send(
+            model,
+            b"allocate:bytes:",
+            &[behavior, size(3 * size_of::<Oop>()).unwrap()],
+        )
+        .unwrap();
+    let target_token = h.send(roots, b"retain:", &[target]).unwrap();
+    let inventory = held.call(model, b"referenceSlotsOf:", &[target]).unwrap();
+    assert_eq!(indices(&h, &held, inventory), vec![0, 2]);
+    let private = h
+        .send(h.id.root, b"ensurePrivateVtableFor:", &[target])
+        .unwrap();
+    let private_token = h.send(roots, b"retain:", &[private]).unwrap();
+    assert_eq!(
+        indices(
+            &h,
+            &held,
+            held.call(model, b"referenceSlotsOf:", &[target]).unwrap()
+        ),
+        vec![0, 2]
+    );
+    for foreign in [held.string(b"opaque").unwrap(), private] {
+        assert_eq!(
+            held.call(model, b"referenceSlotsOf:", &[foreign]).unwrap(),
+            nil,
+            "foreign storage does not acquire an ObjectModel description"
+        );
+    }
+    let zero = held
+        .call(integer, b"fromWord:", &[size(0).unwrap()])
+        .unwrap();
+    assert!(
+        indices(
+            &h,
+            &held,
+            held.call(model, b"referenceSlotsOf:", &[zero]).unwrap()
+        )
+        .is_empty(),
+        "ObjectModel-allocated numeric storage contains no reference slots"
+    );
+    let empty = held
+        .call(h.named(b"Object").unwrap(), b"clone", &[])
+        .unwrap();
+    assert!(
+        indices(
+            &h,
+            &held,
+            held.call(model, b"referenceSlotsOf:", &[empty]).unwrap()
+        )
+        .is_empty()
+    );
+    let untyped = held
+        .call(
+            model,
+            b"allocate:bytes:",
+            &[base, size(size_of::<Oop>()).unwrap()],
+        )
+        .unwrap();
+    assert_eq!(
+        held.call(model, b"referenceSlotsOf:", &[untyped]).unwrap(),
+        nil
+    );
+    let model_vt = held.call(h.id.root, b"behaviorOf:", &[model]).unwrap();
+    let raw = hooks.symbol(b"slotAt:in:");
+    let read = held.call(model_vt, b"lookup", &[raw]).unwrap();
+    let deny_state = hooks.context(&[hooks.fault(4), size(0).unwrap()]);
+    h.send(
+        model_vt,
+        b"addMethod",
+        &[raw, hooks.method(b"deny", deny_state)],
+    )
+    .unwrap();
+    assert_eq!(
+        indices(
+            &h,
+            &held,
+            held.call(model, b"referenceSlotsOf:", &[target]).unwrap()
+        ),
+        vec![0, 2]
+    );
+    assert_eq!(
+        hooks.count(deny_state, 1),
+        0,
+        "describing storage does not read its values"
+    );
+    h.send(model_vt, b"addMethod", &[raw, read]).unwrap();
+
+    let path = std::env::temp_dir().join(format!(
+        "birnam-reference-slots-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/reference-slots.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = h.load_native(&held, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let declared = |name: &[u8]| {
+        held.call(module, b"methodAt:", &[hooks.symbol(name)])
+            .unwrap()
+    };
+    let query = hooks.symbol(b"referenceSlotsOf:");
+    let retain = hooks.symbol(b"retain:");
+    let release = hooks.symbol(b"release:");
+    let add = hooks.symbol(b"addMethod");
+    let reassociate = hooks.symbol(b"reassociateBehaviorOf:with:");
+    let parent_sel = hooks.symbol(b"parentOf:");
+    let root_vt = held.call(h.id.root, b"behaviorOf:", &[h.id.root]).unwrap();
+    let parent = held.call(root_vt, b"lookup", &[parent_sel]).unwrap();
+    // Collector metadata callbacks cannot allocate an argument Sequence.
+    // Forward through an explicit alias of the captured original Method.
+    let parent_alias = hooks.symbol(b"referenceParentOriginal:");
+    h.send(root_vt, b"addMethod", &[parent_alias, parent])
+        .unwrap();
+    let integer_vt = held.call(h.id.root, b"behaviorOf:", &[integer]).unwrap();
+    let from_word = hooks.symbol(b"fromWord:");
+    let original = held.call(integer_vt, b"lookup", &[from_word]).unwrap();
+    let visitor_vt = held.call(base, b"delegated", &[]).unwrap();
+    held.call(
+        visitor_vt,
+        b"addMethod",
+        &[
+            hooks.symbol(b"allocation:bytes:identity:"),
+            declared(b"allocation:bytes:identity:"),
+        ],
+    )
+    .unwrap();
+    let visitor = held
+        .call(visitor_vt, b"allocate", &[size(0).unwrap()])
+        .unwrap();
+    let fault = hooks.fault(3);
+    // Configuration is weak C state. It cannot keep the observed objects alive.
+    let configuration = h
+        .send(
+            h.id.root,
+            b"sequence",
+            &[
+                model,
+                gc,
+                roots,
+                target,
+                private,
+                base,
+                original,
+                zero_layout,
+                fault,
+                visitor,
+            ],
+        )
+        .unwrap();
+    h.send(
+        declared(b"configure"),
+        b"invokeOn:arguments:",
+        &[module, configuration],
+    )
+    .unwrap();
+    let empty_args = held.call(h.id.root, b"sequence", &[]).unwrap();
+    let stats_method = declared(b"stats");
+    let stats = || {
+        let q = h.scope();
+        let values = q
+            .call(stats_method, b"invokeOn:arguments:", &[module, empty_args])
+            .unwrap();
+        (0..5)
+            .map(|i| q.call(values, b"at:", &[size(i).unwrap()]).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let parent_hook = declared(b"parent");
+    let convert_hook = declared(b"convert");
+    unsafe { h.id.send(root_vt, add, &[parent_sel, parent_hook]) }.unwrap();
+    unsafe { h.id.send(roots, release, &[private_token]) }.unwrap();
+    let observed = held
+        .keep(unsafe { h.id.send(model, query, &[target]) }.unwrap())
+        .unwrap();
+    unsafe { h.id.send(root_vt, add, &[parent_sel, parent]) }.unwrap();
+    h.send(root_vt, b"removeMethod:", &[parent_alias]).unwrap();
+    let state = stats();
+    assert_eq!(as_size(state[0]), Some(1));
+    let private_token = state[1];
+    assert!(as_size(private_token).unwrap() > 0);
+    assert_eq!(indices(&h, &held, observed), vec![0, 2]);
+    unsafe { h.id.send(h.id.root, reassociate, &[target, private]) }.unwrap();
+    unsafe { h.id.send(integer_vt, add, &[from_word, convert_hook]) }.unwrap();
+    unsafe { h.id.send(roots, release, &[target_token]) }.unwrap();
+    unsafe { h.id.send(roots, release, &[private_token]) }.unwrap();
+    let snapshot = held
+        .keep(unsafe { h.id.send(model, query, &[target]) }.unwrap())
+        .unwrap();
+    let target_again = unsafe { h.id.send(roots, retain, &[target]) }.unwrap();
+    unsafe { h.id.send(integer_vt, add, &[from_word, original]) }.unwrap();
+    let state = stats();
+    assert_eq!(as_size(state[2]), Some(2));
+    assert_eq!(as_size(state[4]), Some(1));
+    assert_eq!(indices(&h, &held, snapshot), vec![0, 2]);
+    assert!(
+        indices(
+            &h,
+            &held,
+            held.call(model, b"referenceSlotsOf:", &[target]).unwrap()
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        indices(&h, &held, inventory),
+        vec![0, 2],
+        "old inventory remains a snapshot"
+    );
+    h.send(
+        model,
+        b"setLayoutOf:to:rest:",
+        &[private, layout, size(0).unwrap()],
+    )
+    .unwrap();
+    let failing_args = held
+        .call(h.id.root, b"sequence", &[size(1).unwrap()])
+        .unwrap();
+    held.call(
+        declared(b"mode"),
+        b"invokeOn:arguments:",
+        &[module, failing_args],
+    )
+    .unwrap();
+    unsafe { h.id.send(integer_vt, add, &[from_word, convert_hook]) }.unwrap();
+    unsafe { h.id.send(roots, release, &[target_again]) }.unwrap();
+    let error = unsafe { h.id.send(model, query, &[target]) }.unwrap_err();
+    assert_eq!(error, fault);
+    unsafe { h.id.send(integer_vt, add, &[from_word, original]) }.unwrap();
+    h.send(gc, b"collectPrecisely", &[]).unwrap();
+    assert_eq!(
+        as_size(stats()[3]),
+        Some(0),
+        "queries and failure must not retain target or private vtable"
+    );
+    assert_eq!(indices(&h, &held, snapshot), vec![0, 2]);
+    assert!(unsafe { h.id.send(model, query, &[]) }.is_err());
+    assert!(unsafe { h.id.send(model, query, &[std::ptr::null_mut()]) }.is_err());
+}

@@ -1194,3 +1194,16 @@ fixtures pass unchanged, including the original projection assertion.
 This is explicit recovery acceptance. It does not claim migration of every retained
 compiler optimization producer or native harness, or fresh cold qualification of
 the corrected runtime.
+
+## ObjectModel reference inventory through Oops
+
+The retained `object_model_slots` harness now uses Oop messages, declared C
+callbacks and scoped result roots. It preserves the checks for metadata-only
+inventory, private-vtable inheritance, live layout changes during Integer
+construction, reentry, exact failure propagation and release of query protection.
+Allocation identities check reclamation without passing dead references to Id.
+The fixture stores the target and detached vtable weakly, so it cannot conceal
+missing runtime roots. Its parent-getter replacement forwards through an explicit
+Method alias, allowing the collector to call it without allocating an argument
+sequence. No runtime or Id change was needed.
+[Receipt](../measurements/object-model-slots-oop-20261026.json).
