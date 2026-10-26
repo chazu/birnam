@@ -1223,3 +1223,15 @@ This closes the checks that the earlier CLI run could not reach. It does not
 combine different runtime prefixes into a full-group qualification: the corrected
 runtime still needs its own fresh installation and complete acceptance run.
 [Receipt](../measurements/remaining-cli-oop-20261026.json).
+
+## Ordinary slot callbacks through Oops
+
+The `object_model_scopes` harness now uses Oop messages and declared C callbacks.
+It replaces the current Integer conversion owner, collects during conversion,
+reenters the slot adapter and compares the exact reported roots before and after
+the nested call. Success and failure restore the previous root inventory, raw
+slot access remains a replaceable send, and the exact injected failure reference
+is preserved. Once calls end, allocation-identity observations confirm that the
+target, stored value and index are reclaimed. The test fixture holds these objects
+only weakly. No runtime or Id change was needed.
+[Receipt](../measurements/object-model-scopes-oop-20261026.json).

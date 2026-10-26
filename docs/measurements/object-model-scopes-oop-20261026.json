@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "Ordinary slot conversion and raw-access replacement, nested owner roots and lifetime through Oop callbacks",
+  "base_revision": "c2bee4a4138d512ec63b54dc41634166c33159a8",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-rv1m_85i/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/object_model_scopes.rs": "40d5f3a46f7cc9a4dc3eaba1ca737f458f48d8e92e988cb59bb4c89053e2d986",
+    "tests/fixtures/oop-host/slot-scopes.c": "b963c8d842a5a066b07b48a177dec1fc461f1acbb70d8ff7cc4bcb0a9faeab59"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/object-model-scopes.log",
+      "sha256": "913d365bb8d3dc53d4b92d8c0383987d1814daafb600be7ede60676507639039",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}
