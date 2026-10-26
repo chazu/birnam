@@ -1080,3 +1080,11 @@ failure, and non-veto Error data returned by a void observer. A failed post-remo
 callback does not resurrect the Method; missing removal invokes only authorization.
 The test passes on the cold candidate without production changes or a universal
 subscription. [Receipt](../measurements/store-publication-oop-20261026.json).
+
+## Cold-candidate interaction acceptance
+
+The full installed Host `interaction` group passes on the cold candidate: socket
+ownership, REPL ownership, compiled startup without parsing, tooling and image
+commands, persistent TCP/project sessions, all 26 REPL golden checks and the LSP
+workspace/diagnostic/UTF-16/version/close checks. No runtime changes were needed.
+[Receipt](../measurements/cold-interaction-oop-20261026.json).
