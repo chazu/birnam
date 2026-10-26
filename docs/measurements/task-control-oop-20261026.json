@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "base_revision": "20d16288",
+  "checks": 177,
+  "log": ".cargo-target/oop-task-control-installed.log",
+  "log_sha256": "081aaaa5505ad9653255c5420f2d0325bf9128f84251af01a9f019411af9e883",
+  "prepared_binaries": ".cargo-target/oop-slice/host-acceptance-binaries/manifest.json",
+  "prepared_targets": [
+    "host-lib",
+    "host-project",
+    "native-backend",
+    "native-compilers",
+    "native-owners",
+    "project-build",
+    "task-control"
+  ],
+  "scope": "Installed task-control Rust harness and compilation of the seven Host runner binaries; the full installed task group is separate",
+  "fixture": "Reuse tests/fixtures/oop-continuation/native.c with Oop context [cleanup, reason]; no runtime or Id API change"
+}

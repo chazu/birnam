@@ -651,3 +651,14 @@ fixture now replaces `emitResumable:source:`, which is the operation used by
 `Codegen compile:`; the old named-descriptor operation is no longer its interface.
 Older Siphon test harnesses still require migration. This does not qualify the
 complete `host-cli` runner or a cold release.
+
+
+## Installed task-control harness
+
+The installed task-control Rust test now uses the existing declared C callbacks
+from the continuation fixture. Cleanup and failure reason are ordinary Oops in a
+context Sequence. The test retains and releases roots explicitly and no longer
+leaks a native Observer structure or passes carrier structs. Its original 177
+assertions pass. All seven binaries required by `host-cli-test.sh` now build;
+the full installed task group remains a separate check.
+[Receipt](../measurements/task-control-oop-20261026.json).
