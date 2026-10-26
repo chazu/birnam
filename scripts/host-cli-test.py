@@ -79,7 +79,7 @@ for args in [[], ['--repl']]:
 result = run(['nil.birnam', 'extra'])
 assert result.returncode == 1 and b'one file' in result.stderr
 result = run(['nil.birnam'], extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
-assert result.returncode == 1 and b'native status=' in result.stderr
+assert result.returncode == 1 and not result.stdout and b'load /missing/id.dylib: cannot load Id' in result.stderr, result
 result = run(['output.birnam'], executable=launcher)
 assert result.returncode == 0 and result.stdout == b'hello world\n' and not result.stderr
 stdlib_image = work / 'stdlib.image'

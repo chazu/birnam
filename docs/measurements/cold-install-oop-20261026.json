@@ -1,0 +1,121 @@
+{
+  "passed": true,
+  "scope": "One independent cold release-profile installation and packaged-byte smoke; not all native or Host groups and not a published release",
+  "source_revision": "28a2f117da08d760df4cbfc485a142609b9e0e3d",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "28a2f117da08d760df4cbfc485a142609b9e0e3d"
+  },
+  "source_manifest_sha256": "6aa0ad08e2139ee72fce76fb3c951f678ba9c9314aa494f7a5f3f6d7a90b50dd",
+  "prefix": "/private/tmp/birnam-oop-cold-waekjc38/prefix",
+  "receipt_sha256": "85e713f2ce68aacb2b6363a0125aa798566fc9ff5375f4bd6cada6a27df16319",
+  "staged_manifest_files": 813,
+  "staged_manifest_sha256": "208e8aa1f88aa2892fe2c0feece47ca4550b1cb7bca8acb41bea71144d6436e7",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "core_prepared_before_optional_providers": true,
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install_argv": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-cold-waekjc38/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-cold-waekjc38/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_wall_ns": 756159946000,
+  "archive": "/private/tmp/birnam-oop-cold-waekjc38/candidate.tar.gz",
+  "archive_sha256": "8f4a1f3b78366964974c795a4a08d705167f3cb8c9e2a2c93f374b3f591adf04",
+  "archive_wall_ns": 311367344000,
+  "original_checkout_and_prefix_hidden_during_archive_smoke": true,
+  "original_paths_restored": true,
+  "checks": [
+    {
+      "name": "install",
+      "path": "/private/tmp/birnam-oop-cold-waekjc38/install.log",
+      "sha256": "1719b36100285fde5d2ecdc7bb20d2224460e83507e3b53385f84e544257e395"
+    },
+    {
+      "name": "package",
+      "path": "/private/tmp/birnam-oop-cold-waekjc38/package.log",
+      "sha256": "c35220890ac073630fb63329858846cb6146e637ecfb32f140fdfd55dadfae48"
+    },
+    {
+      "name": "archive_smoke",
+      "path": "/private/tmp/birnam-oop-cold-waekjc38/archive-smoke.log",
+      "sha256": "fe25e417a076787866f91e44bfdadce7c1bfa8081a7911a89bb89389683883ca"
+    },
+    {
+      "name": "contract_before",
+      "path": ".cargo-target/oop-install-contract-before.log",
+      "sha256": "5df07e02e1a0487c80b7cd5db46e1871358431d3cc647ce1aaab6f79a7638311"
+    },
+    {
+      "name": "contract_after",
+      "path": ".cargo-target/oop-install-contract-after.log",
+      "sha256": "f36e1d7c9fef0d8379f06c5a18f342fc336eddf4df0971de085f44eada61e9ae"
+    },
+    {
+      "name": "release_acceptance",
+      "path": ".cargo-target/oop-release-acceptance-contract.log",
+      "sha256": "9d654695c0a90577e252109954dd749137ace81d33f39cf1a31990e7f48cf31d"
+    },
+    {
+      "name": "release_pipeline",
+      "path": ".cargo-target/oop-release-pipeline-contract.log",
+      "sha256": "b1ce5d01faaf5d6b4aca8dd620a2fc069ada2b0c285b8e319f202fb68e5c6c31"
+    },
+    {
+      "name": "installer_unit",
+      "path": ".cargo-target/oop-install-driver-tests.log",
+      "sha256": "a0c00f85b9e225b54aa7cfffa26797469320aeac786178e75c0c821282f9ca89"
+    }
+  ],
+  "missing_id_probe": {
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "birnam: load /missing/id.dylib: cannot load Id\n"
+  },
+  "remaining": [
+    "Legacy native harness migration and feature audit",
+    "Full Host acceptance on the cold candidate",
+    "Independent second-source build and release delivery if requested"
+  ]
+}

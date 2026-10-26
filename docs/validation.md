@@ -2,22 +2,24 @@
 
 ## Oop-only native migration
 
-Current runtime checkpoint: **`683c9fc2`**, branch `codex/oop-only-id-slice`, worktree
-`/Users/chazu/dev/zig/birnam-oop-id`. This is an isolated, uninstalled migration.
-The [work summary](design/logue-runtime-work-summary.md) and
-[accepted plan](design/oop-only-id.md) describe its scope and remaining work.
+The corrected Oop runtime is merged into `main`. The
+[integration record](design/oop-continuation-id.md) tracks current changes,
+acceptance and remaining work. The [cold-install receipt](measurements/cold-install-oop-20261026.json)
+qualifies one clean source build and its exact packaged bytes, including relocation
+and compiled startup with the original checkout and prefix hidden. It does not
+qualify the entire native/Host matrix or constitute a published release.
 
-From that worktree, run:
+From this checkout, run:
 
 ```sh
 bash scripts/oop-id-slice-test.sh
 ```
 
-The [latest recorded receipt](measurements/id-send-correction-20261023.json) passes.
+The [latest core receipt](measurements/block-arity-oop-20261026.json) passes.
 The script builds the native closure listed in its package/export inventory and
 runs Id/value/collection/I/O/PEG/artifact unit and integration checks. Its explicit
 library paths and nonexistent module-search directories keep the installed prefix
-and upper language artifacts out of this acceptance boundary.
+out of this acceptance boundary.
 
 | Evidence | Coverage |
 | --- | --- |
@@ -26,6 +28,7 @@ and upper language artifacts out of this acceptance boundary.
 | Allocation/global-lookup subprocesses | Allocation policy/accounting and metacircular lookup replacement |
 | Numeric integration and stdin-error subprocesses | Actual numeric/text/collection owners, binary I/O, controlled environment values, file snapshots, PEG and artifact inspection; independent C Error/callback fixtures |
 | `dispatch-contract` subprocess | Id installs no `apply`; an ordinary send succeeds even when all lookup on the selected Method is rejected |
+| Source and Execution checks | Compiler/Block entry, resumable calls, suspension, replacement, code lifetime and source/artifact activation through Oop messages |
 | Export audit | Actual dylib exports match the migrated manifests |
 
 The architectural contract is mandatory; passing the other checks cannot waive
@@ -35,12 +38,13 @@ replaced by tests of actual data operations and ordinary sends. Receipts are in
 separate target. The numeric integration log includes binary stdout/stderr, so
 read it as bytes or with explicit decoding-error handling.
 
-This does **not** qualify full Bootstrap, authored Error, generated language code,
-Execution/stackless integration, code reclamation, images, host/CLI, workers,
-installed behavior or Logue performance. Those remain required by the plan. The
-commands and results below describe the earlier production migration and must be
-ported/re-run for the Oop-only candidate; they are not current passing results for
-this branch.
+The integration record separately covers full published Bootstrap, the 870 authored
+checks, selected Host/image/worker groups and the cold installation. The complete
+native-message gate still includes Operand/Outcome harnesses awaiting conversion.
+Full Host acceptance on the cold candidate and the remaining feature audit are
+also unfinished. The commands and results below describe the earlier production
+migration; treat them as historical evidence unless a current Oop receipt explicitly
+qualifies that scope. No current Logue performance claim follows from these gates.
 
 ## Earlier production-migration validation reference
 

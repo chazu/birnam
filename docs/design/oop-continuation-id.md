@@ -1010,3 +1010,24 @@ native module format. The receipt schema is unchanged. Tests reject both the
 retired version 1 and unknown version 3 as Id protocol versions, and the installer
 and release-orchestration tests pass. This corrects qualification metadata without
 changing Id or the runtime.
+
+## Independent cold installation and archive startup
+
+A clean detached checkout of `28a2f117` builds and publishes a release-profile
+prefix with fresh driver and Cargo target directories and no development cache.
+The installed Birnam executable is absent from the build PATH. The receipt records
+the clean source identity, Id protocol version 2 and an exact 813-file closure.
+Core image preparation succeeds before optional providers are built; the Lang seed
+is absent from the published prefix.
+
+The exact signed installation is packaged without rebuilding. With the original
+checkout and prefix temporarily hidden, the extracted archive passes relocation,
+source/foreign calls, diagnostics, collection, image save/load and compiled startup
+with parsing and compilation disabled. Archive and installation hashes remain
+unchanged. Both original paths are restored afterward.
+
+The Host smoke fixture now checks the missing Id library's path and current loader
+diagnostic instead of the retired `native status=` text. No runtime change or
+timeout relaxation was needed. This proves one cold source build and the bounded
+archive gate, not the full legacy native/Host matrix or a published release.
+[Receipt](../measurements/cold-install-oop-20261026.json).
