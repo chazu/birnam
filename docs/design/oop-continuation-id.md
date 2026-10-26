@@ -780,3 +780,15 @@ pass all 27. Both outcomes are retained because the first failure's cause is not
 established. Closure observation and all 177 task-control checks pass. These are
 component acceptance results, not a clean release qualification.
 [Receipt](../measurements/slot-owner-oop-20261026.json).
+
+
+## Registry and ordinary-record retention checks
+
+The two retained native measurement harnesses now use the installed Oop bootstrap
+and existing caller scopes. They restore the tools image and run the original
+registry/ordinary-record batches with unchanged object-count and fact-publication
+assertions. Temporary arguments live for one sample; returned values are not kept
+through the post-call collection. Both tests pass at every original batch size.
+The deliberate Logger-retention negative control fails at one call after warmup,
+confirming that the migrated harness still detects a leak.
+[Receipt](../measurements/retention-harness-oop-20261026.json).

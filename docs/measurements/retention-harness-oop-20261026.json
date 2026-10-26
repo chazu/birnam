@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "base_revision": "77ed87d3",
+  "positive_log": ".cargo-target/oop-retention-run.log",
+  "positive_sha256": "1882ee4fae9d2802634d35785acd0041dc9bcfa75b0adc498b01c4f09cbc56de",
+  "negative_log": ".cargo-target/oop-retention-negative.log",
+  "negative_sha256": "f65e729a38c584fb16706a6da107988298d1b7929599f334bb62d0cca288e1ae",
+  "negative_control": "Deliberately retaining a Logger is detected at one call after warmup",
+  "batch_sizes": [
+    2,
+    0,
+    1,
+    30,
+    100,
+    100,
+    100
+  ],
+  "invariants": [
+    "No retained objects after collection",
+    "No implicit fact publication",
+    "Call results are not rooted by the measurement harness"
+  ],
+  "runtime_changes": false
+}
