@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "scope": "Probe of wrapper coverage, not restored method-change subscriptions",
+  "revision": "ae06072249287bb00606ef51ca61a13ca9674997",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-admission-m228271n/prefix",
+  "source": "[[|\nlet meta := [Reflect vtableOf: ObjectVt];\nlet original := [Execution directMethodFor: #addMethod in: meta];\nlet holder := [Object clone];\n[Reflect defineMethod: #first on: holder as: [:self | 1]];\n[Reflect defineMethod: #second on: holder as: [:self | 2]];\nlet first := [Execution directMethodFor: #first in: [Reflect vtableOf: holder]];\nlet second := [Execution directMethodFor: #second in: [Reflect vtableOf: holder]];\nlet target := [ObjectVt delegated];\nlet calls := [0 asCell];\nlet wrapper := [Reflect methodForArity: 2 implementation: [:self :key :method |\n  [[key == #subscriptionProbe] ifTrue: [| [calls inc]]];\n  [original invokeOn: self arguments: #[key method]]\n]];\n[original invokeOn: meta arguments: #[#addMethod wrapper]];\n[target addMethod: first as: #subscriptionProbe];\n[System println: [[calls value] = 1]];\n[calls set: 0];\n[original invokeOn: target arguments: #[#subscriptionProbe second]];\n[System println: [[calls value] = 0]];\n[System println: [[Execution directMethodFor: #subscriptionProbe in: target] == second]];\n[original invokeOn: meta arguments: #[#addMethod original]]\n] value]\n",
+  "source_sha256": "4989df47491af3f5666f42b16c8e46148add68bf84ee9d4395cbe8aec0aa0854",
+  "stdout": "true\ntrue\ntrue\n",
+  "assertions": [
+    "Ordinary publication enters the installed wrapper once",
+    "Captured original publication does not enter that wrapper",
+    "Captured original publication still changes the dictionary"
+  ],
+  "runtime_changes": false,
+  "decision": "Pending user choice: retire universal subscription or explicitly permit an opt-in Id hook"
+}

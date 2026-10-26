@@ -938,3 +938,20 @@ the final runtime. These are staged-prefix checks, not a new installation or
 release qualification. The Store notification subscription and older native
 harness migrations remain open.
 [Receipt](../measurements/block-arity-oop-20261026.json).
+
+## Method observation contract decision
+
+The old `methodChangesTo:` subscription observed the actual Id dictionary edits,
+including edits entered through a previously captured primitive Method. Wrapping
+the current `addMethod` binding above Id cannot preserve that coverage: a probe
+observes an ordinary edit through the wrapper, then invokes the captured original
+Method and confirms both that the dictionary changed and that the wrapper was not
+entered. Retargeting the captured Method would violate captured-call semantics.
+
+Restoring that universal coverage therefore requires an opt-in hook at Id's actual
+mutation point. A wrapper-only implementation would silently weaken the feature.
+Neither change is authorized by the general migration instruction. The pending
+choice is to retain the corrected Id contract and retire universal subscriptions
+(keeping explicit Store invalidation), or explicitly approve the opt-in core hook.
+No implementation or existing assertion has changed while that decision is pending.
+[Probe receipt](../measurements/method-observation-boundary-oop-20261026.json).
