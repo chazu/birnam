@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-26",
+  "commit": "88378faf",
+  "command": "BIRNAM_WORKER_TEST_DIRECTORY=WORK python3 scripts/worker-test.py PREFIX",
+  "passed": true,
+  "ready_handshake_milliseconds": 10000,
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/worker-performance/final-workers-d44f1fjo",
+  "scope": "Original installed worker wire/CLI suite: copied values, application and transfer errors, asynchronous requests, timeout/crash, orphan cleanup, relocated library directory and authored TaskService/Worker cancellation",
+  "log_sha256": "99aa0423849d5f655c81b374db24fa6cb7ff22ab09a51adecda872dc40e40289",
+  "remaining": [
+    "Legacy Host and Siphon native test harness migration",
+    "Broader installed tooling and optional-provider worker gates",
+    "Release cold/archive and performance qualification"
+  ]
+}

@@ -611,3 +611,8 @@ local run, mapped recovery took 9.1 seconds and default CLI startup/execution to
 measurements, not a release benchmark. The targeted service-image worker now
 starts within the unchanged deadline; complete worker acceptance remains a
 separate gate. [Receipt](../measurements/image-byte-snapshots-oop-20261026.json).
+
+The complete original worker suite now passes on `88378faf`, including copied
+values, failures, async requests, timeout/crash, orphan reaping, relocated library
+configuration and authored service cancellation. The ready-handshake limit stays
+at 10 seconds. [Receipt](../measurements/worker-oop-20261026.json).
