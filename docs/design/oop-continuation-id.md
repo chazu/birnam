@@ -730,3 +730,14 @@ about 4.5 seconds to ImageFormat validation, mostly heap admission. A generated
 immediate-word experiment was also removed after insufficient measured improvement;
 no global tuning or constructor behavior change is included in this milestone.
 [Receipt](../measurements/reflection-oop-20261026.json).
+
+
+## Worker startup policy: 15 seconds
+
+The user explicitly raised the worker ready-handshake timeout to 15 seconds and
+prioritized end-to-end operation over optimizing to the earlier ten-second limit.
+The Isolate startup path now uses that limit. The previously failing Concurrency
+image completes its ready handshake with the established Id implementation, and
+all 13 Isolate tests pass. Earlier ten-second measurements remain historical
+evidence, not the current acceptance target. The Method-layout, inlining, byte
+sharing and adapter experiments are not included in this change.

@@ -367,7 +367,7 @@ unsafe fn start(q: &Scope<'_>, a: &[Oop], service: bool) -> Answer {
             .channel
             .as_mut()
             .ok_or(HostTransportError::Io)
-            .and_then(|c| host_read_frame(c, 10_000));
+            .and_then(|c| host_read_frame(c, 15_000));
         match ready {
             Ok(f) if f.header.kind == FrameKind::Ready => {}
             Ok(f) => {
