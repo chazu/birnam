@@ -1,95 +1,118 @@
-//! Root registration is ordered and growable through the real message interface.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-struct Enumerator {
-    id: Protocol,
-    ordinal: usize,
-    child: Cell<Oop>,
-    visits: *const RefCell<Vec<usize>>,
-}
-unsafe extern "C" fn enumerate(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let e = &*c.cast::<Enumerator>();
-        (&*e.visits).borrow_mut().push(e.ordinal);
-        let [visitor] = borrowed_slice(a, n).unwrap() else {
-            panic!("visitor")
-        };
-        e.id.send_named(visitor.as_object().unwrap(), b"visit:", &[Operand::object(e.child.get())]).map_or_else(|e| e, Outcome::loaded)
-    }
-}
+//! Root providers keep registration order and own their child references.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{as_size, size};
+
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production dylibs"]
+#[ignore = "requires production Oop modules"]
 fn registered_root_enumerators_grow_and_keep_order_and_children_alive() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let gc = named(b"GC");
-        let parent = named(b"ObjectVt");
-        let visits = Box::leak(Box::new(RefCell::new(Vec::new())));
-        let mut objects = Vec::new();
-        let mut contexts = Vec::new();
-        for ordinal in 0..64 {
-            let behavior = object(send(id, parent, b"delegated", &[]));
-            let b = retain(id, roots, behavior);
-            let child = allocate(id, parent, 0);
-            let t = retain(id, roots, child);
-            let context = Box::leak(Box::new(Enumerator {
-                id,
-                ordinal,
-                child: Cell::new(child),
-                visits,
-            }));
-            install(
-                id,
-                behavior,
-                b"rootsDo:",
-                enumerate,
-                (context as *mut Enumerator).cast(),
-            );
-            let enumerator = allocate(id, behavior, 0);
-            send(id, roots, b"register:", &[Operand::object(enumerator)]);
-            release(id, roots, t);
-            release(id, roots, b);
-            objects.push(enumerator);
-            contexts.push(context);
-        }
-        // Duplicates remain ordered registrations, as in the existing contract.
-        send(id, roots, b"register:", &[Operand::object(objects[3])]);
-        visits.borrow_mut().clear();
-        collect(id, gc);
-        assert_eq!(*visits.borrow(), (0..64).chain([3]).collect::<Vec<_>>());
-        for (enumerator, context) in objects.iter().zip(&contexts) {
-            assert!(present(id, *enumerator));
-            assert!(present(id, context.child.get()));
-        }
-        // Only enumerators own these children; deleting the edge permits reclamation.
-        let nil = named(b"nil");
-        let children: Vec<_> = contexts.iter().map(|e| e.child.replace(nil)).collect();
-        collect(id, gc);
-        for child in children {
-            assert!(!present(id, child));
-        }
+    let h = oop::bootstrap();
+    let held = h.scope();
+    let path = std::env::temp_dir().join(format!(
+        "birnam-root-providers-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/root-providers.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = h.load_native(&held, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let symbol = |name: &[u8]| held.keep(h.intern(name).unwrap()).unwrap();
+    let declared = |name: &[u8]| held.call(module, b"methodAt:", &[symbol(name)]).unwrap();
+    let enumerate = declared(b"enumerate");
+    let child = declared(b"child");
+    let recorded = declared(b"recorded");
+    let reset = declared(b"reset");
+    let roots = h.named(b"Roots").unwrap();
+    let gc = h.named(b"GC").unwrap();
+    let parent = h.named(b"ObjectVt").unwrap();
+    let nil = h.named(b"nil").unwrap();
+    held.call(gc, b"precisePayloads:", &[size(1).unwrap()])
+        .unwrap();
+    let visit = symbol(b"rootsDo:");
+    let extent = symbol(b"allocationSizeOf:");
+    let collect = symbol(b"collectPrecisely");
+    let mut providers = Vec::new();
+    let mut children = Vec::new();
+    for ordinal in 0..64 {
+        let q = h.scope();
+        let behavior = q.call(parent, b"delegated", &[]).unwrap();
+        let value = q.call(parent, b"allocate", &[size(0).unwrap()]).unwrap();
+        let method = q
+            .call(enumerate, b"withContext:", &[size(ordinal).unwrap()])
+            .unwrap();
+        q.call(behavior, b"addMethod", &[visit, method]).unwrap();
+        let provider = q.call(behavior, b"allocate", &[size(0).unwrap()]).unwrap();
+        let args = q
+            .call(h.id.root, b"sequence", &[size(ordinal).unwrap(), value])
+            .unwrap();
+        q.call(child, b"invokeOn:arguments:", &[module, args])
+            .unwrap();
+        q.call(roots, b"register:", &[provider]).unwrap();
+        providers.push(provider);
+        children.push(value);
     }
+    // Rust vectors are deliberately not Id roots; the provider is the only edge.
+    held.call(roots, b"register:", &[providers[3]]).unwrap();
+    let empty = held.call(h.id.root, b"sequence", &[]).unwrap();
+    held.call(reset, b"invokeOn:arguments:", &[module, empty])
+        .unwrap();
+    unsafe { h.id.send(gc, collect, &[]) }.unwrap();
+    for &object in providers.iter().chain(&children) {
+        assert_eq!(
+            as_size(unsafe { h.id.send(h.id.root, extent, &[object]) }.unwrap()),
+            Some(0)
+        );
+    }
+    let order = held
+        .call(recorded, b"invokeOn:arguments:", &[module, empty])
+        .unwrap();
+    let count = as_size(held.call(order, b"size", &[]).unwrap()).unwrap();
+    let actual: Vec<_> = (0..count)
+        .map(|i| as_size(held.call(order, b"at:", &[size(i).unwrap()]).unwrap()).unwrap())
+        .collect();
+    assert_eq!(actual, (0..64).chain([3]).collect::<Vec<_>>());
+    for ordinal in 0..64 {
+        let q = h.scope();
+        let args = q
+            .call(h.id.root, b"sequence", &[size(ordinal).unwrap(), nil])
+            .unwrap();
+        q.call(child, b"invokeOn:arguments:", &[module, args])
+            .unwrap();
+    }
+    unsafe { h.id.send(gc, collect, &[]) }.unwrap();
+    // Compare allocation identities without passing reclaimed references back
+    // into Id. An address may already have been reused for another allocation.
+    let visitor_type = held.call(parent, b"delegated", &[]).unwrap();
+    held.call(
+        visitor_type,
+        b"addMethod",
+        &[
+            symbol(b"allocation:bytes:identity:"),
+            declared(b"allocation:bytes:identity:"),
+        ],
+    )
+    .unwrap();
+    let visitor = held
+        .call(visitor_type, b"allocate", &[size(0).unwrap()])
+        .unwrap();
+    held.call(h.id.root, b"allocationsDo:", &[visitor]).unwrap();
+    let count = held
+        .call(
+            declared(b"remaining"),
+            b"invokeOn:arguments:",
+            &[module, empty],
+        )
+        .unwrap();
+    assert_eq!(as_size(count), Some(0));
 }

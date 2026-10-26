@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "scope": "Root-provider order, duplicate registrations and child lifetime; complete Oop core and authored checks on a corrected staged registry",
+  "base_revision": "7228cd05e34f97cb5a3231925c28f165ec9d883b",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/root-provider-h111az7b/prefix",
+  "source_sha256": {
+    "rust/birnam-root-registry/src/lib.rs": "b8cc81607140a092b3a5e2c03c2ac63e635b7130997cce187bfd386d8587e463",
+    "rust/birnam-siphon/tests/roots.rs": "658c15a9df533a384668b971df0d0eb4caee5335baf38465ddf40f790a4d9851",
+    "tests/fixtures/oop-host/root-providers.c": "bdfd10d8aa8a81f86e758e08266feeb8e330158aadc3b69379d7d19cb16e80c8"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/roots-before.log",
+      "sha256": "f5077a2efc320787373a4af653ca91f44e0507eadffdf1c5319d79b51342e19a"
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/roots-after.log",
+      "sha256": "dccf62acf5ef81a8113ec9fbefa797e26951e72f7df78d6c59289bbf26595340"
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/root-provider-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/root-provider-retention.log",
+      "sha256": "ed63f560c890fbb81046b2a4ab4ac39be234b130825cecd87e8c336b4b6aa02c"
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/root-provider-authored.log",
+      "sha256": "b55f743f190cd0241b527227e7a51d30009a08b306ea04d0497af663aaa34bff"
+    }
+  ],
+  "authored_checks_passed": 870,
+  "id_changes": false,
+  "change": "Reference tracing reports registry-owned references without invoking root providers; rootsDo: retains the ordered provider invocation.",
+  "remaining": [
+    "Execution pending-call recovery facade",
+    "Full native harness migration and acceptance",
+    "Requalify the corrected runtime in a fresh cold installation"
+  ]
+}

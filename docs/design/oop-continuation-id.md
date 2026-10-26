@@ -1107,3 +1107,30 @@ closure observation and all 177 task-control checks. The worker startup deadline
 remains 15 seconds. This is functional acceptance, not a multicore speedup claim,
 and predates the root-provider correction below.
 [Receipt](../measurements/cold-tasks-oop-20261026.json).
+
+## Invoke root providers once per registration
+
+Porting the root-provider test exposed duplicate callbacks. Collect explicitly
+requested `Roots rootsDo:`, then tracing the Roots object invoked the providers
+again because `referencesOf:do:` delegated to the same operation. The corrected
+tracer reports only registry-owned references; provider invocation remains in
+`rootsDo:`. Both use the existing snapshot of retained values and registered
+providers, without a registry borrow spanning sends. Id and the public interface
+are unchanged.
+
+The declared C test fixture keeps child references in its own private state, so
+they survive only when the registered providers report them. It checks 64 providers,
+duplicate registration order, exactly one callback per registration and reclamation
+after removing each child edge. Reclamation is checked by allocation identity,
+without passing dead references back to Id. The regression fails before and passes
+after the correction. The complete Oop core gate, four retention/publication
+harnesses and all 870 authored checks pass on an isolated prefix containing the
+corrected registry. The ongoing cold-candidate Host groups use the earlier runtime
+and do not qualify this correction.
+[Receipt](../measurements/root-provider-oop-20261026.json).
+
+The CLI group additionally exposed an unfinished integration: its portable
+projection fixture reaches `Machine recoverAt:with:`, which is not connected in
+the current Execution facade. The accepted compiler/Execution plan retains frame
+recovery. That assertion remains unchanged; restoration must connect the existing
+recovery machinery, not merely install an error stub for the negative case.

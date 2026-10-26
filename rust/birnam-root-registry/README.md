@@ -1,38 +1,36 @@
 # Roots
 
-Roots keeps references alive for the collector. Its initializer needs only Id and
-returns the Roots Object, before the collector or upper value objects exist.
+Roots owns the collector's retained references and ordered root providers. Its
+initializer needs only Id and returns the Roots object before the collector or
+upper value objects exist. Every message argument and result is an Oop.
 
 | Message | Arguments | Result |
 |---|---|---|
-| `retain:` | Object | Nonzero native Word token |
-| `release:` | Token Word | Word 1 when released, otherwise 0 |
-| `releaseMany:protecting:batch:` | Borrowed native token bytes, result Object, batch Word 0/1 | Word 1 after cleanup; first release failure after all cleanup attempts |
-| `register:` | Root-enumerating Object | Unit |
-| `rootsDo:` | Visitor Object | Unit |
+| `retain:` | Oop | Nonzero immediate-size token |
+| `release:` | Token Oop | Immediate 1 when released, otherwise 0 |
+| `releaseTokensProtecting` | Protected result followed by token Oops | Immediate 1 after cleanup; first failure after all cleanup attempts |
+| `register:` | Root-provider Oop | The provider |
+| `rootsDo:` | Visitor Oop | Null Oop |
+| `referencesOf:do:` | Registry object and visitor | Null Oop |
 
-A registered object implements `rootsDo:` and reports each GC root by sending
-`visit:` with an Object argument to the visitor. Each emission uses current lookup. Namespace, for example, reports bindings stored in native
-memory. Registration keeps the enumerator itself alive. The collector traces the
-objects reported by these enumerators using the normal reference-owner protocol.
+A registered object implements `rootsDo:` and reports each root with `visit:`.
+Registration keeps the provider itself alive. Order and duplicate registrations
+are preserved, with no fixed provider ceiling. Enumeration snapshots registered
+objects and retained references before callbacks; no registry borrow spans a send.
+Tokens are unique and never reused, and exhaustion does not change existing roots.
 
-Registration grows with the existing vector; there is no fixed enumerator ceiling.
-Order and duplicate registrations are preserved. Enumeration snapshots registered
-objects and retained tokens before callbacks, and no registry borrow spans a send.
-Changes made during visitation appear in the next snapshot. Retention tokens are
-unique and never reused; token exhaustion fails without changing existing roots.
+`rootsDo:` reports the owned inventory and then invokes providers in order.
+`referencesOf:do:` reports only the registry's owned references. Tracing the
+registry object must not invoke providers again: Collect already requested their
+roots explicitly. Each reported object is traced through its own reference owner.
 
-Run `mise run native-messages` for production registration, visitation, GC and
-retirement checks. The process-owned initial Roots object still follows the current
-single-domain hosting model; this change does not introduce thread-hosted domains.
+`releaseTokensProtecting` keeps its result in the entered call while releasing
+all supplied tokens in reverse order, including calls to a replaced `release:`.
+The first failure is protected until the remaining cleanup attempts finish.
+No native token-byte carrier or compatibility release interface is provided.
 
-`releaseMany:protecting:batch:` copies the token request before callbacks and reports
-the result through an owner-local scope until the complete cleanup returns. It
-preserves reverse release order, including current custom release callbacks. A
-canonical Id binding proof admits callback-free owner batching; other cases send
-each current `release:`. The scope drains on success/failure and nested calls
-restore the parent suffix. Replacements must honor this cleanup/handoff contract.
-No extra public retention token is allocated for the overlap.
-
-Batch Word 0 retains the diagnostic compiler control: every ordinary release
-is dispatched individually while the result still has owner coverage.
+The Oop `roots` test exercises growth, order, duplicate registration, provider-only
+child retention and reclamation after removing an edge. The core Oop gate also
+covers Roots, Collect and owner retirement. The broader native-message harness is
+still being migrated; it is not a completed acceptance claim. This module retains
+the existing single-domain hosting model.

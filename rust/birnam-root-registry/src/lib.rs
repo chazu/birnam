@@ -136,23 +136,7 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
     };
     (unsafe {
         (|| {
-            let (values, providers) = {
-                let r = s.roots.borrow();
-                (
-                    r.retained.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
-                    r.providers.clone(),
-                )
-            };
-            for v in s
-                .names
-                .iter()
-                .copied()
-                .chain([s.receiver])
-                .chain(values)
-                .chain(providers.iter().copied())
-            {
-                s.id.send(*visitor, s.names[11], &[v])?;
-            }
+            let providers = owned_references(s, *visitor)?;
             for p in providers {
                 s.id.send(p, s.names[9], &[*visitor])?;
             }
@@ -160,6 +144,28 @@ unsafe extern "C" fn roots(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
         })()
     })
     .unwrap_or_else(abi::fault_reference)
+}
+// The registry owns these references. Invoking providers is the separate
+// rootsDo: operation; tracing the registry must not invoke them a second time.
+unsafe fn owned_references(s: &Registry, visitor: Oop) -> Result<Vec<Oop>, Oop> {
+    let (values, providers) = {
+        let r = s.roots.borrow();
+        (
+            r.retained.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
+            r.providers.clone(),
+        )
+    };
+    for value in s
+        .names
+        .iter()
+        .copied()
+        .chain([s.receiver])
+        .chain(values)
+        .chain(providers.iter().copied())
+    {
+        unsafe { s.id.send(visitor, s.names[11], &[value]) }?;
+    }
+    Ok(providers)
 }
 unsafe extern "C" fn references(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
@@ -172,7 +178,9 @@ unsafe extern "C" fn references(_id: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
     if *object != s.receiver {
         return s.id.invalid;
     }
-    unsafe { roots(_id, c, s.receiver, visitor, 1) }
+    unsafe { owned_references(s, *visitor) }
+        .map(|_| core::ptr::null_mut())
+        .unwrap_or_else(abi::fault_reference)
 }
 // The result remains an argument of this entered call throughout cleanup,
 // including replacement of release: with a collecting implementation.
