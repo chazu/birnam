@@ -1058,3 +1058,13 @@ unsigned, float, string, pointer and void calls; structs, arrays, nested HFA and
 non-HFA returns; malformed aggregate shape; and collecting scalar/aggregate callbacks
 with release. These checks run without the stdlib. No runtime/compiler behavior or
 Id contract changed. [Receipt](../measurements/alien-compiler-oop-20261026.json).
+
+## Cold-candidate generation acceptance
+
+The complete installed Host `generation` group passes on the independent cold
+candidate. Coverage includes retained Methods and current setters, source-registry
+image aliases and failures, explicit candidate cleanup/undo, mapped and rebuilt
+lifecycle recovery with binding drift, explicit adoption, running/TCP activation
+and rollback, and all 62 compiled-unit policy checks. No runtime change was needed.
+Other Host groups and the legacy native integration audit remain separate work.
+[Receipt](../measurements/cold-generation-oop-20261026.json).
