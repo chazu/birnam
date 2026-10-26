@@ -129,3 +129,24 @@ pub(super) unsafe extern "C" fn remove(_: Oop, c: Oop, _: Oop, a: *const Oop, n:
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+
+pub(super) unsafe extern "C" fn name_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [symbol] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*symbol]);
+        if !s.exact(&q, *symbol, b"SymbolVt")? {
+            let kind = q.keep(s.intern(b"notASymbol")?);
+            let message = q.keep(s.text(b"nameOf: expects a symbol")?);
+            return s.send(s.named(b"Error")?, b"kind:message:", &[kind, message]);
+        }
+        s.text(&s.id.read_bytes(
+            *symbol,
+            s.names[b"sizeWord".as_slice()],
+            s.names[b"atWord:".as_slice()],
+        )?)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}

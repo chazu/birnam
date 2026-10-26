@@ -1,0 +1,105 @@
+[[|
+let checks := [Cell with: #[]];
+let check := [:name :value | [checks set: [[checks value] add: #[name value]]]];
+[check value: #providers value: [[Module imageProviders] = #[#store #relational]]];
+[check value: #logicIdentity value: [?x == ?x]];
+[check value: #logicName value: [[?x name] == #x]];
+[check value: #logicPrint value: [[?x printString] = "?x"]];
+let clone := [?x clone];
+[check value: #logicClone value: [[clone == ?x] not]];
+[GC collectPrecisely];
+[check value: #logicCloneName value: [[clone name] == #x]];
+let store := [Store new];
+let a := [store entity]; let b := [store entity]; let c := [store entity];
+[check value: #entityIdentity value: [[a == b] not]];
+[store assert: #age attr: #history value: true];
+[store assert: a attr: #age value: 20]; [store assert: b attr: #age value: 40]; [store assert: c attr: #age value: 20];
+[store assert: a attr: #city value: #A]; [store assert: b attr: #city value: #B]; [store assert: c attr: #city value: #A];
+let body := #[#[?x #age ?y]];
+[check value: #deduplicate value: [[store findAll: ?y where: body] = #[20 40]]];
+[check value: #predicate value: [[store findAll: ?x where: #[#[?x #age ?y] #[?y #> 20]]] = #[b]]];
+[check value: #join value: [[store findAll: ?x where: #[#[?x #age ?y] #[?x #city #A]]] = #[a c]]];
+[check value: #negation value: [[store findAll: ?x where: #[#[?x #age ?y] #[#not #[?x #city #A]]]] = #[b]]];
+[check value: #disjunction value: [[store findAll: ?x where: #[#[#or #[?x #age 20] #[?x #age 40]]]] = #[a c b]]];
+[check value: #count value: [[store count: ?y where: body] = 2]];
+[check value: #sum value: [[store sum: ?y where: body] = 60]];
+[check value: #minimum value: [[store min: ?y where: body] = 20]];
+[check value: #maximum value: [[store max: ?y where: body] = 40]];
+[check value: #average value: [[store avg: ?y where: body] = 30]];
+let empty := #[#[?x #absent ?y]];
+[check value: #emptyCount value: [[store count: ?y where: empty] = 0]];
+[check value: #emptySum value: [[store sum: ?y where: empty] = 0]];
+[check value: #emptyMinimum value: [[store min: ?y where: empty] isNil]];
+[check value: #emptyMaximum value: [[store max: ?y where: empty] isNil]];
+[check value: #emptyAverage value: [[store avg: ?y where: empty] isNil]];
+let groups := [store groupBy: ?z aggregate: #sum of: ?y where: #[#[?x #age ?y] #[?x #city ?z]]];
+[check value: #groupA value: [[groups at: #A] = 20]];
+[check value: #groupB value: [[groups at: #B] = 40]];
+let before := [store basis]; [store assert: a attr: #age value: 30]; let after := [store basis];
+[check value: #asOf value: [[store findAll: ?y where: body asOf: before] = #[20 40]]];
+[check value: #since value: [[store findAll: ?y where: body since: before] = #[30]]];
+[check value: #between value: [[store findAll: ?y where: body between: before and: after] = #[30]]];
+[check value: #negativeBasis value: [[store findAll: ?y where: body asOf: -1] isNil]];
+[check value: #reversedWindow value: [[store findAll: ?y where: body between: after and: before] isNil]];
+[check value: #malformedResult value: [[store findAll: 1 where: body] isNil]];
+[check value: #malformedClause value: [[store findAll: ?y where: #[#[?x]]] isNil]];
+[store assert: #edge attr: #cardinality value: #many];
+[store assert: a attr: #edge value: b]; [store assert: b attr: #edge value: c];
+[store defineRule: #reachable params: #[?x ?y] body: #[#[?x #edge ?y]]];
+[store defineRule: #reachable params: #[?x ?y] body: #[#[?x #edge ?z] #[#rule #reachable ?z ?y]]];
+[check value: #recursiveRule value: [[store findAll: ?y where: #[#[#rule #reachable a ?y]]] = #[b c]]];
+[check value: #rebuildRules value: [[store rebuildRules] == store]];
+[store retract: b attr: #edge value: c];
+[check value: #liveRules value: [[store findAll: ?y where: #[#[#rule #reachable a ?y]]] = #[b]]];
+[store assert: b attr: #edge value: c];
+let pulled := [store pull: a spec: #[#age #[#edge #[#age]]]];
+[check value: #pull value: [[pulled at: #age] = 30]];
+[check value: #nestedPull value: [[[[pulled at: #edge] at: 0] at: #age] = 40]];
+let mixed := [Store new];
+[mixed assert: a attr: #scalar value: -2]; [mixed assert: b attr: #scalar value: -2.5];
+let scalars := #[#[?x #scalar ?y]];
+[check value: #signedFloat value: [[mixed sum: ?y where: scalars] = -4.5]];
+[mixed assert: a attr: #scalar value: ["sa" , "me"]]; [mixed assert: b attr: #scalar value: ["sam" , "e"]];
+[check value: #stringDeduplication value: [[mixed findAll: ?y where: scalars] = #["same"]]];
+[check value: #nonnumericSum value: [[mixed sum: ?y where: scalars] isNil]];
+[mixed assert: a attr: #scalar value: 9223372036854775807]; [mixed assert: b attr: #scalar value: 1];
+[check value: #overflow value: [[mixed sum: ?y where: scalars] isNil]];
+
+// Snapshot delivery and all scalar conversion remain current sends.
+let original := [store methodFor: #liveTriplesDo:];
+let nested := [Cell with: false]; let visited := [Cell with: 0];
+[Reflect defineMethod: #liveTriplesDo: on: store as: [:self :visitor |
+  [visited set: [[visited value] + 1]]; [GC collectPrecisely];
+  [[[nested value] not] ifTrue: [| [nested set: true]; [self findAll: ?y where: body]]];
+  [original invokeOn: self arguments: #[visitor]]
+]];
+[check value: #reentrantQuery value: [[store findAll: ?y where: body] = #[30 40 20]]];
+[check value: #reentered value: [[visited value] = 2]];
+[Reflect removeMethod: #liveTriplesDo: on: store];
+let collector := GC; let arguments := Vector;
+let integerWord := [Integer methodFor: #wordOf:];
+let selected := [store currentValue: a attr: #age];
+[Reflect defineMethod: #wordOf: on: Integer as: [:self :value |
+  [collector collectPrecisely];
+  let input := [[value == selected] ifTrue: [| 31] ifFalse: [| value]];
+  [integerWord invokeOn: self arguments: [[arguments new] add: input]]
+]];
+let converted := [store sum: ?y where: body];
+[[Vtable behaviorOf: Integer] addMethod: integerWord as: #wordOf:];
+[check value: #liveConversion value: [converted = 91]];
+
+let ephemeral := [Store new]; let escaped := [Cell with: nil];
+[Reflect defineMethod: #liveTriplesDo: on: ephemeral as: [:self :visitor |
+  [escaped set: visitor];
+  [[| let entity := [self entity]; [visitor value: entity value: #ephemeral value: ["ret" , "ained"]]] value];
+  [GC collectPrecisely]; nil
+]];
+let result := [ephemeral findAll: ?y where: #[#[?x #ephemeral ?y]]];
+[GC collectPrecisely];
+[check value: #ephemeralSnapshot value: [result = #["retained"]]];
+let identities := [ephemeral findAll: ?x where: #[#[?x #ephemeral ?y]]];
+[GC collectPrecisely];
+[check value: #snapshotIdentity value: [[Reflect vtableOf: [identities at: 0]] == EntityVt]];
+[check value: #escapedCollector value: [[[[escaped value] value: a value: #ephemeral value: 0] kind] == #nativeInvalidRequest]];
+[checks value]
+] value]

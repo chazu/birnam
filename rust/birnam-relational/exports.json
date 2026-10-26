@@ -3,7 +3,7 @@
   "scope": "Relational queries, aggregates, rules, pull and LogicVars over Id messages",
   "install_name": "@rpath/libbirnam_relational.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
+    "birnam_native_module_v2",
     "birnam_symbol_borrow_v1"
   ]
 }

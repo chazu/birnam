@@ -523,3 +523,24 @@ their normal authored dependencies, including Integer conversion.
 The core, published Bootstrap, Host, Generation and fresh mapped/rebuilt image
 gates pass with this convention. The same self-contained source replacement
 probe overflows on the previous runtime. [Receipt](../measurements/primitive-replacement-oop-20261026.json).
+
+
+## Explicit Store and Relational activation
+
+Both optional native owners now declare Oop Methods and use their Namespace as
+Method context. Their existing fact/history and query algorithms are unchanged.
+Store keeps its own records, snapshots and retirement cleanup; Relational keeps
+its own query collectors and canonical LogicVars. Dependencies are reached only
+through current Id messages, including full-width signed/Float conversion and
+indexed bytes. Binding inspection uses the existing allocation/binding visitors.
+`Reflect nameOf:` is reconnected because normal compiled module loading needs it.
+No Store dependency was added to Bootstrap or ordinary object edits.
+
+The release workspace builds. Acceptance covers 51 Store and 46 Relational checks,
+ten retained authored Store checks, resource exhaustion with reserved rollback,
+and fresh mapped/rebuilt images that activate their declared providers. Recovery
+preserves retained fact history, queries and a fact-backed Cell with parsing
+blocked; mapped recovery also blocks the compiler. The broader workspace library
+test command still fails in ProjectBuild's old-carrier test harness. Native test
+fixtures, additional optional image families, installed tooling and restored
+workers remain outside this milestone. [Receipt](../measurements/optional-owners-oop-20261026.json).

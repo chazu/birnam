@@ -1,7 +1,8 @@
 # Relational over Id messages
 
-Bootstrap loads Relational after Store and collections, before Execution/compiler.
-The initializer takes the Namespace Object, extends the existing Store behavior,
+`Module load: #relational` activates its compiled authored entry and loads the
+native provider after Store. Core Bootstrap loads neither optional provider.
+The initializer takes the Namespace Oop, extends the existing Store behavior,
 and returns Store. It publishes the existing `LogicVar`, `LogicVarVt`,
 `LogicVarFactoryVt`, `EntityVt` and `RelCollectorVt` names and keeps `db` naming
 Store. Repeated loading preserves installed methods and LogicVar identities.
@@ -40,7 +41,7 @@ Escaped collectors reject later deliveries. The existing million-triple limit
 still bounds a snapshot.
 
 Integer `wordOf:`/`fromWord:`, Float `bitsOf:`/`fromBits:`, String `bytes`/`fromBytes:`,
-Id behavior/symbol messages, and Vector/Map messages replace service-table access
+Id vtable/Symbol queries, indexed byte reads, and Vector/Map messages replace service-table access
 and foreign payload reads. Collection factories and query-shape behaviors retain
 their existing lookup through Namespace at query time. Every send uses current
 lookup, including GC `visit:` messages. Native protocol failures propagate unchanged.
@@ -58,12 +59,12 @@ symbol-borrow convention as Store; there is no compatibility service table.
 
 ## Validation
 
-`mise run native-messages` builds and audits the real dylib and runs the
-Relational integration binary alongside the other production modules. It tests
-query results/order, history windows, empty aggregates, rule updates, nested pull,
-LogicVar identity/copying, compiled source, collecting method replacements,
-reentrant queries, replaced Namespace factories, failed sends and cleanup, and
-snapshot identity retention.
+`scripts/oop-optional-test.sh` builds and audits both optional dylibs, compiles the
+authored entries, and exercises normal `Module load:` with source lookup disabled.
+It checks query ordering, history, rules, aggregates, pull, LogicVar identity,
+collecting/reentrant callbacks, current conversion Methods and expired collectors,
+then restores provider images in fresh processes. The older native integration
+harness remains pending migration and is not included in this qualification.
 
 `mise exec -- cargo test --offline --locked -p birnam-relational --lib` runs the
 unchanged evaluator tests, including the independent eager matching oracle.

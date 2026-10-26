@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-26",
+  "base_commit": "dcf6803c",
+  "commands": [
+    "cargo build --offline --locked --release --lib -p birnam-store -p birnam-relational",
+    "cargo test --offline --locked --lib -p birnam-store -p birnam-relational",
+    "python3 scripts/oop-optional-test.py BUILD STAGED_BOOTSTRAP",
+    "cargo build --offline --locked --release --workspace"
+  ],
+  "passed": true,
+  "store_checks": 51,
+  "relational_checks": 46,
+  "retained_authored_store_checks": 10,
+  "resource_exhaustion_checks": 7,
+  "algorithm_unit_tests": 32,
+  "existing_ignored_algorithm_tests": 3,
+  "acceptance": {
+    "passed": true,
+    "runs": [
+      {
+        "name": "compile store",
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "elapsed_seconds": 4.0915937079999996
+      },
+      {
+        "name": "compile relational",
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "elapsed_seconds": 4.324575708
+      },
+      {
+        "name": "store behavior",
+        "exit_code": 0,
+        "stdout": "false\n#[#[#nameConversion true] #[#nameError true] #[#coreNotEnrolled true] #[#schema true] #[#loaded true] #[#optionalProviders true] #[#rawAbsence true] #[#boundNil true] #[#rawBoundNil true] #[#nilNotFallback true] #[#duplicateBasis true] #[#fallback true] #[#current true] #[#currentOnly true] #[#retract true] #[#asOf true] #[#compactedHistory true] #[#retiredHistory true] #[#negativeBasis true] #[#many true] #[#manyRetract true] #[#attributes true] #[#cellRead true] #[#cellSet true] #[#cellLive true] #[#cellReplacement true] #[#reservation true] #[#staleInverse true] #[#inverse true] #[#inverseValue true] #[#spent true] #[#restoreAbsence true] #[#restoredAbsent true] #[#collectingSnapshot true] #[#snapshotDetached true] #[#survivingRows true] #[#imageFacts true] #[#imageSwap true] #[#revision true] #[#managedInstall true] #[#managedCall true] #[#mirror true] #[#explicitFact true] #[#managedRemoval true] #[#removed true] #[#missingRemoval true] #[#backfillBasis true] #[#backfill true] #[#authorization true] #[#observer true] #[#authorizedCall true]]\n",
+        "stderr": "",
+        "elapsed_seconds": 11.682296833999999
+      },
+      {
+        "name": "relational behavior",
+        "exit_code": 0,
+        "stdout": "false\n#[#[#providers true] #[#logicIdentity true] #[#logicName true] #[#logicPrint true] #[#logicClone true] #[#logicCloneName true] #[#entityIdentity true] #[#deduplicate true] #[#predicate true] #[#join true] #[#negation true] #[#disjunction true] #[#count true] #[#sum true] #[#minimum true] #[#maximum true] #[#average true] #[#emptyCount true] #[#emptySum true] #[#emptyMinimum true] #[#emptyMaximum true] #[#emptyAverage true] #[#groupA true] #[#groupB true] #[#asOf true] #[#since true] #[#between true] #[#negativeBasis true] #[#reversedWindow true] #[#malformedResult true] #[#malformedClause true] #[#recursiveRule true] #[#rebuildRules true] #[#liveRules true] #[#pull true] #[#nestedPull true] #[#signedFloat true] #[#stringDeduplication true] #[#nonnumericSum true] #[#overflow true] #[#reentrantQuery true] #[#reentered true] #[#liveConversion true] #[#ephemeralSnapshot true] #[#escapedCollector true]]\n",
+        "stderr": "",
+        "elapsed_seconds": 16.485960333
+      },
+      {
+        "name": "reserved rollback under resource exhaustion",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true]\n",
+        "stderr": "",
+        "elapsed_seconds": 11.331628125000002
+      },
+      {
+        "name": "retained authored Store suite",
+        "exit_code": 0,
+        "stdout": "== Store ==\n  ok   factsOf: returns current live facts\n  ok   fact map exposes its value\n  ok   fact map retains entity identity\n  ok   fact map names its attribute\n  ok   live facts exclude retractions and retain bound nil\n  ok   many-valued facts remain separate rows\n  ok   a nil fact still has a value key\n  ok   collecting Store replacement is observed\n  ok   fact snapshot survives collection\n  ok   Store snapshot failure propagates\nTOTAL: 10 passed, 0 failed\ntrue\n",
+        "stderr": "",
+        "elapsed_seconds": 10.958180624999997
+      },
+      {
+        "name": "save declared providers",
+        "exit_code": 0,
+        "stdout": "true\n#saved\n",
+        "stderr": "",
+        "elapsed_seconds": 218.08894895799997
+      },
+      {
+        "name": "mapped declared providers",
+        "exit_code": 0,
+        "stdout": "#[true true true true]\nOOP_IMAGE_MAPPED_OK\n",
+        "stderr": "",
+        "elapsed_seconds": 48.846295666
+      },
+      {
+        "name": "rebuilt declared providers",
+        "exit_code": 0,
+        "stdout": "#[true true true true]\nOOP_IMAGE_REBUILT_OK\n",
+        "stderr": "",
+        "elapsed_seconds": 36.18902145800001
+      }
+    ],
+    "store_checks": 51,
+    "relational_checks": 45,
+    "image_bytes": 121823355,
+    "image_sha256": "8300a13bec9eb7385f44c10c90f711f74c6cf59ef065528a39badcc7a4401476"
+  },
+  "relational_final": {
+    "exit_code": 0,
+    "stdout": "#[#[#providers true] #[#logicIdentity true] #[#logicName true] #[#logicPrint true] #[#logicClone true] #[#logicCloneName true] #[#entityIdentity true] #[#deduplicate true] #[#predicate true] #[#join true] #[#negation true] #[#disjunction true] #[#count true] #[#sum true] #[#minimum true] #[#maximum true] #[#average true] #[#emptyCount true] #[#emptySum true] #[#emptyMinimum true] #[#emptyMaximum true] #[#emptyAverage true] #[#groupA true] #[#groupB true] #[#asOf true] #[#since true] #[#between true] #[#negativeBasis true] #[#reversedWindow true] #[#malformedResult true] #[#malformedClause true] #[#recursiveRule true] #[#rebuildRules true] #[#liveRules true] #[#pull true] #[#nestedPull true] #[#signedFloat true] #[#stringDeduplication true] #[#nonnumericSum true] #[#overflow true] #[#reentrantQuery true] #[#reentered true] #[#liveConversion true] #[#ephemeralSnapshot true] #[#snapshotIdentity true] #[#escapedCollector true]]\n",
+    "stderr": "",
+    "checks": 46,
+    "passed": true
+  },
+  "contract": "Explicit Module activation only. Store and Relational own their records and algorithms; values, declaration contexts, snapshots and retirement cross Id as Oops. Source primitive replacement uses the separately committed immediate-counter correction. No Id API or private cross-owner runtime interface added.",
+  "workspace_library_tests": {
+    "command": "cargo test --offline --locked --workspace --lib",
+    "exit_code": 101,
+    "remaining": "birnam-project-build lib tests still use removed Operand/Outcome and native-entry APIs (27 compilation errors)"
+  },
+  "remaining": [
+    "Retained native integration and library test harness migration",
+    "Complete project/tooling/REPL and restored worker acceptance",
+    "Images containing other optional object families and broader retained image fixtures",
+    "Full-language performance qualification"
+  ],
+  "logs": {
+    ".cargo-target/oop-slice/optional-qualification/optional-_8aqtsh4/receipt.json": "acd6598eaf73307e2b703eb60165d91ffb7e1dffadcc4179e0502d8361fbb89e",
+    ".cargo-target/oop-slice/optional-qualification/optional-_8aqtsh4/relational-final.json": "46fd12d3ae17e59be3f4e5dcc2d8fa3ac9734db761f63a50eb31c7956c4f3c2d",
+    ".cargo-target/oop-optional-final-unit.log": "e6646468405d9fa35077267e1a00cc4d40a6d0075c8e489e9bc9b4bc50893097",
+    ".cargo-target/oop-workspace-build.log": "c364525ac310a56934e12cdabc9b4f898afeea5cce65d45065495f37ba7c9f1e",
+    ".cargo-target/oop-workspace-lib-tests.log": "609c9ebf3b32e5ffef229fcb3919f04507955c0738c82c443b17010d2be5b73a"
+  }
+}

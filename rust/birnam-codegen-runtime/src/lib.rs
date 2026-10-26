@@ -1456,6 +1456,11 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(dnu_adapter),
         convention: 0,
     },
+    MethodSpec {
+        name: 171,
+        entry: Some(reflection::name_of),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1582,6 +1587,7 @@ unsafe extern "C" fn initialize(
                     | b"methodForArity:implementation:"
                     | b"methodForTemplate:implementation:"
                     | b"vtableOf:"
+                    | b"nameOf:"
             ) {
                 reflect_vt
             } else {

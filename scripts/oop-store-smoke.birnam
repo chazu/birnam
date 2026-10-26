@@ -1,0 +1,118 @@
+// StoreTestProbe is a declared native test module supplied by the runner.
+[[|
+let checks := [Cell with: #[]];
+let check := [:name :value | [checks set: [[checks value] add: #[name value]]]];
+[check value: #nameConversion value: [[Reflect nameOf: #store] = "store"]];
+[check value: #nameError value: [[[Reflect nameOf: 17] kind] == #notASymbol]];
+[check value: #coreNotEnrolled value: [[Store basis] = 3]];
+[check value: #schema value: [[Store currentValue: #history attr: #cardinality] == #one]];
+[check value: #loaded value: [Module isLoaded: #store]];
+[check value: #optionalProviders value: [[Module imageProviders] = #[#store]]];
+let store := [Store new]; let entity := [Object clone]; let attribute := #attribute;
+let absent := [StoreTestProbe methodAt: #rawAbsent:attr:];
+[check value: #rawAbsence value: [[Integer fromWord: [absent invokeOn: store arguments: #[entity attribute]]] = 1]];
+[store assert: entity attr: attribute value: nil];
+[check value: #boundNil value: [store hasValue: entity attr: attribute]];
+[check value: #rawBoundNil value: [[Integer fromWord: [absent invokeOn: store arguments: #[entity attribute]]] = 0]];
+[check value: #nilNotFallback value: [[store currentValue: entity attr: attribute ifAbsent: [| 99]] isNil]];
+let basis := [store basis]; [store assert: entity attr: attribute value: nil];
+[check value: #duplicateBasis value: [[store basis] = basis]];
+[check value: #fallback value: [[store currentValue: entity attr: #absent ifAbsent: [| 99]] = 99]];
+let first := 41; let second := 42;
+[store assert: entity attr: attribute value: first];
+[store assert: entity attr: attribute value: second];
+[check value: #current value: [[store currentValue: entity attr: attribute] == second]];
+[check value: #currentOnly value: [[store history: entity attr: attribute] = 1]];
+[store retract: entity attr: attribute value: second];
+[check value: #retract value: [[store hasValue: entity attr: attribute] not]];
+[store assert: attribute attr: #history value: true];
+[store assert: entity attr: attribute value: first];
+let before := [store basis]; [store retainSince: before];
+[store assert: entity attr: attribute value: second];
+[check value: #asOf value: [[store valueOf: entity attr: attribute asOf: before] == first]];
+[store compact];
+[check value: #compactedHistory value: [[store valueOf: entity attr: attribute asOf: before] == first]];
+[store retainCurrentOnly]; [store compact];
+[check value: #retiredHistory value: [[[store valueOf: entity attr: attribute asOf: before] kind] == #historyNotRetained]];
+[check value: #negativeBasis value: [[[store retainSince: -1] kind] == #historyNotRetained]];
+[store assert: #tags attr: #cardinality value: #many];
+[store assert: entity attr: #tags value: #red]; [store assert: entity attr: #tags value: #blue];
+[store assert: entity attr: #tags value: #red];
+[check value: #many value: [[store count: entity attr: #tags] = 2]];
+[store retract: entity attr: #tags value: #red];
+[check value: #manyRetract value: [[store count: entity attr: #tags] = 1]];
+[check value: #attributes value: [[store attrCount: entity] = 2]];
+
+let cell := [store cellFor: entity attr: attribute];
+[check value: #cellRead value: [[cell value] == second]];
+[check value: #cellSet value: [[cell set: first] == cell]];
+[check value: #cellLive value: [[store currentValue: entity attr: attribute] == first]];
+let original := [store methodFor: #currentValue:attr:];
+[Reflect defineMethod: #currentValue:attr: on: store as: [:self :e :a | [GC collectPrecisely]; [original invokeOn: self arguments: #[e a]]]];
+[check value: #cellReplacement value: [[cell value] == first]];
+[Reflect removeMethod: #currentValue:attr: on: store];
+
+let owner := [Object clone];
+[store reserveCompensationFor: owner count: 1];
+[store assert: entity attr: attribute value: second];
+[check value: #reservation value: [[store reservedCompensationFor: owner] = 1]];
+[check value: #staleInverse value: [[[store restoreValue: entity attr: attribute expected: first previous: first reservation: owner] kind] == #compensationConflict]];
+[check value: #inverse value: [[store restoreValue: entity attr: attribute expected: second previous: first reservation: owner] == store]];
+[check value: #inverseValue value: [[store currentValue: entity attr: attribute] == first]];
+[check value: #spent value: [[store reservedCompensationFactCount] = 0]];
+[store reserveCompensationFor: owner count: 1];
+let restore := [StoreTestProbe methodAt: #restoreAbsent:attr:expected:reservation:];
+[check value: #restoreAbsence value: [[restore invokeOn: store arguments: #[entity attribute first owner]] == store]];
+[check value: #restoredAbsent value: [[store hasValue: entity attr: attribute] not]];
+
+let snapshot := [Store new];
+// Keep these references only in Store before enumeration starts.
+[[| [snapshot assert: [Object clone] attr: #payload value: ["f" , "irst"]]; [snapshot assert: [Object clone] attr: #payload value: ["s" , "econd"]]] value];
+let observed := [Cell with: #[]];
+[snapshot liveTriplesDo: [:e :a :v |
+  [snapshot imageLoadBegin]; [GC collectPrecisely];
+  [[a == #payload] ifTrue: [| [observed set: [[observed value] add: v]]]]
+]];
+[check value: #collectingSnapshot value: [[observed value] = #["first" "second"]]];
+[check value: #snapshotDetached value: [[snapshot retainedFactCount] = 0]];
+[GC collectPrecisely];
+[check value: #survivingRows value: [[[observed value] at: 1] = "second"]];
+
+let saved := [Store new]; [saved assert: #item attr: #answer value: 73];
+let copy := [Store new]; [copy imageLoadBegin];
+let sink := [Object clone];
+[Reflect defineMethod: #e:a:v:tx:op:historied: on: sink as: [:self :e :a :v :tx :op :historied |
+  [GC collectPrecisely]; [copy imageAddFact: e attr: a value: v tx: tx op: op historied: historied]
+]];
+[saved imageFactsInto: sink];
+[copy imageLoadEnd: [saved basis] raw: false oldest: [saved oldestRetainedBasis] policy: [saved retentionPolicyCode] argument: [saved retentionPolicyArgument]];
+[check value: #imageFacts value: [[copy currentValue: #item attr: #answer] = 73]];
+let revision := [Integer fromWord: [copy imageStateRevision]];
+[copy swapImageStateWith: store];
+[check value: #imageSwap value: [[store currentValue: #item attr: #answer] = 73]];
+[check value: #revision value: [[Integer fromWord: [copy imageStateRevision]] > revision]];
+
+let target := [Object clone]; let vt := [Vtable ensurePrivateVtableFor: target];
+let method := [Reflect methodForArity: 0 implementation: [:self | 91]];
+[store assert: vt attr: #answer value: method];
+[check value: #managedInstall value: [[store addMethod: #answer on: vt with: method] == store]];
+[check value: #managedCall value: [[target answer] = 91]];
+[check value: #mirror value: [[store currentValue: vt attr: #answer] == method]];
+[store methodChanged: #answer on: vt];
+[check value: #explicitFact value: [[store currentValue: vt attr: #answer] == method]];
+[check value: #managedRemoval value: [[store removeMethod: #answer on: vt] == store]];
+[check value: #removed value: [[[target answer] kind] == #doesNotUnderstand]];
+[check value: #missingRemoval value: [[[store removeMethod: #answer on: vt] kind] == #missingDirectMethod]];
+let backfillBasis := [store basis]; [store backfillMirror];
+[check value: #backfillBasis value: [[store basis] = backfillBasis]];
+[check value: #backfill value: [[store currentValue: IntegerVt attr: #+] notNil]];
+let allowed := [Cell with: false]; let authorize := [| [allowed value]];
+let notifications := [Cell with: 0]; let observer := [Object clone];
+[Reflect defineMethod: #managedMethodChanged:on: on: observer as: [:self :selector :behavior | [GC collectPrecisely]; [notifications set: [[notifications value] + 1]]]];
+[store setMethodMutationAuthorizer: authorize]; [store setMethodMutationObserver: observer];
+[check value: #authorization value: [[store addMethod: #answer on: vt with: method] == false]];
+[allowed set: true]; [store addMethod: #answer on: vt with: method];
+[check value: #observer value: [[notifications value] = 1]];
+[check value: #authorizedCall value: [[target answer] = 91]];
+[checks value]
+] value]

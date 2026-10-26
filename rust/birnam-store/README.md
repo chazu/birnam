@@ -22,8 +22,7 @@ there are no foreign payload reads, service tables or encoded function pointers.
 ## Language protocol
 
 Arguments and answers below are language Objects, including boxed Integers and
-canonical Booleans. Wrong operand kinds, arities and unowned receivers fail the
-native protocol. Domain errors answer current Error objects. Dependencies are
+canonical Booleans. Wrong arities and unowned receivers fail the native protocol. Domain errors answer current Error objects. Dependencies are
 opaque receivers selected at construction; their methods are looked up on every
 send. Integer conversion and Error construction therefore observe replacement.
 
@@ -33,9 +32,9 @@ send. Integer conversion and Error construction therefore observe replacement.
 | `assert:attr:value:`, `retract:attr:value:` | Schema-aware mutation; duplicate assertions and absent retractions do not advance the basis. Answer Store, or a resource Error. |
 | `rawAssert:attr:value:`, `flip` | Raw historied assertion; leave raw mode. Preserve the existing image/bootstrap behavior. |
 | `currentValue:attr:`, `currentValue:attr:ifAbsent:` | Current value; absent is nil or the result of sending `value` to the fallback. Bound nil is present. |
-| `rawCurrentValue:attr:` | Native Object or Unit for absence. Language execution converts Unit to nil; native consumers can distinguish it. |
+| `rawCurrentValue:attr:` | Object reference or null Oop for absence. Language execution converts null to nil; native consumers can distinguish it. |
 | `hasValue:attr:`, `count:attr:`, `cardinality:` | Presence, cardinality-aware count, and schema cardinality (default `#one`). |
-| `attrCount:`, `attrAt:index:` | Current attributes of an entity; out-of-range native result is Unit. |
+| `attrCount:`, `attrAt:index:` | Current attributes of an entity; out-of-range native result is null. |
 | `history:attr:`, `basis`, `oldestRetainedBasis` | Retained transition count and exclusive transaction watermarks. |
 | `valueOf:attr:asOf:` | Value strictly before the supplied basis; unavailable history answers `historyNotRetained`. |
 | `retainCurrentOnly`, `retainSince:`, `retainLast:`, `compact` | Existing retention policy and explicit compaction. Cannot recover previously discarded history. |
@@ -71,16 +70,12 @@ The existing MOP responsibilities are preserved through messages:
 | `backfillMirror` | Enumerate current Object-derived behaviors/selectors through Id; add missing primitive mirror rows without advancing the basis. |
 | `methodChanged:on:` | Invalidate the selector/behavior mirror after a direct Id dictionary write. |
 
-Id `methodChangesTo:` registers one rooted notification receiver (or Unit to clear)
-and returns the previous receiver. Bootstrap leaves this slot empty. A caller that
-explicitly wants Store mirror invalidation registers Store through that Id message;
-`backfillMirror` and managed Store writes alone do not subscribe. Clearing the slot
-ends observation; retained descriptions then describe their capture, not live code.
+These are explicit Store operations. Ordinary Id dictionary edits do not enroll
+Store or notify it. Call `methodChanged:on:` explicitly to invalidate a retained
+method description after an external edit, or take a fresh `backfillMirror`
+snapshot. The removed Id notification/entry interface is not recreated here.
 Mirror retirement deletes only marked mirror rows, preserving explicit facts.
-Completed Id dictionary
-add/remove/weak-binding operations send `methodChanged:on:` after mutation, with no
-dictionary borrow held. This is fresh lookup, not a saved callback. Notification
-failure propagates after the dictionary change; it does not roll the change back.
+
 
 The authorizer now accepts an Object instead of a native function address, and
 managed installation accepts an owned Execution Method instead of a raw entry.
@@ -163,3 +158,17 @@ remain attached to Store identities and are not persisted as image data.
 participation. Failed live loading retains partial effects; it does not invoke an
 inverse. The unused conditional-exchange variant has been removed. Core images
 perform neither Store revision reads nor exchanges.
+
+## Oop integration (2026-10-26)
+
+The native module now declares Methods in its object-file descriptor and binds
+them to its Namespace Oop. Private Store state stays with this owner; no native
+state pointer or entry address is sent through Id. Retirement receives dead Oops
+directly. Mirror snapshots use `allocationsDo:` and `bindingsDo:`; they do not
+restore the removed count/index enumeration interface. Signed numeric conversions
+use Integer and Word messages, and native absence remains distinct from bound nil.
+
+`scripts/oop-optional-test.sh` qualifies explicit compiled activation, retained
+source tests, history and compensation limits, collecting snapshots, Cell and
+method replacement, queries, and provider image recovery. The older native test
+harness still requires its separate Oop migration.

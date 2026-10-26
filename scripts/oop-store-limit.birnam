@@ -1,0 +1,30 @@
+[[|
+let store := [Store new]; let owner := [Object clone];
+[store retainSince: [store basis]];
+[store assert: #value attr: #history value: true];
+[store assert: #fill attr: #history value: true];
+let first := 17; let second := 18;
+[store assert: #item attr: #value value: first];
+[store reserveCompensationFor: owner count: 1];
+[store assert: #item attr: #value value: second];
+let failure := [Cell with: nil];
+let last := [Cell with: nil];
+[0 to: 200 do: [:i |
+  [[[failure value] isNil] ifTrue: [|
+    let result := [store assert: #item attr: #fill value: i];
+    [[result isError] ifTrue: [| [failure set: result]] ifFalse: [| [last set: i]]]
+  ]]
+]];
+let before := [store basis];
+let refused := [store assert: #item attr: #fill value: 999];
+let unchanged := [[store basis] = before];
+[GC collectPrecisely];
+let restored := [store restoreValue: #item attr: #value expected: second previous: first reservation: owner];
+#[[[[failure value] kind] == #historyResourceLimit]
+  [[refused kind] == #historyResourceLimit]
+  unchanged
+  [restored == store]
+  [[store currentValue: #item attr: #value] == first]
+  [[store currentValue: #item attr: #fill] == [last value]]
+  [[store reservedCompensationFactCount] = 0]]
+] value]

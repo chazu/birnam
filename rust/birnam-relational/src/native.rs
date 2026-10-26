@@ -1,29 +1,38 @@
 //! Relational's language adapter. All dependency operations use current Id sends.
 use crate::evaluator::*;
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, Method, MethodSpec, Module, Protocol},
 };
+use core::ptr;
 use core::{
     cell::{Cell, RefCell},
-    ffi::c_void,
     mem::size_of,
 };
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
 }
-fn object(v: Operand) -> core::result::Result<Oop, Outcome> {
-    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+fn object(v: Oop) -> core::result::Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
 }
 #[derive(Debug)]
 enum Error {
     Shape,
-    Send(Outcome),
+    Send(Oop),
 }
-impl From<Outcome> for Error {
-    fn from(v: Outcome) -> Self {
+impl From<Oop> for Error {
+    fn from(v: Oop) -> Self {
         Self::Send(v)
     }
 }
@@ -50,6 +59,7 @@ struct State {
     logicvars: RefCell<HashMap<Oop, Oop>>,
     collectors: RefCell<HashMap<Oop, Collector>>,
     active: RefCell<Vec<Vec<Oop>>>,
+    ready: Cell<bool>,
     thread: std::thread::ThreadId,
 }
 struct Scope<'a> {
@@ -84,104 +94,136 @@ impl<'a> Scope<'a> {
     fn name(&self, n: &'static [u8]) -> Oop {
         self.s.names[n]
     }
-    unsafe fn send(&self, r: Oop, n: &'static [u8], a: &[Operand]) -> Result<Operand> {
-        let v = unsafe { self.s.id.send(r, self.name(n), a) }?;
-        if let Some(o) = v.as_object() {
-            self.keep(o);
-        }
-        Ok(v)
+    unsafe fn send(&self, r: Oop, n: &'static [u8], a: &[Oop]) -> Result<Oop> {
+        unsafe { Ok(self.keep(self.s.id.send(r, self.name(n), a)?)) }
     }
     unsafe fn call(&self, r: Oop, n: &'static [u8], a: &[Oop]) -> Result<Oop> {
-        let args = a.iter().map(|o| Operand::object(*o)).collect::<Vec<_>>();
-        let v = unsafe { self.send(r, n, &args) }?;
-        if v.kind() == native::UNIT {
-            return Ok(self.value(b"nil"));
+        unsafe {
+            let v = self.send(r, n, a)?;
+            Ok(if v.is_null() { self.value(b"nil") } else { v })
         }
-        Ok(object(v)?)
     }
     unsafe fn import(&self, name: &'static [u8]) -> Result<Oop> {
-        let value = unsafe {
-            self.send(
+        unsafe {
+            Ok(object(self.send(
                 self.s.namespace,
                 b"at:",
-                &[Operand::object(self.name(name))],
+                &[self.name(name)],
+            )?)?)
+        }
+    }
+    unsafe fn word_bits(&self, bits: Oop) -> Result<u64> {
+        unsafe {
+            if let Some(n) = abi::as_size(bits) {
+                return Ok(n as u64);
+            }
+            object(bits)?;
+            let low = abi::as_size(self.send(bits, b"low32", &[])?)
+                .filter(|n| *n <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            let high = abi::as_size(self.send(bits, b"high32", &[])?)
+                .filter(|n| *n <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            Ok((low as u64) | ((high as u64) << 32))
+        }
+    }
+    unsafe fn word(&self, bits: u64) -> Result<Oop> {
+        unsafe {
+            if let Some(o) = abi::size(bits as usize) {
+                return Ok(o);
+            }
+            self.send(
+                self.import(b"Word")?,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(bits as u32 as usize).unwrap(),
+                    abi::size((bits >> 32) as usize).unwrap(),
+                ],
             )
-        }?;
-        value.as_object().ok_or(Error::Shape)
+        }
     }
     unsafe fn number(&self, v: Oop) -> Result<Option<i64>> {
-        let v = unsafe { self.send(self.value(b"Integer"), b"wordOf:", &[Operand::object(v)]) }?;
-        if v.kind() == native::UNIT {
-            return Ok(None);
+        unsafe {
+            let bits = self.send(self.value(b"Integer"), b"wordOf:", &[v])?;
+            if bits.is_null() {
+                Ok(None)
+            } else {
+                Ok(Some(self.word_bits(bits)? as i64))
+            }
         }
-        Ok(Some(v.as_word().ok_or_else(invalid)? as i64))
     }
     unsafe fn integer(&self, v: i64) -> Result<Oop> {
-        Ok(object(unsafe {
+        unsafe {
             self.send(
                 self.value(b"Integer"),
                 b"fromWord:",
-                &[Operand::word(v as usize)],
+                &[self.word(v as u64)?],
             )
-        }?)?)
+        }
     }
     unsafe fn behavior(&self, v: Oop) -> Result<Oop> {
-        unsafe { self.call(self.s.id.receiver, b"behaviorOf:", &[v]) }
+        unsafe { self.call(self.s.id.root, b"behaviorOf:", &[v]) }
+    }
+    unsafe fn bytes(&self, value: Oop) -> Result<Vec<u8>> {
+        unsafe {
+            Ok(self
+                .s
+                .id
+                .read_bytes(value, self.name(b"sizeWord"), self.name(b"atWord:"))?)
+        }
+    }
+    unsafe fn text(&self, bytes: &[u8]) -> Result<Oop> {
+        unsafe {
+            let values: Vec<_> = bytes
+                .iter()
+                .map(|b| abi::size(*b as usize).unwrap())
+                .collect();
+            let data = self.send(self.s.id.root, b"sequence", &values)?;
+            self.send(self.value(b"String"), b"fromBytes:", &[data])
+        }
     }
     unsafe fn classify(&self, v: Oop) -> Result<Value> {
-        if let Some(n) = unsafe { self.number(v) }? {
-            return Ok(Value::Integer(n));
+        unsafe {
+            if let Some(n) = self.number(v)? {
+                return Ok(Value::Integer(n));
+            }
+            let bits = self.send(self.value(b"Float"), b"bitsOf:", &[v])?;
+            if !bits.is_null() {
+                return Ok(Value::Float(f64::from_bits(self.word_bits(bits)?)));
+            }
+            if self.behavior(v)? == self.value(b"StringVt") {
+                let bytes = self.send(v, b"bytes", &[])?;
+                return Ok(Value::String(self.bytes(bytes)?));
+            }
+            Ok(Value::Identity(v.addr() as u64))
         }
-        let bits = unsafe { self.send(self.value(b"Float"), b"bitsOf:", &[Operand::object(v)]) }?;
-        if let Some(bits) = bits.as_word() {
-            return Ok(Value::Float(f64::from_bits(bits as u64)));
-        }
-        if bits.kind() != native::UNIT {
-            return Err(invalid().into());
-        }
-        if unsafe { self.behavior(v) }? == self.value(b"StringVt") {
-            let v = unsafe { self.send(v, b"bytes", &[]) }?;
-            let raw = v.as_bytes().ok_or_else(invalid)?;
-            return Ok(Value::String(
-                unsafe { borrowed_bytes(raw.pointer, raw.length) }
-                    .ok_or_else(invalid)?
-                    .to_vec(),
-            ));
-        }
-        Ok(Value::Identity(v as usize as u64))
     }
     unsafe fn materialize(&self, v: Value) -> Result<Oop> {
-        match v {
-            Value::Identity(v) => Ok(self.keep(v as usize as Oop)),
-            Value::Integer(v) => unsafe { self.integer(v) },
-            Value::Float(v) => Ok(object(unsafe {
-                self.send(
+        unsafe {
+            match v {
+                Value::Identity(v) => Ok(self.keep(v as usize as Oop)),
+                Value::Integer(v) => self.integer(v),
+                Value::Float(v) => self.send(
                     self.value(b"Float"),
                     b"fromBits:",
-                    &[Operand::word(v.to_bits() as usize)],
-                )
-            }?)?),
-            Value::String(v) => Ok(object(unsafe {
-                self.send(self.value(b"String"), b"fromBytes:", &[Operand::bytes(&v)])
-            }?)?),
+                    &[self.word(v.to_bits())?],
+                ),
+                Value::String(v) => self.text(&v),
+            }
         }
     }
     unsafe fn allocate(&self, vt: Oop, bytes: usize) -> Result<Oop> {
-        let o = object(unsafe { self.send(vt, b"allocate", &[Operand::word(bytes)]) }?)?;
-        if unsafe { self.behavior(o) }? != vt
-            || unsafe {
-                self.send(
-                    self.s.id.receiver,
-                    b"allocationSizeOf:",
-                    &[Operand::object(o)],
-                )
-            }?
-            .as_word()
-                != Some(bytes)
-        {
-            return Err(invalid().into());
+        unsafe {
+            let o =
+                object(self.send(vt, b"allocate", &[abi::size(bytes).ok_or_else(invalid)?])?)?;
+            if self.behavior(o)? != vt
+                || abi::as_size(self.send(self.s.id.root, b"allocationSizeOf:", &[o])?)
+                    != Some(bytes)
+            {
+                return Err(invalid().into());
+            }
+            Ok(o)
         }
-        Ok(o)
     }
     unsafe fn vector(&self, values: impl IntoIterator<Item = Value>) -> Result<Oop> {
         let mut v = unsafe { self.call(self.import(b"Vector")?, b"new", &[]) }?;
@@ -249,24 +291,30 @@ impl<'a> Scope<'a> {
         Ok((c.facts, c.pairs))
     }
 }
-unsafe fn state<'a>(c: *mut c_void) -> core::result::Result<&'a State, Outcome> {
-    let s = unsafe { &*c.cast::<State>() };
-    if s.thread != std::thread::current().id() {
-        return Err(invalid());
+unsafe fn state(c: Oop) -> core::result::Result<&'static State, Oop> {
+    unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = &*p;
+        if s.namespace != c || s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        Ok(s)
     }
-    Ok(s)
 }
-fn answer(s: &State, r: Result<Oop>) -> Outcome {
+fn answer(s: &State, r: Result<Oop>) -> Oop {
     match r {
-        Ok(o) => Outcome::loaded(Operand::object(o)),
-        Err(Error::Shape) => Outcome::loaded(Operand::object(s.values[b"nil".as_slice()])),
-        Err(Error::Send(e)) => e,
+        Ok(o) => o,
+        Err(Error::Shape) => s.values[b"nil".as_slice()],
+        Err(Error::Send(e)) => abi::fault_reference(e),
     }
 }
-unsafe extern "C" fn collect(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn collect(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     let result = (|| unsafe {
         let args = borrowed_slice(a, n).ok_or_else(invalid)?;
@@ -669,10 +717,10 @@ unsafe fn pull_entity(
     }
     Ok(out)
 }
-unsafe fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize, op: usize) -> Outcome {
+unsafe fn invoke(c: Oop, r: Oop, a: *const Oop, n: usize, op: usize) -> Oop {
     let s = match unsafe { state(c) } {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return abi::fault_reference(e),
     };
     answer(
         s,
@@ -705,8 +753,7 @@ unsafe fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize, op: usize)
                         return Err(Error::Shape);
                     }
                     if q.behavior(r)? != s.logic_vt
-                        || q.send(s.id.receiver, b"allocationSizeOf:", &[Operand::object(r)])?
-                            .as_word()
+                        || abi::as_size(q.send(s.id.root, b"allocationSizeOf:", &[r])?)
                             != Some(size_of::<Oop>())
                     {
                         return Err(Error::Shape);
@@ -715,17 +762,12 @@ unsafe fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize, op: usize)
                         return Ok(r.cast::<Oop>().read());
                     }
                     let name = q.call(r, b"name", &[])?;
-                    let raw = q.send(s.id.receiver, b"symbolBytesOf:", &[Operand::object(name)])?;
-                    let raw = raw.as_bytes().ok_or_else(invalid)?;
+                    if abi::as_size(q.send(s.id.root, b"isSymbol:", &[name])?) != Some(1) {
+                        return Err(invalid().into());
+                    }
                     let mut text = vec![b'?'];
-                    text.extend_from_slice(
-                        borrowed_bytes(raw.pointer, raw.length).ok_or_else(invalid)?,
-                    );
-                    Ok(object(q.send(
-                        q.value(b"String"),
-                        b"fromBytes:",
-                        &[Operand::bytes(&text)],
-                    )?)?)
+                    text.extend_from_slice(&q.bytes(name)?);
+                    q.text(&text)
                 }
                 3 => q.allocate(s.entity_vt, 0), // entity historically ignores operands.
                 4..=7 => find(&q, r, &args, op - 4),
@@ -764,8 +806,7 @@ unsafe fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize, op: usize)
                 17 => {
                     if !args.is_empty()
                         || q.behavior(r)? != s.logic_vt
-                        || q.send(s.id.receiver, b"allocationSizeOf:", &[Operand::object(r)])?
-                            .as_word()
+                        || abi::as_size(q.send(s.id.root, b"allocationSizeOf:", &[r])?)
                             != Some(size_of::<Oop>())
                     {
                         return Err(Error::Shape);
@@ -782,7 +823,7 @@ unsafe fn invoke(c: *mut c_void, r: Oop, a: *const Operand, n: usize, op: usize)
 }
 macro_rules! entry {
     ($name:ident,$op:expr) => {
-        unsafe extern "C" fn $name(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+        unsafe extern "C" fn $name(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
             unsafe { invoke(c, r, a, n, $op) }
         }
     };
@@ -821,7 +862,7 @@ const STORE_METHODS: &[(&[u8], Method)] = &[
     (b"defineRule:params:body:", define_rule),
     (b"rebuildRules", rebuild),
 ];
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let result = (|| unsafe {
         let s = state(c)?;
         let Some([v]) = borrowed_slice(a, n) else {
@@ -843,13 +884,13 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         edges.extend(s.logicvars.borrow().iter().flat_map(|(a, b)| [*a, *b]));
         edges.extend(s.active.borrow().iter().flatten().copied());
         for edge in edges {
-            s.id.send(v, s.names[b"visit:".as_slice()], &[Operand::object(edge)])?;
+            s.id.send(v, s.names[b"visit:".as_slice()], &[edge])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })();
-    result.map_or_else(|e| e, Outcome::loaded)
+    result.unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     let result = (|| unsafe {
         let s = state(c)?;
         let Some([o, v]) = borrowed_slice(a, n) else {
@@ -858,176 +899,19 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let o = object(*o)?;
         let v = object(*v)?;
         let owned =
-            s.id.send_named(s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?
-                .as_object()
-                == Some(s.logic_vt)
-                && s.id
-                    .send_named(s.id.receiver, b"allocationSizeOf:", &[Operand::object(o)])?
-                    .as_word()
-                    == Some(size_of::<Oop>());
+            s.id.send(s.id.root, s.names[b"behaviorOf:".as_slice()], &[o])? == s.logic_vt
+                && abi::as_size(s.id.send(
+                    s.id.root,
+                    s.names[b"allocationSizeOf:".as_slice()],
+                    &[o],
+                )?) == Some(size_of::<Oop>());
         if owned {
-            s.id.send(
-                v,
-                s.names[b"visit:".as_slice()],
-                &[Operand::object(o.cast::<Oop>().read())],
-            )?;
+            s.id.send(v, s.names[b"visit:".as_slice()], &[o.cast::<Oop>().read()])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })();
-    result.map_or_else(|e| e, Outcome::loaded)
+    result.unwrap_or_else(abi::fault_reference)
 }
-unsafe fn construct(id: Protocol, ns: Oop) -> core::result::Result<Operand, Outcome> {
-    unsafe {
-        let lookup =
-            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
-        let roots = lookup(b"Roots")?;
-        let store = lookup(b"Store")?;
-        // Like the other modules, publication marks a completed construction.
-        let existing =
-            id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"LogicVar")?)])?;
-        if existing.kind() != native::UNIT {
-            return Ok(Operand::object(store));
-        }
-        let mut tokens = vec![];
-        let mut keep = |o: Oop| -> core::result::Result<Oop, Outcome> {
-            tokens.push(
-                id.send_named(roots, b"retain:", &[Operand::object(o)])?
-                    .as_word()
-                    .filter(|n| *n != 0)
-                    .ok_or_else(invalid)?,
-            );
-            Ok(o)
-        };
-        let result = (|| {
-            let mut names = HashMap::new();
-            for &n in NAMES {
-                names.insert(n, keep(id.intern_name(n)?)?);
-            }
-            let mut values = HashMap::new();
-            for n in [
-                b"Integer".as_slice(),
-                b"Float",
-                b"String",
-                b"StringVt",
-                b"nil",
-                b"Store",
-                b"StoreVt",
-            ] {
-                values.insert(n, lookup(n)?);
-            }
-            let parent = lookup(b"ObjectVt")?;
-            let mut vt = || keep(object(id.send_named(parent, b"delegated", &[])?)?);
-            let logic_vt = vt()?;
-            let factory_vt = vt()?;
-            let entity_vt = vt()?;
-            let collector_vt = vt()?;
-            let state = Box::into_raw(Box::new(State {
-                id,
-                namespace: ns,
-                roots,
-                gc: lookup(b"GC")?,
-                receiver: Cell::new(core::ptr::null_mut()),
-                logic_vt,
-                factory_vt,
-                entity_vt,
-                collector_vt,
-                names,
-                values,
-                logicvars: RefCell::new(HashMap::new()),
-                collectors: RefCell::new(HashMap::new()),
-                active: RefCell::new(vec![]),
-                thread: std::thread::current().id(),
-            }));
-            let s = &*state;
-            let logic_methods = [
-                (b"name".as_slice(), name as Method),
-                (b"printString".as_slice(), print as Method),
-                (b"clone".as_slice(), clone_logic as Method),
-                (b"new".as_slice(), clone_logic as Method),
-            ];
-            let factory_methods = [
-                (b"named:".as_slice(), named as Method),
-                (b"rootsDo:".as_slice(), self::roots as Method),
-                (b"referencesOf:do:".as_slice(), references as Method),
-            ];
-            let collector_methods = [(b"value:value:value:".as_slice(), collect as Method)];
-            for (vt, methods) in [
-                (logic_vt, logic_methods.as_slice()),
-                (factory_vt, factory_methods.as_slice()),
-                (collector_vt, collector_methods.as_slice()),
-                (s.values[b"StoreVt".as_slice()], STORE_METHODS),
-            ] {
-                for &(name, method) in methods {
-                    id.send(
-                        vt,
-                        s.names[b"addMethod".as_slice()],
-                        &[
-                            Operand::object(s.names[name]),
-                            Operand::entry(NativeEntry::new(method, state.cast())),
-                        ],
-                    )?;
-                }
-            }
-            let receiver = keep(object(id.send_named(
-                factory_vt,
-                b"allocate",
-                &[Operand::word(0)],
-            )?)?)?;
-            s.receiver.set(receiver);
-            id.send_named(roots, b"register:", &[Operand::object(receiver)])?;
-            id.send_named(
-                s.gc,
-                b"trace:with:",
-                &[Operand::object(logic_vt), Operand::object(receiver)],
-            )?;
-            for vt in [logic_vt, factory_vt, entity_vt, collector_vt] {
-                id.send_named(
-                    id.receiver,
-                    b"ownerOf:put:",
-                    &[Operand::object(vt), Operand::object(receiver)],
-                )?;
-            }
-            for (name, o) in [
-                (b"LogicVarVt".as_slice(), logic_vt),
-                (b"LogicVarFactoryVt", factory_vt),
-                (b"EntityVt", entity_vt),
-                (b"RelCollectorVt", collector_vt),
-                (b"LogicVar", receiver),
-                (b"db", store),
-            ] {
-                id.send_named(
-                    ns,
-                    b"at:put:",
-                    &[Operand::object(s.names[name]), Operand::object(o)],
-                )?;
-            }
-            Ok(Operand::object(store))
-        })();
-        for t in tokens {
-            id.send_named(roots, b"release:", &[Operand::word(t)])?;
-        }
-        result
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } {
-        return invalid();
-    }
-    let result = (|| unsafe {
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        construct(*id, object(*ns)?)
-    })();
-    result.map_or_else(|e| e, Outcome::loaded)
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: 1,
-    byte_size: size_of::<native::Module>() as u32,
-    initialize: Some(initialize),
-};
-
 const NAMES: &[&[u8]] = &[
     b"!=",
     b"<",
@@ -1115,10 +999,225 @@ const NAMES: &[&[u8]] = &[
     b"size",
     b"sum",
     b"sum:where:",
-    b"symbolBytesOf:",
+    b"isSymbol:",
     b"trace:with:",
     b"value:value:value:",
     b"visit:",
     b"wordOf:",
     b"~=",
+    b"Word",
+    b"low32",
+    b"high32",
+    b"fromUnsignedLow:high:",
+    b"sequence",
+    b"sizeWord",
+    b"atWord:",
+    b"methodAt:",
+    b"withContext:",
 ];
+
+const LOGIC_METHODS: &[(&[u8], Method)] = &[
+    (b"name", name),
+    (b"printString", print),
+    (b"clone", clone_logic),
+    (b"new", clone_logic),
+];
+const FACTORY_METHODS: &[(&[u8], Method)] = &[
+    (b"named:", named),
+    (b"rootsDo:", roots),
+    (b"referencesOf:do:", references),
+];
+const COLLECTOR_METHODS: &[(&[u8], Method)] = &[(b"value:value:value:", collect)];
+const fn index(name: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        let n = NAMES[i];
+        if n.len() == name.len() {
+            let mut j = 0;
+            while j < n.len() && n[j] == name[j] {
+                j += 1;
+            }
+            if j == n.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("undeclared Relational name")
+}
+const LITERALS: [Literal; NAMES.len()] = {
+    let mut a = [const { Literal::new(b"") }; NAMES.len()];
+    let mut i = 0;
+    while i < NAMES.len() {
+        a[i] = Literal::new(NAMES[i]);
+        i += 1;
+    }
+    a
+};
+const METHOD_COUNT: usize =
+    STORE_METHODS.len() + LOGIC_METHODS.len() + FACTORY_METHODS.len() + COLLECTOR_METHODS.len();
+const METHODS: [MethodSpec; METHOD_COUNT] = {
+    let mut a = [const {
+        MethodSpec {
+            name: 0,
+            entry: None,
+        }
+    }; METHOD_COUNT];
+    let tables = [
+        STORE_METHODS,
+        LOGIC_METHODS,
+        FACTORY_METHODS,
+        COLLECTOR_METHODS,
+    ];
+    let mut i = 0;
+    let mut t = 0;
+    while t < tables.len() {
+        let mut j = 0;
+        while j < tables[t].len() {
+            let (n, f) = tables[t][j];
+            a[i] = MethodSpec {
+                name: index(n),
+                entry: Some(f),
+            };
+            i += 1;
+            j += 1;
+        }
+        t += 1;
+    }
+    a
+};
+unsafe extern "C" fn initialize(
+    api: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    count: usize,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    if api.is_null() {
+        std::process::abort();
+    }
+    API.store(api.cast_mut(), Ordering::Release);
+    (|| unsafe {
+        let id = *api;
+        let [ns] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        object(*ns)?;
+        let old = INSTANCE.load(Ordering::Acquire);
+        if !old.is_null() {
+            let s = state(*ns)?;
+            return if s.ready.get() && s.id.root == id.root {
+                Ok(s.values[b"Store".as_slice()])
+            } else {
+                Err(invalid())
+            };
+        }
+        let literals = borrowed_slice(l, count)
+            .filter(|v| v.len() == NAMES.len())
+            .ok_or_else(invalid)?;
+        let names: HashMap<_, _> = NAMES
+            .iter()
+            .copied()
+            .zip(literals.iter().copied())
+            .collect();
+        let send = |r, name: &[u8], args: &[Oop]| id.send(r, names[name], args);
+        let lookup = |name: &[u8]| object(send(*ns, b"at:", &[names[name]])?);
+        let roots = lookup(b"Roots")?;
+        let store = lookup(b"Store")?;
+        let mut tokens = Vec::new();
+        let mut keep = |o: Oop| -> core::result::Result<Oop, Oop> {
+            tokens.push(send(roots, b"retain:", &[o])?);
+            Ok(o)
+        };
+        let result = (|| {
+            for &name in names.values() {
+                keep(name)?;
+            }
+            let mut values = HashMap::new();
+            for name in [
+                b"Integer".as_slice(),
+                b"Float",
+                b"String",
+                b"StringVt",
+                b"nil",
+                b"Store",
+                b"StoreVt",
+            ] {
+                values.insert(name, lookup(name)?);
+            }
+            let parent = lookup(b"ObjectVt")?;
+            let mut vt = || keep(send(parent, b"delegated", &[])?);
+            let logic_vt = vt()?;
+            let factory_vt = vt()?;
+            let entity_vt = vt()?;
+            let collector_vt = vt()?;
+            let state = Box::into_raw(Box::new(State {
+                id,
+                namespace: *ns,
+                roots,
+                gc: lookup(b"GC")?,
+                receiver: Cell::new(ptr::null_mut()),
+                logic_vt,
+                factory_vt,
+                entity_vt,
+                collector_vt,
+                names: names.clone(),
+                values,
+                logicvars: RefCell::new(HashMap::new()),
+                collectors: RefCell::new(HashMap::new()),
+                active: RefCell::new(Vec::new()),
+                ready: Cell::new(false),
+                thread: std::thread::current().id(),
+            }));
+            INSTANCE.store(state, Ordering::Release);
+            let s = &*state;
+            for (vt, methods) in [
+                (logic_vt, LOGIC_METHODS),
+                (factory_vt, FACTORY_METHODS),
+                (collector_vt, COLLECTOR_METHODS),
+                (s.values[b"StoreVt".as_slice()], STORE_METHODS),
+            ] {
+                for &(name, _) in methods {
+                    let method = keep(send(image, b"methodAt:", &[names[name]])?)?;
+                    let method = keep(send(method, b"withContext:", &[*ns])?)?;
+                    send(vt, b"addMethod", &[names[name], method])?;
+                }
+            }
+            let receiver = keep(send(factory_vt, b"allocate", &[abi::size(0).unwrap()])?)?;
+            s.receiver.set(receiver);
+            send(roots, b"register:", &[receiver])?;
+            send(s.gc, b"trace:with:", &[logic_vt, receiver])?;
+            for vt in [logic_vt, factory_vt, entity_vt, collector_vt] {
+                send(id.root, b"ownerOf:put:", &[vt, receiver])?;
+            }
+            for (name, value) in [
+                (b"LogicVarVt".as_slice(), logic_vt),
+                (b"LogicVarFactoryVt", factory_vt),
+                (b"EntityVt", entity_vt),
+                (b"RelCollectorVt", collector_vt),
+                (b"LogicVar", receiver),
+                (b"db", store),
+            ] {
+                send(*ns, b"at:put:", &[names[name], value])?;
+            }
+            s.ready.set(true);
+            Ok(store)
+        })();
+        for token in tokens {
+            send(roots, b"release:", &[token])?;
+        }
+        result
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
+    initialize: Some(initialize),
+};

@@ -1,0 +1,20 @@
+[Module load: #relational];
+[[|
+[Store assert: #imageValue attr: #history value: true];
+[Store assert: #item attr: #imageValue value: 17];
+let before := [Store basis];
+[Store retainSince: before];
+[Store assert: #item attr: #imageValue value: 18];
+let handle := [Store cellFor: #item attr: #imageValue];
+[Globals at: #main put: [|
+  [GC collectPrecisely];
+  [System println: #[
+    [[Store valueOf: #item attr: #imageValue asOf: before] = 17]
+    [[Store findAll: ?v where: #[#[#item #imageValue ?v]]] = #[18]]
+    [[Module imageProviders] = #[#store #relational]]
+    [[handle value] = 18]
+  ]]
+]];
+[System println: [System saveImage: OptionalImagePath]];
+[System println: [[System imageSaveReport] status]]
+] value]
