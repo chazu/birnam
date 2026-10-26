@@ -686,6 +686,15 @@ impl Model {
                     {
                         return self.named(b"nil");
                     }
+                    if !owned {
+                        // An empty allocation may be a foreign owner's handle.
+                        // Use the current ownership protocol, not its extent,
+                        // to identify ordinary reference storage.
+                        let behavior = self.keep(self.behavior(*value)?);
+                        if self.send(self.gc, b"referenceOwnerOf:", &[behavior])? != self.receiver {
+                            return self.named(b"nil");
+                        }
+                    }
                     let words = self.extent(*value)?.div_ceil(size_of::<Oop>());
                     let indices = if words == 0 {
                         Vec::new()

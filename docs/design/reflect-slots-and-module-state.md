@@ -35,6 +35,9 @@ never decodes foreign payloads or returns raw-word fields as references. Empty
 ordinary storage answers an empty Vector; unowned nonempty storage or missing
 layout answers nil. Owned raw-only storage (such as an Integer allocation)
 answers an empty reference inventory; its raw contents are not decoded.
+Unowned empty allocations are admitted only when the current GC
+`referenceOwnerOf:` query identifies ObjectModel. A zero-byte handle can instead
+belong to an owner that stores its data separately, such as String or Bytes.
 Native families still need their own logical inspection
 protocols; this is not a universal native-payload inspector.
 

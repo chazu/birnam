@@ -152,3 +152,60 @@ fn reflection_globals_and_parents_use_live_owner_messages() {
     q.call(root_behavior, b"addMethod", &[key, original])
         .unwrap();
 }
+
+#[test]
+#[ignore = "requires production native modules"]
+fn empty_slot_reflection_consults_the_current_reference_owner() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = resolve_from_exe_dir(
+        Path::new("/unused/bin"),
+        Overrides {
+            lib_dir: Some(&lib),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let host = HostRuntime::start_native(&resources, true).unwrap();
+    let hooks = Hooks::new(&host.context);
+    let q = host.scope();
+    let model = host.named(b"ObjectModel").unwrap();
+    let gc = host.named(b"GC").unwrap();
+    let raw = q
+        .call(
+            host.named(b"ObjectVt").unwrap(),
+            b"allocate",
+            &[birnam_abi::size(0).unwrap()],
+        )
+        .unwrap();
+    assert_eq!(
+        q.vector_size(q.call(model, b"referenceSlotsOf:", &[raw]).unwrap())
+            .unwrap(),
+        0
+    );
+    let foreign = q.string(b"foreign").unwrap();
+    assert_eq!(
+        q.call(model, b"referenceSlotsOf:", &[foreign]).unwrap(),
+        host.named(b"nil").unwrap()
+    );
+    let vt = q.call(host.context.id.root, b"behaviorOf:", &[gc]).unwrap();
+    let selector = hooks.symbol(b"referenceOwnerOf:");
+    let original = hooks.capture(vt, selector);
+    let context = hooks.context(&[gc, birnam_abi::size(0).unwrap()]);
+    q.call(
+        vt,
+        b"addMethod",
+        &[selector, hooks.method(b"fixedCount", context)],
+    )
+    .unwrap();
+    assert_eq!(
+        q.call(model, b"referenceSlotsOf:", &[raw]).unwrap(),
+        host.named(b"nil").unwrap()
+    );
+    assert_eq!(hooks.count(context, 1), 1);
+    q.call(vt, b"addMethod", &[selector, original]).unwrap();
+    assert_eq!(
+        q.vector_size(q.call(model, b"referenceSlotsOf:", &[raw]).unwrap())
+            .unwrap(),
+        0
+    );
+}

@@ -756,3 +756,27 @@ parser and metadata accessors remain live through collecting callbacks, equal
 source text does not merge identity, retained records do not reparse, and source
 preparation/registration work without Store. No old carrier compatibility API is
 introduced. [Receipt](../measurements/source-inspection-oop-20261026.json).
+
+
+## Ordinary slot reflection respects zero-byte handles
+
+The full authored-language gate found that slot reflection treated every unowned
+zero-byte allocation as empty ordinary storage. String's Oop representation is
+now such a handle, so this incorrectly answered an empty inventory and
+`unknownSlot` instead of declining foreign storage and answering
+`unsupportedSlots`.
+
+ObjectModel now uses the existing current GC `referenceOwnerOf:` query to admit
+unowned empty allocations. Its own instance/layout records retain their previous
+behavior. This adds no payload-family list, private owner access or Id operation.
+String and Bytes handles are rejected; ordinary empty objects remain supported.
+A separate check replaces the reference-owner query and verifies live dispatch.
+
+All 870 authored assertions, 35 focused slot assertions and the core Oop gate
+pass. The new source-inspection harness also passes. With the approved 15-second
+startup policy, Concurrency passes all 19 service checks. The first multicore run
+failed seven later checks; an instrumented rerun and an unmodified repeat both
+pass all 27. Both outcomes are retained because the first failure's cause is not
+established. Closure observation and all 177 task-control checks pass. These are
+component acceptance results, not a clean release qualification.
+[Receipt](../measurements/slot-owner-oop-20261026.json).

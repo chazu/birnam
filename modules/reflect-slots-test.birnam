@@ -19,6 +19,7 @@ let s := [TestSuite named: "Reflect slots" module: #stdlib];
   [t assert: [[Reflect slot: 0 in: object] == value] describes: "written edge survives collection"];
   [t expect: [Reflect slotsOf: [Object clone]] equals: #[] describes: "empty ordinary storage"];
   [t expect: [Reflect slotsOf: "foreign"] equals: nil describes: "foreign payload is not decoded"];
+  [t expect: [Reflect slotsOf: ["foreign" asBytes]] equals: nil describes: "a foreign zero-byte handle is not ordinary storage"];
   [t expect: [[Reflect slot: 0 in: "foreign"] kind] equals: #unsupportedSlots describes: "unsupported access is explicit"];
   [#[-1 2 #absent "0"] do: [:key |
     [t expect: [[Reflect slot: key in: object] kind] equals: #unknownSlot describes: "bad reference key rejected"]]]]];

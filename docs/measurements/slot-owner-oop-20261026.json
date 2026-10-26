@@ -1,0 +1,109 @@
+{
+  "passed": true,
+  "base_revision": "2da6aa71",
+  "scope": "Owner-based ordinary slot reflection and authored language gate",
+  "authored_assertions": 870,
+  "slot_assertions": 35,
+  "checks": [
+    {
+      "name": "authored_all",
+      "log": ".cargo-target/oop-authored-all-fixed.log",
+      "sha256": "b55f743f190cd0241b527227e7a51d30009a08b306ea04d0497af663aaa34bff"
+    },
+    {
+      "name": "slots",
+      "log": ".cargo-target/oop-reflect-slots-run.log",
+      "sha256": "08c310711f4964ab1713ae7f2c8af7625d3585eb20a7d0330efbdf5df16728b9"
+    },
+    {
+      "name": "live_owner",
+      "log": ".cargo-target/oop-reflect-slots-owner.log",
+      "sha256": "b7ccf90de26e08d140639b843c5a65a7f6d8d79b917633df1becb6c9ca726df8"
+    },
+    {
+      "name": "core",
+      "log": ".cargo-target/oop-slot-owner-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    }
+  ],
+  "contract": "ObjectModel-owned records keep their existing layout handling; unowned empty allocations require the current reference owner to be ObjectModel",
+  "id_changes": false,
+  "task_results": {
+    "initial": {
+      "checks": [
+        {
+          "argv": [
+            "python3",
+            "scripts/concurrency-cli-test.py",
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/task-qualification/worker-15s-_td0xpvf/prefix"
+          ],
+          "exit_code": 0,
+          "label": "concurrency-cli",
+          "started_unix_ns": 1793028337639958000,
+          "status": "passed",
+          "wall_ns": 463994740666
+        },
+        {
+          "argv": [
+            "bash",
+            "scripts/multicore-smoke.sh",
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/task-qualification/worker-15s-_td0xpvf/prefix"
+          ],
+          "exit_code": 1,
+          "label": "multicore",
+          "started_unix_ns": 1793028801787641000,
+          "status": "failed",
+          "wall_ns": 334015161958
+        }
+      ],
+      "schema": 1
+    },
+    "multicore_unmodified_rerun": {
+      "exit_code": 0,
+      "seconds": 103.218975625,
+      "passed": true
+    },
+    "remaining": {
+      "checks": [
+        {
+          "argv": [
+            "bash",
+            "scripts/closure-observation-test.sh",
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/slots-818u425i/prefix"
+          ],
+          "exit_code": 0,
+          "label": "closure-observation",
+          "started_unix_ns": 1793031029545083000,
+          "status": "passed",
+          "wall_ns": 114893391792
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--offline",
+            "--locked",
+            "-p",
+            "birnam-siphon",
+            "--test",
+            "task_control",
+            "--",
+            "--ignored",
+            "--nocapture"
+          ],
+          "exit_code": 0,
+          "label": "task-control",
+          "started_unix_ns": 1793031144579975000,
+          "status": "passed",
+          "wall_ns": 45423832834
+        }
+      ],
+      "schema": 1
+    }
+  },
+  "qualification_note": "The initial multicore run failed seven assertions; an instrumented run and the unmodified repeat passed all 27. The initial failure cause is not established.",
+  "remaining": [
+    "Remaining legacy native test harness migration",
+    "Full image-family, clean installer and release qualification"
+  ]
+}
