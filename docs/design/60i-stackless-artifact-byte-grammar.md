@@ -1304,7 +1304,15 @@ Metadata is exactly 64 bytes:
 | `0x30` | 4 | implementation slot | named adapter Oop slot or `u32::MAX` |
 | `0x34` | 4 | call-window start | receiver slot of the reusable call window or `u32::MAX` |
 | `0x38` | 4 | call-window argument capacity | maximum source-send arity, or zero when absent |
-| `0x3c` | 4 | reserved | zero |
+| `0x3c` | 4 | counter representation | 0: language Integer; 1: immediate Oop (driver argument count 1 and lowering version >= 2) |
+
+Oop lowering version 2 requests an immediate counter for generated native steps.
+The general descriptor constructor keeps the original Integer counter contract.
+Generated slot and control-site indices also use immediate Oops; Machine's index
+operations continue to accept both immediate and language Integer inputs. This
+keeps the internal execution machinery independent of replaceable Integer
+conversion Methods. Language numeric literals still call their current owners.
+The flag is Execution-owned descriptor data, not an Id calling-convention change.
 
 Entry arguments occupy the checked half-open range
 `entry_argument_start .. entry_argument_start + entry_argument_count`.

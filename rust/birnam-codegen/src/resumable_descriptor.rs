@@ -66,6 +66,27 @@ pub fn compile_descriptor_v2(
         diagnostic_path,
         source,
         driver_argument_count,
+        false,
+    )
+}
+
+/// Native generated steps use immediate Oop counters and indices. The general
+/// constructor retains the Integer counter contract for authored steps.
+pub fn compile_oop_descriptor_v2(
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    authority: SelectionSpec<'_>,
+    diagnostic_path: &[u8],
+    source: &[u8],
+) -> Result<Vec<u8>, Error> {
+    compile_descriptor_profile_v2(
+        program,
+        layout,
+        DescriptorProfile::Legacy(authority),
+        diagnostic_path,
+        source,
+        1,
+        true,
     )
 }
 
@@ -84,6 +105,7 @@ pub fn compile_portable_descriptor_v2(
         b"",
         b"",
         driver_argument_count,
+        false,
     )
 }
 
@@ -94,6 +116,7 @@ fn compile_descriptor_profile_v2(
     diagnostic_path: &[u8],
     source: &[u8],
     driver_argument_count: u32,
+    immediate_program_counter: bool,
 ) -> Result<Vec<u8>, Error> {
     if program.blocks.is_empty()
         || program.blocks.len() != layout.pc_value_locations.len()
@@ -104,13 +127,17 @@ fn compile_descriptor_profile_v2(
     {
         return Err(Error::InvalidProgram);
     }
+    let lowering_version = if immediate_program_counter {
+        2
+    } else {
+        LOWERING_VERSION_V1
+    };
     let (implementation_kind, portable, source_map, source_digest) = match profile {
         DescriptorProfile::Legacy(authority) => (
             authority.implementation_kind,
-            portable_implementation_identity(authority, LOWERING_VERSION_V1)
+            portable_implementation_identity(authority, lowering_version)
                 .map_err(|_| Error::InvalidProgram)?,
-            source_map_identity(authority, LOWERING_VERSION_V1)
-                .map_err(|_| Error::InvalidProgram)?,
+            source_map_identity(authority, lowering_version).map_err(|_| Error::InvalidProgram)?,
             authority.source_revision,
         ),
         DescriptorProfile::Portable(row) => (
@@ -118,7 +145,7 @@ fn compile_descriptor_profile_v2(
                 SubjectKind::NamedAdapter => ImplementationKind::NamedAdapter,
                 SubjectKind::BlockBody => ImplementationKind::BlockBody,
             },
-            portable_resumable_manifest::portable_implementation_identity(row, LOWERING_VERSION_V1)
+            portable_resumable_manifest::portable_implementation_identity(row, lowering_version)
                 .map_err(|_| Error::InvalidProgram)?,
             0,
             [0; 32],
@@ -134,7 +161,7 @@ fn compile_descriptor_profile_v2(
     let mut metadata = Vec::with_capacity(64);
     push_u64(&mut metadata, portable);
     push_u64(&mut metadata, source_map);
-    push_u32(&mut metadata, LOWERING_VERSION_V1);
+    push_u32(&mut metadata, lowering_version);
     push_u32(&mut metadata, implementation_kind as u32);
     push_u32(&mut metadata, layout.slot_count);
     push_u32(
@@ -148,7 +175,7 @@ fn compile_descriptor_profile_v2(
     push_u32(&mut metadata, layout.implementation_slot.unwrap_or(ABSENT));
     push_u32(&mut metadata, layout.call_window_start.unwrap_or(ABSENT));
     push_u32(&mut metadata, layout.call_window_argument_capacity);
-    push_u32(&mut metadata, 0);
+    push_u32(&mut metadata, u32::from(immediate_program_counter));
 
     let edge_index = |source: ProgramCounter, target: ProgramCounter| {
         layout
@@ -786,6 +813,39 @@ mod tests {
             args: Vec::new(),
             source: selector,
         }
+    }
+
+    #[test]
+    fn generated_counter_mode_is_explicit_and_legacy_steps_keep_integers() {
+        let block = Block {
+            params: vec![b"value"],
+            body: vec![Statement::Expr(Expr::Global(b"value"))],
+        };
+        let program = lower_block(&block).unwrap();
+        let layout = color_slots(&program).unwrap();
+        let authority = authority(&[0]);
+        let old =
+            compile_descriptor_v2(&program, &layout, authority, b"test", b"source", 1).unwrap();
+        let new =
+            compile_oop_descriptor_v2(&program, &layout, authority, b"test", b"source").unwrap();
+        let old = inspect(&old, authority).unwrap();
+        let admitted = inspect(&new, authority).unwrap();
+        assert!(!old.metadata().immediate_program_counter);
+        assert!(admitted.metadata().immediate_program_counter);
+        assert_eq!(admitted.metadata().lowering_version, 2);
+        assert_ne!(
+            old.metadata().portable_implementation_identity,
+            admitted.metadata().portable_implementation_identity
+        );
+        // Metadata begins after the fixed directory. Unknown counter flags and
+        // immediate counters without a driver argument are not admitted.
+        let metadata = u64::from_le_bytes(new[80..88].try_into().unwrap()) as usize;
+        let mut bad = new.clone();
+        bad[metadata + 0x3c..metadata + 0x40].copy_from_slice(&2u32.to_le_bytes());
+        assert!(inspect(&bad, authority).is_err());
+        let mut bad = new;
+        bad[metadata + 0x20..metadata + 0x24].copy_from_slice(&0u32.to_le_bytes());
+        assert!(inspect(&bad, authority).is_err());
     }
 
     #[test]

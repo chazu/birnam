@@ -8,7 +8,7 @@
 > native image artifacts are not compatibility inputs.
 
 > **Current Oop runtime admission (2026-10-26):** the runtime ABI hash
-> now uses `Id-oop-image-v3`. Image format 8 adds the immediate-reference locator
+> now uses `Id-oop-image-v4`. Image format 8 adds the immediate-reference locator
 > below. Older runtime images and `BIRNAMO1` native bundles are rejected.
 
 ## 1. Problem

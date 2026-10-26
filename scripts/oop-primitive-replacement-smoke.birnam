@@ -1,0 +1,28 @@
+// Execution's internal counters and indices must not require these language
+// methods in order to execute their source-defined replacements.
+[[|
+// Capture dependencies before replacing a primitive used by global lookup.
+let collector := GC; let arguments := Vector;
+let read := [Integer methodFor: #wordOf:];
+let make := [Integer methodFor: #fromWord:];
+let input := 40; let replacement := 41;
+let word := [read invokeOn: Integer arguments: #[input]];
+let replacementWord := [read invokeOn: Integer arguments: #[replacement]];
+[Reflect defineMethod: #wordOf: on: Integer as: [:self :value |
+  [collector collectPrecisely];
+  let selected := [[value == input] ifTrue: [| replacement] ifFalse: [| value]];
+  [read invokeOn: self arguments: [[arguments new] add: selected]]
+]];
+let converted := [Integer fromWord: [Integer wordOf: input]];
+[Reflect defineMethod: #fromWord: on: Integer as: [:self :value |
+  [collector collectPrecisely];
+  let selected := [[value == word] ifTrue: [| replacementWord] ifFalse: [| value]];
+  [make invokeOn: self arguments: [[arguments new] add: selected]]
+]];
+let constructed := [Integer fromWord: word];
+let ordinary := [20 + 22];
+let captured := [read invokeOn: Integer arguments: #[input]];
+[[Vtable behaviorOf: Integer] addMethod: read as: #wordOf:];
+[[Vtable behaviorOf: Integer] addMethod: make as: #fromWord:];
+#[[converted = 41] [constructed = 41] [ordinary = 42] [[Integer fromWord: captured] = 40]]
+] value]

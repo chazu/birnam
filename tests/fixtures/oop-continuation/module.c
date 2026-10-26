@@ -78,7 +78,7 @@ static Oop capture_registration(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void
 /* context = [original callSite, mode selector, site index, result slot, pc,
               attempts, refusals, Integer]. First matching call only. */
 static Oop control_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=1)return id.invalid;
- Oop word=send(get(c,7),WORDOF,a,1);CHECK(word);if(!((uintptr_t)word&1)){word=send(word,LOW32,0,0);CHECK(word);}
+ Oop word=a[0];if(!((uintptr_t)word&1)){word=send(get(c,7),WORDOF,a,1);CHECK(word);if(!((uintptr_t)word&1)){word=send(word,LOW32,0,0);CHECK(word);}}
  Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};
  Oop original=send(get(c,0),INVOKE,invoke,2);CHECK(original);
  if(word!=get(c,2)||get(c,5)!=id_size(0))return original;

@@ -19,6 +19,7 @@ pub(crate) fn probe_spec(slot_count: usize, pc_count: usize) -> FrameDescriptorV
         },
         program_counter_count: pc_count,
         driver_argument_count: usize::from(pc_count > 1),
+        immediate_program_counter: false,
         slot_count,
         entry_receiver_slot: 0,
         entry_argument_start: 1,

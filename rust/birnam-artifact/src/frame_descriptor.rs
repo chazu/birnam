@@ -97,6 +97,7 @@ pub struct Metadata {
     pub slot_count: u32,
     pub program_counter_count: u32,
     pub driver_argument_count: u32,
+    pub immediate_program_counter: bool,
     pub entry_receiver_slot: u32,
     pub entry_argument_start: u32,
     pub entry_argument_count: u32,
@@ -545,7 +546,7 @@ fn inspect_structure<'a>(bytes: &'a [u8]) -> Result<FrameDescriptor<'a>, Error> 
 }
 
 fn decode_metadata(bytes: &[u8]) -> Result<Metadata, Error> {
-    if bytes.len() != 64 || read_u32(bytes, 0x3c) != Some(0) {
+    if bytes.len() != 64 || !matches!(read_u32(bytes, 0x3c), Some(0 | 1)) {
         return Err(Error::Metadata);
     }
     let implementation_kind = match read_u32(bytes, 0x14) {
@@ -561,6 +562,7 @@ fn decode_metadata(bytes: &[u8]) -> Result<Metadata, Error> {
         slot_count: read_u32(bytes, 0x18).ok_or(Error::Metadata)?,
         program_counter_count: read_u32(bytes, 0x1c).ok_or(Error::Metadata)?,
         driver_argument_count: read_u32(bytes, 0x20).ok_or(Error::Metadata)?,
+        immediate_program_counter: read_u32(bytes, 0x3c) == Some(1),
         entry_receiver_slot: read_u32(bytes, 0x24).ok_or(Error::Metadata)?,
         entry_argument_start: read_u32(bytes, 0x28).ok_or(Error::Metadata)?,
         entry_argument_count: read_u32(bytes, 0x2c).ok_or(Error::Metadata)?,
@@ -592,6 +594,8 @@ fn validate_entry(metadata: Metadata, captures: Section<'_>) -> Result<(), Error
     if metadata.program_counter_count == 0
         || metadata.program_counter_count as usize > MAX_PROGRAM_COUNTERS
         || metadata.driver_argument_count > 1
+        || (metadata.immediate_program_counter
+            && (metadata.driver_argument_count != 1 || metadata.lowering_version < 2))
         || (metadata.driver_argument_count == 0 && metadata.program_counter_count != 1)
     {
         return Err(Error::Metadata);

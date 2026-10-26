@@ -58,6 +58,9 @@ run('source diagnostic', [bad], error=True, contains='syntax')
 methods = work / 'methods.birnam'
 methods.write_text('[System println: [[|\n' + (root / 'scripts/oop-method-invocation-smoke.birnam').read_text() + '\n] value]]\n')
 run('method construction through Host', [methods], expected='#[' + ' '.join(['true'] * 19) + ']\n')
+primitive = work / 'primitive-replacement.birnam'
+primitive.write_text('[System println: ' + (root / 'scripts/oop-primitive-replacement-smoke.birnam').read_text() + ']\n')
+run('source primitive replacements', [primitive], expected='#[true true true true]\n')
 module = work / 'hostModule.birnam'
 module.write_text('[Module named: #hostModule requires: #[]]; [System println: 73]; [Module markLoaded: #hostModule]\n')
 artifact = work / 'libbirnam_hostModule.dylib'

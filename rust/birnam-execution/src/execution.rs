@@ -199,6 +199,7 @@ pub(crate) struct FrameDescriptorV2Spec {
     pub(crate) identity: DescriptorIdentity,
     pub(crate) program_counter_count: usize,
     pub(crate) driver_argument_count: usize,
+    pub(crate) immediate_program_counter: bool,
     pub(crate) slot_count: usize,
     pub(crate) entry_receiver_slot: usize,
     pub(crate) entry_argument_start: usize,
@@ -235,6 +236,7 @@ pub(crate) struct FrameDescriptor {
     layout_version: usize,
     program_counter_count: usize,
     driver_argument_count: usize,
+    pub(crate) immediate_program_counter: bool,
     slot_kinds: Arc<[SlotKind]>,
     call_sites: Arc<[CallSiteDescriptor]>,
     pub(crate) call_plans: Arc<[CallPreparation]>,
@@ -288,6 +290,7 @@ impl FrameDescriptor {
             layout_version: self.layout_version,
             program_counter_count: self.program_counter_count,
             driver_argument_count: self.driver_argument_count,
+            immediate_program_counter: self.immediate_program_counter,
             slot_kinds: self.slot_kinds.clone(),
             call_sites: self.call_sites.clone(),
             call_plans: self.call_plans.clone(),
@@ -493,6 +496,7 @@ impl FrameDescriptor {
             },
             program_counter_count: metadata.program_counter_count as usize,
             driver_argument_count: metadata.driver_argument_count as usize,
+            immediate_program_counter: metadata.immediate_program_counter,
             slot_count: metadata.slot_count as usize,
             entry_receiver_slot: metadata.entry_receiver_slot as usize,
             entry_argument_start: metadata.entry_argument_start as usize,
@@ -510,7 +514,9 @@ impl FrameDescriptor {
         if spec.program_counter_count == 0 {
             return Err(DescriptorError::EmptyProgramCounterRange);
         }
-        if spec.driver_argument_count > 1 {
+        if spec.driver_argument_count > 1
+            || (spec.immediate_program_counter && spec.driver_argument_count != 1)
+        {
             return Err(DescriptorError::InvalidDriverArgumentCount);
         }
         if spec.driver_argument_count == 0 && spec.program_counter_count != 1 {
@@ -671,6 +677,7 @@ impl FrameDescriptor {
             layout_version: FRAME_LAYOUT_VERSION_V2,
             program_counter_count: spec.program_counter_count,
             driver_argument_count: spec.driver_argument_count,
+            immediate_program_counter: spec.immediate_program_counter,
             slot_kinds: slot_kinds.into(),
             call_sites: spec.call_sites.into(),
             call_plans: Arc::from([]),
@@ -5193,6 +5200,7 @@ mod tests {
             },
             program_counter_count: 2,
             driver_argument_count: 1,
+            immediate_program_counter: false,
             slot_count,
             entry_receiver_slot: 0,
             entry_argument_start: 1,

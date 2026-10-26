@@ -16,6 +16,7 @@ pub(super) unsafe fn descriptor(
             },
             program_counter_count: if returns { 2 } else { 1 },
             driver_argument_count: 1,
+            immediate_program_counter: true,
             slot_count: 4,
             entry_receiver_slot: 0,
             entry_argument_start: 1,

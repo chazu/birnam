@@ -46,13 +46,5 @@ static inline O string(Call*c,const unsigned char*bytes,size_t n){
 }
 static inline O global(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_GLOBAL,&key,1);}
 /* Machine owns logical slots; generated code never reads its payload. */
-static inline O frame_get(Call*c,O machine,size_t slot,size_t selector){O index=integer(c,slot);return call(c,machine,selector,&index,1);}
-static inline void frame_put(Call*c,O machine,size_t slot,O value,size_t selector){O index=integer(c,slot);O args[]={index,value};call(c,machine,selector,args,2);}
-
-static inline size_t integer_index(Call*c,O value){
- O factory=named(c,S_INTEGER);O word=call(c,factory,S_WORD_OF,&value,1);if(c->error)return 0;
- if((uintptr_t)word&1)return (uintptr_t)word>>1;
- O low=call(c,word,S_LOW32,0,0);O high=call(c,word,S_HIGH32,0,0);if(c->error)return 0;
- if(!((uintptr_t)low&1)||!((uintptr_t)high&1)||((uintptr_t)high>>1)!=0){c->error=id.invalid;return 0;}
- return (uintptr_t)low>>1;
-}
+static inline O frame_get(Call*c,O machine,size_t slot,size_t selector){O index=size_oop(slot);return call(c,machine,selector,&index,1);}
+static inline void frame_put(Call*c,O machine,size_t slot,O value,size_t selector){O index=size_oop(slot);O args[]={index,value};call(c,machine,selector,args,2);}

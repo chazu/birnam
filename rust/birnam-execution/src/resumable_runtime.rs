@@ -729,7 +729,7 @@ pub(super) unsafe extern "C" fn advance(
             {
                 *left = left.saturating_sub(1);
             }
-            let (step, pc, count) = {
+            let (step, pc, count, immediate) = {
                 let e = s.engine.borrow();
                 let m = checked(e.machine(OWNER, capability))?;
                 let f = m.arena().current_handle().ok_or_else(invalid)?;
@@ -737,12 +737,17 @@ pub(super) unsafe extern "C" fn advance(
                     checked(m.arena().descriptor(f))?.step_method().to_method(),
                     checked(m.arena().program_counter(f))?,
                     checked(m.arena().descriptor(f))?.driver_argument_count(),
+                    checked(m.arena().descriptor(f))?.immediate_program_counter,
                 )
             };
             q.keep(step);
             let args = match count {
                 0 => vec![],
-                1 => vec![q.keep(number(s, pc)?)],
+                1 => vec![if immediate {
+                    abi::size(pc).ok_or_else(invalid)?
+                } else {
+                    q.keep(number(s, pc)?)
+                }],
                 _ => return Err(invalid()),
             };
             checked(s.engine.borrow_mut().begin_managed_turn())?;
@@ -1066,8 +1071,8 @@ pub(super) unsafe extern "C" fn run_step(
             return Err(invalid());
         };
         match index(s, *pc)? {
-            0 => s.send(machine, b"callSite:", &[number(s, 0)?]),
-            1 => s.send(machine, b"returnAt:", &[number(s, 3)?]),
+            0 => s.send(machine, b"callSite:", &[abi::size(0).unwrap()]),
+            1 => s.send(machine, b"returnAt:", &[abi::size(3).unwrap()]),
             _ => Err(invalid()),
         }
     })()

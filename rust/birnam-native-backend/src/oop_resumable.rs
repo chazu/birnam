@@ -32,8 +32,8 @@ impl Emitter {
             implementation_kind: ImplementationKind::BlockBody,
             disposition: Disposition::ResumableRequired,
         };
-        let descriptor = resumable_descriptor::compile_descriptor_v2(
-            &program, &layout, authority, filename, source, 1,
+        let descriptor = resumable_descriptor::compile_oop_descriptor_v2(
+            &program, &layout, authority, filename, source,
         )
         .map_err(|_| Error::InvalidProgram)?;
         let selection = selection::encode_artifact_selection(&[revision], &[authority])
@@ -41,10 +41,10 @@ impl Emitter {
         let get = self.name(b"oopAt:")?;
         let put = self.name(b"oopAt:put:")?;
         let slot = |v: ir::ValueId| layout.value_slots[v.0 as usize];
-        // Preserve the existing step contract: the driver supplies a language
-        // Integer PC and generated code reads it through its current owner.
+        // The descriptor requests an immediate Oop counter. Internal routing must
+        // not call the Integer methods that this generated body may implement.
         let mut out = format!(
-            "static O function_{index}(O root,O context,O machine,const O*args,size_t n){{(void)root;(void)context;if(n!=1)return id.invalid;Call c={{0}};size_t pc=integer_index(&c,args[0]);if(c.error)return finish(&c,0);switch(pc){{\n"
+            "static O function_{index}(O root,O context,O machine,const O*args,size_t n){{(void)root;(void)context;if(n!=1||!((uintptr_t)args[0]&1))return id.invalid;Call c={{0}};size_t pc=(uintptr_t)args[0]>>1;switch(pc){{\n"
         );
         for block in &program.blocks {
             writeln!(out, "case {}:{{", block.pc.0).unwrap();
@@ -99,7 +99,7 @@ impl Emitter {
                         let globals = self.name(b"Globals")?;
                         let publish = self.name(b"at:put:")?;
                         let return_at = self.name(b"returnAt:")?;
-                        writeln!(out,"{{O g=named(&c,{globals});O a[]={{symbols[{name}],value_{v}}};O published=call(&c,g,{publish},a,2);if(c.error)return finish(&c,0);if(published!=value_{v}){{frame_put(&c,machine,{slot},published,{put});O at=integer(&c,{slot});O result=call(&c,machine,{return_at},&at,1);return finish(&c,result);}}}}",v=operation.result.0,slot=slot(operation.result)).unwrap();
+                        writeln!(out,"{{O g=named(&c,{globals});O a[]={{symbols[{name}],value_{v}}};O published=call(&c,g,{publish},a,2);if(c.error)return finish(&c,0);if(published!=value_{v}){{frame_put(&c,machine,{slot},published,{put});O at=size_oop({slot});O result=call(&c,machine,{return_at},&at,1);return finish(&c,result);}}}}",v=operation.result.0,slot=slot(operation.result)).unwrap();
                     }
                 }
             }
@@ -142,7 +142,7 @@ impl Emitter {
                 Term::Return(value) => (b"returnAt:".as_slice(), slot(*value)),
                 Term::Continue(pc) => (b"continueAt:".as_slice(), pc.0),
             };
-            writeln!(out,"O argument=integer(&c,{arg});O result=call(&c,machine,{},&argument,1);return finish(&c,result);}}",self.name(name)?).unwrap();
+            writeln!(out,"O argument=size_oop({arg});O result=call(&c,machine,{},&argument,1);return finish(&c,result);}}",self.name(name)?).unwrap();
         }
         out.push_str("default:c.error=id.invalid;return finish(&c,0);}}\n");
         self.functions[index] = out;

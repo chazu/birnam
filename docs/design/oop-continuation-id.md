@@ -496,3 +496,30 @@ The fresh combined gate passed on 2026-10-26. Its 124,711,349-byte image saved i
 CLI input result in 51 seconds. Each is one startup-inclusive acceptance run, not
 a comparative benchmark; image/startup performance remains unqualified.
 [Receipt](../measurements/image-oop-20261026.json).
+
+
+## Primitive replacement without recursive numeric conversion
+
+The generated step used to receive a boxed program counter, call `Integer wordOf:`
+to decode it, and construct more Integers for frame and control indices. A source
+replacement of Integer conversion therefore recursively needed itself before its
+body could execute. Generated steps now declare an immediate-counter flag in the
+existing frame descriptor and send immediate Oop indices to Machine. Execution
+interprets that descriptor data; Id still only sees Oops and enters the selected
+Method directly. Ordinary numeric literals and explicit conversions remain live
+owner sends. General descriptors retain the Integer counter contract for authored
+steps, and Machine continues to accept both supported index forms.
+
+Lowering version 2 identifies this generated convention. The descriptor's last
+metadata word is 0 for an Integer counter or 1 for an immediate Oop counter;
+unknown flags and immediate counters without one driver argument are rejected.
+Image's runtime ABI hash advances to `Id-oop-image-v4`, requiring older bootstrap
+images to be rebuilt. No new Id message, Method entry protocol, or payload catalog
+was added. The regression exercises source replacements of both conversions,
+collection during calls, captured originals and ordinary arithmetic. It captures
+its dependencies before replacement: global lookup and Vector literals retain
+their normal authored dependencies, including Integer conversion.
+
+The core, published Bootstrap, Host, Generation and fresh mapped/rebuilt image
+gates pass with this convention. The same self-contained source replacement
+probe overflows on the previous runtime. [Receipt](../measurements/primitive-replacement-oop-20261026.json).
