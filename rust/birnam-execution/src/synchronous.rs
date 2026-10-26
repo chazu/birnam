@@ -38,6 +38,9 @@ struct State {
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     storage: RefCell<Objects>,
+    // CodeObject shape admitted by this owner. Keys do not retain Methods;
+    // the existing retirement callback removes them before address reuse.
+    arities: RefCell<HashMap<usize, usize>>,
     engine: RefCell<ExecutionState>,
     resume: RefCell<resumable::Runtime>,
     depth: Cell<usize>,
@@ -234,6 +237,13 @@ unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> O
         };
         let q = s.scope(&[r, *k]);
         let method = q.keep(s.field(r, 0)?);
+        if s.arities
+            .borrow()
+            .get(&method.addr())
+            .is_some_and(|&arity| arity != args.len())
+        {
+            return Err(invalid());
+        }
         let destination = if k.is_null() || s.resume.borrow().return_methods.contains_key(&k.addr())
         {
             *k
@@ -467,6 +477,7 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
         let mut storage = s.storage.borrow_mut();
         for &v in values {
             storage.remove(v);
+            s.arities.borrow_mut().remove(&v.addr());
         }
         Ok(ptr::null_mut())
     })()
@@ -1479,6 +1490,7 @@ unsafe extern "C" fn initialize(
             names: names.clone(),
             scoped: RefCell::new(Vec::new()),
             storage: RefCell::new(Objects::default()),
+            arities: RefCell::new(HashMap::new()),
             engine: RefCell::new(ExecutionState::new(1)),
             resume: RefCell::new(resumable::Runtime::default()),
             depth: Cell::new(0),

@@ -1,0 +1,162 @@
+{
+  "passed": true,
+  "scope": "Block arity repair, full Host image CLI, authored suite and Oop core; staged prefix, not full language or release acceptance",
+  "base_revision": "bdd3c03febe0658c78f66701c2989a13d67bd8b2",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-admission-m228271n/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "7aed01f8043c1165f3d731d7e53cda0133ce1f5bb4e869a9fffe3990070b7f38",
+    "rust/birnam-execution/src/oop_reflection.rs": "bbefa625dd7fc7f4b4f0758f9e440706fc563ce7bb74f49f3f2150724aa5ea1f",
+    "rust/birnam-siphon/tests/block_arity.rs": "1dbafe97d12417a31d2c8c74f679d53271a407b4ab3f22c3e97ac368201be60b",
+    "scripts/host-image-test.py": "b303f1841ddc7382dac82265b6c5e3ebc8fec710a2c2f29ec8306a9355910112",
+    "scripts/native-message-test.sh": "f6915d645e0298cd555a495653b3981ce926a66a6f482597a69f9d43383c7730"
+  },
+  "execution_sha256": "890678099a9fa0eb6f02b0739bc0194900789a58ab385e36c918c73d93dcd5dd",
+  "checks": [
+    {
+      "name": "focused_before",
+      "log": ".cargo-target/oop-block-entry-before.log",
+      "log_sha256": "ea412911449186019fbcf150c042cecdaa2c454878fa4ea514192d17f442211e",
+      "exit_code": 101,
+      "expectation": "Existing runtime accepts a wrong-arity Block call."
+    },
+    {
+      "name": "focused_after",
+      "log": ".cargo-target/oop-block-admission-after.log",
+      "log_sha256": "5595a81816b8410a6b8ebd2d5d945b8a6290beff4c2ca71a9cc59126d575dc7a",
+      "exit_code": 0,
+      "expectation": "Wrong counts fail; matching calls, cloning, captured Methods and replacements work; no metadata query on entry."
+    },
+    {
+      "name": "core",
+      "log": ".cargo-target/oop-block-entry-core.log",
+      "log_sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit_code": 0,
+      "expectation": "Complete Oop core gate including dispatch-contract and continuation checks."
+    },
+    {
+      "name": "authored",
+      "log": ".cargo-target/oop-block-admission-authored.log",
+      "log_sha256": "b55f743f190cd0241b527227e7a51d30009a08b306ea04d0497af663aaa34bff",
+      "exit_code": 0,
+      "expectation": "870 passed, 0 failed."
+    },
+    {
+      "name": "host_image_before",
+      "log": ".cargo-target/oop-host-image-cli.log",
+      "log_sha256": "aa3481548e7d1bc671af126b4e65b13e9923624ff7c960a1fa75b93f1fae721f",
+      "exit_code": 1,
+      "expectation": "The wrong-arity image unexpectedly exits 0."
+    },
+    {
+      "name": "old_wrong_arity_image_after",
+      "log": ".cargo-target/oop-block-admission-old-image.log",
+      "log_sha256": "539110a93c575c4f9fc6c2cf5e70ed68685d81f8d18eb4dfba6b753bb3a52b7b",
+      "exit_code": 1,
+      "expectation": "The same pre-fix image reports image main failure."
+    },
+    {
+      "name": "host_image_after",
+      "log": ".cargo-target/oop-host-image-cli-after.log",
+      "log_sha256": "7893a0627bb4f5c37d67eb44cd0e1316bc6557a30b79dc85e9ad4342e77028b5",
+      "exit_code": 0,
+      "expectation": "Full unchanged Host image CLI suite."
+    },
+    {
+      "name": "saved_main_with_compilation_disabled",
+      "log": ".cargo-target/oop-block-admission-host-entry.log",
+      "log_sha256": "b29377799f1d766e3098df12aa8d20154c418cfa804dcac9492327ce536a5282",
+      "exit_code": 0,
+      "expectation": "Saved code and roots survive collecting callbacks."
+    }
+  ],
+  "worker_after": {
+    "passed": true,
+    "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-admission-m228271n/prefix",
+    "run": {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-admission-m228271n/prefix/bin/birnam",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/worker.birnam"
+      ],
+      "exit_code": 0,
+      "output": "false\n#ready\n#[18]\n#exited\nfalse\n",
+      "stderr": "",
+      "stdout": "false\n#ready\n#[18]\n#exited\nfalse\n",
+      "wall_ns": 25873319291
+    }
+  },
+  "optional_provider_before": {
+    "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix",
+    "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/results.json",
+    "receipt_sha256": "f98a478dc26d76fe52a2cc292578258125525dc32334429e51f29c0cfcf8c7ae",
+    "runs": [
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix/bin/birnam",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/save.birnam"
+        ],
+        "exit_code": 0,
+        "name": "save",
+        "output": "#saved\n",
+        "stderr": "",
+        "stdout": "#saved\n",
+        "wall_ns": 235813393333
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix/bin/birnam",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/optional.image"
+        ],
+        "exit_code": 0,
+        "name": "mapped",
+        "output": "17\n#[18]\n#[#store #relational]\n",
+        "stderr": "",
+        "stdout": "17\n#[18]\n#[#store #relational]\n",
+        "wall_ns": 222823950792
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix/bin/birnam",
+          "--rebuild",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/optional.image"
+        ],
+        "exit_code": 0,
+        "name": "rebuilt",
+        "output": "17\n#[18]\n#[#store #relational]\n",
+        "stderr": "",
+        "stdout": "17\n#[18]\n#[#store #relational]\n",
+        "wall_ns": 239943826916
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix/bin/birnam",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/resaved.image"
+        ],
+        "exit_code": 0,
+        "name": "resaved",
+        "output": "17\n#[18]\n#[#store #relational]\n",
+        "stderr": "",
+        "stdout": "17\n#[18]\n#[#store #relational]\n",
+        "wall_ns": 229271637542
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/publication-huhw0hf6/prefix/bin/birnam",
+          "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1l3h8r35/worker.birnam"
+        ],
+        "exit_code": 0,
+        "name": "worker",
+        "output": "false\n#ready\n#[18]\n#exited\nfalse\n",
+        "stderr": "",
+        "stdout": "false\n#ready\n#[18]\n#exited\nfalse\n",
+        "wall_ns": 25305461958
+      }
+    ]
+  },
+  "id_changes": false,
+  "new_id_operations": [],
+  "worker_startup_deadline_ms": 15000,
+  "remaining": [
+    "Optional Vtable methodChangesTo: subscription",
+    "Unmigrated native harnesses and remaining full integration acceptance"
+  ]
+}

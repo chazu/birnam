@@ -35,6 +35,13 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             return Err(invalid());
         };
         let q = s.scope(&[r, *code]);
+        let arity = if *code == s.nil {
+            None
+        } else {
+            let factory = q.keep(s.named(b"CodeObject")?);
+            let arity = q.keep(s.send(factory, b"parameterCountOf:", &[*code])?);
+            Some(resumable::index(s, arity)?)
+        };
         let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
         let private = q.keep(s.send(behavior, b"delegated", &[])?);
         let getter = q.keep(s.send(s.code_getter, b"withContext:", &[*code])?);
@@ -44,6 +51,11 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             &[s.names[b"codeObject".as_slice()], getter],
         )?;
         s.send(s.id.root, b"reassociateBehaviorOf:with:", &[r, private])?;
+        if let Some(arity) = arity {
+            s.arities.borrow_mut().insert(r.addr(), arity);
+        } else {
+            s.arities.borrow_mut().remove(&r.addr());
+        }
         Ok(r)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -62,6 +74,10 @@ pub(super) unsafe extern "C" fn captured(_: Oop, c: Oop, r: Oop, _: *const Oop, 
             b"reassociateBehaviorOf:with:",
             &[method, behavior],
         )?;
+        let arity = s.arities.borrow().get(&r.addr()).copied();
+        if let Some(arity) = arity {
+            s.arities.borrow_mut().insert(method.addr(), arity);
+        }
         Ok(method)
     })()
     .unwrap_or_else(abi::fault_reference)

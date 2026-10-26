@@ -900,3 +900,41 @@ propagates its exact failure object once. Captured Methods and callback state us
 scoped Oops. The first port incorrectly treated the Id receiver as a vtable;
 correcting the fixture preserves the original assertions without a runtime change.
 [Receipt](../measurements/numeric-identity-fallback-oop-20261026.json).
+
+## Restore wrong-arity Block failures
+
+The installed Host image suite found that a saved one-argument `main` accepted
+`value` and exited successfully. The shared Block entry introduced by the Oop
+port exposed every `value...` selector, and the synchronous generated body answered
+nil on mismatched arguments. Host correctly treats nil as a successful result.
+
+Execution now records the parameter count when it admits a Method's CodeObject
+through the current `CodeObject parameterCountOf:` message. Its default Block
+entry checks that admitted count before preparing entry into the selected body.
+Captured Methods copy the count; nil admission removes it. The existing retirement
+callback removes records before address reuse, and the records retain no objects.
+Unadmitted native Methods keep their own argument checks. Id, generated code and
+the ordinary send protocol are unchanged.
+
+This preserves current `BlockVt value` replacement. Giving each Block a private
+value binding would hide that supported replacement. Reading Method metadata on
+every call would impose an extra dependency on native Methods; admission keeps
+that responsibility with Execution's existing code-shape operation instead.
+
+The focused regression fails before this change and passes afterward, including
+wrong argument counts, cloning, collection, captured Methods and current value
+replacement. A CodeObject getter that deliberately fails is not queried during
+entry. The complete Oop core gate passes, as does entry into the previously saved
+wrong-arity image with the expected error. The saved-main Host check still passes
+with compilation disabled and collecting callbacks. Optional Store/Relational
+worker recovery also passes with the unchanged 15-second startup deadline.
+The complete authored suite passes all 870 checks, including suspension,
+cancellation, cleanup and replacement during collection.
+The unchanged Host image CLI suite now passes in full: source/asset deletion,
+nil/false results, REPL entry, explicit source recovery, invalid entry diagnostics,
+and rejection of corrupt or incompatible images. The full optional-provider image
+suite passed before the arity fix, and its worker case was rerun successfully with
+the final runtime. These are staged-prefix checks, not a new installation or
+release qualification. The Store notification subscription and older native
+harness migrations remain open.
+[Receipt](../measurements/block-arity-oop-20261026.json).
