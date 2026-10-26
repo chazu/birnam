@@ -9,6 +9,7 @@ prefix = Path(sys.argv[1]).resolve()
 work = Path(tempfile.mkdtemp(prefix='birnam-alien-publication-'))
 source = work / 'publication.birnam'
 source.write_text('''[Module load: #store];
+[System println: [[Vtable methodFor: #methodChangesTo:] isNil]];
 [[|
 let denied := [Error kind: #optionalStoreDenied]; let permit := [false asCell];
 [Store setMethodMutationAuthorizer: [| [[permit value] ifTrue: [| true] ifFalse: [| denied]]]];
@@ -19,14 +20,15 @@ let behavior := [Reflect vtableOf: Integer];
 let method := [Execution directMethodFor: #publicationAbsolute in: behavior];
 // Explicit Store publications still honor their own authorizer.
 [System println: [[Store addMethod: #publicationAbsolute on: behavior with: method] == denied]];
-// Explicit descriptions are snapshots until a consumer subscribes to Id changes.
+// Descriptions remain snapshots until their owner explicitly invalidates them.
 [permit set: true];
 [System println: [[Store addMethod: #publicationAbsolute on: behavior with: method] == Store]];
 [System println: [[Store currentValue: behavior attr: #publicationAbsolute] == method]];
 [System println: [[Alien wrap: "labs" signature: "l l" as: #publicationAbsolute on: Integer] == Integer]];
 [System println: [[Store currentValue: behavior attr: #publicationAbsolute] == method]];
-[Vtable methodChangesTo: Store];
 [System println: [[Alien wrap: "labs" signature: "l l" as: #publicationAbsolute on: Integer] == Integer]];
+[System println: [[Store currentValue: behavior attr: #publicationAbsolute] == method]];
+[Store methodChanged: #publicationAbsolute on: behavior];
 [System println: [[Store currentValue: behavior attr: #publicationAbsolute] isNil]];
 [permit set: false];
 // Replace the dictionary publication operation itself, preserving its current sends.
@@ -65,7 +67,7 @@ let replacement := [Execution directMethodFor: #replacement in: [Reflect vtableO
 ''')
 env = clean_environment(); env['BIRNAM_GC_PRECISE'] = '1'
 run = command([prefix/'bin/birnam', source], cwd=work, env=env, timeout=300)
-receipt = {'passed': run['exit_code'] == 0 and not run['stderr'] and run['stdout'] == 'true\n'*18,
+receipt = {'passed': run['exit_code'] == 0 and not run['stderr'] and run['stdout'] == 'true\n'*20,
            'prefix': str(prefix), 'source': source.read_text(),
            'runner_sha256': sha(Path(__file__).resolve()), 'run': run}
 save_json(work/'results.json', receipt)

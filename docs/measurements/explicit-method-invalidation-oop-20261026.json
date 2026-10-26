@@ -1,0 +1,181 @@
+{
+  "passed": true,
+  "scope": "Retire universal subscriptions and preserve explicit Store invalidation",
+  "base_revision": "21e470c81de5808aa8cf57bccb01af65def0041e",
+  "user_decision": "Keep Id unchanged; retire the universal subscription and retain explicit Store invalidation.",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix",
+  "compiled_id_sha256": "cb4b09726d129a94a0b2460b074897029dff1395b8aeb29f626dc0b67ad0fd64",
+  "compiled_id_changes": false,
+  "id_contract_extensions": [],
+  "legacy_id_cleanup": "Removed the hook and notification calls from the uncompiled Operand/Outcome registries.rs implementation.",
+  "source_sha256": {
+    "scripts/alien-publication-test.py": "4054e10ac4694600342126fddf83bdaf2484e31368cec036ec58d0594cd71eec",
+    "rust/birnam-siphon/tests/method_observation.rs": "dba036538b4626c99c0ce459a8fff8655bd8427e1e29136f85a811d0116dea59",
+    "docs/misc/DESIGN.md": "0a6b67dc40327d6469c843ed91c9cb0e54b1392e51c3042a707062d3ede21555"
+  },
+  "checks": [
+    {
+      "name": "native",
+      "log": ".cargo-target/oop-explicit-method-invalidation-after.log",
+      "sha256": "b816147a46572160ecfda9d5e433da617799cb0b5b844918d51d9a4e0c19062e",
+      "exit_code": 0
+    },
+    {
+      "name": "alien",
+      "log": ".cargo-target/oop-alien-publication-explicit-after.log",
+      "sha256": "5ba4c16440b496a7fdfcdcb35ab8a3078648ecf3cad6c568104e3b7ef8f67fda",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace_libraries",
+      "log": ".cargo-target/oop-explicit-invalidation-workspace.log",
+      "sha256": "286d105e1c0b79db5a91a8e0c6b7bb67b1314f1428c1cefa69e225e74eb758e5",
+      "exit_code": 0
+    },
+    {
+      "name": "optional_activation",
+      "log": ".cargo-target/oop-explicit-invalidation-optional.log",
+      "sha256": "f262e1ee95daf3e4325fabafb284b02535134344a51130e64e6c6f89a2981762",
+      "exit_code": 0
+    },
+    {
+      "name": "image_participation",
+      "log": ".cargo-target/oop-explicit-invalidation-image.log",
+      "sha256": "f7c03666566f80744e3d078828798b6dec278caae6b60431265df1b5c1fb24d4",
+      "exit_code": 0
+    },
+    {
+      "name": "authored",
+      "log": ".cargo-target/oop-explicit-invalidation-authored.log",
+      "sha256": "b55f743f190cd0241b527227e7a51d30009a08b306ea04d0497af663aaa34bff",
+      "exit_code": 0
+    }
+  ],
+  "receipts": {
+    "alien": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-publication-kw4t1azh/results.json",
+      "sha256": "94d36970dc9ca1078f192e6abf76a90d393fcd520755288c70f8986edf93dedb",
+      "runs": [
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-alien-publication-kw4t1azh/publication.birnam"
+          ],
+          "exit_code": 0,
+          "output": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "stderr": "",
+          "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+          "wall_ns": 13738402000
+        }
+      ]
+    },
+    "optional": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-store-3v4jr2id/results.json",
+      "sha256": "fc33f9fbcaeac88e24c0be55b140c16ed52d37e2f9541715b8740466c87862c2",
+      "runs": [
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-store-3v4jr2id/late.birnam"
+          ],
+          "exit_code": 0,
+          "name": "compiled",
+          "output": "#[true true true true true true true true true true true true]\n",
+          "stderr": "",
+          "stdout": "#[true true true true true true true true true true true true]\n",
+          "wall_ns": 13972031541
+        },
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-store-3v4jr2id/late.birnam"
+          ],
+          "exit_code": 0,
+          "name": "source",
+          "output": "#[true true true true true true true true true true true true]\n",
+          "stderr": "",
+          "stdout": "#[true true true true true true true true true true true true]\n",
+          "wall_ns": 9937601417
+        }
+      ]
+    },
+    "image": {
+      "receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-rfcg_hro/results.json",
+      "sha256": "637304045094f861f60467a41222f683939415244e9324ab49f7fc7327216e69",
+      "runs": [
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-rfcg_hro/save-core.birnam"
+          ],
+          "exit_code": 0,
+          "name": "save-core",
+          "output": "true\n#saved\n",
+          "source": "\n[Reflect defineMethod: #imageStore on: System as: [:self | nil]];\n[Reflect defineMethod: #basis on: Store as: [:self | [Error kind: #unexpectedStoreRead]]];\n[Reflect defineMethod: #imageFactsInto: on: Store as: [:self :sink | [Error kind: #unexpectedFacts]]];\n[Reflect defineMethod: #new on: Store as: [:self | [Error kind: #unexpectedStoreStage]]];\n[Reflect defineMethod: #swapImageStateWith: on: Store as: [:self :other | [Error kind: #unexpectedSwap]]];\n[Globals at: #coreSavedValue put: 42];\n[System println: [System saveImage: IMAGE]];\n[System println: [[System imageSaveReport] status]]\n",
+          "stderr": "",
+          "stdout": "true\n#saved\n",
+          "wall_ns": 226218183959
+        },
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-rfcg_hro/load-core-false.birnam"
+          ],
+          "exit_code": 0,
+          "name": "load-core-false",
+          "output": "true\n73\n42\nnil\n",
+          "source": "\n[db assert: #destinationOnly attr: #value value: 73];\n[System println: [System loadImage: IMAGE rebuild: false]];\n[System gc];\n[System println: [db currentValue: #destinationOnly attr: #value]];\n[System println: coreSavedValue];\n[System println: [System imageStore]]\n",
+          "stderr": "",
+          "stdout": "true\n73\n42\nnil\n",
+          "wall_ns": 25459023625
+        },
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-rfcg_hro/load-core-true.birnam"
+          ],
+          "exit_code": 0,
+          "name": "load-core-true",
+          "output": "false\n73\n42\nnil\n",
+          "source": "\n[db assert: #destinationOnly attr: #value value: 73];\n[System println: [System loadImage: IMAGE rebuild: true]];\n[System gc];\n[System println: [db currentValue: #destinationOnly attr: #value]];\n[System println: coreSavedValue];\n[System println: [System imageStore]]\n",
+          "stderr": "",
+          "stdout": "false\n73\n42\nnil\n",
+          "wall_ns": 33272733667
+        },
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-rfcg_hro/mismatched-cell.birnam"
+          ],
+          "exit_code": 0,
+          "name": "mismatched-cell",
+          "output": "nil\n#rejected\n",
+          "source": "\nlet other := [Store new]; let handle := [other cellFor: #other attr: #value];\n[handle set: 9]; [Globals at: #unselectedCell put: handle];\n[System println: [System saveImage: IMAGE]];\n[System println: [[System imageSaveReport] status]]\n",
+          "stderr": "",
+          "stdout": "nil\n#rejected\n",
+          "wall_ns": 14698114625
+        },
+        {
+          "argv": [
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/explicit-invalidation-_mjp6a32/prefix/bin/birnam",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-store-rfcg_hro/selection-error.birnam"
+          ],
+          "exit_code": 0,
+          "name": "selection-error",
+          "output": "true\n#rejected\n",
+          "source": "\nlet refusal := [Error kind: #imageOwnerRefusal];\n[Reflect defineMethod: #refusalIdentity on: refusal as: [:self | self]];\n[Reflect defineMethod: #imageStore on: System as: [:self | [System gc]; refusal]];\n[System println: [[System saveImage: IMAGE] == refusal]];\n[System println: [[System imageSaveReport] status]]\n",
+          "stderr": "",
+          "stdout": "true\n#rejected\n",
+          "wall_ns": 13818651917
+        }
+      ]
+    }
+  },
+  "legacy_harnesses_still_unqualified": [
+    "store",
+    "publication_contract",
+    "binding_undo",
+    "minimal_mutation"
+  ],
+  "subscription_status": "retired, not pending"
+}

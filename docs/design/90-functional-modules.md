@@ -1183,7 +1183,8 @@ collecting callbacks; retirement releases dead native state.
 
 Globals retains Store-backed `__globals__` facts. MOP authorization, notification,
 managed installation/removal and mirror backfill remain available through sends;
-Id dictionary changes notify Store through `methodChanged:on:`. Authorizers are
+The universal Id subscription was retired by user decision on 2026-10-26;
+`Store methodChanged:on:` now supplies explicit description invalidation. Authorizers are
 Object receivers and managed methods are owned Execution Methods. Deferred
 compiler publication/compensation callers still need migration.
 

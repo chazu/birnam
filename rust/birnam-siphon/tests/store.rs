@@ -840,10 +840,8 @@ unsafe fn mop_hooks(h: &H) {
             h.number(h.read(target_store, h.symbol(b"__globals__"), global)),
             11
         );
-        // A live mirror is explicit. Bootstrap and managed Store writes do not
-        // subscribe on the user's behalf.
-        assert_eq!(send(h.id, h.id.receiver, b"methodChangesTo:", &[Operand::object(store)]).kind(), native::UNIT);
-        // Notification is a fresh send, including for native dictionary writes.
+        // Mirror invalidation is an explicit current message. Raw dictionary
+        // writes do not invoke Store or subscribe on the user's behalf.
         let store_vt = h.named(b"StoreVt");
         let changed = h.symbol(b"methodChanged:on:");
         let original = send(
@@ -863,7 +861,9 @@ unsafe fn mop_hooks(h: &H) {
             (&mut calls as *mut Cell<usize>).cast(),
         );
         install(h.id, vt, b"mopProbe", method_answer, value);
-        assert!(calls.get() >= 2);
+        assert_eq!(calls.get(), 0);
+        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
+        assert_eq!(calls.get(), 1);
         assert_eq!(h.read(store, vt, selector), method);
         send(
             h.id,
@@ -871,8 +871,10 @@ unsafe fn mop_hooks(h: &H) {
             b"addMethod",
             &[Operand::object(changed), Operand::entry(original)],
         );
-        // Raw writes invalidate the mirror, without pretending to be managed writes.
+        // Explicit invalidation removes the snapshot after a raw edit.
         install(h.id, vt, b"mopProbe", method_answer, value);
+        assert_eq!(h.read(store, vt, selector), method);
+        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
         assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
         assert_eq!(c.notifications.get(), 1);
         h.call(store, b"addMethod:on:with:", &[selector, vt, method]);
@@ -888,8 +890,10 @@ unsafe fn mop_hooks(h: &H) {
         assert_eq!(h.metric(store, b"basis"), before);
         assert_eq!(h.read(store, vt, selector), h.symbol(b"primitive"));
         send(h.id, vt, b"removeMethod:", &[Operand::object(selector)]);
+        assert_eq!(h.read(store, vt, selector), h.symbol(b"primitive"));
+        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
         assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
-        // The alternate Id dictionary messages notify through the same send.
+        // Alternate dictionary edits also require explicit invalidation.
         c.expected.set(method);
         h.call(store, b"addMethod:on:with:", &[selector, vt, method]);
         send(
@@ -902,6 +906,7 @@ unsafe fn mop_hooks(h: &H) {
                 Operand::entry(NativeEntry::new(method_answer, value)),
             ],
         );
+        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
         assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
         h.call(store, b"backfillMirror", &[]);
         send(
@@ -910,6 +915,7 @@ unsafe fn mop_hooks(h: &H) {
             b"removeMethod:from:",
             &[Operand::object(selector), Operand::word(vt.addr())],
         );
+        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
         assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
     }
 }

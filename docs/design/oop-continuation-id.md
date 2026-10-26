@@ -834,11 +834,11 @@ operation, observer mechanism or private interface is added.
 
 The direct-capture regression fails before the correction and passes afterward.
 The core Oop gate and the unchanged Alien recipe-reentry test pass, including
-nested publication, collecting replacement and exact policy errors. The full
-Alien publication test still fails one Store-notification assertion: the older
-`Vtable methodChangesTo:` subscription has not been connected to the corrected
-core. That feature remains an explicit integration gap; its assertion was not
-removed and a universal notification hook was not added to Id as a shortcut.
+nested publication, collecting replacement and exact policy errors. At that
+checkpoint, the full Alien publication test failed one Store-notification assertion:
+the older `Vtable methodChangesTo:` subscription had not been connected to the
+corrected core. Its assertion was retained until the later
+[explicit retirement decision](#method-observation-contract-decision).
 
 System image checks pass with source removed, mapped/rebuilt recovery and baked
 entry: saved aliases/data, current file/environment state, binary input/output,
@@ -867,7 +867,8 @@ The basic Alien and Store-participation runners exceeded their former 90- and
 180-second save limits. They now allow 600 seconds per command, retaining all
 behavioral assertions. This changes test budgets only; worker startup still has
 the user-selected 15-second deadline. No runtime implementation or Id contract
-changed for these checks. The optional method-change subscription remains open.
+changed for these checks. The subscription gap remained open at that checkpoint;
+the later user decision retires that feature.
 [Receipt](../measurements/alien-store-images-oop-20261026.json).
 
 ## Standalone Siphon acceptance
@@ -935,8 +936,8 @@ nil/false results, REPL entry, explicit source recovery, invalid entry diagnosti
 and rejection of corrupt or incompatible images. The full optional-provider image
 suite passed before the arity fix, and its worker case was rerun successfully with
 the final runtime. These are staged-prefix checks, not a new installation or
-release qualification. The Store notification subscription and older native
-harness migrations remain open.
+release qualification. Older native harness migrations remain open. The later
+decision below resolves the Store subscription question.
 [Receipt](../measurements/block-arity-oop-20261026.json).
 
 ## Method observation contract decision
@@ -950,10 +951,10 @@ entered. Retargeting the captured Method would violate captured-call semantics.
 
 Restoring that universal coverage therefore requires an opt-in hook at Id's actual
 mutation point. A wrapper-only implementation would silently weaken the feature.
-Neither change is authorized by the general migration instruction. The pending
-choice is to retain the corrected Id contract and retire universal subscriptions
-(keeping explicit Store invalidation), or explicitly approve the opt-in core hook.
-No implementation or existing assertion has changed while that decision is pending.
+Neither change was authorized by the general migration instruction. The user then
+explicitly chose: **keep Id unchanged; retire the universal subscription and
+retain explicit Store invalidation.** This supersedes the earlier subscription-gap
+notes in this document. No core hook or wrapper subscription is being introduced.
 [Probe receipt](../measurements/method-observation-boundary-oop-20261026.json).
 
 ## Allocation-fact acceptance through Oops
@@ -971,3 +972,31 @@ explicitly installed alias, avoiding an argument Sequence and recursive sends to
 the Id receiver. No production runtime code changed. Both migrated tests and four
 existing callback-fixture consumers pass; the C fixture also passes strict warnings.
 [Receipt](../measurements/allocation-facts-oop-20261026.json).
+
+## Retire universal method subscriptions
+
+The approved decision is now reflected in Current Invariants, the Store contract,
+Alien publication checks and the remaining legacy harness expectations. The unused
+v1 Id registration hook is removed; compiled Id is unchanged. The new Oop
+`method_observation` test asserts that the subscription is absent before and after
+loading Store, while explicit `Store methodChanged:on:` invalidates descriptions
+across its Store instances and remains replaceable. Store's explicit publication
+authorizer and post-edit observer are retained.
+
+This check exposed a Store ownership defect: an explicit assertion identical to a
+mirror could be discarded as redundant, and projection updates could reuse mirror
+ownership. Invalidation also consulted the current user value instead of removing
+all owned descriptions for the dictionary key. Store now keeps explicit projection
+writes separate from mirror rows and invalidates only its owned rows, preserving
+user facts. Duplicate explicit assertions remain idempotent. The
+[ownership receipt](../measurements/store-mirror-ownership-oop-20261026.json)
+records failing unit and native cases before the correction and passing results
+afterward.
+
+Validation passes: 13 Store unit tests, workspace library tests, explicit
+invalidation, all 20 Alien publication assertions, compiled/source optional Store
+activation, image participation and all 870 authored checks. The legacy `store`,
+`publication_contract`, `binding_undo` and `minimal_mutation` harnesses have their
+retired-subscription expectations removed but still await Oop conversion; this is
+not a claim that the full native-message gate passes.
+[Retirement receipt](../measurements/explicit-method-invalidation-oop-20261026.json).

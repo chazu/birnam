@@ -7,6 +7,9 @@ Reflect edits should compose the existing dictionary/Method owners; Generation,
 descriptions and advanced live restoration supply their guarantees explicitly.
 The contracts below remain evidence about the existing implementation and the
 previous proposal, not instructions to reproduce every layer in the default path.
+The 2026-10-26 user decision additionally retires universal Id method-change
+subscriptions while retaining explicit Store invalidation. Raw notification
+stages below describe the former implementation.
 This is the remaining publication part of step 5 of the
 [optional Store decision](optional-store-and-relational.md). Globals has already
 moved. The accompanying [audit](store-removal-audit.md) checks the completed slices.

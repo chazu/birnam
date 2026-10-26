@@ -1,25 +1,14 @@
-//! Explicit conditional method undo preserves later writes and callback edits.
+//! Explicit conditional method undo preserves later writes and ABA detection.
 mod support;
-use birnam_abi::{Oop, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
-use std::{ffi::c_void, os::unix::ffi::OsStrExt, cell::Cell};
+use birnam_abi::{Oop, id_protocol::{NativeEntry, Operand, Outcome}};
+use std::{ffi::c_void, os::unix::ffi::OsStrExt};
 use support::*;
 unsafe extern "C" fn answer(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::word(c.addr()))
 }
-struct Edit { id: Protocol, target: Oop, key: Oop, armed: Cell<bool>, gc: Oop }
-unsafe extern "C" fn changed(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Edit>();
-        if p.armed.replace(false) {
-            send(p.id,p.target,b"addMethod",&[Operand::object(p.key),Operand::entry(NativeEntry::new(answer,3usize as *mut c_void))]);
-            collect(p.id,p.gc);
-        }
-        Outcome::loaded(Operand::unit())
-    }
-}
 #[test]
 #[ignore = "production native modules"]
-fn conditional_binding_undo_preserves_reentry_and_aba() {
+fn conditional_binding_undo_preserves_later_writes_and_aba() {
     unsafe {
         let id=id(); let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
         let named=|n:&[u8]| object(send(id,ns,b"at:",&[Operand::object(id.intern_name(n).unwrap())]));
@@ -50,14 +39,10 @@ fn conditional_binding_undo_preserves_reentry_and_aba() {
         send(id,id.receiver,b"reassociateBehaviorOf:with:",&[Operand::object(target),Operand::object(vt)]);
         send(id,vt,b"addMethod",&[Operand::object(key),two]);
         send(id,vt,b"addMethod",&[Operand::object(next),two]);
-        let mut probe=Edit{id,target:vt,key:next,armed:Cell::new(false),gc:named(b"GC")};
-        let ob=keep(behavior(id)); install(id,ob,b"methodChanged:on:",changed,(&mut probe as *mut Edit).cast());
-        let observer=keep(allocate(id,ob,0));
-        send(id,id.receiver,b"methodChangesTo:",&[Operand::object(observer)]);
-        probe.armed.set(true);
         let committed=restore(key,two,one,epoch()).as_word().unwrap();
-        assert!(restore(next,two,one,committed).as_word().is_none(),"inverse callback must invalidate next inverse");
+        send(id,vt,b"addMethod",&[Operand::object(next),Operand::entry(NativeEntry::new(answer,3usize as *mut c_void))]);
+        collect(id,named(b"GC"));
+        assert!(restore(next,two,one,committed).as_word().is_none(),"later write must invalidate next inverse");
         assert_eq!(send(id,target,b"nextInverse",&[]).as_word(),Some(3));
-        send(id,id.receiver,b"methodChangesTo:",&[Operand::unit()]);
     }
 }

@@ -13,7 +13,7 @@ through the production message boundary:
 | --- | --- |
 | Early module publication, values and layouts | `modules`, `object_model`, `numbers`, `numbers_loading`, `text_error` |
 | Roots, activation, accounting, tracing and finalization | `roots`, `memory`, `memory_activation`, `allocation_accounting` |
-| Store observation and graph traversal | `store`, `method_observation`, `storage_trace` |
+| Explicit Store invalidation and graph traversal | `store`, `method_observation`, `storage_trace` |
 | Loader and callback control | `native_loader`, `source_loader`, `block_loop`, `execution_methods`, `execution_machines` |
 | Image graph, exact numeric bits, Error fields and source-free restoration | `image` and installed `host-image-test.py` |
 | Nested source globals visible to previously compiled callers | installed `artifact-cli-test.py` |

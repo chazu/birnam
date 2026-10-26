@@ -1,4 +1,4 @@
-//! Characterize the existing publication protocol before moving its owner.
+//! Explicit Store publication preserves authorization and post-edit notification.
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -50,36 +50,21 @@ impl H {
             )))
         }
     }
-    unsafe fn entry(&self, r: Oop, n: &[u8]) -> NativeEntry {
-        unsafe {
-            send(
-                self.id,
-                self.id.receiver,
-                b"bind:to:",
-                &[Operand::object(self.key(n)), Operand::object(r)],
-            )
-            .as_entry()
-            .unwrap()
-        }
-    }
 }
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Normal,
     Deny,
     AuthFault,
-    RawFault,
     ManagedFault,
     ErrorValue,
 }
 struct Probe<'a> {
     h: &'a H,
     store: Oop,
-    target: Oop,
     selector: Oop,
     foreign: Oop,
     error: Oop,
-    raw: NativeEntry,
     mode: Cell<Mode>,
     record: Cell<bool>,
     events: RefCell<Vec<&'static str>>,
@@ -102,34 +87,6 @@ unsafe extern "C" fn authorize(c: *mut c_void, _: Oop, _: *const Operand, _: usi
             Mode::AuthFault => Outcome::failed(881, 1),
             _ => Outcome::loaded(Operand::object(p.h.named(b"true"))),
         }
-    }
-}
-unsafe extern "C" fn raw_changed(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe<'_>>();
-        let result = p.raw.method.unwrap()(p.raw.context, r, a, n);
-        let args = borrowed_slice(a, n).unwrap();
-        if p.record.get()
-            && args[0].as_object() == Some(p.selector)
-            && args[1].as_object() == Some(p.target)
-        {
-            p.events.borrow_mut().push("raw");
-            // Id has already changed the dictionary; invalidation leaves no stale fact.
-            assert_eq!(
-                send(
-                    p.h.id,
-                    p.store,
-                    b"rawCurrentValue:attr:",
-                    &[args[1], args[0]]
-                )
-                .kind(),
-                UNIT
-            );
-            if p.mode.get() == Mode::RawFault {
-                return Outcome::failed(881, 2);
-            }
-        }
-        result
     }
 }
 unsafe extern "C" fn managed(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -202,7 +159,6 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
             tokens: RefCell::new(vec![]),
         };
         let store = h.named(b"Store");
-        assert_eq!(send(id, id.receiver, b"methodChangesTo:", &[Operand::object(store)]).kind(), UNIT);
         let target = h.call(h.named(b"Object"), b"clone", &[]);
         let vt = h.call(id.receiver, b"ensurePrivateVtableFor:", &[target]);
         let selector = h.key(b"publicationAudit");
@@ -224,11 +180,9 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
         let mut p = Probe {
             h: &h,
             store,
-            target: vt,
             selector,
             foreign: h.key(b"publicationForeign"),
             error: h.call(h.named(b"Error"), b"kind:", &[h.key(b"observerErrorValue")]),
-            raw: h.entry(store, b"methodChanged:on:"),
             mode: Cell::new(Mode::Normal),
             record: Cell::new(false),
             events: RefCell::new(vec![]),
@@ -242,13 +196,10 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
         let o = h.keep(allocate(id, ob, 0));
         h.call(store, b"setMethodMutationAuthorizer:", &[a]);
         h.call(store, b"setMethodMutationObserver:", &[o]);
-        let sb = h.call(id.receiver, b"behaviorOf:", &[store]);
-        install(id, sb, b"methodChanged:on:", raw_changed, c);
         for mode in [
             Mode::Normal,
             Mode::Deny,
             Mode::AuthFault,
-            Mode::RawFault,
             Mode::ManagedFault,
             Mode::ErrorValue,
         ] {
@@ -276,13 +227,11 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
             );
             let expected_events = match mode {
                 Mode::Deny | Mode::AuthFault => vec!["authorize"],
-                Mode::RawFault => vec!["authorize", "raw"],
-                _ => vec!["authorize", "raw", "managed"],
+                _ => vec!["authorize", "managed"],
             };
             assert_eq!(*p.events.borrow(), expected_events);
             match mode {
                 Mode::AuthFault => assert_eq!(result.unwrap_err().detail, 1),
-                Mode::RawFault => assert_eq!(result.unwrap_err().detail, 2),
                 Mode::ManagedFault => {
                     assert_eq!(result.unwrap_err().detail, 3);
                     assert_eq!(
@@ -299,11 +248,7 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
                 b"rawCurrentValue:attr:",
                 &[Operand::object(vt), Operand::object(selector)],
             );
-            if mode == Mode::RawFault {
-                assert_eq!(fact.kind(), UNIT)
-            } else {
-                assert_eq!(fact.as_object(), Some(if committed { new } else { old }));
-            }
+            assert_eq!(fact.as_object(), Some(if committed { new } else { old }));
         }
         // A failed post-remove notification does not resurrect the removed method.
         p.mode.set(Mode::ManagedFault);
@@ -331,13 +276,5 @@ fn authorization_commit_notifications_and_failure_are_distinct() {
         let missing = h.call(store, b"removeMethod:on:", &[selector, vt]);
         assert_eq!(h.call(missing, b"kind", &[]), h.key(b"missingDirectMethod"));
         assert_eq!(*p.events.borrow(), vec!["authorize"]);
-        p.record.set(false);
-        install(
-            id,
-            sb,
-            b"methodChanged:on:",
-            p.raw.method.unwrap(),
-            p.raw.context,
-        );
     }
 }

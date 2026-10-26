@@ -5,6 +5,11 @@ corrections documented here. This reviews the delivered ownership changes before
 moving the remainder of step 5. It does not implement publication migration or
 assert that the whole runtime is independent of Store.
 
+**2026-10-26 update:** the user retired universal Id method subscriptions. The
+observer failure and correction below are historical evidence, not a requirement
+to restore that hook. Explicit Store invalidation is retained; see the
+[current decision](oop-continuation-id.md#method-observation-contract-decision).
+
 ## Findings
 
 Two concrete defects were reproduced. One was introduced by the Module registry

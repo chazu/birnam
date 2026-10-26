@@ -1,4 +1,5 @@
-//! Native registry operations used by completed upper consumers.
+//! Uncompiled Operand/Outcome registry implementation retained during migration.
+//! Universal method-change subscriptions were retired; do not restore that hook.
 use super::{NativeEntry, Oop, Operand, Outcome, State, id_dispatch, native};
 use core::ffi::c_void;
 
@@ -24,7 +25,6 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         (b"selectorsIn:".as_slice(), selectors as native::Method),
         (b"bindingOf:in:".as_slice(), binding as native::Method),
         (b"restoreBinding:of:in:expected:previous:atEpoch:".as_slice(), restore_binding as native::Method),
-        (b"methodChangesTo:".as_slice(), method_changes_to as native::Method),
         (b"addMethod".as_slice(), dictionary_add as native::Method),
         (b"removeMethod:".as_slice(), dictionary_remove as native::Method),
         (b"lookup:in:".as_slice(), lookup as native::Method),
@@ -258,7 +258,6 @@ unsafe extern "C" fn restore_binding(context: *mut c_void, _: Oop, args: *const 
     let committed = tables.binding_epoch() as usize;
     // Notification is after commit. Its reentrant writes survive; a subsequent
     // conditional inverse sees an epoch different from this returned value.
-    if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
     done(Operand::word(committed))
 }
 unsafe extern "C" fn lookup(
@@ -316,7 +315,6 @@ unsafe extern "C" fn add_method(
         crate::id::vtable::AddMethod::Added => None,
         crate::id::vtable::AddMethod::Overwrote(entry) => Some(entry),
     };
-    if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
     entry(old)
 }
 unsafe extern "C" fn remove_method(
@@ -333,8 +331,7 @@ unsafe extern "C" fn remove_method(
     };
     let old = unsafe { (&mut *state.dictionaries).remove_method(behavior, key) };
     if old.is_some() {
-        if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
-    }
+        }
     entry(old)
 }
 unsafe extern "C" fn add_weak(
@@ -350,22 +347,9 @@ unsafe extern "C" fn add_weak(
         return invalid();
     };
     unsafe { (&mut *state.dictionaries).add_weak_opaque_binding(behavior, key, value) };
-    if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
     done(Operand::unit())
 }
 
-unsafe extern "C" fn method_changes_to(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
-    arguments!(args, count, [observer]);
-    let observer = match observer.kind() {
-        native::UNIT => core::ptr::null_mut(),
-        native::OBJECT => match observer.as_object().filter(|o| !o.is_null()) { Some(o) => o, None => return invalid() },
-        _ => return invalid(),
-    };
-    let state = unsafe { &*context.cast::<State>() };
-    if !observer.is_null() && unsafe { (&*state.memory).get(observer.addr()) }.is_none() { return invalid(); }
-    let old = state.method_change_observer.replace(observer);
-    object((!old.is_null()).then_some(old))
-}
 unsafe extern "C" fn dictionary_add(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
     arguments!(args, count, [key, method]);
     let result = unsafe { add_method(context, receiver, [*key, Operand::word(receiver.addr()), *method].as_ptr(), 3) };

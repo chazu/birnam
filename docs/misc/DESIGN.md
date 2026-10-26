@@ -39,6 +39,12 @@ system. Oop reference encoding and allocation facts are distinct from payload
 meaning: recording an address, extent, identity or canonical reference does not
 permit the allocator to decide the object's language type.
 
+Id does not provide a universal method-change subscription. The user retired
+`methodChangesTo:` on 2026-10-26 while retaining explicit Store invalidation.
+Dictionary edits remain ordinary edits; consumers maintain or invalidate their
+own descriptions through explicit operations. This does not remove Id's own
+lookup invalidation or Store's authorizer and observer for explicit Store edits.
+
 Use [the glossary](../../glossary.md) for terminology. These requirements govern
 new work; older migration descriptions below are not permission to contradict them.
 

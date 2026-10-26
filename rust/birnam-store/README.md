@@ -74,7 +74,10 @@ These are explicit Store operations. Ordinary Id dictionary edits do not enroll
 Store or notify it. Call `methodChanged:on:` explicitly to invalidate a retained
 method description after an external edit, or take a fresh `backfillMirror`
 snapshot. The removed Id notification/entry interface is not recreated here.
-Mirror retirement deletes only marked mirror rows, preserving explicit facts.
+The user explicitly retired universal subscriptions on 2026-10-26. Mirror
+retirement deletes only marked rows for the selected dictionary key, preserving
+explicit facts. An explicit assertion after a mirror records user-owned data;
+it neither deduplicates against nor reuses the mirror row.
 
 
 The authorizer now accepts an Object instead of a native function address, and
@@ -123,6 +126,17 @@ message and installed Host groups; the transfer tests here isolate Store behavio
 
 ## Validation
 
+The Oop `method_observation` test verifies explicit invalidation, handler
+replacement, preservation of identical user facts, and absence of a universal
+subscription before and after loading Store. The installed Alien publication test
+also uses explicit invalidation. `mise exec -- cargo test --offline --locked
+-p birnam-store --lib` passes thirteen algorithm tests, including the independent
+scan oracle and mirror/user-fact ownership in both write orders. Two manual timing
+investigations remain ignored.
+
+The following broader harness descriptions are historical. Their conversion from
+Operand/Outcome to Oops remains pending; they are not current qualification claims.
+
 Candidate compensation uses `reserveCompensationFor:count:` and
 `releaseCompensationFor:` on the Store receiver. Reservations retain their owner
 and count against the fact limit until consumed or released.
@@ -140,12 +154,8 @@ methods, collection during initializer validation, destructive collecting snapsh
 callbacks (success and failure), image row transfer, phase rejection and bounded
 resource refusal/recovery. It also checks independent Globals and explicit fact history, MOP
 permission/notification and mirror invalidation, rooted hook receivers, live
-replacement of Id's notification target method, and compiled Store/Cell/Globals
+replacement of Store's explicit invalidation handler, and compiled Store/Cell/Globals
 consumers.
-
-`mise exec -- cargo test --offline --locked -p birnam-store --lib` preserves ten
-algorithm tests, including the independent scan oracle across 64 histories and
-before/after compaction. Two manual timing investigations remain ignored.
 
 ## Optional image state
 

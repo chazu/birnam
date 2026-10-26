@@ -262,9 +262,12 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
                 .is_none()
             );
         }
-        // No observer is needed for the floor's own dictionary invalidation.
+        // Universal dictionary subscriptions are not part of the Id floor.
         assert_eq!(
-            send(id, id.receiver, b"methodChangesTo:", &[Operand::unit()]).kind(),
+            send(id, id.receiver, b"bind:to:", &[
+                Operand::object(id.intern_name(b"methodChangesTo:").unwrap()),
+                Operand::object(id.receiver),
+            ]).kind(),
             birnam_abi::id_protocol::UNIT
         );
         let nil = h.named(b"nil");

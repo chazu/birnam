@@ -152,8 +152,10 @@ into ordinary mutation.
 
 Store can keep explicit description conveniences and its own/Relational's bootstrap
 self-description. Retire only positively owned automatic mirror rows, not arbitrary
-user facts. A live projection, if later needed, owns its subscriptions, failure
-behavior and retention. Merely loading Store must not register a universal mirror.
+user facts. The 2026-10-26 user decision retires universal Id subscriptions and
+retains explicit Store invalidation. A tool that maintains a live projection must
+define the edits it observes, failure behavior and retention. Merely loading Store
+must not register a universal mirror.
 
 ## Fresh startup and advanced live restoration
 

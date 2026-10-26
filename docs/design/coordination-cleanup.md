@@ -13,23 +13,24 @@ The unused conditional Store-exchange API described in that historical section
 was removed in the 2026-10-20 optional-Store cleanup. Explicit Id method undo
 and Store snapshot revision observations remain in use.
 
-## 1. Opt-in dictionary observation
+## 1. Explicit dictionary-description invalidation
 
-Store construction no longer sends Id `methodChangesTo:`. Ordinary dictionary
-edits therefore have no Store observer by default. The existing Id registration
-message remains available for an explicit live consumer; Store's
-`methodChanged:on:` can be selected explicitly to invalidate its mirror rows.
-Neither `backfillMirror` nor an explicit Store method edit subscribes implicitly.
-Descriptions without a subscription are snapshots, not promises of live lookup.
+The user retired the universal `methodChangesTo:` subscription on 2026-10-26,
+keeping the corrected Id unchanged. Ordinary dictionary edits do not notify Store.
+Store's existing `methodChanged:on:` remains an explicit, replaceable operation
+for invalidating its owned description rows. Neither loading Store, `backfillMirror`
+nor an explicit Store method edit installs a subscription. Descriptions are
+snapshots, not promises of live lookup. Store's own publication authorizer and
+post-edit observer remain part of its explicitly requested operations.
 
 Default ordinary method descriptions were already disabled. Mirror rows are
 nondurable and are not imported by Image. Store/Relational self-description and
 user facts are retained. Mirror cleanup now checks the owned `mirror` flag before
 retiring a row, including when an explicit fact has an identical triple.
 
-Validation: Store unit regression for identical explicit/mirror facts; native
-Store and publication tests explicitly opt into observation; the Id observation
-test checks the empty bootstrap slot, replacement, reentry, collection and failure.
+Current regression coverage checks explicit invalidation, preservation of user
+facts, replacement of the handler and absence of the retired Id operation. The
+former universal-observer replacement/reentry tests describe a retired feature.
 
 ## 2. Direct Generation writes
 
