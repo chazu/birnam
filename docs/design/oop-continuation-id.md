@@ -1088,3 +1088,13 @@ ownership, REPL ownership, compiled startup without parsing, tooling and image
 commands, persistent TCP/project sessions, all 26 REPL golden checks and the LSP
 workspace/diagnostic/UTF-16/version/close checks. No runtime changes were needed.
 [Receipt](../measurements/cold-interaction-oop-20261026.json).
+
+## Explicit Store compensation through Oops
+
+The compensation harness now uses Oop calls and scoped roots. Its existing checks
+pass at the 16 KiB fact limit: reserved inverse capacity remains usable after
+exhaustion, a stale comparison spends nothing, exact one-key restoration preserves
+unrelated facts, and reservation owners survive collection without caller roots.
+Releasing one owner's reservation is idempotent and preserves another's. The null
+Oop represents absence while language nil remains a present value. No Store or Id
+implementation changed. [Receipt](../measurements/store-compensation-oop-20261026.json).

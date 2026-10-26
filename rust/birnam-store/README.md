@@ -134,18 +134,19 @@ also uses explicit invalidation. `mise exec -- cargo test --offline --locked
 scan oracle and mirror/user-fact ownership in both write orders. Two manual timing
 investigations remain ignored.
 
-The following broader harness descriptions are historical. Their conversion from
-Operand/Outcome to Oops remains pending; they are not current qualification claims.
-
 Candidate compensation uses `reserveCompensationFor:count:` and
 `releaseCompensationFor:` on the Store receiver. Reservations retain their owner
 and count against the fact limit until consumed or released.
-`restoreValue:attr:expected:previous:reservation:` accepts native Unit for absent
-expected/previous values, distinct from an Object containing language nil. It
+`restoreValue:attr:expected:previous:reservation:` accepts the null Oop for absent
+expected/previous values, distinct from the language nil object. It
 compares one single-valued fact and spends one reserved record atomically; a
 conflict leaves both the fact and reservation unchanged. It does not restore a
 whole Store snapshot or undo unrelated callback facts. The native
-`store_compensation` binary verifies these properties at the resource limit.
+`store_compensation` Oop harness verifies these properties at the resource limit,
+including reservation-owner lifetime through collection.
+
+The following broader harness descriptions are historical. Their conversion from
+Operand/Outcome to Oops remains pending; they are not current qualification claims.
 
 `mise run native-messages` builds and audits Store's real dylib alongside the
 production prefix. The Store binary covers schema/history/retention, errors,

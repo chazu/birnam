@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "scope": "Explicit Store reservation and one-key compensation through Oop calls",
+  "base_revision": "b4b9c5ce1df5c3ec82a8e47353bd1fc424ad4840",
+  "prefix": "/private/tmp/birnam-oop-cold-waekjc38/prefix",
+  "test": "rust/birnam-siphon/tests/store_compensation.rs",
+  "test_sha256": "fd2b01cc6960c6a8883e8f33e1ab0524a86f22e10294b3a10601133fdd24a2b7",
+  "log": ".cargo-target/oop-cold-qualification/store-compensation.log",
+  "log_sha256": "51d0aca40144e25949c18a247e97da289fd6d5241f2f09a8de88a158d8d4911b",
+  "fact_bytes_limit": 16384,
+  "runtime_changes": false
+}
