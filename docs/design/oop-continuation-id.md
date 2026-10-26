@@ -1031,3 +1031,15 @@ diagnostic instead of the retired `native status=` text. No runtime change or
 timeout relaxation was needed. This proves one cold source build and the bounded
 archive gate, not the full legacy native/Host matrix or a published release.
 [Receipt](../measurements/cold-install-oop-20261026.json).
+
+## Lang comparison through Oop callers
+
+The installed CLI group reached the Lang comparison gate but could not compile
+its Operand/Outcome harness. That caller now uses scoped Oop roots and the existing
+indexed byte messages for Symbol/String data. The original oracle is unchanged:
+133 fixtures and shipped sources have identical concrete syntax trees, byte spans,
+diagnostic bytes and failure positions under seed and authored Lang. Cloning and
+collection pass; self-compilation produces identical artifact bytes. The production
+load probe excludes the Rust grammar and still rejects missing compiled Lang even
+when the seed is present. No runtime or parser implementation changed.
+[Receipt](../measurements/lang-caller-oop-20261026.json).

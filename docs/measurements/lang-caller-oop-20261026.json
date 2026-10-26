@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "scope": "Installed Lang seed/authored comparison through Oop callers",
+  "base_revision": "a67924dbc238949b4cb6eb4bfbf12e1856d83cd9",
+  "prefix": "/private/tmp/birnam-oop-cold-waekjc38/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/lang.rs": "85954ac3e9749dc4615a08743da94a1606a71ba7e86d91f60bac5322495cf086",
+    "scripts/lang-migration-test.py": "1644608ca0543442e7b8568e56782483b9825d626d19bd7d0265aed77be7cd8d"
+  },
+  "log": ".cargo-target/oop-cold-qualification/lang-after.log",
+  "log_sha256": "9342220c7415826175b3bc759e77df7f4efd4c54288b7b1be33667ea9fb021ef",
+  "corpus_inputs": 133,
+  "original_cli_group_log": ".cargo-target/oop-cold-qualification/cli-before-lang.log",
+  "runtime_changes": false,
+  "original_cli_group_log_sha256": "0bd0601dcfc7cb6a70830eb53dd6a49e6de4b273530f8164e47daa299939e744"
+}
