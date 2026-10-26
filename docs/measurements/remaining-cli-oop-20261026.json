@@ -1,0 +1,61 @@
+{
+  "passed": true,
+  "scope": "Remaining installed CLI checks after portable execution, on a staged corrected runtime; not full-group or clean-install qualification",
+  "base_revision": "37491c7353531441a9d8fb64371ce7b65c086027",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-rv1m_85i/prefix",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/recovery-workers.log",
+      "sha256": "99aa0423849d5f655c81b374db24fa6cb7ff22ab09a51adecda872dc40e40289",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/recovery-project-smoke.log",
+      "sha256": "503cecbce86895b15968d49ae3f5b7fde8092e74d60a0d23c9fb5549b7fa08e5",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/recovery-project-query.json",
+      "sha256": "98ccf2ebf0d946c1bedaed1376338209fc5597feb1173826ebc7dfffa14a85cd",
+      "exit": 0
+    }
+  ],
+  "prepared_binary_checks": [
+    {
+      "target": "project-build",
+      "test": "project::operations::tests::project_policy_values_survive_collecting_messages",
+      "binary_sha256": "8fccd8fe09ced8c36dd1458a6719420b4aaf3b04c99cb6b64343541a0a0b9bcf",
+      "passed": 1,
+      "failed": 0,
+      "exit": 0,
+      "test_reported_seconds": 17.47,
+      "evidence": "Terminal output of exec session 29593"
+    },
+    {
+      "target": "host-project",
+      "test": "project::source::tests::project_source_observation_uses_live_messages",
+      "binary_sha256": "47e53759f3114978b1f2dfea4e8ff117783881a4831f771f747a7254cc863556",
+      "passed": 1,
+      "failed": 0,
+      "exit": 0,
+      "test_reported_seconds": 15.37,
+      "evidence": "Terminal output of exec session 29593"
+    },
+    {
+      "target": "host-lib",
+      "test": "startup::tests::host_roots_survive_collecting_sends",
+      "binary_sha256": "1fd7784d99546768380984e7704830d791a26ebd663fbd0904a99bf014253c81",
+      "passed": 1,
+      "failed": 0,
+      "exit": 0,
+      "test_reported_seconds": 4.83,
+      "evidence": "Terminal output of exec session 29593"
+    }
+  ],
+  "worker_startup_deadline_ms": 15000,
+  "runtime_changes": false,
+  "remaining": [
+    "Fresh corrected-runtime cold installation and complete installed acceptance",
+    "Remaining native harnesses and retained compiler optimization producers"
+  ]
+}

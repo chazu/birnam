@@ -1207,3 +1207,19 @@ missing runtime roots. Its parent-getter replacement forwards through an explici
 Method alias, allowing the collector to call it without allocating an argument
 sequence. No runtime or Id change was needed.
 [Receipt](../measurements/object-model-slots-oop-20261026.json).
+
+## Remaining installed CLI checks
+
+All checks after portable execution in the installed Host CLI group pass on the
+staged prefix containing the root-provider, frame-view and recovery corrections.
+Workers pass copied values, application/transfer errors, asynchronous requests,
+zero-budget behavior, timeout/crash, wire framing, orphan reaping and authored
+service cancellation. Project checks pass source diagnostics, build/run/install/test,
+publication reuse and repair, path dependencies and pinned Git dependencies. The
+three native Host callback checks and the project-query contract also pass under
+collection. The 15-second worker startup deadline is unchanged.
+
+This closes the checks that the earlier CLI run could not reach. It does not
+combine different runtime prefixes into a full-group qualification: the corrected
+runtime still needs its own fresh installation and complete acceptance run.
+[Receipt](../measurements/remaining-cli-oop-20261026.json).
