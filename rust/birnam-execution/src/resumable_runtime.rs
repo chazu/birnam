@@ -4,6 +4,8 @@ use super::*;
 pub(super) mod control;
 #[path = "frame_view.rs"]
 pub(super) mod frame_view;
+#[path = "oop_recovery.rs"]
+pub(super) mod recovery;
 use crate::{entry::EntryKey, execution::*};
 use std::{
     collections::{HashMap, HashSet},
@@ -19,6 +21,7 @@ struct Registered {
     key: EntryKey,
     capability: ResumableEntryCapability,
     lease: GenerationLeaseCapability,
+    inline: Option<recovery::Inline>,
 }
 #[derive(Default)]
 pub(super) struct Runtime {
@@ -36,6 +39,7 @@ pub(super) struct Runtime {
     run_descriptor: Option<Arc<FrameDescriptor>>,
     active: Vec<MachineCapability>,
     pending: HashSet<u64>,
+    recovery: recovery::Runtime,
 }
 pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"fromStep:descriptor:selection:owner:",
@@ -70,6 +74,9 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"boundaryDeliveryPending",
     b"acknowledgeBoundaryDelivery",
     b"currentFrameView",
+    b"recoverAt:with:",
+    b"recoverAt:withGraph:",
+    b"withInline:at:owner:",
 ];
 fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
@@ -258,6 +265,7 @@ unsafe fn register_descriptor(
                 key: method_key,
                 capability,
                 lease,
+                inline: None,
             },
         );
         Ok(method)
@@ -303,16 +311,29 @@ unsafe fn acquire(
     receiver: Oop,
     args: &[Oop],
 ) -> Result<(ResumableEntryCapability, MaterializedEntry), Oop> {
+    let entry = acquire_entry(s, r)?;
+    unsafe { materialize_entry(s, entry, r, receiver, args).map(|v| (entry, v)) }
+}
+fn acquire_entry(s: &State, r: &Registered) -> Result<ResumableEntryCapability, Oop> {
+    let Some(StacklessTarget::Registered { entry }) =
+        checked(s.engine.borrow_mut().classify_resumable(r.key))?
+    else {
+        return Err(invalid());
+    };
+    Ok(entry)
+}
+unsafe fn materialize_entry(
+    s: &State,
+    entry: ResumableEntryCapability,
+    r: &Registered,
+    receiver: Oop,
+    args: &[Oop],
+) -> Result<MaterializedEntry, Oop> {
     unsafe {
         let q = s.scope(&[r.method, receiver]);
         for &arg in args {
             q.keep(arg);
         }
-        let Some(StacklessTarget::Registered { entry }) =
-            checked(s.engine.borrow_mut().classify_resumable(r.key))?
-        else {
-            return Err(invalid());
-        };
         let result = (|| {
             let (_, count) = checked(s.engine.borrow().acquired_entry_capture_layout(entry))?;
             let mut captures = Vec::new();
@@ -332,7 +353,7 @@ unsafe fn acquire(
         if result.is_err() {
             checked(s.engine.borrow_mut().release_acquired_entry(entry))?;
         }
-        result.map(|v| (entry, v))
+        result
     }
 }
 fn push(
@@ -1006,7 +1027,27 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                 .ok_or_else(invalid)?;
             let capability = cap(s, site.machine)?;
             q.keep(site.machine);
-            let (acquired, value) = acquire(s, &record, r, args)?;
+            if args.len()
+                != record
+                    .descriptor
+                    .v2_entry_binding()
+                    .ok_or_else(invalid)?
+                    .argument_count
+            {
+                return Err(invalid());
+            }
+            let acquired = acquire_entry(s, &record)?;
+            if !site.tail {
+                if let Some(inline) = record.inline {
+                    if recovery::try_inline(s, &site, capability, acquired, inline, r, args)? {
+                        // Recovery may have installed the child frame already.
+                        // Its authority validated the original pending call.
+                        s.resume.borrow_mut().returns.remove(&context);
+                        return next_step(s, site.machine);
+                    }
+                }
+            }
+            let value = materialize_entry(s, acquired, &record, r, args)?;
             let site = match take_return(s, context) {
                 Ok(site) => site,
                 Err(e) => {
@@ -1574,7 +1615,11 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
         return Ok(Some(vec![site.machine]));
     }
     if let Some(record) = s.resume.borrow().records.get(&object.addr()) {
-        return Ok(Some(vec![record.method, record.step, record.owner]));
+        let mut values = vec![record.method, record.step, record.owner];
+        if let Some(inline) = record.inline {
+            values.extend([inline.method, inline.owner]);
+        }
+        return Ok(Some(values));
     }
     let family = s.storage.borrow().family_of(object);
     let objects = s.engine.borrow().objects();
@@ -1769,11 +1814,18 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             }
             let target = if name == b"fromStep:descriptor:selection:owner:" {
                 execution_type
+            } else if name == b"withInline:at:owner:" {
+                q.keep(s.send(s.id.root, b"methodBehavior", &[])?)
             } else {
                 machine_vtable
             };
             let method = q.keep(s.send(image, b"methodAt:", &[s.names[name]])?);
             let method = q.keep(s.send(method, b"withContext:", &[s.ns])?);
+            if recovery::CONTROLS.contains(&name) {
+                let mut r = s.resume.borrow_mut();
+                r.recovery.controls.push(method);
+                r.roots.push(method);
+            }
             s.send(target, b"addMethod", &[s.names[name], method])?;
         }
         for (name, slot) in [

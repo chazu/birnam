@@ -1,13 +1,12 @@
 # Execution over the production Id heap
 
-Current Oop migration checkpoint: synchronous and resumable source paths are
-connected through explicit `Codegen compileSynchronous:` / `compileResumable:`.
-The resumable path uses the retained Machine engine with `runBlock:budget:`,
-`continueWithBudget:` and `executionState`. See the
-[resumable milestone](../../docs/design/oop-resumable-milestone.md) for acceptance.
-Suspension/control/recovery, default compiler and full-runtime integration remain
-pending. Historical feature descriptions below are preservation requirements,
-not claims that every feature is available. No v1 compatibility path is built.
+The current Oop facade uses declared Method objects and the retained Machine
+engine. Default compiler execution, suspension/control, frame inspection and
+explicit pending-call recovery are connected. Current evidence and remaining
+integration work are tracked in the [Oop integration record](../../docs/design/oop-continuation-id.md).
+Historical feature descriptions below remain preservation requirements where
+migration is unfinished; they are not claims of full runtime acceptance.
+No v1 compatibility path is built.
 
 Design 90 batch 1 now runs native Methods, Blocks and Machines over the production
 prefix, including frames, bounded drives, suspension, continuations and native
@@ -91,7 +90,7 @@ exact entry. Ordinary future sends perform current lookup.
 | Method `fromStep:descriptor:selection:owner:` | NativeEntry step, canonical FrameDescriptor-v2 Bytes, ArtifactSelection Bytes containing exactly one matching row, code/context owner Object | Owned resumable Method. Both byte spans are bounded and copied during the call; no Rust carrier crosses the boundary. The owner identity names the generation. |
 | Method `fromStep:descriptor:selection:owner:implementation:` | Same executable/descriptor/selection/code-owner operands, plus implementation Object | Owned named-adapter Method. The descriptor must declare an implementation slot; its separate implementation is traced and copied into that slot on entry. |
 | Method instance `withImplementation:` | Implementation Object; receiver is an owned resumable Method with an implementation slot | Fresh Method and registration sharing the selected code owner. New Method identity names its generation. Copies admitted shape, resets derived plans, derives the new implementation's native signature, and does not inherit old optimizations or retain a chain of old bindings. See [qualification](../../docs/design/method-binding-constructor.md). |
-| Method instance `withInline:at:owner:` | NativeEntry candidate, Integer baseline return slot, candidate owner Object | New captured Method with the same baseline registration and an optional inline candidate. See recovery contract below. |
+| Method instance `withInline:at:owner:` | Candidate Method Oop, Integer baseline return slot, candidate owner Object | New owned Method preserving the baseline code and an optional inline candidate. See recovery contract below. |
 | Method instance `optimizeWith:` | Sequence of plain native Methods, one per baseline PC; empty sequence removes the candidate | Same Method. Attach candidate metadata to the shared baseline registration; see hot selection below. |
 | Machine `recoverAt:with:` / `recoverAt:withGraph:` | Integer baseline PC, recipe sequence Object | Machine Object after one atomic pending-call recovery; typed failure for missing/stale authority or invalid recipe. |
 | Block `fromMethod:captures:` | Method Object, capture sequence Object | Block with `value` / `value:…` matching descriptor arity. Reads captures through current `size`/`at:`; validates descriptor capture count. Clone copies this owned representation shallowly. |
@@ -201,21 +200,20 @@ mappings are a separate batch 2 check.
 
 The retained inline-call consumer needs an executable candidate, its baseline
 Method and opaque code owner. `Method withInline:at:owner:` answers a new
-owned Method preserving that baseline registration: NativeEntry candidate,
+owned Method preserving that baseline code: candidate Method Oop,
 Integer baseline return-slot, Object candidate owner. Captures snapshot this
 choice. The candidate runs only for an eligible non-tail, unprotected registered
 Call, with Machine as receiver and the original receiver followed by arguments
-as Object operands. Object answers commit an inline result; Unit declines to the
-baseline. A candidate can instead consume its scoped request through the existing
-Machine `recoverAt:with:` or `recoverAt:withGraph:` and then answer Unit. Rejection
-or error releases the acquisition; a consumed request transfers it to the frame.
-No recovery authority or Rust structure is passed through native operands.
+as Oop arguments. Non-null answers commit an inline result; a null Oop declines
+to the baseline. A candidate can instead consume its scoped request through
+Machine `recoverAt:with:` or `recoverAt:withGraph:` and then answer a null Oop.
+Rejection or error releases the acquisition; a consumed request transfers it to the frame.
+No recovery authority or Rust structure is passed through messages.
 
 Recipe sequences retain their existing size/at: encoding; graph construction
 uses Integer, Float and ObjectModel messages. Admission is rechecked after
 callbacks and before publication. The graph validator is a private pure
-algorithm here, shared with Codegen until its producer moves. Native fixtures supply
-executable candidates now; compiler construction and emitted candidates remain
+algorithm within Execution. Native fixtures supply executable candidates now; compiler construction and emitted candidates remain
 batch 2 producers. This connection is not acceptance for the other existing
 numeric/region/closure optimization algorithms.
 
@@ -237,22 +235,21 @@ consumed request cannot publish again. The code owner for a recovered baseline
 stays pinned until its frame ends or is abandoned; the finished candidate has no
 remaining acquisition. Errors release unconsumed acquisitions.
 
-Execution checks its own Machine slot/control entries through current Id lookup,
-with `behaviorEpoch` fencing mutation during the check. Id `usesDefaultLookup:`
-takes the Machine Object and answers Word zero/one by comparing Id's own lookup
-function and context. GC `referenceOwnerOf:` takes a behavior Object and answers
-the current inherited owner Object or Unit. These are owner-local observations,
-not cached dependency entries. Changing Machine lookup or an observed control
-method declines the candidate and runs the ordinary baseline. The candidate's
+Execution checks its installed Machine slot/control Methods with Id's existing
+`nativeBindingsMatch:` message. Id validates current default lookup and the current
+bindings together, without callbacks between observations. GC `referenceOwnerOf:`
+takes a vtable Oop and answers its current inherited owner Oop or null. These
+observations stay with their owners; Execution reads no foreign payload.
+Changing Machine lookup or an observed control method declines the candidate and runs the ordinary baseline. The candidate's
 native author remains responsible for semantic guards on its body and preserving
 baseline-observable operations; this constructor does not certify optimization.
 
-The production C candidate exercises direct result, decline and both recovery
-forms. Tests cover precise GC in recipe/factory callbacks, layout and trace-owner
-replacement, custom lookup, duplicate consumption, invalid recipes, exact numeric
-identity/bits, and code-owner reclamation after completion, abandonment or failure.
-These tests do not exercise the deferred allocation-elision algorithms or their
-compiler producers.
+The Oop C fixture exercises direct result, decline, both recovery forms, balanced
+reentry and rejection at a native suspension boundary. The current native test
+also covers collection between graph nodes, layout/reference-owner rejection,
+custom lookup, duplicate consumption, invalid recipes, exact numeric identity/bits,
+and candidate data retained only by the returned Method. Full migration of the
+older compiler and lifetime harnesses remains separate work.
 
 ## Hot selection and scalar evaluation
 

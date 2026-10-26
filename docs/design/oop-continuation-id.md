@@ -1154,3 +1154,43 @@ destruction. The complete Oop core gate also passes, including its negative
 direct-dispatch contract. This restores inspection needed by recovery; it does not
 implement pending-call recovery or complete cold-install qualification.
 [Receipt](../measurements/frame-view-oop-20261026.json).
+
+## Pending-call recovery through Oop callbacks
+
+`withInline:at:owner:`, `recoverAt:with:` and `recoverAt:withGraph:` now connect
+the Oop facade to the retained recovery engine. The candidate is a declared Method
+Oop, replacing the old NativeEntry value. Its receiver is the Machine, followed by
+the original receiver and arguments. A non-null result completes the pending call;
+null declines. Successful recovery transfers the acquired entry to a baseline frame
+and requires a null acknowledgement. Native callbacks still cannot suspend.
+
+Before this connection, entering a registered Method acquired the entry, read
+captures and constructed its baseline frame. After it, only a Method explicitly
+constructed with an inline candidate first checks the eligible pending non-tail
+call and current Machine controls. It invokes that candidate through existing
+captured invocation. Decline proceeds to the same capture reads and baseline
+construction; recovery validates and atomically publishes the requested frame.
+Ordinary Id dispatch still enters the selected Method directly.
+
+The added state belongs to Execution: an optional candidate and owner on its
+registration, a scoped stack of pending recovery requests, and retained copies of
+the four installed control Methods needed by the existing guards. The constructor
+uses Id's existing Method comparison to recognize captured aliases and the retained
+descriptor-copy operation to avoid sharing a mutable executable owner. Id's existing
+`nativeBindingsMatch:` checks current controls without foreign payload access.
+Integer, Float and ObjectModel construct graph nodes through their current messages;
+ObjectModel and GC confirm aggregate layout and reference ownership. Id is unchanged.
+
+The independent C callbacks exercise direct results, decline, flat and graph
+recovery, balanced reentry, native suspension rejection, duplicate consumption,
+malformed recipes and invalid post-recovery acknowledgement. They also cover
+Machine control replacement and forwarding custom lookup, candidate-owner lifetime,
+distinct equal number boxes, alias preservation and exact NaN bits. A replaced
+Integer factory collects between graph-node allocations. The native frame-view
+test and complete Oop core gate also pass. The installed portable execution
+fixtures pass unchanged, including the original projection assertion.
+[Receipt](../measurements/pending-call-recovery-oop-20261026.json).
+
+This is explicit recovery acceptance. It does not claim migration of every retained
+compiler optimization producer or native harness, or fresh cold qualification of
+the corrected runtime.

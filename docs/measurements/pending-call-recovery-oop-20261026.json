@@ -1,0 +1,44 @@
+{
+  "passed": true,
+  "scope": "Explicit Oop candidate entry and flat/graph pending-call recovery; core gate and unchanged installed portable semantics",
+  "base_revision": "b12ebd9f027b239880f59eb7313b7f9945173fd7",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-rv1m_85i/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/lib.rs": "5d3f1581803ba428f1d984fcf0ef3b2dfee1dd14622fd0ee668c534bd7748e2e",
+    "rust/birnam-execution/src/oop_recovery.rs": "b033f9d92cbf9260c32301c04eefc2ebf70a65d198f1fc5309a688867e20a978",
+    "rust/birnam-execution/src/recovery_graph.rs": "37ba1f4e32b957c14418cbb2e864aeb2678b01160ef17e7c4a3f6a90ee33c5e6",
+    "rust/birnam-execution/src/resumable_runtime.rs": "05681de9bca5cecafb5fae81dee555d69cfa390d89092b31481a24b081bf049b",
+    "rust/birnam-execution/src/synchronous.rs": "8076f206dcf61c89cb7792e096ee6478d601ebef7ce77371782b138f62a048b4",
+    "rust/birnam-siphon/tests/pending_call_recovery.rs": "98b1e5bc991c1e160d0214fc9c0bbe079d755e23313e8bdb71893b7a3a9d4aba",
+    "tests/fixtures/oop-host/recovery.c": "11d73efa24cc75b44c47c9f6118ba912758800d84f04f97126a7772729f4633b"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/recovery-native.log",
+      "sha256": "5fd88d76556389d6755abc2d50700df1f459eb1c0d807f24c15e8d1fb9df9683",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/recovery-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-cold-qualification/recovery-portable.log",
+      "sha256": "9714366521cdddfb4635ba8187c076adca5578d36c3d7cf572b43fe8b6d715a7",
+      "exit": 0
+    }
+  ],
+  "prior_failure": {
+    "log": ".cargo-target/oop-cold-qualification/cli-before-recovery.log",
+    "sha256": "b7b3871ae94fcb73138daceaf7e67fa78495dec26e08efae2c007f8861e76ad9",
+    "case": "portable-projection exited 8 at the unchanged recoverAt:with: assertion"
+  },
+  "id_changes": false,
+  "worker_deadline_ms": 15000,
+  "remaining": [
+    "Retained compiler optimization producers and native harness migration",
+    "Remaining installed Host CLI acceptance",
+    "Fresh cold installation and full requalification of the corrected runtime"
+  ]
+}

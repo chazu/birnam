@@ -6,3 +6,4 @@ mod word_index;
 mod objects;
 mod execution;
 mod synchronous;
+mod recovery_graph;

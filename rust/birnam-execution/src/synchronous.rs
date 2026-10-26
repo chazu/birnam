@@ -734,6 +734,14 @@ const NAMES: &[&[u8]] = &[
     b"sourceMapLocation",
     b"fromUnsignedLow:high:",
     b"FrameView",
+    b"withInline:at:owner:",
+    b"recoverAt:with:",
+    b"recoverAt:withGraph:",
+    b"nativeBindingsMatch:",
+    b"Float",
+    b"bitsOf:",
+    b"allOopLayoutOf:words:",
+    b"referenceOwnerOf:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -959,6 +967,14 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"sourceMapLocation"),
     Literal::new(b"fromUnsignedLow:high:"),
     Literal::new(b"FrameView"),
+    Literal::new(b"withInline:at:owner:"),
+    Literal::new(b"recoverAt:with:"),
+    Literal::new(b"recoverAt:withGraph:"),
+    Literal::new(b"nativeBindingsMatch:"),
+    Literal::new(b"Float"),
+    Literal::new(b"bitsOf:"),
+    Literal::new(b"allOopLayoutOf:words:"),
+    Literal::new(b"referenceOwnerOf:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1474,6 +1490,21 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 218,
         entry: Some(invalid_request),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 223,
+        entry: Some(resumable::recovery::with_inline),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 224,
+        entry: Some(resumable::recovery::recover::<false>),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 225,
+        entry: Some(resumable::recovery::recover::<true>),
         convention: 0,
     },
 ];
